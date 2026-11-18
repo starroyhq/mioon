@@ -1,13 +1,4 @@
-/** Test-only doubles for the CS board transaction.
- *
- * - `createMemoryHistory` is the shared history-13 port (receipts, entries,
- *   cursor) held in memory for one test.
- * - `createProjectionDouble(store)` is the TS half: it applies the SA plan to
- *   the stored format-5 timeline as the timeline-sync service will, so the
- *   kernel's full-state commit fence sees a consistent board/timeline.
- * - `createChainWorld` writes a small but real format-5 project (rows, timeline
- *   and sync state) through the K5a store surface.
- */
+/** Real format-5 chain fixtures for the CS board transaction tests. */
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -15,52 +6,14 @@ import path from 'node:path';
 import type test from 'node:test';
 import {createProjectStore} from '../../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
-import {
-  applyFormat5TimelineEntityUpdateInside, planFormat5TimelineEntityUpdate, readFormat5TimelineState,
-} from '../../packages/business/src/project-file/format5-timeline.ts';
-import {format5SyncBaselineSchema, format5TimelineHeader} from '../../packages/contracts/src/project-format5.ts';
-import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../packages/contracts/src/project-format5.ts';
+import {format5SyncBaselineSchema} from '../../packages/contracts/src/project-format5.ts';
+import type {Format5Clip, Format5SyncBaseline, Format5Timeline} from '../../packages/contracts/src/project-format5.ts';
 import {sourceFrameCount} from '../../packages/contracts/src/source-range.ts';
-import {readSequenceEditContext} from '../../packages/business/src/sequence-edit.ts';
-import {readFormat5TimelineRecord} from '../../packages/business/src/project-file/format5-timeline.ts';
-import type {
-  SequenceEditHistoryCommit, SequenceEditHistoryCursor, SequenceEditHistoryPort, SequenceEditHistoryReplay,
-} from '../../packages/business/src/sequence-edit.ts';
-import type {
-  MainTrackProjectionPort, SequenceEditHistoryEntry, SequenceEditTimelineCommit,
-  SequenceEditTimelineDelta, SequenceEditTransactionFailure, SequenceEditTransactionRequest,
-} from '../../packages/contracts/src/sequence-edit.ts';
-import type {SequenceEditTimelineHistoryPort} from '../../packages/business/src/sequence-edit.ts';
-import {applySequenceEditBaselineChange} from '../../packages/contracts/src/sequence-edit.ts';
-import type {ChainSyncClip} from '../../packages/contracts/src/chain-main-track.ts';
 
 type Row = Record<string, unknown>;
 const at = '2026-01-01T00:00:00.000Z';
 const uuid = (): string => randomUUID();
 const now = (): string => new Date().toISOString();
-
-export interface MemoryHistory extends SequenceEditHistoryPort {
-  readonly receipts: Map<string, SequenceEditHistoryReplay>;
-  readonly entries: Map<number, SequenceEditHistoryEntry>;
-  cursor: SequenceEditHistoryCursor;
-}
-export function createMemoryHistory(): MemoryHistory {
-  const history: MemoryHistory = {
-    receipts: new Map(), entries: new Map(), cursor: {epoch: randomUUID(), position: 0, revision: 1},
-    readCursor: () => ({...history.cursor}),
-    readEntryAt: position => history.entries.get(position) ?? null,
-    findReceipt: requestId => history.receipts.get(requestId) ?? null,
-    commit(change: SequenceEditHistoryCommit) {
-      if (change.entry) {
-        if (change.entry.position !== history.cursor.position + 1) throw new TypeError('History double requires the next position');
-        history.entries.set(change.entry.position, change.entry);
-      }
-      history.receipts.set(change.requestId, {operation: change.operation, inputDigest: change.inputDigest, receipt: change.receipt});
-      history.cursor = {...history.cursor, position: change.receipt.history.position, revision: change.receipt.history.revision};
-    },
-  };
-  return history;
-}
 
 // ---------------------------------------------------------------------------
 // Format-5 world
@@ -209,158 +162,4 @@ export function createChainWorld(t: test.TestContext, spec: ChainWorldSpec): Cha
   });
   const baseline = baselineFrom(timeline, shots, nodes, mainTrackId);
   return {store, projectId, rootId, timelineId, mainTrackId, shots, nodes, versions, assets, timeline, baseline};
-}
-
-// ---------------------------------------------------------------------------
-// TS projection double
-// ---------------------------------------------------------------------------
-
-function projectionFailure(code: string, ids: readonly string[]): SequenceEditTransactionFailure {
-  return {ok: false, code: code as never, ids};
-}
-
-/** Writes the main-track projection for the plan with the K5a entity path and
- * advances the sync revision exactly as the timeline-sync transaction will. */
-export function createProjectionDouble(store: ProjectStore): MainTrackProjectionPort {
-  return {
-    projectMainTrack(request: SequenceEditTransactionRequest): SequenceEditTimelineCommit | SequenceEditTransactionFailure {
-      const context = readSequenceEditContext(store);
-      const plan = request.plan;
-      const mainTrackId = context.timeline.mainTrack.trackId;
-      const existing = new Map(context.timeline.clips.map(clip => [clip.id, clip] as const));
-      const versions = context.rows.versions;
-      const nodeById = new Map(plan.after.board.nodes.map(node => [node.id, node] as const));
-      const nextMainClip = (clip: ChainSyncClip): Format5Clip => {
-        const node = nodeById.get(clip.nodeId);
-        if (!node) throw new TypeError(`Projection lost node ${clip.nodeId}`);
-        const current = existing.get(clip.id);
-        const base: Format5Clip = current ?? {id: clip.id, trackId: mainTrackId,
-          name: typeof context.rows.shots.get(clip.nodeId)?.title === 'string' ? String(context.rows.shots.get(clip.nodeId)!.title) : 'Clip',
-          startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame,
-          rect: {x: 0, y: 0, width: context.timeline.width, height: context.timeline.height}, gain: 1,
-          assetId: null, versionId: null, jobId: null, sourceState: 'placeholder',
-          sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId: clip.splitGroupId ?? clip.id, versionMode: 'follow'}};
-        const segmentGroupId = clip.splitGroupId ?? base.sequenceSource?.segmentGroupId ?? clip.id;
-        const frames = {startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame};
-        if (node.kind === 'shot' && clip.versionId === null) {
-          const {assetId: _assetId, versionId: _versionId, jobId: _jobId, shotId: _shotId, ...rest} = base;
-          return {...rest, ...frames, assetId: null, versionId: null, jobId: null, sourceState: 'placeholder',
-            sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId, versionMode: 'follow'}};
-        }
-        const version = clip.versionId === null ? undefined : versions.get(clip.versionId);
-        const assetId = node.kind === 'shot' ? (typeof version?.assetId === 'string' ? version.assetId : null) : clip.versionId;
-        if (assetId === null) throw new TypeError('Projection needs an asset for a ready clip');
-        if (node.kind === 'shot') {
-          return {...base, ...frames, assetId, versionId: clip.versionId, sourceState: 'ready', shotId: clip.nodeId,
-            ...(typeof version?.jobId === 'string' ? {jobId: version.jobId} : {}),
-            sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId, versionMode: clip.versionLocked ? 'locked' : 'follow'}};
-        }
-        return {...base, ...frames, assetId, sourceState: 'ready',
-          sequenceSource: {kind: 'media', nodeId: clip.nodeId, segmentGroupId}};
-      };
-      const mainClips = plan.after.clips.map(nextMainClip);
-      const ownerSegments = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
-      const anchored = new Map(plan.after.anchored.map(item => [item.id, item] as const));
-      const anchorFor = (item: {startFrame: number; anchorClipId?: string | null}): {clipId: string; offsetFrames: number} | null => {
-        if (item.anchorClipId === null || item.anchorClipId === undefined) return null;
-        const owner = ownerSegments.find(clip => clip.id === item.anchorClipId);
-        if (!owner) return null;
-        const offsetFrames = item.startFrame - owner.startFrame;
-        return offsetFrames >= 0 && offsetFrames < owner.durationFrames ? {clipId: item.anchorClipId, offsetFrames} : null;
-      };
-      const clips: Format5Clip[] = [...mainClips];
-      for (const clip of context.timeline.clips) {
-        if (clip.trackId === mainTrackId) continue;
-        const item = anchored.get(clip.id);
-        clips.push({...clip, startFrame: item?.startFrame ?? clip.startFrame, anchor: item ? anchorFor(item) : clip.anchor ?? null});
-      }
-      const cues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
-        const item = anchored.get(cue.id);
-        return item ? {...cue, startFrame: item.startFrame, anchor: anchorFor(item) ?? cue.anchor} : cue;
-      });
-      const durationFrames = mainClips.reduce((maximum, clip) => Math.max(maximum, clip.startFrame + clip.durationFrames), 0);
-      const nextTimeline: Format5Timeline = {...context.timeline, revision: context.timeline.revision + 1, updatedAt: now(),
-        durationFrames, clips};
-      if (context.timeline.subtitles) nextTimeline.subtitles = {...context.timeline.subtitles, cues};
-      const shotVersions = new Map<string, string | null>();
-      for (const item of context.media) shotVersions.set(item.nodeId, item.selectedVersion?.id ?? null);
-      for (const change of plan.changes.media) if (change.after) shotVersions.set(change.after.nodeId, change.after.selectedVersion?.id ?? null);
-      const nextBaseline = baselineFrom(nextTimeline, context.rows.shots, context.rows.nodes, mainTrackId, shotVersions);
-      const state = readFormat5TimelineState(store.db, 'project');
-      const changedClips = nextTimeline.clips.filter(clip => {
-        const before = existing.get(clip.id);
-        return !before || JSON.stringify(before) !== JSON.stringify(clip);
-      });
-      const update = planFormat5TimelineEntityUpdate(state, {clips: changedClips, cues,
-        removedClipIds: context.timeline.clips.filter(clip => clip.trackId === mainTrackId
-          && !nextTimeline.clips.some(next => next.id === clip.id)).map(clip => clip.id)});
-      if (update.changed || update.clipDeletes.length || update.cueDeletes.length) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
-      const headerRaw = JSON.stringify(format5TimelineHeader(nextTimeline));
-      if (state.header?.raw !== headerRaw) store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(headerRaw, nextTimeline.id);
-      const sync = store.db.prepare('UPDATE project.sequence_sync_state SET revision=revision+1,baseline=? WHERE timelineId=? AND revision=?')
-        .run(JSON.stringify(nextBaseline), context.timeline.id, context.syncRevision);
-      if (Number(sync.changes) !== 1) return projectionFailure('CHAIN_TRACK_MISMATCH', [context.rootNodeId]);
-      return {ok: true, delta: {clips: [], cues: [], removedClipIds: [], removedCueIds: [],
-        baseline: {kind: 'set', value: nextBaseline}}, warnings: plan.warnings,
-        timelineRevision: nextTimeline.revision, syncRevision: context.syncRevision + 1};
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Timeline history double (undo/redo partner of the projection double)
-// ---------------------------------------------------------------------------
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-export function createTimelineHistoryDouble(store: ProjectStore): SequenceEditTimelineHistoryPort {
-  const readTimeline = (): Format5Timeline => {
-    const timeline = readFormat5TimelineRecord(store.db, 'project');
-    if (!timeline) throw new TypeError('Fixture timeline is missing');
-    return timeline;
-  };
-  const readSync = (): {revision: number; baseline: Format5SyncBaseline} => {
-    const row = store.db.prepare('SELECT revision,baseline FROM project.sequence_sync_state').get() as Row;
-    const parsed = format5SyncBaselineSchema.safeParse(JSON.parse(String(row.baseline)));
-    if (!parsed.success) throw new TypeError('Fixture sync state is invalid');
-    return {revision: Number(row.revision), baseline: parsed.data};
-  };
-  return {
-    matches(delta: SequenceEditTimelineDelta): boolean {
-      const timeline = readTimeline();
-      const clips = new Map(timeline.clips.map(clip => [clip.id, clip] as const));
-      const cues = new Map((timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
-      for (const clip of delta.clips) if (!sameJson(clips.get(clip.id), clip)) return false;
-      for (const cue of delta.cues) if (!sameJson(cues.get(cue.id), cue)) return false;
-      for (const id of delta.removedClipIds) if (clips.has(id)) return false;
-      for (const id of delta.removedCueIds) if (cues.has(id)) return false;
-      const sync = readSync();
-      if (delta.baseline.kind === 'set') return sameJson(sync.baseline, delta.baseline.value);
-      return delta.baseline.kind === 'unchanged';
-    },
-    apply(delta: SequenceEditTimelineDelta) {
-      const timeline = readTimeline();
-      const clips = new Map(timeline.clips.map(clip => [clip.id, clip] as const));
-      const cues = new Map((timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
-      for (const clip of delta.clips) clips.set(clip.id, clip);
-      for (const cue of delta.cues) cues.set(cue.id, cue);
-      for (const id of delta.removedClipIds) clips.delete(id);
-      for (const id of delta.removedCueIds) cues.delete(id);
-      const nextClips = [...clips.values()];
-      const nextCues = [...cues.values()];
-      const durationFrames = nextClips.reduce((maximum, clip) => Math.max(maximum, clip.startFrame + clip.durationFrames), 0);
-      const nextTimeline: Format5Timeline = {...timeline, revision: timeline.revision + 1, updatedAt: now(), durationFrames,
-        clips: nextClips};
-      if (timeline.subtitles) nextTimeline.subtitles = {...timeline.subtitles, cues: nextCues};
-      store.put('timelines', nextTimeline);
-      const sync = readSync();
-      const nextBaseline = applySequenceEditBaselineChange(sync.baseline, delta.baseline);
-      if (!nextBaseline) throw new TypeError('Format-5 history cannot delete the sync baseline');
-      const update = store.db.prepare('UPDATE project.sequence_sync_state SET revision=revision+1,baseline=? WHERE timelineId=? AND revision=?')
-        .run(JSON.stringify(nextBaseline), nextTimeline.id, sync.revision);
-      if (Number(update.changes) !== 1) return {ok: false as const, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT' as never, ids: [timeline.id]};
-      return {timelineRevision: nextTimeline.revision, syncRevision: sync.revision + 1};
-    },
-  };
 }

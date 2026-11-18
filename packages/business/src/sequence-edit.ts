@@ -1,34 +1,40 @@
-import {createHash, randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
-import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, ChainSyncState} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {ChainSyncBaseline, TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
 import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import {format5SyncBaselineSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {
-  applySequenceEditBaselineChange, canonicalSequenceEditInput, invertSequenceEditPatch, isSequenceEditIntentSequence,
-  sequenceEditIntentOperationName, sequenceEditOperationName,
+  applySequenceEditBaselineChange, isSequenceEditIntentSequence, sequenceEditOperationName,
 } from '../../contracts/src/sequence-edit.ts';
 import type {
-  BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditAllocation, SequenceEditBaselineChange,
-  SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope, SequenceEditHistoryAction,
+  BoardSeamProjectionPort, SequenceEditAffectedCounts, SequenceEditAllocation, SequenceEditBaselineChange,
+  SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope, SequenceEditHistoryCommand,
   SequenceEditHistoryEntry, SequenceEditHistoryView, SequenceEditIntent, SequenceEditPatch, SequenceEditReceipt,
   SequenceEditStateDelta, SequenceEditTimelineDelta, SequenceEditTimelineCommit, SequenceEditTransactionFailure,
   SequenceEditTransactionRequest,
 } from '../../contracts/src/sequence-edit.ts';
 import {
   isSequenceEditingOperation, isSequenceEditingWrite, sequenceEditingResponses, sequenceEditingSchemas,
-  sequenceEditIntentPayloadSchema, sequenceEditOperationSchema,
+  sequenceEditOperationSchema,
 } from '../../contracts/src/sequence-editing.ts';
 import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
+import {
+  applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, createMainTrackProjectionPort,
+} from './format5-sequence-sync.ts';
+import {
+  findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
+  readSequenceEditHistoryEntry, sequenceEditInputDigest, writeSequenceEditAction, writeSequenceEditFailure,
+} from './format5-editor-history.ts';
+import type {SequenceEditHistoryState, SequenceEditReceiptDraft} from './format5-editor-history.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5JsonRows} from './project-file/format5-content.ts';
-import {bumpFormat5ContentStampInside, fenceFormat5TimelineRows, readFormat5TimelineRecord, readFormat5TimelineState, assembleFormat5Timeline} from './project-file/format5-timeline.ts';
-import {validateFormat5SequenceGraph} from './project-file/format5-sequence-mapping.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
@@ -44,8 +50,6 @@ const contentStamp = (store: ProjectStore): {readonly contentSequence: number} =
 const tableOf = (kind: SequenceEditBoardEntity['kind']): CanvasTable => kind === 'shot' ? 'shots' : kind === 'edge' ? 'edges' : 'nodes';
 const rowKind = (table: CanvasTable): SequenceEditBoardEntity['kind'] => table === 'shots' ? 'shot' : table === 'edges' ? 'edge' : 'node';
 const stable = (value: unknown): string => canonicalJson(JSON.parse(JSON.stringify(value)));
-const digestOf = (envelope: SequenceEditEnvelope): string =>
-  createHash('sha256').update(canonicalSequenceEditInput(envelope)).digest('hex');
 
 function fail(code: string, message: string, ids: readonly string[] = [], detail: Row = {}): never {
   throw new AppError(code, message, 409, {ids: [...new Set(ids)], ...detail});
@@ -75,54 +79,13 @@ function assertFormat5(store: ProjectStore): void {
 }
 
 // ---------------------------------------------------------------------------
-// Ports
+// Shared transaction seams
 // ---------------------------------------------------------------------------
 
-/** Cursor of the one project-level undo stack (history 13). The shared module
- * created by the timeline-sync line implements this port; CS never writes a
- * second history. */
-export interface SequenceEditHistoryCursor {
-  readonly epoch: string;
-  readonly position: number;
-  readonly revision: number;
-}
-export interface SequenceEditHistoryReplay {
-  readonly operation: string;
-  readonly inputDigest: string;
-  readonly receipt: SequenceEditReceipt;
-}
-export interface SequenceEditHistoryCommit {
-  readonly requestId: string;
-  readonly operation: string;
-  readonly inputDigest: string;
-  readonly receipt: SequenceEditReceipt;
-  /** One user action. Undo and redo only move the cursor, so entry is null. */
-  readonly entry: SequenceEditHistoryEntry | null;
-  readonly direction: 'apply' | 'undo' | 'redo';
-}
-export interface SequenceEditHistoryPort {
-  readCursor(): SequenceEditHistoryCursor;
-  readEntryAt(position: number): SequenceEditHistoryEntry | null;
-  findReceipt(requestId: string): SequenceEditHistoryReplay | null;
-  commit(change: SequenceEditHistoryCommit): void;
-}
-/** Applies the timeline half of one stored before/after delta while undoing or
- * redoing. The timeline-sync service owns this port once it is merged; the CS
- * tests exercise it through a projection double. */
-export interface SequenceEditTimelineHistoryPort {
-  matches(delta: SequenceEditTimelineDelta): boolean;
-  apply(delta: SequenceEditTimelineDelta): {readonly timelineRevision: number; readonly syncRevision: number} | SequenceEditTransactionFailure;
-}
-export interface SequenceEditPorts {
-  /** TS projection; called by CS inside the same transaction for board edits
-   * that change the bound film's main track. */
-  readonly mainTrack?: MainTrackProjectionPort;
-  /** Shared history 13 writer. Without it no format-5 board write can commit. */
-  readonly history?: SequenceEditHistoryPort;
-  /** Timeline half of undo/redo. Required only when a stored patch changes the
-   * timeline; production wires it together with `mainTrack`. */
-  readonly timelineHistory?: SequenceEditTimelineHistoryPort;
-}
+// CS never owns the history-13 rows: `format5-editor-history.ts` (the module the
+// timeline-sync line aligned to the #289 contract) writes the cursor, entry and
+// receipt, and `format5-sequence-sync.ts` provides the TS main-track projection
+// plus the timeline half of undo/redo. Both run inside the caller's transaction.
 
 // ---------------------------------------------------------------------------
 // Live read model
@@ -600,6 +563,26 @@ function buildTimelinePatch(before: Format5Timeline, after: Format5Timeline | nu
   };
 }
 
+function timelinePatchFromCommit(before: Format5Timeline, delta: SequenceEditTimelineDelta,
+  beforeBaseline: Format5SyncBaseline): {before: SequenceEditTimelineDelta; after: SequenceEditTimelineDelta} {
+  const oldClips = new Map(before.clips.map(clip => [clip.id, clip] as const));
+  const oldCues = new Map((before.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  const touchedClips = new Set([...delta.clips.map(clip => clip.id), ...delta.removedClipIds]);
+  const touchedCues = new Set([...delta.cues.map(cue => cue.id), ...delta.removedCueIds]);
+  const afterClipIds = new Set(delta.clips.map(clip => clip.id));
+  const afterCueIds = new Set(delta.cues.map(cue => cue.id));
+  return {
+    before: {
+      clips: [...touchedClips].filter(id => oldClips.has(id)).map(id => oldClips.get(id)!),
+      cues: [...touchedCues].filter(id => oldCues.has(id)).map(id => oldCues.get(id)!),
+      removedClipIds: [...afterClipIds].filter(id => !oldClips.has(id)),
+      removedCueIds: [...afterCueIds].filter(id => !oldCues.has(id)),
+      baseline: beforeBaselineValue(beforeBaseline, delta.baseline),
+    },
+    after: delta,
+  };
+}
+
 function beforeBaselineValue(before: Format5SyncBaseline, change: SequenceEditBaselineChange): SequenceEditBaselineChange {
   switch (change.kind) {
     case 'unchanged': return {kind: 'unchanged'};
@@ -615,35 +598,15 @@ function countTimeline(delta: SequenceEditTimelineDelta, mainTrackId: string): {
 }
 
 // ---------------------------------------------------------------------------
-// Receipts and history views
+// Receipts and history projection
 // ---------------------------------------------------------------------------
 
-function historyAction(entry: SequenceEditHistoryEntry | null): SequenceEditHistoryAction | null {
-  if (!entry) return null;
-  const board = entry.afterPatch.board;
-  return {actionId: entry.actionId, operation: entry.operation, affected: board.writes.length + board.removals.length};
-}
-function historyView(history: SequenceEditHistoryPort, cursor: SequenceEditHistoryCursor, store: ProjectStore): SequenceEditHistoryView {
-  const undoEntry = history.readEntryAt(cursor.position);
-  const redoEntry = history.readEntryAt(cursor.position + 1);
-  return {epoch: cursor.epoch, position: cursor.position, revision: cursor.revision,
-    undo: historyAction(undoEntry), redo: historyAction(redoEntry)};
-}
-function receiptOf(args: {
-  readonly envelope: SequenceEditEnvelope; readonly history: SequenceEditHistoryPort; readonly cursor: SequenceEditHistoryCursor;
-  readonly store: ProjectStore; readonly affected: {nodes: number; edges: number; mainTrackClips: number; otherTrackItems: number; subtitleCues: number};
-  readonly timelineRevision: number; readonly syncRevision: number; readonly operation: string;
-}): SequenceEditReceipt {
-  const {envelope, history, cursor, store, affected, timelineRevision, syncRevision, operation} = args;
-  return {
-    version: 1, requestId: envelope.requestId, inputDigest: digestOf(envelope), projectId: envelope.projectId,
-    actionId: envelope.actionId, operation, originSide: envelope.originSide, status: 'applied', affected,
-    history: historyView(history, cursor, store), contentRevision: contentStamp(store).contentSequence,
-    timelineRevision, syncRevision,
-  };
+function historyViewOf(store: ProjectStore): SequenceEditHistoryView {
+  return prepareSequenceEditHistory(store).view;
 }
 
-function assertEnvelope(store: ProjectStore, context: EditContext, envelope: SequenceEditEnvelope, cursor: SequenceEditHistoryCursor): void {
+function assertEnvelope(store: ProjectStore, context: EditContext, envelope: SequenceEditEnvelope,
+  state: SequenceEditHistoryState): void {
   if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
   if (envelope.filmId !== context.rootNodeId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '成片根与时间线不一致。', [envelope.filmId, context.rootNodeId]);
   if (!isSequenceEditIntentSequence(envelope.intents)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '动作组合无效。');
@@ -654,8 +617,8 @@ function assertEnvelope(store: ProjectStore, context: EditContext, envelope: Seq
   if (envelope.baseline.timelineRevision !== context.timeline.revision) conflicts.push('timeline');
   if (envelope.baseline.syncRevision !== context.syncRevision) conflicts.push('sync');
   if (conflicts.length) fail('SEQUENCE_EDIT_REVISION_CONFLICT', '项目的修订已经变化，请重新读取后再试。', [], {revision: conflicts});
-  if (envelope.baseline.historyPosition !== cursor.position || envelope.baseline.historyRevision !== cursor.revision) {
-    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {cursor});
+  if (envelope.baseline.historyPosition !== state.position || envelope.baseline.historyRevision !== state.revision) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state});
   }
   for (const target of envelope.baseline.targets) {
     if (target.kind === 'clip' || target.kind === 'cue') continue;
@@ -664,31 +627,61 @@ function assertEnvelope(store: ProjectStore, context: EditContext, envelope: Seq
   }
 }
 
+function affectedFromDeltas(context: EditContext, deltas: BoardDeltas, timeline: SequenceEditTimelineDelta): SequenceEditAffectedCounts {
+  const mainIds = new Set(context.timeline.clips.filter(clip => clip.trackId === context.timeline.mainTrack.trackId).map(clip => clip.id));
+  const countKind = (kind: SequenceEditBoardEntity['kind']): number =>
+    deltas.after.writes.filter(entity => entity.kind === kind).length + deltas.after.removals.filter(entity => entity.kind === kind).length;
+  const mainWrites = timeline.clips.filter(clip => clip.trackId === context.timeline.mainTrack.trackId).length;
+  const removedMain = timeline.removedClipIds.filter(id => mainIds.has(id)).length;
+  return {
+    nodes: countKind('node') + countKind('shot'), edges: countKind('edge'),
+    mainTrackClips: mainWrites + removedMain,
+    otherTrackItems: timeline.clips.length - mainWrites + timeline.removedClipIds.length - removedMain,
+    subtitleCues: timeline.cues.length + timeline.removedCueIds.length,
+  };
+}
+
+function timelineDeltaMatches(store: ProjectStore, delta: SequenceEditTimelineDelta): boolean {
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  if (!timeline) return false;
+  const clips = new Map(timeline.clips.map(clip => [clip.id, clip] as const));
+  const cues = new Map((timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  for (const clip of delta.clips) if (!sameRow(clips.get(clip.id), clip)) return false;
+  for (const cue of delta.cues) if (!sameRow(cues.get(cue.id), cue)) return false;
+  for (const id of delta.removedClipIds) if (clips.has(id)) return false;
+  for (const id of delta.removedCueIds) if (cues.has(id)) return false;
+  if (delta.baseline.kind === 'unchanged') return true;
+  const context = readSequenceEditContext(store);
+  if (delta.baseline.kind === 'set') return sameRow(context.baseline, delta.baseline.value);
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Apply one action
 // ---------------------------------------------------------------------------
 
-export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnvelope, ports: SequenceEditPorts,
+type ApplyOutcome = {readonly receipt: SequenceEditReceipt; readonly failure?: {readonly code: string; readonly ids: readonly string[]}};
+
+export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnvelope,
   authorize: () => void = () => {}): SequenceEditReceipt {
   assertFormat5(store);
-  if (!ports.history) fail('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '同步接缝尚未就绪，暂不能修改画板顺序链。');
-  const history = ports.history;
-  const operation = sequenceEditOperationName(envelope.intents);
-  const requestDigest = digestOf(envelope);
-  return store.tx(() => {
+  const inputDigest = sequenceEditInputDigest(envelope);
+  const outcome = store.tx((): ApplyOutcome => {
     authorize();
     // An exact retry returns the immutable receipt before observing any newer
     // revision, so a replay never has to match the current baseline.
-    const replay = history.findReceipt(envelope.requestId);
+    const replay = findSequenceEditReceipt(store, envelope.requestId);
     if (replay) {
-      if (replay.inputDigest !== requestDigest || replay.operation !== operation) {
+      if (replay.inputDigest !== inputDigest) {
         fail('SEQUENCE_EDIT_REQUEST_REUSED', '这个请求 ID 已用于不同的画板操作。', [], {requestId: envelope.requestId});
       }
-      return replay.receipt;
+      return {receipt: replay.receipt};
     }
     const context = readSequenceEditContext(store);
-    const cursor = history.readCursor();
-    assertEnvelope(store, context, envelope, cursor);
+    const prepared = prepareSequenceEditHistory(store, envelope.epoch);
+    assertEnvelope(store, context, envelope, prepared.state);
+    const operation = sequenceEditOperationName(envelope.intents);
+    const requestDigest = inputDigest;
     const allocatedCopyIds = new Set(envelope.allocation.nodes.map(item => item.nodeId));
     const referenced = referencedNodeIds(envelope);
     const restored = new Map<string, Row>();
@@ -715,7 +708,8 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     let plan!: SuccessfulPlan;
     for (let index = 0; index < envelope.intents.length; index++) {
       const planned = planSequenceEditIntents(state, [envelope.intents[index]!], envelope.allocation);
-      if (!planned.ok) planFailure({ok: false, code: planned.code as never, id: planned.ids[0] ?? ''} as never);
+      if (!planned.ok) return {receipt: writeSequenceEditFailure(store, envelope, planned.code as never),
+        failure: {code: planned.code, ids: planned.ids}};
       stateBeforeFinal = state;
       state = planned.state;
       plan = planned.plan;
@@ -723,13 +717,18 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     }
     const copiedNodes = new Map<string, CopyNode>();
     for (const item of envelope.allocation.nodes) {
-      if (!isUuid(item.fromNodeId) || !isUuid(item.nodeId)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '复制节点的预分配 ID 无效。');
+      if (!isUuid(item.fromNodeId) || !isUuid(item.nodeId)) {
+        return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_CONTRACT_INVALID'),
+          failure: {code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: [item.nodeId]}};
+      }
       if (!state.board.nodes.some(node => node.id === item.nodeId)) continue;
       const copy = copyNodeRow(context, item.fromNodeId, item.nodeId);
-      if (!copy) fail('COPY_NODE_REQUIRED', '复制节点需要有效的来源。', [item.fromNodeId]);
+      if (!copy) return {receipt: writeSequenceEditFailure(store, envelope, 'COPY_NODE_REQUIRED'),
+        failure: {code: 'COPY_NODE_REQUIRED', ids: [item.fromNodeId]}};
       copiedNodes.set(item.nodeId, copy);
       if (allocatedCopyIds.has(item.nodeId) && !context.board.nodes.some(node => node.id === item.fromNodeId)) {
-        fail('SEQUENCE_EDIT_CONTRACT_INVALID', '复制节点的来源不在画板上。', [item.fromNodeId]);
+        return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_CONTRACT_INVALID'),
+          failure: {code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: [item.fromNodeId]}};
       }
     }
     const deleted = new Set<string>();
@@ -739,42 +738,47 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     const boardDeltas = planBoardDeltas(context, envelope, state.board, state.media, restored, deleted, copiedNodes);
     const changed = boardDeltas.nodes + boardDeltas.edges > 0 || timelineChanged || restored.size > 0 || copiedNodes.size > 0;
     if (!changed) {
-      const affected = {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0};
-      const receipt = receiptOf({envelope, history, cursor, store, affected,
-        timelineRevision: context.timeline.revision, syncRevision: context.syncRevision, operation});
-      history.commit({requestId: envelope.requestId, operation, inputDigest: requestDigest, receipt, entry: null, direction: 'apply'});
-      return receipt;
+      // A legal request whose live projection already matches the intent only
+      // stores a not_applied receipt; no history row or cursor revision moves.
+      return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_NOOP')};
     }
-    if (!ports.mainTrack) fail('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '主轨同步接缝尚未就绪，暂不能修改绑定了成片根的顺序链。');
     let syncCommit: SequenceEditTimelineCommit | undefined;
+    let appliedTimelineRevision: number | undefined;
+    let appliedSyncRevision: number | undefined;
     if (timelineChanged) {
-      const result = ports.mainTrack.projectMainTrack({envelope, state: stateBeforeFinal, plan});
-      if (!result.ok) fail(result.code, '主轨同步拒绝了这次画板修改。', result.ids);
+      const result = createMainTrackProjectionPort(store).projectMainTrack({envelope, state: stateBeforeFinal, plan});
+      if (!result.ok) {
+        return {receipt: writeSequenceEditFailure(store, envelope, result.code), failure: {code: result.code, ids: result.ids}};
+      }
       syncCommit = result;
+      // The projection port plans the timeline half; the coordinator applies it
+      // in the same transaction (it never opens its own transaction).
+      appliedTimelineRevision = applySequenceEditTimelineDelta(store, result.delta).timelineRevision;
+      appliedSyncRevision = applySequenceEditBaselineDelta(store, result.delta.baseline).syncRevision;
     }
     applyBoardDelta(store, boardDeltas.after, 'forward');
-    const beforeTimeline = context.timeline;
-    const afterTimeline = readFormat5TimelineRecord(store.db, 'project');
-    if (!afterTimeline) return invalidContent();
     const baselineChange = syncCommit?.delta.baseline ?? {kind: 'unchanged' as const};
-    const timelinePatch = buildTimelinePatch(beforeTimeline, afterTimeline, baselineChange, context.baseline);
-    bumpFormat5ContentStampInside(store.db, 'project');
-    const afterContent = contentStamp(store).contentSequence;
-    const timelineRevision = syncCommit?.timelineRevision ?? afterTimeline.revision;
-    const syncRevision = syncCommit?.syncRevision ?? context.syncRevision;
-    const timelineCounts = countTimeline(timelinePatch.after, context.timeline.mainTrack.trackId);
-    const newCursor: SequenceEditHistoryCursor = {...cursor, position: cursor.position + 1, revision: cursor.revision + 1};
-    const affected = {nodes: boardDeltas.nodes, edges: boardDeltas.edges, ...timelineCounts};
-    const beforeState: SequenceEditStateDelta = {board: boardDeltas.before, timeline: timelinePatch.before};
-    const afterState: SequenceEditStateDelta = {board: boardDeltas.after, timeline: timelinePatch.after};
-    const entry: SequenceEditHistoryEntry = {actionId: envelope.actionId, projectId: store.projectId, epoch: cursor.epoch,
-      position: newCursor.position, operation, origin: 'user', beforePatch: beforeState, afterPatch: afterState, createdAt: now()};
-    const receipt = receiptOf({envelope, history, cursor: newCursor, store, affected,
-      timelineRevision, syncRevision, operation});
-    if (receipt.history.position !== newCursor.position) return invalidContent();
-    history.commit({requestId: envelope.requestId, operation, inputDigest: requestDigest, receipt, entry, direction: 'apply'});
-    return {...receipt, contentRevision: afterContent};
+    const timelinePatch = syncCommit
+      ? timelinePatchFromCommit(context.timeline, syncCommit.delta, context.baseline)
+      : buildTimelinePatch(context.timeline, readFormat5TimelineRecord(store.db, 'project'), baselineChange, context.baseline);
+    const patch: SequenceEditPatch = {
+      version: 1,
+      before: {board: boardDeltas.before, timeline: timelinePatch.before},
+      after: {board: boardDeltas.after, timeline: timelinePatch.after},
+    };
+    const timelineRevision = appliedTimelineRevision ?? context.timeline.revision;
+    const syncRevision = appliedSyncRevision ?? context.syncRevision;
+    const draft: SequenceEditReceiptDraft = {
+      version: 1, requestId: envelope.requestId, inputDigest: requestDigest, projectId: envelope.projectId,
+      actionId: envelope.actionId, operation, originSide: envelope.originSide, status: 'applied',
+      ...(syncCommit?.warnings.length ? {warnings: syncCommit.warnings} : {}),
+      affected: affectedFromDeltas(context, boardDeltas, timelinePatch.after),
+      contentRevision: contentStamp(store).contentSequence, timelineRevision, syncRevision,
+    };
+    return {receipt: writeSequenceEditAction(store, {envelope, patch, receipt: draft})};
   });
+  if (outcome.failure) fail(outcome.failure.code, '画板顺序链不能按这条命令修改。', outcome.failure.ids, {reason: outcome.failure.code});
+  return outcome.receipt;
 }
 
 // ---------------------------------------------------------------------------
@@ -785,66 +789,54 @@ export interface SequenceEditHistoryRequest {
   readonly projectId: string;
   readonly requestId: string;
   readonly actionId: string;
-  readonly expected: SequenceEditHistoryCursor;
+  readonly expected: {readonly position: number; readonly revision: number};
 }
 
-export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' | 'redo', request: SequenceEditHistoryRequest,
-  ports: SequenceEditPorts, authorize: () => void = () => {}): SequenceEditReceipt {
+function entryAffected(entry: SequenceEditHistoryEntry): number {
+  const board = entry.afterPatch.board;
+  const timeline = entry.afterPatch.timeline;
+  return board.writes.length + board.removals.length + timeline.clips.length + timeline.cues.length
+    + timeline.removedClipIds.length + timeline.removedCueIds.length;
+}
+
+export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' | 'redo',
+  request: SequenceEditHistoryRequest, authorize: () => void = () => {}): SequenceEditReceipt {
   assertFormat5(store);
-  if (!ports.history) fail('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '同步接缝尚未就绪，暂不能撤回画板修改。');
-  const history = ports.history;
+  const command: SequenceEditHistoryCommand = {...request, direction};
+  const inputDigest = historyCommandDigest(command);
   return store.tx(() => {
     authorize();
-    const cursor = history.readCursor();
-    const operation = direction;
-    const digest = createHash('sha256').update(canonicalSequenceEditInput({actionId: request.actionId, expected: request.expected, direction} as never)).digest('hex');
-    const replay = history.findReceipt(request.requestId);
+    const replay = findSequenceEditReceipt(store, request.requestId);
     if (replay) {
-      if (replay.inputDigest !== digest || replay.operation !== operation) {
+      if (replay.inputDigest !== inputDigest) {
         fail('SEQUENCE_EDIT_REQUEST_REUSED', '这个请求 ID 已用于不同的画板操作。', [], {requestId: request.requestId});
       }
       return replay.receipt;
     }
-    if (request.expected.position !== cursor.position || request.expected.revision !== cursor.revision) {
-      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {cursor});
+    const prepared = prepareSequenceEditHistory(store);
+    if (request.expected.position !== prepared.state.position || request.expected.revision !== prepared.state.revision) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state: prepared.state});
     }
-    const target = direction === 'undo' ? history.readEntryAt(cursor.position) : history.readEntryAt(cursor.position + 1);
-    if (!target || target.actionId !== request.actionId) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
-    const sourceDelta = direction === 'undo' ? target.afterPatch : target.beforePatch;
-    const applyDelta = direction === 'undo' ? target.beforePatch : target.afterPatch;
-    let timelineRevision = readFormat5TimelineRecord(store.db, 'project')?.revision ?? 0;
-    let syncRevision = readSequenceEditContext(store).syncRevision;
-    const timelineChanged = timelineDeltaChanged(sourceDelta.timeline) || timelineDeltaChanged(applyDelta.timeline);
-    if (timelineChanged) {
-      const timelineHistory = ports.timelineHistory;
-      if (!timelineHistory) fail('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '撤回主轨变化需要主轨同步接缝接线后才能应用。', [target.actionId]);
-      if (!timelineHistory.matches(sourceDelta.timeline)) {
-        fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后主轨已经变化，不能直接撤回。', [target.actionId]);
-      }
+    const targetPosition = direction === 'undo' ? prepared.state.position : prepared.state.position + 1;
+    const entry = readSequenceEditHistoryEntry(store, request.actionId);
+    if (!entry || entry.position !== targetPosition) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
+    const source = direction === 'undo' ? entry.afterPatch : entry.beforePatch;
+    const apply = direction === 'undo' ? entry.beforePatch : entry.afterPatch;
+    if (!boardDeltaMatches(store, source.board) || !timelineDeltaMatches(store, source.timeline)) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后画板或主轨已经变化，不能直接撤回。', [request.actionId]);
     }
-    if (!boardDeltaMatches(store, sourceDelta.board)) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后画板已经变化，不能直接撤回。', [target.actionId]);
-    applyBoardDelta(store, applyDelta.board, 'restore');
-    if (timelineChanged) {
-      const applied = ports.timelineHistory!.apply(applyDelta.timeline);
-      if ('ok' in applied) fail(applied.code, '主轨撤回被同步接缝拒绝。', applied.ids);
-      timelineRevision = applied.timelineRevision;
-      syncRevision = applied.syncRevision;
-    }
-    bumpFormat5ContentStampInside(store.db, 'project');
-    const newCursor: SequenceEditHistoryCursor = {...cursor, position: cursor.position + (direction === 'undo' ? -1 : 1), revision: cursor.revision + 1};
-    const signed = applyDelta.board.writes.length + applyDelta.board.removals.length;
-    const timelineCounts = countTimeline(applyDelta.timeline, readFormat5TimelineRecord(store.db, 'project')?.mainTrack.trackId ?? '');
-    const receipt: SequenceEditReceipt = {
-      version: 1, requestId: request.requestId, inputDigest: digest, projectId: store.projectId,
-      actionId: target.actionId, operation: `${direction}:${target.operation}`, originSide: 'board', status: 'applied',
-      affected: {nodes: signed, edges: 0, mainTrackClips: timelineCounts.mainTrackClips,
-        otherTrackItems: timelineCounts.otherTrackItems, subtitleCues: timelineCounts.subtitleCues},
-      history: historyView(history, newCursor, store),
+    applyBoardDelta(store, apply.board, 'restore');
+    const timelineResult = applySequenceEditTimelineDelta(store, apply.timeline);
+    const baselineResult = applySequenceEditBaselineDelta(store, apply.timeline.baseline);
+    const draft: SequenceEditReceiptDraft = {
+      version: 1, requestId: request.requestId, inputDigest, projectId: store.projectId,
+      actionId: request.actionId, operation: `${direction}:${entry.operation}`,
+      originSide: entry.operation.startsWith('board.') ? 'board' : 'timeline', status: 'applied',
+      affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
       contentRevision: contentStamp(store).contentSequence,
-      timelineRevision, syncRevision,
+      timelineRevision: timelineResult.timelineRevision, syncRevision: baselineResult.syncRevision,
     };
-    history.commit({requestId: request.requestId, operation, inputDigest: digest, receipt, entry: null, direction});
-    return receipt;
+    return moveSequenceEditHistoryCursor(store, command, draft);
   });
 }
 
@@ -860,16 +852,20 @@ export interface SequenceEditHistoryProjection extends SequenceEditHistoryView {
   readonly undoAvailable: boolean;
   readonly redoAvailable: boolean;
 }
-export function readSequenceEditHistory(store: ProjectStore, history: SequenceEditHistoryPort): SequenceEditHistoryProjection {
+export function readSequenceEditHistory(store: ProjectStore): SequenceEditHistoryProjection {
   assertFormat5(store);
-  const cursor = history.readCursor();
-  const view = historyView(history, cursor, store);
-  const undoEntry = history.readEntryAt(cursor.position), redoEntry = history.readEntryAt(cursor.position + 1);
-  const sourceForUndo = undoEntry?.afterPatch.board, targetForRedo = redoEntry?.beforePatch.board;
-  const undoConflict = !!undoEntry && !!sourceForUndo && !boardDeltaMatches(store, sourceForUndo);
-  const redoConflict = !!redoEntry && !!targetForRedo && !boardDeltaMatches(store, targetForRedo);
-  return {...view, projectId: store.projectId, conflict: undoConflict || redoConflict,
-    undoConflict, redoConflict, undoAvailable: !!undoEntry && !undoConflict, redoAvailable: !!redoEntry && !redoConflict};
+  const prepared = prepareSequenceEditHistory(store);
+  const undoEntry = prepared.view.undo ? readSequenceEditHistoryEntry(store, prepared.view.undo.actionId) : null;
+  const redoEntry = prepared.view.redo ? readSequenceEditHistoryEntry(store, prepared.view.redo.actionId) : null;
+  const stale = (entry: SequenceEditHistoryEntry | null, patch: SequenceEditStateDelta | null): boolean =>
+    !!entry && !!patch && (!boardDeltaMatches(store, patch.board) || !timelineDeltaMatches(store, patch.timeline));
+  const undoConflict = stale(undoEntry, undoEntry?.afterPatch ?? null);
+  const redoConflict = stale(redoEntry, redoEntry?.beforePatch ?? null);
+  const action = (entry: SequenceEditHistoryEntry | null) => entry
+    ? {actionId: entry.actionId, operation: entry.operation, affected: entryAffected(entry)} : null;
+  return {...prepared.view, projectId: store.projectId, undo: action(undoEntry), redo: action(redoEntry),
+    conflict: undoConflict || redoConflict, undoConflict, redoConflict,
+    undoAvailable: !!undoEntry && !undoConflict, redoAvailable: !!redoEntry && !redoConflict};
 }
 
 // ---------------------------------------------------------------------------
@@ -878,7 +874,7 @@ export function readSequenceEditHistory(store: ProjectStore, history: SequenceEd
 
 /** CS half of one track-origin action. TS calls this inside its transaction
  * after planning; CS writes the rewired board edges/nodes and returns the
- * board patch. The content stamp advances once here. */
+ * board patch. The content stamp advances from the row triggers. */
 export function createSequenceBoardPort(store: ProjectStore): BoardSeamProjectionPort {
   return {
     projectBoardSeam(request: SequenceEditTransactionRequest): SequenceEditBoardCommitResult {
@@ -886,9 +882,8 @@ export function createSequenceBoardPort(store: ProjectStore): BoardSeamProjectio
       const context = readSequenceEditContext(store);
       const envelope = request.envelope;
       if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
-      const operation = request.plan;
-      const finalBoard = operation.after.board;
-      const finalMedia = operation.after.media;
+      const finalBoard = request.plan.after.board;
+      const finalMedia = request.plan.after.media;
       const copiedNodes = new Map<string, CopyNode>();
       for (const item of envelope.allocation.nodes) {
         if (!isUuid(item.fromNodeId) || !isUuid(item.nodeId)) continue;
@@ -900,7 +895,6 @@ export function createSequenceBoardPort(store: ProjectStore): BoardSeamProjectio
       const deltas = planBoardDeltas(context, envelope, finalBoard, finalMedia, new Map(), new Set(), copiedNodes);
       if (!deltas.nodes && !deltas.edges) return {ok: true, delta: deltas.after, contentRevision: contentStamp(store).contentSequence};
       applyBoardDelta(store, deltas.after, 'forward');
-      bumpFormat5ContentStampInside(store.db, 'project');
       return {ok: true, delta: deltas.after, contentRevision: contentStamp(store).contentSequence};
     },
   };
@@ -915,7 +909,7 @@ type SequenceEditBoardCommitResult = {readonly ok: true; readonly delta: Sequenc
 export interface SequenceEditingService {
   call(operation: SequenceEditingOperation, input: unknown, authorize?: () => void): unknown;
 }
-export function createSequenceEditing(store: ProjectStore, ports: SequenceEditPorts = {}): SequenceEditingService {
+export function createSequenceEditing(store: ProjectStore): SequenceEditingService {
   return {
     call(operation: SequenceEditingOperation, input: unknown, authorize: () => void = () => {}): unknown {
       assertFormat5(store);
@@ -924,19 +918,18 @@ export function createSequenceEditing(store: ProjectStore, ports: SequenceEditPo
       if (operation === 'sequence.history.get') {
         const {projectId} = parsed.data as {projectId: string};
         if (projectId !== store.projectId) throw new AppError('VALIDATION_ERROR', '项目范围无效。', 400);
-        if (!ports.history) fail('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '同步接缝尚未就绪。');
-        return sequenceEditingResponses[operation].parse(readSequenceEditHistory(store, ports.history));
+        return sequenceEditingResponses[operation].parse(readSequenceEditHistory(store));
       }
-      if (!ports.history) fail('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '同步接缝尚未就绪，暂不能修改画板顺序链。');
       if (operation === 'sequence.edit') {
         const envelope = parsed.data as unknown as SequenceEditEnvelope;
         if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
-        return sequenceEditingResponses[operation].parse(applySequenceEdit(store, envelope, ports, authorize));
+        return sequenceEditingResponses[operation].parse(applySequenceEdit(store, envelope, authorize));
       }
-      const history = parsed.data as {projectId?: string; requestId: string; actionId: string; expected: SequenceEditHistoryCursor};
+      const history = parsed.data as {projectId?: string; requestId: string; actionId: string; expected: {position: number; revision: number}};
       if (history.projectId !== undefined && history.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
-      return sequenceEditingResponses[operation].parse(applySequenceEditHistory(store, operation === 'sequence.undo' ? 'undo' : 'redo',
-        {projectId: store.projectId, requestId: history.requestId, actionId: history.actionId, expected: history.expected}, ports, authorize));
+      return sequenceEditingResponses[operation].parse(applySequenceEditHistory(store,
+        operation === 'sequence.undo' ? 'undo' : 'redo',
+        {projectId: store.projectId, requestId: history.requestId, actionId: history.actionId, expected: history.expected}, authorize));
     },
   };
 }

@@ -8,9 +8,10 @@ import {createProjectStore} from '../packages/business/src/project-file/store.ts
 import {assertLegacyCanvasWriteAllowed, readSequenceEditContext} from '../packages/business/src/sequence-edit.ts';
 import {createLocalMutationServices} from '../packages/business/src/local-mutations.ts';
 import {inspectCanvasDependencies, readSequenceDependencyComponent} from '../packages/business/src/canvas-dependencies.ts';
-import {createChainWorld, createMemoryHistory, createProjectionDouble, createTimelineHistoryDouble} from './helpers/sequence-edit-double.ts';
+import {createChainWorld} from './helpers/sequence-edit-double.ts';
 import {createSequenceEditing} from '../packages/business/src/sequence-edit.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
+import {prepareSequenceEditHistory, readSequenceEditHistoryEntry} from '../packages/business/src/format5-editor-history.ts';
 import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditIntent} from '../packages/contracts/src/sequence-edit.ts';
 
 const id = (value: string): string => value;
@@ -92,20 +93,21 @@ test('a 500-segment project keeps common-action history patches within the froze
       fromId: shots[index]!.id, toId: shot.id}))];
   const freshWorld = (): ReturnType<typeof createChainWorld> => createChainWorld(t, {rootId, shots, versions, clips, edges});
   const measure = (label: string, world: ReturnType<typeof createChainWorld>,
-    history: ReturnType<typeof createMemoryHistory>, intents: readonly SequenceEditIntent[], allocation: SequenceEditAllocation): number => {
-    const editing = createSequenceEditing(world.store, portsFor(world, history));
-    const cursor = history.readCursor();
+    intents: readonly SequenceEditIntent[], allocation: SequenceEditAllocation): number => {
+    const editing = createSequenceEditing(world.store);
+    const state = prepareSequenceEditHistory(world.store).state;
     const context = readSequenceEditContext(world.store);
-    const envelope: SequenceEditEnvelope = {contractVersion: 1, projectId: world.projectId, epoch: cursor.epoch,
+    const envelope: SequenceEditEnvelope = {contractVersion: 1, projectId: world.projectId, epoch: state.epoch,
       actionId: randomUUID(), requestId: `request-${randomUUID()}`, originSide: 'board', filmId: world.rootId, intents,
       baseline: {contentRevision: readProjectContentStamp(world.store.db).contentSequence,
         timelineRevision: context.timeline.revision, syncRevision: context.syncRevision,
-        historyPosition: cursor.position, historyRevision: cursor.revision, targets: []},
+        historyPosition: state.position, historyRevision: state.revision, targets: []},
       impact: {nodeIds: [], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []}, allocation};
     const started = performance.now();
     editing.call('sequence.edit', envelope);
     const elapsed = performance.now() - started;
-    const entry = history.entries.get(history.cursor.position)!;
+    const entry = readSequenceEditHistoryEntry(world.store, envelope.actionId);
+    if (!entry) throw new Error(`${label} did not record a history entry`);
     const bytes = Buffer.byteLength(JSON.stringify(entry.beforePatch)) + Buffer.byteLength(JSON.stringify(entry.afterPatch));
     t.diagnostic(`${label}: history patch ${bytes} bytes, ${elapsed.toFixed(1)} ms`);
     assert.ok(bytes <= 4 * 1024 * 1024, `${label} exceeds the frozen 4 MiB entry budget`);
@@ -113,19 +115,19 @@ test('a 500-segment project keeps common-action history patches within the froze
   };
   const sizes: number[] = [];
   {
-    const world = freshWorld(), history = createMemoryHistory();
-    sizes.push(measure('500-segment disconnect', world, history, [{side: 'board', operation: {kind: 'board',
+    const world = freshWorld();
+    sizes.push(measure('500-segment disconnect', world, [{side: 'board', operation: {kind: 'board',
       edit: {kind: 'disconnect', fromId: shots[248]!.id, toId: shots[249]!.id}}}], emptyAllocation()));
   }
   {
-    const world = freshWorld(), history = createMemoryHistory();
-    sizes.push(measure('500-segment delete reattach', world, history, [{side: 'board', operation: {kind: 'board',
+    const world = freshWorld();
+    sizes.push(measure('500-segment delete reattach', world, [{side: 'board', operation: {kind: 'board',
       edit: {kind: 'delete', nodeId: shots[249]!.id}}}], {...emptyAllocation(),
       edges: [{id: '80000000-0000-4000-8000-000000000001', fromId: shots[248]!.id, toId: shots[250]!.id}]}));
   }
   {
-    const world = freshWorld(), history = createMemoryHistory();
-    sizes.push(measure('500-segment insert (head reorder)', world, history, [{side: 'board', operation: {kind: 'board',
+    const world = freshWorld();
+    sizes.push(measure('500-segment insert (head reorder)', world, [{side: 'board', operation: {kind: 'board',
       edit: {kind: 'insert', fromId: rootId, toId: shots[0]!.id, nodeId: shots[count - 1]!.id}}}], {
       ...emptyAllocation(), edges: [
         {id: '80000000-0000-4000-8000-000000000010', fromId: rootId, toId: shots[count - 1]!.id},
@@ -134,14 +136,9 @@ test('a 500-segment project keeps common-action history patches within the froze
   }
   const average = sizes.reduce((sum, value) => sum + value, 0) / sizes.length;
   t.diagnostic(`average history patch: ${Math.round(average)} bytes`);
-  // Report the average to the coordinator; only the frozen 4 MiB entry limit
-  // is a hard contract invariant in this test.
   assert.ok(average > 0);
 });
 
 function emptyAllocation(): SequenceEditAllocation {
   return {clips: [], nodes: [], splitClips: [], edges: []};
-}
-function portsFor(world: ReturnType<typeof chain>, history: ReturnType<typeof createMemoryHistory>) {
-  return {history, mainTrack: createProjectionDouble(world.store), timelineHistory: createTimelineHistoryDouble(world.store)};
 }

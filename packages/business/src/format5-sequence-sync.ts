@@ -378,7 +378,9 @@ function anchorForOwner(item: {startFrame: number; anchorClipId?: string | null}
 function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format5Timeline {
   const existing = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
   const mainTrackId = context.timeline.mainTrack.trackId;
-  const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id)));
+  const boardOverlay = {nodes: [...context.board.nodes, ...plan.after.board.nodes.filter(node =>
+    !context.board.nodes.some(current => current.id === node.id))], edges: context.board.edges};
+  const mainClips = plan.after.clips.map(clip => nextMainClip({...context, board: boardOverlay}, clip, existing.get(clip.id)));
   const ownerSegments = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
   const durationFrames = mainClips.reduce((maximum, clip) => Math.max(maximum, clip.startFrame + clip.durationFrames), 0);
@@ -527,9 +529,10 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
   const headerChanged = state.header?.raw !== headerRaw;
-  const changed = update.changed || headerChanged;
+  const rowChanges = update.changed || update.clipDeletes.length > 0 || update.cueDeletes.length > 0;
+  const changed = rowChanges || headerChanged;
   if (!changed) return {timeline: current, changed: false};
-  if (update.changed) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
+  if (rowChanges) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
   if (headerChanged) {
     const result = store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(headerRaw, next.id);
     if (Number(result.changes) !== 1) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
@@ -747,9 +750,11 @@ export function createMainTrackProjectionPort(store: ProjectStore): MainTrackPro
       const context = readSyncContext(store);
       if (request.envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
       const changedShots = shotChanges(context, request.plan);
-      let board: {before: SequenceEditBoardDelta; after: SequenceEditBoardDelta};
-      try { board = boardDeltaPair(request.plan, changedShots); }
-      catch (error) { if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE') return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE'); throw error; }
+      // The caller is CS: the board half (nodes/edges) is written by its own
+      // transaction. This port only projects the version-selection changes it
+      // owns onto the timeline half.
+      const board = {before: {writes: changedShots.map(change => ({kind: 'shot' as const, id: String(change.before.id), data: change.before})), removals: []},
+        after: {writes: changedShots.map(change => ({kind: 'shot' as const, id: String(change.after.id), data: change.after})), removals: []}};
       const nextTimeline = patchMainTimeline(context, request.plan);
       const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
       const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates);
@@ -830,4 +835,25 @@ function writeHistoryFailure(store: ProjectStore, command: SequenceEditHistoryCo
   store.db.prepare('INSERT INTO main.editor_requests(requestId,projectId,operation,inputDigest,response,issuedAt,createdAt) VALUES(?,?,?,?,?,?,?)')
     .run(command.requestId, store.projectId, receipt.operation, inputDigest, JSON.stringify(receipt), Date.now(), now());
   return failure(code);
+}
+
+// ---------------------------------------------------------------------------
+// CS undo/redo seam
+// ---------------------------------------------------------------------------
+
+/** Apply the timeline half of a stored patch while CS undoes or redoes a
+ * board-origin action. The shared history module owns the cursor and receipt;
+ * this entry only owns the timeline rows, sync baseline and content stamp. */
+export function applySequenceEditTimelineDelta(store: ProjectStore,
+  delta: SequenceEditTimelineDelta): {readonly timelineRevision: number} {
+  const result = applyTimelineDelta(store, delta);
+  return {timelineRevision: result.timeline.revision};
+}
+
+/** Apply the three-state baseline half of a stored patch. */
+export function applySequenceEditBaselineDelta(store: ProjectStore,
+  change: SequenceEditBaselineChange): {readonly syncRevision: number} {
+  const context = readSyncContext(store);
+  const result = applyBaselineDelta(store, context, change);
+  return {syncRevision: result.revision};
 }
