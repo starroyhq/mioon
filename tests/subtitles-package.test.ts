@@ -4,22 +4,37 @@ import {readFile,writeFile,mkdtemp,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {gzipSync} from 'node:zlib';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
 import resources from '../apps/desktop/subtitle-resources.ts';
 import {createSubtitleTarVerifier,verifySubtitleResourceTarball} from '../apps/desktop/subtitle-package.ts';
 const base='mioon-0.4.1-linux-x64',prefix=base+'/resources/subtitles',expected=resources.SUBTITLE_RESOURCE_MANIFEST;
 const source=new URL('../packages/business/resources/subtitles/',import.meta.url);
 const bytes=Object.fromEntries(await Promise.all(Object.keys(expected).map(async name=>[name,await readFile(new URL(name,source))]))) as Record<string, Buffer>;
-function header(name: string,{size=0,type='0',link=''}: {size?: number; type?: string; link?: string}={}): Buffer {
- const b=Buffer.alloc(512);b.write(name,0,100);b.write(type==='5'?'0000755\0':'0000644\0',100);b.write('0000000\0',108);b.write('0000000\0',116);b.write(size.toString(8).padStart(11,'0')+'\0',124);b.write('00000000000\0',136);b.fill(32,148,156);b.write(type,156);b.write(link,157,100);b.write('ustar\0',257);b.write('00',263);
+function header(name: string,{size=0,type='0',link='',format='ustar'}: {size?: number; type?: string; link?: string; format?: 'ustar'|'gnu'}={}): Buffer {
+ const b=Buffer.alloc(512);b.write(name,0,100);b.write(type==='5'?'0000755\0':'0000644\0',100);b.write('0000000\0',108);b.write('0000000\0',116);b.write(size.toString(8).padStart(11,'0')+'\0',124);b.write('00000000000\0',136);b.fill(32,148,156);b.write(type,156);b.write(link,157,100);
+ // GNU format writes a spaced magic/version; byte 262 is then non-NUL, so the
+ // verifier must not read the POSIX prefix field for these headers.
+ if(format==='gnu'){b.write('ustar ',257);b.write(' \0',263);}else{b.write('ustar\0',257);b.write('00',263);}
  const sum=b.reduce((n,v)=>n+v,0);b.write(sum.toString(8).padStart(6,'0')+'\0 ',148);return b;
 }
 interface TarEntry {name: string; data?: Buffer; size?: number; type?: string; link?: string}
 const regular=(): TarEntry[]=>Object.keys(expected).map(name=>({name:prefix+'/'+name,data:bytes[name] as Buffer}));
-function archive(entries: TarEntry[]=regular()): Buffer {
+function archive(entries: TarEntry[]=regular(),format: 'ustar'|'gnu'='ustar'): Buffer {
+ const parts=[header(base,{type:'5',format}),header(base+'/resources',{type:'5',format}),header(prefix,{type:'5',format})];
+ for(const entry of entries){const data=entry.data??Buffer.alloc(0);parts.push(header(entry.name,{size:entry.size??data.length,type:entry.type??'0',link:entry.link??'',format}),data,Buffer.alloc((512-data.length%512)%512));}
+ return Buffer.concat([...parts,Buffer.alloc(1024)]);
+}
+// A real POSIX PAX writer records sub-second mtime in an extended header before
+// each member; the verifier must ignore that unrelated record and keep the
+// header name. This builds that byte stream in process instead of shelling out
+// to a platform tar binary.
+function paxMtime(): Buffer {return paxEntry(`mtime=${Math.floor(Date.now()/1000)}.123456789`);}
+function paxArchive(): Buffer {
  const parts=[header(base,{type:'5'}),header(base+'/resources',{type:'5'}),header(prefix,{type:'5'})];
- for(const entry of entries){const data=entry.data??Buffer.alloc(0);parts.push(header(entry.name,{size:entry.size??data.length,type:entry.type??'0',link:entry.link??''}),data,Buffer.alloc((512-data.length%512)%512));}
+ for(const entry of regular()){
+  const data=entry.data??Buffer.alloc(0),metadata=paxMtime();
+  parts.push(header('PaxHeaders/mtime',{size:metadata.length,type:'x'}),metadata,Buffer.alloc((512-metadata.length%512)%512));
+  parts.push(header(entry.name,{size:data.length}),data,Buffer.alloc((512-data.length%512)%512));
+ }
  return Buffer.concat([...parts,Buffer.alloc(1024)]);
 }
 function inspect(input: Buffer){const checker=createSubtitleTarVerifier(base);for(let at=0;at<input.length;at+=8191)checker.consume(input.subarray(at,at+8191));return checker.finish();}
@@ -66,13 +81,11 @@ test('gzip verifier streams >10MiB font, detects corruption/missing files, and r
  const wrong=path.join(root,'wrong.tar.gz');await writeFile(wrong,gzipSync(archive(regular().slice(1))));await assert.rejects(verifySubtitleResourceTarball(wrong,base));
  const link=path.join(root,'alias.tar.gz');await symlink(file,link);await assert.rejects(verifySubtitleResourceTarball(link,base));
  await writeFile(wrong,Buffer.from('not gzip'));await assert.rejects(verifySubtitleResourceTarball(wrong,base));
- // Repack the same fixture with the installed GNU tar, exercising its actual
- // long-name/header conventions without downloading or building an application.
- const tar=path.join(root,'plain.tar');await writeFile(tar,archive());const exec=promisify(execFile);
- await exec('tar',['-xf',tar,'-C',root],{timeout:30000,maxBuffer:64*1024});
- const gnu=path.join(root,'gnu.tar.gz');await exec('tar',['--format=gnu','-czf',gnu,'-C',root,base],{timeout:30000,maxBuffer:64*1024});
- assert.deepEqual(await verifySubtitleResourceTarball(gnu,base),expected);
- const pax=path.join(root,'pax.tar.gz');await exec('tar',['--format=pax','-czf',pax,'-C',root,base],{timeout:30000,maxBuffer:64*1024});assert.deepEqual(await verifySubtitleResourceTarball(pax,base),expected);
+ // GNU and PAX format byte streams are generated in process, so the verifier's
+ // format handling is exercised identically on every platform without relying
+ // on a system tar that may lack --format=gnu (macOS) or GNU field layout.
+ const gnu=path.join(root,'gnu.tar.gz');await writeFile(gnu,gzipSync(archive(regular(),'gnu')));assert.deepEqual(await verifySubtitleResourceTarball(gnu,base),expected);
+ const pax=path.join(root,'pax.tar.gz');await writeFile(pax,gzipSync(paxArchive()));assert.deepEqual(await verifySubtitleResourceTarball(pax,base),expected);
 });
 
 test('package inspector streams exact native ASAR and binary bytes and validates external delivered resources',async()=>{
