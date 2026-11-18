@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES} from './project-format5.ts';
+import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5SyncBaselineSchema} from './project-format5.ts';
 import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SyncBaseline,
 } from './project-format5.ts';
@@ -25,6 +25,8 @@ import type {
  *   `format5-*` storage, history 13) are imported, never restated.
  * - Operation semantics stay in SA. The envelope validator checks identity,
  *   bounds, side/kind agreement and the allowed compound order only.
+ * - The timeline half keeps a three-state synchronization baseline (unchanged /
+ *   set / absent) so an action only pays for the snapshot it really changes.
  * - Storage shapes: history-13 `editor_history_entries.beforePatch/afterPatch`
  *   hold `SequenceEditStateDelta` objects; `editor_requests.response` holds a
  *   `SequenceEditReceipt`; `operation` holds `sequenceEditOperationName(...)`.
@@ -335,15 +337,41 @@ export interface SequenceEditBoardDelta {
   readonly removals: readonly SequenceEditBoardEntity[];
 }
 
+/**
+ * Three-state synchronization baseline (coordinator review 11-18): most actions
+ * do not change the "last synced" row, and a full 512 KiB snapshot in every
+ * before/after patch would exhaust the history budget. `set` stores a snapshot,
+ * `absent` removes the stored row, and `unchanged` writes nothing.
+ */
+export type SequenceEditBaselineChange =
+  | { readonly kind: 'unchanged' }
+  | { readonly kind: 'set'; readonly value: Format5SyncBaseline }
+  | { readonly kind: 'absent' };
+export const SEQUENCE_EDIT_BASELINE_CHANGE_KINDS = Object.freeze(['unchanged', 'set', 'absent'] as const);
+
+/** Resolve one baseline delta against the row read in the transaction. Both
+ * sides must use this helper: `unchanged` returns the current value and writes
+ * nothing (undo also leaves the stored row untouched), `absent` deletes it and
+ * `set` stores the supplied snapshot. */
+export function applySequenceEditBaselineChange(
+  current: Format5SyncBaseline | null, change: SequenceEditBaselineChange,
+): Format5SyncBaseline | null {
+  switch (change.kind) {
+    case 'unchanged': return current;
+    case 'absent': return null;
+    case 'set': return change.value;
+  }
+}
+
 /** Timeline half of a patch. Entity arrays use the frozen K5a clip/cue shapes;
- * `removed*Ids` are the rows to delete. The sync baseline is the full snapshot
- * that was current after this delta (null means no baseline row). */
+ * `removed*Ids` are the rows to delete; `baseline` is the three-state delta that
+ * the transaction applies to the stored "last synced" row. */
 export interface SequenceEditTimelineDelta {
   readonly clips: readonly Format5Clip[];
   readonly cues: readonly Format5Cue[];
   readonly removedClipIds: readonly string[];
   readonly removedCueIds: readonly string[];
-  readonly baseline: Format5SyncBaseline | null;
+  readonly baseline: SequenceEditBaselineChange;
 }
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
@@ -385,12 +413,17 @@ const boardDeltaSchema = z.object({
   writes: z.array(entitySchema).max(SEQUENCE_EDIT_LIMITS.boardWrites),
   removals: z.array(entitySchema).max(SEQUENCE_EDIT_LIMITS.boardWrites),
 }).strict();
+const baselineChangeSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('unchanged')}).strict(),
+  z.object({kind: z.literal('set'), value: format5SyncBaselineSchema}).strict(),
+  z.object({kind: z.literal('absent')}).strict(),
+]);
 const timelineDeltaSchema = z.object({
   clips: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   cues: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.subtitleCues),
   removedClipIds: idListSchema(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   removedCueIds: idListSchema(FORMAT5_LIMITS.subtitleCues),
-  baseline: z.unknown().nullable().refine(value => value === null || (typeof value === 'object' && value !== null)),
+  baseline: baselineChangeSchema,
 }).strict();
 const stateDeltaSchema = z.object({board: boardDeltaSchema, timeline: timelineDeltaSchema}).strict();
 export const sequenceEditHistoryEntrySchema = z.object({

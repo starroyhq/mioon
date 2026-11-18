@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES} from '../packages/contracts/src/project-format5.ts';
+import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5SyncBaselineSchema} from '../packages/contracts/src/project-format5.ts';
+import type {Format5SyncBaseline} from '../packages/contracts/src/project-format5.ts';
 import type {ChainSyncOperation, ChainSyncState, ChainSyncPlan} from '../packages/contracts/src/chain-sync-algorithm.ts';
 import {
   SEQUENCE_EDIT_CONTRACT_VERSION, SEQUENCE_EDIT_DIGEST_DOMAIN, SEQUENCE_EDIT_ERRORS, SEQUENCE_EDIT_ERROR_CODES,
-  SEQUENCE_EDIT_LIMITS, SEQUENCE_EDIT_NEW_ERROR_CODES, SEQUENCE_EDIT_OPERATIONS, SEQUENCE_EDIT_TARGET_KINDS,
+  SEQUENCE_EDIT_BASELINE_CHANGE_KINDS, SEQUENCE_EDIT_LIMITS, SEQUENCE_EDIT_NEW_ERROR_CODES,
+  SEQUENCE_EDIT_OPERATIONS, SEQUENCE_EDIT_TARGET_KINDS, applySequenceEditBaselineChange,
   canonicalSequenceEditInput, invertSequenceEditPatch, isSequenceEditEnvelope, isSequenceEditErrorCode,
   isSequenceEditInputDigest, isSequenceEditIntentSequence, isSequenceEditRequestId, isSequenceEditUuid,
   sequenceEditEnvelopeSchema, sequenceEditHistoryEntrySchema, sequenceEditImpactCount,
@@ -13,9 +15,9 @@ import {
   sequenceEditUtf8Bytes,
 } from '../packages/contracts/src/sequence-edit.ts';
 import type {
-  BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditEnvelope, SequenceEditHistoryEntry,
-  SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt, SequenceEditService,
-  SequenceEditStateDelta, SequenceEditTransactionRequest,
+  BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditBaselineChange, SequenceEditEnvelope,
+  SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
+  SequenceEditService, SequenceEditStateDelta, SequenceEditTransactionRequest,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -25,7 +27,7 @@ const shotA = uuid('20'), shotB = uuid('21');
 const clipA = uuid('30');
 
 const boardDelta = {writes: [], removals: []} as const;
-const timelineDelta = {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline: null} as const;
+const timelineDelta = {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged'} as const} as const;
 const emptyDelta: SequenceEditStateDelta = {board: {...boardDelta}, timeline: {...timelineDelta}};
 
 const intent = (operation: ChainSyncOperation): SequenceEditIntent => ({side: sequenceEditIntentSide(operation), operation});
@@ -237,6 +239,53 @@ test('the shared error table covers K5a, SA and contract codes exactly once', ()
   const retryable = SEQUENCE_EDIT_ERRORS.filter(entry => entry.retryable).map(entry => entry.code).sort();
   assert.deepEqual(retryable, ['CHAIN_TRACK_MISMATCH', 'FORMAT5_SYNC_REVISION_CONFLICT', 'SEQUENCE_EDIT_REVISION_CONFLICT']);
   assert.equal(Object.isFrozen(SEQUENCE_EDIT_ERRORS), true);
+});
+
+test('the synchronization baseline is a three-state delta that skips unchanged writes', () => {
+  assert.deepEqual(SEQUENCE_EDIT_BASELINE_CHANGE_KINDS, ['unchanged', 'set', 'absent']);
+  const value: Format5SyncBaseline = {version: 1,
+    board: [{nodeId: shotA, kind: 'shot', selectedVersionId: uuid('80')}],
+    track: [{nodeId: shotA, segmentGroupId: uuid('81'), clipId: clipA, kind: 'shot', versionMode: 'follow',
+      appliedVersionId: uuid('80')}]};
+  assert.equal(format5SyncBaselineSchema.safeParse(value).success, true, 'fixture baseline is a frozen K5a baseline');
+
+  // Encoding: the three states are distinct and serializable.
+  const states: SequenceEditBaselineChange[] = [{kind: 'unchanged'}, {kind: 'set', value}, {kind: 'absent'}];
+  assert.deepEqual(states.map(state => JSON.parse(JSON.stringify(state)).kind), ['unchanged', 'set', 'absent']);
+
+  // Resolution: unchanged returns the current row without a write (same reference),
+  // absent clears it and set stores the snapshot.
+  assert.equal(applySequenceEditBaselineChange(value, {kind: 'unchanged'}), value);
+  assert.equal(applySequenceEditBaselineChange(null, {kind: 'unchanged'}), null);
+  assert.equal(applySequenceEditBaselineChange(value, {kind: 'absent'}), null);
+  assert.equal(applySequenceEditBaselineChange(null, {kind: 'absent'}), null);
+  assert.equal(applySequenceEditBaselineChange(null, {kind: 'set', value}), value);
+
+  const deltaWith = (baseline: unknown): SequenceEditStateDelta => ({board: {writes: [], removals: []},
+    timeline: {...timelineDelta, baseline: baseline as SequenceEditBaselineChange}});
+  const entryWith = (before: unknown, after: unknown): unknown => ({actionId, projectId, epoch, position: 1,
+    operation: 'board.connect', origin: 'user', beforePatch: deltaWith(before), afterPatch: deltaWith(after),
+    createdAt: '2026-01-01T00:00:00.000Z'});
+  for (const state of states) assert.equal(sequenceEditHistoryEntrySchema.safeParse(entryWith(state, state)).success, true);
+  const rejected = [
+    {kind: 'set'}, {kind: 'set', value: null}, {kind: 'set', value: {version: 2, board: [], track: []}},
+    {kind: 'unknown'}, {kind: 'unchanged', value}, null,
+  ];
+  for (const state of rejected) assert.equal(sequenceEditHistoryEntrySchema.safeParse(entryWith(state, state)).success, false,
+    JSON.stringify(state));
+
+  // Inversion: set and absent swap on undo; unchanged keeps the stored baseline.
+  const write: SequenceEditPatch = {version: SEQUENCE_EDIT_CONTRACT_VERSION,
+    before: deltaWith({kind: 'absent'}), after: deltaWith({kind: 'set', value})};
+  const inverted = invertSequenceEditPatch(write);
+  assert.deepEqual(inverted.before.timeline.baseline, {kind: 'set', value});
+  assert.deepEqual(inverted.after.timeline.baseline, {kind: 'absent'});
+  assert.deepEqual(invertSequenceEditPatch(inverted), write);
+  const unchangedPatch: SequenceEditPatch = {version: SEQUENCE_EDIT_CONTRACT_VERSION,
+    before: deltaWith({kind: 'unchanged'}), after: deltaWith({kind: 'unchanged'})};
+  assert.deepEqual(invertSequenceEditPatch(unchangedPatch), unchangedPatch);
+  assert.equal(applySequenceEditBaselineChange(value, unchangedPatch.after.timeline.baseline), value,
+    'undo/redo of an unchanged baseline never rewrites the stored row');
 });
 
 test('both transaction entries are typed for CS → TS and TS → CS use inside one transaction', () => {
