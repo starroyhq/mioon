@@ -48,6 +48,8 @@ function subjectEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): Sequenc
   return envelope({intents: [], subjectIntent: subjectIntent(createBinding),
     impact: {...envelope().impact, subjectBindingIds: [bindingA]},
     baseline: {...envelope().baseline, targets: [{kind: 'subject_binding', id: bindingA, revision: 1}]},
+    allocation: {clips: [], nodes: [], splitClips: [],
+      edges: [{id: uuid('92'), fromId: uuid('13'), toId: shotA}]},
     ...overrides});
 }
 
@@ -62,6 +64,11 @@ function envelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEn
     allocation: {clips: [], nodes: [], splitClips: [], edges: [{id: uuid('40'), fromId: shotA, toId: shotB}]},
     ...overrides,
   };
+}
+const cardNode = uuid('13'), bindingEdgeId = uuid('92');
+function bindingEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
+  return subjectEnvelope({allocation: {clips: [], nodes: [], splitClips: [],
+    edges: [{id: bindingEdgeId, fromId: cardNode, toId: shotA}]}, ...overrides});
 }
 
 test('the shared contract is versioned and mirrors the frozen history-13 bounds', () => {
@@ -224,6 +231,19 @@ test('subject binding intents validate the mode/version pair and stay board-only
     impact: {...envelope().impact, subjectBindingIds: [bindingA, bindingA]}}).success, false);
   assert.equal(isSequenceEditEnvelope({...subjectEnvelope(), intents: [], subjectIntent: undefined}), false,
     'an empty intents array without a subject intent is still invalid');
+  // A subject binding row is a tombstone: removals may never carry it, and a
+  // create needs its pre-allocated reference edge or it is rejected.
+  const tombstonePatch = {version: SEQUENCE_EDIT_CONTRACT_VERSION,
+    before: {board: {writes: [], removals: [{kind: 'subject_binding', id: bindingA, data: {}}]}, timeline: timelineDelta},
+    after: emptyDelta};
+  assert.equal(sequenceEditHistoryEntrySchema.safeParse({actionId, projectId, epoch, position: 1,
+    operation: 'subject.binding.create', origin: 'user', beforePatch: tombstonePatch.before,
+    afterPatch: tombstonePatch.after, createdAt: '2026-01-01T00:00:00.000Z'}).success, false);
+  assert.equal(isSequenceEditEnvelope(subjectEnvelope({allocation: {clips: [], nodes: [], splitClips: [], edges: []}})), false,
+    'create requires the reference edge allocation');
+  assert.equal(isSequenceEditEnvelope(subjectEnvelope({allocation: {clips: [], nodes: [], splitClips: [],
+    edges: [{id: uuid('93'), fromId: uuid('13'), toId: shotB}]}})), false,
+    'the allocated edge must target the created binding shot');
 });
 
 test('a subject binding row is a board entity: mixed patches invert and stay in one history entry', () => {

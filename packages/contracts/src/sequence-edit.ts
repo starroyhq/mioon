@@ -389,6 +389,14 @@ export const sequenceEditEnvelopeSchema = z.object({
   if (hasSubject) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action carries no CS/TS intent'});
     if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action is board-origin'});
+    const edit = value.subjectIntent!.operation.edit;
+    // A create action also writes the reference edge that connects the subject
+    // card to the shot. Its id is pre-allocated in `allocation.edges`, matching
+    // the envelope's retry identity; a missing allocation is rejected rather
+    // than deriving an id from the binding.
+    if (edit.kind === 'create' && !value.allocation.edges.some(edge => edge.toId === edit.shotId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject binding create requires its reference edge allocation'});
+    }
     return;
   }
   if (value.intents.length === 0) {
@@ -422,6 +430,11 @@ export interface SequenceEditBoardEntity {
 
 export interface SequenceEditBoardDelta {
   readonly writes: readonly SequenceEditBoardEntity[];
+  /** Removals never carry `subject_binding`: the frozen schema keeps
+   * `retain_subject_bindings` and the +1 revision rule, so a binding row is a
+   * tombstone. Its `before`/`after` only describe content (mode/version/role);
+   * the transaction always applies revision = current + 1, and undoing a create
+   * writes a `detached` row instead of deleting it. */
   readonly removals: readonly SequenceEditBoardEntity[];
 }
 
@@ -500,7 +513,12 @@ const entitySchema = z.object({
 const boardDeltaSchema = z.object({
   writes: z.array(entitySchema).max(SEQUENCE_EDIT_LIMITS.boardWrites),
   removals: z.array(entitySchema).max(SEQUENCE_EDIT_LIMITS.boardWrites),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.removals.some(entity => entity.kind === 'subject_binding')) {
+    context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Subject binding rows are tombstones and cannot be removed'});
+  }
+});
 const baselineChangeSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('unchanged')}).strict(),
   z.object({kind: z.literal('set'), value: format5SyncBaselineSchema}).strict(),
