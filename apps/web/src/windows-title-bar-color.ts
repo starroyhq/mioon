@@ -108,13 +108,23 @@ export function reportWindowsTitleBarColor(): void {
 
 let installed = false;
 /** Installs the cheap triggers once per document: the app's own appearance
- * effect repaints through applyDesktopFrame, while system appearance, resize and
- * caption geometry changes report directly. */
+ * effect repaints through applyDesktopFrame, while system appearance, resize,
+ * focus and caption geometry changes report directly. */
 export function installWindowsTitleBarColor(): void {
   if (typeof document === 'undefined' || installed || document.documentElement.dataset.desktopFrame !== 'win-overlay') return;
   installed = true;
-  reportWindowsTitleBarColor();
-  window.addEventListener('resize', reportWindowsTitleBarColor);
-  overlayOf()?.addEventListener?.('geometrychange', reportWindowsTitleBarColor);
-  if (typeof window.matchMedia === 'function') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', reportWindowsTitleBarColor);
+  const report = reportWindowsTitleBarColor;
+  window.addEventListener('resize', report);
+  window.addEventListener('focus', report);
+  window.addEventListener('pageshow', report);
+  document.addEventListener('visibilitychange', report);
+  overlayOf()?.addEventListener?.('geometrychange', report);
+  if (typeof window.matchMedia === 'function') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', report);
+  // The control overlay can report its geometry a frame or two after the first
+  // paint; retry a bounded number of times instead of waiting for a user event.
+  const attempt = (remaining: number): void => {
+    report();
+    if (last === null && remaining > 0) setTimeout(() => attempt(remaining - 1), 250);
+  };
+  attempt(8);
 }

@@ -7,6 +7,7 @@ import path from 'node:path';
 import type {App, BrowserWindow, NativeImage} from 'electron';
 import {desktopCapturer, nativeImage, screen} from 'electron';
 import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-window-chrome.ts';
+import {windowsTitleBarDiagnostics} from './window-chrome.ts';
 
 export const WINDOWS_TITLEBAR_SCENARIOS = Object.freeze(['normal-light', 'normal-dark', 'maximized-light',
   'maximized-dark', 'dpi-125', 'dpi-150'] as const);
@@ -151,6 +152,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
   let phase: ScreenshotPhase = 'launcher-ready';
   let captured: Buffer | undefined;
   let capturedMismatch: number | undefined;
+  let diag = '';
   const writeFailure = async (): Promise<void> => {
     try {
       if (captured !== undefined) {
@@ -160,7 +162,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
       await mkdir(path.dirname(output), {recursive: true});
       await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: false,
         code: 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED', check: phase,
-        ...(capturedMismatch === undefined ? {} : {detail: `bandColorDelta=${capturedMismatch}`})}) + '\n');
+        ...(capturedMismatch === undefined ? {} : {detail: `bandColorDelta=${capturedMismatch}${diag}`})}) + '\n');
     } catch { /* The outer smoke driver records its own fixed failure code. */ }
   };
   try {
@@ -197,6 +199,16 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
     assert.ok(Math.abs(facts.devicePixelRatio - scale) < 0.02, `Device scale factor ${facts.devicePixelRatio} differs from ${scale}`);
     assert.equal(window.isMaximized(), maximized);
     phase = 'capture';
+    try {
+      const page = await window.webContents.executeJavaScript(`(() => {
+        const overlay = navigator.windowControlsOverlay;
+        const rect = overlay && overlay.getTitlebarAreaRect ? overlay.getTitlebarAreaRect() : null;
+        return {bridge: typeof window.__mioonWindowChrome === 'object', frame: document.documentElement.dataset.desktopFrame || 'none',
+          visible: overlay ? overlay.visible === true : false, bandRight: rect ? rect.right : 0};
+      })()`) as {bridge: boolean; frame: string; visible: boolean; bandRight: number};
+      const events = windowsTitleBarDiagnostics(window)?.received ?? 0;
+      diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${events}`;
+    } catch { diag = ' diagnostics=unavailable'; }
     const {png, source} = await capture(window, window.getTitle());
     captured = png;
     phase = 'verify-band';

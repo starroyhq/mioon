@@ -123,18 +123,28 @@ export function installWindowChrome(window: ChromeWindow, platform: NodeJS.Platf
   return dispose;
 }
 
+/** Bounded diagnostics for the screenshot smoke: how many page colors reached
+ * the native band and which one was painted last. */
+const windowsChromeDiagnostics = new WeakMap<object, {received: number; applied: string | undefined}>();
+export function windowsTitleBarDiagnostics(window: object): {received: number; applied: string | undefined} | undefined {
+  return windowsChromeDiagnostics.get(window);
+}
+
 /** The page reports the rendered color behind the system caption band; only the
  * focused window's main frame may repaint its own native band. */
 function installWindowsWindowChrome(window: ChromeWindow): () => void {
   const contents = window.webContents;
   let disposed = false;
   let lastColor: string | undefined;
+  const diagnostics = {received: 0, applied: undefined as string | undefined};
+  windowsChromeDiagnostics.set(window, diagnostics);
   const receiveColor = (event: {senderFrame: object | null}, channel: string, ...args: unknown[]): void => {
     if (disposed || window.isDestroyed() || contents.isDestroyed() || channel !== DESKTOP_TITLEBAR_COLOR_EVENT ||
         event.senderFrame !== contents.mainFrame || args.length !== 1 || !isTitleBarBackgroundColor(args[0]) ||
         typeof window.setTitleBarOverlay !== 'function' || args[0] === lastColor) return;
     lastColor = args[0];
-    try {window.setTitleBarOverlay(windowsTitleBarOverlay(lastColor));} catch { /* A disappearing window keeps its last painted band. */ }
+    diagnostics.received += 1;
+    try {window.setTitleBarOverlay(windowsTitleBarOverlay(lastColor)); diagnostics.applied = lastColor;} catch { /* A disappearing window keeps its last painted band. */ }
   };
   contents.on('ipc-message', receiveColor);
   const dispose = () => {
