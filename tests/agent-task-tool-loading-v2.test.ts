@@ -220,10 +220,16 @@ for(const protocol of protocols)test(`${protocol}: a real zero-tool legacy inten
  assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);assert.equal(object(f.store.get('shots',String(f.shot.id))).title,'Original');
 });
 
-test('diagnostics retain their old catalog and cannot select or execute the new loader',async t=>{
+test('diagnostics preserve legacy entries and admit reviewed MP tools without the conversation loader',async t=>{
  // No conversation-only host tool joins a diagnostic: the loader is new, a diagnostic has no conversation to
  // answer a question in, and it neither reads methods nor reports a review (C6).
- const f=await fixture(t),oldCatalog=f.tools.diagnosticList().filter(tool=>!AGENT_TASK_CONVERSATION_TOOLS.includes(tool.name));
+ const f=await fixture(t),catalog=f.tools.diagnosticList().filter(tool=>!AGENT_TASK_CONVERSATION_TOOLS.includes(tool.name));
+ const mpRead=['subject.variants.list','subject.variants.get','previs.thumbnail.get','project.version.list','project.version.preview','asset.media.status.list','asset.media.location.list','image.service.list','image.review.list','image.review.get'];
+ const mpConfirmed=['scene.cuts.save','scene.shots.undo','scene.task.cancel','subject.variants.undo','previs.thumbnail.set','project.version.save','frame.task.cancelQueued','image.task.cancelQueued','task.disposition.archiveCompleted'];
+ const mpEntries=[...mpRead.map(operation=>({name:`mioon_${operation.replaceAll('.','_')}`,risk:'read_only'})),...mpConfirmed.map(operation=>({name:`mioon_${operation.replaceAll('.','_')}`,risk:'local_irreversible'})),{name:'mioon_subject_variants_retry',risk:'paid'}];
+ const mpNames=new Set(mpEntries.map(tool=>tool.name)),oldCatalog=catalog.filter(tool=>!mpNames.has(tool.name));
+ assert.equal(catalog.length,124);assert.deepEqual(catalog.filter(tool=>mpNames.has(tool.name)).map(({name,risk})=>({name,risk})),mpEntries);
+
  // Frozen from main 9f5fd08b: preserve every diagnostic name, its order and risk
  // independently of the native conversation catalog introduced by R2.
  assert.equal(oldCatalog.length,104);
@@ -236,7 +242,7 @@ test('diagnostics retain their old catalog and cannot select or execute the new 
   const before=f.requests.length,sent=await f.send({diagnostic:{profile}});assert.equal((await f.settle(sent.run.id)).run.status,'completed');
   const body=object(JSON.parse(f.requests[before]!.body));
   const names=Array.isArray(body.tools)?visible(f.requests[before]!):[];
-  assert.deepEqual(names,profile==='text'?[]:oldCatalog.filter(tool=>profile!=='read_only'||tool.risk==='read_only').map(tool=>tool.name));
+  assert.deepEqual(names,profile==='text'?[]:catalog.filter(tool=>profile!=='read_only'||tool.risk==='read_only').map(tool=>tool.name));
   assert.equal(f.requests[before]!.knownTools,undefined);assert.ok(!f.requests[before]!.body.includes(AGENT_TASK_TOOLS_LOAD_NAME));
  }
  await assert.rejects(f.send({diagnostic:{profile:'catalog',toolNames:[AGENT_TASK_TOOLS_LOAD_NAME]}}),{code:'AGENT_TASK_INVALID'});

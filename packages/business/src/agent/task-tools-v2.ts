@@ -167,7 +167,13 @@ function rejectHostFields(value:unknown):void{
  if(!object(value))return;
  for(const [key,child] of Object.entries(value)){if(hostFields.has(key))fail('AGENT_TASK_INVALID_TOOL','工具不能指定宿主身份、文件或授权');rejectHostFields(child);}
 }
-function toolInputSchema(operation:string,frameTransaction=false){
+// Keep validation behind one unknown-valued boundary instead of distributing
+// safeParse over the full core/public Zod union during every compiler project.
+interface TaskInputSchema {
+ safeParse(input:unknown):{success:true;data:unknown}|{success:false};
+ parse(input:unknown):unknown;
+}
+function toolInputSchema(operation:string,frameTransaction=false):TaskInputSchema{
  if(frameTransaction&&(operation==='previs.thumbnail.get'||operation==='previs.thumbnail.set'))return previsThumbnailPublicSchemas[operation];
  return frameTransaction&&operation===FRAME_SET?timelineFrameSetSchema:
   Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:publicOperationSchemas[operation as keyof typeof publicOperationSchemas];

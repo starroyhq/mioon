@@ -325,7 +325,8 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
   for (const {name, call} of transports) {
     assert.deepEqual(await call('timeline.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), timeline, `${name} sees the restarted current timeline`);
     for (const record of saved) assert.deepEqual(await call(((record.operation) as unknown as Parameters<typeof call>[0]), record.input), record.response, `${name} returns exact historical fade results after restart`);
-    assert.deepEqual((await call('project.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
+    if(name==='MCP')await call('project.get',{projectId},'UNKNOWN_OPERATION');
+    else assert.deepEqual((await call('project.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
   }
   assert.deepEqual((await backend.storage(projectId)), persisted, 'restart and exact replay preserve all saved rows and legacy absence');
   assert.equal(persisted.jobs.length, 0); assert.equal(persisted.exports.length, 0, 'transport acceptance never starts providers or render workers');

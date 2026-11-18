@@ -254,9 +254,12 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
     assertHistory(((history) as unknown as Parameters<NonNullable<typeof assertHistory>>[0]), ((current) as unknown as Parameters<typeof assertHistory>[1]), cursor, length);
     for (const {name, call} of transports.slice(1)) {
       assert.deepEqual(await call('timeline.history.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), history, `${name} sees exact history metadata`);
-      const project = await call('project.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>));
-      assert.deepEqual(project.timeline, current, `${name} project.get sees current timeline`);
-      assert.deepEqual(project.timelineHistory, history, `${name} project.get includes coherent history`);
+      if(name==='MCP')await call('project.get',query,'UNKNOWN_OPERATION');
+      else {
+        const project = await call('project.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>));
+        assert.deepEqual(project.timeline, current, `${name} project.get sees current timeline`);
+        assert.deepEqual(project.timelineHistory, history, `${name} project.get includes coherent history`);
+      }
     }
     const project = await backend.http('project.get', query);
     assert.deepEqual(project.timeline, current);
