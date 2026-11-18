@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
-  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand,
+  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand, testEnvironment, MACOS_TEST_TMPDIR,
   type PackageManagerInspectionOptions} from '../scripts/lib/local-tooling.ts';
 import {BUILD_COMMAND_TIMING_STAGES} from '../scripts/lib/build-timings.ts';
 import {createTypecheckEvidence, hasOuterTypecheckEvidence, removeTypecheckEvidence, sourceFingerprint, TYPECHECK_EVIDENCE_ENV} from '../scripts/lib/typecheck-evidence.ts';
@@ -258,6 +258,31 @@ test('portable manifest is explicit, sorted, present and not broadened by filena
   assert.equal((await discoverTests(directory, {suite: 'full', platform: 'linux'})).at(-1), 'tests/z-native.test.mjs');
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  assert.deepEqual(await discoverTests(directory, {suite: 'full-darwin', platform: 'darwin'}),
+    await discoverTests(directory, {suite: 'full', platform: 'linux'}));
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'linux'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+});
+test('macOS full lane needs the explicit suite and test children use the canonical private temp root', async t => {
+  const {directory} = await fixture(t);
+  assert.equal(parseArguments(['test', '--suite=full-darwin']).suite, 'full-darwin');
+  assert.equal(parseArguments(['test']).suite, 'portable');
+  assert.throws(() => parseArguments(['typecheck', '--suite=full-darwin']), {code: 'TOOLING_USAGE'});
+  assert.throws(() => parseArguments(['build', '--suite=full-darwin']), {code: 'TOOLING_USAGE'});
+  assert.throws(() => parseArguments(['test', '--suite=elsewhere']), {code: 'TOOLING_USAGE'});
+  assert.throws(() => parseArguments(['test', '--suite=full', '--suite=full-darwin']), {code: 'TOOLING_USAGE'});
+  await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'linux'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  assert.deepEqual(await discoverTests(directory, {suite: 'full-darwin', platform: 'darwin'}),
+    await discoverTests(directory, {suite: 'full', platform: 'linux'}));
+  const mac = testEnvironment({PATH: '/usr/bin', TMPDIR: '/var/folders/synthetic/T/', MIOON_API_KEY: 'secret',
+    MIOON_FFMPEG_PATH: '/opt/homebrew/bin/ffmpeg'}, {platform: 'darwin'});
+  assert.equal(mac.TMPDIR, MACOS_TEST_TMPDIR);
+  assert.equal(mac.MIOON_FFMPEG_PATH, '/opt/homebrew/bin/ffmpeg');
+  assert.equal(mac.MIOON_API_KEY, undefined);
+  assert.equal(testEnvironment({PATH: '/usr/bin', TMPDIR: '/tmp/custom'}, {platform: 'linux'}).TMPDIR, '/tmp/custom');
+  assert.notEqual(testEnvironment({PATH: 'C:\\Windows', TEMP: 'C:\\Temp'}, {platform: 'win32'}).TMPDIR, MACOS_TEST_TMPDIR);
 });
 test('full Linux selection supports more than the old 512-file limit within the argv budget', async t => {
   const {directory} = await fixture(t);

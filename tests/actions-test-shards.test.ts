@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {discoverTests, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
-import {EXCLUSIVE_TEST_FILES, parseShardArguments, parseTestTimings, partitionFullTests, shardFileTimeoutMs, shardPhases, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
+import {EXCLUSIVE_TEST_FILES, fullSuiteForPlatform, parseShardArguments, parseTestTimings, partitionFullTests, shardArtifactDirectory, shardFileTimeoutMs, shardPhases, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
 import {runShardFiles} from '../.github/scripts/test-shard-runner.ts';
 import {mergeTestTimings} from '../.github/scripts/test-timings.ts';
 
@@ -29,6 +29,13 @@ for (const count of [4, 8]) {
     }
   });
 }
+test('the complete catalog uses the reviewed platform entry and keeps Linux artifact names', () => {
+  assert.equal(fullSuiteForPlatform('linux'), 'full');
+  assert.equal(fullSuiteForPlatform('darwin'), 'full-darwin');
+  assert.equal(shardArtifactDirectory(0, 'linux'), 'artifacts/checks-linux-0');
+  assert.equal(shardArtifactDirectory(7, 'linux'), 'artifacts/checks-linux-7');
+  assert.equal(shardArtifactDirectory(0, 'darwin'), 'artifacts/checks-macos-0');
+});
 test('Linux CI matrix and launcher count cover the actual full catalog exactly once', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const workflow = await readFile(path.join(root, '.github/workflows/checks.yml'), 'utf8');

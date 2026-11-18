@@ -10,7 +10,7 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 - 独立 Ubuntu 22.04 source job 执行一次 actionlint 和 development Web/桌面暂存构建；构建入口包含源码与 CI 辅助代码的严格 TypeScript 检查，保留桌面暂存替换前的内部类型检查
 - 一个独立 Ubuntu 22.04 准备 job 恢复精确构建缓存；未命中时从固定源码镜像构建 CI 专用 FFmpeg **7.1.5**。验证工具文件、版本、所需滤镜、编码器及命令参数后，才保存缓存并上传本轮 artifact
 - 八个独立 Ubuntu 22.04 测试 job 安装 GNU tar、DejaVu 字体及媒体运行依赖，从同一准备 job 的 artifact 读取 FFmpeg，核验构建身份及文件哈希、恢复可执行权限，重新检查实际媒体能力，再运行 Linux full 测试分片
-- macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道
+- macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道。macOS 的完整测试走显式 `--suite=full-darwin` 入口（macOS runner/夜间任务使用），Linux 仍是 `--suite=full`；分片驱动对每个文件使用 3 倍计时 + 2 分钟、最短 10 分钟、无记录 35 分钟的期限，macOS 测试子进程的临时目录固定为 `/private/tmp`
 - 修改导出基准脚本的 PR，在同一个 macOS arm64 检查中使用应用固定下载的 FFmpeg，分别用 PR 基线和当前实现导出合成时间线。运行摘要记录耗时、CPU、进程树 RSS 和负载，并核对输出 SHA-256；不上传成片
 - source、媒体准备和 portable job 并行运行，八个 full 分片等待媒体准备，全部使用相同冻结源码 SHA；总检查要求 source、媒体准备、八个 full 分片和两个 portable job 全部成功。PR 不接触 Apple 签名凭据
 
