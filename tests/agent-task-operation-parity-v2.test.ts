@@ -9,7 +9,8 @@ import {listAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.t
 import {MIO_USER_ONLY_OPERATIONS,MIO_DEFERRED_OPERATIONS,MIO_WRAPPED_OPERATIONS} from '../packages/business/src/agent/task-operation-parity-v2.ts';
 import {MCP_USER_ONLY_OPERATIONS,isMcpOperationAllowed} from '../apps/mcp/src/tool-policy.ts';
 
-const backend=new Set([schemas,publicOperationSchemas,canvasEditingSchemas,generationImageServiceSchemas,trustedAssetMediaSchemas].flatMap(registry=>Object.keys(registry)));
+const registries:readonly Readonly<Record<string,unknown>>[]=[schemas,publicOperationSchemas,canvasEditingSchemas,generationImageServiceSchemas,trustedAssetMediaSchemas];
+const backend=new Set(registries.flatMap(registry=>Object.keys(registry)));
 function classify(operations:ReadonlySet<string>):string[]{
  const tools=new Set(listAgentTaskTools(true).map(tool=>tool.operation));
  return [...operations].filter(operation=>!tools.has(operation)&&!Object.hasOwn(MIO_USER_ONLY_OPERATIONS,operation)&&!Object.hasOwn(MIO_DEFERRED_OPERATIONS,operation)&&!Object.hasOwn(MIO_WRAPPED_OPERATIONS,operation)).sort();
