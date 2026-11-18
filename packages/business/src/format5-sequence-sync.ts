@@ -25,7 +25,7 @@ import type {
   SequenceEditReceipt, SequenceEditStateDelta, SequenceEditTimelineCommit, SequenceEditTimelineDelta,
   SequenceEditTransactionFailure, MainTrackProjectionPort,
 } from '@mioon/contracts/sequence-edit';
-import {applySequenceEditBaselineChange, isSequenceEditEnvelope, sequenceEditOperationName} from '@mioon/contracts/sequence-edit';
+import {applySequenceEditBaselineChange, isSequenceEditEnvelope, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
 import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
@@ -697,6 +697,7 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
     : entity.kind === 'node' ? 1 : entity.kind === 'shot' ? 2 : 3;
   // Delete adoptions before their shot, and write the shot before its adoption.
   for (const entity of [...delta.removals].sort((left, right) => rank(left) - rank(right))) {
+    if (entity.kind === 'subject_binding') throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', 'TS 同步事务不接受画板主体绑定。', 409, {id: entity.id});
     if (entity.kind === 'adoption') {
       const data = entity.data as Row;
       const result = store.db.prepare('DELETE FROM project.shot_version_adoptions WHERE shotId=? AND versionId=? AND projectId=?')
@@ -711,6 +712,7 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
   const writeRank = (entity: SequenceEditBoardEntity): number => entity.kind === 'adoption' ? 4
     : entity.kind === 'node' ? 1 : entity.kind === 'shot' ? 2 : 3;
   for (const entity of [...delta.writes].sort((left, right) => writeRank(left) - writeRank(right))) {
+    if (entity.kind === 'subject_binding') throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', 'TS 同步事务不接受画板主体绑定。', 409, {id: entity.id});
     if (entity.kind === 'adoption') {
       const data = entity.data as Row;
       store.db.prepare('INSERT INTO project.shot_version_adoptions(projectId,shotId,versionId,createdAt) VALUES(?,?,?,?)')
@@ -794,7 +796,7 @@ function affectedFromDelta(delta: SequenceEditStateDelta, context: SyncContext, 
 }
 
 function operationOf(envelope: SequenceEditEnvelope): string {
-  return sequenceEditOperationName(envelope.intents);
+  return sequenceEditEnvelopeOperationName(envelope);
 }
 
 function planWarnings(plan: SequenceEditPlan): ChainSyncWarning[] {

@@ -74,6 +74,21 @@ test('portable PR change detection can read the base after multiple follow-up co
   assert.match(checkout, /^          fetch-depth: 0\r?$/m,
     'the PR base can be older than any fixed shallow depth after subsequent commits');
 });
+test('macOS desktop group runs in its own job with the reviewed suite and diagnostics', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const workflow = await readFile(path.join(root, '.github/workflows/checks.yml'), 'utf8');
+  const desktop = workflowJob(workflow, 'macos-desktop');
+  assert.match(desktop, /runs-on: macos-15/);
+  assert.match(desktop, /timeout-minutes: 15/);
+  assert.match(desktop, /node scripts\/tooling\.ts test --suite=macos-desktop --concurrency=2 --reporter=tap/);
+  assert.match(desktop, /pnpm install --frozen-lockfile/);
+  assert.match(desktop, /name: checks-macos-desktop-diagnostics/);
+  assert.doesNotMatch(desktop, /^\s+needs:/m, 'the desktop group must not wait for the Linux full shards');
+  const ci = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+  assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
+  assert.match(ci, /needs: checks/);
+  assert.match(ci, /test "\$CHECKS_RESULT" = success/);
+});
 test('Linux CI prepares one exact cached media toolchain before distributing it to every shard', async () => {
   const workflow = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
   const preparation = workflowJob(workflow, 'ffmpeg'), quality = workflowJob(workflow, 'quality');

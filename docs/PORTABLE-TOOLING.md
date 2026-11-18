@@ -16,6 +16,7 @@ node scripts/tooling.ts test
 node scripts/tooling.ts test --suite=portable --concurrency=1
 node scripts/tooling.ts test --suite=full --concurrency=1
 node scripts/tooling.ts test --suite=full-darwin --concurrency=3
+node scripts/tooling.ts test --suite=macos-desktop --concurrency=2
 node scripts/tooling.ts test --suite=portable --file=agent-protocol.test.ts
 ```
 

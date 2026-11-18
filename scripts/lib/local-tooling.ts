@@ -14,7 +14,7 @@ import {mediaEnvironment} from '../../packages/business/src/media-environment.ts
 import {run as runMedia} from '../../packages/business/src/media-runtime.ts';
 
 export type ToolingCommand = 'doctor' | 'build' | 'test' | 'typecheck';
-export type TestSuite = 'portable' | 'full' | 'full-darwin';
+export type TestSuite = 'portable' | 'full' | 'full-darwin' | 'macos-desktop';
 export interface ParsedArguments {
   readonly command: ToolingCommand;
   channel: DesktopChannel;
@@ -101,6 +101,46 @@ export const PORTABLE_TEST_FILES: readonly string[] = Object.freeze([
   'desktop-build-metadata.test.ts', 'local-tooling.test.ts',
   'typecheck-contract.test.ts', 'typecheck-tooling.test.ts',
 ]);
+// The macOS per-PR desktop group runs in its own dedicated job (see
+// .github/workflows/checks.yml). It is an explicit reviewed manifest of
+// desktop, update, packaging, project-file, window and appearance test files;
+// the complete macOS catalog stays on the nightly full-darwin lane. Windows
+// specific tests are not part of this group, and neither is the media probe test
+// that needs a complete FFmpeg toolchain (nightly full-darwin covers it).
+export const MACOS_DESKTOP_TEST_FILES: readonly string[] = Object.freeze([
+  'actions-apple-keychain.test.ts', 'actions-desktop-helpers.test.ts', 'actions-ffmpeg-install.test.ts',
+  'actions-ffmpeg-toolchain.test.ts', 'actions-mac-update-feed.test.ts', 'actions-release.test.ts', 'actions-test-shards.test.ts',
+  'agent-protocol.test.ts', 'clip-actions-menu-ui.test.ts', 'desktop-agent-recovery-copy.test.ts', 'desktop-agent-secrets.test.ts',
+  'desktop-appearance-cache.test.ts', 'desktop-application-menu.test.ts', 'desktop-archive-member.test.ts', 'desktop-asset-relink.test.ts',
+  'desktop-async-secrets.test.ts', 'desktop-backend-lease.test.ts', 'desktop-build-metadata.test.ts', 'desktop-custom-image-secrets.test.ts',
+  'desktop-editor-lease-revoked.test.ts', 'desktop-exit-backend.test.ts', 'desktop-exit-diagnostics-store.test.ts', 'desktop-exit-recovery.test.ts',
+  'desktop-exit-supervisor.test.ts', 'desktop-identity.test.ts', 'desktop-image-secrets.test.ts', 'desktop-language-broadcast.test.ts',
+  'desktop-launcher-root.test.ts', 'desktop-launcher-state.test.ts', 'desktop-linux-secret-compatibility.test.ts', 'desktop-lut-recovery-controller.test.ts',
+  'desktop-lut-recovery-host.test.ts', 'desktop-lut-recovery-preload.test.ts', 'desktop-lut-recovery-restart.test.ts', 'desktop-lut-recovery-store.test.ts',
+  'desktop-media-shutdown.test.ts', 'desktop-menu-command-bridge.test.ts', 'desktop-menu-renderer.test.ts', 'desktop-multiple-window-download.test.ts',
+  'desktop-native-close-admission.test.ts', 'desktop-package-entrypoints.test.ts', 'desktop-preferences-close.test.ts', 'desktop-project-entry-admission.test.ts',
+  'desktop-project-entry-control.test.ts', 'desktop-project-entry-desktop.test.ts', 'desktop-project-file-open.test.ts', 'desktop-project-location-help.test.ts',
+  'desktop-project-location-probe.test.ts', 'desktop-project-location-volume.test.ts', 'desktop-project-navigation.test.ts', 'desktop-project-notices.test.ts',
+  'desktop-project-template-entry.test.ts', 'desktop-project-trash-broker.test.ts', 'desktop-project-window-host.test.ts', 'desktop-project-window-recovery.test.ts',
+  'desktop-renderer-diagnostics.test.ts', 'desktop-runtime-notices.test.ts', 'desktop-runtime.test.ts', 'desktop-security.test.ts',
+  'desktop-settings-window.test.ts', 'desktop-startup-restart-race.test.ts', 'desktop-static-adapters.test.ts', 'desktop-storage.test.ts',
+  'desktop-tray-host.test.ts', 'desktop-tray-icons.test.ts', 'desktop-tray-packaging.test.ts', 'desktop-update-lifecycle.test.ts',
+  'desktop-update-mac-verify.test.ts', 'desktop-update-network.test.ts', 'desktop-update-ui.test.ts', 'desktop-update.test.ts',
+  'desktop-video-secrets.test.ts', 'desktop-window-appearance.test.ts', 'desktop-window-chrome.test.ts', 'desktop-window-ownership.test.ts',
+  'desktop-window-preload.test.ts', 'desktop-window-unknown-close.test.ts', 'dialogue-ducking-state.test.ts', 'dialogue-ducking-ui.test.ts',
+  'dialogue-loudness-state.test.ts', 'dialogue-loudness-ui.test.ts', 'editor-window-close.test.ts', 'editor-window-inputs.test.ts',
+  'editor-window-modal-observation.test.ts', 'editor-window-remember.test.ts', 'keychain-timeout-audit.test.ts', 'local-tooling.test.ts',
+  'model-picker-dialog.test.ts', 'mutation-contracts.test.ts', 'native-project-desktop-state.test.ts', 'native-project-entry-dialog-bindings.test.ts',
+  'native-window-close-lifecycle.test.ts', 'native-window-unknown-state.test.ts', 'project-entry-dialog.test.ts', 'project-file-asset-hash.test.ts',
+  'project-file-backups.test.ts', 'project-file-business-seams.test.ts', 'project-file-closed-copy.test.ts', 'project-file-content-stamp.test.ts',
+  'project-file-crash.test.ts', 'project-file-guard.test.ts', 'project-file-latency.test.ts', 'project-file-open.test.ts',
+  'project-file-recover.test.ts', 'project-file-schema.test.ts', 'project-file-store.test.ts', 'project-file-trash-inspection.test.ts',
+  'project-package-client.test.ts', 'project-package-http.test.ts', 'project-package-native.test.ts', 'project-package-service.test.ts',
+  'project-package.test.ts', 'settings-appearance.test.ts', 'settings-keychain-readiness.test.ts', 'subtitles-package.test.ts',
+  'typecheck-contract.test.ts', 'typecheck-tooling.test.ts', 'ui-appearance.test.ts', 'web-project-package-client.test.ts',
+  'web-project-package-flow.test.ts', 'web-project-package-ui.test.ts', 'workspace-layout.test.ts', 'workspace-panel-intent.test.ts',
+  'workspace-state.test.ts',
+]);
 /** Per-file test timings may only be written under the repository's artifacts directory. */
 export const TIMINGS_PATH = /^artifacts(?:\/[a-zA-Z0-9][a-zA-Z0-9._-]*)+\.json$/;
 export function parseArguments(args: readonly string[]): ParsedArguments {
@@ -119,7 +159,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     else if (key === '--compile-cache' && flag === key && command === 'test') result.compileCache = true;
     else if (key === '--timings' && command === 'test' && TIMINGS_PATH.test(value)) result.timings = value;
     else if (key === '--concurrency' && command === 'test' && /^[1-4]$/.test(value)) result.concurrency = Number(value);
-    else if (key === '--suite' && command === 'test' && ['portable', 'full', 'full-darwin'].includes(value)) result.suite = value as TestSuite;
+    else if (key === '--suite' && command === 'test' && ['portable', 'full', 'full-darwin', 'macos-desktop'].includes(value)) result.suite = value as TestSuite;
     else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(value) && !result.files.includes(value)) result.files.push(value);
     else throw fail('TOOLING_USAGE', 'Unknown or invalid tooling option. See docs/PORTABLE-TOOLING.md.');
   }
@@ -389,12 +429,13 @@ export async function preflight(root: string, {channel = 'development', media = 
 }
 
 export async function discoverTests(root: string, {suite = 'portable', files = [], platform = process.platform}: DiscoverTestsOptions = {}): Promise<string[]> {
-  if (!['portable', 'full', 'full-darwin'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
+  if (!['portable', 'full', 'full-darwin', 'macos-desktop'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
   // The complete catalog has native storage assumptions that are reviewed for
   // each platform separately: Linux keeps `full`, macOS must use the explicit
   // `full-darwin` entry, and neither suite silently runs on the other platform.
   if (suite === 'full' && platform !== 'linux') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full suite is Linux-only. On macOS use the explicit full-darwin suite; native platform validation remains required.');
   if (suite === 'full-darwin' && platform !== 'darwin') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full-darwin suite is macOS-only. On Linux use the full suite.');
+  if (suite === 'macos-desktop' && platform !== 'darwin') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The macos-desktop group is macOS-only. Run the reviewed Linux full lane instead.');
   // Current suites use TypeScript. Retained explicit .mjs selections may name
   // their .ts successor, without widening the reviewed portable allowlist.
   const available = (await readdir(path.join(root, 'tests'), {withFileTypes: true}))
@@ -404,7 +445,8 @@ export async function discoverTests(root: string, {suite = 'portable', files = [
     const migrated = file.replace(/\.mjs$/, '.ts');
     return available.includes(migrated) ? migrated : null;
   };
-  const allowed: readonly string[] = suite === 'portable' ? PORTABLE_TEST_FILES : available;
+  const allowed: readonly string[] = suite === 'portable' ? PORTABLE_TEST_FILES
+    : suite === 'macos-desktop' ? MACOS_DESKTOP_TEST_FILES : available;
   const selected = files.length ? files : allowed;
   const resolved = selected.map(resolve);
   if (!selected.length || selected.length > 2048 || new Set(resolved).size !== resolved.length ||

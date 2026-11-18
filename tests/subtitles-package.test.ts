@@ -4,6 +4,8 @@ import {readFile,writeFile,mkdtemp,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {gzipSync} from 'node:zlib';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import resources from '../apps/desktop/subtitle-resources.ts';
 import {createSubtitleTarVerifier,verifySubtitleResourceTarball} from '../apps/desktop/subtitle-package.ts';
 const base='mioon-0.4.1-linux-x64',prefix=base+'/resources/subtitles',expected=resources.SUBTITLE_RESOURCE_MANIFEST;
@@ -86,6 +88,21 @@ test('gzip verifier streams >10MiB font, detects corruption/missing files, and r
  // on a system tar that may lack --format=gnu (macOS) or GNU field layout.
  const gnu=path.join(root,'gnu.tar.gz');await writeFile(gnu,gzipSync(archive(regular(),'gnu')));assert.deepEqual(await verifySubtitleResourceTarball(gnu,base),expected);
  const pax=path.join(root,'pax.tar.gz');await writeFile(pax,gzipSync(paxArchive()));assert.deepEqual(await verifySubtitleResourceTarball(pax,base),expected);
+});
+
+test('real system GNU tar packaging is accepted when the platform provides GNU tar',{timeout:120000},async t=>{
+ // The in-process GNU/PAX fixtures above cannot capture quirks of the real
+ // tool. When the host ships GNU tar (Linux CI, Homebrew gnu-tar) also pack
+ // the same directory with it; macOS's bsdtar lacks --format=gnu, so that
+ // platform skips this extra case with the reason in the TAP output.
+ const exec=promisify(execFile);
+ const version=await exec('tar',['--version'],{timeout:10000}).then(({stdout})=>stdout).catch(()=>'');
+ if(!/GNU tar/u.test(version)){t.diagnostic('System tar is not GNU tar; skipping the real GNU tar packaging case.');t.skip('GNU tar is not available on this platform');return;}
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-subtitle-gnu-tar-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const plain=path.join(root,'plain.tar');await writeFile(plain,archive());
+ await exec('tar',['-xf',plain,'-C',root],{timeout:30000,maxBuffer:64*1024});
+ const gnu=path.join(root,'gnu.tar.gz');await exec('tar',['--format=gnu','-czf',gnu,'-C',root,base],{timeout:30000,maxBuffer:64*1024});
+ assert.deepEqual(await verifySubtitleResourceTarball(gnu,base),expected);
 });
 
 test('package inspector streams exact native ASAR and binary bytes and validates external delivered resources',async()=>{
