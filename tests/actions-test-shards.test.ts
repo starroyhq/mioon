@@ -97,7 +97,7 @@ test('Linux CI prepares one exact cached media toolchain before distributing it 
   assert.doesNotMatch(quality, /GITHUB_RUN_ATTEMPT|GITHUB_RUN_ID|github\.run_attempt|github\.run_id|install-ffmpeg\.ts|ffmpeg-toolchain\.ts build/);
   assert.match(workflowJob(workflow, 'portable'), /tests\/actions-ffmpeg-toolchain\.test\.ts/);
 });
-test('desktop Linux packaging reuses the verified run artifact while the CI gate still requires every check', async () => {
+test('release packaging runs in parallel while staging requires successful checks or verified main CI', async () => {
   const [workflow, release, ci] = await Promise.all([
     readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8'),
     readFile(new URL('../.github/workflows/release-desktop.yml', import.meta.url), 'utf8'),
@@ -105,12 +105,25 @@ test('desktop Linux packaging reuses the verified run artifact while the CI gate
   ]);
   assert.match(workflow, /ffmpeg_artifact:[\s\S]*?value: \$\{\{ jobs\.ffmpeg\.outputs\.artifact_name \}\}/);
   assert.match(workflow, /ffmpeg_build_key:[\s\S]*?value: \$\{\{ jobs\.ffmpeg\.outputs\.build_key \}\}/);
+  const preflight = workflowJob(release, 'preflight'), checks = workflowJob(release, 'checks');
+  assert.match(preflight, /actions: read/);
+  assert.match(preflight, /git diff --quiet "\$GITHUB_WORKFLOW_SHA" "\$MIOON_RELEASE_SHA" -- \.github\/workflows\/checks\.yml/);
+  assert.match(preflight, /reuse_checks: \$\{\{ steps\.ci\.outputs\.reuse_checks \}\}/);
+  assert.match(preflight, /path: artifacts\/preflight\/release-ci-evidence\.json/);
+  assert.match(checks, /needs: preflight\r?\n\s+if: needs\.preflight\.outputs\.reuse_checks != 'true'/);
+  assert.match(checks, /source_sha: \$\{\{ needs\.preflight\.outputs\.release_sha \}\}/);
   const desktop = workflowJob(release, 'desktop');
-  assert.match(desktop, /needs: \[preflight, checks\]/);
-  assert.match(desktop, /name: Download verified Linux media toolchain\r?\n\s+if: runner\.os == 'Linux'\r?\n\s+uses: actions\/download-artifact@[a-f0-9]{40}/);
-  assert.match(desktop, /name: \$\{\{ needs\.checks\.outputs\.ffmpeg_artifact \}\}/);
-  assert.match(desktop, /MIOON_FFMPEG_BUILD_KEY: \$\{\{ needs\.checks\.outputs\.ffmpeg_build_key \}\}/);
-  assert.match(desktop, /name: Verify and activate Linux media toolchain\r?\n\s+if: runner\.os == 'Linux'[\s\S]*?run: node \.github\/scripts\/ffmpeg-toolchain\.ts activate/);
+  assert.match(desktop, /needs: preflight\r?\n/);
+  assert.doesNotMatch(desktop, /needs\.checks/);
+  assert.match(workflowJob(release, 'intel-smoke'), /needs: \[preflight, desktop\]/);
+  const stage = workflowJob(release, 'stage');
+  assert.match(stage, /needs: \[preflight, checks, desktop, intel-smoke\]/);
+  const stageCondition = /\$\{\{ (!cancelled\(\)[\s\S]*?) \}\}/.exec(stage)?.[1];
+  assert.equal(stageCondition?.replace(/\s+/g, ' '), "!cancelled() && needs.preflight.result == 'success' && needs.desktop.result == 'success' && needs.intel-smoke.result == 'success' && ((needs.checks.result == 'success' && needs.preflight.outputs.reuse_checks == 'false') || (needs.checks.result == 'skipped' && needs.preflight.outputs.reuse_checks == 'true'))");
+  const publish = workflowJob(release, 'publish');
+  assert.match(publish, /needs: \[preflight, stage\]/);
+  assert.match(publish, /needs\.stage\.result == 'success' && needs\.preflight\.outputs\.should_publish == 'true'/);
+  assert.match(release, /format\('candidate-\{0\}', github\.run_id\)/);
   assert.doesNotMatch(release, /install-ffmpeg\.ts|ffmpeg-toolchain\.ts build|checks-ffmpeg-.*(?:run_id|run_attempt)/);
   const gate = workflowJob(ci, 'ci');
   assert.match(gate, /name: CI/); assert.match(gate, /if: always\(\)/); assert.match(gate, /needs: checks/);

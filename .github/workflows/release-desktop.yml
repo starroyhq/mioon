@@ -17,12 +17,16 @@ on:
         description: Candidate-only package version (major.minor.patch)
         required: false
         type: string
+      force_checks:
+        description: Run all source checks even if this commit already passed main CI
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-release-${{ inputs.release_tag || github.ref_name }}
+  group: desktop-release-${{ inputs.release_tag || (github.event_name == 'workflow_dispatch' && format('candidate-{0}', github.run_id)) || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -30,12 +34,16 @@ jobs:
     name: Freeze and validate release source
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       release_sha: ${{ steps.release.outputs.release_sha }}
       version: ${{ steps.release.outputs.version }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       should_publish: ${{ steps.release.outputs.should_publish }}
       prerelease: ${{ steps.release.outputs.prerelease }}
+      reuse_checks: ${{ steps.ci.outputs.reuse_checks }}
     steps:
       - name: Checkout selected source with history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -66,6 +74,30 @@ jobs:
         run: |
           MIOON_CHECKOUT_SHA=$(git rev-parse HEAD) node .github/scripts/release-preflight.ts --require-apple-secrets
 
+      - name: Resolve source check evidence
+        id: ci
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIOON_RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+          FORCE_CHECKS: ${{ inputs.force_checks || false }}
+        run: |
+          evidence_script="$RUNNER_TEMP/mioon-release-ci-evidence.ts"
+          git show "$GITHUB_WORKFLOW_SHA:.github/scripts/release-ci-evidence.ts" > "$evidence_script"
+          same_checks=false
+          if git diff --quiet "$GITHUB_WORKFLOW_SHA" "$MIOON_RELEASE_SHA" -- .github/workflows/checks.yml; then
+            same_checks=true
+          fi
+          SAME_CHECKS_WORKFLOW="$same_checks" node "$evidence_script"
+
+      - name: Upload source check decision
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-source-check-decision
+          path: artifacts/preflight/release-ci-evidence.json
+          retention-days: 14
+          if-no-files-found: error
+
       - name: Write safe preflight diagnostics
         if: always()
         env:
@@ -89,13 +121,14 @@ jobs:
   checks:
     name: Verify frozen release source
     needs: preflight
+    if: needs.preflight.outputs.reuse_checks != 'true'
     uses: ./.github/workflows/checks.yml
     with:
       source_sha: ${{ needs.preflight.outputs.release_sha }}
 
   desktop:
     name: Package and smoke test universal macOS on Apple silicon
-    needs: [preflight, checks]
+    needs: preflight
     runs-on: macos-15
     timeout-minutes: 90
     defaults:
@@ -123,22 +156,51 @@ jobs:
           test "$(uname -m)" = arm64
           test "$(id -u)" -ne 0
 
-      - name: Install Linux media and native dependencies
-        if: runner.os == 'Linux'
+      - name: Identify the macOS FFmpeg download
+        id: ffmpeg_bottle
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg tar fonts-dejavu-core fonts-noto-cjk \
-            build-essential pkg-config nasm yasm xz-utils \
-            libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
-            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev \
-            libgtk-3-0 libnss3 libgbm1 libasound2 libatk-bridge2.0-0 \
-            libxss1 libdrm2 libx11-xcb1 xvfb dbus-x11 xdotool
+          if brew list --versions ffmpeg-full >/dev/null 2>&1 || [[ "$(sw_vers -productVersion)" != 15.* ]]; then exit 0; fi
+          if ! sha=$(brew info --json=v2 ffmpeg-full | jq -r '.formulae[0].bottle.stable.files.arm64_sequoia.sha256 // empty'); then exit 0; fi
+          if [[ "$sha" =~ ^[a-f0-9]{64}$ ]]; then printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Restore the exact FFmpeg bottle download
+        id: ffmpeg_cache
+        if: steps.ffmpeg_bottle.outputs.sha != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/mioon-ffmpeg-bottle/archive.tar.gz
+          key: mioon-ffmpeg-full-arm64-sequoia-${{ steps.ffmpeg_bottle.outputs.sha }}
 
       - name: Install macOS media tools
-        if: runner.os == 'macOS'
+        id: mac_media
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          BOTTLE_SHA: ${{ steps.ffmpeg_bottle.outputs.sha }}
         run: |
+          bottle_archive="$RUNNER_TEMP/mioon-ffmpeg-bottle/archive.tar.gz"
+          verified_bottle() {
+            [[ -f "$1" && ! -L "$1" ]] && [[ "$(shasum -a 256 < "$1" | cut -d ' ' -f 1)" == "$BOTTLE_SHA" ]]
+          }
+          download_cache=''
+          if [[ "$BOTTLE_SHA" =~ ^[a-f0-9]{64}$ ]]; then
+            if actual_sha=$(brew info --json=v2 ffmpeg-full | jq -r '.formulae[0].bottle.stable.files.arm64_sequoia.sha256 // empty') &&
+              [[ "$actual_sha" == "$BOTTLE_SHA" ]] &&
+              download_cache=$(brew --cache --force-bottle --bottle-tag=arm64_sequoia ffmpeg-full); then
+              if verified_bottle "$bottle_archive"; then
+                mkdir -p "$(dirname "$download_cache")"
+                cp "$bottle_archive" "$download_cache"
+                echo 'Reusing verified FFmpeg bottle download.'
+              fi
+            fi
+          fi
           if ! brew list --versions ffmpeg-full >/dev/null 2>&1; then brew install ffmpeg-full; fi
+          if [[ -n "$download_cache" ]] && verified_bottle "$download_cache"; then
+            mkdir -p "$(dirname "$bottle_archive")"
+            cp "$download_cache" "$bottle_archive"
+            printf 'cache_ready=true\n' >> "$GITHUB_OUTPUT"
+          fi
           mioon_media_prefix="$(brew --prefix ffmpeg-full)"
           printf 'MIOON_FFMPEG_PATH=%s/bin/ffmpeg\nMIOON_FFPROBE_PATH=%s/bin/ffprobe\n' "$mioon_media_prefix" "$mioon_media_prefix" >> "$GITHUB_ENV"
 
@@ -158,24 +220,18 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download verified Linux media toolchain
-        if: runner.os == 'Linux'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          name: ${{ needs.checks.outputs.ffmpeg_artifact }}
-          path: ${{ runner.temp }}/mioon-ffmpeg-toolchain
-
-      - name: Verify and activate Linux media toolchain
-        if: runner.os == 'Linux'
-        env:
-          MIOON_FFMPEG_BUILD_KEY: ${{ needs.checks.outputs.ffmpeg_build_key }}
-        run: node .github/scripts/ffmpeg-toolchain.ts activate
-
       - name: Resolve external media tools and probe capabilities
         id: media
         run: |
           node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(process.env[key] || execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,key+"="+value+"\n");}'
           node .github/scripts/media-environment.ts --platform="$MIOON_PLATFORM" --output="artifacts/desktop-$MIOON_TARGET/media.json"
+
+      - name: Save the capability-checked FFmpeg bottle download
+        if: steps.mac_media.outputs.cache_ready == 'true' && steps.ffmpeg_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/mioon-ffmpeg-bottle/archive.tar.gz
+          key: mioon-ffmpeg-full-arm64-sequoia-${{ steps.ffmpeg_bottle.outputs.sha }}
 
       - name: Apply candidate version to packaging checkout
         if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && needs.preflight.outputs.should_publish == 'false' && inputs.version_override != ''
@@ -183,7 +239,15 @@ jobs:
 
       - name: Build production application
         id: build
-        run: node scripts/tooling.ts build --channel=production
+        run: node scripts/tooling.ts build --channel=production | tee "$RUNNER_TEMP/mioon-build.log"
+
+      - name: Collect safe application build timings
+        if: ${{ !cancelled() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
+        run: |
+          mkdir -p "artifacts/desktop-$MIOON_TARGET"
+          awk '/^BUILD_TIMING \{"schema":1,"stage":"[a-z-]+","durationMs":[0-9]+,"result":"(success|failed)"(,"exitCode":-?[0-9]+)?\}$/ {
+            sub(/^BUILD_TIMING /, ""); print
+          }' "$RUNNER_TEMP/mioon-build.log" > "artifacts/desktop-$MIOON_TARGET/build-timings.jsonl"
 
       - name: Prepare temporary Apple signing credentials
         if: runner.os == 'macOS'
@@ -238,18 +302,22 @@ jobs:
           signing_qualifier="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
           # The release-only hook submits the app once and recovers only explicit
           # transient ticket-service failures; it must finish before DMG creation.
+          builder_started=$SECONDS
           pnpm exec electron-builder --config .generated/electron-builder.cjs --mac dmg zip --universal --publish never \
             "-c.mac.identity=$signing_qualifier" -c.mac.notarize=false \
             -c.afterSign=../../.github/scripts/notarize-app.cjs -c.dmg.sign=true -c.forceCodeSigning=true
+          printf 'Universal builder (including application notarization): %ss\n' "$((SECONDS - builder_started))" >> "$GITHUB_STEP_SUMMARY"
           # The hook notarizes the application; submit the final signed DMG too.
           dmg="$GITHUB_WORKSPACE/release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg"
           test -f "$dmg"
           notarization_report="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/dmg-notarization.json"
+          dmg_started=$SECONDS
           xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$notarization_report"
           node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.argv[1],"utf8")); if(report.status!=="Accepted")process.exit(1);' "$notarization_report"
           node ../../.github/scripts/apple-notarization.ts --operation=staple --artifact="$dmg" \
             --output="../../artifacts/desktop-$MIOON_TARGET/dmg-stapling.json"
+          printf 'DMG notarization and stapling: %ss\n' "$((SECONDS - dmg_started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Inspect final package, signatures and resources
         id: inspect
@@ -323,6 +391,7 @@ jobs:
             artifacts/desktop-macos-universal/status.log
             artifacts/desktop-macos-universal/app-notarization.json
             artifacts/desktop-macos-universal/dmg-stapling.json
+            artifacts/desktop-macos-universal/build-timings.jsonl
           retention-days: 14
           if-no-files-found: warn
 
@@ -409,7 +478,12 @@ jobs:
 
   stage:
     name: Stage native-verified universal release files
-    needs: [preflight, desktop, intel-smoke]
+    needs: [preflight, checks, desktop, intel-smoke]
+    if: >-
+      ${{ !cancelled() && needs.preflight.result == 'success' &&
+      needs.desktop.result == 'success' && needs.intel-smoke.result == 'success' &&
+      ((needs.checks.result == 'success' && needs.preflight.outputs.reuse_checks == 'false') ||
+      (needs.checks.result == 'skipped' && needs.preflight.outputs.reuse_checks == 'true')) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -458,7 +532,7 @@ jobs:
 
   publish:
     name: Publish verified desktop release
-    if: needs.preflight.outputs.should_publish == 'true'
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.stage.result == 'success' && needs.preflight.outputs.should_publish == 'true' }}
     needs: [preflight, stage]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
