@@ -93,6 +93,15 @@ export function validateWindowsLaunchReport(value: unknown, expected: {appVersio
     isPackaged: true, appVersion: value.appVersion, runtime: {node: value.runtime.node, electron: value.runtime.electron}, checks};
 }
 
+/** The packaged manifest is staged from the desktop manifest, while version and
+ * Electron are pinned by the repository root; both sources are fixed files. */
+export function windowsDevelopmentPackageExpectation(root: unknown, desktop: unknown): ExpectedPackage {
+  if (!record(root) || !record(root.devDependencies) || typeof root.version !== 'string' ||
+      typeof root.devDependencies.electron !== 'string' || !record(desktop) ||
+      typeof desktop.license !== 'string' || typeof desktop.description !== 'string') fail('WINDOWS_SMOKE_PACKAGE_IDENTITY_INVALID');
+  return {appVersion: root.version, electron: root.devDependencies.electron, license: desktop.license, description: desktop.description};
+}
+
 export function validateWindowsDevelopmentPackage(value: unknown, expected: ExpectedPackage): void {
   if (!record(value) || !exactKeys(value, ['name', 'version', 'private', 'license', 'desktopName', 'mioonDesktop', 'description', 'author', 'main', 'dependencies']) ||
       value.name !== 'mioon-desktop' || value.version !== expected.appVersion || !version(value.version) || value.private !== true || value.license !== expected.license ||
@@ -179,7 +188,11 @@ function defaultServices(): SmokeServices {
     async inspect(file) {const info = await lstat(file); return {file: info.isFile(), directory: info.isDirectory(), link: info.isSymbolicLink(), size: info.size, canonical: await realpath(file)};},
     async mkdir(directory, recursive) {await mkdir(directory, {recursive});}, read: file => readFile(file, 'utf8'),
     async write(file, value) {await writeFile(file, JSON.stringify(value, null, 2) + '\n', {flag: 'wx', mode: 0o600});},
-    async expected() {const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {version: string; license: string; description: string; devDependencies: {electron: string}}; return {appVersion: manifest.version, electron: manifest.devDependencies.electron, license: manifest.license, description: manifest.description};},
+    async expected() {
+      return windowsDevelopmentPackageExpectation(
+        JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')),
+        JSON.parse(await readFile(new URL('../../apps/desktop/package.json', import.meta.url), 'utf8')));
+    },
     async packagedMetadata(archive) {return readWindowsPackageMetadata(archive);},
     launch: launchWindowsPackage,
   };

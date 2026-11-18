@@ -176,6 +176,14 @@ jobs:
           pnpm --filter @mioon/desktop package:win:dev
           if ($LASTEXITCODE -ne 0) { throw 'Windows development packaging failed.' }
 
+      - name: Upload Windows development package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-development-x64
+          path: release/desktop/development/*-win-x64.exe
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Launch actual packaged Windows application
         timeout-minutes: 8
         run: |
@@ -186,14 +194,6 @@ jobs:
           if (Test-Path -LiteralPath $workspace) { throw 'Smoke workspace must be new.' }
           node .github/scripts/windows-desktop-smoke.ts "--binary=$binary" "--output=$output" "--workspace=$workspace"
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaged startup smoke failed.' }
-
-      - name: Upload Windows development package
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: windows-development-x64
-          path: release/desktop/development/*-win-x64.exe
-          retention-days: 7
-          if-no-files-found: error
 
       - name: Upload text-only smoke evidence
         if: always()

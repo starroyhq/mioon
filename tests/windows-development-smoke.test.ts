@@ -8,7 +8,7 @@ import path from 'node:path';
 import {cleanEnvironment} from '../.github/scripts/media-environment.ts';
 import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArguments, runWindowsDevelopmentSmoke,
   readWindowsPackageMetadata, smokeFailureCode, terminateOwnedWindowsTree, validateWindowsDevelopmentPackage,
-  validateWindowsLaunchReport, windowsSmokeEnvironment} from '../.github/scripts/windows-desktop-smoke.ts';
+  validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
 const args = [`--binary=${binary}`, `--output=${output}`, `--workspace=${workspace}`];
@@ -86,6 +86,19 @@ test('the app environment preserves Windows prerequisites but excludes provider,
   assert.equal(result.MIOON_DESKTOP_WINDOWS_SMOKE, '1');
   assert.equal(result.MIOON_DESKTOP_USER_DATA, `${workspace}\\user-data`);
   assert.equal(result.MIOON_DESKTOP_SMOKE_OUTPUT, `${workspace}\\result.json`);
+});
+
+test('package expectation comes from the staged desktop manifest and the root version/electron pins', () => {
+  const root = {version: '0.2.0', license: 'MIT', description: 'Synthetic root description', devDependencies: {electron: '44.7.0'}};
+  const desktop = {version: '0.2.0', license: 'Apache-2.0', description: 'Mioon secure Electron desktop host'};
+  assert.deepEqual(windowsDevelopmentPackageExpectation(root, desktop),
+    {appVersion: '0.2.0', electron: '44.7.0', license: 'Apache-2.0', description: 'Mioon secure Electron desktop host'});
+  for (const [invalidRoot, invalidDesktop] of [
+    [null, desktop], [{version: '0.2.0', devDependencies: {}}, desktop], [{devDependencies: {electron: '44.7.0'}}, desktop],
+    [root, null], [root, {license: 1, description: 'Synthetic'}], [root, {license: 'Apache-2.0', description: 7}],
+  ] as Array<[unknown, unknown]>) {
+    assert.throws(() => windowsDevelopmentPackageExpectation(invalidRoot, invalidDesktop), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_PACKAGE_IDENTITY_INVALID');
+  }
 });
 
 test('embedded ASAR identity is bounded and refuses production, unknown identities, raw fields and external metadata before launch', async () => {
