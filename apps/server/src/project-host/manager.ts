@@ -10,7 +10,7 @@ import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_HISTORY_FILE} from '../../../../packages/contracts/src/project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
-import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, openProjectStore, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence, sameContentStamp} from '../../../../packages/business/src/project-file/index.ts';
+import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, openProjectStore, previewFormat5Upgrade, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence, sameContentStamp, upgradeProjectFormatTo5} from '../../../../packages/business/src/project-file/index.ts';
 import type {Format4Options, Format4UpgradePreview, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import {previewClosedProjectFormatUpgrade} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import type {ProjectFormatUpgradePreview} from '../../../../packages/contracts/src/project-format-upgrade.ts';
@@ -361,11 +361,15 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (!options.assertMutationAllowed) throw new TypeError('History resolution requires application write admission');
     options.assertMutationAllowed();
   };
-  const upgradeMatches = (preview: Format4UpgradePreview, expected: ProjectFormatUpgradePreview): boolean =>
+  /** The 3 -> 4 kernel preview has no target fields; the format-5 preview does.
+   * An admission from the host always carries the exact pair it confirmed. */
+  const upgradeMatches = (preview: Format4UpgradePreview | ProjectFormatUpgradePreview, expected: ProjectFormatUpgradePreview): boolean =>
     preview.projectId === expected.projectId && preview.projectVersion === expected.projectVersion &&
       preview.historyVersion === expected.historyVersion && sameContentStamp(preview, expected) &&
-      expected.targetProjectVersion === FORMAT4_PROJECT_SCHEMA_VERSION && expected.targetHistoryVersion === FORMAT4_HISTORY_SCHEMA_VERSION;
+      expected.targetProjectVersion === ((preview as {targetProjectVersion?: number}).targetProjectVersion ?? FORMAT4_PROJECT_SCHEMA_VERSION) &&
+      expected.targetHistoryVersion === ((preview as {targetHistoryVersion?: number}).targetHistoryVersion ?? FORMAT4_HISTORY_SCHEMA_VERSION);
   const formatAdmission = (expected?: ProjectFormatUpgradePreview): Format4Options | undefined => {
+    if (expected?.targetProjectVersion !== undefined && expected.targetProjectVersion > FORMAT4_PROJECT_SCHEMA_VERSION) return undefined;
     if (!format4 || !expected) return format4;
     return {...format4, approveUpgrade: preview => {
       if (!upgradeMatches(preview, expected)) return false;
@@ -374,12 +378,34 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }};
   };
   const preflightLegacy = (file: string, projectId: string, location: ProjectLocation, expected?: ProjectFormatUpgradePreview): void => {
+    if (expected?.targetProjectVersion === 5) {
+      const preview = previewFormat5Upgrade(file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
+      if (!preview) return;
+      if (!upgradeMatches(preview, expected)) {
+        throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
+      }
+      writeAllowed();
+      return;
+    }
     if (!format4 || inspectProjectFormatHeader(file, format4) !== PROJECT_FILE_SCHEMA_VERSION) return;
     const preview = previewClosedProjectFormatUpgrade(file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
     if (!expected || !upgradeMatches(preview, expected)) {
       throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
     }
     writeAllowed();
+  };
+  /** One opening seam for all trusted admissions: format 5 upgrades run the
+   * kernel's confirmation/backup transaction, released profiles use openStore. */
+  const kernelOpen = (projectFile: string, location: (projectId: string) => ProjectLocation,
+    checkCopy: ProjectCopyCheck, expected?: ProjectFormatUpgradePreview): ProjectStore => {
+    if (expected?.targetProjectVersion === 5) {
+      return upgradeProjectFormatTo5({projectFile, locate: location, checkCopy, approveUpgrade: preview => {
+        if (!upgradeMatches(preview, expected)) return false;
+        writeAllowed();
+        return true;
+      }}).store;
+    }
+    return openStore({projectFile, locate: location, format4: formatAdmission(expected), checkCopy});
   };
   const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
   const checkAdmittedFile = (file: string, projectId: string, admitted?: ProjectFileIdentity): void => {
@@ -390,10 +416,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     checkAdmittedFile(registration.projectFile, registration.projectId, admission?.fileIdentity);
     preflightLegacy(registration.projectFile, registration.projectId, locate(registration.projectId), admission?.formatUpgrade);
     recoverHistorySwitch(switchOptions(registration.projectFile, registration.projectId));
-    return openStore({projectFile: registration.projectFile, locate, format4: formatAdmission(admission?.formatUpgrade), checkCopy: file => {
+    return kernelOpen(registration.projectFile, locate, file => {
       checkAdmittedFile(file.projectFile, file.projectId, admission?.fileIdentity);
       registeredCopyCheck(registration.projectId)(file);
-    }});
+    }, admission?.formatUpgrade);
   };
 
   // -------------------------------------------------------------------------
@@ -960,21 +986,18 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       }
       let store: ProjectStore;
       try {
-        store = openStore({
-          projectFile: file, format4: formatAdmission(options?.formatUpgrade), locate: projectId => {
-            const location = locate(projectId);
-            if (!registered) preflightLegacy(file, projectId, location, options?.formatUpgrade);
-            recoverHistorySwitch({...switchOptions(file, projectId), location});
-            return location;
-          },
-          checkCopy: candidate => {
-            if (options?.formatUpgrade && candidate.projectId !== options.formatUpgrade.projectId) throw projectFileMoved(options.formatUpgrade.projectId);
-            checkAdmittedFile(candidate.projectFile, candidate.projectId, options?.fileIdentity);
-            const wait = transition(candidate.projectId);
-            if (wait) throw new RetryOpen(wait);
-            registry.checkCopy?.(candidate);
-          },
-        });
+        store = kernelOpen(file, projectId => {
+          const location = locate(projectId);
+          if (!registered) preflightLegacy(file, projectId, location, options?.formatUpgrade);
+          recoverHistorySwitch({...switchOptions(file, projectId), location});
+          return location;
+        }, candidate => {
+          if (options?.formatUpgrade && candidate.projectId !== options.formatUpgrade.projectId) throw projectFileMoved(options.formatUpgrade.projectId);
+          checkAdmittedFile(candidate.projectFile, candidate.projectId, options?.fileIdentity);
+          const wait = transition(candidate.projectId);
+          if (wait) throw new RetryOpen(wait);
+          registry.checkCopy?.(candidate);
+        }, options?.formatUpgrade);
       } catch (error) {
         if (error instanceof RetryOpen) {
           await error.wait;

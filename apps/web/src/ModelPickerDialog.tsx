@@ -24,7 +24,6 @@ interface ModelPickerDialogProps {
   status: 'loading' | 'error' | 'empty' | 'ready';
   statusMessage?: string;
   unavailableLabel?: string;
-  usesDraftKey?: boolean;
   mode?: 'multiple' | 'single';
   maxAdditions?: number;
   onClose: () => void;
@@ -33,7 +32,7 @@ interface ModelPickerDialogProps {
 }
 
 /** Mount once per fetch. Only the parent can add models to the settings draft. */
-export default function ModelPickerDialog({serviceName, items, status, statusMessage, unavailableLabel, usesDraftKey = false,
+export default function ModelPickerDialog({serviceName, items, status, statusMessage, unavailableLabel,
   mode = 'multiple', returnedModelCount = items.length, maxAdditions, onClose, onAdd, triggerRef}: ModelPickerDialogProps) {
   const {t} = useI18n();
   const radioName = useId(), single = mode === 'single';
@@ -133,7 +132,6 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
       </> : <p className="model-picker-status" role={status === 'error' ? 'alert' : 'status'}>
         {statusMessage ?? t(status === 'loading' ? 'agent.settings.models.loading' : status === 'empty' ? 'agent.settings.models.empty' : 'agent.settings.models.unreachable')}
       </p>}
-      {usesDraftKey && <p className="model-picker-status">{t('settings.modelPicker.draftKey')}</p>}
       {capacity !== null && <p className="model-picker-limit" role="status">{t('settings.modelPicker.limit', {count: capacity})}</p>}
     </WorkbenchDialogContent>
   </Dialog>;

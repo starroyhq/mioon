@@ -480,3 +480,5 @@ export {ASSET_ANNOTATION_LIMITS,assetAnnotationSchemas,isAssetAnnotationResponse
 
 export * from './agent-tasks-v2.ts';
 export * from './timeline-time-map.ts';
+
+export * from './sequence-sync.ts';

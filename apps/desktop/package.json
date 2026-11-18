@@ -16,7 +16,8 @@
     "smoke": "node scripts/smoke.ts",
     "package:linux:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --linux --publish never",
     "package:dir:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --linux --dir --publish never",
-    "package:mac:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --mac --publish never"
+    "package:mac:dev": "node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --mac --publish never",
+    "package:win:dev": "pnpm --filter @mioon/node-host build:native && node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --win --publish never"
   },
   "dependencies": {
     "@mioon/contracts": "workspace:*",

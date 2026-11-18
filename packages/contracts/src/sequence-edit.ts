@@ -536,6 +536,13 @@ export interface SequenceEditHistoryCursor {
   readonly revision: number;
 }
 
+/** Non-blocking warnings a successful action can return. They are part of the
+ * shared receipt because a replayed request must return the same reasons, and
+ * UI-E2/MT render them without recomputing SA state. `SOURCE_TOO_SHORT` is the
+ * TS main-track warning (an older applied version kept its cut). */
+export const SEQUENCE_EDIT_WARNING_CODES = Object.freeze(['SOURCE_TOO_SHORT'] as const);
+export type SequenceEditWarningCode = (typeof SEQUENCE_EDIT_WARNING_CODES)[number];
+
 /** `editor_requests.response`, bounded by the frozen 64 KiB receipt window. */
 export interface SequenceEditReceipt {
   readonly version: typeof SEQUENCE_EDIT_CONTRACT_VERSION;
@@ -547,6 +554,8 @@ export interface SequenceEditReceipt {
   readonly originSide: SequenceEditSide;
   readonly status: 'applied' | 'not_applied';
   readonly code?: SequenceEditErrorCode;
+  /** Present only on an applied receipt that has something to report. */
+  readonly warnings?: readonly ChainSyncWarning[];
   readonly affected: SequenceEditAffectedCounts;
   readonly history: SequenceEditHistoryView;
   readonly contentRevision: number;
@@ -569,10 +578,15 @@ export const sequenceEditReceiptSchema = z.object({
   projectId: uuidSchema, actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes),
   originSide: z.enum(SEQUENCE_EDIT_SIDES), status: z.enum(['applied', 'not_applied']),
   code: z.string().min(1).max(SEQUENCE_EDIT_LIMITS.operationBytes).optional(),
+  warnings: z.array(z.object({
+    code: z.literal('SOURCE_TOO_SHORT'), clipId: uuidSchema, nodeId: uuidSchema,
+    versionId: uuidSchema, shortByFrames: sequenceSchema,
+  }).strict()).max(FORMAT5_LIMITS.mainTrackClips).optional(),
   affected: sequenceEditAffectedCountsSchema, history: sequenceEditHistoryViewSchema,
   contentRevision: sequenceSchema, timelineRevision: revisionSchema, syncRevision: revisionSchema,
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
-  'Only a not-applied receipt carries an error code');
+  'Only a not-applied receipt carries an error code').refine(value => value.status === 'applied' || value.warnings === undefined,
+  'A not-applied receipt carries no warnings');
 
 /** External service entry shared by UI-B/UI-E/MT. The same envelope shape feeds
  * `apply`; undo/redo address one existing history action and never blindly apply
@@ -668,10 +682,15 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   not blindly undo (plan §5).
  * - `SEQUENCE_EDIT_PATCH_INVALID`: a stored history patch is outside the frozen
  *   bounds or cannot be applied to the current state.
+ * - `SEQUENCE_EDIT_NOOP`: the request is valid but the live state already equals
+ *   the requested state; nothing was written, no history entry or revision moved,
+ *   and only the immutable receipt (status `not_applied`) is stored so an exact
+ *   retry returns the same answer.
  */
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
+  'SEQUENCE_EDIT_NOOP',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

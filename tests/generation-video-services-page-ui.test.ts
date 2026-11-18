@@ -287,7 +287,6 @@ test('built-in check and model discovery use one-time draft values and retain no
   assert.equal(f.find('video:veo', 'video-compatible-check-result').props['data-result'], 'ok');
   const picker = f.picker('video:veo')!;
   assert.equal(picker.props.status, 'ready');
-  assert.equal(picker.props.usesDraftKey, true);
   assert.deepEqual(picker.props.items, [
     {id: 'gemini-omni-1.2-flash', added: false, unavailable: false},
     {id: 'veo-3.1-generate-preview', added: false, unavailable: true},
@@ -297,7 +296,7 @@ test('built-in check and model discovery use one-time draft values and retain no
   const visibleProps = {...picker.props};
   assert.deepEqual(Object.keys(visibleProps).sort(), [
     'children', 'items', 'key', 'maxAdditions', 'onAdd', 'onClose', 'serviceName',
-    'status', 'statusMessage', 'triggerRef', 'usesDraftKey',
+    'status', 'statusMessage', 'triggerRef',
   ]);
   assert.doesNotMatch(JSON.stringify(visibleProps), /synthetic-video-ui-draft/);
   invoke(picker, 'onAdd', ['veo-not-returned']);
@@ -367,7 +366,6 @@ test('cancel closes the model picker, aborts the request, and discards late resu
   f.render();
   const picker = f.picker(f.keyA)!;
   assert.equal(picker.props.status, 'loading');
-  assert.equal(picker.props.usesDraftKey, false);
   invoke(picker, 'onClose');
   assert.equal(signals[0]?.aborted, true);
   pending.resolve({result: 'ok', models: [{id: 'synthetic-late-video'}]});

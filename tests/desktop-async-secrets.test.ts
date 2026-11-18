@@ -124,7 +124,7 @@ const overrides = new Map([
   ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString() + '; export const ensurePrivateDirectory = validatePrivateDirectory;'
     + ' export const validateManagedFile = validatePrivateDirectory, readPrivateFile = validatePrivateDirectory, writePrivateFileAtomic = validatePrivateDirectory, removePrivateFile = validatePrivateDirectory')],
 ]);
-const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
+const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store-windows.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
   'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts', 'apps/desktop/src/settings-event-loop.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/settings-warm-assets.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-trash-broker.ts', 'apps/desktop/src/project-entry-control.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
@@ -410,12 +410,33 @@ test('missing async methods, false status and unsupported or weak platforms fail
   }
   const missingKey = vault(); missingKey.native.isAsyncEncryptionAvailable = async () => false;
   assert.equal((await codecFor(missingKey).refreshStorage()).persistentAvailable, false);
-  for (const platform of ['win32', 'unknown']) for (const backend of ['basic_text', 'unknown', 'gnome_libsecret']) {
+  for (const platform of ['unknown']) for (const backend of ['basic_text', 'unknown', 'gnome_libsecret']) {
     const f = vault(); f.native.getSelectedStorageBackend = () => backend;
     const result = await codecFor(f, {platform}).refreshStorage();
     assert.equal(result.persistentAvailable, false); assert.equal(f.calls.length, 0);
     assert.equal(result.reasonCode, 'OS_SECRET_STORE_UNAVAILABLE');
   }
+  const unavailableWindows = vault();
+  const result = await codecFor(unavailableWindows, {platform: 'win32'}).refreshStorage();
+  assert.equal(result.persistentAvailable, false);
+  assert.equal(result.reasonCode, 'OS_SECRET_STORE_UNAVAILABLE');
+  assert.equal(unavailableWindows.calls.length, 0);
+});
+
+test('Windows dispatch uses synchronous DPAPI without macOS async or Linux backend calls', async () => {
+  const f = vault(); let nativeCalls = 0;
+  const safeStorage = {...f.native,
+    isEncryptionAvailable: () => true,
+    encryptString(value: string) {nativeCalls++; return f.seal(value);},
+    decryptString(value: Buffer) {nativeCalls++; return f.open(value);},
+    getSelectedStorageBackend() {throw Error(SENTINEL);},
+  };
+  const codec = secret.createDesktopSecretCodec({safeStorage, appId: APP_ID, platform: 'win32'});
+  assert.equal((await codec.refreshStorage()).persistentAvailable, true);
+  const encrypted = await codec.encrypt(SENTINEL);
+  assert.equal(await codec.decrypt(encrypted), SENTINEL);
+  assert.equal(nativeCalls, 2);
+  assert.equal(f.calls.length, 0);
 });
 
 test('bounds, canonical base64, appId and wrapper shape remain enforced', async () => {

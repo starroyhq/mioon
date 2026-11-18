@@ -476,7 +476,7 @@ test('actual key typing dispatches nothing; explicit check and fetch use one-sho
  h.key('openai','synthetic-secret-openai');await flush();h.render();assert.equal(calls.length,0);
  h.click('agent-settings-check-key-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(h.picker(),undefined);assert.equal(h.modelRow('openai','new-model'),undefined);assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret-openai'});assert.equal(h.keyValue('openai'),'synthetic-secret-openai');assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');
  assert.ok(h.find('agent-settings-key-check-result-openai'));assert.ok(h.find('agent-settings-service-dirty-openai'));
- h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,2);assert.deepEqual(calls[1]!.credential,{source:'input',value:'synthetic-secret-openai'});assert.equal(h.picker()?.props.usesDraftKey,true);assert.equal(h.modelRow('openai','new-model'),undefined);h.addPicked('new-model');
+ h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,2);assert.deepEqual(calls[1]!.credential,{source:'input',value:'synthetic-secret-openai'});assert.equal(h.modelRow('openai','new-model'),undefined);h.addPicked('new-model');
  assert.ok(h.modelRow('openai','new-model'));h.click('agent-settings-use-openai-new-model');assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assertNoSecrets(h.reports);h.unmount();
 });
 
@@ -515,7 +515,7 @@ test('a test of the current Mio draft uses its typed key and model, and clears i
 
 test('actual selected detail can list with its own saved key before it becomes the saved Mio selection',async()=>{
  const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'persistent'};const f=settingsUiFixture({initial}),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
- const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();assert.equal(calls.length,0);h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(h.picker()?.props.usesDraftKey,false);assert.equal(calls[0]!.serviceKey,'openai');assert.deepEqual(calls[0]!.credential,{source:'saved'});assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');assert.equal(h.find('agent-settings-save').props.disabled,true);h.unmount();
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();assert.equal(calls.length,0);h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(calls[0]!.serviceKey,'openai');assert.deepEqual(calls[0]!.credential,{source:'saved'});assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');assert.equal(h.find('agent-settings-save').props.disabled,true);h.unmount();
 });
 
 test('actual complete missing warning retains the Mio row; partial and failed refreshes cannot assert a model disappeared',async()=>{

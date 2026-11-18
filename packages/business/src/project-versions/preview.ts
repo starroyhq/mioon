@@ -7,14 +7,14 @@ import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {readProjectContentStamp} from '../project-file/content-stamp.ts';
 import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
-import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, readSnapshotProjectFormat, rowKey, snapshotCellValue, tableColumns, validateProjectDocument} from './document.ts';
-import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow} from './document.ts';
+import {canonicalJson, FORMAT5_TIMELINE_TABLES, primaryKeys, readSnapshotProjectFormat, rowKey, snapshotCellValue, snapshotTablesFor, tableColumns, validateProjectDocument} from './document.ts';
+import type {ProjectDocument, SnapshotRow, SnapshotTable} from './document.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from '../timeline-receipt-project.ts';
 
-type Table = ProjectSnapshotTable;
+type Table = SnapshotTable;
 const metadata = new Set(['revision', 'updatedAt']);
 const retained = new Set<Table>(['subject_versions', 'image_versions', 'scene_results', 'project_lut_resources', 'image_groups']);
-const immutable = new Set<Table>(['versions', 'subject_versions', 'image_versions', 'scene_results', 'project_lut_resources']);
+const immutable = new Set<Table>(['versions', 'subject_versions', 'image_versions', 'scene_results', 'project_lut_resources', 'shot_version_adoptions']);
 const identityColumns: Partial<Record<Table, readonly string[]>> = {
   subjects: ['id', 'projectId', 'kind', 'name', 'createdAt'],
   subject_bindings: ['id', 'projectId', 'shotId', 'subjectId', 'role', 'createdAt'],
@@ -22,7 +22,11 @@ const identityColumns: Partial<Record<Table, readonly string[]>> = {
 };
 const targetKinds: Record<Table, string> = {projects: 'project', assets: 'asset', asset_annotations: 'asset_annotation', asset_dispositions: 'asset_disposition',
   asset_ranges: 'asset_range', shots: 'shot', nodes: 'node', edges: 'edge', versions: 'version', timelines: 'timeline', subjects: 'subject',
-  subject_versions: 'subject_version', subject_bindings: 'subject_binding', image_groups: 'image_group', image_versions: 'image_version', scene_results: 'scene_result', project_lut_resources: 'lut'};
+  subject_versions: 'subject_version', subject_bindings: 'subject_binding', image_groups: 'image_group', image_versions: 'image_version', scene_results: 'scene_result', project_lut_resources: 'lut',
+  timeline_clips: 'timeline_clip', timeline_cues: 'timeline_subtitle', shot_version_adoptions: 'shot_version_adoption', sequence_sync_state: 'sequence_sync'};
+const timelineChild = (table: Table): boolean => (FORMAT5_TIMELINE_TABLES as readonly string[]).includes(table);
+const documentRows = (document: ProjectDocument, table: Table): readonly SnapshotRow[] =>
+  (document.tables as Readonly<Record<Table, readonly SnapshotRow[] | undefined>>)[table] ?? [];
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 const token = (table: Table, key: string) => `${table}\0${key}`;
@@ -151,8 +155,8 @@ function source(table: Table, row: SnapshotRow, projectId: string, touched: Set<
 
 interface ForeignKey {readonly parent: Table; readonly from: readonly string[]; readonly to: readonly string[]}
 function nativeKeys(store: ProjectStore, format: ProjectFileFormat): Map<Table, ForeignKey[]> {
-  const all = new Set<string>(PROJECT_SNAPSHOT_TABLES), result = new Map<Table, ForeignKey[]>();
-  for (const table of PROJECT_SNAPSHOT_TABLES) {
+  const names = snapshotTablesFor(format), all = new Set<string>(names), result = new Map<Table, ForeignKey[]>();
+  for (const table of names) {
     const groups = new Map<number, {parent: Table; parts: {seq: number; from: string; to: string | null}[]}>();
     for (const row of store.db.prepare(`PRAGMA project.foreign_key_list(${quote(table)})`).all()) {
       if (!all.has(String(row.table))) continue;
@@ -194,6 +198,11 @@ function logicalReferences(table: Table, row: SnapshotRow): {table: Table; id: s
       add('assets', clip.assetId); add('versions', clip.versionId); add('shots', clip.shotId);
       if (object(clip.colour) && object(clip.colour.look)) add('project_lut_resources', clip.colour.look.resourceId);
     }
+  } else if (table === 'timeline_clips') {
+    add('assets', value.assetId); add('versions', value.versionId); add('shots', value.shotId);
+    if (object(value.colour) && object(value.colour.look)) add('project_lut_resources', value.colour.look.resourceId);
+  } else if (table === 'timeline_cues') {
+    if (object(value.dialogueRef)) add('shots', value.dialogueRef.shotId);
   }
   return result;
 }
@@ -210,9 +219,9 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
   const touched = empty ? new Set<string>() : mioTargets(store, saved, mioChangeRowid, versionCreatedAt);
   const differences = new Map<string, ProjectVersionDifference>(), predicted = new Map<Table, Map<string, SnapshotRow>>();
   const removable = new Map<string, {table: Table; key: string; row: SnapshotRow}>();
-  for (const table of PROJECT_SNAPSHOT_TABLES) {
-    const old = new Map(saved.tables[table].map(row => [rowKey(table, row, format), row]));
-    const now = new Map(current.tables[table].map(row => [rowKey(table, row, format), row]));
+  for (const table of snapshotTablesFor(format)) {
+    const old = new Map(documentRows(saved, table).map(row => [rowKey(table, row, format), row]));
+    const now = new Map(documentRows(current, table).map(row => [rowKey(table, row, format), row]));
     const finalRows = new Map(now); predicted.set(table, finalRows);
     for (const key of [...new Set([...old.keys(), ...now.keys()])].sort(compare)) {
       if (key.length > 4096) fail('PROJECT_VERSION_PREVIEW_LIMIT', '对象标识超过预览上限，未截断标识。');
@@ -263,7 +272,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       }
       else if (retained.has(table)) {
         diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_PROTECTED_RESULT_CURRENT', '快照后新增的受保护结果或只前进对象不能删除，保持当前。');
-      } else if (!empty && table === 'timelines' && timelineOwnerReferenced(store)) {
+      } else if (!empty && (table === 'timelines' || timelineChild(table)) && timelineOwnerReferenced(store)) {
         diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT', '本机时间线编辑历史或请求回执仍引用此聚合，保持当前身份和内容，不删除过程记录。');
       } else if (table === 'asset_annotations') {
         const reset = {...before!, tags: '[]', note: ''}; finalRows.set(key, reset);

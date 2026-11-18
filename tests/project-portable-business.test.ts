@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createProjectStore,openStore} from '../packages/business/src/project-file/index.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {testStoreApplicationDirectory, testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -80,6 +80,21 @@ test('the legacy package cannot collect or import a live format 4 project',t=>{
   {name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
  assert.equal(store.db.prepare('SELECT total_changes() n').get()?.n,before);
  assert.equal(store.db.prepare('SELECT archiveBatchId FROM project.nodes WHERE id=?').get(id)?.archiveBatchId,batch);
+});
+
+test('the legacy package refuses a live format 5 project with its real format number',t=>{
+ const root=scratch(t);
+ const target=path.join(root,'candidate5');mkdirSync(target,{mode:0o700});
+ const store=createProjectStore({projectFile:path.join(target,'project.mioon'),format5:true,locate:()=>({
+  localDir:path.join(target,'local'),cacheDir:path.join(target,'cache'),tempDir:path.join(target,'tmp'),
+ })});
+ t.after(()=>store.close());
+ ensureProjectRow(store,{name:'Format 5 source'});
+ const options={media:'used' as const,includeExports:false};
+ const before=store.db.prepare('SELECT total_changes() n').get()?.n;
+ assert.throws(()=>collectProject(store,store.projectId,options),{code:'PROJECT_PACKAGE_NEWER_FORMAT',
+  details:{projectFormatVersion:FORMAT5_PROJECT_SCHEMA_VERSION,supportedProjectFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
+ assert.equal(store.db.prepare('SELECT total_changes() n').get()?.n,before);
 });
 
 test('the exact test opener owns one real B1 application and releases it with its project', async t => {

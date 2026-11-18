@@ -187,7 +187,6 @@ test('image Check and Get models use the current password input and put safe res
 
   ui.fetchModels(id);
   assert.equal(ui.picker()?.status, 'loading');
-  assert.equal(ui.picker()?.usesDraftKey, undefined);
   assert.deepEqual(ui.picker()?.items, [{id: 'same-model', added: true, unavailable: false}]);
   assert.deepEqual(probes[1]?.request, {operation:'models',baseUrl:'https://images.example/v1',credential:{source:'draft',value:'synthetic-q21-draft'}});
   ui.select(b.key);

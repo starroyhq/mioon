@@ -364,7 +364,8 @@ const initialWindowLoads = new WeakMap<BrowserWindow, InitialWindowLoad>();
 const cancelledStartupErrors = new WeakSet<Error>();
 let quitFailureNotice: Promise<void> | null = null;
 let smokeDiscardDecision: boolean | undefined;
-const smokeOutput: string | false | undefined = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
+const windowsPackageSmoke = app.isPackaged && process.platform === 'win32' && identity.channel === 'development' && process.env.MIOON_DESKTOP_WINDOWS_SMOKE === '1';
+const smokeOutput: string | false | undefined = identity.channel === 'development' && (!app.isPackaged || windowsPackageSmoke) && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 
 let mediaTools: MediaToolsInstaller | null | undefined;
 /** Mioon's pinned FFmpeg download, shared by first-run setup and the settings page. */
@@ -1493,8 +1494,16 @@ async function quitFailed(error: unknown): Promise<void> {
   })();
 }
 
-if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStorageError);
-else if (!app.requestSingleInstanceLock()) app.quit();
+if (startupStorageError) {
+  // Packaged Windows smoke never waits on a storage dialog: a dialog would look
+  // like a hung launch. Only a fixed error code is written as evidence.
+  if (windowsPackageSmoke && smokeOutput) {
+    const detected = codedFailure(startupStorageError);
+    const reason = [detected.reason, detected.code].find(value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/.test(value)) ?? 'DESKTOP_STARTUP_FAILED';
+    void writeFile(smokeOutput, JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_STARTUP_FAILED',reason})+'\n')
+      .then(() => app.exit(1), () => app.exit(1));
+  } else void showStorageStartupFailure(app, dialog, startupStorageError);
+} else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   if (macSignatureResult && macSignatureResult !== 'verified' && macSignatureResult !== 'rejected') {
     rendererDiagnostics?.recordStartupSignature(macSignatureResult);
@@ -1566,10 +1575,19 @@ else {
     const projectsAfterUpdate = initializeDesktopUpdates();
     installMenu();
     installTray();
+    // Packaged Windows smoke: write only a fixed startup marker beside the
+    // report, so a hung launch is locatable without any raw output.
+    if (windowsPackageSmoke && smokeOutput) {
+      await writeFile(`${smokeOutput}.phase`, JSON.stringify({schemaVersion:1,scope:'windows-development-launch',phase:'startup'})+'\n').catch(() => {});
+    }
     const report = await start(projectsAfterUpdate);
     trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
       const output = smokeOutput;
+      if (windowsPackageSmoke) {
+        const { runWindowsSmoke } = await import('./windows-smoke-checks.ts');
+        await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output });
+      } else {
       const { runSmoke } = await import('./smoke-checks.ts');
       await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,
         getProjectWindow: (projectId: string) => windowHost?.windows().find(window => windowHost?.contextFor(window)?.initialProjectId === projectId),
@@ -1580,6 +1598,7 @@ else {
           try { return await quitCoordinator.request(); }
           finally { smokeDiscardDecision = undefined; }
         } });
+      }
       app.quit();
     }
   }).catch(fatal);
