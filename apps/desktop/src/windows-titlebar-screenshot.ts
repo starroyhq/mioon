@@ -157,7 +157,7 @@ const pageBandColorScript = `(() => {
   const y = Math.max(1, Math.min(window.innerHeight - 1, Math.round(rect.y + rect.height / 2)));
   let node = document.elementFromPoint(x, y);
   while (node) {
-    const match = /^rgba?\\(([^)]*)\\)$/.exec(getComputedStyle(node).backgroundColor);
+    const match = getComputedStyle(node).backgroundColor.match(/^rgba?\\(([^)]*)\\)$/);
     if (match) {
       const parts = match[1].split(/[,\\s/]+/).filter(Boolean);
       const alpha = parts.length > 3 ? Number(parts[3]) : 1;
@@ -170,7 +170,7 @@ const pageBandColorScript = `(() => {
 const cssColorToHex = (color: string | undefined): string => {
   if (!color) return 'none';
   if (/^#[0-9a-fA-F]{6}$/u.test(color)) return color.toLowerCase();
-  const match = /^rgba?\(([^)]*)\)$/u.exec(color);
+  const match = color.match(/^rgba?\(([^)]*)\)$/u);
   if (!match) return 'invalid';
   const parts = match[1]!.split(/[,\s/]+/u).filter(Boolean);
   return '#' + parts.slice(0, 3).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('');
