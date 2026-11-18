@@ -4,7 +4,7 @@ import {canonicalPrevisValue} from '../../contracts/src/previs.ts';
 import {previsOutputIdentitySchema} from '../../contracts/src/previs-output.ts';
 import type {PrevisOutputIdentity} from '../../contracts/src/previs-output.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
-import {isPublishedProjectOutput} from './project-output-publication.ts';
+import {isPublishedProjectOutput} from './project-output-proof.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const previsOutputInputHash = (identity: PrevisOutputIdentity): string => createHash('sha256')
