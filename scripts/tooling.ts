@@ -2,6 +2,7 @@ import {mkdir, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, toolingEnvironment} from './lib/local-tooling.ts';
+import {BUILD_COMMAND_TIMING_STAGES, DESKTOP_TYPECHECK_TIMING_STAGES, hasDesktopTypecheckTiming, measureBuildStage} from './lib/build-timings.ts';
 
 interface ToolingFailure {
   readonly code?: string;
@@ -18,8 +19,11 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
   try {
     const options = parseArguments(args);
     if (options.command === 'typecheck') {
-      for (const command of await typecheckCommands(root)) {
-        const result = await executeCommand(command, {env: toolingEnvironment()});
+      for (const [index, command] of (await typecheckCommands(root)).entries()) {
+        const run = () => executeCommand(command, {env: toolingEnvironment()});
+        const result = hasDesktopTypecheckTiming()
+          ? await measureBuildStage(DESKTOP_TYPECHECK_TIMING_STAGES[index]!, run, {exitCode: value => value.code})
+          : await run();
         if (result.code !== 0) return result.code;
       }
       return 0;
@@ -33,11 +37,14 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     const commands = options.command === 'build' ? [...await typecheckCommands(root), ...buildCommands(root, entries, options.channel)]
       : [testCommand(root, await discoverTests(root, options), options.concurrency, process.execPath, options.reporter, options.timings)];
     if (options.command === 'test' && options.timings) await mkdir(path.dirname(path.join(root, ...options.timings.split('/'))), {recursive: true});
-    for (const command of commands) {
+    for (const [index, command] of commands.entries()) {
       const env = toolingEnvironment(process.env, {mediaPaths: options.command === 'test'});
-      const result = options.command === 'test' && options.compileCache
+      const run = async () => options.command === 'test' && options.compileCache
         ? await (await import('./lib/test-compile-cache.ts')).withOwnedTestCompileCache(env, cachedEnv => executeCommand(command, {env: cachedEnv}))
         : await executeCommand(command, {env});
+      const result = options.command === 'build'
+        ? await measureBuildStage(BUILD_COMMAND_TIMING_STAGES[index]!, run, {exitCode: value => value.code})
+        : await run();
       if (result.code !== 0) return result.code;
     }
     return 0;
