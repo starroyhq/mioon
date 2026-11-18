@@ -345,7 +345,8 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   for (const {name, call} of transports) {
     assert.deepEqual(await call('timeline.get', (({projectId}) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), timeline, `${name} observes the same restarted timeline`);
     for (const record of saved as {input:{projectId:unknown;expectedRevision?:unknown;requestId?:string};response:unknown}[]) assert.deepEqual(await call(operation, record.input), record.response, `${name} replays each historical replacement exactly`);
-    assert.deepEqual((await call('project.get', (({projectId}) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
+    if(name==='MCP')await call('project.get',{projectId},'UNKNOWN_OPERATION');
+    else assert.deepEqual((await call('project.get', (({projectId}) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
   }
   const replayed = await backend.storage();
   assert.deepEqual(replayed.timeline, persisted, 'restart/replay never rewrites timeline, history, cursor or immutable response bytes');

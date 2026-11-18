@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 type CommandData<O extends string>=O extends 'job.watch'|'generation.submit'|'job.get'?import('./helpers/strict-service-responses.ts').MediaJob & {submissionCount:number;requestId:string}:O extends 'export.watch'?import('./helpers/strict-timeline-core-types.ts').FixtureExport:ServiceResponse<O>;
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -164,7 +165,8 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   t.after(async () => {await proxy.close(); await service.close(); await rm(root, {recursive:true, force:true});});
   const command = async <O extends string>(operation:O, input: { name?: string; projectId?: unknown; title?: string; prompt?: string; duration?: number; referenceAssetIds?: unknown[]; shotId?: unknown; expectedRevision?: unknown; providerId?: string; jobId?: unknown; versionId?: unknown; clipId?: unknown; patch?: { durationFrames: number; }; purpose?: string; requestId?: `${string}-${string}-${string}-${string}-${string}`; exportId?: unknown; parameters?: { scenario: string; delayMs: number; }|{ scenario: string; delayMs: number; }; } = {}, flags: string[]|undefined = []) => succeeded(await cli([...operation.split('.'), '--input', JSON.stringify(input), ...flags], env)) as CommandData<O>;
   const callMcp = await connectMcp(t, env);
-  assert.deepEqual(succeeded(await cli(['schema'], env)), await callMcp('mioon_schema'), 'CLI and MCP discovery share exact schema metadata');
+  const cliCatalog=succeeded(await cli(['schema'],env)) as {operations:{operation:string}[]};
+  assert.deepEqual(mcpOperationCatalog(cliCatalog),await callMcp('mioon_schema'),'CLI and MCP share schema metadata except user-only operations');
   const capabilities = succeeded(await cli(['capabilities'], env));
   assert.deepEqual(capabilities, await rpc(service, 'provider.list'));
   assert.doesNotMatch(JSON.stringify(capabilities), /MAX_GENERATIONS|maxGenerations|usedGenerations|remainingGenerations/);
@@ -173,8 +175,8 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   assert.equal(doctor.connection.credentialsReloadedPerRequest, true);
   assert.ok(!JSON.stringify(doctor).includes(token)); assert.ok(!JSON.stringify(doctor).includes(root));
   const project = await command('project.create', {name:'CLI + MCP isolated mock workflow'});
-  assert.equal((await callMcp('project_get', {projectId:project.id})).project.id, project.id);
-  const mcpProject = await callMcp('project_create', {name:'Created by MCP; read by CLI'});
+  assert.equal((await callMcp('project_inspect',{projectId:project.id})).id,project.id);
+  const mcpProject=await command('project.create',{name:'Second user-created project'});
   const listed = succeeded(await cli(['rpc','project.list','--input','{}'], env));
   assert.ok(listed.some(item => item.id === mcpProject.id));
 

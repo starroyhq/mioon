@@ -369,10 +369,10 @@ test('project containers carry previs scenes without receipts or thumbnails; cur
 
 
 
-test('Mio creates and saves previs scenes but never thumbnails, and each operation declares its effects',()=>{
+test('Mio admits previs scenes and reviewed thumbnail tools, and each operation declares its effects',()=>{
  const admission=AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed: boolean; tier?: string}>;
  assert.deepEqual(operations.map(operation=>[admission[operation]?.allowed,admission[operation]?.tier]),
-  [[true,'local_irreversible'],[true,'local_reversible'],[false,undefined],[false,undefined]]);
+  [[true,'local_irreversible'],[true,'local_reversible'],[true,'local_irreversible'],[true,'read_only']]);
  for(const operation of operations)assert.ok(descriptions[operation],operation);
  assert.deepEqual(operations.map(operation=>[operationEffect(operation).readOnly,operationEffect(operation).databaseWrite,operationEffect(operation).paidGeneration]),
   [[false,true,false],[false,true,false],[false,true,false],[true,false,false]]);

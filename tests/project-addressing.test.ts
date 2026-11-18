@@ -31,7 +31,8 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 154); // Retire only public project.notes.set.
+  assert.equal(operations.length,157); // Retired notes stay absent; MP adds three project-scoped adapters.
+  for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list'])assert.ok(operations.includes(operation),operation);
   assert.equal(operations.includes('project.notes.set'), false);
   for (const operation of PREVIS_OUTPUT_OPERATIONS) {
     assert.ok(Object.hasOwn(schemas, operation), operation);

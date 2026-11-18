@@ -27,10 +27,12 @@ import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {projectFormatReadOnlyViewSchema} from '../packages/contracts/src/project-format-upgrade.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
-import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
+import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
 import {AGENT_TASK_TOOLS_LOAD_PARAMETERS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {operationDefinition,modelOperationDefinition} from '../packages/client/src/index.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {DEFAULT_TIMELINE_OUTPUT_PRESET,subjectVariantBatchSchema} from '../packages/contracts/src/index.ts';
 import {createMockImageAdapter} from '../packages/business/src/images/adapter.ts';
 import type {CreateServicesOptions} from '../packages/business/src/services.ts';
 import {createImageSettings} from '../packages/business/src/images/settings.ts';
@@ -252,10 +254,10 @@ test('retention audit failure rolls back the change classification, run revision
  assert.throws(()=>f.undo(change),/synthetic retention audit failure/);assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
 });
 test('all public operations have explicit admission; model cannot acquire administration or raw file authority',async t=>{
- const f=await fixture(t);assertAgentTaskOperationCoverage();assert.equal(Object.keys(AGENT_TASK_OPERATION_ADMISSION).length,Object.keys(schemas).length);
+ const f=await fixture(t);assertAgentTaskOperationCoverage();assert.equal(Object.keys(AGENT_TASK_OPERATION_ADMISSION).filter(operation=>Object.hasOwn(schemas,operation)).length,Object.keys(schemas).length);
  const names=new Set(f.tools.list().map(tool=>tool.operation));
- for(const operation of ['project.delete','agent.authorization.grant','lut.import','asset.import','project.get','timeline.get','timeline.undo','timeline.redo','job.retry','job.reconcile','image.task.observeRemote','export.cancel','export.output.get','task.disposition.markFailed','task.disposition.archiveCompleted','workspace.settings.get','workspace.settings.set','workspace.backup.create','workspace.backup.restore.stage'])assert.equal(names.has(operation),false,operation);
- for(const operation of ['project.rename','shot.update','timeline.clip.update','image.generate','generation.submit','task.wait','asset.importSelected','video.connection.list','export.activity.get','task.disposition.list'])assert.equal(names.has(operation),true,operation);
+ for(const operation of ['project.delete','agent.authorization.grant','lut.import','project.get','timeline.get','timeline.undo','timeline.redo','job.retry','job.reconcile','image.task.observeRemote','export.cancel','export.output.get','task.disposition.markFailed','workspace.settings.get','workspace.settings.set','workspace.backup.create','workspace.backup.restore.stage'])assert.equal(names.has(operation),false,operation);
+ for(const operation of ['project.rename','shot.update','timeline.clip.update','image.generate','generation.submit','task.wait','asset.importSelected','video.connection.list','export.activity.get','task.disposition.list','asset.import','task.disposition.archiveCompleted'])assert.equal(names.has(operation),true,operation);
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',requestId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',projectId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
 });
@@ -384,10 +386,11 @@ test('default project HTTP runtime loads the three Mio canvas tools while the le
  assert.equal(loaded?.status,'completed');
  assert.deepEqual(loaded?.result,{names:mioCanvasNames});
 });
-test('format-4 canvas tools change only three serialized definitions and the loader name enum',()=>{
+test('format-4 canvas tools change only the host canvas definitions, framed thumbnails and loader enum',()=>{
+ const hostNames=[...mioCanvasNames,'mioon_canvas_copy_snapshot','mioon_canvas_paste','mioon_canvas_duplicate'];
  const tools=listAgentTaskToolsForChannel(false,{frameTransaction:true});
- const previous=tools.filter(tool=>!mioCanvasNames.includes(tool.name))
-  .map(tool=>tool.name==='mioon_tools_load'?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool);
+ const previous=tools.filter(tool=>!hostNames.includes(tool.name))
+  .map(tool=>tool.name==='mioon_tools_load'?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool.operation.startsWith('previs.thumbnail.')?{...tool,parameters:tool.operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:AGENT_TASK_TOOL_SCHEMAS[tool.operation]}:tool);
  const officialMessages=presetConfigurations().find(config=>config.presetId==='anthropic'&&config.protocol==='anthropic_messages');
  assert.ok(officialMessages);
  const configs=[...(['chat_completions','responses','anthropic_messages'] as const).map(defaultTestAgentConfiguration),officialMessages];
@@ -402,19 +405,25 @@ test('format-4 canvas tools change only three serialized definitions and the loa
    const definition=config.protocol==='chat_completions'?tool.function:tool;
    assert.ok(record(definition)&&typeof definition.name==='string');
    const {name}=definition;
-   if(mioCanvasNames.includes(name)){newNames.push(name);return false;}
+   if(hostNames.includes(name)){newNames.push(name);return false;}
+   if(name==='mioon_previs_thumbnail_get'||name==='mioon_previs_thumbnail_set'){
+    const field=config.protocol==='anthropic_messages'?'input_schema':'parameters';
+    const params=definition[field];assert.ok(record(params)&&record(params.properties));
+    delete params.properties.framePresetId;if(Array.isArray(params.required))params.required=params.required.filter(field=>field!=='framePresetId');
+   }
    if(name==='mioon_tools_load'){
     const params=config.protocol==='anthropic_messages'?definition.input_schema:definition.parameters;
     assert.ok(record(params)&&record(params.properties)&&record(params.properties.names));
     const {items,maxItems}=params.properties.names;
     assert.ok(record(items)&&Array.isArray(items.enum));
-    assert.deepEqual(items.enum,[...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.items.enum,...mioCanvasNames]);
-    assert.equal(maxItems,AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.maxItems);
-    items.enum=items.enum.slice(0,-mioCanvasNames.length);
+    assert.deepEqual(items.enum,[...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.items.enum,...['mioon_canvas_copy_snapshot','mioon_canvas_paste','mioon_canvas_duplicate'],...mioCanvasNames]);
+    assert.equal(maxItems,AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.maxItems+hostNames.length);
+    params.properties.names.maxItems=AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.maxItems;
+    items.enum=items.enum.slice(0,-hostNames.length);
    }
    return true;
   });
-  assert.deepEqual(newNames,mioCanvasNames);
+  assert.deepEqual(newNames,['mioon_canvas_copy_snapshot','mioon_canvas_paste','mioon_canvas_duplicate',...mioCanvasNames]);
   assert.equal(JSON.stringify(body),build(previous),`${config.presetId}/${config.protocol}`);
  }
 });
@@ -758,7 +767,7 @@ test('cancelled frame wait returns the original cancellation instead of waiting 
  const f=await fixture(t,{frameOptions:{autoRun:false}}),bytes=mp4HeaderFixture('Synthetic cancelled frame source; decoder disabled'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const accepted=await f.execute('frame.extract',{sourceAssetId:id,sourceHash:sha256,sourceFrame:0});assert.ok(record(accepted.step.result));
- const taskId=String(accepted.step.result.id);await f.services.call('frame.task.cancelQueued',{projectId:f.projectId,taskId,expectedRevision:accepted.step.result.revision,requestId:randomUUID()});
+ const taskId=String(accepted.step.result.id);await f.execute('frame.task.cancelQueued',{taskId,expectedRevision:accepted.step.result.revision});
  const prepared=f.tools.prepare({projectId:f.projectId,operation:'task.wait',input:{kind:'frame',id:taskId}}),recovered=f.tools.recoverWait(prepared);assert.ok(record(recovered));assert.equal(recovered.state,'cancelled_before_start');
  const waited=await f.execute('task.wait',{kind:'frame',id:taskId});assert.equal(waited.step.status,'completed');assert.ok(record(waited.step.result));assert.equal(waited.step.result.state,'cancelled_before_start');assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM frame_tasks').get()!.n,1);
 });
@@ -924,6 +933,11 @@ test('trusted task approval bridges the existing image review and retains uncert
  for(let i=0;i<100;i++){if(f.store.db.prepare('SELECT state FROM image_tasks LIMIT 1').get()?.state==='outcome_unknown')break;await delay(5);}
  assert.equal(submitted,1);assert.equal(f.store.db.prepare('SELECT state FROM image_reviews LIMIT 1').get()!.state,'dispatched');assert.equal(f.store.db.prepare('SELECT postAttempts FROM image_reviews LIMIT 1').get()!.postAttempts,1);
  assert.equal(f.journal.step(result.step.id).cost,'unknown');
+ const review=f.store.db.prepare('SELECT id FROM image_reviews LIMIT 1').get()!;
+ const observed=await f.execute('image.review.get',{reviewId:review.id});assert.ok(record(observed.step.result));assert.equal(observed.step.result.id,review.id);
+ const listed=await f.execute('image.review.list',{});assert.match(JSON.stringify(listed.step.result),new RegExp(String(review.id)));
+ assert.doesNotMatch(JSON.stringify([observed.step.result,listed.step.result]),/canonicalInput|canonicalIntent|apiKey|credentialRef/);
+
  const task=f.store.db.prepare('SELECT id FROM image_tasks LIMIT 1').get()!;await assert.rejects(f.tools.wait(f.projectId,{kind:'image',id:task.id}),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(submitted,1);
 });
 test('video worker has a final grant fence after its durable claim and never resubmits a blocked attempt',async t=>{
@@ -1164,7 +1178,7 @@ test('storyboard acceptance binds its task to the step and a stopped run retires
  const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:(async()=>{throw Error('A held storyboard must not decode');}) as never}});
  const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Paused'),{code:'AGENT_TASK_PAUSED'});});t.after(remove);
  const source=await storyboardSource(f);
- assert.deepEqual(AGENT_TASK_OPERATION_ADMISSION['scene.shots.create'],{allowed:true,tier:'local_irreversible'});assert.equal(AGENT_TASK_OPERATION_ADMISSION['scene.shots.undo'].allowed,false);
+ assert.deepEqual(AGENT_TASK_OPERATION_ADMISSION['scene.shots.create'],{allowed:true,tier:'local_irreversible'});assert.deepEqual(AGENT_TASK_OPERATION_ADMISSION['scene.shots.undo'],{allowed:true,tier:'local_irreversible'});
  const accepted=await f.execute('scene.shots.create',{sourceAssetId:source.id,sourceHash:source.sha256,resultId:source.resultId,segments:[1,2]});
  assert.ok(record(accepted.step.result));assert.deepEqual([accepted.step.result.kind,accepted.step.result.state,accepted.step.result.requestId],['shots','queued',accepted.step.id]);
  const taskId=String(accepted.step.result.id);
@@ -1191,6 +1205,7 @@ test('a storyboard built for the Assistant records its images and shots as one l
  assert.equal(projectAgentTaskUndo(f.store,f.projectId,late).get(late[0]!.id)?.undoDisposition,'retain','the user undoes the batch, not the run');
  const waited=await f.execute('task.wait',{kind:'scene',id:taskId});assert.ok(record(waited.step.result));assert.equal(waited.step.result.state,'succeeded');
  assert.ok(record(waited.step.result.undo)&&waited.step.result.undo.available===true);
+ const undone=await f.execute('scene.shots.undo',{taskId,expectedRevision:waited.step.result.revision});assert.ok(record(undone.step.result));assert.equal(undone.step.result.state,'undone');assert.equal(f.store.list('shots',f.projectId).length,0);
 });
 
 
@@ -1263,4 +1278,106 @@ test('candidate Mio live paging and execution ignore archived canvas while old r
  const unrelated=await f.execute('node.create',{type:'text',position:{x:0,y:0},label:'Unrelated Mio node'});
  assert.equal(projectAgentTaskUndo(store,projectId,unrelated.changes).get(unrelated.changes[0]!.id)?.undoDisposition,'undo');
  f.undo(unrelated.changes[0]!);
+});
+
+for(const format4 of [false,true])test(`parity read tools and project versions operate only on current format ${format4?4:3}`,async t=>{
+ const f=await fixture(t,{},new Map(),format4);
+ for(const [operation,input] of [
+  ['asset.media.status.list',{}],['asset.media.location.list',{}],['image.service.list',{}],['image.review.list',{}],['project.version.list',{}],
+ ] as const){
+  const observed=await f.execute(operation,input);
+  assert.equal(observed.step.status,'completed',operation);
+  assert.equal(observed.changes.length,0,operation);
+  assert.doesNotMatch(JSON.stringify(observed.step.result),/locationToken|directoryPath|credentialRef|dataBase64/);
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input:{...input,unexpected:true}}),{code:'VALIDATION_ERROR'},operation);
+ }
+ const saved=await f.execute('project.version.save',{name:'Mio saved version'});
+ assert.ok(record(saved.step.result)&&record(saved.step.result.version));
+ assert.equal(saved.changes.length,0,'a saved content version is retained instead of advertising whole-project undo');
+ const versionId=String(saved.step.result.version.id),preview=await f.execute('project.version.preview',{versionId});
+ assert.ok(record(preview.step.result)&&record(preview.step.result.version));assert.equal(preview.step.result.version.id,versionId);
+ assert.deepEqual(f.tools.prepare({projectId:f.projectId,operation:'project.version.preview',input:{versionId}}).referencedTargets?.map(({kind,id})=>({kind,id})),[{kind:'project',id:f.projectId}]);
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'project.version.preview',input:{versionId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TARGET'});
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'image.review.get',input:{reviewId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TARGET'});
+ const prepared=f.tools.prepare({projectId:f.projectId,operation:'project.version.save',input:{name:'Denied version'}});assert.equal(prepared.forceApproval,true);
+ const count=f.store.db.prepare('SELECT count(*) AS n FROM main.project_versions').get()!.n;
+ await assert.rejects(f.execute('project.version.save',{name:'Denied version'},{beforeEffect(){throw Object.assign(Error('Denied'),{code:'AGENT_TASK_APPROVAL_REQUIRED'});}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+ assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM main.project_versions').get()!.n,count);
+});
+
+test('parity scene controls and queued image cancellation preserve domain CAS and confirmation gates',async t=>{
+ const f=await fixture(t,{imageOptions:{autoRun:false},sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:storyboardFrames as never}}),source=await storyboardSource(f);
+ const cuts=f.tools.prepare({projectId:f.projectId,operation:'scene.cuts.save',input:{assetId:source.id,sourceHash:source.sha256,expectedResultId:source.resultId,cuts:[30,60]}});
+ assert.equal(cuts.forceApproval,true);
+ const saved=await f.execute('scene.cuts.save',{assetId:source.id,sourceHash:source.sha256,expectedResultId:source.resultId,cuts:[30,60]});assert.ok(record(saved.step.result));
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'scene.cuts.save',input:{assetId:source.id,sourceHash:source.sha256,expectedResultId:source.resultId,cuts:[60,30]}}),{code:'VALIDATION_ERROR'});
+ const queued=await f.execute('image.generate',{name:'Cancel this queued image',prompt:'Synthetic local image',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}});assert.ok(record(queued.step.result));
+ const input={taskId:String(queued.step.result.id),expectedRevision:Number(queued.step.result.revision)};
+ assert.equal(f.tools.prepare({projectId:f.projectId,operation:'image.task.cancelQueued',input}).forceApproval,true);
+ await assert.rejects(f.execute('image.task.cancelQueued',input,{beforeEffect(){throw Object.assign(Error('Denied'),{code:'AGENT_TASK_APPROVAL_REQUIRED'});}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+ assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(input.taskId)?.state,'queued');
+ const cancelled=await f.execute('image.task.cancelQueued',input);assert.ok(record(cancelled.step.result));assert.match(JSON.stringify(cancelled.step.result),/cancelled_before_dispatch/);
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'image.task.cancelQueued',input:{...input,taskId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TARGET'});
+ for(const operation of ['scene.task.cancel','scene.shots.undo']){
+  const task=f.store.db.prepare('SELECT id,revision FROM scene_tasks WHERE kind=\'detect\'').get()!;
+  const prepared=f.tools.prepare({projectId:f.projectId,operation,input:{taskId:task.id,expectedRevision:task.revision}});assert.equal(prepared.forceApproval,true);
+  await assert.rejects(f.execute(operation,{taskId:task.id,expectedRevision:task.revision},{beforeEffect(){throw Object.assign(Error('Denied'),{code:'AGENT_TASK_APPROVAL_REQUIRED'});}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input:{taskId:randomUUID(),expectedRevision:1}}),{code:'AGENT_TASK_INVALID_TARGET'});
+ }
+});
+
+test('bounded asset.import alias cannot admit raw bytes, absolute paths or foreign selections',async t=>{
+ const f=await fixture(t),operation='asset.import';
+ for(const input of [{name:'forged.png',mimeType:'image/png',dataBase64:'AA=='},{source:'project_file',path:'/secret.png'},{source:'project_file',path:'../secret.png'},{source:'selected',handle:randomUUID(),path:'forged.png'}])
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input}));
+ await assert.rejects(f.execute(operation,{source:'selected',handle:randomUUID()}),{code:'AGENT_TASK_INVALID_TARGET'});
+ const selected=await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'selected.png',mimeType:'image/png',dataBase64:storyboardPng(0).toString('base64')});assert.ok(record(selected));
+ const imported=await f.execute(operation,{source:'selected',handle:selected.id});assert.ok(record(imported.step.result));assert.equal(imported.step.result.mimeType,'image/png');
+ assert.doesNotMatch(JSON.stringify(imported.step.result),/dataBase64|relativePath/);
+});
+
+for(const format4 of [false,true])test(`parity variant controls, thumbnail bytes and completed archive succeed in format ${format4?4:3}`,async t=>{
+ const f=await fixture(t,{imageOptions:{autoRun:false}},new Map(),format4),bytes=await renderMockImagePng({width:768,height:1024});
+ const asset=await f.services.call('asset.import',{projectId:f.projectId,name:'Variant source.png',mimeType:'image/png',dataBase64:bytes.toString('base64')});assert.ok(record(asset));
+ const subject=await f.services.call('subject.create',{projectId:f.projectId,kind:'character',name:'Variant subject',assetId:asset.id,requestId:randomUUID()});assert.ok(record(subject));
+ const batch=subjectVariantBatchSchema.parse(await f.services.call('subject.variants.create',{projectId:f.projectId,subjectId:subject.id,sourceVersionId:subject.headVersionId,kind:'angle',items:[{kind:'angle',position:'left',focal:'standard'}],providerId:'mock',model:IMAGE_MODELS.mock,requestId:randomUUID()}));
+ for(const [operation,input] of [['subject.variants.list',{subjectId:subject.id}],['subject.variants.get',{batchId:batch.id}]] as const){
+  const result=await f.execute(operation,input);assert.equal(result.step.status,'completed');assert.equal(result.changes.length,0);
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input:{...input,unexpected:true}}),{code:'VALIDATION_ERROR'});
+ }
+ const retryInput={batchId:batch.id,position:1,expectedRevision:batch.revision};
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'subject.variants.retry',input:retryInput,beforeTargetRead(target){if(target.kind==='asset'&&target.id===asset.id)throw Object.assign(Error('Skipped source'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});
+ assert.ok(f.tools.prepare({projectId:f.projectId,operation:'subject.variants.retry',input:retryInput}).referencedTargets?.some(target=>target.kind==='asset'&&target.id===asset.id));
+ const pending=await f.services.call('image.generate',batch.items[0]!.imageInput);assert.ok(record(pending));
+ await f.services.call('image.task.cancelQueued',{projectId:f.projectId,taskId:pending.id,expectedRevision:pending.revision,requestId:randomUUID()});
+ const undoInput={batchId:batch.id,expectedRevision:batch.revision};
+ assert.equal(f.tools.prepare({projectId:f.projectId,operation:'subject.variants.undo',input:undoInput}).forceApproval,true);
+ await assert.rejects(f.execute('subject.variants.undo',undoInput,{beforeEffect(){throw Object.assign(Error('Denied'),{code:'AGENT_TASK_APPROVAL_REQUIRED'});}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+ const undone=await f.execute('subject.variants.undo',undoInput);assert.match(JSON.stringify(undone.step.result),/undone/);
+ for(const operation of ['subject.variants.get','subject.variants.retry','subject.variants.undo']){
+  const input={batchId:randomUUID(),...(operation==='subject.variants.get'?{}:{expectedRevision:1}),...(operation==='subject.variants.retry'?{position:1}:{})};
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input}),{code:'AGENT_TASK_INVALID_TARGET'});
+ }
+ const previs=await f.services.call('previs.create',{projectId:f.projectId,position:{x:0,y:0},requestId:randomUUID()});assert.ok(record(previs));
+ const frame=format4?{framePresetId:DEFAULT_TIMELINE_OUTPUT_PRESET}:{},dataBase64=Buffer.from([255,216,255,192,0,17,8,0,128,1,0,3,1,34,0,2,17,1,3,17,1,255,218,0,12,3,1,0,2,17,3,17,0,63,0,18,52,255,217]).toString('base64');
+ const thumbnail={nodeId:previs.id,slot:'card',sceneRevision:1,dataBase64,...frame};
+ assert.equal(f.tools.prepare({projectId:f.projectId,operation:'previs.thumbnail.set',input:thumbnail}).forceApproval,true);
+ await assert.rejects(f.execute('previs.thumbnail.set',thumbnail,{beforeEffect(){throw Object.assign(Error('Denied'),{code:'AGENT_TASK_APPROVAL_REQUIRED'});}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+ await f.execute('previs.thumbnail.set',thumbnail);
+ const read=await f.execute('previs.thumbnail.get',{nodeId:previs.id,slots:['card'],...frame});assert.match(JSON.stringify(read.step.result),new RegExp(dataBase64));
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'previs.thumbnail.set',input:{...thumbnail,dataBase64:'AAAA'}}),{code:'VALIDATION_ERROR'});
+ const jobId=randomUUID();f.store.put('jobs',{id:jobId,projectId:f.projectId,status:'failed',requestId:randomUUID(),revision:1});
+ const input={targets:[{kind:'generation',taskId:jobId,expectedRevision:0,expectedStatus:'failed'}]};
+ assert.equal(f.tools.prepare({projectId:f.projectId,operation:'task.disposition.archiveCompleted',input}).forceApproval,true);
+ await assert.rejects(f.execute('task.disposition.archiveCompleted',input,{beforeEffect(){throw Object.assign(Error('Denied'),{code:'AGENT_TASK_APPROVAL_REQUIRED'});}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+ assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM main.task_dispositions').get()!.n,0);
+ const archived=await f.execute('task.disposition.archiveCompleted',input);assert.match(JSON.stringify(archived.step.result),/"archived":true/);
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'task.disposition.archiveCompleted',input:{targets:[{...input.targets[0],taskId:randomUUID()}]}}),{code:'AGENT_TASK_INVALID_TARGET'});
+});
+
+test('Mio scene cancellation uses the queued task revision without decoding or creating shots',async t=>{
+ const f=await fixture(t,{sceneOptions:{autoRun:false}}),bytes=mp4HeaderFixture('Synthetic cancelled scene'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
+ const accepted=await f.services.call('scene.detect',{projectId:f.projectId,sourceAssetId:id,sourceHash:sha256,requestId:randomUUID()});assert.ok(record(accepted));
+ const cancelled=await f.execute('scene.task.cancel',{taskId:accepted.id,expectedRevision:accepted.revision});assert.ok(record(cancelled.step.result));assert.equal(cancelled.step.result.state,'cancelled_before_start');assert.deepEqual(f.store.list('shots',f.projectId),[]);
 });

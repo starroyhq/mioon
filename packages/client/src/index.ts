@@ -1,7 +1,7 @@
 import {publicOperationSchemas as schemas, publicOperationDescriptions as descriptions} from '@mioon/contracts/public-operations';
 import {s1PublicOperationSchemas,isS1PublicOperation} from '../../contracts/src/asset-generation.ts';
 import {previsPublicationSchemas,previsPublicationEffects,isPrevisPublicationOperation,isPrevisPublicationResponse} from '../../contracts/src/previs-publication.ts';
-import {assetMediaPublicSchemas,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
+import {assetMediaPublicSchemas,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaLocationListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
 import type {TrustedAssetMediaOperation} from '../../contracts/src/asset-media.ts';
 import {parseProjectApiPath,projectApiPath,projectRpcPath} from '../../contracts/src/project-file.ts';
 import {isGenerationAspectNotApplied,isGenerationAspectResponse} from '../../contracts/src/generation-aspect.ts';
@@ -153,7 +153,7 @@ export function operationDefinition(operation: string): OperationDefinition {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const shared = jsonSchema(operationSchemas[operation]);
   const inputSchema = isEntityAddressedOperation(operation) ? withProjectAddress(shared) : shared;
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isAssetMediaOperation(operation) ? assetMediaEffects[operation] : isPrevisPublicationOperation(operation) ? previsPublicationEffects[operation] : operationEffect(operation)};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isAssetMediaOperation(operation) ? assetMediaEffects[operation] : isPrevisPublicationOperation(operation) ? previsPublicationEffects[operation] : operation==='image.service.list'?operationEffect('provider.list'):operation==='canvas.copy.snapshot'?{...operationEffect('provider.list'),idempotent:false,notes:'Reads bounded canvas metadata into a short-lived in-memory snapshot; no project, database or file writes.'}:operationEffect(operation)};
 }
 /** Definition for the fixed built-in model catalog. Public CLI/MCP schema
  * discovery can evolve without changing Mio's reviewed request fingerprints. */
@@ -384,6 +384,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     // Parse the exact shared contracts before sending. Required and opt-in request
     // IDs stay caller-owned; this client never creates them and never resubmits.
     if (!Object.hasOwn(schemas, operation) && !isCanvasEditingOperation(operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
+    if(operation==='image.service.list')return generationImages<T>('image.service.list',input,options);
     if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
     let parsed: Record<string, unknown>;
     if (isCanvasEditingOperation(operation)) {
@@ -426,7 +427,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const resultRecord = result as Record<string, unknown> | null | undefined;
     if(isPrevisPublicationOperation(operation)&&!isPrevisPublicationResponse(operation,parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid previs publication acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:operation==='previs.output.publish'}});
-    if(operation==='asset.media.status.list'&&!assetMediaStatusListResponseSchema.safeParse(result).success || operation==='asset.media.prepare'&&!assetMediaPrepareResponseSchema.safeParse(result).success)
+    if(operation==='asset.media.status.list'&&!assetMediaStatusListResponseSchema.safeParse(result).success || operation==='asset.media.location.list'&&!assetMediaLocationListResponseSchema.safeParse(result).success || operation==='asset.media.prepare'&&!assetMediaPrepareResponseSchema.safeParse(result).success)
       throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid asset media response.');
     if (isProjectBackupOperation(operation) && !isProjectBackupResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project backup response.', {details: uncertainRequestDetails(body)});

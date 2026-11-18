@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 
 
@@ -307,7 +308,7 @@ test('six optional mutation keys retain exact results through lost HTTP response
   await t.test('all discovery surfaces expose optional keys and conservative non-idempotent hints', async () => {
     const before = (await backend.storage()), dataVersion = (await backend.version());
     const catalog = (await runCli(t,['schema'],backend.env)).data as TestCatalog;
-    assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
+    assert.deepEqual((await mcp.call('mioon_schema')).data, mcpOperationCatalog(catalog));
     const optionalKeyOperations = optionalRequestIdOperations(catalog);
     assert.deepEqual(optionalKeyOperations, ['asset.import',...operations].sort(), 'public S1 upload adds its optional key beside the approved six mutations');
     assert.deepEqual(catalog.operations.find(item=>item.operation==='asset.import'),operationDefinition('asset.import'));

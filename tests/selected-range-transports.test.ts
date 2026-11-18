@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
@@ -87,7 +88,7 @@ async function transports(t: test.TestContext, f: SelectedRangeFixture) {
 test('actual offline CLI and official MCP discover the same optional strict selected-range schema and unchanged operation effects', {timeout: 45_000}, async t => {
   const catalog = discoverSchema() as TestCatalog, mcp = await officialMcp(t);
   assert.deepEqual((await cli(t, undefined, ['schema'])).data, catalog);
-  assert.deepEqual((await mcp.call('mioon_schema', {})).data, catalog);
+  assert.deepEqual((await mcp.call('mioon_schema', {})).data, mcpOperationCatalog(catalog));
   const tools = (await mcp.client.listTools()).tools as TestTool[];
   for (const operation of ['timeline.render', 'timeline.export.preflight']) {
     const definition = (discoverSchema({operation}) as TestOperationDefinition), tool = tools.find(value => value.name === operation.replaceAll('.', '_'));

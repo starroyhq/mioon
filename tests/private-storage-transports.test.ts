@@ -36,7 +36,7 @@ async function mcp(t: test.TestContext, env: { PATH: string; HOME: string; LANG:
   t.after(() => client.close());
   await client.connect(transport);
   return {client, get stderr() {return stderr;}, async list() {
-    const response = await client.callTool({name: 'project_list', arguments: {}});
+    const response = await client.callTool({name: 'provider_list', arguments: {}});
     return {response, result: JSON.parse((response.content as Array<{type: string; text: string}>).find((item: { type: string; }) => item.type === 'text')!.text)};
   }};
 }
@@ -59,13 +59,13 @@ test('Q2 actual HTTP, CLI and official MCP accept private files and refuse unsaf
   const acceptedCli = await cli(environment(backend.url, safeToken));
   assert.equal(acceptedCli.code, 0); assert.deepEqual(acceptedCli.result.data, expected);
   const safeMcp = await mcp(t, environment(backend.url, safeToken));
-  assert.deepEqual((await safeMcp.list()).result.data, expected);
+  assert.deepEqual((await safeMcp.list()).result.data,await rpc('provider.list'));
 
   const refusedCli = await cli(environment(backend.url, unsafeToken));
   assert.notEqual(refusedCli.code, 0); assert.equal(refusedCli.result.ok, false);
   assert.equal(refusedCli.result.error.code, 'CONNECTION_CONFIG_ERROR');
   const unsafeMcp = await mcp(t, environment(backend.url, unsafeToken));
-  const listing = await unsafeMcp.client.listTools(); assert.ok(listing.tools.some(tool => tool.name === 'project_list'));
+  const listing = await unsafeMcp.client.listTools(); assert.ok(listing.tools.some(tool => tool.name === 'provider_list'));
   const refusal = await unsafeMcp.list();
   assert.equal(refusal.response.isError, true); assert.equal(refusal.result.error.code, 'CONNECTION_CONFIG_ERROR');
   for (const output of [refusedCli.stdout + refusedCli.stderr, JSON.stringify(refusal), unsafeMcp.stderr]) {

@@ -226,7 +226,8 @@ test('split HTTP, CLI, MCP and shared client agree on durable results, errors, u
   for (const {name, call} of transports) {
     assert.deepEqual(await call('timeline.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), timeline, `${name} sees the same restarted timeline`);
     for (const record of saved as {input:unknown;response:unknown}[]) assert.deepEqual(await call(operation, record.input), record.response, `${name} replays old split responses exactly`);
-    assert.deepEqual((await call('project.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
+    if(name==='MCP')await call('project.get',{projectId},'UNKNOWN_OPERATION');
+    else assert.deepEqual((await call('project.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
   }
   assert.deepEqual((await backend.storage(projectId)), persisted, 'replay after process restart cannot change timeline, journal, cursor or saved response bytes');
   assert.equal(persisted.timeline_requests.filter(row => row.requestId === firstInput.requestId).length, 1);

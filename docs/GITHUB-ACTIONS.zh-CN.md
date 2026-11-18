@@ -20,6 +20,8 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 
 测试 job 不安装随后会被替代的系统 FFmpeg，也不安装只供桌面窗口冒烟使用的 GTK、Xvfb、DBus 和 xdotool 依赖。FFmpeg 仍依赖 Ubuntu 的动态库，因此准备 job 和各消费者保留相同的媒体依赖包；分片不会重新下载源码或编译。字幕使用仓库内固定哈希的字体文件，无需下载整套系统 Noto CJK；DejaVu 为模拟视频的英文标记提供默认字体。apt 步骤独立限时 10 分钟，HTTP/HTTPS 下载超时为 30 秒，最多重试两次；超限直接失败，不占满整个测试窗口。发布 job 仍保留生产应用构建、桌面运行依赖和真实安装包冒烟；当前 macOS 打包明确安装并选择 Homebrew 的 `ffmpeg-full`；Linux 仍保留源码 CI 与媒体测试
 
+Mio 运行时回归按模型协议、控制与预算、撤销、生成、后台任务、会话、消息压缩、冲突八个场景放在 `tests/agent-task-runtime-*-v2.test.ts`，共用夹具在 `tests/helpers/agent-task-runtime-fixture.ts`。每个文件由 full 清单自动发现，并在独立进程中运行。109 步离线压缩用例位于 control 文件；Node 的 TAP 输出可能在长用例执行期间停留在先前的用例，定位慢测时应核对用例自身的 `duration_ms` 和采样栈，不能仅按相邻日志的时间间隔归因。新增文件的实测耗时在拆分合入 main、整轮检查成功后，按上面的流程通过独立 PR 刷新，不在拆分 PR 中估填
+
 项目文件测试的媒体 fixture 同样优先使用已选定的 `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH`，避免 Linux 已安装工具却因检测 Mac 目录而跳过导入、导出和备份用例。没有显式路径时保留既有测试目录约定；显式路径不存在时不能用备用目录掩盖配置错误
 
 Linux full 完整检出现有 Git 历史，以读取历史回归中固定提交的源码；历史对象不足时直接失败，不改用当前源码替代旧基线

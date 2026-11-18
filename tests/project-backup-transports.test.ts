@@ -2,7 +2,7 @@ import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp, mkdir, rm, writeFile, readFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, rm, writeFile, readFile, readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -89,7 +89,7 @@ test('client validates backup replies and preserves restore recovery identity wi
   assert.equal(sends, 1);
 });
 
-test('closed-project backup operations agree over HTTP CLI and MCP; recovery returns one new project', {timeout: 120_000}, async t => {
+test('backup queries agree across transports; user-only recovery returns one new project', {timeout: 120_000}, async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-v2-backup-wire-'));
   let server = await startServer({dataDir: root, port: 0, token});
   const mcp = new McpClient({name: 'v2-backup-wire', version: '1'}, {capabilities: {}});
@@ -140,11 +140,15 @@ test('closed-project backup operations agree over HTTP CLI and MCP; recovery ret
   assert.deepEqual(await tool('project.backup.status', input), savedStatus);
   const target = path.join(root, 'projects', 'Recovered'); await mkdir(target, {mode: 0o755});
   const restoration = {...selection, requestId: randomUUID(), projectFile: path.join(target, 'Recovered.mioon')};
+  const refused=await mcp.callTool({name:'project_backup_restore',arguments:restoration});
+  assert.equal(refused.isError,true);assert.equal((refused.structuredContent as {error:{code:string}}).error.code,'UNKNOWN_OPERATION');
+  assert.equal((await mcp.listTools()).tools.some(tool=>tool.name==='project_backup_restore'),false);
+  assert.deepEqual(await readdir(target),[]);
   const restored = await rpc<ProjectBackupRestoreResponse>('project.backup.restore', restoration);
   assert.notEqual(restored.project.projectId, original.id);
   assert.equal(restored.project.projectFile, restoration.projectFile);
   assert.deepEqual(await cli('project.backup.restore', restoration), restored);
-  assert.deepEqual(await tool('project.backup.restore', restoration), restored);
+
   const recoveredId = restored.project.projectId, windowId = randomUUID();
   const opened = await server.projectEntries.acquire({projectId: recoveredId, windowId,
     expectedProjectFile: restoration.projectFile, deferRecent: true});

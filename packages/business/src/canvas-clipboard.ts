@@ -279,7 +279,7 @@ export function createCanvasClipboard(store: ProjectStore, owner: object, time: 
     return {projectId: store.projectId, documentId: input.documentId, snapshotId, count: snapshot.cards.length};
   }
 
-  function paste(input: CanvasPasteInput, at: string) {
+  function paste(input: Pick<CanvasPasteInput, 'projectId' | 'documentId' | 'snapshotId' | 'viewport'>, at: string) {
     if (!store.db.isTransaction) throw new TypeError('Canvas paste requires the project transaction');
     const entry = cache.get(input.snapshotId);
     if (!entry || entry.expiresAt <= time() || entry.documentId !== input.documentId || entry.projectId !== store.projectId ||

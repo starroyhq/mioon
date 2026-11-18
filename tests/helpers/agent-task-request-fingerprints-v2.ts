@@ -59,6 +59,8 @@ export interface TaskRequestFingerprintFile {
  * bytes. The legacy scenarios edit a disposable clone of the read-only source. */
 export interface TaskRequestFingerprintHarness {
   format?: FingerprintProjectFormat;
+  /** Omitted for full captures and fixture updates, preserving their order. */
+  protocol?: AgentProtocol;
   createFixturePorts?: (store: ProjectStore) => {
     services: ReturnType<typeof createServices>;
     createAuthorizations: (settings: Awaited<ReturnType<typeof createAgentSettings>>) => ReturnType<typeof createTestAuthorizations>;
@@ -463,6 +465,8 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
  * Only Date is fixed; real IDs and temporary workspace paths stay unmodified. */
 export async function collectTaskRequestFingerprints(harness: TaskRequestFingerprintHarness = {}): Promise<TaskRequestFingerprint[]> {
   const fingerprints: TaskRequestFingerprint[] = [];
+  const protocols = harness.protocol === undefined ? FINGERPRINT_PROTOCOLS : [harness.protocol];
+  assert.ok(protocols.every(protocol => FINGERPRINT_PROTOCOLS.some(value => value === protocol)));
   mock.timers.enable({apis: ['Date'], now: Date.parse(fixtureTime)});
   try {
     async function capture(protocol: AgentProtocol, scenario: FingerprintScenario, official = false): Promise<void> {
@@ -480,10 +484,10 @@ export async function collectTaskRequestFingerprints(harness: TaskRequestFingerp
         throw new Error(`Fingerprint scenario failed: ${protocol}/${scenario}`, {cause: error});
       } finally {await f.close(completed && harness.afterClose ? () => harness.afterClose!({root: f.root, requests: f.requests, intents: f.intents, protocol, scenario}) : undefined);}
     }
-    for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of FINGERPRINT_SCENARIOS) await capture(protocol, scenario);
+    for (const protocol of protocols) for (const scenario of FINGERPRINT_SCENARIOS) await capture(protocol, scenario);
     // Keep scenario order stable. H1b adds one real loading request before each
     // canvas workflow; diagnostic scenarios retain their original requests.
-    for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of OFFICIAL_FINGERPRINT_SCENARIOS) await capture(protocol, scenario, true);
+    for (const protocol of protocols) for (const scenario of OFFICIAL_FINGERPRINT_SCENARIOS) await capture(protocol, scenario, true);
     return fingerprints;
   } finally {mock.timers.reset();}
 }
