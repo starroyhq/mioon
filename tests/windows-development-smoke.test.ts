@@ -9,7 +9,7 @@ import {cleanEnvironment} from '../.github/scripts/media-environment.ts';
 import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArguments, runWindowsDevelopmentSmoke,
   readWindowsPackageMetadata, smokeFailureCode, terminateOwnedWindowsTree, validateWindowsDevelopmentPackage,
   validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment,
-  WINDOWS_SMOKE_PHASES, appCheckFailureName, phaseMarkerName} from '../.github/scripts/windows-desktop-smoke.ts';
+  WINDOWS_SMOKE_PHASES, appCheckFailureName, phaseMarkerName, startupFailureReason} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
 const args = [`--binary=${binary}`, `--output=${output}`, `--workspace=${workspace}`];
@@ -297,6 +297,21 @@ test('a packaged app check failure is reported by fixed check name without raw t
     assert.equal(result.ok, false);
     assert.equal((result as {code: string}).code, 'WINDOWS_SMOKE_REPORT_INVALID');
     assert.equal(/private|synthetic/.test(JSON.stringify(raw.writes)), false);
+  }
+});
+
+test('an early storage or helper failure becomes a fixed reason instead of a dialog', async () => {
+  const f = fixture();
+  f.services.launch = async () => {
+    f.file(`${workspace}\\result.json`, JSON.stringify({schemaVersion: 1, scope: 'windows-development-launch', ok: false,
+      code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: 'WINDOWS_HELPER_UNAVAILABLE'}));
+  };
+  assert.deepEqual(await runWindowsDevelopmentSmoke(args, f.services), {schemaVersion: 1, scope: 'windows-development-launch',
+    ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: 'WINDOWS_HELPER_UNAVAILABLE'});
+  for (const invalid of [null, {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED'},
+    {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: 'C:\\private'},
+    {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: 'WINDOWS_HELPER_UNAVAILABLE', extra: 1}]) {
+    assert.equal(startupFailureReason(invalid), undefined);
   }
 });
 
