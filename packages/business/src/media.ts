@@ -2,6 +2,8 @@ import {throwIfMediaAborted,interruptedMediaError} from './media-processes.ts';
 import {run,checkMediaEffect,isMediaEffectRestriction} from './media-runtime.ts';
 import type {MediaEffectFence} from './media-runtime.ts';
 import {parseProbeOutput,withProbePermit} from './media-probe.ts';
+import {globalMediaEncoderPool} from './media-encoder-pool.ts';
+import type {MediaEncoderSlotPool} from './media-encoder-pool.ts';
 import type {ProbeResult} from './media-probe.ts';
 import {stat,realpath} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
@@ -33,6 +35,7 @@ export interface MediaFileInfo {
 export interface StitchOptions extends MediaEffectOptions {
  beforeStart?:()=>void;
   outputGeometry?: TimelineOutputGeometry;
+  encoderPool?: MediaEncoderSlotPool;
 }
 
 const isUnconfirmed = (reason: unknown): boolean => typeof reason === 'object' && reason !== null && Boolean((reason as {terminationUnconfirmed?: unknown}).terminationUnconfirmed);
@@ -89,7 +92,7 @@ export async function safePath(root: string, relative: string): Promise<string> 
   if(!target.startsWith(base+path.sep))throw Error('Media path outside managed directory');
   return target;
 }
-export async function stitch(files: readonly string[], destination: string, {signal,beforeEffect,beforeStart,outputGeometry={fps:30,width:1080,height:1920}}: StitchOptions = {}): Promise<void> {
+export async function stitch(files: readonly string[], destination: string, {signal,beforeEffect,beforeStart,encoderPool,outputGeometry={fps:30,width:1080,height:1920}}: StitchOptions = {}): Promise<void> {
  checkMediaEffect(beforeEffect,signal);
  const output = timelineOutputPreset(outputGeometry);
  if(!output)throw Object.assign(Error('Invalid frozen storyboard output geometry'),{code:'INVALID_TIMELINE_SNAPSHOT'});
@@ -109,6 +112,7 @@ export async function stitch(files: readonly string[], destination: string, {sig
  });
  chains.push(files.map((_,i)=>`[v${i}][a${i}]`).join('')+`concat=n=${files.length}:v=1:a=1[outv][outa]`);
  args.push('-filter_complex',chains.join(';'),'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart',destination);
- beforeStart?.();await run('ffmpeg',args,{timeout:300000,signal,beforeEffect});
+ const release=await (encoderPool??globalMediaEncoderPool()).acquire(signal);
+ try{beforeStart?.();await run('ffmpeg',args,{timeout:300000,signal,beforeEffect});}finally{release();}
  checkMediaEffect(beforeEffect,signal);await probe(destination,{signal,beforeEffect});checkMediaEffect(beforeEffect,signal);
 }

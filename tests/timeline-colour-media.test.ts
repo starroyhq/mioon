@@ -15,6 +15,7 @@ import {parseCube3D,sampleCube3D} from '../packages/business/src/cube-lut.ts';
 import {premixTimelineColourLut,prepareTimelineColourLuts,TIMELINE_COLOUR_OUTPUT_FILTER,timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 import {hasUnconfirmedMediaProcesses,onMediaProcess,terminateMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
+import {createMediaEncoderPool} from '../packages/business/src/media-encoder-pool.ts';
 import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 import {LUT_RESOURCE_PROFILE} from '../packages/contracts/src/lut-resources.ts';
@@ -227,8 +228,11 @@ test('bounded parallel segments preserve exact export bytes and join their child
   assert.ok(serialResult.audioCheck.peakLinear > .05 && serialResult.audioCheck.peakLinear < .2);
   const parallelEncoders = watchSegmentEncoders('reorder', controller);
   try {
+   // The application-wide pool admits one encoder on a 4-vCPU runner; pin a
+   // two-slot pool so this case exercises the parallel segment path on every
+   // host instead of depending on the machine's core count.
    const result = await renderTimeline(snapshot, assets, parallel, {
-    segmentConcurrency: 2, readLut, signal,
+    segmentConcurrency: 2, encoderPool: createMediaEncoderPool(2), readLut, signal,
     beforeStart: parallelEncoders.beforeStart,
     onSegmentProgress(completed, total) { progress.push([completed, total]); },
    }) as FloatRenderResult;
@@ -257,7 +261,7 @@ test('bounded parallel segments preserve exact export bytes and join their child
    const encoders = watchSegmentEncoders(mode, controller);
    try {
     await assert.rejects(renderTimeline(snapshot, assets, path.join(root, `${mode}.mp4`), {
-     segmentConcurrency: 2, readLut, beforeStart: encoders.beforeStart,
+     segmentConcurrency: 2, encoderPool: createMediaEncoderPool(2), readLut, beforeStart: encoders.beforeStart,
      signal: AbortSignal.any([subtest.signal, controller.signal]),
     }), {code});
     encoders.assertJoined(2, 2);
