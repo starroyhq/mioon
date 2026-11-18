@@ -230,6 +230,55 @@ test('a clipped escaped tool view references a frozen canonical slice instead of
   assert.throws(() => assembleRequest(2, altered), code('AGENT_TASK_STORAGE_CORRUPT'));
 });
 
+for (const protocol of protocols) test(`${protocol}: a 25-call batch shares source validation only within one collection`, t => {
+  const f = setup(t, protocol), first = f.begin(), outputId = randomUUID();
+  const calls = Array.from({length: 25}, (_, index) => ({id: `batch_call_${index}`, name: 'mioon_project_inspect', arguments: {index}}));
+  const providerOutput: AgentTaskJson = protocol === 'responses'
+    ? calls.map(call => ({type: 'function_call', call_id: call.id, name: call.name, arguments: JSON.stringify(call.arguments)}))
+    : protocol === 'chat_completions' ? {role: 'assistant', content: 'Complete batch.', tool_calls: calls.map(call => ({id: call.id, type: 'function', function: {name: call.name, arguments: JSON.stringify(call.arguments)}}))}
+      : {role: 'assistant', content: calls.map(call => ({type: 'tool_use', id: call.id, name: call.name, input: call.arguments}))};
+  const output: TaskModelOutput = {text: 'Complete batch.', toolCalls: calls, providerOutput};
+  const results = calls.map(call => ({callId: call.id, result: {text: `Retained result for ${call.id}.`}}));
+  f.store.tx(() => {
+    f.records.markDispatched(first.saved.id, at);
+    f.records.completeModelRequest(first.saved.id, {entryId: outputId, at, output: {protocol, providerOutput}});
+    for (const [index, result] of results.entries()) {
+      const step = f.records.createStep({id: randomUUID(), runId: f.runId, kind: 'tool', sourceEntryId: outputId, sourceCallIndex: index, createdAt: at});
+      f.records.updateStep(step.id, 'intent', {status: 'dispatch_started', updatedAt: at});
+      const entry = f.records.appendEntry({id: randomUUID(), runId: f.runId, kind: 'tool_result', createdAt: at, payload: {json: result.result}});
+      f.records.updateStep(step.id, 'dispatch_started', {status: 'completed', resultEntryId: entry.id, updatedAt: at});
+    }
+  });
+  const history = [...f.context, ...taskContinuation(protocol, output, results)], second = f.begin(history);
+  const sourceCall = t.mock.method(f.records, 'sourceCall');
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const snapshot = second.assembly.collect(second.saved.inputManifest), sources = snapshot.entries.filter(entry => entry.kind === 'tool_result');
+    assert.deepEqual(sources.map(entry => entry.callId), calls.map(call => call.id));
+    assert.ok(sources.every(entry => entry.modelSource === outputId));
+    assert.equal(assembleRequest(2, snapshot).body, second.body);
+    assert.equal(sourceCall.mock.callCount(), attempt, 'one completed provider batch is validated once per collection');
+  }
+  const forged = structuredClone(providerOutput);
+  if (Array.isArray(forged)) (forged.at(-1) as Record<string, AgentTaskJson>).arguments = '{';
+  else {
+    const provider = forged as Record<string, AgentTaskJson>;
+    if (protocol === 'chat_completions') ((provider.tool_calls as Record<string, AgentTaskJson>[]).at(-1)!.function as Record<string, AgentTaskJson>).arguments = '{';
+    else (provider.content as Record<string, AgentTaskJson>[]).at(-1)!.input = 'invalid arguments';
+  }
+  // Validation of call zero must still reject a malformed later call in the
+  // same provider batch, even when the first retained result belongs to zero.
+  assert.throws(() => f.store.tx(() => {
+    f.store.db.exec('DROP TRIGGER main.immutable_mio_entries');
+    f.store.db.prepare('UPDATE mio_entries SET payloadJson=? WHERE id=?').run(JSON.stringify({protocol, providerOutput: forged}), outputId);
+    assert.throws(() => second.assembly.collect(second.saved.inputManifest), code('AGENT_TASK_STORAGE_CORRUPT'));
+    throw Error('restore disposable source corruption');
+  }), /restore disposable source corruption/u);
+  // A later public read must recheck completion evidence, rather than trusting
+  // the previous collection's successfully validated batch.
+  f.store.db.prepare("UPDATE mio_steps SET status='unknown' WHERE id=?").run(first.saved.stepId);
+  assert.throws(() => second.assembly.collect(second.saved.inputManifest), code('AGENT_TASK_STATE_CONFLICT'));
+});
+
 for (const reused of [false, true]) test(`Messages cache wrapping retains exact output/result identity across equal text/args (${reused ? 'reused' : 'distinct'} call IDs)`, t => {
   const f = setup(t, 'anthropic_messages', 'en', true), first = f.begin();
   const result: AgentTaskJson = {value: 'Two different calls have exactly equal result bytes.'};
