@@ -14,7 +14,7 @@ test('build timing returns the original value and records only a fixed stage and
 test('nonzero child exits and interruptions keep their original result and record failure', async () => {
   for (const code of [7, 130, 143]) {
     const records: BuildTimingRecord[] = [], value = {code, signal: code === 7 ? null : 'SIGTERM'};
-    assert.equal(await measureBuildStage('typecheck-tests', async () => value, {exitCode: result => result.code, report: record => records.push(record)}), value);
+    assert.equal(await measureBuildStage('typecheck-tests-runtime', async () => value, {exitCode: result => result.code, report: record => records.push(record)}), value);
     assert.equal(records.length, 1); assert.equal(records[0]!.result, 'failed'); assert.equal(records[0]!.exitCode, code);
     assert.ok(Number.isInteger(records[0]!.durationMs) && records[0]!.durationMs >= 0);
   }
