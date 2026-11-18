@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, toolingEnvironment} from './lib/local-tooling.ts';
 import {BUILD_COMMAND_TIMING_STAGES, DESKTOP_TYPECHECK_TIMING_STAGES, hasDesktopTypecheckTiming, measureBuildStage} from './lib/build-timings.ts';
+import {createTypecheckEvidence, removeTypecheckEvidence, type OwnedTypecheckEvidence} from './lib/typecheck-evidence.ts';
 
 interface ToolingFailure {
   readonly code?: string;
@@ -37,17 +38,33 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     const commands = options.command === 'build' ? [...await typecheckCommands(root), ...buildCommands(root, entries, options.channel)]
       : [testCommand(root, await discoverTests(root, options), options.concurrency, process.execPath, options.reporter, options.timings)];
     if (options.command === 'test' && options.timings) await mkdir(path.dirname(path.join(root, ...options.timings.split('/'))), {recursive: true});
-    for (const [index, command] of commands.entries()) {
-      const env = toolingEnvironment(process.env, {mediaPaths: options.command === 'test'});
-      const run = async () => options.command === 'test' && options.compileCache
-        ? await (await import('./lib/test-compile-cache.ts')).withOwnedTestCompileCache(env, cachedEnv => executeCommand(command, {env: cachedEnv}))
-        : await executeCommand(command, {env});
-      const result = options.command === 'build'
-        ? await measureBuildStage(BUILD_COMMAND_TIMING_STAGES[index]!, run, {exitCode: value => value.code})
-        : await run();
-      if (result.code !== 0) return result.code;
+    // The staging script is the last build command. Hand it private evidence
+    // that this process checked the same sources: the normal build then
+    // typechecks once, while a standalone staging run still checks itself.
+    const stagingIndex = options.command === 'build' ? commands.length - 1 : -1;
+    let typecheckEvidence: OwnedTypecheckEvidence | undefined;
+    try {
+      for (const [index, command] of commands.entries()) {
+        if (index === stagingIndex) {
+          typecheckEvidence = await createTypecheckEvidence(root).catch(() => {
+            console.error(JSON.stringify({event: 'desktop-typecheck-evidence', status: 'unavailable'}));
+            return undefined;
+          });
+        }
+        const env = {...toolingEnvironment(process.env, {mediaPaths: options.command === 'test'}),
+          ...(index === stagingIndex && typecheckEvidence ? typecheckEvidence.environment : {})};
+        const run = async () => options.command === 'test' && options.compileCache
+          ? await (await import('./lib/test-compile-cache.ts')).withOwnedTestCompileCache(env, cachedEnv => executeCommand(command, {env: cachedEnv}))
+          : await executeCommand(command, {env});
+        const result = options.command === 'build'
+          ? await measureBuildStage(BUILD_COMMAND_TIMING_STAGES[index]!, run, {exitCode: value => value.code})
+          : await run();
+        if (result.code !== 0) return result.code;
+      }
+      return 0;
+    } finally {
+      if (typecheckEvidence) await removeTypecheckEvidence(typecheckEvidence);
     }
-    return 0;
   } catch (error) {
     const failure = failureOf(error);
     console.error(JSON.stringify({status: 'failed', code: failure.code || 'TOOLING_FAILED',
