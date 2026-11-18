@@ -1,6 +1,6 @@
 import {TIMELINE_OUTPUT_PRESETS,isTimelineExportDelivery} from '@mioon/contracts';
 import {run,runStreaming,checkMediaEffect,isMediaEffectRestriction} from './media-runtime.ts';
-import {throwIfMediaAborted,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
+import {interruptedMediaError,throwIfMediaAborted,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {withProbePermit} from './media-probe.ts';
 import {proveTimelineFloatCapability} from './timeline-float-capability.ts';
@@ -142,9 +142,30 @@ export async function inspectTimelineExportCapability(delivery: unknown,{signal,
  }
 }
 
+// A render that starts while another project's check holds the process-wide
+// slot is not invalid: the observation is not an authority token, so waiting
+// keeps the probe budget intact and lets genuinely simultaneous exports both
+// proceed. Direct inspection keeps its documented fast BUSY answer for UI
+// preflight; only the render-time admission waits, bounded by one full check.
+const CAPABILITY_TURN_WAIT=Object.freeze({attempts:160,delayMs:100});
+async function waitForCapabilityTurn({signal,beforeEffect}: CapabilityInspectOptions): Promise<void>{
+ checkMediaEffect(beforeEffect,signal);
+ await new Promise<void>((resolve,reject)=>{
+  const detach=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);};
+  const abort=()=>{detach();reject(interruptedMediaError());};
+  const timer=setTimeout(()=>{detach();resolve();},CAPABILITY_TURN_WAIT.delayMs);
+  signal?.addEventListener('abort',abort,{once:true});
+ });
+ checkMediaEffect(beforeEffect,signal);
+}
 export async function assertTimelineExportCapability(delivery: unknown,options: CapabilityInspectOptions={}): Promise<CapabilityResult>{
- const capability=await inspectTimelineExportCapability(delivery,options);
- checkMediaEffect(options?.beforeEffect,options?.signal);
- if(capability.status!=='available')throw error(capability.code);
+ let capability: CapabilityResult|undefined;
+ for(let attempt=0;attempt<CAPABILITY_TURN_WAIT.attempts;attempt++){
+  capability=await inspectTimelineExportCapability(delivery,options);
+  checkMediaEffect(options?.beforeEffect,options?.signal);
+  if(capability.code!=='EXPORT_CAPABILITY_BUSY')break;
+  await waitForCapabilityTurn(options);
+ }
+ if(!capability||capability.status!=='available')throw error(capability?.code??'EXPORT_CAPABILITY_BUSY');
  return capability;
 }
