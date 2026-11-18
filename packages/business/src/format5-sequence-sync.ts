@@ -25,7 +25,8 @@ import type {
   SequenceEditReceipt, SequenceEditStateDelta, SequenceEditTimelineCommit, SequenceEditTimelineDelta,
   SequenceEditTransactionFailure, MainTrackProjectionPort,
 } from '@mioon/contracts/sequence-edit';
-import {applySequenceEditBaselineChange, isSequenceEditEnvelope, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
+import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
+import {planSubjectBindingAction, readSubjectBinding} from './format5-subject-binding.ts';
 import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
@@ -86,19 +87,31 @@ interface SyncContext {
   readonly media: readonly ChainSyncMedia[];
   readonly clips: readonly ChainSyncClip[];
   readonly anchored: readonly TrackAnchoredItem[];
+  /** Full archived row JSON with archive columns, for restore actions. */
+  readonly archivedShots: ReadonlyMap<string, Row>;
+  readonly archivedNodes: ReadonlyMap<string, Row>;
+  readonly archivedEdges: ReadonlyMap<string, Row>;
 }
+export type SequenceSyncContext = SyncContext;
 
-interface JsonRow {readonly id: string; readonly data: Row; readonly archived: boolean}
+interface JsonRow {
+  readonly id: string; readonly data: Row; readonly archived: boolean;
+  readonly archivedAt?: string; readonly archiveBatchId?: string; readonly archiveReason?: string;
+}
 
 function readJsonRows(db: any, table: 'shots' | 'nodes' | 'edges' | 'assets' | 'versions'): JsonRow[] {
   const hasArchive = table === 'shots' || table === 'nodes' || table === 'edges';
-  const rows = db.prepare(`SELECT id,data${hasArchive ? ',archivedAt' : ''} FROM project.${table} ORDER BY id`).all() as Row[];
+  const rows = db.prepare(`SELECT id,data${hasArchive ? ',archivedAt,archiveBatchId,archiveReason' : ''} FROM project.${table} ORDER BY id`).all() as Row[];
   return rows.map(row => {
     if (typeof row.id !== 'string' || typeof row.data !== 'string') throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
     let data: unknown;
     try { data = JSON.parse(row.data); } catch { throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'}); }
     if (!object(data) || data.id !== row.id) throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
-    return {id: row.id, data, archived: hasArchive && row.archivedAt !== null && row.archivedAt !== undefined};
+    const archived = hasArchive && row.archivedAt !== null && row.archivedAt !== undefined;
+    return {id: row.id, data, archived,
+      ...(archived ? {archivedAt: String(row.archivedAt),
+        ...(typeof row.archiveBatchId === 'string' ? {archiveBatchId: row.archiveBatchId} : {}),
+        ...(typeof row.archiveReason === 'string' ? {archiveReason: row.archiveReason} : {})} : {})};
   });
 }
 
@@ -191,9 +204,23 @@ function readSyncContext(store: ProjectStore): SyncContext {
   for (const cue of timeline.subtitles?.cues ?? []) {
     anchored.push(format5AnchoredItem({id: cue.id, startFrame: cue.startFrame, anchor: cue.anchor}));
   }
+  const archivedRow = (row: JsonRow): Row => ({...row.data, ...(row.archivedAt !== undefined ? {
+    archivedAt: row.archivedAt,
+    ...(row.archiveBatchId !== undefined ? {archiveBatchId: row.archiveBatchId} : {}),
+    ...(row.archiveReason !== undefined ? {archiveReason: row.archiveReason} : {}),
+  } : {})});
+  const archivedShots = new Map(shotRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
+  const archivedNodes = new Map(nodeRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
+  const archivedEdges = new Map(edgeRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
   return {projectId: store.projectId, timeline, timelineState, rootNodeId: timeline.mainTrack.sequenceNodeId,
     syncRevision: Number(sync.revision), baseline: baselineFromRaw(sync.baseline), board, nodes: board.nodes,
-    nodeRows, shots, versions, assets, adoptions, edges: board.edges, edgeRows, media, clips, anchored};
+    nodeRows, shots, versions, assets, adoptions, edges: board.edges, edgeRows, media, clips, anchored,
+    archivedShots, archivedNodes, archivedEdges};
+}
+
+/** Read the exact live projection the CS board transaction plans against. */
+export function readSequenceSyncContext(store: ProjectStore): SequenceSyncContext {
+  return readSyncContext(store);
 }
 
 const saState = (context: SyncContext) => ({board: context.board, filmId: context.rootNodeId,
@@ -370,9 +397,9 @@ function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Forma
 }
 
 function anchorForOwner(item: {startFrame: number; anchorClipId?: string | null},
-  owners: readonly {id: string; startFrame: number; durationFrames: number}[]): {clipId: string; offsetFrames: number} | null {
+  owners: ReadonlyMap<string, {id: string; startFrame: number; durationFrames: number}>): {clipId: string; offsetFrames: number} | null {
   if (item.anchorClipId === null || item.anchorClipId === undefined) return null;
-  const owner = owners.find(clip => clip.id === item.anchorClipId);
+  const owner = owners.get(item.anchorClipId);
   if (!owner) return null;
   const offsetFrames = item.startFrame - owner.startFrame;
   return offsetFrames >= 0 && offsetFrames < owner.durationFrames ? {clipId: item.anchorClipId, offsetFrames} : null;
@@ -384,7 +411,8 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
   const planNodes = new Map(plan.after.board.nodes.map(node => [node.id, node]));
   const copiedNodes = new Set(plan.copiedNode ? [plan.copiedNode.toNodeId] : []);
   const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
-  const ownerSegments = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
+  const ownerList = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
+  const ownerSegments = new Map(ownerList.map(owner => [owner.id, owner] as const));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
   const clips: Format5Clip[] = [...mainClips];
   for (const clip of context.timeline.clips) {
@@ -404,7 +432,7 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
     clips.push({...otherTrack, trackId: plan.transfer.trackId, startFrame: plan.transfer.clip.startFrame,
       anchor: item ? anchorForOwner(item, ownerSegments) : null});
   }
-  const ownerAt = (frame: number) => ownerSegments
+  const ownerAt = (frame: number) => ownerList
     .find(owner => owner.startFrame <= frame && frame < owner.startFrame + owner.durationFrames) ?? null;
   const cues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
     const item = anchored.get(cue.id);
@@ -692,12 +720,18 @@ function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, 
   };
 }
 
+/** Applies one board delta. Subject binding rows are tombstones: their native
+ * revision always advances and a removal is never valid (the shared contract
+ * rejects it before this point). */
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): void {
+  let subjectTouched = false;
   const rank = (entity: SequenceEditBoardEntity): number => entity.kind === 'adoption' ? 0
     : entity.kind === 'node' ? 1 : entity.kind === 'shot' ? 2 : 3;
   // Delete adoptions before their shot, and write the shot before its adoption.
   for (const entity of [...delta.removals].sort((left, right) => rank(left) - rank(right))) {
-    if (entity.kind === 'subject_binding') throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', 'TS 同步事务不接受画板主体绑定。', 409, {id: entity.id});
+    if (entity.kind === 'subject_binding') {
+      throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '主体绑定是墓碑，不能删除。', 409, {id: entity.id});
+    }
     if (entity.kind === 'adoption') {
       const data = entity.data as Row;
       const result = store.db.prepare('DELETE FROM project.shot_version_adoptions WHERE shotId=? AND versionId=? AND projectId=?')
@@ -712,7 +746,11 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
   const writeRank = (entity: SequenceEditBoardEntity): number => entity.kind === 'adoption' ? 4
     : entity.kind === 'node' ? 1 : entity.kind === 'shot' ? 2 : 3;
   for (const entity of [...delta.writes].sort((left, right) => writeRank(left) - writeRank(right))) {
-    if (entity.kind === 'subject_binding') throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', 'TS 同步事务不接受画板主体绑定。', 409, {id: entity.id});
+    if (entity.kind === 'subject_binding') {
+      applySubjectBindingWrite(store, entity.data);
+      subjectTouched = true;
+      continue;
+    }
     if (entity.kind === 'adoption') {
       const data = entity.data as Row;
       store.db.prepare('INSERT INTO project.shot_version_adoptions(projectId,shotId,versionId,createdAt) VALUES(?,?,?,?)')
@@ -721,14 +759,51 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
       store.put(entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges', entity.data);
     }
   }
+  if (subjectTouched) bumpFormat5ContentStampInside(store.db, 'project');
+}
+
+/** Native-column binding row: content comes from the patch, revision is always
+ * the live row + 1 (or 1 when the tombstone is created). */
+function applySubjectBindingWrite(store: ProjectStore, data: Row): void {
+  const current = readSubjectBinding(store, String(data.id));
+  const revision = current ? Number(current.revision) + 1 : 1;
+  if (!Number.isSafeInteger(revision) || revision >= Number.MAX_SAFE_INTEGER) {
+    throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', '主体绑定 revision 超出上限', 409, {});
+  }
+  if (current && (data.projectId !== current.projectId || data.shotId !== current.shotId
+    || data.subjectId !== current.subjectId || data.role !== current.role)) {
+    throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', '主体绑定身份不可替换', 409, {id: current.id});
+  }
+  const value = {...data, revision, projectId: store.projectId,
+    createdAt: current ? current.createdAt : String(data.createdAt)} as Record<string, unknown>;
+  const bindingMode = String(value.bindingMode);
+  const subjectVersionId = value.subjectVersionId === null ? null : String(value.subjectVersionId);
+  const reviewedHeadVersionId = value.reviewedHeadVersionId === null ? null : String(value.reviewedHeadVersionId);
+  const updatedAt = String(value.updatedAt);
+  if (current) {
+    // A replacement INSERT would trip the tombstone trigger; only content
+    // columns (and the monotonic revision) may change.
+    const saved = store.db.prepare(`UPDATE project.subject_bindings SET revision=?,bindingMode=?,subjectVersionId=?,
+      reviewedHeadVersionId=?,updatedAt=? WHERE id=? AND projectId=? AND revision=?`)
+      .run(revision, bindingMode, subjectVersionId, reviewedHeadVersionId, updatedAt, current.id,
+        store.projectId, Number(current.revision));
+    if (Number(saved.changes) !== 1) {
+      throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '主体绑定 revision 已变化。', 409, {id: current.id});
+    }
+  } else {
+    store.db.prepare(`INSERT INTO project.subject_bindings(id,projectId,shotId,subjectId,role,revision,bindingMode,
+      subjectVersionId,reviewedHeadVersionId,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(String(value.id), store.projectId, String(value.shotId), String(value.subjectId), String(value.role), revision,
+        bindingMode, subjectVersionId, reviewedHeadVersionId, String(value.createdAt), updatedAt);
+  }
 }
 
 interface TimelineApplyResult {readonly timeline: Format5Timeline; readonly changed: boolean}
 
 function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
-  cachedState?: ReturnType<typeof readFormat5TimelineState>): TimelineApplyResult {
-  const state = cachedState ?? readFormat5TimelineState(store.db, 'project');
-  const current = assembleFormat5Timeline(state);
+  cachedContext?: SequenceSyncContext): TimelineApplyResult {
+  const state = cachedContext?.timelineState ?? readFormat5TimelineState(store.db, 'project');
+  const current = cachedContext?.timeline ?? assembleFormat5Timeline(state);
   if (!current) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
   const clips = new Map(current.clips.map(clip => [clip.id, clip]));
   for (const clip of delta.clips) clips.set(clip.id, clip);
@@ -745,9 +820,10 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
   const headerChanged = state.header?.raw !== headerRaw;
-  const changed = update.changed || headerChanged;
+  const rowChanges = update.changed || update.clipDeletes.length > 0 || update.cueDeletes.length > 0;
+  const changed = rowChanges || headerChanged;
   if (!changed) return {timeline: current, changed: false};
-  if (update.changed) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
+  if (rowChanges) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
   if (headerChanged) {
     const result = store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(headerRaw, next.id);
     if (Number(result.changes) !== 1) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
@@ -942,7 +1018,7 @@ function receiptDraft(envelope: SequenceEditEnvelope, inputDigest: string, recei
 }): Omit<SequenceEditReceipt, 'history'> {
   return {
     version: 1, requestId: envelope.requestId, inputDigest, projectId: envelope.projectId, actionId: envelope.actionId,
-    operation: operationOf(envelope), originSide: envelope.originSide, status: 'applied',
+    operation: sequenceEditEnvelopeOperationName(envelope), originSide: envelope.originSide, status: 'applied',
     ...(receipt.warnings && receipt.warnings.length ? {warnings: receipt.warnings} : {}),
     affected: receipt.affected, contentRevision: receipt.contentRevision,
     timelineRevision: receipt.timelineRevision, syncRevision: receipt.syncRevision,
@@ -958,6 +1034,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
   if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (envelope.projectId !== store.projectId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   const inputDigest = sequenceEditInputDigest(envelope);
+  if (envelope.subjectIntent) return runSubjectBindingSync(store, envelope, inputDigest);
   return store.tx(() => {
     const replay = findSequenceEditReceipt(store, envelope.requestId);
     if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
@@ -989,7 +1066,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       && !baselineChanged;
     if (noop) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
     applyBoardDelta(store, boardEntities.after);
-    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context.timelineState);
+    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
     const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
     const receipt = receiptDraft(envelope, inputDigest, {
@@ -997,6 +1074,46 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       warnings: planWarnings(successful), contentRevision,
       timelineRevision: timelineApply.timeline.revision, syncRevision: baselineApply.revision,
     });
+    const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
+    return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
+  });
+}
+
+/** One shared transaction for a subject binding action: replay, revision CAS,
+ * board delta, one history entry and the immutable receipt. */
+function runSubjectBindingSync(store: ProjectStore, envelope: SequenceEditEnvelope, inputDigest: string): SequenceSyncResult {
+  return store.tx(() => {
+    const replay = findSequenceEditReceipt(store, envelope.requestId);
+    if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
+    const content = readProjectContentStamp(store.db).contentSequence;
+    const state = readFormat5TimelineState(store.db, 'project');
+    const header = state.header ? JSON.parse(state.header.raw) as Row : {};
+    const sync = store.db.prepare('SELECT revision FROM project.sequence_sync_state').get() as Row | undefined;
+    if (envelope.baseline.contentRevision !== content
+      || envelope.baseline.timelineRevision !== Number(header.revision ?? 1)
+      || envelope.baseline.syncRevision !== Number(sync?.revision ?? 1)) {
+      return writeFailure(store, envelope, 'SEQUENCE_EDIT_REVISION_CONFLICT');
+    }
+    let plan;
+    try { plan = planSubjectBindingAction(store, envelope); }
+    catch (error) {
+      if (error instanceof AppError && isSequenceEditErrorCode(error.code)) {
+        return writeFailure(store, envelope, error.code);
+      }
+      throw error;
+    }
+    if (sameJson(plan.before.board, plan.after.board)) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
+    applyBoardDelta(store, plan.after.board);
+    const contentRevision = readProjectContentStamp(store.db).contentSequence;
+    const affected: SequenceEditAffectedCounts = {
+      nodes: 0,
+      edges: plan.after.board.writes.filter(item => item.kind === 'edge').length + plan.after.board.removals.length,
+      mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0,
+      subjectBindings: plan.after.board.writes.filter(item => item.kind === 'subject_binding').length,
+    };
+    const receipt = receiptDraft(envelope, inputDigest, {affected, contentRevision,
+      timelineRevision: Number(header.revision ?? 1), syncRevision: Number(sync?.revision ?? 1)});
+    const patch: SequenceEditPatch = {version: 1, before: plan.before, after: plan.after};
     const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
     return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
   });
@@ -1011,22 +1128,40 @@ function writeFailure(store: ProjectStore, envelope: SequenceEditEnvelope, code:
 // CS transaction-internal seam
 // ---------------------------------------------------------------------------
 
-export function createMainTrackProjectionPort(store: ProjectStore): MainTrackProjectionPort {
+export function createMainTrackProjectionPort(store: ProjectStore,
+  providedContext?: () => SequenceSyncContext): MainTrackProjectionPort {
   return {
     projectMainTrack(request): SequenceEditTimelineCommit | SequenceEditTransactionFailure {
-      const context = readSyncContext(store);
+      const context = providedContext?.() ?? readSyncContext(store);
       if (request.envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
       const nextTimeline = patchMainTimeline(context, request.plan);
       const anchorIssue = validateAnchoredTimeline(nextTimeline);
       if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
-      const board = boardPlanEntities(context, request.plan, request.envelope);
-      if ('ok' in board && board.ok === false) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', board.ids);
-      const boardEntities = board as BoardPlanEntities;
       const changedShots = shotChanges(context, request.plan);
       const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
-      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
-        boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
-      const patch = timelineDeltaPair(context, nextTimeline, request.plan, boardEntities, nextBaseline);
+      // Nodes restored by the CS board transaction in the same tx are not in
+      // this pre-write context yet; expose their kind/archived row so the
+      // baseline projection stays complete.
+      const extraNodeKinds = new Map<string, ChainNode['kind']>();
+      const extraNodeRows = new Map<string, Row>();
+      const extraShots = new Map<string, Row>();
+      for (const node of request.plan.after.board.nodes) {
+        if (context.board.nodes.some(current => current.id === node.id)) continue;
+        extraNodeKinds.set(node.id, node.kind);
+        if (node.kind === 'shot') {
+          const row = context.archivedShots.get(node.id);
+          if (row) extraShots.set(node.id, row);
+        } else {
+          const row = context.archivedNodes.get(node.id);
+          if (row) extraNodeRows.set(node.id, row);
+        }
+      }
+      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, extraShots,
+        extraNodeKinds, extraNodeRows);
+      // The CS caller owns the board half; this port only projects the timeline
+      // half, so the full board plan is deliberately skipped here.
+      const emptyBoard = {before: {writes: [], removals: []}, after: {writes: [], removals: []}};
+      const patch = timelineDeltaPair(context, nextTimeline, request.plan, emptyBoard, nextBaseline);
       const baselineChanged = !sameJson(context.baseline, nextBaseline);
       return {ok: true, delta: patch.after.timeline, warnings: planWarnings(request.plan),
         timelineRevision: patch.after.timeline.clips.length || patch.after.timeline.cues.length
@@ -1045,7 +1180,7 @@ function undoApplyPatch(store: ProjectStore, patch: SequenceEditStateDelta, cont
   readonly contentRevision: number; readonly timelineRevision: number; readonly syncRevision: number;
 } {
   applyBoardDelta(store, patch.board);
-  const timelineApply = applyTimelineDelta(store, patch.timeline);
+  const timelineApply = applyTimelineDelta(store, patch.timeline, context);
   const baselineApply = applyBaselineDelta(store, context, patch.timeline.baseline);
   return {contentRevision: readProjectContentStamp(store.db).contentSequence,
     timelineRevision: timelineApply.timeline.revision, syncRevision: baselineApply.revision};
@@ -1079,7 +1214,7 @@ export function moveSequenceSyncHistory(store: ProjectStore, command: SequenceEd
     const operation = entry.operation;
     const receipt = moveSequenceEditHistoryCursor(store, command, {
       version: 1, requestId: command.requestId, inputDigest, projectId: store.projectId, actionId: command.actionId,
-      operation, originSide: operation.startsWith('board.') ? 'board' : 'timeline', status: 'applied',
+      operation, originSide: operation.startsWith('timeline.') ? 'timeline' : 'board', status: 'applied',
       affected: emptyCounts(), contentRevision: revisions.contentRevision,
       timelineRevision: revisions.timelineRevision, syncRevision: revisions.syncRevision,
     });
@@ -1103,4 +1238,25 @@ function writeHistoryFailure(store: ProjectStore, command: SequenceEditHistoryCo
   store.db.prepare('INSERT INTO main.editor_requests(requestId,projectId,operation,inputDigest,response,issuedAt,createdAt) VALUES(?,?,?,?,?,?,?)')
     .run(command.requestId, store.projectId, receipt.operation, inputDigest, JSON.stringify(receipt), Date.now(), now());
   return failure(code);
+}
+
+// ---------------------------------------------------------------------------
+// CS undo/redo seam
+// ---------------------------------------------------------------------------
+
+/** Apply the timeline half of a stored patch while CS undoes or redoes a
+ * board-origin action. The caller may pass its already-read projection context;
+ * the shared history module still owns the cursor and receipt. */
+export function applySequenceEditTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
+  providedContext?: SequenceSyncContext): {readonly timelineRevision: number} {
+  const result = applyTimelineDelta(store, delta, providedContext);
+  return {timelineRevision: result.timeline.revision};
+}
+
+/** Apply the three-state baseline half of a stored patch. */
+export function applySequenceEditBaselineDelta(store: ProjectStore, change: SequenceEditBaselineChange,
+  providedContext?: SequenceSyncContext): {readonly syncRevision: number} {
+  const context = providedContext ?? readSyncContext(store);
+  const result = applyBaselineDelta(store, context, change);
+  return {syncRevision: result.revision};
 }

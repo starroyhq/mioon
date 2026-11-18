@@ -96,6 +96,8 @@ import {createSubjectVariantServices} from './subject-variants.ts';
 import {createPrevisServices} from './previs.ts';
 import {createPrevisPublicationServices} from './previs-publication.ts';
 import {createCanvasEditing, isCanvasEditingWrite} from './canvas-editing.ts';
+import {assertLegacyCanvasWriteAllowed, createSequenceEditing, isFormat5Project} from './sequence-edit.ts';
+import {isSequenceEditingOperation, isSequenceEditingWrite} from '../../contracts/src/sequence-editing.ts';
 import {isCanvasEditingOperation} from '../../contracts/src/canvas-editing.ts';
 import type {CanvasEditBase, CanvasTargetExpectation} from '../../contracts/src/canvas-editing.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
@@ -252,6 +254,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const active=new Set<Promise<unknown>>();let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
  const canvasEditing = isProjectStore(store) ? createCanvasEditing(store, {clipboardOwner: applicationPorts.outsidePaths}) : undefined;
+ // Format-5 board sequence edits share the same service boundary and the
+ // same application mutation admission as canvas edits.
+ const sequenceEditing = isProjectStore(store) ? createSequenceEditing(store) : undefined;
  const configuration=application.configuration;
  const assertApplicationMutationAllowed=()=>application.assertMutationAllowed();
  const configurationHandlers={
@@ -639,7 +644,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }});
  const references=createReferenceServices(store as never,{required,check,hash,now} as Parameters<typeof createReferenceServices>[1]);
  const inspection=createInspectionServices(store);
- const localMutations=createLocalMutationServices(store,{check,canonical,now,references});
+ const localMutations=createLocalMutationServices(store,{check,canonical,now,references,
+  format5:isProjectStore(store)&&isFormat5Project(store)});
  const sourceRanges=createSourceRangeServices(store,{canonical});
  const assetAnnotations=createAssetAnnotationServices(store,{mutate:createMutationReplay(store,{canonical}),error:(...args)=>new AppError(...args as [string,string,number?,unknown?])});
  const assetDispositions=createAssetDispositionServices(store,{canonical});
@@ -746,6 +752,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'asset.import':createManagedAssetImportHandler(inputStore,{required,now,signal:ownerSignal,outsidePaths:application.outsidePaths,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}}) as ServiceHandler,
   'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},
   'edge.create':(input: ServiceRow)=>tx(()=>{
+   if(isProjectStore(store))assertLegacyCanvasWriteAllowed(store,'edge');
    const projectId=stringValue(input.projectId) as string;
    required('projects',projectId);
    for(const id of [input.source,input.target]){
@@ -759,6 +766,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});
   }),
   'edge.delete':(input: ServiceRow)=>tx(()=>{
+   if(isProjectStore(store))assertLegacyCanvasWriteAllowed(store,'edge');
    const edgeId=stringValue(input.edgeId) as string,edge=required('edges',edgeId);
    if(isCanvasEdgeHidden(db,edge))throw new AppError('CANVAS_TARGET_ARCHIVED','画布对象已删除，请先恢复。',409,{id:edgeId});
    if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId});
@@ -905,6 +913,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const signal: AbortSignal|undefined=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):(ownerSignal||callSignal)??undefined;
   checkpoint(signal);
   const operation: Promise<unknown>=(async()=>{
+   if (isSequenceEditingOperation(op)) {
+    if (!sequenceEditing) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
+    const authorize = (): void => { checkpoint(signal); assertApplicationMutationAllowed(); assertMutationAllowed?.(); };
+    return sequenceEditing.call(op, input, isSequenceEditingWrite(op) ? authorize : undefined);
+   }
    if (isCanvasEditingOperation(op)) {
     if (!canvasEditing) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
     const authorize = (): void => { checkpoint(signal); assertApplicationMutationAllowed(); assertMutationAllowed?.(); };

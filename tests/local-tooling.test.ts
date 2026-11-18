@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
-  PORTABLE_TEST_FILES, MACOS_DESKTOP_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand, testEnvironment, MACOS_TEST_TMPDIR,
+  PORTABLE_TEST_FILES, MACOS_DESKTOP_TEST_FILES, MACOS_MEDIA_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand, testEnvironment, MACOS_TEST_TMPDIR,
   type PackageManagerInspectionOptions} from '../scripts/lib/local-tooling.ts';
 import {BUILD_COMMAND_TIMING_STAGES} from '../scripts/lib/build-timings.ts';
 import {createTypecheckEvidence, hasOuterTypecheckEvidence, removeTypecheckEvidence, sourceFingerprint, TYPECHECK_EVIDENCE_ENV} from '../scripts/lib/typecheck-evidence.ts';
@@ -299,6 +299,20 @@ test('macOS desktop group is an explicit reviewed manifest limited to macOS', as
   assert.deepEqual(await discoverTests(root, {suite: 'macos-desktop', platform: 'darwin', files: [MACOS_DESKTOP_TEST_FILES[0]!]}),
     [`tests/${MACOS_DESKTOP_TEST_FILES[0]!}`]);
   await assert.rejects(discoverTests(root, {suite: 'macos-desktop', platform: 'darwin', files: ['timeline-audio-continuous-types.test.ts']}),
+    {code: 'TEST_SELECTION_INVALID'});
+});
+test('macOS media group is the reviewed H0 media set and requires macOS plus the media toolchain', async t => {
+  const {directory} = await fixture(t);
+  assert.equal(parseArguments(['test', '--suite=macos-media']).suite, 'macos-media');
+  await assert.rejects(discoverTests(directory, {suite: 'macos-media', platform: 'linux'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'macos-media', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  assert.deepEqual(await discoverTests(root, {suite: 'macos-media', platform: 'darwin'}),
+    MACOS_MEDIA_TEST_FILES.map(name => `tests/${name}`));
+  assert.equal(MACOS_MEDIA_TEST_FILES.length, 26);
+  assert.deepEqual([...MACOS_MEDIA_TEST_FILES], [...MACOS_MEDIA_TEST_FILES].sort());
+  assert.equal(new Set(MACOS_MEDIA_TEST_FILES).size, MACOS_MEDIA_TEST_FILES.length);
+  assert.ok(MACOS_MEDIA_TEST_FILES.every(name => /^[a-z0-9][a-z0-9._-]*\.test\.ts$/u.test(name)));
+  await assert.rejects(discoverTests(root, {suite: 'macos-media', platform: 'darwin', files: ['dev-proxy.test.ts']}),
     {code: 'TEST_SELECTION_INVALID'});
 });
 test('full Linux selection supports more than the old 512-file limit within the argv budget', async t => {

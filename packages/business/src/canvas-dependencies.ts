@@ -10,6 +10,8 @@ import {agentTaskExplicitTargets} from './agent/task-tools-v2.ts';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {pendingPrevisPublications} from './previs-publication.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {assertProjectStore} from './store-runtime.ts';
 
 export type MioCanvasRequester = {readonly runId: string; readonly stepId: string};
@@ -154,46 +156,66 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
     const owners = assetVersionOwners.all(assetId);
     if (owners.length === 1 && typeof owners[0]?.id === 'string') return versionOwners.get(owners[0].id);
   }
-  const timelineRow = shots.size ? readTimelineStorage(db, projectId) : null;
-  const timeline = timelineRow?.timeline ?? null;
+  const format5 = Number(db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
   const clipIds = new Set<string>();
   let impactClips = 0;
-  if (timelineRow) {
-    if (!isTimelineRecord(timeline, {projectId})) unverified('timeline', timelineRow.id);
+  if (format5) {
+    // Format 5 keeps a header plus native clip/cue rows. Chain members and
+    // their clips are retained by readSequenceDependencyComponent; this branch
+    // only records the timeline identity/revision evidence and impact counts.
+    const timeline = readFormat5TimelineRecord(db, 'project');
+    if (!timeline) unverified('timeline', projectId);
     else {
-      const hidden = new Map(timeline.tracks.map(track => [track.id, track.hidden]));
+      evidence(['format5-timeline', timeline.id, timeline.revision]);
       for (const clip of [...timeline.clips].sort((a, b) => compare(a.id, b.id))) {
-        if (!(has('shot', clip.shotId) || clip.versionId && versionIds.has(clip.versionId) ||
-              clip.jobId && jobIds.has(clip.jobId) || assetIds.has(clip.assetId))) continue;
-        clipIds.add(clip.id);
-        const explicit = clip.versionId ? versionOwners.get(clip.versionId) : undefined;
-        const linkedShot = clip.shotId && impactShots.has(clip.shotId) ? clip.shotId : undefined;
-        if (linkedShot || clip.versionId && impactVersionIds.has(clip.versionId) ||
-            clip.jobId && impactJobIds.has(clip.jobId) || impactAssetIds.has(clip.assetId)) {
-          impactClips++;
-          if (reportShotImpacts) {
-            // A clip may mention the same shot through several identifiers.
-            // Match existing aggregate evidence and count once per shot.
-            const consumers = new Set(assetShots.get(clip.assetId));
-            if (clip.jobId) for (const id of jobShots.get(clip.jobId) ?? []) consumers.add(id);
-            if (linkedShot) consumers.add(linkedShot);
-            if (explicit && impactShots.has(explicit.shotId)) consumers.add(explicit.shotId);
-            for (const id of consumers) countFor(id).clips++;
+        const nodeId = clip.sequenceSource?.nodeId;
+        evidence(['format5-clip', timeline.id, clip.id, nodeId, clip.assetId, clip.versionId, clip.jobId, clip.trackId]);
+        if (typeof nodeId === 'string' && (shots.has(nodeId) || impactShots.has(nodeId))) {
+          clipIds.add(clip.id);
+          if (impactShots.has(nodeId)) impactClips++;
+        }
+      }
+    }
+  } else {
+    const timelineRow = shots.size ? readTimelineStorage(db, projectId) : null;
+    const timeline = timelineRow?.timeline ?? null;
+    if (timelineRow) {
+      if (!isTimelineRecord(timeline, {projectId})) unverified('timeline', timelineRow.id);
+      else {
+        const hidden = new Map(timeline.tracks.map(track => [track.id, track.hidden]));
+        for (const clip of [...timeline.clips].sort((a, b) => compare(a.id, b.id))) {
+          if (!(has('shot', clip.shotId) || clip.versionId && versionIds.has(clip.versionId) ||
+                clip.jobId && jobIds.has(clip.jobId) || assetIds.has(clip.assetId))) continue;
+          clipIds.add(clip.id);
+          const explicit = clip.versionId ? versionOwners.get(clip.versionId) : undefined;
+          const linkedShot = clip.shotId && impactShots.has(clip.shotId) ? clip.shotId : undefined;
+          if (linkedShot || clip.versionId && impactVersionIds.has(clip.versionId) ||
+              clip.jobId && impactJobIds.has(clip.jobId) || impactAssetIds.has(clip.assetId)) {
+            impactClips++;
+            if (reportShotImpacts) {
+              // A clip may mention the same shot through several identifiers.
+              // Match existing aggregate evidence and count once per shot.
+              const consumers = new Set(assetShots.get(clip.assetId));
+              if (clip.jobId) for (const id of jobShots.get(clip.jobId) ?? []) consumers.add(id);
+              if (linkedShot) consumers.add(linkedShot);
+              if (explicit && impactShots.has(explicit.shotId)) consumers.add(explicit.shotId);
+              for (const id of consumers) countFor(id).clips++;
 
-            // A known clip can matter to confirmation even when it is not
-            // attributable to a particular generated version.
-            const version = clip.versionId ? explicit : clip.jobId ? impactVersionsByJob.get(clip.jobId) : versionForAsset(clip.assetId);
-            if (version && impactShots.has(version.shotId) && version.assetId === clip.assetId &&
-                (!clip.shotId || clip.shotId === version.shotId) && (!clip.jobId || clip.jobId === version.jobId) &&
-                !usedVersionIds.has(version.id)) {
-              usedVersionIds.add(version.id);
-              countFor(version.shotId).usedVersions++;
+              // A known clip can matter to confirmation even when it is not
+              // attributable to a particular generated version.
+              const version = clip.versionId ? explicit : clip.jobId ? impactVersionsByJob.get(clip.jobId) : versionForAsset(clip.assetId);
+              if (version && impactShots.has(version.shotId) && version.assetId === clip.assetId &&
+                  (!clip.shotId || clip.shotId === version.shotId) && (!clip.jobId || clip.jobId === version.jobId) &&
+                  !usedVersionIds.has(version.id)) {
+                usedVersionIds.add(version.id);
+                countFor(version.shotId).usedVersions++;
+              }
             }
           }
+          evidence(['clip', timeline.id, clip.id, clip.assetId, clip.shotId, clip.versionId, clip.jobId, clip.trackId, hidden.get(clip.trackId)]);
+          if (explicit && (explicit.assetId !== clip.assetId || clip.shotId && explicit.shotId !== clip.shotId ||
+              clip.jobId && explicit.jobId !== clip.jobId)) unverified('clip', clip.id);
         }
-        evidence(['clip', timeline.id, clip.id, clip.assetId, clip.shotId, clip.versionId, clip.jobId, clip.trackId, hidden.get(clip.trackId)]);
-        if (explicit && (explicit.assetId !== clip.assetId || clip.shotId && explicit.shotId !== clip.shotId ||
-            clip.jobId && explicit.jobId !== clip.jobId)) unverified('clip', clip.id);
       }
     }
   }
@@ -248,6 +270,9 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
   // block even if a different document's edit owner has gone away.
   const related = new Set(keys);
   for (const id of clipIds) related.add(identityKey({kind: 'timeline_clip', id}));
+  if (Number(db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    includeFormat5SequenceDependencies(store, related, evidence);
+  }
   function touches(target: Identity): boolean {
     return related.has(identityKey(target)) || target.kind === 'version' && versionIds.has(target.id) ||
       target.kind === 'job' && jobIds.has(target.id);
@@ -333,4 +358,79 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
   } catch {unverified('previs', projectId);}
   if (overflow) blockers.push({kind: 'dependency', id: projectId, reason: 'CANVAS_DEPENDENCY_LIMIT'});
   return {versions: impactVersions.length, clips: impactClips, shotImpacts, blocked: blockers, digest: hash.digest('hex')};
+}
+
+
+/** Format 5 edits a board chain and its main-track projection together. A
+ * dependency check on one member must therefore retain every chain member, its
+ * sequence edges and the main-track clips sourced from it, so a pending edit
+ * task or Mio claim on any of them blocks the stale action. */
+export interface SequenceDependencyComponent {
+  readonly nodeIds: readonly string[];
+  readonly edgeIds: readonly string[];
+  readonly clipIds: readonly string[];
+}
+export function readSequenceDependencyComponent(store: ProjectStore, targets: readonly Identity[]): SequenceDependencyComponent {
+  if (Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) !== FORMAT5_PROJECT_SCHEMA_VERSION) {
+    return {nodeIds: [], edgeIds: [], clipIds: []};
+  }
+  const {db, projectId} = store;
+  const adjacency = new Map<string, Set<string>>();
+  const edgeOf = new Map<string, {id: string; source: string; target: string}>();
+  const edges = db.prepare(`SELECT id,json_extract(data,'$.source') source,json_extract(data,'$.target') target
+    FROM project.edges WHERE projectId=? AND archivedAt IS NULL AND json_valid(data)
+      AND json_extract(data,'$.kind')='sequence' ORDER BY id`).all(projectId) as Array<Record<string, unknown>>;
+  for (const row of edges) {
+    const {id, source, target} = row;
+    if (typeof id !== 'string' || typeof source !== 'string' || typeof target !== 'string') continue;
+    edgeOf.set(id, {id, source, target});
+    for (const [from, to] of [[source, target], [target, source]] as const) {
+      const next = adjacency.get(from) ?? new Set<string>();
+      next.add(to);
+      adjacency.set(from, next);
+    }
+  }
+  const seeds = new Set<string>();
+  for (const target of targets) {
+    if (target.kind === 'edge') {
+      const edge = edgeOf.get(target.id);
+      if (edge) {seeds.add(edge.source); seeds.add(edge.target);}
+    } else seeds.add(target.id);
+  }
+  if (!seeds.size) return {nodeIds: [], edgeIds: [], clipIds: []};
+  const component = new Set<string>(seeds), queue = [...seeds];
+  for (let index = 0; index < queue.length; index++) {
+    const id = queue[index]!;
+    for (const next of adjacency.get(id) ?? []) {
+      if (component.has(next)) continue;
+      component.add(next);
+      queue.push(next);
+    }
+  }
+  const nodeIds = [...component].sort(compare);
+  const edgeIds = [...edgeOf.values()].filter(edge => component.has(edge.source) && component.has(edge.target))
+    .map(edge => edge.id).sort(compare);
+  const clipIds: string[] = [];
+  const timeline = readFormat5TimelineRecord(db, 'project');
+  for (const clip of timeline?.clips ?? []) {
+    if (clip.sequenceSource && component.has(clip.sequenceSource.nodeId)) clipIds.push(clip.id);
+  }
+  return {nodeIds, edgeIds, clipIds: [...new Set(clipIds)].sort(compare)};
+}
+
+function includeFormat5SequenceDependencies(store: ProjectStore, related: Set<string>,
+  evidence: (value: unknown) => void): void {
+  const targets: Identity[] = [];
+  for (const key of related) {
+    const [kind, id] = key.split(':') as [string, string?];
+    if ((kind === 'node' || kind === 'shot' || kind === 'edge') && id) targets.push({kind, id});
+  }
+  const component = readSequenceDependencyComponent(store, targets);
+  for (const id of component.nodeIds) {
+    related.add(identityKey({kind: 'node', id}));
+    related.add(identityKey({kind: 'shot', id}));
+  }
+  for (const id of component.edgeIds) related.add(identityKey({kind: 'edge', id}));
+  for (const id of component.clipIds) related.add(identityKey({kind: 'timeline_clip', id}));
+  evidence(['sequence-component', component]);
 }

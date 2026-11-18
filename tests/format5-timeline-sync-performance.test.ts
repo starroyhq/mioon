@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {previewSequenceSync, readSequenceSyncProjection, runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
+import {withK1BenchmarkLock} from './helpers/k1-benchmark-lock.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -15,7 +16,7 @@ const sha = (letter: string): string => letter.repeat(64);
  * receipt replay, revision checks, projection read, SA plan, changed-row writes,
  * three-state baseline, one history action and commit. Envelope preview is the
  * separate read-only step a real UI/MT caller runs before confirmation. */
-test('K1 500+500+1,000 format-5 synchronization meets the local p95 budget', t => {
+test('K1 500+500+1,000 format-5 synchronization meets the local p95 budget', t => withK1BenchmarkLock(() => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-perf-'));
   const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
@@ -99,4 +100,4 @@ test('K1 500+500+1,000 format-5 synchronization meets the local p95 budget', t =
   // Linux CI runners; the runner platform is the stable signal here.
   const budget = process.platform === 'linux' ? 200 : 100;
   assert.ok(p95 <= budget, `K1 p95 ${p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
-});
+}));

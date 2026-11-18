@@ -1,0 +1,846 @@
+import {randomUUID} from 'node:crypto';
+import type {DatabaseSync} from 'node:sqlite';
+import {AppError} from '../../contracts/src/app-error.ts';
+import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
+import type {ChainSyncBaseline, TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
+import {sourceFrameCount} from '../../contracts/src/source-range.ts';
+import {format5SyncBaselineSchema} from '../../contracts/src/project-format5.ts';
+import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
+import {
+  applySequenceEditBaselineChange, isSequenceEditIntentSequence, sequenceEditEnvelopeOperationName, sequenceEditOperationName,
+} from '../../contracts/src/sequence-edit.ts';
+import type {
+  BoardSeamProjectionPort, SequenceEditAffectedCounts, SequenceEditAllocation, SequenceEditBaselineChange,
+  SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope, SequenceEditHistoryCommand,
+  SequenceEditHistoryEntry, SequenceEditHistoryView, SequenceEditIntent, SequenceEditPatch, SequenceEditReceipt,
+  SequenceEditStateDelta, SequenceEditTimelineDelta, SequenceEditTimelineCommit, SequenceEditTransactionFailure,
+  SequenceEditTransactionRequest,
+} from '../../contracts/src/sequence-edit.ts';
+import {
+  isSequenceEditingOperation, isSequenceEditingWrite, sequenceEditingResponses, sequenceEditingSchemas,
+  sequenceEditOperationSchema,
+} from '../../contracts/src/sequence-editing.ts';
+import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
+import {
+  applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, createMainTrackProjectionPort, readSequenceSyncContext,
+} from './format5-sequence-sync.ts';
+import type {SequenceSyncContext} from './format5-sequence-sync.ts';
+import {
+  findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
+  readSequenceEditHistoryEntry, sequenceEditHistoryFloor, sequenceEditInputDigest, writeSequenceEditAction,
+  writeSequenceEditFailure,
+} from './format5-editor-history.ts';
+import type {SequenceEditHistoryState, SequenceEditReceiptDraft} from './format5-editor-history.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readProjectContentStamp} from './project-file/content-stamp.ts';
+import {readFormat5JsonRows} from './project-file/format5-content.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
+import type {ProjectStore} from './project-file/store.ts';
+import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
+import {canonicalJson} from './project-versions/document.ts';
+
+type Row = Record<string, unknown>;
+type CanvasTable = 'shots' | 'nodes' | 'edges';
+const object = (value: unknown): value is Row => value !== null && typeof value === 'object' && !Array.isArray(value);
+const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
+const isUuid = (value: unknown): value is string => typeof value === 'string' && uuidPattern.test(value);
+const now = (): string => new Date().toISOString();
+const contentStamp = (store: ProjectStore): {readonly contentSequence: number} => readProjectContentStamp(store.db);
+const tableOf = (kind: SequenceEditBoardEntity['kind']): CanvasTable => kind === 'shot' ? 'shots' : kind === 'edge' ? 'edges' : 'nodes';
+const rowKind = (table: CanvasTable): SequenceEditBoardEntity['kind'] => table === 'shots' ? 'shot' : table === 'edges' ? 'edge' : 'node';
+const stable = (value: unknown): string => canonicalJson(JSON.parse(JSON.stringify(value)));
+
+function fail(code: string, message: string, ids: readonly string[] = [], detail: Row = {}): never {
+  throw new AppError(code, message, 409, {ids: [...new Set(ids)], ...detail});
+}
+function invalidContent(): never {
+  throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
+}
+export function isFormat5Project(store: ProjectStore): boolean {
+  return Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+}
+const LEGACY_WRITE_MESSAGES = Object.freeze({
+  edge: '格式 5 的顺序连线请通过画板顺序操作修改。',
+  order: '格式 5 的镜头顺序由画板链决定，请使用画板顺序操作。',
+  version: '格式 5 的选中版本必须经画板同步操作修改。',
+  archive: '格式 5 的画板删除、恢复和粘贴需经画板顺序操作。',
+} as const);
+export type LegacyCanvasWrite = keyof typeof LEGACY_WRITE_MESSAGES;
+/** Old ambiguous writers that would desynchronize the board chain must not run
+ * under explicit format-5 admission. The sequence.edit service is the only
+ * writer; the selected-version caller passes its user-facing hint. */
+export function assertLegacyCanvasWriteAllowed(store: ProjectStore, use: LegacyCanvasWrite): void {
+  if (!isFormat5Project(store)) return;
+  throw new AppError('UNSUPPORTED_OPERATION', LEGACY_WRITE_MESSAGES[use], 409, {use: 'sequence.edit'});
+}
+function assertFormat5(store: ProjectStore): void {
+  if (!isFormat5Project(store)) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
+}
+
+// ---------------------------------------------------------------------------
+// Shared transaction seams
+// ---------------------------------------------------------------------------
+
+// CS never owns the history-13 rows: `format5-editor-history.ts` (the module the
+// timeline-sync line aligned to the #289 contract) writes the cursor, entry and
+// receipt, and `format5-sequence-sync.ts` provides the TS main-track projection
+// plus the timeline half of undo/redo. Both run inside the caller's transaction.
+
+// ---------------------------------------------------------------------------
+// Live read model
+// ---------------------------------------------------------------------------
+
+interface EditRows {
+  readonly shots: ReadonlyMap<string, Row>;
+  readonly nodes: ReadonlyMap<string, Row>;
+  readonly edges: ReadonlyMap<string, Row>;
+  readonly versions: ReadonlyMap<string, Row>;
+  readonly assets: ReadonlyMap<string, Row>;
+}
+interface EditContext {
+  readonly projectId: string;
+  readonly timeline: Format5Timeline;
+  readonly rootNodeId: string;
+  readonly syncRevision: number;
+  readonly baseline: Format5SyncBaseline;
+  readonly board: ChainBoard;
+  readonly nodes: readonly ChainNode[];
+  readonly rows: EditRows;
+  readonly archived: ReadonlyMap<string, Row>;
+  readonly media: readonly ChainSyncMedia[];
+  readonly clips: readonly ChainSyncClip[];
+  readonly anchored: readonly TrackAnchoredItem[];
+}
+
+function editContextOf(context: SequenceSyncContext): EditContext {
+  return {
+    projectId: context.projectId, timeline: context.timeline, rootNodeId: context.rootNodeId,
+    syncRevision: context.syncRevision, baseline: context.baseline, board: context.board, nodes: context.nodes,
+    rows: {shots: context.shots, nodes: context.nodeRows, edges: context.edgeRows,
+      versions: context.versions, assets: context.assets},
+    archived: new Map<string, Row>([
+      ...[...context.archivedShots].map(([id, row]) => [`shot:${id}`, row] as const),
+      ...[...context.archivedNodes].map(([id, row]) => [`node:${id}`, row] as const),
+      ...[...context.archivedEdges].map(([id, row]) => [`edge:${id}`, row] as const),
+    ]),
+    media: context.media, clips: context.clips, anchored: context.anchored,
+  };
+}
+
+/** One projection read: the shared timeline-sync context drives both the CS
+ * planning state and, below, the TS main-track projection in the same tx. */
+export function readSequenceEditContext(store: ProjectStore): EditContext {
+  return editContextOf(readSequenceSyncContext(store));
+}
+
+function stateOf(context: EditContext, board: ChainBoard = context.board): ChainSyncState {
+  return {board, filmId: context.rootNodeId, media: context.media, clips: context.clips, anchored: context.anchored};
+}
+
+// ---------------------------------------------------------------------------
+// Planning
+// ---------------------------------------------------------------------------
+
+type SuccessfulPlan = Extract<ChainSyncPlan, {ok: true}>;
+
+function planFailure(plan: Extract<ChainSyncPlan, {ok: false}>): never {
+  const ids: string[] = [];
+  const record = plan as unknown as Row;
+  for (const key of ['id', 'nodeId', 'clipId']) if (typeof record[key] === 'string') ids.push(record[key] as string);
+  for (const issue of Array.isArray(record.issues) ? record.issues as Array<{nodeIds?: readonly string[]}> : []) {
+    for (const id of issue.nodeIds ?? []) ids.push(id);
+  }
+  fail(plan.code, '画板顺序链不能按这条命令修改。', ids, {reason: plan.code});
+}
+const planChanged = (plan: SuccessfulPlan): boolean => plan.changes.nodes.length + plan.changes.edges.length
+  + plan.changes.media.length + plan.changes.clips.length + plan.changes.anchored.length > 0;
+const planTimelineChanged = (plan: SuccessfulPlan): boolean =>
+  plan.changes.clips.length + plan.changes.anchored.length + plan.changes.media.length > 0;
+
+function referencedNodeIds(envelope: SequenceEditEnvelope): Set<string> {
+  const ids = new Set<string>();
+  const add = (value: unknown): void => {if (isUuid(value)) ids.add(value);};
+  for (const intent of envelope.intents) {
+    const operation = intent.operation;
+    if (operation.kind === 'board') {
+      if (operation.edit.kind === 'delete') add(operation.edit.nodeId);
+      else {add(operation.edit.fromId); add(operation.edit.toId);}
+      if (operation.edit.kind === 'insert') add(operation.edit.nodeId);
+    } else if (operation.kind === 'board-version') add(operation.nodeId);
+    else if (operation.kind === 'track') {
+      const edit = operation.edit;
+      if ('copyNodeId' in edit) add(edit.copyNodeId);
+      if (edit.kind === 'add') add(edit.clip.nodeId);
+    }
+  }
+  return ids;
+}
+
+function validateOperation(intent: {readonly operation: ChainSyncOperation}): void {
+  const parsed = sequenceEditOperationSchema.safeParse(intent.operation);
+  if (!parsed.success) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '画板顺序链操作参数无效。', [], {issues: parsed.error.issues});
+}
+
+function withAllocation(operation: ChainSyncOperation, allocation: SequenceEditAllocation): ChainSyncOperation {
+  if (operation.kind !== 'board' && operation.kind !== 'sync-board') return operation;
+  if (operation.kind === 'board' && operation.newClipIds) return operation;
+  const newClipIds = Object.fromEntries(allocation.clips.map(item => [item.nodeId, item.clipId]));
+  return Object.keys(newClipIds).length ? {...operation, newClipIds} : operation;
+}
+
+/** Pure planning entry for one envelope's ordered intents. SA validates the
+ * graph semantics; this only injects the preallocated clip identities. */
+export type SequenceEditPlanResult =
+  | {readonly ok: true; readonly plan: SuccessfulPlan; readonly state: ChainSyncState}
+  | {readonly ok: false; readonly code: string; readonly ids: readonly string[]};
+export function planSequenceEditIntents(state: ChainSyncState, intents: readonly SequenceEditIntent[],
+  allocation: SequenceEditAllocation): SequenceEditPlanResult {
+  let current = state;
+  let finalPlan: SuccessfulPlan | undefined;
+  for (const intent of intents) {
+    const plan = planChainSync(current, withAllocation(intent.operation, allocation));
+    if (!plan.ok) {
+      const ids: string[] = [];
+      const record = plan as unknown as Row;
+      for (const key of ['id', 'nodeId', 'clipId']) if (typeof record[key] === 'string') ids.push(record[key] as string);
+      return {ok: false, code: plan.code, ids: [...new Set(ids)]};
+    }
+    current = plan.after;
+    finalPlan = plan;
+  }
+  return {ok: true, plan: finalPlan!, state: current};
+}
+
+// ---------------------------------------------------------------------------
+// Board delta
+// ---------------------------------------------------------------------------
+
+interface BoardSnapshot {
+  readonly entity: SequenceEditBoardEntity;
+}
+interface BoardDeltas {
+  readonly before: SequenceEditBoardDelta;
+  readonly after: SequenceEditBoardDelta;
+  readonly nodes: number;
+  readonly edges: number;
+}
+
+interface CopyNode {readonly fromNodeId: string; readonly sourceTable: CanvasTable; readonly before: Row; readonly after: Row}
+
+function copyNodeRow(context: EditContext, sourceNodeId: string, newNodeId: string): CopyNode | null {
+  const shotRow = context.rows.shots.get(sourceNodeId);
+  const nodeRow = context.rows.nodes.get(sourceNodeId);
+  const sourceTable: CanvasTable | null = shotRow ? 'shots' : nodeRow ? 'nodes' : null;
+  if (!sourceTable) return null;
+  const before = (shotRow ?? nodeRow)!;
+  const after = {...before, id: newNodeId, projectId: context.projectId, createdAt: now(), updatedAt: now()};
+  return {fromNodeId: sourceNodeId, sourceTable, before, after};
+}
+
+const ARCHIVE_FIELDS = ['archivedAt', 'archiveBatchId', 'archiveReason'] as const;
+function archiveRow(row: Row, at: string, batchId: string): Row {
+  const clean = {...row};
+  for (const field of ARCHIVE_FIELDS) delete clean[field];
+  // Archive state lives in the frozen columns, not in the row JSON;
+  // archive/restore triggers advance the target revision.
+  return {...clean, archivedAt: at, archiveBatchId: batchId, archiveReason: 'user-delete'};
+}
+function restoreRow(row: Row): Row {
+  const clean = {...row};
+  for (const field of ARCHIVE_FIELDS) delete clean[field];
+  return clean;
+}
+function cleanRow(row: Row): Row {
+  const clean = {...row};
+  for (const field of ARCHIVE_FIELDS) delete clean[field];
+  return clean;
+}
+interface ArchiveMark {readonly archivedAt: string | null; readonly archiveBatchId: string | null; readonly archiveReason: string | null}
+function archiveMark(row: Row): ArchiveMark {
+  const archivedAt = typeof row.archivedAt === 'string' ? row.archivedAt : null;
+  if (archivedAt === null) return {archivedAt: null, archiveBatchId: null, archiveReason: null};
+  const archiveBatchId = typeof row.archiveBatchId === 'string' ? row.archiveBatchId : randomUUID();
+  const archiveReason = typeof row.archiveReason === 'string' ? row.archiveReason : 'user-delete';
+  return {archivedAt, archiveBatchId, archiveReason};
+}
+
+/** Build the before/after full-row deltas for every board record one action
+ * touches. Restored archived nodes and «copy and move» nodes are included in
+ * the same record so one undo restores the whole step. */
+function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, finalBoard: ChainBoard,
+  finalMedia: readonly ChainSyncMedia[], restored: ReadonlyMap<string, Row>, deleted: ReadonlySet<string>,
+  copied: ReadonlyMap<string, CopyNode>): BoardDeltas {
+  const at = now();
+  const archiveBatchId = randomUUID();
+  const beforeRows = new Map([...context.rows.shots, ...context.rows.nodes, ...context.rows.edges]);
+  const afterRows = new Map(beforeRows);
+  const change = new Map<string, {kind: SequenceEditBoardEntity['kind']; before: Row; after: Row}>();
+  const addChange = (kind: SequenceEditBoardEntity['kind'], id: string, before: Row, after: Row): void => {
+    if (stable(before) !== stable(after)) change.set(`${kind}:${id}`, {kind, before, after});
+  };
+  for (const [id, archivedRow] of restored) {
+    const kind: SequenceEditBoardEntity['kind'] = context.archived.has(`shot:${id}`) ? 'shot' : 'node';
+    const live = restoreRow(archivedRow);
+    addChange(kind, id, archivedRow, live);
+    afterRows.set(id, live);
+  }
+  const liveNodeIds = new Set(context.board.nodes.map(node => node.id));
+  const finalNodeIds = new Set(finalBoard.nodes.map(node => node.id));
+  for (const id of deleted) {
+    const row = context.rows.shots.get(id) ?? context.rows.nodes.get(id);
+    if (!row) continue;
+    const kind: SequenceEditBoardEntity['kind'] = context.rows.shots.has(id) ? 'shot' : 'node';
+    const archived = archiveRow(row, at, archiveBatchId);
+    addChange(kind, id, row, archived);
+    afterRows.set(id, archived);
+  }
+  for (const [id, copy] of copied) {
+    const kind: SequenceEditBoardEntity['kind'] = copy.sourceTable === 'shots' ? 'shot' : 'node';
+    change.set(`${kind}:${id}`, {kind, before: copy.after, after: copy.after, ...{newRecord: true} as Row});
+    afterRows.set(id, copy.after);
+  }
+  for (const node of finalBoard.nodes) {
+    if (copied.has(node.id)) continue;
+    const row = afterRows.get(node.id);
+    if (!row) continue;
+    if (node.kind !== 'shot') continue;
+    const versionId = finalMedia.find(item => item.nodeId === node.id)?.selectedVersion?.id ?? null;
+    if (row.selectedVersionId === versionId) continue;
+    const next = {...row, selectedVersionId: versionId, ...(typeof row.updatedAt === 'string' ? {updatedAt: at} : {})};
+    addChange('shot', node.id, row, next);
+    afterRows.set(node.id, next);
+  }
+  // Detached nodes stay live; only an explicit board delete archives a node.
+  const oldEdges = [...context.board.edges];
+  const finalEdges = [...finalBoard.edges];
+  const finalKeys = new Set(finalEdges.map(edge => `${edge.fromId}>${edge.toId}`));
+  const allocationEdges = new Map(envelope.allocation.edges.map(edge => [`${edge.fromId}>${edge.toId}`, edge.id]));
+  const edgeRowsByKey = new Map<string, Row>();
+  for (const row of context.rows.edges.values()) {
+    if (row.kind !== 'sequence' || !isUuid(row.source) || !isUuid(row.target)) continue;
+    edgeRowsByKey.set(`${row.source}>${row.target}`, row);
+  }
+  const finalEdgeRows = new Map<string, Row>();
+  for (const edge of finalEdges) {
+    const key = `${edge.fromId}>${edge.toId}`;
+    const existing = edgeRowsByKey.get(key);
+    const row = existing ?? (() => {
+      const id = allocationEdges.get(key);
+      if (!id) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '缺少新顺序边的预分配 ID。', [edge.fromId, edge.toId]);
+      return {id, projectId: context.projectId, source: edge.fromId, target: edge.toId, kind: 'sequence', createdAt: at};
+    })();
+    finalEdgeRows.set(String(row.id), row);
+    if (!existing) {
+      change.set(`edge:${row.id}`, {kind: 'edge', before: row, after: row, ...{newRecord: true} as Row});
+      afterRows.set(String(row.id), row);
+    }
+  }
+  for (const edge of oldEdges) {
+    const key = `${edge.fromId}>${edge.toId}`;
+    if (finalKeys.has(key)) continue;
+    const row = edgeRowsByKey.get(key);
+    if (!row) continue;
+    const id = String(row.id);
+    afterRows.delete(id);
+    change.delete(`edge:${id}`);
+    change.set(`edge:${id}`, {kind: 'edge', before: row, after: row, ...{removedRecord: true} as Row});
+  }
+  const afterWrites: SequenceEditBoardEntity[] = [];
+  const afterRemovals: SequenceEditBoardEntity[] = [];
+  for (const item of change.values()) {
+    const record = item as Row;
+    const kind = item.kind;
+    if (record.removedRecord === true) afterRemovals.push({kind, id: String(item.before.id), data: item.before});
+    else afterWrites.push({kind, id: String((item.after as Row).id), data: item.after});
+  }
+  const beforeWrites: SequenceEditBoardEntity[] = [];
+  const beforeRemovals: SequenceEditBoardEntity[] = [];
+  for (const item of change.values()) {
+    const record = item as Row;
+    const kind = item.kind;
+    if (record.newRecord === true) beforeRemovals.push({kind, id: String((item.after as Row).id), data: item.after});
+    else beforeWrites.push({kind, id: String((item.before as Row).id), data: item.before});
+  }
+  const countKind = (entities: readonly SequenceEditBoardEntity[], kind: SequenceEditBoardEntity['kind']): number =>
+    entities.filter(entity => entity.kind === kind).length;
+  const nodes = countKind(afterWrites, 'node') + countKind(afterWrites, 'shot') + countKind(afterRemovals, 'node') + countKind(afterRemovals, 'shot');
+  const edges = countKind(afterWrites, 'edge') + countKind(afterRemovals, 'edge');
+  return {before: {writes: beforeWrites, removals: beforeRemovals}, after: {writes: afterWrites, removals: afterRemovals}, nodes, edges};
+}
+
+function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mode: 'forward' | 'restore'): void {
+  if ([...delta.writes, ...delta.removals].some(entity => entity.kind === 'subject_binding')) {
+    fail('SEQUENCE_EDIT_CONTRACT_INVALID', '主体绑定行由 SB 卡接线后恢复。', [], {reason: 'SUBJECT_SEAM'});
+  }
+  for (const entity of delta.removals) {
+    const table = tableOf(entity.kind);
+    const removed = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
+    if (mode === 'restore' && Number(removed.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
+  }
+  for (const entity of delta.writes) {
+    const table = tableOf(entity.kind);
+    const mark = archiveMark(entity.data);
+    const clean = cleanRow(entity.data);
+    let data = clean;
+    if (mode === 'restore') {
+      const current = store.db.prepare(`SELECT id FROM project.${table} WHERE id=? AND projectId=?`).get(entity.id, store.projectId);
+      // Recreating a removed row is the only case that needs the frozen
+      // creation metadata; content fields stay exactly as recorded.
+      if (!current) data = {...clean, ...(typeof clean.createdAt === 'string' ? {} : {createdAt: now()})};
+    }
+    const write = store.db.prepare(`UPDATE project.${table} SET data=?,archivedAt=?,archiveBatchId=?,archiveReason=?
+      WHERE id=? AND projectId=?`).run(JSON.stringify(data), mark.archivedAt, mark.archiveBatchId, mark.archiveReason,
+      entity.id, store.projectId);
+    if (Number(write.changes) !== 1) {
+      const insert = store.db.prepare(`INSERT INTO project.${table}(id,projectId,data,archivedAt,archiveBatchId,archiveReason)
+        VALUES(?,?,?,?,?,?)`).run(entity.id, store.projectId, JSON.stringify(data), mark.archivedAt, mark.archiveBatchId, mark.archiveReason);
+      if (Number(insert.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
+    }
+  }
+}
+
+function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): boolean {
+  for (const entity of delta.writes) {
+    const current = store.db.prepare(`SELECT data FROM project.${tableOf(entity.kind)} WHERE id=? AND projectId=?`)
+      .get(entity.id, store.projectId) as Row | undefined;
+    if (!current || typeof current.data !== 'string') return false;
+    try { if (stable(JSON.parse(current.data)) !== stable(cleanRow(entity.data))) return false; } catch { return false; }
+  }
+  for (const entity of delta.removals) {
+    if (store.db.prepare(`SELECT 1 FROM project.${tableOf(entity.kind)} WHERE id=? AND projectId=?`)
+      .get(entity.id, store.projectId) !== undefined) return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Timeline patch pair
+// ---------------------------------------------------------------------------
+
+function emptyTimelineDelta(baseline: SequenceEditBaselineChange): SequenceEditTimelineDelta {
+  return {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline};
+}
+function timelineDeltaChanged(delta: SequenceEditTimelineDelta): boolean {
+  return delta.clips.length > 0 || delta.cues.length > 0 || delta.removedClipIds.length > 0
+    || delta.removedCueIds.length > 0 || delta.baseline.kind !== 'unchanged';
+}
+
+function sameRow(left: unknown, right: unknown): boolean {
+  return (left === undefined && right === undefined) || (left !== undefined && right !== undefined && stable(left) === stable(right));
+}
+
+function buildTimelinePatch(before: Format5Timeline, after: Format5Timeline | null,
+  baseline: SequenceEditBaselineChange, beforeBaseline: Format5SyncBaseline): {before: SequenceEditTimelineDelta; after: SequenceEditTimelineDelta} {
+  const oldClips = new Map(before.clips.map(clip => [clip.id, clip] as const));
+  const newClips = new Map((after?.clips ?? before.clips).map(clip => [clip.id, clip] as const));
+  const oldCues = new Map((before.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  const newCues = new Map((after?.subtitles?.cues ?? before.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  const beforeClips: Format5Clip[] = [], afterClips: Format5Clip[] = [];
+  const beforeCues: Format5Cue[] = [], afterCues: Format5Cue[] = [];
+  const beforeRemovedClips: string[] = [], afterRemovedClips: string[] = [];
+  const beforeRemovedCues: string[] = [], afterRemovedCues: string[] = [];
+  for (const id of new Set([...oldClips.keys(), ...newClips.keys()])) {
+    const oldClip = oldClips.get(id), newClip = newClips.get(id);
+    if (sameRow(oldClip, newClip)) continue;
+    if (oldClip) beforeClips.push(oldClip); else beforeRemovedClips.push(id);
+    if (newClip) afterClips.push(newClip); else afterRemovedClips.push(id);
+  }
+  for (const id of new Set([...oldCues.keys(), ...newCues.keys()])) {
+    const oldCue = oldCues.get(id), newCue = newCues.get(id);
+    if (sameRow(oldCue, newCue)) continue;
+    if (oldCue) beforeCues.push(oldCue); else beforeRemovedCues.push(id);
+    if (newCue) afterCues.push(newCue); else afterRemovedCues.push(id);
+  }
+  return {
+    before: {clips: beforeClips, cues: beforeCues, removedClipIds: beforeRemovedClips, removedCueIds: beforeRemovedCues,
+      baseline: beforeBaselineValue(beforeBaseline, baseline)},
+    after: {clips: afterClips, cues: afterCues, removedClipIds: afterRemovedClips, removedCueIds: afterRemovedCues, baseline},
+  };
+}
+
+function timelinePatchFromCommit(before: Format5Timeline, delta: SequenceEditTimelineDelta,
+  beforeBaseline: Format5SyncBaseline): {before: SequenceEditTimelineDelta; after: SequenceEditTimelineDelta} {
+  const oldClips = new Map(before.clips.map(clip => [clip.id, clip] as const));
+  const oldCues = new Map((before.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  const touchedClips = new Set([...delta.clips.map(clip => clip.id), ...delta.removedClipIds]);
+  const touchedCues = new Set([...delta.cues.map(cue => cue.id), ...delta.removedCueIds]);
+  const afterClipIds = new Set(delta.clips.map(clip => clip.id));
+  const afterCueIds = new Set(delta.cues.map(cue => cue.id));
+  return {
+    before: {
+      clips: [...touchedClips].filter(id => oldClips.has(id)).map(id => oldClips.get(id)!),
+      cues: [...touchedCues].filter(id => oldCues.has(id)).map(id => oldCues.get(id)!),
+      removedClipIds: [...afterClipIds].filter(id => !oldClips.has(id)),
+      removedCueIds: [...afterCueIds].filter(id => !oldCues.has(id)),
+      baseline: beforeBaselineValue(beforeBaseline, delta.baseline),
+    },
+    after: delta,
+  };
+}
+
+function beforeBaselineValue(before: Format5SyncBaseline, change: SequenceEditBaselineChange): SequenceEditBaselineChange {
+  switch (change.kind) {
+    case 'unchanged': return {kind: 'unchanged'};
+    case 'absent': return {kind: 'set', value: before};
+    case 'set': return stable(before) === stable(change.value) ? {kind: 'unchanged'} : {kind: 'set', value: before};
+  }
+}
+
+function countTimeline(delta: SequenceEditTimelineDelta, mainTrackId: string): {mainTrackClips: number; otherTrackItems: number; subtitleCues: number} {
+  const main = delta.clips.filter(clip => clip.trackId === mainTrackId).length + delta.removedClipIds.length;
+  const other = delta.clips.filter(clip => clip.trackId !== mainTrackId).length;
+  return {mainTrackClips: main, otherTrackItems: other, subtitleCues: delta.cues.length + delta.removedCueIds.length};
+}
+
+// ---------------------------------------------------------------------------
+// Receipts and history projection
+// ---------------------------------------------------------------------------
+
+function historyViewOf(store: ProjectStore): SequenceEditHistoryView {
+  return prepareSequenceEditHistory(store).view;
+}
+
+function assertEnvelope(store: ProjectStore, context: EditContext, envelope: SequenceEditEnvelope,
+  state: SequenceEditHistoryState): void {
+  if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
+  if (envelope.filmId !== context.rootNodeId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '成片根与时间线不一致。', [envelope.filmId, context.rootNodeId]);
+  if (envelope.subjectIntent) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '主体绑定动作由 SB 卡接线后处理。', [], {reason: 'SUBJECT_SEAM'});
+  if (!isSequenceEditIntentSequence(envelope.intents)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '动作组合无效。');
+  for (const intent of envelope.intents) validateOperation(intent);
+  const stamp = contentStamp(store);
+  const conflicts: string[] = [];
+  if (envelope.baseline.contentRevision !== stamp.contentSequence) conflicts.push('content');
+  if (envelope.baseline.timelineRevision !== context.timeline.revision) conflicts.push('timeline');
+  if (envelope.baseline.syncRevision !== context.syncRevision) conflicts.push('sync');
+  if (conflicts.length) fail('SEQUENCE_EDIT_REVISION_CONFLICT', '项目的修订已经变化，请重新读取后再试。', [], {revision: conflicts});
+  if (envelope.baseline.historyPosition !== state.position || envelope.baseline.historyRevision !== state.revision) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state});
+  }
+  for (const target of envelope.baseline.targets) {
+    if (target.kind === 'clip' || target.kind === 'cue') continue;
+    const revision = readMioTargetRevision(store.db, store.projectId, target.kind, target.id);
+    if (revision !== target.revision) fail('SEQUENCE_EDIT_REVISION_CONFLICT', '受影响的画板对象已经变化。', [target.id], {target});
+  }
+}
+
+function affectedFromDeltas(context: EditContext, deltas: BoardDeltas, timeline: SequenceEditTimelineDelta): SequenceEditAffectedCounts {
+  const mainIds = new Set(context.timeline.clips.filter(clip => clip.trackId === context.timeline.mainTrack.trackId).map(clip => clip.id));
+  const countKind = (kind: SequenceEditBoardEntity['kind']): number =>
+    deltas.after.writes.filter(entity => entity.kind === kind).length + deltas.after.removals.filter(entity => entity.kind === kind).length;
+  const mainWrites = timeline.clips.filter(clip => clip.trackId === context.timeline.mainTrack.trackId).length;
+  const removedMain = timeline.removedClipIds.filter(id => mainIds.has(id)).length;
+  return {
+    nodes: countKind('node') + countKind('shot'), edges: countKind('edge'),
+    mainTrackClips: mainWrites + removedMain,
+    otherTrackItems: timeline.clips.length - mainWrites + timeline.removedClipIds.length - removedMain,
+    subtitleCues: timeline.cues.length + timeline.removedCueIds.length,
+  };
+}
+
+function timelineDeltaMatches(store: ProjectStore, delta: SequenceEditTimelineDelta): boolean {
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  if (!timeline) return false;
+  const clips = new Map(timeline.clips.map(clip => [clip.id, clip] as const));
+  const cues = new Map((timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  for (const clip of delta.clips) if (!sameRow(clips.get(clip.id), clip)) return false;
+  for (const cue of delta.cues) if (!sameRow(cues.get(cue.id), cue)) return false;
+  for (const id of delta.removedClipIds) if (clips.has(id)) return false;
+  for (const id of delta.removedCueIds) if (cues.has(id)) return false;
+  if (delta.baseline.kind === 'unchanged') return true;
+  const context = readSequenceEditContext(store);
+  if (delta.baseline.kind === 'set') return sameRow(context.baseline, delta.baseline.value);
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Apply one action
+// ---------------------------------------------------------------------------
+
+type ApplyOutcome = {readonly receipt: SequenceEditReceipt; readonly failure?: {readonly code: string; readonly ids: readonly string[]}};
+
+export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnvelope,
+  authorize: () => void = () => {}): SequenceEditReceipt {
+  assertFormat5(store);
+  const inputDigest = sequenceEditInputDigest(envelope);
+  const outcome = store.tx((): ApplyOutcome => {
+    authorize();
+    // An exact retry returns the immutable receipt before observing any newer
+    // revision, so a replay never has to match the current baseline.
+    const replay = findSequenceEditReceipt(store, envelope.requestId);
+    if (replay) {
+      if (replay.inputDigest !== inputDigest) {
+        fail('SEQUENCE_EDIT_REQUEST_REUSED', '这个请求 ID 已用于不同的画板操作。', [], {requestId: envelope.requestId});
+      }
+      return {receipt: replay.receipt};
+    }
+    const syncContext = readSequenceSyncContext(store);
+    const context = editContextOf(syncContext);
+    const prepared = prepareSequenceEditHistory(store, envelope.epoch);
+    assertEnvelope(store, context, envelope, prepared.state);
+    const operation = sequenceEditEnvelopeOperationName(envelope);
+    const requestDigest = inputDigest;
+    const allocatedCopyIds = new Set(envelope.allocation.nodes.map(item => item.nodeId));
+    const referenced = referencedNodeIds(envelope);
+    const restored = new Map<string, Row>();
+    const addedNodes: ChainNode[] = [];
+    for (const id of referenced) {
+      const archived = context.archived.get(`shot:${id}`) ?? context.archived.get(`node:${id}`);
+      if (!archived) continue;
+      restored.set(id, archived);
+      const kind = context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(archived.type));
+      addedNodes.push({id, kind});
+    }
+    const initialBoard: ChainBoard = {nodes: [...context.board.nodes, ...addedNodes].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0), edges: context.board.edges};
+    const restoredMedia = [...context.media];
+    for (const node of addedNodes) {
+      if (restoredMedia.some(item => item.nodeId === node.id)) continue;
+      if (node.kind === 'shot' || node.kind === 'image' || node.kind === 'video') {
+        restoredMedia.push({nodeId: node.id, selectedVersion: null, durationFrames: 120});
+      }
+    }
+    let state: ChainSyncState = {board: initialBoard, filmId: context.rootNodeId, media: restoredMedia,
+      clips: context.clips, anchored: context.anchored};
+    let stateBeforeFinal = state;
+    let timelineChanged = false;
+    let plan!: SuccessfulPlan;
+    for (let index = 0; index < envelope.intents.length; index++) {
+      const planned = planSequenceEditIntents(state, [envelope.intents[index]!], envelope.allocation);
+      if (!planned.ok) return {receipt: writeSequenceEditFailure(store, envelope, planned.code as never),
+        failure: {code: planned.code, ids: planned.ids}};
+      stateBeforeFinal = state;
+      state = planned.state;
+      plan = planned.plan;
+      if (planTimelineChanged(plan)) timelineChanged = true;
+    }
+    const copiedNodes = new Map<string, CopyNode>();
+    for (const item of envelope.allocation.nodes) {
+      if (!isUuid(item.fromNodeId) || !isUuid(item.nodeId)) {
+        return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_CONTRACT_INVALID'),
+          failure: {code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: [item.nodeId]}};
+      }
+      if (!state.board.nodes.some(node => node.id === item.nodeId)) continue;
+      const copy = copyNodeRow(context, item.fromNodeId, item.nodeId);
+      if (!copy) return {receipt: writeSequenceEditFailure(store, envelope, 'COPY_NODE_REQUIRED'),
+        failure: {code: 'COPY_NODE_REQUIRED', ids: [item.fromNodeId]}};
+      copiedNodes.set(item.nodeId, copy);
+      if (allocatedCopyIds.has(item.nodeId) && !context.board.nodes.some(node => node.id === item.fromNodeId)) {
+        return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_CONTRACT_INVALID'),
+          failure: {code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: [item.fromNodeId]}};
+      }
+    }
+    const deleted = new Set<string>();
+    for (const intent of envelope.intents) {
+      if (intent.operation.kind === 'board' && intent.operation.edit.kind === 'delete') deleted.add(intent.operation.edit.nodeId);
+    }
+    const boardDeltas = planBoardDeltas(context, envelope, state.board, state.media, restored, deleted, copiedNodes);
+    const changed = boardDeltas.nodes + boardDeltas.edges > 0 || timelineChanged || restored.size > 0 || copiedNodes.size > 0;
+    if (!changed) {
+      // A legal request whose live projection already matches the intent only
+      // stores a not_applied receipt; no history row or cursor revision moves.
+      return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_NOOP')};
+    }
+    let syncCommit: SequenceEditTimelineCommit | undefined;
+    let appliedTimelineRevision: number | undefined;
+    let appliedSyncRevision: number | undefined;
+    if (timelineChanged) {
+      const result = createMainTrackProjectionPort(store, () => syncContext).projectMainTrack({envelope, state: stateBeforeFinal, plan});
+      if (!result.ok) {
+        return {receipt: writeSequenceEditFailure(store, envelope, result.code), failure: {code: result.code, ids: result.ids}};
+      }
+      syncCommit = result;
+      // The projection port plans the timeline half; the coordinator applies it
+      // in the same transaction (it never opens its own transaction).
+            appliedTimelineRevision = applySequenceEditTimelineDelta(store, result.delta, syncContext).timelineRevision;
+                  appliedSyncRevision = applySequenceEditBaselineDelta(store, result.delta.baseline, syncContext).syncRevision;
+          }
+        applyBoardDelta(store, boardDeltas.after, 'forward');
+        const baselineChange = syncCommit?.delta.baseline ?? {kind: 'unchanged' as const};
+    const timelinePatch = syncCommit
+      ? timelinePatchFromCommit(context.timeline, syncCommit.delta, context.baseline)
+      : buildTimelinePatch(context.timeline, readFormat5TimelineRecord(store.db, 'project'), baselineChange, context.baseline);
+    const patch: SequenceEditPatch = {
+      version: 1,
+      before: {board: boardDeltas.before, timeline: timelinePatch.before},
+      after: {board: boardDeltas.after, timeline: timelinePatch.after},
+    };
+    const timelineRevision = appliedTimelineRevision ?? context.timeline.revision;
+    const syncRevision = appliedSyncRevision ?? context.syncRevision;
+    const draft: SequenceEditReceiptDraft = {
+      version: 1, requestId: envelope.requestId, inputDigest: requestDigest, projectId: envelope.projectId,
+      actionId: envelope.actionId, operation, originSide: envelope.originSide, status: 'applied',
+      ...(syncCommit?.warnings.length ? {warnings: syncCommit.warnings} : {}),
+      affected: affectedFromDeltas(context, boardDeltas, timelinePatch.after),
+      contentRevision: contentStamp(store).contentSequence, timelineRevision, syncRevision,
+    };
+    const stored = writeSequenceEditAction(store, {envelope, patch, receipt: draft});
+    return {receipt: stored};
+  });
+  if (outcome.failure) fail(outcome.failure.code, '画板顺序链不能按这条命令修改。', outcome.failure.ids, {reason: outcome.failure.code});
+  return outcome.receipt;
+}
+
+// ---------------------------------------------------------------------------
+// Undo / redo
+// ---------------------------------------------------------------------------
+
+export interface SequenceEditHistoryRequest {
+  readonly projectId: string;
+  readonly requestId: string;
+  readonly actionId: string;
+  readonly expected: {readonly position: number; readonly revision: number};
+}
+
+function entryAffected(entry: SequenceEditHistoryEntry): number {
+  const board = entry.afterPatch.board;
+  const timeline = entry.afterPatch.timeline;
+  return board.writes.length + board.removals.length + timeline.clips.length + timeline.cues.length
+    + timeline.removedClipIds.length + timeline.removedCueIds.length;
+}
+
+export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' | 'redo',
+  request: SequenceEditHistoryRequest, authorize: () => void = () => {}): SequenceEditReceipt {
+  assertFormat5(store);
+  const command: SequenceEditHistoryCommand = {...request, direction};
+  const inputDigest = historyCommandDigest(command);
+  return store.tx(() => {
+    authorize();
+    const replay = findSequenceEditReceipt(store, request.requestId);
+    if (replay) {
+      if (replay.inputDigest !== inputDigest) {
+        fail('SEQUENCE_EDIT_REQUEST_REUSED', '这个请求 ID 已用于不同的画板操作。', [], {requestId: request.requestId});
+      }
+      return replay.receipt;
+    }
+    const prepared = prepareSequenceEditHistory(store);
+    if (request.expected.position !== prepared.state.position || request.expected.revision !== prepared.state.revision) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state: prepared.state});
+    }
+    const floor = sequenceEditHistoryFloor(store);
+    if (direction === 'undo' && (floor === null || prepared.state.position < floor)) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '已经到最早可撤销的一步。', [], {reason: 'EARLIEST', floor});
+    }
+    const targetPosition = direction === 'undo' ? prepared.state.position : prepared.state.position + 1;
+    const entry = readSequenceEditHistoryEntry(store, request.actionId);
+    if (!entry || entry.position !== targetPosition) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
+    const source = direction === 'undo' ? entry.afterPatch : entry.beforePatch;
+    const apply = direction === 'undo' ? entry.beforePatch : entry.afterPatch;
+    if (!boardDeltaMatches(store, source.board) || !timelineDeltaMatches(store, source.timeline)) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后画板或主轨已经变化，不能直接撤回。', [request.actionId]);
+    }
+    applyBoardDelta(store, apply.board, 'restore');
+    const timelineResult = applySequenceEditTimelineDelta(store, apply.timeline);
+    const baselineResult = applySequenceEditBaselineDelta(store, apply.timeline.baseline);
+    const draft: SequenceEditReceiptDraft = {
+      version: 1, requestId: request.requestId, inputDigest, projectId: store.projectId,
+      actionId: request.actionId, operation: `${direction}:${entry.operation}`,
+      originSide: entry.operation.startsWith('board.') ? 'board' : 'timeline', status: 'applied',
+      affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
+      contentRevision: contentStamp(store).contentSequence,
+      timelineRevision: timelineResult.timelineRevision, syncRevision: baselineResult.syncRevision,
+    };
+    return moveSequenceEditHistoryCursor(store, command, draft);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// History projection
+// ---------------------------------------------------------------------------
+
+export interface SequenceEditHistoryProjection extends SequenceEditHistoryView {
+  readonly projectId: string;
+  readonly conflict: boolean;
+  readonly undoConflict: boolean;
+  readonly redoConflict: boolean;
+  readonly undoAvailable: boolean;
+  readonly redoAvailable: boolean;
+  readonly earliestPosition: number | null;
+  readonly atEarliest: boolean;
+}
+export function readSequenceEditHistory(store: ProjectStore): SequenceEditHistoryProjection {
+  assertFormat5(store);
+  const prepared = prepareSequenceEditHistory(store);
+  const floor = sequenceEditHistoryFloor(store);
+  const undoEntry = prepared.view.undo ? readSequenceEditHistoryEntry(store, prepared.view.undo.actionId) : null;
+  const redoEntry = prepared.view.redo ? readSequenceEditHistoryEntry(store, prepared.view.redo.actionId) : null;
+  const stale = (entry: SequenceEditHistoryEntry | null, patch: SequenceEditStateDelta | null): boolean =>
+    !!entry && !!patch && (!boardDeltaMatches(store, patch.board) || !timelineDeltaMatches(store, patch.timeline));
+  const undoConflict = stale(undoEntry, undoEntry?.afterPatch ?? null);
+  const redoConflict = stale(redoEntry, redoEntry?.beforePatch ?? null);
+  const action = (entry: SequenceEditHistoryEntry | null) => entry
+    ? {actionId: entry.actionId, operation: entry.operation, affected: entryAffected(entry)} : null;
+  const atEarliest = floor === null || prepared.state.position < floor;
+  return {...prepared.view, projectId: store.projectId, undo: action(undoEntry), redo: action(redoEntry),
+    conflict: undoConflict || redoConflict, undoConflict, redoConflict,
+    undoAvailable: !!undoEntry && !undoConflict, redoAvailable: !!redoEntry && !redoConflict,
+    earliestPosition: floor, atEarliest};
+}
+
+// ---------------------------------------------------------------------------
+// Transaction-internal board seam (TS → CS)
+// ---------------------------------------------------------------------------
+
+/** CS half of one track-origin action. TS calls this inside its transaction
+ * after planning; CS writes the rewired board edges/nodes and returns the
+ * board patch. The content stamp advances from the row triggers. */
+export function createSequenceBoardPort(store: ProjectStore): BoardSeamProjectionPort {
+  return {
+    projectBoardSeam(request: SequenceEditTransactionRequest): SequenceEditBoardCommitResult {
+      if (!isFormat5Project(store)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于项目格式 5。');
+      const context = readSequenceEditContext(store);
+      const envelope = request.envelope;
+      if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
+      const finalBoard = request.plan.after.board;
+      const finalMedia = request.plan.after.media;
+      const copiedNodes = new Map<string, CopyNode>();
+      for (const item of envelope.allocation.nodes) {
+        if (!isUuid(item.fromNodeId) || !isUuid(item.nodeId)) continue;
+        if (!finalBoard.nodes.some(node => node.id === item.nodeId)) continue;
+        const copy = copyNodeRow(context, item.fromNodeId, item.nodeId);
+        if (!copy) fail('COPY_NODE_REQUIRED', '复制节点需要有效的来源。', [item.fromNodeId]);
+        copiedNodes.set(item.nodeId, copy);
+      }
+      const deltas = planBoardDeltas(context, envelope, finalBoard, finalMedia, new Map(), new Set(), copiedNodes);
+      if (!deltas.nodes && !deltas.edges) return {ok: true, delta: deltas.after, contentRevision: contentStamp(store).contentSequence};
+      applyBoardDelta(store, deltas.after, 'forward');
+      return {ok: true, delta: deltas.after, contentRevision: contentStamp(store).contentSequence};
+    },
+  };
+}
+type SequenceEditBoardCommitResult = {readonly ok: true; readonly delta: SequenceEditBoardDelta; readonly contentRevision: number}
+  | SequenceEditTransactionFailure;
+
+// ---------------------------------------------------------------------------
+// Service surface
+// ---------------------------------------------------------------------------
+
+export interface SequenceEditingService {
+  call(operation: SequenceEditingOperation, input: unknown, authorize?: () => void): unknown;
+}
+export function createSequenceEditing(store: ProjectStore): SequenceEditingService {
+  return {
+    call(operation: SequenceEditingOperation, input: unknown, authorize: () => void = () => {}): unknown {
+      assertFormat5(store);
+      const parsed = sequenceEditingSchemas[operation].safeParse(input);
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', '画板顺序链操作参数无效。', 400, {issues: parsed.error.issues});
+      if (operation === 'sequence.history.get') {
+        const {projectId} = parsed.data as {projectId: string};
+        if (projectId !== store.projectId) throw new AppError('VALIDATION_ERROR', '项目范围无效。', 400);
+        return sequenceEditingResponses[operation].parse(readSequenceEditHistory(store));
+      }
+      if (operation === 'sequence.edit') {
+        const envelope = parsed.data as unknown as SequenceEditEnvelope;
+        if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
+        return sequenceEditingResponses[operation].parse(applySequenceEdit(store, envelope, authorize));
+      }
+      const history = parsed.data as {projectId?: string; requestId: string; actionId: string; expected: {position: number; revision: number}};
+      if (history.projectId !== undefined && history.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
+      return sequenceEditingResponses[operation].parse(applySequenceEditHistory(store,
+        operation === 'sequence.undo' ? 'undo' : 'redo',
+        {projectId: store.projectId, requestId: history.requestId, actionId: history.actionId, expected: history.expected}, authorize));
+    },
+  };
+}
+export {isSequenceEditingOperation, isSequenceEditingWrite};
