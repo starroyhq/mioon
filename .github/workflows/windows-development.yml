@@ -91,13 +91,29 @@ jobs:
             $rootName = 'ffmpeg-8.1.2-essentials_build'
             $url = 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip'
             $expected = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
-            $published = (Invoke-WebRequest -Uri ($url + '.sha256') -TimeoutSec 60).Content.Trim().ToLowerInvariant()
+            # The pinned publisher occasionally answers 503; retry the exact
+            # pinned URLs before treating the runner as unable to prepare tools.
+            function Get-PinnedMediaResponse([string]$Uri, [string]$OutFile = '') {
+              for ($attempt = 1; $attempt -le 4; $attempt++) {
+                try {
+                  if ($OutFile) {
+                    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -TimeoutSec 240 -MaximumRetryCount 2
+                    return
+                  }
+                  return (Invoke-WebRequest -Uri $Uri -TimeoutSec 60 -MaximumRetryCount 2).Content
+                } catch {
+                  if ($attempt -eq 4) { throw }
+                  Start-Sleep -Seconds (5 * $attempt)
+                }
+              }
+            }
+            $published = (Get-PinnedMediaResponse ($url + '.sha256')).Trim().ToLowerInvariant()
             if ($published -notmatch '^[a-f0-9]{64}$' -or $published -cne $expected) { throw 'Windows media publisher checksum differs from the reviewed pin.' }
             $staging = Join-Path $env:RUNNER_TEMP ('mioon-windows-media-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
             if (Test-Path -LiteralPath $staging) { throw 'Windows media staging must be new.' }
             New-Item -ItemType Directory -Path $staging | Out-Null
             $archive = Join-Path $staging 'ffmpeg-8.1.2-essentials_build.zip'
-            Invoke-WebRequest -Uri $url -OutFile $archive -TimeoutSec 240 -MaximumRetryCount 2
+            Get-PinnedMediaResponse $url $archive
             $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
             if ($actual -cne $expected) { throw 'Windows media archive checksum mismatch.' }
             $extracted = Join-Path $staging 'extracted'
