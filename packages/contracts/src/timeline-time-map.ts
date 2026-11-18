@@ -45,8 +45,6 @@ export const TIMELINE_TIME_MAP_LIMITS = Object.freeze({
   maxOutputFrames: 300_000,
   /** Conservative cap for the source range of one basis. */
   maxSourceFrames: 3_000_000,
-  /** Versioned refinement ladder for curve decisions (integration tolerance). */
-  curveRefinementLevels: Object.freeze([1e-10, 1e-12, 1e-14]) as readonly number[],
   /** Default curve budget: source-frame cells for the cumulative table. */
   maxCurveCells: 1_000_000,
   /** Step ceiling for the cumulative curve table, in source frames. */
@@ -149,9 +147,6 @@ export interface TimeMapOutputAtSource {
   readonly firstOutputFrame: number | null;
   readonly lastOutputFrame: number | null;
 }
-export type ContinuousOutputTime =
-  | {readonly kind: 'clock'; readonly numerator: string; readonly denominator: string}
-  | {readonly kind: 'rootEnd'; readonly offsetNumerator: string; readonly offsetDenominator: string};
 
 export interface TimeMapCompileOptions {
   /** Resource budget for the curve cumulative table (source cells). */
