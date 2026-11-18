@@ -55,9 +55,11 @@ async function launcherReady(window: BrowserWindow): Promise<void> {
   await waitFor(window, () => evaluate(window, `Boolean(document.querySelector('[data-testid="project-home"]'))`) as Promise<boolean>,
     60000, 'Windows screenshot launcher did not become ready');
 }
-/** Sets the authenticated application preference through the same API the UI uses. */
+/** Sets the authenticated application preference through the same API the UI uses.
+ * A concurrent writer can bump the revision between the read and the write, so a
+ * rejected write is retried against a fresh revision instead of failing the run. */
 async function applyTheme(window: BrowserWindow, theme: 'light' | 'dark'): Promise<void> {
-  const applied = await evaluate(window, `(async () => {
+  const write = async (): Promise<boolean> => evaluate(window, `(async () => {
     const read = await fetch('/api/ui-preferences', {cache: 'no-store', credentials: 'same-origin'});
     const current = await read.json();
     if (!read.ok || !current || current.ok !== true || !current.data || typeof current.data.revision !== 'number') return false;
@@ -67,7 +69,12 @@ async function applyTheme(window: BrowserWindow, theme: 'light' | 'dark'): Promi
         preferences: {...current.data.preferences, theme: ${JSON.stringify(theme)}}})});
     const saved = await response.json();
     return response.ok && saved && saved.ok === true && saved.data.preferences.theme === ${JSON.stringify(theme)};
-  })()`) as boolean;
+  })()`) as unknown as boolean;
+  let applied = false;
+  for (let attempt = 0; attempt < 3 && !applied; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 300));
+    applied = await write();
+  }
   assert.equal(applied, true, 'The screenshot theme preference must save');
   window.webContents.reload();
   await launcherReady(window);
@@ -183,7 +190,9 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
   let captured: Buffer | undefined;
   let capturedMismatch: number | undefined;
   let diag = '';
-  const writeFailure = async (): Promise<void> => {
+  const writeFailure = async (error: unknown): Promise<void> => {
+    const message = String((error as Error)?.message ?? error ?? '').replace(/[^A-Za-z0-9# =:._-]/gu, '_').slice(0, 90);
+    const detail = (capturedMismatch === undefined ? `error=${message}` : `bandColorDelta=${capturedMismatch}${diag} error=${message}`).slice(0, 118);
     try {
       if (captured !== undefined) {
         try {await mkdir(path.dirname(screenshot), {recursive: true}); await writeFile(`${screenshot}.failed.png`, captured);}
@@ -191,8 +200,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
       }
       await mkdir(path.dirname(output), {recursive: true});
       await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: false,
-        code: 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED', check: phase,
-        ...(capturedMismatch === undefined ? {} : {detail: `bandColorDelta=${capturedMismatch}${diag}`})}) + '\n');
+        code: 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED', check: phase, detail}) + '\n');
     } catch { /* The outer smoke driver records its own fixed failure code. */ }
   };
   try {
@@ -256,7 +264,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
       devicePixelRatio: facts.devicePixelRatio, overlay: {visible: facts.overlay.visible, right: facts.overlay.right},
       innerWidth: facts.innerWidth, barHeight: facts.barHeight, trailing: facts.trailing, bandColorDelta: bandDelta,
       screenshot: {bytes: png.length, sha256, source}}, null, 2) + '\n');
-  } catch {
-    await writeFailure();
+  } catch (error) {
+    await writeFailure(error);
   }
 }
