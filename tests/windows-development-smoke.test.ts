@@ -8,7 +8,8 @@ import path from 'node:path';
 import {cleanEnvironment} from '../.github/scripts/media-environment.ts';
 import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArguments, runWindowsDevelopmentSmoke,
   readWindowsPackageMetadata, smokeFailureCode, terminateOwnedWindowsTree, validateWindowsDevelopmentPackage,
-  validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment} from '../.github/scripts/windows-desktop-smoke.ts';
+  validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment,
+  WINDOWS_SMOKE_PHASES, appCheckFailureName, phaseMarkerName} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
 const args = [`--binary=${binary}`, `--output=${output}`, `--workspace=${workspace}`];
@@ -214,7 +215,7 @@ test('a valid report cannot pass before zero exit, and an existing evidence file
   const failed = await pending;
   assert.equal(failed.ok, false);
   assert.deepEqual(f.writes[0].value, {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_EXIT_FAILED'});
-  assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.reads, [`${workspace}\\result.json`, `${workspace}\\result.json.phase`]);
   const reused = fixture(); reused.file(output, 'Synthetic retained evidence');
   assert.deepEqual(await runWindowsDevelopmentSmoke(args, reused.services), {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_OUTPUT_FAILED'});
   assert.equal(reused.files.get(output)!.text, 'Synthetic retained evidence'); assert.equal(reused.writes.length, 0);
@@ -267,6 +268,57 @@ test('timeout termination authority is only this live child PID and an exited ch
   const stopped = launchWindowsPackage(binary, {}, workspace, unavailable.transport); unavailable.expire();
   await assert.rejects(stopped, error => smokeFailureCode(error) === 'WINDOWS_SMOKE_APP_STOP_UNCONFIRMED');
   assert.deepEqual(unavailable.killed, ['SIGKILL']);
+});
+
+test('a hung launch reports only the last fixed phase marker from the workspace', async () => {
+  const f = fixture(), launched = childFixture();
+  f.services.launch = async (file, env, work) => {await launchWindowsPackage(file, env, work, launched.transport);};
+  f.file(`${workspace}\\result.json.phase`, JSON.stringify({schemaVersion: 1, scope: 'windows-development-launch', phase: 'launcher-ui-ready'}));
+  const pending = runWindowsDevelopmentSmoke(args, f.services);
+  await new Promise(resolve => setImmediate(resolve));
+  launched.expire();
+  assert.deepEqual(await pending, {schemaVersion: 1, scope: 'windows-development-launch', ok: false,
+    code: 'WINDOWS_SMOKE_APP_TIMEOUT', phase: 'launcher-ui-ready'});
+  assert.equal(WINDOWS_SMOKE_PHASES.includes('launcher-ui-ready'), true);
+});
+
+test('a packaged app check failure is reported by fixed check name without raw text', async () => {
+  const failShape = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: 'launcher-ui-ready'};
+  const f = fixture();
+  f.services.launch = async () => {f.file(`${workspace}\\result.json`, JSON.stringify(failShape));};
+  assert.deepEqual(await runWindowsDevelopmentSmoke(args, f.services), failShape);
+  assert.equal(/private|synthetic/.test(JSON.stringify(f.writes)), false);
+  for (const invalid of [{...failShape, detail: 'C:\\private\\synthetic'}, {...failShape, check: 'unknown-check'},
+    {...failShape, code: 'WINDOWS_SMOKE_FAILED'}]) {
+    assert.equal(appCheckFailureName(invalid), undefined);
+    const raw = fixture();
+    raw.services.launch = async () => {raw.file(`${workspace}\\result.json`, JSON.stringify(invalid));};
+    const result = await runWindowsDevelopmentSmoke(args, raw.services);
+    assert.equal(result.ok, false);
+    assert.equal((result as {code: string}).code, 'WINDOWS_SMOKE_REPORT_INVALID');
+    assert.equal(/private|synthetic/.test(JSON.stringify(raw.writes)), false);
+  }
+});
+
+test('a valid report without a confirmed exit is separated from a hung launch', async () => {
+  const f = fixture(), launched = childFixture();
+  f.services.launch = async (file, env, work) => {
+    f.file(`${workspace}\\result.json`, JSON.stringify(report()));
+    await launchWindowsPackage(file, env, work, launched.transport);
+  };
+  const pending = runWindowsDevelopmentSmoke(args, f.services);
+  await new Promise(resolve => setImmediate(resolve));
+  launched.expire();
+  assert.deepEqual(await pending, {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_QUIT_TIMEOUT'});
+});
+
+test('phase markers accept only the fixed shared names and shapes', () => {
+  assert.equal(phaseMarkerName({schemaVersion: 1, scope: 'windows-development-launch', phase: 'startup'}), 'startup');
+  for (const invalid of [null, {}, {schemaVersion: 1, scope: 'windows-development-launch', phase: 'C:\\private'},
+    {schemaVersion: 1, scope: 'windows-development-launch', phase: 'startup', detail: 'x'},
+    {schemaVersion: 2, scope: 'windows-development-launch', phase: 'startup'}]) {
+    assert.equal(phaseMarkerName(invalid), undefined);
+  }
 });
 
 test('the actual CLI emits only its fixed failure code for unsupported host or malformed arguments', () => {

@@ -1566,6 +1566,11 @@ else {
     const projectsAfterUpdate = initializeDesktopUpdates();
     installMenu();
     installTray();
+    // Packaged Windows smoke: write only a fixed startup marker beside the
+    // report, so a hung launch is locatable without any raw output.
+    if (windowsPackageSmoke && smokeOutput) {
+      await writeFile(`${smokeOutput}.phase`, JSON.stringify({schemaVersion:1,scope:'windows-development-launch',phase:'startup'})+'\n').catch(() => {});
+    }
     const report = await start(projectsAfterUpdate);
     trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
