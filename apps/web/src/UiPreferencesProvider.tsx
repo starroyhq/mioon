@@ -5,6 +5,7 @@ import { createUiPreferencesClient, UiPreferencesRequestError } from './ui-prefe
 import type { UiPreferencesClient } from './ui-preferences-client.ts';
 import { bindUiAppearance } from './ui-appearance.ts';
 import type { ResolvedAppearance } from './ui-appearance.ts';
+import { applyDesktopFrame } from './desktop-frame.ts';
 import { createUiPreferencesSync } from './ui-preferences-sync.ts';
 
 type Phase = 'loading' | 'ready' | 'saving' | 'error' | 'conflict';
@@ -125,6 +126,7 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
     root.dataset.reduceMotion = preferences.reduceMotion ? 'true' : 'false';
     root.style.setProperty('--mioon-ui-scale', String(preferences.scalePercent / 100));
     root.style.zoom = String(preferences.scalePercent / 100);
+    applyDesktopFrame(root, navigator.userAgent, preferences.scalePercent / 100);
   }, [preferences]);
 
   const edit = useCallback((patch: Partial<UiPreferences>) => {

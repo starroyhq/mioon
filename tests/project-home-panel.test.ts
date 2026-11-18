@@ -439,11 +439,11 @@ componentTest('home styles are scoped and include bounded scrolling and narrow-w
 
 componentTest('mac-inset home header preserves native-control space and interactive no-drag boundaries', () => {
   const css = readFileSync(join(root, 'apps/web/src/project-home.css'), 'utf8');
-  assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home-settings-window \.project-home-header\s*\{[^}]*padding-left:\s*88px;[^}]*-webkit-app-region:\s*drag;/);
+  assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home-settings-window \.project-home-header\s*\{[^}]*padding-left:\s*var\(--mac-titlebar-leading\);[^}]*-webkit-app-region:\s*drag;/);
   assert.match(css, /:root\[data-desktop-frame="mac-inset"\] \.project-home-settings-window \.project-home-header :is\(a, button, input, select, textarea,[^}]*summary\)\s*\{\s*-webkit-app-region:\s*no-drag;/);
   for (const selector of css.matchAll(/:root[^{}]+\{/g)) assert.match(selector[0], /\.project-home-settings-window \.project-home-header/);
   const redesigned = readFileSync(join(root, 'apps/web/src/project-home-redesign.css'), 'utf8');
-  assert.match(redesigned, /:root\[data-desktop-frame="mac-inset"\] \.project-home-page \.project-home-header \{[^}]*padding-left: 88px/);
+  assert.match(redesigned, /:root\[data-desktop-frame="mac-inset"\] \.project-home-page \.project-home-header \{[^}]*padding-left:\s*var\(--mac-titlebar-leading\)/);
   assert.match(redesigned, /\.project-home-embedded > \.project-home > \.project-home-header \{[^}]*-webkit-app-region: no-drag/);
 });
 

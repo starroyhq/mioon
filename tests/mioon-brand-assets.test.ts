@@ -122,9 +122,9 @@ test('actual shared window factory adds the local icon while retaining the secur
   const factory = stripTypeScriptTypes(source.slice(factoryStart + 'createWindow: '.length, factoryEnd + '\n      }'.length), { mode: 'strip' });
   for (const platform of ['darwin', 'linux', 'win32']) {
     const session = {}, appRoot = '/synthetic/mioon-stage';
-    const makeWindow: (creation: {role: string}) => {config: {icon: string; backgroundColor: string; webPreferences: ReturnType<typeof secureWebPreferences>}} = Function('BrowserWindow', 'identity', 'path', 'app', 'process', 'windowChromeOptions', 'settingsWindowOptions', 'secureWebPreferences', 'context', 'homeDirectory', 'warmOnFocus', `return (${factory});`)(
+    const makeWindow: (creation: {role: string}) => {config: {icon: string; backgroundColor: string; webPreferences: ReturnType<typeof secureWebPreferences>}} = Function('BrowserWindow', 'identity', 'path', 'app', 'process', 'windowChromeOptions', 'settingsWindowOptions', 'secureWebPreferences', 'context', 'homeDirectory', 'warmOnFocus', 'installWindowChrome', `return (${factory});`)(
       class { declare config: unknown; constructor(config: unknown) { this.config = config; } }, { productName: 'Mioon' }, path,
-      { getAppPath: () => appRoot }, { platform }, () => ({}), settingsWindowOptions, secureWebPreferences, { session, appearance:{backgroundColor:()=>'#f6f6f6'} }, '/synthetic/home', false);
+      { getAppPath: () => appRoot }, { platform }, () => ({}), settingsWindowOptions, secureWebPreferences, { session, appearance:{backgroundColor:()=>'#f6f6f6'} }, '/synthetic/home', false, () => {});
     const { config } = makeWindow({role: 'editor'});
     assert.equal(config.icon, path.join(appRoot, 'icons/icon.png'));
     assert.equal(config.backgroundColor, '#f6f6f6');

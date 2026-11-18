@@ -9,7 +9,7 @@ import SettingsRoot from './SettingsRoot.tsx';
 import type { SettingsRenderProps } from './SettingsRoot.tsx';
 import { SettingsConnectionForms } from './SettingsConnectionForms.tsx';
 import { readDesktopWindowBridge } from './desktop-window-client.ts';
-import { desktopFrame } from './desktop-frame.ts';
+import { applyDesktopFrame } from './desktop-frame.ts';
 import type { ProjectWindowBridge, ProjectWindowContext } from './desktop-window-client.ts';
 import type { SettingsBootView } from './settings-boot.ts';
 import './i18n/language.css';
@@ -40,8 +40,7 @@ function LocalizedSettings({ context, bridge, boot }: { context: ProjectWindowCo
 export function mountSettings(container: HTMLElement, context: ProjectWindowContext, boot: SettingsBootView): void {
   const bridge = readDesktopWindowBridge(window);
   if (!bridge || context.role !== 'settings') throw new Error('Active settings owner is unavailable.');
-  const frame = desktopFrame(navigator.userAgent);
-  if (frame) document.documentElement.dataset.desktopFrame = frame;
+  applyDesktopFrame(document.documentElement, navigator.userAgent);
   createRoot(container, { onUncaughtError: () => boot.failed() }).render(
     <React.StrictMode><I18nProvider><LocalizedSettings context={context} bridge={bridge} boot={boot} /></I18nProvider></React.StrictMode>
   );

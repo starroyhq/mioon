@@ -237,7 +237,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
         webRequest: { onBeforeSendHeaders(fn: DesktopHarnessSession['beforeSendHeaders']) { value.beforeSendHeaders = fn; } } };
       records.sessions.push(value as unknown as DesktopHarnessSession); return value;
     } },
-    sessionCookie: (url: string, token: string) => ({ url, value: token }), secureWebPreferences: (value: DesktopHarnessSession) => ({ session: value }), windowChromeOptions: () => ({}),
+    sessionCookie: (url: string, token: string) => ({ url, value: token }), secureWebPreferences: (value: DesktopHarnessSession) => ({ session: value }), windowChromeOptions: () => ({}), installWindowChrome: () => {},
     installSessionPolicy() {}, installWindowPolicy() {}, isAllowedNavigation: () => true,
     writeConnection: async (_: unknown, value: DesktopHarnessConnection) => { records.connections.push(value); },
     removeConnectionOnShutdown: async () => { records.removals++; await options.remove?.(records.removals); },

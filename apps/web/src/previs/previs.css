@@ -46,7 +46,7 @@
 /* ---- Editor shell ---- */
 .previs-editor{position:fixed;inset:0;z-index:48;display:flex;flex-direction:column;background:var(--wb-bg);color:var(--wb-text);font-size:var(--wb-text-body)}
 .previs-editor-topbar{flex:none;height:var(--wb-topbar);display:flex;align-items:center;gap:var(--wb-space-3);padding:0 var(--wb-space-3);border-bottom:1px solid var(--wb-line-subtle);background:var(--wb-panel)}
-:root[data-desktop-frame="mac-inset"] .previs-editor-topbar{padding-left:88px;-webkit-app-region:drag}
+:root[data-desktop-frame="mac-inset"] .previs-editor-topbar{padding-left:var(--mac-titlebar-leading);-webkit-app-region:drag}
 :root[data-desktop-frame="mac-inset"] .previs-editor-topbar :is(button,a,input,[role="button"]){-webkit-app-region:no-drag}
 .previs-back{gap:6px}
 .previs-topbar-divider{width:1px;height:18px;background:var(--wb-line)}

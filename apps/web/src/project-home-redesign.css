@@ -73,7 +73,7 @@
 .project-home-presets small { font: 11px/1.5 var(--wb-font-mono); color: var(--wb-muted); white-space: nowrap; }
 .project-home-presets input:disabled { cursor: default; }
 .project-home-create-dialog .project-home-form-error { color: var(--wb-danger); font-size: var(--wb-text-label); margin-top: 12px; }
-:root[data-desktop-frame="mac-inset"] .project-home-page .project-home-header { padding-left: 88px; -webkit-app-region: drag; }
+:root[data-desktop-frame="mac-inset"] .project-home-page .project-home-header { padding-left: var(--mac-titlebar-leading); -webkit-app-region: drag; }
 :root[data-desktop-frame="mac-inset"] .project-home-page .project-home-header :is(button,input,[role="button"]) { -webkit-app-region: no-drag; }
 @media (max-width: 1200px) { .project-home-screen > .project-home .project-home-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } .project-home-screen > .project-home > .project-home-layout > .project-home-main { padding-inline: 32px; } .project-home-screen > .project-home .project-home-status { max-width: 180px; } }
 
