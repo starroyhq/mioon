@@ -34,7 +34,7 @@ import type {AgentSettingsSnapshot,AgentSettingsState,Translate} from './agent-s
 type AgentSettingsSession=ReturnType<typeof createAgentSettingsSession>;
 type NavigationReporter=ReturnType<typeof createSettingsNavigationReporter>;
 type NavigationInput=Parameters<NavigationReporter['update']>[0];
-interface ActiveModelPicker {key:string;request:AgentModelListCacheRequest;usesDraftKey:boolean}
+interface ActiveModelPicker {key:string;request:AgentModelListCacheRequest}
 type DraftTestView={key:string;identity:string;phase:'confirming'|'testing'|'success'|'failed';result?:AgentDraftConnectionTestResult};
 const draftTestFailureMessages={
  required:'agent.settings.x6.draftTestKeyRequired',rejected:'settings.draftKey.unauthorized',
@@ -155,7 +155,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   if(!usable(key)||!agentSettingsEditable(session.current?.getState()))return;const request=modelListRequest(key);if(!request)return;
   if(activePicker.current||modelListsSession.current?.getState()[key]?.phase==='loading')return;
   if(openPicker){
-   const next:ActiveModelPicker={key,request,usesDraftKey:Boolean(keyInputs.current.get(key)?.current?.value)};
+   const next:ActiveModelPicker={key,request};
    activePicker.current=next;
    pickerTrigger.current=trigger;
    setPicker(next);
@@ -370,7 +370,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
     <div className="mio-settings-inline"><Input ref={manualRef} id={`agent-model-${key}`} data-testid={`agent-settings-model-${key}`} aria-label={t('mio.settings.label.model')} disabled={!enabled||entry.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels} maxLength={200} placeholder={t('agent.settings.modelPlaceholder')} spellCheck={false} autoCapitalize="none"/><WorkbenchButton type="button" size="compact" variant="ghost" data-testid={`agent-settings-add-model-${key}`} disabled={!enabled||entry.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels} onClick={()=>{if(!usable(key))return;const accepted=session.current?.addModel(key,manualRef.current?.value??'');setModelErrors(previous=>new Set([...previous].filter(item=>item!==key).concat(accepted?[]:[key])));if(accepted&&manualRef.current)manualRef.current.value='';}}>{t('agent.settings.x6.addModel')}</WorkbenchButton></div>{modelErrors.has(key)&&<p className="mio-settings-notice" role="alert">{t('agent.settings.x6.modelRequired')}</p>}
    </section>
    {active&&<ModelPickerDialog key={listIdentity} serviceName={serviceName} items={pickerItems} status={pickerStatus}
-    statusMessage={pickerStatus==='ready'&&latestList?.complete?undefined:t(listStatus)} usesDraftKey={active.usesDraftKey}
+    statusMessage={pickerStatus==='ready'&&latestList?.complete?undefined:t(listStatus)}
     maxAdditions={AGENT_CONNECTION_LIMITS.manualModels-entry.manualModelIds.length} triggerRef={pickerTrigger}
     onClose={()=>closePicker(active)} onAdd={ids=>{
      if(!usable(key)||activePicker.current!==active||JSON.stringify(modelListRequest(key))!==JSON.stringify(active.request))return;
