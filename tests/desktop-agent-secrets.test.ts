@@ -92,7 +92,7 @@ async function sampleSettings() {
   return settings;
 }
 
-test('desktop capability preserves Linux strong keyrings and requires proved macOS async crypto', async () => {
+test('desktop capability preserves Linux strong keyrings, proved macOS async crypto and Windows DPAPI', async () => {
   for (const vault of [undefined, fakeVault({ available: false }), { isEncryptionAvailable() { throw new Error(DUMMY_KEY); } }]) {
     assert.deepEqual(storageOf(vault, 'linux'), {
       persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'
@@ -111,7 +111,8 @@ test('desktop capability preserves Linux strong keyrings and requires proved mac
   assert.equal(storageOf(vault, 'darwin').persistentAvailable, false);
   await codec.refreshStorage();
   assert.equal(storageOf(vault, 'darwin').persistentAvailable, true);
-  assert.equal(storageOf(vault, 'win32').persistentAvailable, false);
+  assert.equal(storageOf(vault, 'win32').persistentAvailable, true);
+  assert.equal(storageOf(vault, 'unknown' as NodeJS.Platform).persistentAvailable, false);
   for (const backend of ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']) {
     assert.equal(storageOf(fakeVault({ backend }), 'linux').persistentAvailable, true);
   }
