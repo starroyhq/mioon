@@ -9,7 +9,7 @@ import {cleanEnvironment} from '../.github/scripts/media-environment.ts';
 import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArguments, runWindowsDevelopmentSmoke,
   readWindowsPackageMetadata, smokeFailureCode, terminateOwnedWindowsTree, validateWindowsDevelopmentPackage,
   validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment,
-  WINDOWS_SMOKE_PHASES, appCheckFailureName, phaseMarkerName, startupFailureReason} from '../.github/scripts/windows-desktop-smoke.ts';
+  WINDOWS_SMOKE_PHASES, appCheckFailureName, appStartupErrorShape, phaseMarkerName, startupFailureReason} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
 const userData = 'C:\\Users\\Synthetic\\AppData\\Local\\mioon-smoke', userDataParent = 'C:\\Users\\Synthetic\\AppData\\Local';
@@ -318,6 +318,27 @@ test('an early storage or helper failure becomes a fixed reason instead of a dia
     {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: 'WINDOWS_HELPER_UNAVAILABLE', extra: 1}]) {
     assert.equal(startupFailureReason(invalid), undefined);
   }
+});
+
+test('missing reports, the app fatal shape and malformed files get distinct fixed codes', async () => {
+  const empty = fixture();
+  empty.services.launch = async () => {};
+  assert.deepEqual(await runWindowsDevelopmentSmoke(args, empty.services),
+    {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_REPORT_MISSING'});
+  const fatal = fixture();
+  fatal.file(`${workspace}\\result.json.phase`, JSON.stringify({schemaVersion: 1, scope: 'windows-development-launch', phase: 'startup'}));
+  fatal.services.launch = async () => {fatal.file(`${workspace}\\result.json`, JSON.stringify({ok: false, error: 'C:\\private\\synthetic reason'}));};
+  assert.deepEqual(await runWindowsDevelopmentSmoke(args, fatal.services),
+    {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_STARTUP_ERROR', phase: 'startup'});
+  assert.equal(/private|synthetic/.test(JSON.stringify(fatal.writes)), false);
+  assert.equal(appStartupErrorShape({ok: false, error: 'x'}), true);
+  for (const invalid of [null, {ok: false}, {ok: true, error: 'x'}, {ok: false, error: 1}, {ok: false, error: 'x', detail: 'y'}]) {
+    assert.equal(appStartupErrorShape(invalid), false);
+  }
+  const malformed = fixture();
+  malformed.services.launch = async () => {malformed.file(`${workspace}\\result.json`, 'not json');};
+  assert.deepEqual(await runWindowsDevelopmentSmoke(args, malformed.services),
+    {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_REPORT_INVALID'});
 });
 
 test('a valid report without a confirmed exit is separated from a hung launch', async () => {

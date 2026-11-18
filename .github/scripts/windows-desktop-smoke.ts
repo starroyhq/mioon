@@ -24,7 +24,8 @@ const failureCodes = [
   'WINDOWS_SMOKE_REQUIRES_WIN32_X64', 'WINDOWS_SMOKE_INVALID_ARGUMENTS', 'WINDOWS_SMOKE_BINARY_INVALID',
   'WINDOWS_SMOKE_MEDIA_TOOLS_REQUIRED', 'WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE', 'WINDOWS_SMOKE_REPORT_INVALID', 'WINDOWS_SMOKE_PACKAGE_IDENTITY_INVALID',
   'WINDOWS_SMOKE_APP_SPAWN_FAILED', 'WINDOWS_SMOKE_APP_EXIT_FAILED', 'WINDOWS_SMOKE_APP_TIMEOUT', 'WINDOWS_SMOKE_APP_QUIT_TIMEOUT',
-  'WINDOWS_SMOKE_CHECK_FAILED', 'WINDOWS_SMOKE_STARTUP_FAILED', 'WINDOWS_SMOKE_APP_STOP_UNCONFIRMED', 'WINDOWS_SMOKE_OUTPUT_FAILED', 'WINDOWS_SMOKE_FAILED',
+  'WINDOWS_SMOKE_CHECK_FAILED', 'WINDOWS_SMOKE_STARTUP_FAILED', 'WINDOWS_SMOKE_APP_STARTUP_ERROR', 'WINDOWS_SMOKE_REPORT_MISSING',
+  'WINDOWS_SMOKE_APP_STOP_UNCONFIRMED', 'WINDOWS_SMOKE_OUTPUT_FAILED', 'WINDOWS_SMOKE_FAILED',
 ] as const;
 type FailureCode = typeof failureCodes[number];
 class SmokeFailure extends Error {
@@ -57,6 +58,9 @@ export const appCheckFailureName = (value: unknown): string | undefined =>
 export const phaseMarkerName = (value: unknown): string | undefined => fixedName(value, ['schemaVersion', 'scope', 'phase']);
 const safeReason = (value: unknown): string | undefined => typeof value === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/u.test(value) ? value : undefined;
 /** Early storage/helper failures are fixed codes written instead of a dialog. */
+/** The app's own fatal path writes this fixed two-field shape (no details kept). */
+export const appStartupErrorShape = (value: unknown): boolean =>
+  record(value) && exactKeys(value, ['ok', 'error']) && value.ok === false && typeof value.error === 'string';
 export const startupFailureReason = (value: unknown): string | undefined => {
   if (!record(value) || !exactKeys(value, ['schemaVersion', 'scope', 'ok', 'code', 'reason']) || value.schemaVersion !== 1 ||
       value.scope !== 'windows-development-launch' || value.ok !== false || value.code !== 'WINDOWS_SMOKE_STARTUP_FAILED') return undefined;
@@ -283,18 +287,24 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
           : {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code, phase};
       }
     } else {
+      let info: FileObservation;
+      try {info = await services.inspect(reportFile);} catch {info = {file: false, directory: false, link: false, size: 0, canonical: ''};}
+      if (!info.file) fail('WINDOWS_SMOKE_REPORT_MISSING');
+      if (!canonical(reportFile, info) || info.size > maximumReportBytes) fail('WINDOWS_SMOKE_REPORT_INVALID');
       let value: unknown;
       try {
-        const info = await services.inspect(reportFile);
-        if (!info.file || !canonical(reportFile, info) || info.size > maximumReportBytes) fail('WINDOWS_SMOKE_REPORT_INVALID');
         const text = await services.read(reportFile);
         if (Buffer.byteLength(text) > maximumReportBytes || Buffer.byteLength(text) !== info.size) fail('WINDOWS_SMOKE_REPORT_INVALID');
         value = JSON.parse(text) as unknown;
-      } catch {fail('WINDOWS_SMOKE_REPORT_INVALID');}
+      } catch (error) {if (error instanceof SmokeFailure) throw error; fail('WINDOWS_SMOKE_REPORT_INVALID');}
       const reportedCheck = appCheckFailureName(value), startupReason = startupFailureReason(value);
-      result = reportedCheck !== undefined ? {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck}
-        : startupReason !== undefined ? {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: startupReason}
-        : validateWindowsLaunchReport(value, expected);
+      if (reportedCheck !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck};
+      else if (startupReason !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: startupReason};
+      else if (appStartupErrorShape(value)) {
+        const phase = phaseMarkerName(parsed(await optionalText(`${reportFile}.phase`)));
+        result = phase === undefined ? {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_STARTUP_ERROR'}
+          : {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_STARTUP_ERROR', phase};
+      } else result = validateWindowsLaunchReport(value, expected);
     }
   } catch (error: unknown) {result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: smokeFailureCode(error)};}
   if (options) {

@@ -211,3 +211,15 @@ jobs:
             artifacts/windows-development/media-tools.json
           retention-days: 7
           if-no-files-found: warn
+
+      # Temporary W0 diagnosis: fixed report/phase files only, no user data.
+      - name: Upload raw smoke workspace for diagnosis
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-smoke-raw-diagnostics
+          path: |
+            ${{ runner.temp }}/mioon-windows-smoke-${{ github.run_id }}-${{ github.run_attempt }}/result.json
+            ${{ runner.temp }}/mioon-windows-smoke-${{ github.run_id }}-${{ github.run_attempt }}/result.json.phase
+          retention-days: 1
+          if-no-files-found: warn
