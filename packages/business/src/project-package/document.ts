@@ -1,5 +1,6 @@
 import path from 'node:path';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {statSync,createReadStream,renameSync,copyFileSync,unlinkSync,readFileSync,constants} from 'node:fs';
 import type { Store } from '../store-contract.ts';
@@ -52,9 +53,12 @@ function relational(db:Store['db'],table:string,projectId:string):Row[]{return d
  * stat-checked here; their bytes are re-hashed while the package is written. */
 export function collectProject(store:Store,projectId:string,options:ProjectPackageOptions):CollectedProject{
  return store.tx(()=>{
-  // Format 4 and format 5 both collect through the assembled projections. The
-  // portable document keeps its own format-1 shape; restore/import target
-  // support is a separate decision from collection.
+  if (isProjectLayout(store.db)) {
+   const version = store.db.prepare('SELECT version FROM project.schema_version').get()?.version;
+   if (version === FORMAT4_PROJECT_SCHEMA_VERSION || version === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    throw projectPackageError('PROJECT_PACKAGE_NEWER_FORMAT', {projectFormatVersion: version, supportedProjectFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
+   }
+  }
   const projectRow=parse(store.get('projects',projectId));
   if(!projectRow)throw projectPackageError('PROJECT_PACKAGE_NOT_FOUND');
   const list=(table:string):Row[]=>store.list(table,projectId).map(parse);
@@ -74,20 +78,15 @@ export function collectProject(store:Store,projectId:string,options:ProjectPacka
   const kept=options.media==='used'?candidates.filter(asset=>linked.includes(asset.id)):candidates;
   const keptIds=new Set(kept.map(asset=>asset.id));
   const media=new Map<string,CollectedProject['media'][number]>(),missing:CollectedProject['missing']=[];
-  const referencePath=(asset:Row):string|undefined=>{
-   if(typeof asset.relativePath==='string')return asset.relativePath;
-   const reference=asset.reference as {pathForm?:unknown;path?:unknown}|undefined;
-   return reference?.pathForm==='relative'&&typeof reference.path==='string'?reference.path:undefined;
-  };
   const documentAssets=kept.map(raw=>{
-   const asset=relabel(raw),extension=EXTENSIONS[asset.mimeType],relativePath=referencePath(asset);
-   if(!extension||typeof asset.sha256!=='string'||typeof relativePath!=='string')throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT',{assetId:asset.id});
-   const file=path.join(store.root,relativePath),entry=projectPackageMediaPath(asset.sha256,extension);
+   const asset=relabel(raw),extension=EXTENSIONS[asset.mimeType];
+   if(!extension||typeof asset.sha256!=='string'||typeof asset.relativePath!=='string')throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT',{assetId:asset.id});
+   const file=path.join(store.root,asset.relativePath),entry=projectPackageMediaPath(asset.sha256,extension);
    let size:number|null=null;try{const stat=statSync(file);size=stat.isFile()?stat.size:null;}catch{size=null;}
    if(size===null)missing.push({assetId:asset.id,name:asset.name,reason:'missing'});
    else if(size!==asset.sizeBytes)missing.push({assetId:asset.id,name:asset.name,reason:'changed'});
    else if(!media.has(entry))media.set(entry,{path:entry,bytes:size,sha256:asset.sha256,source:{path:entry,read:signal=>createReadStream(file,{highWaterMark:1024*1024,signal})}});
-   return {...omit(asset,'projectId','relativePath','url'),relativePathHint:relativePath,media:entry};
+   return {...omit(asset,'projectId','relativePath','url'),relativePathHint:asset.relativePath,media:entry};
   });
   const documentLuts=luts.map(row=>{
    const content=Buffer.from(row.content as Uint8Array),entry=projectPackageMediaPath(sha256(content),'cube');

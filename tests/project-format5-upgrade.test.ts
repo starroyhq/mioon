@@ -6,7 +6,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {inspectProjectFormatReadOnly, openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {openProjectStore as openStore} from '../packages/business/src/project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {previewFormat5Upgrade, upgradeProjectFormatTo5} from '../packages/business/src/project-file/format5-upgrade.ts';
 import {createFormat4UpgradeBackup, readFormat4BackupManifest, verifyFormat4Backup} from '../packages/business/src/project-file/format4-backup.ts';
 import {restoreFormat4Backup} from '../packages/business/src/project-file/format4-restore.ts';
@@ -181,13 +181,11 @@ test('a format 5 project copies to a new file with its native rows and named ver
       assert.equal(copiedHeader.projectId, copy.projectId);
       assert.deepEqual({...copiedHeader, projectId: sourceHeader.projectId}, sourceHeader);
     } finally {copied.close();}
-    // The portable package collects the assembled timeline without the legacy
-    // newer-format rejection.
-    const collected = collectProject(store, store.projectId, {media: 'used', includeExports: false});
-    assert.equal(collected.document.formatVersion, 1);
-    assert.ok(collected.document.timeline);
-    assert.equal((collected.document.timeline as {clips: unknown[]}).clips.length,
-      (store.list('timelines') as {clips: unknown[]}[])[0]!.clips.length);
+    // The portable package still refuses format 5 with the released error; the
+    // format-1 document cannot express ordered edges, anchors or native rows.
+    assert.throws(() => collectProject(store, store.projectId, {media: 'used', includeExports: false}),
+      {code: 'PROJECT_PACKAGE_NEWER_FORMAT',
+        details: {projectFormatVersion: FORMAT5_PROJECT_SCHEMA_VERSION, supportedProjectFormatVersion: PROJECT_FILE_SCHEMA_VERSION}});
   } finally {store.close();}
 });
 
