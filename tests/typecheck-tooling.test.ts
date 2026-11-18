@@ -205,12 +205,15 @@ function stripConfigPath(options: Record<string, unknown>): Record<string, unkno
   const {configFilePath: _ignored, ...rest} = options;
   return rest;
 }
+function portableRelative(file: string): string {
+  return path.relative(root, file).split(path.sep).join('/');
+}
 function catalogFiles(directory = path.join(root, 'tests')): string[] {
   return readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
     const file = path.join(directory, entry.name);
     if (entry.isDirectory()) return entry.name === 'typecheck' ? [] : catalogFiles(file);
     if (!entry.isFile() || !/\.(?:ts|tsx)$/u.test(entry.name) || entry.name === 'timeline-mix-loudness-ui-fixture.ts') return [];
-    return [path.relative(root, file)];
+    return [portableRelative(file)];
   });
 }
 test('split strict test projects cover every current test exactly once', async () => {
@@ -220,7 +223,7 @@ test('split strict test projects cover every current test exactly once', async (
     assert.equal(config.error, undefined);
     const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configFile));
     assert.deepEqual(parsed.errors, []);
-    return parsed.fileNames.map(file => path.relative(root, file));
+    return parsed.fileNames.map(portableRelative);
   }));
   const union = parsedProjects.flat();
   const expected = [...catalogFiles(), 'apps/web/src/style-modules.d.ts'].sort();
