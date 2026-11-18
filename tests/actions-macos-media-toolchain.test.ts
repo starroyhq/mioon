@@ -35,17 +35,17 @@ async function fixture(t: TestContext) {
 
 function brewInfo(formulae: unknown): string {return JSON.stringify({formulae});}
 
-test('bottle identity accepts only the reviewed arm64 macOS 15 ffmpeg-full SHA-256', () => {
-  assert.equal(bottleShaFromInfo({formulae: [{name: 'ffmpeg-full', bottle: {stable: {files: {arm64_sequoia: {sha256: sha}}}}}]}), sha);
+test('bottle identity accepts only the reviewed arm64 macOS 15 ffmpeg@7 SHA-256', () => {
+  assert.equal(bottleShaFromInfo({formulae: [{name: 'ffmpeg@7', bottle: {stable: {files: {arm64_sequoia: {sha256: sha}}}}}]}), sha);
   for (const value of [null, {}, {formulae: 'x'}]) {
     assert.throws(() => bottleShaFromInfo(value), {code: 'INVALID_BREW_INFO'}, JSON.stringify(value));
   }
   for (const value of [
     {formulae: []},
     {formulae: [{name: 'other', bottle: {stable: {files: {arm64_sequoia: {sha256: sha}}}}}]},
-    {formulae: [{name: 'ffmpeg-full', bottle: {stable: {files: {arm64_sequoia: {sha256: 'ABC'}}}}}]},
-    {formulae: [{name: 'ffmpeg-full', bottle: {stable: {files: {sonoma: {sha256: sha}}}}}]},
-  ]) assert.throws(() => bottleShaFromInfo(value), {code: 'FFMPEG_FULL_BOTTLE_NOT_FOUND'});
+    {formulae: [{name: 'ffmpeg@7', bottle: {stable: {files: {arm64_sequoia: {sha256: 'ABC'}}}}}]},
+    {formulae: [{name: 'ffmpeg@7', bottle: {stable: {files: {sonoma: {sha256: sha}}}}}]},
+  ]) assert.throws(() => bottleShaFromInfo(value), {code: 'FFMPEG7_BOTTLE_NOT_FOUND'});
 });
 
 test('cached bottle bytes are re-hashed and foreign file types are rejected', async t => {
@@ -98,7 +98,7 @@ test('capability evidence fails closed on a missing capability or a failed probe
 
 test('the media toolchain CLI reads the brew metadata and verifies a cached bottle', async t => {
   const {directory, file} = await fixture(t);
-  const info = await file('brew-info.json', brewInfo([{name: 'ffmpeg-full', bottle: {stable: {files: {arm64_sequoia: {sha256: sha}}}}}]) );
+  const info = await file('brew-info.json', brewInfo([{name: 'ffmpeg@7', bottle: {stable: {files: {arm64_sequoia: {sha256: sha}}}}}]) );
   const cli = spawnSync(process.execPath, ['.github/scripts/macos-media-toolchain.ts', 'bottle-sha', `--input=${info}`],
     {cwd: root, encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
   assert.equal(cli.error, undefined); assert.equal(cli.signal, null);
@@ -118,15 +118,19 @@ test('the macOS media workflow uses the cached, re-verified toolchain and upload
   const action = await readFile(path.join(root, '.github/actions/macos-media-toolchain/action.yml'), 'utf8');
   assert.match(action, /actions\/cache\/restore@/);
   assert.match(action, /actions\/cache\/save@/);
-  assert.match(action, /key: mioon-ffmpeg-full-arm64-sequoia-\$\{\{ steps\.bottle\.outputs\.sha \}\}/);
-  assert.match(action, /path: \$\{\{ runner\.temp \}\}\/mioon-ffmpeg-bottle\/archive\.tar\.gz/);
+  assert.match(action, /key: mioon-ffmpeg7-arm64-sequoia-\$\{\{ steps\.bottle\.outputs\.sha \}\}/);
+  assert.match(action, /path: \$\{\{ runner\.temp \}\}\/mioon-ffmpeg7-bottle\/archive\.tar\.gz/);
   assert.match(action, /bottle-sha --input=/);
   assert.match(action, /verify-bottle --archive="\$bottle_archive" --sha="\$BOTTLE_SHA"/);
+  assert.match(action, /brew info --json=v2 ffmpeg@7/);
+  assert.match(action, /brew install ffmpeg@7/);
+  assert.match(action, /brew --prefix ffmpeg@7/);
   assert.match(action, /media-environment\.ts --platform=darwin --output=artifacts\/macos-media-environment\/media\.json/);
+  assert.match(action, /printf '%s\/bin' "\$mioon_media_prefix" >> "\$GITHUB_PATH"/);
   assert.match(action, /macos-media-toolchain\.ts evidence/);
   const workflow = await readFile(path.join(root, '.github/workflows/macos-media-toolchain.yml'), 'utf8');
   assert.match(workflow, /^on:\r?\n  workflow_dispatch:$/m);
-  assert.doesNotMatch(workflow, /^  (push|pull_request):/m);
+  assert.doesNotMatch(workflow, /^  pull_request:/m);
   assert.match(workflow, /runs-on: macos-15/);
   assert.match(workflow, /timeout-minutes: 60/);
   assert.match(workflow, /uses: \.\/\.github\/actions\/macos-media-toolchain/);

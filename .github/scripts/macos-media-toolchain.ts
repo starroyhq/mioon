@@ -1,11 +1,14 @@
 /** macOS media toolchain helpers for the macOS media workflow.
  *
- * The workflow caches the Homebrew `ffmpeg-full` bottle by its published
- * SHA-256, re-hashes every cache hit before use, probes the installed tools
- * with the existing `media-environment.ts` checks and records the bottle
- * identity, cache state and tool bytes in one evidence file. Linux still uses
- * the prepared CI toolchain from `ffmpeg` above; this file is only imported by
- * the macOS workflow steps and their tests. */
+ * The workflow caches the Homebrew `ffmpeg@7` bottle by its published SHA-256,
+ * re-hashes every cache hit before use, probes the installed tools with the
+ * existing `media-environment.ts` checks and records the bottle identity,
+ * cache state and tool bytes in one evidence file. `ffmpeg@7` is Homebrew's
+ * versioned FFmpeg 7.1.5 formula: it matches the desktop application's
+ * downloaded tools and the fixed Linux CI build, whereas the floating
+ * `ffmpeg-full` formula moved to 9.0.2 with different overlay alpha semantics.
+ * Linux still uses the prepared CI toolchain from `ffmpeg` above; this file is
+ * only imported by the macOS workflow steps and their tests. */
 import {createHash} from 'node:crypto';
 import {lstat, readFile, writeFile, mkdir} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
@@ -27,13 +30,13 @@ export function bottleShaFromInfo(value: unknown): string {
   if (!Array.isArray(formulae)) fail('INVALID_BREW_INFO');
   for (const entry of formulae) {
     const formula = recordOf(entry);
-    if (formula?.name !== 'ffmpeg-full') continue;
+    if (formula?.name !== 'ffmpeg@7') continue;
     const stable = recordOf(recordOf(formula.bottle)?.stable), files = recordOf(stable?.files), release = recordOf(files?.arm64_sequoia);
     const sha = release?.sha256;
-    if (typeof sha !== 'string' || !BOTTLE_SHA_PATTERN.test(sha)) fail('FFMPEG_FULL_BOTTLE_NOT_FOUND');
+    if (typeof sha !== 'string' || !BOTTLE_SHA_PATTERN.test(sha)) fail('FFMPEG7_BOTTLE_NOT_FOUND');
     return sha;
   }
-  fail('FFMPEG_FULL_BOTTLE_NOT_FOUND');
+  fail('FFMPEG7_BOTTLE_NOT_FOUND');
 }
 
 export async function sha256File(file: string): Promise<string> {

@@ -82,9 +82,10 @@ gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0
 
 ## macOS 媒体工具链（手动）
 
-`.github/workflows/macos-media-toolchain.yml`（`workflow_dispatch`）在 `macos-15` 上安装并验证 Homebrew `ffmpeg-full`，然后运行 `node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap`（H0 中需要完整 FFmpeg 能力的 26 个媒体文件）。Linux 仍使用 `checks.yml` 里准备 job 的固定工具链。
+`.github/workflows/macos-media-toolchain.yml`（`workflow_dispatch`）在 `macos-15` 上安装并验证 Homebrew **`ffmpeg@7`**（Homebrew 的 FFmpeg **7.1.5** 版本化 formula），然后运行 `node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap`（H0 中需要完整 FFmpeg 能力的 26 个媒体文件）。Linux 仍使用 `checks.yml` 里准备 job 的固定工具链。
 
-- `.github/actions/macos-media-toolchain` 按 `brew info --json=v2 ffmpeg-full` 的 `arm64_sequoia` bottle SHA-256 缓存下载文件；缓存命中后先用 `verify-bottle` 重算哈希，不匹配就丢弃，再决定是否复制回 Homebrew 缓存。`ffmpeg-full` 未安装时回退到 `brew install ffmpeg-full`。
+- 选 `ffmpeg@7` 而不是浮动的 `ffmpeg-full`：桌面应用下载的固定工具链和 Linux CI 都是 7.1.5；`ffmpeg-full` 已漂移到 9.0.2，FFmpeg 9 的 alpha side-data 改变了 overlay `alpha=premultiplied` 语义（对已预乘输入再次预乘），会让 4 个精确像素/恢复渲染用例失败。7.1.5 是应用实际使用的版本，`ffmpeg@7` 同时带齐测试需要的 `libwebp`/`libwebp_anim`/`libvpx-vp9`/`libmp3lame` 编码器与 `drawtext`/`subtitles`/`zscale` 滤镜。
+- `.github/actions/macos-media-toolchain` 按 `brew info --json=v2 ffmpeg@7` 的 `arm64_sequoia`（macOS 15）bottle SHA-256 缓存下载文件；缓存命中后先重算哈希，不匹配就丢弃再重新下载；`ffmpeg@7` 未安装时回退到 `brew install ffmpeg@7`。安装后把 `<prefix>/bin` 写入 `GITHUB_PATH`，并设置 `MIOON_FFMPEG_PATH`/`MIOON_FFPROBE_PATH`，使直接调用 `ffmpeg` 的测试与应用路径都使用同一版本。
 - 安装后用 `.github/scripts/media-environment.ts` 探测版本、`drawtext`/`subtitles`/`zscale`/`loudnorm`/`ebur128` 滤镜、`libx264`/`aac`/`libwebp`/`libwebp_anim` 编码器以及 filter 文件参数、`fps_mode`、PNG 编解码；任一能力缺失直接失败。
 - 证据上传为 `macos-media-toolchain-evidence` artifact：`media.json`（版本与能力探针）和 `toolchain.json`（bottle SHA-256、缓存状态、ffmpeg/ffprobe 路径与 SHA-256、能力汇总）。夜间 macOS 完整测试（C 卡）会复用同一个 action。
 

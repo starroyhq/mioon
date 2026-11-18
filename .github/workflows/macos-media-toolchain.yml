@@ -1,9 +1,10 @@
 name: macOS media toolchain
 
-# Manual macOS media verification lane. It installs the cached Homebrew
-# ffmpeg-full bottle, re-hashes it on every cache hit, records the capability
-# evidence and runs the reviewed media group with that toolchain. Linux keeps
-# using the prepared toolchain from .github/workflows/checks.yml.
+# Manual macOS media verification lane. It installs Homebrew ffmpeg@7 (the
+# versioned FFmpeg 7.1.5 formula that matches the desktop application and the
+# Linux CI toolchain), re-hashes the cached bottle on every cache hit, records
+# the capability evidence and runs the reviewed media group with that
+# toolchain. Linux keeps using the prepared toolchain from checks.yml.
 on:
   workflow_dispatch:
   # Temporary push trigger used only while this workflow is still on its PR
@@ -21,7 +22,7 @@ concurrency:
 
 jobs:
   media:
-    name: macOS media group (ffmpeg-full)
+    name: macOS media group (ffmpeg@7)
     runs-on: macos-15
     timeout-minutes: 60
     steps:
