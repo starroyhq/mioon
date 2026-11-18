@@ -92,8 +92,11 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
   const format = current.projectFormatVersion;
   if (completed.has(plan)) throw new TypeError('A restore plan can only be applied once');
   if (new Date(now).toISOString() !== now) throw new TypeError('A restore timestamp must be an ISO instant');
-  const timelineDomain: readonly SnapshotTable[] = ['timelines', 'sequence_sync_state', ...FORMAT5_TIMELINE_TABLES];
-  const indexes = new Map([...insertOrder, ...timelineDomain].map(table => [table, {
+  const tables = snapshotTablesFor(format);
+  const order = insertOrder.filter(table => (tables as readonly string[]).includes(table));
+  const timelineDomain: readonly SnapshotTable[] = format === FORMAT5_PROJECT_SCHEMA_VERSION
+    ? ['timelines', 'sequence_sync_state', ...FORMAT5_TIMELINE_TABLES] : ['timelines'];
+  const indexes = new Map([...order, ...timelineDomain].map(table => [table, {
     current: new Map(documentRows(current, table).map(row => [rowKey(table,row,format),row])),
     desired: new Map(documentRows(plan.document, table).map(row => [rowKey(table,row,format),row])),
     changes: plan.changes.filter(change => change.table === table && change.action !== 'keep-current'),
@@ -116,7 +119,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
     withProjectRestoreScopeInside(store,plan.document,admissions,()=>{
       // Owners precede children. The existing deferred head keys permit the
       // subject/image cycles; version numbers and scene bases retain order.
-      for(const table of insertOrder){
+      for(const table of order){
         const item=indexes.get(table)!,adds=item.changes.filter(change=>!item.current.has(change.key)&&item.desired.has(change.key));
         adds.sort((a,b)=>Number(item.desired.get(a.key)!.number??item.desired.get(a.key)!.position??0)-Number(item.desired.get(b.key)!.number??item.desired.get(b.key)!.position??0));
         const columns=tableColumns(table,format),insert=store.db.prepare(`INSERT INTO project.${quote(table)}(${columns.map(quote).join(',')}) VALUES(${columns.map(()=>'?').join(',')})`);
@@ -126,7 +129,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
           const row=forwardRow(table,saved,undefined,now,ledger);insert.run(...columns.map(column=>snapshotCellValue(row[column])));
         }
       }
-      for(const table of insertOrder){
+      for(const table of order){
         const item=indexes.get(table)!,keys=primaryKeys(table,format),columns=tableColumns(table,format).filter(column=>!keys.includes(column));
         const update=store.db.prepare(`UPDATE project.${quote(table)} SET ${columns.map(column=>`${quote(column)}=?`).join(',')} WHERE ${keys.map(key=>`${quote(key)} IS ?`).join(' AND ')}`);
         for(const change of item.changes){
@@ -142,7 +145,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
       }
       // Mutable references have now moved. Reverse dependencies can be removed
       // without deleting any retained result, owner or tombstone.
-      for(const table of [...insertOrder].reverse()){
+      for(const table of [...order].reverse()){
         const item=indexes.get(table)!,keys=primaryKeys(table,format),remove=store.db.prepare(`DELETE FROM project.${quote(table)} WHERE ${keys.map(key=>`${quote(key)} IS ?`).join(' AND ')}`);
         for(const change of item.changes){const old=item.current.get(change.key);if(old&&!item.desired.has(change.key))remove.run(...keys.map(key=>snapshotCellValue(old[key])));}
       }

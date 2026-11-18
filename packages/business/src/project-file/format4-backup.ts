@@ -10,7 +10,8 @@ import type {ContentStamp} from '../../../contracts/src/project-file.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {isContentToken, sameContentStamp, readProjectContentStamp} from './content-stamp.ts';
 import {isProjectFileHeld} from './held-files.ts';
-import {HISTORY_APPLICATION_ID, PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, HISTORY_APPLICATION_ID, PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
+import {FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION} from './schema/domains/canvas.ts';
 import {FORMAT3_RELEASE_MANIFEST} from './schema/format3-manifest.ts';
 import {historyManifestForVersion, projectManifestForVersion} from './schema/format-manifests.ts';
 import type {SchemaManifest as UpgradeManifest} from './schema/manifest-check.ts';
@@ -89,6 +90,14 @@ export function readFormat4BackupManifest(root: string, backupId: string): Forma
       !Array.isArray(raw.files) || raw.files.length !== (raw.historyPresent ? 2 : 1)) throw invalid();
   const historyVersion = historySchema(raw.historyVersion)?.version;
   if (raw.historyPresent ? historyVersion === undefined : raw.historyVersion !== null) throw invalid();
+  // A manifest's project/history pair must be one the upgrade actually takes a
+  // backup of: a format-3 source can carry history 10/11, a format-4 source 11/12.
+  const pairAllowed = raw.projectVersion === FORMAT3_RELEASE_MANIFEST.project.version
+    ? historyVersion === FORMAT3_RELEASE_MANIFEST.history.version || historyVersion === FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION
+    : raw.projectVersion === 4
+      ? historyVersion === FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION || historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION
+      : false;
+  if (raw.historyPresent && !pairAllowed) throw invalid();
   const files = [backupFile(raw.files[0], PROJECT_FILE)];
   if (raw.historyPresent) files.push(backupFile(raw.files[1], HISTORY_FILE));
   return {version: 1, projectId: raw.projectId, contentSequence: raw.contentSequence, contentToken: raw.contentToken,
