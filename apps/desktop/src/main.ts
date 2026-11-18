@@ -364,7 +364,8 @@ const initialWindowLoads = new WeakMap<BrowserWindow, InitialWindowLoad>();
 const cancelledStartupErrors = new WeakSet<Error>();
 let quitFailureNotice: Promise<void> | null = null;
 let smokeDiscardDecision: boolean | undefined;
-const smokeOutput: string | false | undefined = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
+const windowsPackageSmoke = app.isPackaged && process.platform === 'win32' && identity.channel === 'development' && process.env.MIOON_DESKTOP_WINDOWS_SMOKE === '1';
+const smokeOutput: string | false | undefined = identity.channel === 'development' && (!app.isPackaged || windowsPackageSmoke) && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 
 let mediaTools: MediaToolsInstaller | null | undefined;
 /** Mioon's pinned FFmpeg download, shared by first-run setup and the settings page. */
@@ -1569,6 +1570,10 @@ else {
     trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
       const output = smokeOutput;
+      if (windowsPackageSmoke) {
+        const { runWindowsSmoke } = await import('./windows-smoke-checks.ts');
+        await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output });
+      } else {
       const { runSmoke } = await import('./smoke-checks.ts');
       await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,
         getProjectWindow: (projectId: string) => windowHost?.windows().find(window => windowHost?.contextFor(window)?.initialProjectId === projectId),
@@ -1579,6 +1584,7 @@ else {
           try { return await quitCoordinator.request(); }
           finally { smokeDiscardDecision = undefined; }
         } });
+      }
       app.quit();
     }
   }).catch(fatal);

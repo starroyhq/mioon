@@ -1,0 +1,207 @@
+name: Windows development desktop
+
+# Keep Windows bring-up separate from the existing thirteen required checks.
+# This branch-only run also verifies the new workflow before it reaches main.
+on:
+  workflow_dispatch:
+  push:
+    branches: [howard/windows-desktop-bringup]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-development-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  development:
+    name: Windows development package and smoke
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js x64
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          architecture: x64
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: |
+          node -e "if(process.platform!=='win32'||process.arch!=='x64')process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows x64 Node is required.' }
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen dependency installation failed.' }
+
+      - name: Prepare verified Windows media tools
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path artifacts/windows-development | Out-Null
+          $observations = @{}
+          $toolPaths = @{}
+          foreach ($name in @('ffmpeg', 'ffprobe')) {
+            $command = Get-Command ($name + '.exe') -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $command) {
+              $observations[$name] = @{ status = 'missing'; name = ($name + '.exe') }
+              continue
+            }
+            $item = Get-Item -LiteralPath $command.Source
+            if ($item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+              $observations[$name] = @{ status = 'unavailable'; name = ($name + '.exe'); reason = 'not-regular-file' }
+              continue
+            }
+            $versionLines = @(& $command.Source -version 2>&1)
+            $versionExit = $LASTEXITCODE
+            $version = if ($versionLines.Count -gt 0) { [string]$versionLines[0] } else { '' }
+            if ($versionExit -ne 0 -or -not $version.StartsWith($name + ' version ')) {
+              $observations[$name] = @{ status = 'unavailable'; name = ($name + '.exe'); reason = 'version-probe-failed' }
+              continue
+            }
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $command.Source).Hash.ToLowerInvariant()
+            $observations[$name] = @{ status = 'available'; name = ($name + '.exe'); version = $version; sha256 = $hash; hashScope = 'invoked-executable' }
+            $toolPaths[$name] = $command.Source
+          }
+          $source = 'runner-image'
+          $archiveEvidence = $null
+          if ($toolPaths.Count -ne 2) {
+            $source = 'gyan-8.1.2'
+            $version = '8.1.2'
+            $rootName = 'ffmpeg-8.1.2-essentials_build'
+            $url = 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip'
+            $expected = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
+            $published = (Invoke-WebRequest -Uri ($url + '.sha256') -TimeoutSec 60).Content.Trim().ToLowerInvariant()
+            if ($published -notmatch '^[a-f0-9]{64}$' -or $published -cne $expected) { throw 'Windows media publisher checksum differs from the reviewed pin.' }
+            $staging = Join-Path $env:RUNNER_TEMP ('mioon-windows-media-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+            if (Test-Path -LiteralPath $staging) { throw 'Windows media staging must be new.' }
+            New-Item -ItemType Directory -Path $staging | Out-Null
+            $archive = Join-Path $staging 'ffmpeg-8.1.2-essentials_build.zip'
+            Invoke-WebRequest -Uri $url -OutFile $archive -TimeoutSec 240 -MaximumRetryCount 2
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+            if ($actual -cne $expected) { throw 'Windows media archive checksum mismatch.' }
+            $extracted = Join-Path $staging 'extracted'
+            $destinationPrefix = [IO.Path]::GetFullPath($extracted).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+            try {
+              $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+              [long]$totalBytes = 0
+              foreach ($entry in $zip.Entries) {
+                $entryName = $entry.FullName
+                if (-not $entryName.StartsWith($rootName + '/', [StringComparison]::Ordinal) -or
+                    [IO.Path]::IsPathRooted($entryName) -or $entryName.IndexOf([char]92) -ge 0 -or
+                    $entryName.Contains(':') -or ($entryName.Split('/') -contains '..') -or ($entryName.Split('/') -contains '.') -or
+                    (($entry.ExternalAttributes -shr 16) -band 0xf000) -eq 0xa000) { throw 'Unsafe Windows media archive entry.' }
+                $destination = [IO.Path]::GetFullPath([IO.Path]::Combine($extracted, $entryName))
+                if (-not $destination.StartsWith($destinationPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+                    -not $seen.Add($destination.TrimEnd([IO.Path]::DirectorySeparatorChar))) { throw 'Ambiguous Windows media archive entry.' }
+                $totalBytes += $entry.Length
+                if ($entry.Length -gt 536870912 -or $totalBytes -gt 1073741824 -or $seen.Count -gt 5000) { throw 'Windows media archive exceeds extraction bounds.' }
+              }
+              foreach ($name in @('ffmpeg', 'ffprobe')) {
+                $member = $rootName + '/bin/' + $name + '.exe'
+                if (@($zip.Entries | Where-Object { $_.FullName -ceq $member }).Count -ne 1) { throw 'Windows media archive has no unique expected executable.' }
+              }
+            } finally { $zip.Dispose() }
+            [IO.Compression.ZipFile]::ExtractToDirectory($archive, $extracted)
+            foreach ($name in @('ffmpeg', 'ffprobe')) {
+              $tool = Join-Path (Join-Path $extracted ($rootName + '/bin')) ($name + '.exe')
+              $item = Get-Item -LiteralPath $tool
+              if ($item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) { throw 'Windows media executable is not a regular file.' }
+              $stream = [IO.File]::OpenRead($tool)
+              try {
+                $dos = [byte[]]::new(64)
+                if ($stream.Read($dos, 0, 64) -ne 64 -or [BitConverter]::ToUInt16($dos, 0) -ne 0x5a4d) { throw 'Invalid Windows media executable.' }
+                $offset = [BitConverter]::ToUInt32($dos, 60)
+                if ($offset -lt 64 -or $offset -gt 1048576 -or $offset -gt ($stream.Length - 6)) { throw 'Invalid Windows media executable offset.' }
+                $null = $stream.Seek($offset, [IO.SeekOrigin]::Begin)
+                $pe = [byte[]]::new(6)
+                if ($stream.Read($pe, 0, 6) -ne 6 -or [BitConverter]::ToUInt32($pe, 0) -ne 0x00004550 -or
+                    [BitConverter]::ToUInt16($pe, 4) -ne 0x8664) { throw 'Windows media executable must be x64 PE.' }
+              } finally { $stream.Dispose() }
+              $toolPaths[$name] = $tool
+            }
+            $archiveEvidence = @{ version = $version; url = $url; checksumUrl = ($url + '.sha256'); sha256 = $actual; publisherChecksum = $published }
+          }
+          $selected = @{}
+          foreach ($name in @('ffmpeg', 'ffprobe')) {
+            $tool = $toolPaths[$name]
+            if (-not $tool) { throw 'Both Windows media tools are required for startup.' }
+            $lines = @(& $tool -version 2>&1)
+            $exit = $LASTEXITCODE
+            $reported = if ($lines.Count -gt 0) { [string]$lines[0] } else { '' }
+            if ($exit -ne 0 -or -not $reported.StartsWith($name + ' version ')) { throw 'Windows media version probe failed.' }
+            if ($source -eq 'gyan-8.1.2' -and $reported -notmatch ('^' + $name + ' version 8[.]1[.]2(?:[-\s])')) { throw 'Windows media executable version differs from the archive pin.' }
+            $selected[$name] = @{ status = 'available'; name = ($name + '.exe'); version = $reported; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $tool).Hash.ToLowerInvariant(); hashScope = 'invoked-executable' }
+            $variable = if ($name -eq 'ffmpeg') { 'MIOON_FFMPEG_PATH' } else { 'MIOON_FFPROBE_PATH' }
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value ($variable + '=' + $tool) -Encoding utf8
+          }
+          $ffmpeg = $toolPaths['ffmpeg']
+          $filterLines = @(& $ffmpeg -hide_banner -filters 2>&1)
+          if ($LASTEXITCODE -ne 0) { throw 'Windows media filter probe failed.' }
+          $encoderLines = @(& $ffmpeg -hide_banner -encoders 2>&1)
+          if ($LASTEXITCODE -ne 0) { throw 'Windows media encoder probe failed.' }
+          $filters = @{}; $encoders = @{}; $missing = @()
+          foreach ($name in @('drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128')) {
+            $filters[$name] = (($filterLines -join "`n") -match ('(?m)^[\t ]*[A-Z.]{2,3}[\t ]+' + $name + '[\t ]'))
+            if (-not $filters[$name]) { $missing += ('filter:' + $name) }
+          }
+          foreach ($name in @('libx264', 'aac')) {
+            $encoders[$name] = (($encoderLines -join "`n") -match ('(?m)^[\t ]*[A-Z.]{6}[\t ]+' + $name + '[\t ]'))
+            if (-not $encoders[$name]) { $missing += ('encoder:' + $name) }
+          }
+          @{ schemaVersion = 1; platform = 'win32'; arch = 'x64'; imageVersion = $env:ImageVersion; source = $source; runnerTools = $observations; tools = $selected; archive = $archiveEvidence;
+             capabilities = @{ filters = $filters; encoders = $encoders }; missingCapabilities = $missing } |
+            ConvertTo-Json -Depth 6 | Set-Content -LiteralPath artifacts/windows-development/media-tools.json -Encoding utf8
+
+      - name: Package unsigned Windows development application
+        run: |
+          pnpm --filter @mioon/desktop package:win:dev
+          if ($LASTEXITCODE -ne 0) { throw 'Windows development packaging failed.' }
+
+      - name: Launch actual packaged Windows application
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binary = Join-Path $env:GITHUB_WORKSPACE 'release/desktop/development/win-unpacked/mioon-dev.exe'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-development/smoke.json'
+          $workspace = Join-Path $env:RUNNER_TEMP ('mioon-windows-smoke-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          if (Test-Path -LiteralPath $workspace) { throw 'Smoke workspace must be new.' }
+          node .github/scripts/windows-desktop-smoke.ts "--binary=$binary" "--output=$output" "--workspace=$workspace"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaged startup smoke failed.' }
+
+      - name: Upload Windows development package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-development-x64
+          path: release/desktop/development/*-win-x64.exe
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload text-only smoke evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-development-evidence
+          path: |
+            artifacts/windows-development/smoke.json
+            artifacts/windows-development/media-tools.json
+          retention-days: 7
+          if-no-files-found: warn
