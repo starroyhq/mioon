@@ -6,6 +6,7 @@ import {OPACITY_ENVELOPE_PROFILE} from '../../contracts/src/timeline-opacity-env
 import {OPACITY_RENDER_CANDIDATE_PROFILE, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {validateTimelineColourRows} from './timeline-retained-colour.ts';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {validateTimelineAudioRoleRows} from './timeline-retained-audio-role.ts';
 import {validateTimelineVolumeEnvelopeRows} from './timeline-retained-volume-envelope.ts';
 import {validateLutResourceRows} from './lut-resource-validation.ts';
@@ -82,11 +83,10 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
   }
   function timeline(projectId: string): Value {
     const known = timelines.get(projectId); if (known) return known;
-    const row = db.prepare("SELECT id,projectId,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 262144 THEN data END AS data FROM timelines WHERE projectId=? LIMIT 1").get(projectId);
-    if (!row || row.projectId !== projectId || typeof row.data !== 'string') invalid();
-    let parsed: unknown; try {parsed = JSON.parse(row.data);} catch {invalid();}
-    const result = captureRecord(parsed, projectId);
-    if (result.id !== row.id) invalid();
+    const snapshot = readTimelineStorage(db, projectId);
+    if (!snapshot) invalid();
+    const result = captureRecord(snapshot.timeline, projectId);
+    if (result.id !== snapshot.id) invalid();
     timelines.set(projectId, result); return result;
   }
   function renderRecord(value: Value): Value {

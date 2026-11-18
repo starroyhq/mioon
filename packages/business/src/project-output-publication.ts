@@ -7,7 +7,6 @@ import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {ensurePrivateDirectory, validateManagedDirectory, validateManagedFile, readPrivateFile, writePrivateFileAtomic,getWindowsManagedFileIO} from '../../contracts/src/private-storage.ts';
-import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {PROJECT_OUTPUT_FOLDERS, projectOutputOwnerSchema, projectOutputPublicationProofSchema, projectOutputPublicationReceiptSchema as receiptSchema, projectOutputPublicationIndexSchema as indexSchema} from '../../contracts/src/project-output-publication.ts';
 import type {ProjectOutputOwner, ProjectOutputPublicationProof, ProjectOutputPublicationReceipt as Receipt, ProjectOutputPublicationIndex} from '../../contracts/src/project-output-publication.ts';
@@ -19,8 +18,11 @@ import {isAppLibraryHeld} from './app-db/connection.ts';
 import {referenceForPublishedMedia} from './project-media-storage.ts';
 import {assertProjectOutputStore, outputFileIdentity, sameOutputIdentity,isProjectOutputAdmissionFailure} from './project-output-owner.ts';
 import type {OutputFileIdentity} from './project-output-owner.ts';
+import {isPublishedProjectOutput} from './project-output-proof.ts';
 
 export type {ProjectOutputOwner, ProjectOutputPublicationProof};
+export {isPublishedProjectOutput} from './project-output-proof.ts';
+export type {PublishedProjectOutputExpectation} from './project-output-proof.ts';
 export interface ProjectOutputOptions {readonly signal?: AbortSignal; readonly beforeEffect?: () => void}
 export interface ProjectOutputInput {
   readonly owner: ProjectOutputOwner; readonly assetId: string; readonly publicationId?: string;
@@ -30,12 +32,6 @@ export interface ProjectOutputInput {
 export interface PublishedProjectOutput {
   readonly reference: MediaReference; readonly referenceRevision: 1; readonly sha256: string;
   readonly sizeBytes: number; readonly relativePath: string; readonly publication: ProjectOutputPublicationProof;
-}
-export interface PublishedProjectOutputExpectation {
-  readonly projectId: string; readonly assetId?: string;
-  readonly owner: Pick<ProjectOutputOwner, 'kind' | 'id'> & Partial<Pick<ProjectOutputOwner, 'requestId' | 'inputHash'>>;
-  readonly targetKind: ProjectOutputInput['targetKind']; readonly sha256?: string; readonly sizeBytes?: number; readonly mimeType?: string;
-  readonly requireOriginalLocation?:boolean;
 }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const extensions: Readonly<Record<string, string>> = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a'};
@@ -295,25 +291,6 @@ async function copyVerifiedStage(stage: string, stageInfo: BigIntStats, targetFi
     assertFileFacts(fileMetadata(targetFile, check), targetFacts, 'copy-target');
     if (ctimeChanged) await hashFile(stage, pinned, check, 'copy-source');
   } finally {await source.close();}
-}
-export function isPublishedProjectOutput(asset: unknown, expected: PublishedProjectOutputExpectation): boolean {
-  if (!record(asset)) return false;
-  const parsed = projectOutputPublicationProofSchema.safeParse(asset.publication), reference = mediaReferenceSchema.safeParse(asset.reference);
-  if (!parsed.success || !reference.success) return false;
-  const proof = parsed.data, owner = expected.owner;
-  // Upload publication verifies complete bytes privately. Imported videos keep
-  // S1's sampled public reference until revision-checked strong preparation.
-  const hashMatches = proof.sha256 === asset.sha256 && proof.sha256 === reference.data.fullSha256 ||
-    proof.owner.kind === 'import' && proof.targetKind === 'assets' && proof.mimeType.startsWith('video/') &&
-    asset.sha256 === null && reference.data.fullSha256 === null;
-  return asset.id === proof.assetId && asset.projectId === proof.projectId && proof.projectId === expected.projectId &&
-    (expected.assetId === undefined || proof.assetId === expected.assetId) && proof.owner.kind === owner.kind && proof.owner.id === owner.id &&
-    (owner.requestId === undefined || proof.owner.requestId === owner.requestId) && (owner.inputHash === undefined || proof.owner.inputHash === owner.inputHash) &&
-    proof.targetKind === expected.targetKind && hashMatches &&
-    proof.sizeBytes === asset.sizeBytes && proof.sizeBytes === reference.data.sizeBytes && proof.mimeType === asset.mimeType &&
-    (!(expected.requireOriginalLocation??expected.targetKind==='exports')||reference.data.pathForm==='relative'&&reference.data.path===proof.relativePath&&reference.data.volume===null) &&
-    (expected.sha256 === undefined || proof.sha256 === expected.sha256) && (expected.sizeBytes === undefined || proof.sizeBytes === expected.sizeBytes) &&
-    (expected.mimeType === undefined || proof.mimeType === expected.mimeType);
 }
 async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions, durable = false, mtimeNs?: bigint): Promise<PublishedProjectOutput> {
   const check = (): void => checkReceiptDirectories(store, receipt, options);

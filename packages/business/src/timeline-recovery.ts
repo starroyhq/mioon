@@ -10,6 +10,7 @@ import {readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_PROOF_CODES,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_TRANSFORM_OPERATION,TIMELINE_CLIP_TRANSFORM_PROOF_CODES,TIMELINE_CLIP_TRANSFORM_RESPONSE_BYTES,TIMELINE_CLIP_TRANSITION_OPERATION,TIMELINE_CLIP_TRANSITION_PROOF_CODES,TIMELINE_CLIP_TRANSITION_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {canvasActiveCondition} from './canvas-active.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {validateSavedTimeline} from './timeline-inputs.ts';
@@ -213,10 +214,10 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(legacyMissingProject&&!db.prepare('SELECT 1 FROM projects WHERE id=?').get(input.projectId))
    throw new AppError('NOT_FOUND','找不到记录',404,{id:input.projectId});
   graph(); // Validate the current project before any aggregate/CAS disclosure.
-  const row=db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data',TIMELINE_RESPONSE_BYTES)} AS data FROM timelines WHERE projectId=? LIMIT 1`).get(input.projectId);
-  if(!row)return null;
-  let timeline;try{timeline=JSON.parse(row.data as string);}catch{unavailable();}
-  if(!object(timeline)||!uuid(row.id)||row.id!==timeline.id||row.projectId!==input.projectId||timeline.projectId!==input.projectId)unavailable();
+  const stored=readTimelineStorage(db,input.projectId);
+  if(!stored)return null;
+  const timeline=stored.timeline as TimelineRecord;
+  if(!object(timeline)||!uuid(stored.id)||stored.id!==timeline.id||stored.projectId!==input.projectId||timeline.projectId!==input.projectId)unavailable();
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   if(sourceSemantics)return validateReadonly(timeline);

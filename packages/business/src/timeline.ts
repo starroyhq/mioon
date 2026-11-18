@@ -6,6 +6,9 @@ import {bindAgentTaskJobInside,taskEffectOrigin} from './agent/task-effects-v2.t
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './store-runtime.ts';
+import {timelineStorageFormat,timelineStorageSchema,readTimelineStorage} from './project-file/timeline-storage.ts';
+import {bumpFormat5ContentStampInside,deleteFormat5TimelineInside} from './project-file/format5-timeline.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace,usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
@@ -141,10 +144,15 @@ export function restoreTimelineFrameSubtitles(timeline: TimelineRecord,profile: 
  * LUT, subtitle, geometry, byte-budget and history boundaries as normal edits. */
 export function restoreProjectTimelineInside(store: ProjectStore, desired: TimelineRecord | null, {requestId,now}: {requestId:string;now:string}): void {
  if(!isProjectStore(store)||!store.db.isTransaction)throw new TypeError('Timeline restoration requires the real project transaction');
- const row=store.db.prepare('SELECT id,data FROM project.timelines WHERE projectId=?').get(store.projectId);
- const current=row?JSON.parse(String(row.data)) as TimelineRecord:null;
+ const format5=timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION;
+ const row=format5?undefined:store.db.prepare('SELECT id,data FROM project.timelines WHERE projectId=?').get(store.projectId);
+ const stored=format5?readTimelineStorage(store.db,store.projectId):null;
+ const current=format5?stored?.timeline as TimelineRecord|null??null:row?JSON.parse(String(row.data)) as TimelineRecord:null;
  if(!desired){
-  if(current)store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
+  if(current){
+   if(format5){deleteFormat5TimelineInside(store.db,'project',current.id);bumpFormat5ContentStampInside(store.db,'project');}
+   else store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
+  }
   return;
  }
  if(desired.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','时间线不属于此项目',400);
@@ -157,9 +165,14 @@ export function restoreProjectTimelineInside(store: ProjectStore, desired: Timel
  const before=current?editableTimelineSnapshot(current,true):{tracks:[],clips:[],durationFrames:0,format:timelineFrame(timeline)};
  const after=editableTimelineSnapshot(timeline,true);
  admitTimelineVolumeEnvelopeWrite(timeline,{before,after,related:{projectId:store.projectId,requestId}});
- const raw=current?restoredTimelineJson(store.db,String(row!.data),timeline):canonicalJson(timeline);
- if(current&&current.id!==timeline.id)store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
- store.db.prepare('INSERT INTO project.timelines(id,projectId,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(timeline.id,store.projectId,raw);
+ if(format5){
+  if(current&&current.id!==timeline.id)throw new AppError('TIMELINE_IDENTITY_IMMUTABLE','时间线身份不可替换',409);
+  store.put('timelines',timeline);
+ }else{
+  const raw=current?restoredTimelineJson(store.db,String(row!.data),timeline):canonicalJson(timeline);
+  if(current&&current.id!==timeline.id)store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
+  store.db.prepare('INSERT INTO project.timelines(id,projectId,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(timeline.id,store.projectId,raw);
+ }
  recordTimelineEditInside(store.db,'project.version.restore',timeline,before,after);
 }
 // The shared wire schema admits every preset's envelope. Submitted rectangles
@@ -184,9 +197,9 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  // format-3 project into writing the new geometry.
  const format4=()=>usesTimelineFrameTransaction(db);
  function find(projectId: string): TimelineRecord|null{
-  const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
-  if(!row)return null;
-  const value=JSON.parse(row.data as string) as TimelineRecord;assertTimelineAudioRoleWorkspace(db,value);return value;
+  const snapshot=readTimelineStorage(db,projectId);
+  if(!snapshot)return null;
+  const value=snapshot.timeline as TimelineRecord;assertTimelineAudioRoleWorkspace(db,value);return value;
  }
  function ensure(projectId: string): TimelineRecord{
   required('projects',projectId);

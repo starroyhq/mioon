@@ -7,6 +7,7 @@ import {mioAssetImportInputSchema} from '../../../contracts/src/mio-asset-import
 import {publicOperationSchemas} from '../../../contracts/src/public-operations.ts';
 import {subjectVariantSnapshotSchema,SUBJECT_VARIANT_LIMITS} from '../../../contracts/src/subject-variants.ts';
 import {createProjectVersions} from '../project-versions/service.ts';
+import {readTimelineHeaderStorage,readTimelineStorage} from '../project-file/timeline-storage.ts';
 import {previsThumbnailPublicSchemas} from '../../../contracts/src/previs.ts';
 import {prepareParityThumbnail,executeParityThumbnail,executeSubjectVariantRetry} from './task-parity-actions-v2.ts';
 import {isMioCanvasCopyOperation,mioCanvasCopyOperations} from '../../../contracts/src/mio-canvas-copy.ts';
@@ -285,8 +286,8 @@ function snapshot(store:Store,projectId:string):Snapshot{
   if(!hasStoreTable(store.db,table))continue;
   for(const row of store.db.prepare(`SELECT * FROM ${table} WHERE projectId=?`).all(projectId))insert(descriptor.kind,String(row[descriptor.id]),table,{...row});
  }
- const timeline=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
- if(timeline){const value:unknown=JSON.parse(String(timeline.data));if(!object(value)||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','时间线记录无法验证');
+ const timeline=readTimelineStorage(store.db,projectId);
+ if(timeline){const value:unknown=timeline.timeline;if(!object(value)||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','时间线记录无法验证');
   for(const [field,kind] of [['clips','timeline_clip'],['tracks','timeline_track'],['subtitles','timeline_subtitle']] as const){const children=field==='subtitles'&&object(value.subtitles)?value.subtitles.cues:value[field];if(Array.isArray(children))for(const child of children)if(object(child)&&typeof child.id==='string')insert(kind,child.id,field,child);}
   insert('timeline',projectId,'timeline_format',timelineSnapshotValue(value,usesTimelineFrameTransaction(store.db)));
  }
@@ -1135,8 +1136,8 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    // The host has just checked the model's exact target revisions and will check
    // them again after BEGIN; only synchronous target-local edits use this CAS.
    if(prepared.risk==='local_reversible'&&/^(timeline\.(clip|track|subtitle)\.)/u.test(prepared.operation)&&!(frameProject&&needsFrameFence(prepared.operation,input))){
-    const row=db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(prepared.projectId);
-    if(typeof row?.revision==='number')input.expectedRevision=row.revision;
+    const snapshot=readTimelineHeaderStorage(db,prepared.projectId);
+    if(snapshot&&object(snapshot.header)&&typeof snapshot.header.revision==='number')input.expectedRevision=snapshot.header.revision;
    }
    if(prepared.operation==='project.rename'||prepared.operation==='project.notes.set'||prepared.operation==='shot.reorder'){
     const project=store.get('projects',prepared.projectId);if(object(project)&&typeof project.revision==='number')input.expectedRevision=project.revision;

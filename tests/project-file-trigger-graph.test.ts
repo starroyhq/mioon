@@ -5,6 +5,7 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createProjectStore, openStore} from '../packages/business/src/project-file/index.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
 import {tokenizeSql} from './helpers/sql-tokenizer.ts';
 import type {SqlToken} from './helpers/sql-tokenizer.ts';
@@ -101,9 +102,9 @@ function assertTriggerGraph(catalog: Catalog) {
   return {graph, writers};
 }
 
-for (const format4 of [false, true]) test(`fresh K1 ${format4 ? 'candidate' : 'released'} connection trigger writes are acyclic, never self-write and cannot implicitly REPLACE`, t => {
+for (const format of [PROJECT_FILE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION]) test(`fresh K1 format ${format} connection trigger writes are acyclic, never self-write and cannot implicitly REPLACE`, t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-trigger-graph-'));
-  const store = format4 ? createProjectStore({projectFile: join(root, 'candidate.mioon'), format4: {},
+  const store = format !== PROJECT_FILE_SCHEMA_VERSION ? createProjectStore({projectFile: join(root, 'candidate.mioon'), ...(format === FORMAT5_PROJECT_SCHEMA_VERSION ? {format5: true as const} : {format4: {}}),
     locate: () => ({localDir: join(root, 'records'), cacheDir: join(root, 'cache'), tempDir: join(root, 'temp')})}) : openStore(root);
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   assert.equal(store.db.prepare('PRAGMA recursive_triggers').get()!.recursive_triggers, 1);

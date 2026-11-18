@@ -16,6 +16,7 @@ import {AppError,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,SCENE_DETECTION_PROFILE_I
 import type {SceneDetectTaskResponse,SceneShotsTaskResponse,SceneResultSummary,SceneShotAspectRatio,SceneShotsReceipt} from '@mioon/contracts';
 import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputRatio} from '../../contracts/src/timeline-output-geometry.ts';
 import {usesTimelineFrameTransaction} from './store-capabilities.ts';
+import {readTimelineHeaderStorage} from './project-file/timeline-storage.ts';
 import {createSceneHistoryReaders,sceneServiceMessages as messages,sceneServiceFailure as failure,safeSceneFailure,scenePublicFailure} from './scene-history.ts';
 import type {SceneTaskView,SceneDetectView,SceneShotsView,SceneDetectInput,SceneShotsInput} from './scene-history.ts';
 import {detectManagedScenes} from './scene-detection-decoder.ts';
@@ -197,9 +198,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  // New shots follow the project's format; a project without a timeline yet
  // uses the default portrait format.
  function projectAspectRatio(projectId: string): SceneShotAspectRatio {
-  const row=db.prepare(`SELECT CASE WHEN json_valid(data) THEN json_extract(data,'$.fps') END AS fps,
-   CASE WHEN json_valid(data) THEN json_extract(data,'$.width') END AS width,
-   CASE WHEN json_valid(data) THEN json_extract(data,'$.height') END AS height FROM timelines WHERE projectId=?`).get(projectId);
+  const row=readTimelineHeaderStorage(db,projectId)?.header as Record<string,unknown>|undefined;
   if(!usesTimelineFrameTransaction(db)){
    const width=row?.width,height=row?.height;
    if(typeof width!=='number'||typeof height!=='number'||!(width>0)||!(height>0))return '9:16';

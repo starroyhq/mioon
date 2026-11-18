@@ -12,7 +12,8 @@ import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumb
 import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {ownsStoreLock} from './store-runtime.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readTimelineHeaderStorage} from './project-file/timeline-storage.ts';
 import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 
 // Camera previs nodes (schema64). A node's scene is saved whole under scene
@@ -138,15 +139,17 @@ function thumbnailDigest(sources: [string,string][],framePresetId?: string): str
  return sha(canonicalPrevisValue(framePresetId===undefined?sources:['previs-thumbnail-frame-v1',framePresetId,sources]));
 }
 function thumbnailFrame(db: DatabaseSync,projectId: string): string {
- const rows=db.prepare(`SELECT id,CASE WHEN length(CAST(data AS BLOB))<=${TIMELINE_RESPONSE_BYTES} THEN data END AS data
-  FROM timelines WHERE projectId=? LIMIT 2`).all(projectId);
- if(!rows.length)return DEFAULT_TIMELINE_OUTPUT_PRESET;
- const row=rows[0]!,record=decode(row.data) as Row|null;
- const preset=timelineOutputPreset(record);
- if(rows.length!==1||!record||record.id!==row.id||record.projectId!==projectId||!preset)return invalid();
+ const snapshot=readTimelineHeaderStorage(db,projectId,{schema:'project'});
+ if(!snapshot)return DEFAULT_TIMELINE_OUTPUT_PRESET;
+ const header=snapshot.header as Record<string,unknown>|null;
+ const preset=timelineOutputPreset(header);
+ if(!preset)return invalid();
  return preset.id;
 }
-const format4=(db: DatabaseSync): boolean=>db.prepare('PRAGMA project.user_version').get()?.user_version===FORMAT4_PROJECT_SCHEMA_VERSION;
+const format4=(db: DatabaseSync): boolean=>{
+ const version=db.prepare('PRAGMA project.user_version').get()?.user_version;
+ return version===FORMAT4_PROJECT_SCHEMA_VERSION||version===FORMAT5_PROJECT_SCHEMA_VERSION;
+};
 const fingerprintedThumbnails=(db: DatabaseSync): boolean=>db.prepare('SELECT name FROM pragma_table_info(?)').all('previs_thumbnails').some(row=>row.name==='sourceFingerprintDigest');
 
 /** Read-only previs node and thumbnail access, shared with restored workspaces. */
