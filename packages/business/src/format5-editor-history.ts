@@ -27,8 +27,8 @@ import type {
   SequenceEditPatch, SequenceEditReceipt, SequenceEditStateDelta,
 } from '@mioon/contracts/sequence-edit';
 import {
-  canonicalSequenceEditInput, isSequenceEditEnvelope, sequenceEditEnvelopeOperationName, sequenceEditHistoryEntrySchema,
-  sequenceEditReceiptSchema,
+  SEQUENCE_EDIT_LIMITS, canonicalSequenceEditInput, isSequenceEditEnvelope, sequenceEditEnvelopeOperationName,
+  sequenceEditHistoryEntrySchema, sequenceEditReceiptSchema,
 } from '@mioon/contracts/sequence-edit';
 import type {ProjectStore} from './project-file/store.ts';
 
@@ -160,6 +160,33 @@ export function findSequenceEditReceipt(store: ProjectStore, requestId: string):
   return {inputDigest: String(row.inputDigest), receipt: parsed.data as unknown as SequenceEditReceipt};
 }
 
+/** Lowest position that is still retained. Null while no action is stored. */
+export function sequenceEditHistoryFloor(store: ProjectStore): number | null {
+  const row = store.db.prepare('SELECT min(position) AS floor FROM main.editor_history_entries WHERE projectId=?')
+    .get(store.projectId) as Row | undefined;
+  const floor = row?.floor;
+  return Number.isSafeInteger(floor) && Number(floor) >= 1 ? Number(floor) : null;
+}
+
+/** history-13 has a 200-entry / 128 MiB budget enforced by insert triggers.
+ * Before one new action is written, the oldest rows are removed until the new
+ * action fits. The immutable receipts are deliberately never evicted: replaying
+ * an old request by its original ID must keep returning its original result. */
+function evictOldestEntries(store: ProjectStore, epoch: string, newBytes: number): void {
+  const rows = store.db.prepare(`SELECT position,length(CAST(beforePatch AS BLOB))+length(CAST(afterPatch AS BLOB)) AS bytes
+    FROM main.editor_history_entries WHERE projectId=? AND epoch=? ORDER BY position`).all(store.projectId, epoch) as Row[];
+  let count = rows.length;
+  let bytes = rows.reduce((sum, row) => sum + Number(row.bytes ?? 0), 0);
+  let index = 0;
+  while (index < rows.length && (count >= SEQUENCE_EDIT_LIMITS.historyEntries || bytes + newBytes > SEQUENCE_EDIT_LIMITS.historyBytes)) {
+    const row = rows[index++]!;
+    store.db.prepare('DELETE FROM main.editor_history_entries WHERE projectId=? AND epoch=? AND position=?')
+      .run(store.projectId, epoch, Number(row.position));
+    count--;
+    bytes -= Number(row.bytes ?? 0);
+  }
+}
+
 function writeReceiptRow(store: ProjectStore, receipt: SequenceEditReceipt): void {
   const parsed = sequenceEditReceiptSchema.safeParse(receipt);
   if (!parsed.success) patchInvalid('回执不符合共用合同。', {requestId: receipt.requestId});
@@ -186,10 +213,6 @@ export function writeSequenceEditAction(store: ProjectStore, input: {
   const {state} = prepareSequenceEditHistory(store, input.envelope.epoch);
   verifyEnvelope(store, input.envelope, state);
   const position = state.position + 1;
-  // A new action truncates the old redo branch; history entry rows for the
-  // undone branch are removed (their receipts stay immutable and queryable).
-  store.db.prepare('DELETE FROM main.editor_history_entries WHERE projectId=? AND epoch=? AND position>=?')
-    .run(store.projectId, state.epoch, position);
   const entry: SequenceEditHistoryEntry = {
     actionId: input.envelope.actionId, projectId: store.projectId, epoch: state.epoch, position,
     operation: sequenceEditEnvelopeOperationName(input.envelope), origin: 'user',
@@ -198,6 +221,12 @@ export function writeSequenceEditAction(store: ProjectStore, input: {
   const parsedEntry = sequenceEditHistoryEntrySchema.safeParse(entry);
   if (!parsedEntry.success) patchInvalid('动作补丁超出共用合同的边界。', {actionId: entry.actionId});
   const before = JSON.stringify(entry.beforePatch), after = JSON.stringify(entry.afterPatch);
+  const newBytes = Buffer.byteLength(before) + Buffer.byteLength(after);
+  // A new action truncates the old redo branch; history entry rows for the
+  // undone branch are removed (their receipts stay immutable and queryable).
+  store.db.prepare('DELETE FROM main.editor_history_entries WHERE projectId=? AND epoch=? AND position>=?')
+    .run(store.projectId, state.epoch, position);
+  evictOldestEntries(store, state.epoch, newBytes);
   store.db.prepare('INSERT INTO main.editor_history_entries(actionId,projectId,epoch,position,operation,origin,beforePatch,afterPatch,createdAt) VALUES(?,?,?,?,?,?,?,?,?)')
     .run(entry.actionId, entry.projectId, entry.epoch, entry.position, entry.operation, entry.origin, before, after, entry.createdAt);
   store.db.prepare('UPDATE main.editor_history_state SET position=?,revision=revision+1,evidence=? WHERE projectId=?')
@@ -258,7 +287,13 @@ export function moveSequenceEditHistoryCursor(store: ProjectStore, command: Sequ
   }
   const targetPosition = command.direction === 'undo' ? state.position : state.position + 1;
   const entry = targetPosition >= 1 ? readSequenceEditHistoryEntry(store, command.actionId) : null;
-  if (!entry || entry.position !== targetPosition) historyConflict('这一步已经不能撤销或重做。', {actionId: command.actionId});
+  if (!entry || entry.position !== targetPosition) {
+    const floor = sequenceEditHistoryFloor(store);
+    if (command.direction === 'undo' && (floor === null || targetPosition < floor)) {
+      historyConflict('已经到最早可撤销的一步。', {reason: 'EARLIEST', floor});
+    }
+    historyConflict('这一步已经不能撤销或重做。', {actionId: command.actionId, floor});
+  }
   const position = command.direction === 'undo' ? state.position - 1 : state.position + 1;
   store.db.prepare('UPDATE main.editor_history_state SET position=?,revision=revision+1,evidence=? WHERE projectId=?')
     .run(position, JSON.stringify({formatVersion: 5, contractVersion: 1, direction: command.direction,

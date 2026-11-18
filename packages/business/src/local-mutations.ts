@@ -37,6 +37,9 @@ export interface LocalMutationOptions {
  readonly now: ()=>string;
  readonly references: LocalMutationReferences;
  readonly readOnly?: boolean;
+ /** Format 5 owns canvas order and applied versions through the board chain;
+  * the legacy ambiguous writers must not bypass the shared sync transaction. */
+ readonly format5?: boolean;
 }
 export interface LocalMutationHandlers {
  [operation: string]: (input: never)=>unknown;
@@ -45,7 +48,8 @@ export interface LocalMutationHandlers {
 // Local canvas mutations share the existing revision/reference guards. Relation
 // reads also verify relational columns against JSON before a conflict can expose
 // a current record or an old receipt can return its original response.
-export function createLocalMutationServices(store: LocalMutationStore,{check,canonical,now,references,readOnly=false}: LocalMutationOptions) {
+export function createLocalMutationServices(store: LocalMutationStore,{check,canonical,now,references,readOnly=false,format5=false}: LocalMutationOptions) {
+ const format5Blocked=(use: string,message: string): never=>{throw new AppError('UNSUPPORTED_OPERATION',message,409,{use});};
  const {db,get,list,put}=store;
  const mutate=createMutationReplay(store,{canonical,readOnly});
  const liveShots=(id: string)=>listActiveCanvasRecords(db,'shots',id,()=>list('shots',id)) as MutationRecord[];
@@ -173,7 +177,9 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    replay:(response,context)=>replayRecord('shots',response,context),
   }),
   'shot.update':(input: ShotUpdateInput)=>updateShot(input),
-  'shot.reorder':(input: ShotReorderInput)=>currentProjectRecord(mutate('shot.reorder',input,{
+  'shot.reorder':(input: ShotReorderInput)=>format5
+   ? format5Blocked('sequence.edit','格式 5 的镜头顺序由画板链决定，请使用画板顺序操作。')
+   : currentProjectRecord(mutate('shot.reorder',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
    // Verify requested owners even on replay. Membership/order validation belongs
    // to the new edit only, so later additions do not invalidate an old response.
@@ -209,7 +215,9 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    },
    replay:(response,context)=>{if((response as MutationRecord).id!==input.nodeId)invalid();replayRecord('nodes',response,context);},
   }),
-  'version.select':(input: VersionSelectInput)=>mutate('version.select',input,{
+  'version.select':(input: VersionSelectInput)=>format5
+   ? format5Blocked('sequence.edit','格式 5 的选中版本必须经画板同步操作修改。')
+   : mutate('version.select',input,{
    resolve:()=>target('shots',input.shotId),
    validate:({value})=>{shotRelations(value);version(value,input.versionId);},
    apply:({value})=>{assertCanvasTargetActive(db,'shots',value.id);check(value,input.expectedRevision);return put('shots',{...value,selectedVersionId:input.versionId,revision:(value.revision as number)+1,updatedAt:now()});},

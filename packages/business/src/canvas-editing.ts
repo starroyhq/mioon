@@ -26,6 +26,7 @@ import type {CanvasGuardEvidence, CanvasPatch} from './canvas-patch.ts';
 import {readProjectContentStamp, sameContentStamp} from './project-file/content-stamp.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {canonicalJson} from './project-versions/document.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 
 const digest = (value: unknown): string => createHash('sha256').update(canonicalJson(JSON.parse(JSON.stringify(value)))).digest('hex');
 const isRevision = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -410,9 +411,16 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     throw new AppError('CANVAS_RECEIPT_WINDOW_FULL', '画布请求回执暂时已满，请在旧回执过期后重试。', 409,
       {retryAfter: new Date(retryAfter).toISOString()});
   }
+  function assertFormat5OperationAllowed(operation: CanvasEditInput['operation']): void {
+    if (Number(db.prepare('PRAGMA project.user_version').get()?.user_version) !== FORMAT5_PROJECT_SCHEMA_VERSION) return;
+    if (operation === 'archive' || operation === 'restore' || operation === 'paste') {
+      throw new AppError('UNSUPPORTED_OPERATION', '格式 5 的画板删除、恢复和粘贴需经画板顺序操作。', 409, {use: 'sequence.edit'});
+    }
+  }
   function mutation(operation: 'canvas.apply' | 'canvas.history.undo' | 'canvas.history.redo',
     input: CanvasEditInput | CanvasHistoryInput, authorize: () => void): CanvasEditResult {
     const mode = operation === 'canvas.apply' ? (input as CanvasEditInput).operation : operation === 'canvas.history.undo' ? 'undo' : 'redo';
+    if (operation === 'canvas.apply') assertFormat5OperationAllowed((input as CanvasEditInput).operation);
     const normalized = 'targets' in input ? {...input, targets: [...input.targets].sort(compareCanvasTargets)}
       : 'moves' in input ? {...input, moves: [...input.moves].sort(compareCanvasTargets)} : input;
     const inputDigest = digest({operation, input: normalized});

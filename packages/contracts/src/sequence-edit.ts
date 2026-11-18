@@ -653,12 +653,13 @@ export interface SequenceEditReceipt {
   readonly timelineRevision: number;
   readonly syncRevision: number;
 }
-const historyActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema}).strict();
-const historyViewSchema = z.object({
+export const sequenceEditHistoryActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema}).strict();
+const historyActionSchema = sequenceEditHistoryActionSchema;
+export const sequenceEditHistoryViewSchema = z.object({
   epoch: uuidSchema, position: sequenceSchema, revision: revisionSchema,
   undo: historyActionSchema.nullable(), redo: historyActionSchema.nullable(),
 }).strict();
-const countsSchema = z.object({
+export const sequenceEditAffectedCountsSchema = z.object({
   nodes: sequenceSchema, edges: sequenceSchema, mainTrackClips: sequenceSchema,
   otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema, subjectBindings: sequenceSchema.optional(),
 }).strict();
@@ -672,7 +673,7 @@ export const sequenceEditReceiptSchema = z.object({
     code: z.literal('SOURCE_TOO_SHORT'), clipId: uuidSchema, nodeId: uuidSchema,
     versionId: uuidSchema, shortByFrames: sequenceSchema,
   }).strict()).max(FORMAT5_LIMITS.mainTrackClips).optional(),
-  affected: countsSchema, history: historyViewSchema,
+  affected: sequenceEditAffectedCountsSchema, history: sequenceEditHistoryViewSchema,
   contentRevision: sequenceSchema, timelineRevision: revisionSchema, syncRevision: revisionSchema,
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
   'Only a not-applied receipt carries an error code').refine(value => value.status === 'applied' || value.warnings === undefined,

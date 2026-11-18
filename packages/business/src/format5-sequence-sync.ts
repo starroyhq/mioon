@@ -86,19 +86,31 @@ interface SyncContext {
   readonly media: readonly ChainSyncMedia[];
   readonly clips: readonly ChainSyncClip[];
   readonly anchored: readonly TrackAnchoredItem[];
+  /** Full archived row JSON with archive columns, for restore actions. */
+  readonly archivedShots: ReadonlyMap<string, Row>;
+  readonly archivedNodes: ReadonlyMap<string, Row>;
+  readonly archivedEdges: ReadonlyMap<string, Row>;
 }
+export type SequenceSyncContext = SyncContext;
 
-interface JsonRow {readonly id: string; readonly data: Row; readonly archived: boolean}
+interface JsonRow {
+  readonly id: string; readonly data: Row; readonly archived: boolean;
+  readonly archivedAt?: string; readonly archiveBatchId?: string; readonly archiveReason?: string;
+}
 
 function readJsonRows(db: any, table: 'shots' | 'nodes' | 'edges' | 'assets' | 'versions'): JsonRow[] {
   const hasArchive = table === 'shots' || table === 'nodes' || table === 'edges';
-  const rows = db.prepare(`SELECT id,data${hasArchive ? ',archivedAt' : ''} FROM project.${table} ORDER BY id`).all() as Row[];
+  const rows = db.prepare(`SELECT id,data${hasArchive ? ',archivedAt,archiveBatchId,archiveReason' : ''} FROM project.${table} ORDER BY id`).all() as Row[];
   return rows.map(row => {
     if (typeof row.id !== 'string' || typeof row.data !== 'string') throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
     let data: unknown;
     try { data = JSON.parse(row.data); } catch { throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'}); }
     if (!object(data) || data.id !== row.id) throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
-    return {id: row.id, data, archived: hasArchive && row.archivedAt !== null && row.archivedAt !== undefined};
+    const archived = hasArchive && row.archivedAt !== null && row.archivedAt !== undefined;
+    return {id: row.id, data, archived,
+      ...(archived ? {archivedAt: String(row.archivedAt),
+        ...(typeof row.archiveBatchId === 'string' ? {archiveBatchId: row.archiveBatchId} : {}),
+        ...(typeof row.archiveReason === 'string' ? {archiveReason: row.archiveReason} : {})} : {})};
   });
 }
 
@@ -191,9 +203,23 @@ function readSyncContext(store: ProjectStore): SyncContext {
   for (const cue of timeline.subtitles?.cues ?? []) {
     anchored.push(format5AnchoredItem({id: cue.id, startFrame: cue.startFrame, anchor: cue.anchor}));
   }
+  const archivedRow = (row: JsonRow): Row => ({...row.data, ...(row.archivedAt !== undefined ? {
+    archivedAt: row.archivedAt,
+    ...(row.archiveBatchId !== undefined ? {archiveBatchId: row.archiveBatchId} : {}),
+    ...(row.archiveReason !== undefined ? {archiveReason: row.archiveReason} : {}),
+  } : {})});
+  const archivedShots = new Map(shotRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
+  const archivedNodes = new Map(nodeRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
+  const archivedEdges = new Map(edgeRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
   return {projectId: store.projectId, timeline, timelineState, rootNodeId: timeline.mainTrack.sequenceNodeId,
     syncRevision: Number(sync.revision), baseline: baselineFromRaw(sync.baseline), board, nodes: board.nodes,
-    nodeRows, shots, versions, assets, adoptions, edges: board.edges, edgeRows, media, clips, anchored};
+    nodeRows, shots, versions, assets, adoptions, edges: board.edges, edgeRows, media, clips, anchored,
+    archivedShots, archivedNodes, archivedEdges};
+}
+
+/** Read the exact live projection the CS board transaction plans against. */
+export function readSequenceSyncContext(store: ProjectStore): SequenceSyncContext {
+  return readSyncContext(store);
 }
 
 const saState = (context: SyncContext) => ({board: context.board, filmId: context.rootNodeId,
@@ -370,9 +396,9 @@ function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Forma
 }
 
 function anchorForOwner(item: {startFrame: number; anchorClipId?: string | null},
-  owners: readonly {id: string; startFrame: number; durationFrames: number}[]): {clipId: string; offsetFrames: number} | null {
+  owners: ReadonlyMap<string, {id: string; startFrame: number; durationFrames: number}>): {clipId: string; offsetFrames: number} | null {
   if (item.anchorClipId === null || item.anchorClipId === undefined) return null;
-  const owner = owners.find(clip => clip.id === item.anchorClipId);
+  const owner = owners.get(item.anchorClipId);
   if (!owner) return null;
   const offsetFrames = item.startFrame - owner.startFrame;
   return offsetFrames >= 0 && offsetFrames < owner.durationFrames ? {clipId: item.anchorClipId, offsetFrames} : null;
@@ -384,7 +410,8 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
   const planNodes = new Map(plan.after.board.nodes.map(node => [node.id, node]));
   const copiedNodes = new Set(plan.copiedNode ? [plan.copiedNode.toNodeId] : []);
   const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
-  const ownerSegments = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
+  const ownerList = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
+  const ownerSegments = new Map(ownerList.map(owner => [owner.id, owner] as const));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
   const clips: Format5Clip[] = [...mainClips];
   for (const clip of context.timeline.clips) {
@@ -404,7 +431,7 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
     clips.push({...otherTrack, trackId: plan.transfer.trackId, startFrame: plan.transfer.clip.startFrame,
       anchor: item ? anchorForOwner(item, ownerSegments) : null});
   }
-  const ownerAt = (frame: number) => ownerSegments
+  const ownerAt = (frame: number) => ownerList
     .find(owner => owner.startFrame <= frame && frame < owner.startFrame + owner.durationFrames) ?? null;
   const cues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
     const item = anchored.get(cue.id);
@@ -726,9 +753,9 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
 interface TimelineApplyResult {readonly timeline: Format5Timeline; readonly changed: boolean}
 
 function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
-  cachedState?: ReturnType<typeof readFormat5TimelineState>): TimelineApplyResult {
-  const state = cachedState ?? readFormat5TimelineState(store.db, 'project');
-  const current = assembleFormat5Timeline(state);
+  cachedContext?: SequenceSyncContext): TimelineApplyResult {
+  const state = cachedContext?.timelineState ?? readFormat5TimelineState(store.db, 'project');
+  const current = cachedContext?.timeline ?? assembleFormat5Timeline(state);
   if (!current) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
   const clips = new Map(current.clips.map(clip => [clip.id, clip]));
   for (const clip of delta.clips) clips.set(clip.id, clip);
@@ -745,9 +772,10 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
   const headerChanged = state.header?.raw !== headerRaw;
-  const changed = update.changed || headerChanged;
+  const rowChanges = update.changed || update.clipDeletes.length > 0 || update.cueDeletes.length > 0;
+  const changed = rowChanges || headerChanged;
   if (!changed) return {timeline: current, changed: false};
-  if (update.changed) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
+  if (rowChanges) applyFormat5TimelineEntityUpdateInside(store.db, 'project', update);
   if (headerChanged) {
     const result = store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(headerRaw, next.id);
     if (Number(result.changes) !== 1) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
@@ -989,7 +1017,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       && !baselineChanged;
     if (noop) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
     applyBoardDelta(store, boardEntities.after);
-    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context.timelineState);
+    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
     const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
     const receipt = receiptDraft(envelope, inputDigest, {
@@ -1011,22 +1039,40 @@ function writeFailure(store: ProjectStore, envelope: SequenceEditEnvelope, code:
 // CS transaction-internal seam
 // ---------------------------------------------------------------------------
 
-export function createMainTrackProjectionPort(store: ProjectStore): MainTrackProjectionPort {
+export function createMainTrackProjectionPort(store: ProjectStore,
+  providedContext?: () => SequenceSyncContext): MainTrackProjectionPort {
   return {
     projectMainTrack(request): SequenceEditTimelineCommit | SequenceEditTransactionFailure {
-      const context = readSyncContext(store);
+      const context = providedContext?.() ?? readSyncContext(store);
       if (request.envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
       const nextTimeline = patchMainTimeline(context, request.plan);
       const anchorIssue = validateAnchoredTimeline(nextTimeline);
       if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
-      const board = boardPlanEntities(context, request.plan, request.envelope);
-      if ('ok' in board && board.ok === false) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', board.ids);
-      const boardEntities = board as BoardPlanEntities;
       const changedShots = shotChanges(context, request.plan);
       const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
-      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
-        boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
-      const patch = timelineDeltaPair(context, nextTimeline, request.plan, boardEntities, nextBaseline);
+      // Nodes restored by the CS board transaction in the same tx are not in
+      // this pre-write context yet; expose their kind/archived row so the
+      // baseline projection stays complete.
+      const extraNodeKinds = new Map<string, ChainNode['kind']>();
+      const extraNodeRows = new Map<string, Row>();
+      const extraShots = new Map<string, Row>();
+      for (const node of request.plan.after.board.nodes) {
+        if (context.board.nodes.some(current => current.id === node.id)) continue;
+        extraNodeKinds.set(node.id, node.kind);
+        if (node.kind === 'shot') {
+          const row = context.archivedShots.get(node.id);
+          if (row) extraShots.set(node.id, row);
+        } else {
+          const row = context.archivedNodes.get(node.id);
+          if (row) extraNodeRows.set(node.id, row);
+        }
+      }
+      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, extraShots,
+        extraNodeKinds, extraNodeRows);
+      // The CS caller owns the board half; this port only projects the timeline
+      // half, so the full board plan is deliberately skipped here.
+      const emptyBoard = {before: {writes: [], removals: []}, after: {writes: [], removals: []}};
+      const patch = timelineDeltaPair(context, nextTimeline, request.plan, emptyBoard, nextBaseline);
       const baselineChanged = !sameJson(context.baseline, nextBaseline);
       return {ok: true, delta: patch.after.timeline, warnings: planWarnings(request.plan),
         timelineRevision: patch.after.timeline.clips.length || patch.after.timeline.cues.length
@@ -1045,7 +1091,7 @@ function undoApplyPatch(store: ProjectStore, patch: SequenceEditStateDelta, cont
   readonly contentRevision: number; readonly timelineRevision: number; readonly syncRevision: number;
 } {
   applyBoardDelta(store, patch.board);
-  const timelineApply = applyTimelineDelta(store, patch.timeline);
+  const timelineApply = applyTimelineDelta(store, patch.timeline, context);
   const baselineApply = applyBaselineDelta(store, context, patch.timeline.baseline);
   return {contentRevision: readProjectContentStamp(store.db).contentSequence,
     timelineRevision: timelineApply.timeline.revision, syncRevision: baselineApply.revision};
@@ -1103,4 +1149,25 @@ function writeHistoryFailure(store: ProjectStore, command: SequenceEditHistoryCo
   store.db.prepare('INSERT INTO main.editor_requests(requestId,projectId,operation,inputDigest,response,issuedAt,createdAt) VALUES(?,?,?,?,?,?,?)')
     .run(command.requestId, store.projectId, receipt.operation, inputDigest, JSON.stringify(receipt), Date.now(), now());
   return failure(code);
+}
+
+// ---------------------------------------------------------------------------
+// CS undo/redo seam
+// ---------------------------------------------------------------------------
+
+/** Apply the timeline half of a stored patch while CS undoes or redoes a
+ * board-origin action. The caller may pass its already-read projection context;
+ * the shared history module still owns the cursor and receipt. */
+export function applySequenceEditTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
+  providedContext?: SequenceSyncContext): {readonly timelineRevision: number} {
+  const result = applyTimelineDelta(store, delta, providedContext);
+  return {timelineRevision: result.timeline.revision};
+}
+
+/** Apply the three-state baseline half of a stored patch. */
+export function applySequenceEditBaselineDelta(store: ProjectStore, change: SequenceEditBaselineChange,
+  providedContext?: SequenceSyncContext): {readonly syncRevision: number} {
+  const context = providedContext ?? readSyncContext(store);
+  const result = applyBaselineDelta(store, context, change);
+  return {syncRevision: result.revision};
 }
