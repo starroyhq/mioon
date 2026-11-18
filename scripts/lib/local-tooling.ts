@@ -105,9 +105,10 @@ export const PORTABLE_TEST_FILES: readonly string[] = Object.freeze([
 // .github/workflows/checks.yml). It is an explicit reviewed manifest of
 // desktop, update, packaging, project-file, window and appearance test files;
 // the complete macOS catalog stays on the nightly full-darwin lane. Windows
-// specific tests are not part of this group.
+// specific tests are not part of this group, and neither is the media probe test
+// that needs a complete FFmpeg toolchain (nightly full-darwin covers it).
 export const MACOS_DESKTOP_TEST_FILES: readonly string[] = Object.freeze([
-  'actions-apple-keychain.test.ts', 'actions-desktop-helpers.test.ts', 'actions-desktop-media.test.ts', 'actions-ffmpeg-install.test.ts',
+  'actions-apple-keychain.test.ts', 'actions-desktop-helpers.test.ts', 'actions-ffmpeg-install.test.ts',
   'actions-ffmpeg-toolchain.test.ts', 'actions-mac-update-feed.test.ts', 'actions-release.test.ts', 'actions-test-shards.test.ts',
   'agent-protocol.test.ts', 'clip-actions-menu-ui.test.ts', 'desktop-agent-recovery-copy.test.ts', 'desktop-agent-secrets.test.ts',
   'desktop-appearance-cache.test.ts', 'desktop-application-menu.test.ts', 'desktop-archive-member.test.ts', 'desktop-asset-relink.test.ts',

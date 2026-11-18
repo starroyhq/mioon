@@ -11,7 +11,7 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 - 类型检查子进程固定使用每个项目 4 GiB 的堆预算（foundation、browser、两个拆分后的 tests 项目），由受信工具入口指定
 - 一个独立 Ubuntu 22.04 准备 job 恢复精确构建缓存；未命中时从固定源码镜像构建 CI 专用 FFmpeg **7.1.5**。验证工具文件、版本、所需滤镜、编码器及命令参数后，才保存缓存并上传本轮 artifact
 - 八个独立 Ubuntu 22.04 测试 job 安装 GNU tar、DejaVu 字体及媒体运行依赖，从同一准备 job 的 artifact 读取 FFmpeg，核验构建身份及文件哈希、恢复可执行权限，重新检查实际媒体能力，再运行 Linux full 测试分片
-- macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道。macOS 另有独立的桌面测试 job：运行审查过的 `--suite=macos-desktop` 清单（desktop、更新、打包、项目文件、窗口与外观共 125 个文件，并发 2，目标 7 分钟内），完整目录仍留给夜间 `full-darwin`（macOS 专用入口，Linux 仍是 `full`）；macOS 测试子进程的临时目录固定为 `/private/tmp`，完整/夜间车道对每个文件使用 3 倍计时 + 2 分钟、最短 10 分钟、无记录 35 分钟的期限
+- macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道。macOS 另有独立的桌面测试 job：运行审查过的 `--suite=macos-desktop` 清单（desktop、更新、打包、项目文件、窗口与外观共 124 个文件，并发 2，目标 7 分钟内；需要完整 FFmpeg 的媒体探针文件留给夜间 full-darwin），完整目录仍留给夜间 `full-darwin`（macOS 专用入口，Linux 仍是 `full`）；macOS 测试子进程的临时目录固定为 `/private/tmp`，完整/夜间车道对每个文件使用 3 倍计时 + 2 分钟、最短 10 分钟、无记录 35 分钟的期限
 - 修改导出基准脚本的 PR，在同一个 macOS arm64 检查中使用应用固定下载的 FFmpeg，分别用 PR 基线和当前实现导出合成时间线。运行摘要记录耗时、CPU、进程树 RSS 和负载，并核对输出 SHA-256；不上传成片
 - source、媒体准备、portable 和 macOS 桌面组 job 并行运行，八个 full 分片等待媒体准备，全部使用相同冻结源码 SHA；总检查要求 source、媒体准备、八个 full 分片、两个 portable job 和 macOS 桌面组 job 全部成功。PR 不接触 Apple 签名凭据
 
