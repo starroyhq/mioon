@@ -149,11 +149,18 @@ function bandColorDelta(png: Buffer, facts: TitleBarFacts): number {
  * then returns so the caller can quit the application. */
 export async function runWindowsTitleBarScreenshot({app, getWindow, output, screenshot, scenario, theme, maximized, scale, refreshAppearance}: WindowsTitleBarScreenshotOptions): Promise<void> {
   let phase: ScreenshotPhase = 'launcher-ready';
+  let captured: Buffer | undefined;
+  let capturedMismatch: number | undefined;
   const writeFailure = async (): Promise<void> => {
     try {
+      if (captured !== undefined) {
+        try {await mkdir(path.dirname(screenshot), {recursive: true}); await writeFile(`${screenshot}.failed.png`, captured);}
+        catch { /* The fixed JSON below still records the failing phase. */ }
+      }
       await mkdir(path.dirname(output), {recursive: true});
       await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: false,
-        code: 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED', check: phase}) + '\n');
+        code: 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED', check: phase,
+        ...(capturedMismatch === undefined ? {} : {detail: `bandColorDelta=${capturedMismatch}`})}) + '\n');
     } catch { /* The outer smoke driver records its own fixed failure code. */ }
   };
   try {
@@ -173,6 +180,9 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
     await new Promise(resolve => setTimeout(resolve, 300));
     phase = 'maximize';
     if (maximized) await maximize(window);
+    // The system paints caption buttons for the active window; make this the
+    // active one before comparing the band with the page beneath it.
+    try {window.show(); window.focus(); app.focus({steal: true});} catch { /* Focus is best effort in CI sessions. */ }
     phase = 'settle';
     await settle(window);
     phase = 'facts';
@@ -188,8 +198,10 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
     assert.equal(window.isMaximized(), maximized);
     phase = 'capture';
     const {png, source} = await capture(window, window.getTitle());
+    captured = png;
     phase = 'verify-band';
     const bandDelta = bandColorDelta(png, facts);
+    capturedMismatch = bandDelta;
     assert.ok(bandDelta <= WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, `Caption band color differs from the page by ${bandDelta}`);
     phase = 'write';
     await mkdir(path.dirname(screenshot), {recursive: true});

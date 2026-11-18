@@ -164,10 +164,15 @@ export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.free
 /** The packaged app writes this fixed failure shape when a screenshot step
  * assertion fails; only the shared phase name crosses the boundary. */
 export function screenshotCheckFailureName(value: unknown): string | undefined {
-  if (!record(value) || !exactKeys(value, ['schemaVersion', 'scope', 'ok', 'code', 'check']) || value.schemaVersion !== 1 ||
-      value.scope !== 'windows-titlebar-screenshot' || value.ok !== false || value.code !== 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED' ||
-      typeof value.check !== 'string' || !WINDOWS_TITLEBAR_SCREENSHOT_PHASES.includes(value.check)) return undefined;
+  if (!record(value) || value.schemaVersion !== 1 || value.scope !== 'windows-titlebar-screenshot' || value.ok !== false ||
+      value.code !== 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED' || typeof value.check !== 'string' ||
+      !WINDOWS_TITLEBAR_SCREENSHOT_PHASES.includes(value.check)) return undefined;
   return value.check;
+}
+/** A bounded fixed diagnostic string (for example the measured pixel delta). */
+export function screenshotCheckFailureDetail(value: unknown): string | undefined {
+  if (!record(value) || typeof value.detail !== 'string' || value.detail.length > 120) return undefined;
+  return /^[A-Za-z0-9][A-Za-z0-9 =:._-]*$/u.test(value.detail) ? value.detail : undefined;
 }
 const sanitizedFailureMessage = (value: unknown): string | undefined => {
   if (!record(value) || !exactKeys(value, ['ok', 'error']) || value.ok !== false || typeof value.error !== 'string') return undefined;
@@ -190,7 +195,7 @@ export interface WindowsTitleBarScreenshot {readonly name: string; readonly them
 export interface WindowsTitleBarScreenshotsReport {schemaVersion: 1; scope: 'windows-titlebar-screenshots'; ok: boolean;
   scenarios: WindowsTitleBarScreenshot[]}
 interface WindowsTitleBarScreenshotDiagnostic {schemaVersion: 1; scope: 'windows-titlebar-screenshots'; ok: false; scenario: string;
-  check?: string; message?: string}
+  check?: string; message?: string; detail?: string}
 /** Validates the fixed app record for one title bar screenshot scenario and
  * returns a detached copy without raw paths. */
 export function validateWindowsTitleBarScreenshot(value: unknown, scenario: WindowsTitleBarScreenshotScenario): WindowsTitleBarScreenshot {
@@ -320,9 +325,9 @@ async function runTitleBarScreenshots(options: SmokeArguments & {screenshots: st
       } catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
       let validated: WindowsTitleBarScreenshot;
       try {validated = validateWindowsTitleBarScreenshot(report, scenario);} catch (error) {
-        const check = screenshotCheckFailureName(report), message = sanitizedFailureMessage(report);
+        const check = screenshotCheckFailureName(report), message = sanitizedFailureMessage(report), detail = screenshotCheckFailureDetail(report);
         const diagnostic: WindowsTitleBarScreenshotDiagnostic = check !== undefined
-          ? {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name, check}
+          ? {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name, check, ...(detail === undefined ? {} : {detail})}
           : message !== undefined ? {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name, message}
           : {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name};
         try {await services.write(paths.join(directory, `${scenario.name}.invalid.json`), diagnostic);}
