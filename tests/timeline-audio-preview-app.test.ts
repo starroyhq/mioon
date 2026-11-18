@@ -177,7 +177,7 @@ test('actual App clock display stays ephemeral while each explicit seek writes t
 test('actual native-player guard revokes current sound, while stale media can only pause itself', async () => {
   const f = harness(); await f.controller.prepare(30); await f.controller.play(); let observerCalls = 0;
   const valid = { seeking: false, pause() { assert.fail('Current player was not rejected'); } }, stale = { pauseCalls: 0, pause() { this.pauseCalls++; } };
-  const env = { onBeforePlay: () => f.calls.order.push('export-pause'), isCurrentMedia: (element: unknown) => element === valid, audioPreview: { controller: f.controller }, activeMedia: { current: { programmaticSeek: 3 as number | null } }, captureObserver: { current: () => observerCalls++ } };
+  const env = { onBeforePlay: () => f.calls.order.push('export-pause'), isCurrentMedia: (element: unknown) => element === valid, audioPreview: { controller: f.controller }, startTimelinePlayback: () => {}, activeMedia: { current: { programmaticSeek: 3 as number | null } }, captureObserver: { current: () => observerCalls++ } };
   const from = preview.indexOf('  function guardPlayback('), to = preview.indexOf('  function finishSeek(', from);
   const guard = Function(...Object.keys(env), `${preview.slice(from, to)};return guardPlayback;`)(...Object.values(env)) as (event: {currentTarget: unknown}) => void;
   guard({ currentTarget: stale }); assert.equal(stale.pauseCalls, 1); assert.equal(f.controller.getState().phase, 'playing');
