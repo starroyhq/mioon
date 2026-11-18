@@ -90,7 +90,7 @@ test('storyboard exports freeze current geometry without initializing a timeline
     assert.deepEqual(freezeStoryboardOutputGeometry(db({data:JSON.stringify(expected)}),projectId),expected);
     assert.deepEqual(storyboardOutputGeometry({outputGeometry:expected}),expected);
   }
-  assert.ok(calls.filter(sql=>sql!=='PRAGMA database_list'&&!/^PRAGMA main\.user_version$/u.test(sql)).every(sql=>sql.startsWith('SELECT id,projectId,CASE WHEN typeof(data)')));
+  assert.ok(calls.filter(sql=>sql!=='PRAGMA database_list'&&!/^PRAGMA main\.user_version$/u.test(sql)).every(sql=>sql.startsWith('SELECT CASE WHEN typeof(id)')));
   assert.deepEqual(storyboardOutputGeometry({snapshot:[]}),{fps:30,width:720,height:1280});
   for(const outputGeometry of [null,undefined,{fps:60,width:1080,height:1920},{fps:30,width:1920,height:1920},{fps:30,width:1080,height:1280}])
     assert.throws(()=>storyboardOutputGeometry({outputGeometry}),e=>(e as {code?: string}).code==='INVALID_TIMELINE_SNAPSHOT');

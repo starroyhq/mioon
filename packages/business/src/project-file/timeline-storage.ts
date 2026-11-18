@@ -48,10 +48,17 @@ export interface TimelineHeaderSnapshot {
 export interface TimelineReadOptions {readonly schema?: Schema; readonly maxBytes?: number;}
 
 function legacyRow(db: DatabaseSync, schema: Schema, projectId: string, maxBytes: number): Row | null {
-  const rows = db.prepare(`SELECT id,projectId,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ?
-    THEN data END AS data FROM ${schema}.timelines WHERE projectId=? LIMIT 2`).all(maxBytes, projectId) as Row[];
+  // Bound the identity columns exactly like the released readers did: an
+  // oversized native value becomes SQL NULL before any JSON materialization.
+  const rows = db.prepare(`SELECT CASE WHEN typeof(id)='text' AND length(CAST(id AS BLOB)) BETWEEN 1 AND 64
+      THEN id END AS id,
+    CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB)) BETWEEN 1 AND 64 THEN projectId END AS projectId,
+    CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ? THEN data END AS data
+    FROM ${schema}.timelines WHERE projectId=? LIMIT 2`).all(maxBytes, projectId) as Row[];
   if (rows.length > 1) return invalid();
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (row && (typeof row.id !== 'string' || row.projectId !== projectId)) return invalid();
+  return row ?? null;
 }
 function parseLegacy(row: Row): unknown {
   if (typeof row.data !== 'string') return null;
@@ -68,7 +75,7 @@ export function readTimelineStorage(db: DatabaseSync, projectId: string, options
     return {format5: true, id: record.id, projectId, raw: JSON.stringify(record), timeline: record, stamp: readProjectContentStamp(db, schema)};
   }
   const row = legacyRow(db, schema, projectId, options.maxBytes ?? TIMELINE_RESPONSE_BYTES);
-  if (!row || typeof row.id !== 'string' || row.projectId !== projectId) return null;
+  if (!row || typeof row.id !== 'string') return null;
   const timeline = parseLegacy(row);
   return {format5: false, id: row.id, projectId, raw: typeof row.data === 'string' ? row.data : '', timeline, stamp: null};
 }
@@ -86,7 +93,7 @@ export function readTimelineHeaderStorage(db: DatabaseSync, projectId: string, o
     return {format5: true, id: state.header.id, projectId, header, raw: state.header.raw, stamp: readProjectContentStamp(db, schema)};
   }
   const row = legacyRow(db, schema, projectId, options.maxBytes ?? TIMELINE_RESPONSE_BYTES);
-  if (!row || typeof row.id !== 'string' || row.projectId !== projectId) return null;
+  if (!row || typeof row.id !== 'string') return null;
   const timeline = parseLegacy(row);
   return {format5: false, id: row.id, projectId, header: timeline, raw: typeof row.data === 'string' ? row.data : '', stamp: null};
 }

@@ -17,7 +17,8 @@ function rows(db:DatabaseSync,table:Table,projectId?:string):Record<string,unkno
     // The timeline is assembled from format-5 native rows so the saved cover and
     // duration keep reading the full record through the same projection.
     if(table==='timelines'&&projectId!==undefined){
-      const snapshot=readTimelineStorage(db,projectId,{maxBytes:2*1024*1024});
+      let snapshot;
+      try{snapshot=readTimelineStorage(db,projectId,{maxBytes:2*1024*1024});}catch{invalid();}
       if(!snapshot)return [];
       if(!object(snapshot.timeline)||snapshot.timeline.id!==snapshot.id||snapshot.timeline.projectId!==projectId)invalid();
       return [snapshot.timeline];
