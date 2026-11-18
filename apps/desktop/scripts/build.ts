@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import desktopIdentity from '../identity.ts';
 import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
-import {measureBuildStage, withDesktopTypecheckTiming} from '../../../scripts/lib/build-timings.ts';
+import {measureBuildStage, withDesktopTypecheckTiming, type BuildTimingStage} from '../../../scripts/lib/build-timings.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
@@ -39,8 +39,9 @@ await measureBuildStage('desktop-staging-reset', async () => {
   await mkdir(output, { recursive: true });
 });
 const desktopModuleManifests = new Set<string>();
-for (const name of ['main', 'backend', 'project-catalog'] as const) {
-  const result = await measureBuildStage(`desktop-${name}-bundle`, () => build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
+for (const name of ['main', 'backend', 'project-catalog']) {
+  // The audit test pins this loop line; the cast only narrows the fixed names above to timing stages.
+  const result = await measureBuildStage(`desktop-${name}-bundle` as BuildTimingStage, () => build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
     absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron', 'original-fs'], metafile: name === 'main',
     plugins:[localRequireBundlePlugin(root)],
     define: { 'import.meta.url': '__mioon_import_meta_url', __MIOON_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
