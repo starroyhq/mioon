@@ -1,9 +1,11 @@
 import {mioCanvasOperationForTool} from '../../../contracts/src/mio-canvas.ts';
+import {mioCanvasCopyOperations} from '../../../contracts/src/mio-canvas-copy.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_TASK_TOOL_GROUP_IDS,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const ephemeral=Object.freeze({type:'ephemeral'});
+const canvasCopyTools=new Set(mioCanvasCopyOperations.map(operation=>`mioon_${operation.replaceAll('.','_')}`));
 const groupOrder=new Map<string,number>(AGENT_TASK_TOOL_GROUP_IDS.map((group,index)=>[group,index]));
 const withoutCache=(value:Record<string,unknown>):Record<string,unknown>=>Object.fromEntries(Object.entries(value).filter(([key])=>key!=='cache_control'));
 const block=(value:unknown):unknown=>object(value)?withoutCache(value):value;
@@ -31,7 +33,7 @@ export function applyTaskAnthropicCaching(configuration:AgentConfiguration,body:
     // groups are appended. Backend cache eligibility still needs measurement.
     // Format 4 appends its private canvas tools after existing groups. Keep
     // the earlier cache marker on the same definition and within the same budget.
-    const existingEnd=lastIndex(tools,tool=>!object(tool.value)||typeof tool.value.name!=='string'||!mioCanvasOperationForTool(tool.value.name));
+    const existingEnd=lastIndex(tools,tool=>!object(tool.value)||typeof tool.value.name!=='string'||!mioCanvasOperationForTool(tool.value.name)&&!canvasCopyTools.has(tool.value.name));
     for(const index of new Set([coreEnd,existingEnd<0?tools.length-1:existingEnd]))if(index>=0&&object(tools[index]!.value))tools[index]!.value={...tools[index]!.value,cache_control:ephemeral};
     result.tools=tools.map(tool=>tool.value);
   }

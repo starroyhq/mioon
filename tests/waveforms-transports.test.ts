@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
@@ -362,7 +363,7 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
   await t.test('discovery matches strict contracts and effects', async () => {
     const before = await backend.checkpoint(), catalog = (discoverSchema() as DiscoverySchemaResult), listed = ((await backend.client.listTools() as {tools:TestTool[]})).tools;
     assert.deepEqual((await backend.cliArgs(['schema'])).data, catalog);
-    assert.deepEqual((await backend.mcp('mioon_schema')).data, catalog);
+    assert.deepEqual((await backend.mcp('mioon_schema')).data, mcpOperationCatalog(catalog));
     for (const operation of operations) {
       const definition = catalog.operations.find((value) => value.operation === operation), request = operation.endsWith('.request');
       assert.ok(definition); assert.deepEqual((await backend.cliArgs(['schema', operation])).data, definition);

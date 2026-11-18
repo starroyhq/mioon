@@ -20,12 +20,13 @@ test('asset import union and public asset projection keep path and sampled hash 
  assert.equal(toAssetMediaDto({...record,sha256:null,reference:{...reference,fullSha256:null}}).sha256,null);
  assert.equal(toAssetMediaDto({...record,sha256:null,reference:{...reference,fullSha256:null}}).hashState,'sampled');
 });
-test('discovery omits sensitive location and permission operations',()=>{
+test('discovery includes safe location categories and omits permission operations',()=>{
  const operations=(discoverSchema() as {operations:{operation:string}[]}).operations.map(item=>item.operation);
  assert.ok(operations.includes('asset.media.status.list'));assert.ok(operations.includes('asset.media.prepare'));
  assert.equal(assetMediaEffects['asset.media.prepare'].fileWrite,false);for(const name of ['asset.media.relink.preview','asset.media.relink.apply','asset.media.acceptChanged'] as const)assert.equal(assetMediaEffects[name].fileWrite,true);
  assert.equal(assetMediaEffects['asset.media.relink.preview'].readOnly,false);
- for(const name of ['asset.media.location.list','asset.media.outside.confirm','asset.media.outside.revoke','asset.import.path'])assert.equal(operations.includes(name),false,name);
+ assert.ok(operations.includes('asset.media.location.list'));
+ for(const name of ['asset.media.outside.confirm','asset.media.outside.revoke','asset.import.path'])assert.equal(operations.includes(name),false,name);
 });
 test('ordinary reference operations and explicit user action use separate authenticated routes',async()=>{
  const requests:{url:string;headers:Headers;body:unknown}[]=[];
@@ -74,4 +75,23 @@ test('preload drop only obtains paths from native File backing, rejects synthesi
  const bridge=createAssetImportBridge({invoke:async(_channel,input)=>{calls.push(input);return [];},pathForFile:()=>''});
  await assert.rejects(bridge.files([new File(['fake'],'image.png')]));assert.equal(calls.length,0);
  await bridge.choose();assert.deepEqual(calls,[{action:'choose'}]);
+});
+
+test('safe public location and image service listing use ordinary routes and strict credential-free results',async()=>{
+ const requests:{url:string;headers:Headers;body:{operation:string}}[]=[];
+ let unsafe=false;
+ const client=createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:12345',MIOON_TOKEN:'synthetic-local-token'},fetchImpl:async(url,options)=>{
+  const body=JSON.parse(String(options?.body));requests.push({url:String(url),headers:new Headers(options?.headers),body});
+  return Response.json({ok:true,data:body.operation==='asset.media.location.list'?{assets:[{assetId,pathForm:'relative',outside:true,...(unsafe?{displayPath:'/external/image.png',locationToken:requestId}:{})}],nextCursor:null}:{projectId,items:[],...(unsafe?{apiKey:'synthetic-must-reject'}:{})}});
+ }});
+ assert.deepEqual(await client.rpc('asset.media.location.list',{projectId,limit:1}),{assets:[{assetId,pathForm:'relative',outside:true}],nextCursor:null});
+ assert.deepEqual(await client.rpc('image.service.list',{projectId}),{projectId,items:[]});
+ assert.equal(requests[0].url,`http://127.0.0.1:12345/api/projects/${projectId}/rpc`);
+ assert.equal(requests[1].url,`http://127.0.0.1:12345/api/projects/${projectId}/images/services`);
+ for(const request of requests)assert.equal(request.headers.has('x-mioon-user-action'),false);
+ const before=requests.length;
+ for(const operation of ['asset.media.location.list','image.service.list'])await assert.rejects(client.rpc(operation,{projectId,sourcePath:'/external/image.png'}),{code:'VALIDATION_ERROR'});
+ assert.equal(requests.length,before);
+ unsafe=true;
+ for(const operation of ['asset.media.location.list','image.service.list'])await assert.rejects(client.rpc(operation,{projectId}),{code:'BACKEND_PROTOCOL_ERROR'});
 });

@@ -60,8 +60,8 @@ test('typecheck accepts no channels, selections, duplicates, project overrides o
 test('local TypeScript requires the exact declared metadata and reviewed JavaScript entry paths', async t => {
   const {directory} = await fixture(t);
   assert.deepEqual(await installedTypeScript(directory), {version, entry: path.join(directory, 'node_modules/typescript/lib/tsc.js')});
-  assert.deepEqual(await typecheckCommands(directory), projects.map(project => ({command: process.execPath,
-    args: ['--max-old-space-size=4096', path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
+  assert.deepEqual(await typecheckCommands(directory), projects.map((project, index) => ({command: process.execPath,
+    args: [`--max-old-space-size=${[4096, 4096, 4608][index]}`, path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
 });
 
 test('normal pnpm package links remain within the repository and use the canonical compiler entry', async t => {
@@ -215,10 +215,11 @@ test('actual compiler children use a fixed bounded heap without caller-provided 
   assert.equal(result.status, 0, result.stderr);
   const rows = result.stdout.trim().split('\n').map(line => JSON.parse(line) as {project: string; execArgv: string[]; heap: number});
   assert.deepEqual(rows.map(row => row.project), projects);
-  for (const row of rows) {
-    assert.deepEqual(row.execArgv, ['--max-old-space-size=4096']);
+  for (const [index, row] of rows.entries()) {
+    const oldSpaceMiB = [4096, 4096, 4608][index];
+    assert.deepEqual(row.execArgv, [`--max-old-space-size=${oldSpaceMiB}`]);
     // V8 adds platform-dependent young-generation headroom to the old-space cap.
-    assert.ok(row.heap >= 4096 * 1024 * 1024 && row.heap <= 4608 * 1024 * 1024, `compiler heap: ${row.heap}`);
+    assert.ok(row.heap >= oldSpaceMiB * 1024 * 1024 && row.heap <= (oldSpaceMiB + 512) * 1024 * 1024, `compiler heap: ${row.heap}`);
   }
 });
 

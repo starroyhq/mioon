@@ -96,7 +96,11 @@ Claude Code's [official MCP guide](https://code.claude.com/docs/en/mcp) describe
 
 ## Discovery and schema parity
 
-`tools/list` is generated from the runtime business schemas exported by `@mioon/contracts`, plus the required transport `projectId` for the 11 entity-addressed tools below; the identical converter powers CLI `schema`. Shared Zod validation, including nonempty patches and rectangle refinements, runs before a business call. Unknown fields are rejected instead of silently stripped. There is one implementation of business operations and one backend writer.
+`tools/list` is generated from `@mioon/contracts/public-operations`, with explicit user-only exclusions and the required transport `projectId` for the 11 entity-addressed tools below; the identical converter powers CLI `schema`. Shared Zod validation, including nonempty patches and rectangle refinements, runs before a business call. Unknown fields are rejected instead of silently stripped. There is one implementation of business operations and one backend writer.
+
+MCP omits `agent.authorization.*`, `asset.media.outside.confirm/revoke`, `project.create/list/get/summary.list/delete`, `project.backup.restore` and `project.version.restore`. Direct calls and explicit `mioon_schema` queries for these registered user-only operations return `UNKNOWN_OPERATION`; they are absent from both discovery catalogs and the schema tool's operation choices. Credentials never become tool inputs or results. HTTP and CLI user actions keep their existing contracts.
+
+The public catalog now includes `canvas_copy_snapshot`, `asset_media_location_list` and `image_service_list`. Snapshot inputs and short-lived, current-project/document identity use the existing strict canvas contract; the result contains snapshot identity and count, not copied bytes. The image service list uses the existing project HTTP service route and validates only public configuration and credential-state flags, never secret values.
 
 项目级工具调用使用 `/api/projects/{projectId}/rpc`，应用级操作仍使用 `/api/rpc`，
 见 [API 按项目寻址](API.md#按项目寻址)。`edge_delete`、`export_get`、
@@ -114,8 +118,9 @@ Claude Code's [official MCP guide](https://code.claude.com/docs/en/mcp) describe
 
 All RPC operation names replace dots with underscores. For example:
 
-- `project_create`, `project_list`, `project_get`, `project_inspect`
-- `asset_import`, `asset_list`, `asset_inspect`
+- `project_inspect`
+- `asset_import`, `asset_list`, `asset_inspect`, `asset_media_location_list`
+- `canvas_copy_snapshot`, `image_service_list`
 - `shot_create`, `shot_update`, `shot_reorder`, `shot_inspect`
 - `node_create`, `node_update`, `edge_create`, `edge_delete`
 - `provider_list`, `generation_submit`
@@ -131,7 +136,7 @@ All RPC operation names replace dots with underscores. For example:
 
 Three additional read-only discovery tools are available:
 
-- `mioon_schema({})`: all operation definitions, actual JSON Schemas, natural CLI commands, `requiresRequestId` flags, and advisory `effects`. `mioon_schema({"operation":"generation.submit"})` narrows to one operation. This tool works offline.
+- `mioon_schema({})`: all MCP-admitted operation definitions, actual JSON Schemas, natural CLI commands, `requiresRequestId` flags, and advisory `effects`. `mioon_schema({"operation":"generation.submit"})` narrows to one operation. This tool works offline.
 - `mioon_capabilities({})`: the current `provider.list` data, including per-model `modelCapabilities`, enabled/configured gates, supported durations/aspect ratios, and limits. It does not submit generation. Production discovery also includes exact model/region `inputProfiles` and server-dated lifecycle evaluations; unsupported roles never become tools or silently disappear. See [model input limits](GENERATION-INPUT-LIMITS.md).
 - `mioon_doctor({})`: authenticated readiness, client/backend version metadata, connection mode, and provider capabilities. It does not return credential paths or token values.
 
@@ -290,9 +295,9 @@ scope behavior: [Agent inspection](AGENT-INSPECTION.md).
 Existing authenticated standalone MCP clients can call these operations
 explicitly. Built-in Agent read tools use the same business boundary under
 [separate run-level consent](AGENT-READ-TOOLS.md); MCP discovery does not grant
-that consent. Legacy `project_get` and `timeline_get` keep their original
-responses and can lazily create a timeline; both correctly advertise
-`readOnlyHint:false`.
+that consent. Legacy `timeline_get` keeps its original response and can lazily
+create a timeline, so it advertises `readOnlyHint:false`. The user-only
+`project.get` operation remains available to HTTP/CLI callers.
 
 ### Advisory effects and MCP annotations
 
@@ -328,9 +333,9 @@ Tools return both a text content block containing JSON and the same envelope in 
 
 Errors set `isError: true`; invalid business inputs, unavailable backends, auth failures, and conflicts all use structured safe errors. The bridge does not print raw exceptions or headers. `retryable:false` means the bridge never automatically retries the call; recovery still depends on the operation and current backend state. MCP protocol-level malformed messages are handled by the SDK.
 
-A recommended sequence is `mioon_doctor`, `provider_list`, `project_create`, `asset_import`, `shot_create`, `generation_submit`, repeated bounded `job_get`, `version_list`, `project_get`, `version_select`, `timeline_get`, `timeline_seed`, `timeline_render`, and bounded `export_get`. Use mock for no-cost verification. [CLI.md](CLI.md) includes the full runnable command workflow and authenticated local file download.
+After the user opens a project and supplies its ID, a recommended sequence is `mioon_doctor`, `provider_list`, `project_inspect`, `asset_import`, `shot_create`, `generation_submit`, repeated bounded `job_get`, `version_list`, `shot_inspect`, `version_select`, `timeline_get`, `timeline_seed`, `timeline_render`, and bounded `export_get`. Use mock for no-cost verification. [CLI.md](CLI.md) includes the full runnable command workflow and authenticated local file download.
 
-`asset_import` takes explicitly authorized bytes (`dataBase64`), never a server filesystem path. An MCP client that has local file access can read those bytes itself; the CLI also provides `asset import --file`. MCP does not expose an arbitrary path read/write helper. To save a completed export locally, use CLI `export download --input '{"projectId":"PROJECT_UUID","exportId":"EXPORT_UUID"}' --output ./result.mp4` with an explicit new output path. CLI `asset download`, `job watch` and `export watch` likewise require their owning `projectId`; these wrappers are not MCP tools. Relative `/api/projects/{projectId}/media/{assetId}` URLs are authenticated local resources, not public sharing links. Historical stored `/media/UUID` URLs remain compatible until S0; construct new media addresses from the record's project and asset IDs.
+`asset_import` accepts either caller-supplied bytes (`dataBase64`, at most 30 MiB) or a normalized backend-local `sourcePath` with a stable `requestId`. The path branch still checks the project boundary and prior user directory authorization; tool input cannot grant that authorization. The CLI also provides `asset import --file`. MCP does not expose an arbitrary path read/write helper. To save a completed export locally, use CLI `export download --input '{"projectId":"PROJECT_UUID","exportId":"EXPORT_UUID"}' --output ./result.mp4` with an explicit new output path. CLI `asset download`, `job watch` and `export watch` likewise require their owning `projectId`; these wrappers are not MCP tools. Relative `/api/projects/{projectId}/media/{assetId}` URLs are authenticated local resources, not public sharing links. Historical stored `/media/UUID` URLs remain compatible until S0; construct new media addresses from the record's project and asset IDs.
 
 The six tools `shot_create`, `shot_update`, `shot_reorder`, `node_create`,
 `node_update` and `version_select` additionally accept an **optional** `requestId`
@@ -878,8 +883,10 @@ Discovery now includes `lut_import`, `lut_list` and `lut_inspect`. Import requir
 
 ## 素材引用
 
-`asset_import` 接受严格互斥的路径分支（projectId、requestId、sourcePath、可选name）或原上传分支（上传上限30 MiB，可选requestId）。路径分支只能读取后端本机上已经确认的位置。MCP和Mio不能确认目录，也没有位置路径、outside confirm/revoke或桌面导入权限。
+`asset_import` 接受严格互斥的路径分支（projectId、requestId、sourcePath、可选name）或原上传分支（上传上限30 MiB，可选requestId）。路径分支只能读取后端本机上已经确认的位置。MCP和Mio不能确认目录，也不能调用outside confirm/revoke或桌面导入权限。Mio同名导入工具只接受当前项目的相对文件，或用户本轮已选的句柄，不接收绝对路径和原始字节。
+
+`asset_media_location_list` 使用普通项目RPC返回 `{assets:[{assetId,pathForm,outside}],nextCursor}`，每页最多100项。它不返回文件/目录路径、卷名或locationToken，也不写授权、项目、应用库或私有证据文件。受信UI仍通过独立的 `asset-media/trusted` 入口取得完整位置与授权票据。
 
 MCP的独立客户端目录提供 `asset_media_status_list`、`asset_media_prepare` 和重新指向/使用新内容操作；prepare只准备完整哈希并核对引用修订，不是付费生成授权。普通素材结果只有按ID媒体URL、内容指纹、完整哈希状态和referenceRevision，不返回引用路径、卷名或本机可用状态。
 
-公共MCP发现使用S1输入扩展；内置Mio模型工具另用固定目录，保留原上传和生成输入，不接受sourcePath或referenceRevisions。固定模型schema不随公共客户端目录更新。
+公共MCP发现使用S1输入扩展并排除用户专属操作；内置Mio模型工具另用明确审核的目录与受限导入封装，不接受sourcePath或referenceRevisions。固定模型schema由生成器维护，新增工具的请求指纹由C线更新。

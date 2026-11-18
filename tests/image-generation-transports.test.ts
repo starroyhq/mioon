@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -210,7 +211,7 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
   await t.test('discovery has strict matching schemas/effects', async () => {
     const before = f.checkpoint();
     const catalog = (await cli(['schema'], {})).data;
-    assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
+    assert.deepEqual((await mcp.call('mioon_schema')).data, mcpOperationCatalog(catalog));
     const tools = (await mcp.client.listTools()).tools;
     for (const operation of Object.keys(imageSchemas)) {
       const definition = catalog.operations.find((item: { operation: string; }) => item.operation === operation);

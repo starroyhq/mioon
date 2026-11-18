@@ -8,6 +8,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import {startServer} from './helpers/test-server.ts';
 import {projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
+import {assetMediaLocationListResponseSchema} from '../packages/contracts/src/asset-media.ts';
 
 const token = 'synthetic-s1-http-token';
 interface Envelope<T> {ok: boolean; data?: T; error?: {code: string; details?: unknown}}
@@ -53,10 +54,15 @@ test('real media HTTP keeps bearer/origin and trusted user-action boundaries; pu
   const hostile=await f.request(route,body,{origin:'https://untrusted.invalid','x-mioon-user-action':'asset-media'});
   assert.equal(hostile.response.status,403);assert.equal(hostile.body.error!.code,'ORIGIN_REJECTED');
   const noAction=await f.request(route,body);assert.equal(noAction.response.status,403);assert.equal(noAction.body.error!.code,'FORBIDDEN');
-  for(const operation of ['asset.media.location.list','asset.media.outside.confirm','asset.import.path']) {
+  for(const operation of ['asset.media.outside.confirm','asset.import.path']) {
     const ordinary=await f.request(projectRpcPath(f.projectId),{operation,input:{projectId:f.projectId,locationToken:randomUUID(),trusted:true}},{'x-mioon-user-action':'asset-media'});
     assert.equal(ordinary.response.status,404);assert.equal(ordinary.body.error!.code,'UNKNOWN_OPERATION');
   }
+  const malformed=await f.rpc(f.projectId,body.operation,{...body.input,locationToken:randomUUID(),trusted:true});
+  assert.equal(malformed.response.status,400);assert.equal(malformed.body.error!.code,'VALIDATION_ERROR');
+  const ordinary=await f.rpc(f.projectId,body.operation,body.input);assert.equal(ordinary.response.status,200);
+  const summary=assetMediaLocationListResponseSchema.parse(ordinary.body.data);
+  assert.deepEqual(summary,{assets:[{assetId:f.asset.id,pathForm:'relative',outside:false}],nextCursor:null});noPaths(summary);
   const location=await f.trusted<Locations>(f.projectId,body.operation,body.input);assert.equal(location.response.status,200);
   assert.equal(location.body.data!.assets[0]!.assetId,f.asset.id);assert.ok(path.isAbsolute(location.body.data!.assets[0]!.displayPath));
   noPaths(f.asset);assert.equal(f.asset.url,projectMediaPath(f.projectId,f.asset.id));

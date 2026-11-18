@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
@@ -258,7 +259,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
   await t.test('catalog, required keys and effect hints match every public discovery surface', async () => {
     const before = (await backend.checkpoint()), catalog = discoverSchema() as unknown as TestCatalog;
     assert.deepEqual((await backend.cliArgs(['schema'])).data, catalog);
-    assert.deepEqual((await backend.mcp('mioon_schema')).data, catalog);
+    assert.deepEqual((await backend.mcp('mioon_schema')).data, mcpOperationCatalog(catalog));
     const listed = (await backend.client.listTools()).tools;
     for (const operation of operations) {
       const definition = catalog.operations.find((item: { operation: string; }) => item.operation === operation)!, saved = operation.endsWith('.set');

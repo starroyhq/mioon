@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
@@ -258,7 +259,7 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
     const issue = (path: (string|number)[]) => ({ok: false, error: {code: 'VALIDATION_ERROR', details: {issues: [{path}]}}});
     noPrivate(issue(['inputImage', 'assetId', 0]), f.root);
     for (const value of [issue(['/local/private.png']), issue(['../secret']), issue([-1]), {ok: true, data: {path: ['inputImage']}}, {ok: true, data: {bytes: 'private'}}, {ok: true, data: {message: token}}, {ok: true, data: {message: f.root}}]) assert.throws(() => noPrivate(value, f.root));
-    assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
+    assert.deepEqual((await mcp.call('mioon_schema')).data, mcpOperationCatalog(catalog));
     const tools = (await mcp.client.listTools()).tools, definition = catalog.operations.find((value: { operation: string; }) => value.operation === 'image.generate');
     const tool = tools.find(value => value.name === 'image_generate'); assert.deepEqual(tool!.inputSchema, definition.inputSchema);
     assert.equal(definition.inputSchema.anyOf.length, 3);
