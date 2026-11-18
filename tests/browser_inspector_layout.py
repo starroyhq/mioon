@@ -26,6 +26,15 @@ MAC_ELECTRON_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                    'Chrome/152.0.0.0 Electron/44.7.0 Safari/537.36')
 
 
+def _css_color_to_hex(color):
+    """The page reports #rrggbb; computed styles serialize as rgb(...)."""
+    match = re.match(r'rgba?\(([^)]*)\)', color)
+    if not match:
+        return color
+    parts = [part for part in re.split(r'[,\s/]+', match.group(1).strip()) if part]
+    return '#' + ''.join(f'{round(float(part)):02x}' for part in parts[:3])
+
+
 def check_topbar(page, state, height, inset, mode, scale=1, trailing=None):
     bar = page.locator('.workbench-topbar')
     required = ['.brand', '[data-testid="project-switcher"]',
@@ -208,7 +217,7 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
                 while time.monotonic() < deadline and not page.evaluate("(window.__mioonTitleBarColors || []).length > 0"):
                     time.sleep(0.05)
                 assert page.evaluate("(window.__mioonTitleBarColors || []).length > 0"), 'The page never reported a caption band color'
-                expected = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                expected = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
                 reported = page.evaluate("(window.__mioonTitleBarColors || []).slice(-1)[0]")
                 assert reported == expected, f'Windows caption band color {reported!r} must match the top bar {expected!r}'
 
@@ -229,7 +238,7 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
                     while time.monotonic() < deadline:
                         page.evaluate("window.dispatchEvent(new Event('resize'))")
                         colors = page.evaluate("(window.__mioonTitleBarColors || [])")
-                        expected_color = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                        expected_color = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
                         if len(colors) > count and colors[-1] == expected_color:
                             return colors[-1]
                         time.sleep(0.05)
@@ -244,7 +253,7 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
                     time.sleep(0.05)
                 assert page.evaluate("document.documentElement.dataset.theme") == 'light'
                 reported_light = latest_reported_after(count)
-                expected_light = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                expected_light = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
                 assert reported_light == expected_light, (reported_light, expected_light)
                 assert reported_light != reported, 'A theme change must repaint the caption band color'
                 count = page.evaluate("(window.__mioonTitleBarColors || []).length")
@@ -253,7 +262,7 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
                 while time.monotonic() < deadline and page.evaluate("document.documentElement.dataset.theme") != 'dark':
                     time.sleep(0.05)
                 reported_dark = latest_reported_after(count)
-                expected_dark = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                expected_dark = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
                 assert reported_dark == expected_dark, (reported_dark, expected_dark)
                 assert reported_dark != reported_light
                 print(f'Windows caption band color: {reported!r} (dark) -> {reported_light!r} (light) -> {reported_dark!r} (restored dark)')

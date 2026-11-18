@@ -127,6 +127,36 @@ async function capture(window: BrowserWindow, title: string): Promise<{png: Buff
   assert.ok(png.length > 0, 'The screenshot capture produced no bytes');
   return {png, source: 'content'};
 }
+/** Reports the color the page currently shows behind the band (same rule as the
+ * renderer) so a failed comparison can be diagnosed from CI artifacts. */
+const pageBandColorScript = `(() => {
+  const overlay = navigator.windowControlsOverlay;
+  if (!overlay || !overlay.getTitlebarAreaRect) return 'none';
+  const rect = overlay.getTitlebarAreaRect();
+  const band = window.innerWidth - rect.right;
+  const x = Math.min(window.innerWidth - 2, Math.round(rect.right + band / 2));
+  const y = Math.max(1, Math.min(window.innerHeight - 1, Math.round(rect.y + rect.height / 2)));
+  let node = document.elementFromPoint(x, y);
+  while (node) {
+    const match = /^rgba?\\(([^)]*)\\)$/.exec(getComputedStyle(node).backgroundColor);
+    if (match) {
+      const parts = match[1].split(/[,\\s/]+/).filter(Boolean);
+      const alpha = parts.length > 3 ? Number(parts[3]) : 1;
+      if (alpha > 0.99) return '#' + parts.slice(0, 3).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('');
+    }
+    node = node.parentElement;
+  }
+  return 'none';
+})()`;
+const cssColorToHex = (color: string | undefined): string => {
+  if (!color) return 'none';
+  if (/^#[0-9a-fA-F]{6}$/u.test(color)) return color.toLowerCase();
+  const match = /^rgba?\(([^)]*)\)$/u.exec(color);
+  if (!match) return 'invalid';
+  const parts = match[1]!.split(/[,\s/]+/u).filter(Boolean);
+  return '#' + parts.slice(0, 3).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('');
+};
+
 /** The caption band is painted by the OS with the color the page reported; the
  * two pixels beside its left edge must therefore be the same rendered color. */
 function bandColorDelta(png: Buffer, facts: TitleBarFacts): number {
@@ -206,8 +236,9 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
         return {bridge: typeof window.__mioonWindowChrome === 'object', frame: document.documentElement.dataset.desktopFrame || 'none',
           visible: overlay ? overlay.visible === true : false, bandRight: rect ? rect.right : 0};
       })()`) as {bridge: boolean; frame: string; visible: boolean; bandRight: number};
-      const events = windowsTitleBarDiagnostics(window)?.received ?? 0;
-      diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${events}`;
+      const diagnostics = windowsTitleBarDiagnostics(window);
+      const pageColor = await window.webContents.executeJavaScript(pageBandColorScript) as string;
+      diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${diagnostics?.received ?? 0} page=${pageColor} applied=${cssColorToHex(diagnostics?.applied)}`;
     } catch { diag = ' diagnostics=unavailable'; }
     const {png, source} = await capture(window, window.getTitle());
     captured = png;

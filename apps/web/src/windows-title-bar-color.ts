@@ -56,7 +56,8 @@ const composite = (top: Rgba, bottom: Rgba): Rgba => {
   const mix = (upper: number, lower: number): number => Math.round((upper * top.a + lower * bottom.a * (1 - top.a)) / alpha);
   return {r: mix(top.r, bottom.r), g: mix(top.g, bottom.g), b: mix(top.b, bottom.b), a: alpha};
 };
-const cssColor = (color: Rgba): string => `rgb(${color.r}, ${color.g}, ${color.b})`;
+const cssColor = (color: Rgba): string =>
+  `#${[color.r, color.g, color.b].map(channel => channel.toString(16).padStart(2, '0')).join('')}`;
 
 /** The opaque color actually rendered behind the system caption band. Walking up
  * and compositing from the element under the band means the page's own tokens
