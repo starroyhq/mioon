@@ -27,11 +27,10 @@ import './video-settings.css';
 const regions: Record<string, MessageKey> = {global: 'video.providers.region.global', 'cn-beijing': 'video.providers.region.beijing', 'ap-southeast-1': 'video.providers.region.singapore', cn: 'video.providers.region.cn', custom: 'video.providers.region.custom'};
 const documentVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
 type ProbeOperation = VideoModelsListInput['operation'];
-interface ProbeDisplay {operation: ProbeOperation; draft: boolean; result: DraftServiceProbeResult}
+interface ProbeDisplay {operation: ProbeOperation; result: DraftServiceProbeResult}
 interface VideoModelPicker {
   token: number;
   version: number;
-  usesDraftKey: boolean;
   result: DraftServiceProbeResult | null;
 }
 interface DetailProps {
@@ -113,7 +112,7 @@ function VideoServiceDetail(props: DetailProps) {
     if (!probe && !legacy) return null;
     const token = ++checkEpoch.current, controller = new AbortController();
     abort.current = controller;
-    const requestedPicker = operation === 'models' ? {token, version: observed.version, usesDraftKey: input.source === 'draft', result: null} : null;
+    const requestedPicker = operation === 'models' ? {token, version: observed.version, result: null} : null;
     if (requestedPicker) publishPicker(requestedPicker);
     else setCheck(null);
     setChecking(true); current.current.onCheckBusy(draft.key, true);
@@ -121,7 +120,7 @@ function VideoServiceDetail(props: DetailProps) {
       && (!requestedPicker || owner.getState().version === requestedPicker.version);
     const publish = (result: DraftServiceProbeResult) => {
       if (requestedPicker) publishPicker({...requestedPicker, result});
-      else setCheck({operation, draft: input.source === 'draft', result});
+      else setCheck({operation, result});
     };
     try {
       const result = probe ? await probe(input, controller.signal) : await legacy!(input.source === 'draft'
@@ -196,8 +195,7 @@ function VideoServiceDetail(props: DetailProps) {
       status={!pickerResult ? 'loading' : pickerResult.result === 'ok' || pickerResult.result === 'unsupported'
         ? listedModels.length ? 'ready' : 'empty' : 'error'}
       statusMessage={pickerResult && (pickerResult.result !== 'ok' || !listedModels.length)
-        ? checkText({operation: 'models', draft: modelPicker.usesDraftKey, result: pickerResult}) : undefined}
-      usesDraftKey={modelPicker.usesDraftKey}
+        ? checkText({operation: 'models', result: pickerResult}) : undefined}
       maxAdditions={Math.max(0, VIDEO_SETTINGS_LIMITS.models - configuration.models.length)}
       triggerRef={fetchModelsButton}
       onClose={() => closePicker(modelPicker.token)}

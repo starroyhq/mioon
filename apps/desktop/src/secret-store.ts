@@ -7,6 +7,7 @@ import { agentSettingsError } from '@mioon/business/agent/config';
 import { validatePrivateDirectory } from '@mioon/contracts/private-storage';
 import desktopIdentity from '../identity.ts';
 import {createLinuxDesktopSecretCodec, linuxDesktopSecretStorage} from './secret-store-linux.ts';
+import {createWindowsDesktopSecretCodec, windowsDesktopSecretStorage} from './secret-store-windows.ts';
 
 const MAX_PLAINTEXT_BYTES = 32 * 1024;
 const MAX_CIPHERTEXT_BYTES = 64 * 1024;
@@ -133,6 +134,7 @@ const unavailableStorage = (): SecretStorageState =>
 // A redacted snapshot only: it never calls a synchronous native vault method.
 export function desktopSecretStorage(safeStorage: DesktopSafeStorage, platform: NodeJS.Platform = process.platform): SecretStorageState {
   if (platform === 'linux') return linuxDesktopSecretStorage(safeStorage);
+  if (platform === 'win32') return windowsDesktopSecretStorage(safeStorage);
   if (platform !== 'darwin') return unavailableStorage();
   const state = vaultState(safeStorage);
   if (state?.phase === 'probing') {
@@ -151,6 +153,7 @@ export function createDesktopSecretCodec({ safeStorage, appId, platform = proces
   // Static OS policy, never a fallback after a macOS async failure. Preserve
   // Linux's established strong-keyring format and synchronous limitations.
   if (platform === 'linux') return createLinuxDesktopSecretCodec({safeStorage, appId});
+  if (platform === 'win32') return createWindowsDesktopSecretCodec({safeStorage, appId});
   const lifetime = new AbortController();
   const state = platform === 'darwin' ? vaultState(safeStorage) : null;
   const storage = (): SecretStorageState => lifetime.signal.aborted

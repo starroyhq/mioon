@@ -16,6 +16,8 @@ import {verifyMacAppPermissions, withMacUpdateZip} from './mac-update-package-pe
 
 /** The electron-builder beforePack context fields this module consumes. */
 export interface BuilderPackContext {
+  readonly electronPlatformName?: unknown;
+  readonly arch?: unknown;
   readonly packager: {readonly info: {readonly appDir: string}};
 }
 interface BuilderArtifactContext {
@@ -53,6 +55,13 @@ export interface BuilderConfig {
     desktop: {entry: {StartupWMClass: string}};
     artifactName: string;
   };
+  win?: {
+    target: Array<{target: 'portable'; arch: ['x64']}>;
+    signExecutable: false;
+    requestedExecutionLevel: 'asInvoker';
+    extraResources: Array<{from: string; to: string; filter: string[]}>;
+    artifactName: string;
+  };
   mac: {
     icon: string;
     target: Array<{target: string; arch: string[]}>;
@@ -68,6 +77,27 @@ export interface BuilderConfig {
   };
 }
 const directory = path.dirname(fileURLToPath(import.meta.url));
+/** A native ACL helper built for another architecture cannot load in Electron. */
+export async function verifyWindowsPrivateStorageHelper(appDir: string, arch: unknown): Promise<void> {
+  // electron-builder's Arch.x64 is 1. Windows ARM packaging is not part of W0.
+  if (arch !== 1) throw Error('Windows development packaging currently requires x64.');
+  const file = path.join(appDir, 'native', 'mioon_private_storage.node');
+  const info = await fs.lstat(file).catch(() => {throw Error('Build the Windows x64 private storage helper before packaging.');});
+  if (!info.isFile() || info.isSymbolicLink()) throw Error('Windows private storage helper must be a regular file.');
+  const handle = await fs.open(file, 'r');
+  try {
+    const dos = Buffer.alloc(64), pe = Buffer.alloc(6);
+    if ((await handle.read(dos, 0, dos.length, 0)).bytesRead !== dos.length || dos.toString('ascii', 0, 2) !== 'MZ') {
+      throw Error('Windows private storage helper has an invalid executable header.');
+    }
+    const offset = dos.readUInt32LE(60);
+    if (offset < 64 || offset > 1024 * 1024 || offset > info.size - pe.length ||
+        (await handle.read(pe, 0, pe.length, offset)).bytesRead !== pe.length || pe.readUInt32LE(0) !== 0x00004550) {
+      throw Error('Windows private storage helper has an invalid executable header.');
+    }
+    if (pe.readUInt16LE(4) !== 0x8664) throw Error('Windows private storage helper architecture must match the x64 package.');
+  } finally {await handle.close();}
+}
 export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON_RELEASE_UPDATE_FEED_URL ?? ''): BuilderConfig {
   const identity: DesktopIdentity = identityForChannel(channel);
   const { appVersion, electronVersion } = readBuildMetadata();
@@ -98,8 +128,12 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
     dmg: {writeUpdateInfo: false},
     // Reject stale versions and identities before any packaging work.
     beforePack: async (context: BuilderPackContext): Promise<void> => {
+      if (context.electronPlatformName === 'win32') {
+        if (identity.channel !== 'development') throw Error('Windows packaging is available only for development.');
+      }
       const metadata: unknown = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
       validateStagedMetadata(metadata, { appVersion, identity });
+      if (context.electronPlatformName === 'win32') await verifyWindowsPrivateStorageHelper(context.packager.info.appDir, context.arch);
       await verifySubtitleResources(path.join(context.packager.info.appDir,'subtitles'));
       verifyProjectExampleResources(path.join(context.packager.info.appDir,'examples'));
     },
@@ -157,6 +191,14 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
       desktop: { entry: { StartupWMClass: identity.appId } },
       artifactName: `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`
     },
+    ...(identity.channel === 'development' ? {win: {
+      target: [{target: 'portable' as const, arch: ['x64'] as ['x64']}],
+      // Keep PE metadata and icons; only signing is disabled in the dev package.
+      signExecutable: false as const,
+      requestedExecutionLevel: 'asInvoker' as const,
+      extraResources: [{from: 'build/native', to: 'native', filter: ['mioon_private_storage.node']}],
+      artifactName: `${identity.executableName}-\${version}-win-\${arch}.\${ext}`,
+    }} : {}),
     // The release invocation supplies signing and notarization explicitly.
     mac: {
       icon: path.join(directory, 'resources/icon.icns'),

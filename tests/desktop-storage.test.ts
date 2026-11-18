@@ -225,7 +225,7 @@ test('diagnostic cleanup preserves a replacement directory instead of deleting a
 test('main isolates fatal storage handling from lock acquisition and normal readiness', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /try \{ initializeDesktopPrivateStorage\(privateStorageHelperFile\(app\)\); paths = prepareDesktopStorage\(/);
-  assert.match(main, /if \(startupStorageError\) void showStorageStartupFailure\(app, dialog, startupStorageError\);\s*else if \(!app\.requestSingleInstanceLock\(\)\)/);
+  assert.match(main, /if \(startupStorageError\) \{[\s\S]*?else if \(!app\.requestSingleInstanceLock\(\)\) app\.quit\(\);/);
   assert.doesNotMatch(main, /mkdirSync\(paths\.userData|app\.setPath\('userData', paths\.userData\)/);
 });
 
@@ -235,7 +235,7 @@ test('startup rejects unpackaged production or a definite Mac signature failure 
   const end = source.indexOf('const appearanceCache', begin);
   assert.ok(begin >= 0 && end > begin);
   const startup = stripTypeScriptTypes(source.slice(begin, end), {mode: 'strip'});
-  const failure = source.slice(source.indexOf('if (startupStorageError) void showStorageStartupFailure'), source.indexOf("  app.on('second-instance'"));
+  const failure = source.slice(source.indexOf('if (startupStorageError) {'), source.indexOf("  app.on('second-instance'"));
   for (const platform of ['darwin', 'linux', 'win32']) {
     for (const [channel, isPackaged, signature, lock = true] of [
       ['production', false, 'verified'], ['production', true, 'rejected'], ['production', true, 'verified'],
@@ -252,7 +252,7 @@ test('startup rejects unpackaged production or a definite Mac signature failure 
       const reject = channel === 'production' && (!isPackaged || verify && signature === 'rejected');
       const record = verify && signature !== 'verified' && signature !== 'rejected';
       runInNewContext(`${startup}\n${failure} startWorkspace(); }`, {
-        app, desktopIdentity, __MIOON_DESKTOP_CHANNEL__: channel,
+        app, desktopIdentity, __MIOON_DESKTOP_CHANNEL__: channel, windowsPackageSmoke: false, smokeOutput: false,
         process: {platform, env: {MIOON_DESKTOP_CHANNEL: 'development', MIOON_DESKTOP_USER_DATA: '/synthetic/explicit-profile'}},
         verifyOfficialMacDesktopProcess() {events.push('signature'); return signature;},
         rendererDiagnostics: {recordStartupSignature(result: string) {events.push(`signature diagnostic ${result}`);}},

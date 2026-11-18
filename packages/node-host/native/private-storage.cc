@@ -82,7 +82,12 @@ struct Security {
 void acl(HANDLE handle,const User& user,bool privateObject,bool protectedRoot){
   PSECURITY_DESCRIPTOR raw=nullptr;PSID owner=nullptr;PACL dacl=nullptr;
   check(GetSecurityInfo(handle,SE_FILE_OBJECT,OWNER_SECURITY_INFORMATION|GROUP_SECURITY_INFORMATION|DACL_SECURITY_INFORMATION,&owner,nullptr,&dacl,nullptr,&raw)==ERROR_SUCCESS,"UNSAFE_ACL");LocalMemory descriptor;descriptor.value=raw;
-  check(owner&&IsValidSid(owner)&&(privateObject?EqualSid(owner,user.sid()):user.privileged(owner)),"FOREIGN_OWNER");
+  // The boundary is other ordinary OS users; this account and administrators
+  // are trusted. A built-in Administrator (RID 500) token creates ordinary
+  // files owned by BUILTIN\Administrators, so a private object's owner may be
+  // any trusted principal (current user, SYSTEM, Administrators, TrustedInstaller)
+  // while the private DACL below still admits only this user and SYSTEM.
+  check(owner&&IsValidSid(owner)&&user.privileged(owner),"FOREIGN_OWNER");
   check(dacl&&IsValidAcl(dacl),"UNSAFE_ACL");SECURITY_DESCRIPTOR_CONTROL control;DWORD revision;check(GetSecurityDescriptorControl(raw,&control,&revision),"UNSAFE_ACL");if(protectedRoot)check((control&SE_DACL_PROTECTED)!=0,"UNSAFE_ACL");
   for(DWORD index=0;index<dacl->AceCount;index++){
     void* rawAce=nullptr;check(GetAce(dacl,index,&rawAce),"UNSAFE_ACL");auto header=static_cast<ACE_HEADER*>(rawAce);

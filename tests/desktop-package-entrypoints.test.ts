@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, realpathSync } from 'node:fs';
+import {mkdir, mkdtemp, realpath, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArguments, buildCommands } from '../scripts/lib/local-tooling.ts';
 import desktopIdentity from '../apps/desktop/identity.ts';
 import { verifySettingsWarmAssets } from '../apps/desktop/scripts/settings-warm-assets.ts';
+import {verifyWindowsPrivateStorageHelper} from '../apps/desktop/builder-config.ts';
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -17,6 +20,7 @@ const channels = [
   { script: 'package:linux:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux'] },
   { script: 'package:dir:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux', '--dir'] },
   { script: 'package:mac:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--mac'] },
+  { script: 'package:win:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--win'] },
 ];
 
 // Inspect only the simple, two-command manifest contract. Do not evaluate a
@@ -24,7 +28,9 @@ const channels = [
 type ChannelExpectation = typeof channels[number];
 function packagingPlan(script: string, expected: ChannelExpectation) {
   const steps = script.split('&&').map(step => step.trim().split(/\s+/));
-  assert.equal(steps.length, 2, 'Build must succeed before electron-builder; no extra stages');
+  const windows = expected.script === 'package:win:dev';
+  assert.equal(steps.length, windows ? 3 : 2, 'Build must succeed before electron-builder; no extra stages');
+  if (windows) assert.deepEqual(steps.shift(), ['pnpm', '--filter', '@mioon/node-host', 'build:native'], 'Windows packaging must build its native ACL helper first');
   for (const argv of steps) for (const token of argv) assert.match(token, /^[A-Za-z0-9_./=-]+$/, 'Only literal arguments are permitted');
   const [build, builder] = steps;
   assert.equal(build[0], 'node', 'Run the shared build before electron-builder');
@@ -41,6 +47,7 @@ function packagingPlan(script: string, expected: ChannelExpectation) {
   const commands = buildCommands(root, { vite: { entry: viteEntry } } as unknown as Parameters<typeof buildCommands>[1], options.channel);
   return { commands, config, viteEntry };
 }
+const nativePrefix = (expected: ChannelExpectation): string => expected.script === 'package:win:dev' ? 'pnpm --filter @mioon/node-host build:native && ' : '';
 
 for (const expected of channels) {
   test(`${expected.script} resolves the real tooling contract and plans Web before same-channel desktop staging`, () => {
@@ -69,6 +76,11 @@ for (const expected of channels) {
     assert.equal(config.mac.detectUpdateChannel, false);
     assert.equal(config.dmg.writeUpdateInfo, false);
     assert.equal(config.mac.identity, null, 'This change must not enable signing');
+    assert.deepEqual(config.win, {
+      target: [{target: 'portable', arch: ['x64']}], signExecutable: false, requestedExecutionLevel: 'asInvoker',
+      extraResources: [{from: 'build/native', to: 'native', filter: ['mioon_private_storage.node']}],
+      artifactName: `${identity.executableName}-\${version}-win-\${arch}.\${ext}`,
+    });
   });
 }
 
@@ -77,8 +89,8 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
     // Start mutations from the required contract so an existing legacy script
     // cannot make an unrelated negative assertion pass for the wrong reason.
     const builder = `electron-builder --config ${expected.config} ${expected.targetArgs.join(' ')} --publish never`;
-    const script = `node ../../scripts/tooling.ts build --channel=${expected.channel} && ${builder}`;
-    const old = `node scripts/build.ts --channel=${expected.channel} && ${builder}`;
+    const script = `${nativePrefix(expected)}node ../../scripts/tooling.ts build --channel=${expected.channel} && ${builder}`;
+    const old = `${nativePrefix(expected)}node scripts/build.ts --channel=${expected.channel} && ${builder}`;
     assert.throws(() => packagingPlan(old, expected), /shared Web→desktop entrypoint/);
     assert.throws(() => packagingPlan(script.replace('&&', ';'), expected), /Build must succeed before electron-builder; no extra stages/);
     assert.throws(() => packagingPlan(script.replace('&&', ''), expected), /Build must succeed before electron-builder; no extra stages/);
@@ -92,14 +104,15 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
 test('entrypoint checks reject missing, reversed or extra stages and misrouted builder arguments', () => {
   for (const expected of channels) {
     const build = `node ../../scripts/tooling.ts build --channel=${expected.channel}`;
+    const prefix = nativePrefix(expected);
     const builder = `electron-builder --config ${expected.config} ${expected.targetArgs.join(' ')} --publish never`;
-    const script = `${build} && ${builder}`;
+    const script = `${prefix}${build} && ${builder}`;
     for (const missing of [build, builder]) {
       assert.throws(() => packagingPlan(missing, expected), /Build must succeed before electron-builder; no extra stages/, `${expected.script}: missing command`);
     }
-    assert.throws(() => packagingPlan(`${builder} && ${build}`, expected), /Run the shared build before electron-builder/, `${expected.script}: reversed commands`);
-    assert.throws(() => packagingPlan(`${build} && ${build} && ${builder}`, expected), /Build must succeed before electron-builder; no extra stages/, `${expected.script}: extra stage`);
-    assert.throws(() => packagingPlan(`${build} --extra && ${builder}`, expected), /Build requires only the tooling path, build command and explicit channel/, `${expected.script}: extra build argument`);
+    assert.throws(() => packagingPlan(`${prefix}${builder} && ${build}`, expected), /Run the shared build before electron-builder/, `${expected.script}: reversed commands`);
+    assert.throws(() => packagingPlan(`${prefix}${build} && ${build} && ${builder}`, expected), /Build must succeed before electron-builder; no extra stages/, `${expected.script}: extra stage`);
+    assert.throws(() => packagingPlan(`${prefix}${build} --extra && ${builder}`, expected), /Build requires only the tooling path, build command and explicit channel/, `${expected.script}: extra build argument`);
     for (const wrongTarget of ['--linux', '--mac', '--win'].filter(target => target !== expected.targetArgs[0])) {
       assert.throws(() => packagingPlan(script.replace(expected.targetArgs[0], wrongTarget), expected), /Builder must retain the exact config, target and publication arguments/, `${expected.script}: wrong target ${wrongTarget}`);
     }
@@ -110,6 +123,48 @@ test('entrypoint checks reject missing, reversed or extra stages and misrouted b
     assert.throws(() => packagingPlan(script.replace('--publish', '--dir --publish'), expected), /Builder must retain the exact config, target and publication arguments/, `${expected.script}: extra --dir`);
     assert.throws(() => packagingPlan(`${script} --x64`, expected), /Builder must retain the exact config, target and publication arguments/, `${expected.script}: extra builder argument`);
   }
+});
+
+test('Windows packages refuse production, missing helpers, malformed PE files and mismatched architectures', async t => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-win-package-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const {builderConfig} = require(path.join(desktop, 'builder-config.ts'));
+  assert.equal(builderConfig('production').win, undefined);
+  await assert.rejects(builderConfig('production').beforePack({electronPlatformName: 'win32', arch: 1,
+    packager: {info: {appDir: directory}}}), /only for development/);
+  await assert.rejects(verifyWindowsPrivateStorageHelper(directory, 3), /requires x64/);
+  await assert.rejects(verifyWindowsPrivateStorageHelper(directory, 1), /Build the Windows x64 private storage helper/);
+  await mkdir(path.join(directory, 'native'));
+  const file = path.join(directory, 'native/mioon_private_storage.node');
+  await writeFile(file, 'not a PE file');
+  await assert.rejects(verifyWindowsPrivateStorageHelper(directory, 1), /invalid executable header/);
+  const bytes = Buffer.alloc(256); bytes.write('MZ'); bytes.writeUInt32LE(128, 60); bytes.writeUInt32LE(0x00004550, 128);
+  bytes.writeUInt16LE(0xaa64, 132);
+  await writeFile(file, bytes);
+  await assert.rejects(verifyWindowsPrivateStorageHelper(directory, 1), /architecture must match/);
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({name: 'mioon-desktop', version: rootManifest.version,
+    main: 'main.cjs', private: true, desktopName: 'app.starroy.mioon.dev.desktop', dependencies: {},
+    mioonDesktop: desktopIdentity.identityForChannel('development')}));
+  await assert.rejects(builderConfig('development').beforePack({electronPlatformName: 'win32', arch: 1,
+    packager: {info: {appDir: directory}}}), /architecture must match/);
+  bytes.writeUInt16LE(0x8664, 132); await writeFile(file, bytes);
+  await verifyWindowsPrivateStorageHelper(directory, 1);
+  bytes.writeUInt32LE(0x7fffffff, 60); await writeFile(file, bytes);
+  await assert.rejects(verifyWindowsPrivateStorageHelper(directory, 1), /invalid executable header/);
+});
+
+test('the pinned Windows signer skips signing through the explicit development configuration', async () => {
+  const builder = createRequire(require.resolve('electron-builder'));
+  const libraries = createRequire(builder.resolve('app-builder-lib'));
+  const {Arch} = libraries('builder-util') as {Arch: {x64: number}};
+  assert.equal(Arch.x64, 1);
+  type Signer = {platformSpecificBuildOptions: unknown; shouldSignFile(file: string, fallback: boolean): boolean};
+  const {WinPackager} = builder('app-builder-lib') as {WinPackager: {prototype: {signIf(this: Signer, file: string): Promise<boolean>}}};
+  const configuration = require(path.join(desktop, 'builder-config.ts')).builderConfig('development').win;
+  const disabled: Signer = {platformSpecificBuildOptions: configuration, shouldSignFile: () => true};
+  // A signing attempt would need the deliberately absent signing queue/manager.
+  assert.equal(await WinPackager.prototype.signIf.call(disabled, 'fixture.exe'), false);
+  assert.equal(configuration.signAndEditExecutable, undefined, 'PE metadata and icon editing remain enabled');
 });
 
 test('default desktop package aliases select development and leave production staging to the release workflow', () => {

@@ -28,7 +28,6 @@ export const mioSettingsMessages = {
   "settings.modelPicker.willAdd": {"zh-Hans":"将添加","zh-Hant":"將新增","en":"Will add","ja":"追加予定"},
   "settings.modelPicker.unavailable": {"zh-Hans":"此 ID 无法添加","zh-Hant":"無法新增此 ID","en":"Unsupported model ID","ja":"未対応のモデル ID"},
   "settings.modelPicker.noMatch": {"zh-Hans":"没有匹配的模型。","zh-Hant":"沒有符合的模型。","en":"No matching models.","ja":"一致するモデルはありません。"},
-  "settings.modelPicker.draftKey": {"zh-Hans":"这次获取使用了当前填写的未保存密钥。","zh-Hant":"這次取得使用了目前輸入且尚未儲存的金鑰。","en":"This fetch uses the unsaved key in the form.","ja":"今回の取得には入力中の未保存のキーを使います。"},
   "settings.modelPicker.count": {
     "zh-Hans":"已勾选 {count} 个新模型","zh-Hant":"已勾選 {count} 個新模型",
     "en":"New models selected: {count}","ja":"新規モデル {count} 件を選択中"
