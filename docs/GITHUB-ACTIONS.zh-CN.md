@@ -77,7 +77,7 @@ gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0
 
 检查会比较主程序和 Helper 的 `arm64`、`x86_64` 切片，并对 DMG 和 ZIP 中的应用校验签名、装订票据和 Gatekeeper。应用在制作 ZIP 前完成公证和装订。DMG 制作后另外公证和装订。FFmpeg/ffprobe 在 runner 上另行准备。
 
-打包诊断中的 `build-timings.jsonl` 记录两轮 TypeScript 检查、Web 打包、桌面 bundle 和暂存的分阶段耗时。`desktop-build` 包含该进程的子阶段。通用包合并和公证在后续打包步骤计时。Apple 芯片 runner 支持按 Homebrew bottle 的完整 SHA-256 缓存 `ffmpeg-full` 下载文件，安装和媒体能力探针仍逐轮执行。Intel 和未找到匹配 bottle 的 runner 沿用 Homebrew 安装。依赖下载使用既有的 pnpm store 缓存。
+打包诊断中的 `build-timings.jsonl` 记录一次完整 TypeScript 检查、Web 打包、桌面 bundle 和暂存的分阶段耗时。桌面暂存只在私有证据确认同一份源码指纹时跳过重复检查，单独运行桌面暂存仍会检查。`desktop-build` 包含该进程的子阶段。通用包合并和公证在后续打包步骤计时。Apple 芯片 runner 支持按 Homebrew bottle 的完整 SHA-256 缓存 `ffmpeg-full` 下载文件，安装和媒体能力探针仍逐轮执行。Intel 和未找到匹配 bottle 的 runner 沿用 Homebrew 安装。依赖下载使用既有的 pnpm store 缓存。
 
 ## 正式发布
 

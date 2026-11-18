@@ -7,6 +7,7 @@ import desktopIdentity from '../identity.ts';
 import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
 import {measureBuildStage, withDesktopTypecheckTiming, type BuildTimingStage} from '../../../scripts/lib/build-timings.ts';
+import {hasOuterTypecheckEvidence} from '../../../scripts/lib/typecheck-evidence.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
@@ -17,8 +18,11 @@ import {verifySubtitleResources,SUBTITLE_RESOURCE_FILES} from '../subtitle-resou
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
-// Every direct desktop/package entry checks real TS before replacing staging.
-await withDesktopTypecheckTiming(async () => {
+// Direct desktop/package entries check real TS before replacing staging. The
+// full local build runs that same check first and passes private evidence only
+// while the sources are unchanged, so the normal build checks exactly once.
+if (await hasOuterTypecheckEvidence(root)) console.log('Desktop staging reuses the outer build typecheck for unchanged sources.');
+else await withDesktopTypecheckTiming(async () => {
   if (await checkTypes(['typecheck']) !== 0) throw new Error('Type checking failed; desktop staging was not replaced.');
 });
 // Keep the ignored electron-builder CJS entrypoints derived from typed source.
