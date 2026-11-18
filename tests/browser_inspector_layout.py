@@ -131,10 +131,11 @@ def check_topbar_scale_controls(page, metadata):
 WINDOWS_WCO_CONTROL_WIDTH = 138
 WINDOWS_WCO_SCRIPT = '''Object.defineProperty(navigator, 'windowControlsOverlay', {configurable: true, value: {
   visible: true,
-  getTitlebarAreaRect: () => ({right: Math.max(0, window.innerWidth - %d)}),
+  getTitlebarAreaRect: () => ({x: 0, y: 0, width: Math.max(0, window.innerWidth - %d), height: 44,
+    right: Math.max(0, window.innerWidth - %d), bottom: 44}),
   addEventListener() {},
   removeEventListener() {},
-}});''' % WINDOWS_WCO_CONTROL_WIDTH
+}});''' % (WINDOWS_WCO_CONTROL_WIDTH, WINDOWS_WCO_CONTROL_WIDTH)
 
 
 def check_topbar_hosts(browser, metadata, token, fixture_rpc):
@@ -155,6 +156,11 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
                                       locale='zh-CN', reduced_motion='reduce', service_workers='block')
         if kind == 'windows':
             context.add_init_script(WINDOWS_WCO_SCRIPT)
+            # The preload bridge is absent in a plain browser context; capture the
+            # page-reported caption band color instead of painting it natively.
+            context.add_init_script("""window.__mioonWindowChrome = {setTitleBarColor(color) {
+                (window.__mioonTitleBarColors || (window.__mioonTitleBarColors = [])).push(color);
+            }};""")
         try:
             context.add_init_script("""localStorage.setItem('mioon.app-language.v1', JSON.stringify({version: 1, preference: 'zh-Hans'}))""")
             assert context.request.post(origin + '/api/login', data={'token': token}).ok, 'Topbar fixture login failed'
@@ -195,6 +201,62 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
                         check_topbar(page, label + ' fullscreen', chrome['topbarHeight'], chrome['gap'], mode)
                         page.evaluate("document.documentElement.dataset.desktopFullscreen = 'false'")
                         check_topbar(page, label + ' restored', chrome['topbarHeight'], chrome['leadingInset'], mode)
+            if kind == 'windows':
+                page.set_viewport_size({'width': 1440, 'height': 900})
+                page.get_by_test_id('workspace-canvas').click()
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and not page.evaluate("(window.__mioonTitleBarColors || []).length > 0"):
+                    time.sleep(0.05)
+                assert page.evaluate("(window.__mioonTitleBarColors || []).length > 0"), 'The page never reported a caption band color'
+                expected = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                reported = page.evaluate("(window.__mioonTitleBarColors || []).slice(-1)[0]")
+                assert reported == expected, f'Windows caption band color {reported!r} must match the top bar {expected!r}'
+
+                def choose_theme(label):
+                    page.get_by_test_id('global-settings-open').click()
+                    appearance = page.get_by_test_id('settings-appearance')
+                    expect(appearance).to_be_visible()
+                    appearance.get_by_test_id('appearance-theme').get_by_text(label, exact=True).click()
+                    with page.expect_response(lambda response: response.request.method == 'PUT'
+                                              and response.url.endswith('/api/ui-preferences')) as saved:
+                        appearance.get_by_test_id('appearance-save').click()
+                    assert saved.value.ok, 'The appearance preference did not save'
+                    page.get_by_test_id('settings-center-close').click()
+                    expect(page.get_by_test_id('web-settings-dialog')).to_be_hidden()
+
+                def latest_reported_after(count):
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        page.evaluate("window.dispatchEvent(new Event('resize'))")
+                        colors = page.evaluate("(window.__mioonTitleBarColors || [])")
+                        expected_color = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                        if len(colors) > count and colors[-1] == expected_color:
+                            return colors[-1]
+                        time.sleep(0.05)
+                    assert False, ('A theme change must report the settled caption band color',
+                                   page.evaluate("window.__mioonTitleBarColors"),
+                                   page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
+
+                count = page.evaluate("(window.__mioonTitleBarColors || []).length")
+                choose_theme('浅色')
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and page.evaluate("document.documentElement.dataset.theme") != 'light':
+                    time.sleep(0.05)
+                assert page.evaluate("document.documentElement.dataset.theme") == 'light'
+                reported_light = latest_reported_after(count)
+                expected_light = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                assert reported_light == expected_light, (reported_light, expected_light)
+                assert reported_light != reported, 'A theme change must repaint the caption band color'
+                count = page.evaluate("(window.__mioonTitleBarColors || []).length")
+                choose_theme('深色')
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and page.evaluate("document.documentElement.dataset.theme") != 'dark':
+                    time.sleep(0.05)
+                reported_dark = latest_reported_after(count)
+                expected_dark = page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor")
+                assert reported_dark == expected_dark, (reported_dark, expected_dark)
+                assert reported_dark != reported_light
+                print(f'Windows caption band color: {reported!r} (dark) -> {reported_light!r} (light) -> {reported_dark!r} (restored dark)')
             if kind == 'mac':
                 check_topbar_scale_controls(page, metadata)
             assert not errors, f'{host} page errors: {errors}'

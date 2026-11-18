@@ -5,10 +5,11 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
-import { applyWindowsTitleBarOverlay, installWindowChrome, windowChromeOptions, windowsTitleBarAppearance, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
-import type { WindowTitleBarOverlay } from '../apps/desktop/src/window-chrome.ts';
-import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale, macWindowChrome, MAC_WINDOW_CHROME,
-  WINDOWS_WINDOW_CHROME, windowsTitleBarOverlay } from '../packages/contracts/src/desktop-window-chrome.ts';
+import { installWindowChrome, windowChromeOptions, windowsTitleBarOverlay, windowsTitleBarSymbolColor,
+  MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, DESKTOP_TITLEBAR_COLOR_EVENT, isDesktopChromeScale,
+  isDesktopTitleBarColor, macWindowChrome, MAC_WINDOW_CHROME, WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE,
+  WINDOWS_WINDOW_CHROME } from '../packages/contracts/src/desktop-window-chrome.ts';
 import { WINDOW_BACKGROUNDS } from '../apps/desktop/src/window-appearance.ts';
 import { createLauncherWindowState } from '../apps/desktop/src/launcher-window-state.ts';
 import type { WindowBounds } from '../apps/desktop/src/launcher-window-state.ts';
@@ -26,32 +27,68 @@ test('macOS hides the title bar for traffic lights and Windows uses the system c
   for (const platform of ['linux', 'freebsd'] as const) assert.deepEqual(windowChromeOptions(platform as Parameters<typeof windowChromeOptions>[0]), {});
   assert.deepEqual(windowChromeOptions('win32'), {}, 'the overlay needs the resolved app appearance');
   for (const background of [WINDOW_BACKGROUNDS.dark, WINDOW_BACKGROUNDS.light]) {
-    const appearance = windowsTitleBarAppearance(background);
     const win = windowChromeOptions('win32', background);
-    assert.deepEqual(win, {titleBarStyle: 'hidden', titleBarOverlay: windowsTitleBarOverlay(appearance)});
+    assert.deepEqual(win, {titleBarStyle: 'hidden', titleBarOverlay: windowsTitleBarOverlay(background)});
     assert.equal(win.titleBarOverlay!.height, MAC_WINDOW_CHROME.topbarHeight, 'the overlay band shares the measured top bar height');
     assert.equal(win.titleBarOverlay!.height, WINDOWS_WINDOW_CHROME.topbarHeight);
-    assert.notEqual(win.titleBarOverlay, windowsTitleBarOverlay(appearance), 'the frozen table must not be handed to Electron');
+    assert.notEqual(win.titleBarOverlay, windowsTitleBarOverlay(background), 'the frozen table must not be handed to Electron');
   }
-  assert.equal(windowsTitleBarAppearance(WINDOW_BACKGROUNDS.dark.toUpperCase()), 'dark');
-  assert.equal(windowsTitleBarAppearance('#F6F6F6'), 'light');
-  assert.deepEqual(windowsTitleBarOverlay('dark'), {color: '#141518', symbolColor: '#ECEDEF', height: 44});
-  assert.deepEqual(windowsTitleBarOverlay('light'), {color: '#FFFFFF', symbolColor: '#191C1F', height: 44});
+  assert.deepEqual(windowsTitleBarOverlay(WINDOW_BACKGROUNDS.dark), {color: WINDOW_BACKGROUNDS.dark, symbolColor: '#ECEDEF', height: 44});
+  assert.deepEqual(windowsTitleBarOverlay(WINDOW_BACKGROUNDS.light), {color: WINDOW_BACKGROUNDS.light, symbolColor: '#191C1F', height: 44});
+  assert.deepEqual(windowChromeOptions('win32', 'synthetic-not-a-color'), {}, 'only a validated CSS color starts the overlay');
 });
 
-test('the Windows caption overlay follows the same appearance updates as the native window fill', () => {
-  const applied: unknown[] = [];
-  const holder = {destroyed: false};
-  const window = {isDestroyed: () => holder.destroyed, setTitleBarOverlay(options: WindowTitleBarOverlay) {applied.push(options);}};
-  applyWindowsTitleBarOverlay(window, WINDOW_BACKGROUNDS.dark);
-  applyWindowsTitleBarOverlay(window, WINDOW_BACKGROUNDS.light);
-  assert.deepEqual(applied, [windowsTitleBarOverlay('dark'), windowsTitleBarOverlay('light')]);
-  holder.destroyed = true;
-  applyWindowsTitleBarOverlay(window, WINDOW_BACKGROUNDS.dark);
-  assert.equal(applied.length, 2, 'a destroyed window keeps its last painted overlay');
-  applyWindowsTitleBarOverlay({isDestroyed: () => false}, WINDOW_BACKGROUNDS.dark);
-  const failing = {isDestroyed: () => false, setTitleBarOverlay() {throw new Error('synthetic native failure');}};
-  applyWindowsTitleBarOverlay(failing, WINDOW_BACKGROUNDS.dark);
+test('the caption band color and symbol contrast are derived from the rendered page color', () => {
+  assert.equal(windowsTitleBarSymbolColor('#000000'), '#ECEDEF');
+  assert.equal(windowsTitleBarSymbolColor('#0B0C0E'), '#ECEDEF');
+  assert.equal(windowsTitleBarSymbolColor('#141518'), '#ECEDEF');
+  assert.equal(windowsTitleBarSymbolColor('#FFFFFF'), '#191C1F');
+  assert.equal(windowsTitleBarSymbolColor('rgb(246, 246, 246)'), '#191C1F');
+  assert.equal(windowsTitleBarSymbolColor('rgba(20, 21, 24, 1)'), '#ECEDEF');
+  assert.throws(() => windowsTitleBarSymbolColor('synthetic'), RangeError);
+  assert.throws(() => windowsTitleBarOverlay('synthetic'), RangeError);
+  for (const valid of ['#fff', '#0B0C0E', '#0B0C0EFF', 'rgb(20, 21, 24)', 'rgb(20 21 24)', 'rgba(20, 21, 24, 0.5)', 'rgb(7.8%, 8.2%, 9.4%)']) {
+    assert.equal(isDesktopTitleBarColor(valid), true, valid);
+  }
+  for (const invalid of ['', 'red', 'rgb(', 'rgb(20, 21, 24) ; x', `#${'0'.repeat(65)}`, 42, null, undefined, '/Users/x', 'rgb(20, 21, 24)\n']) {
+    assert.equal(isDesktopTitleBarColor(invalid), false, String(invalid));
+  }
+  assert.equal(WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, 8);
+});
+
+test('only the trusted main frame can repaint the Windows caption band, and only with a bounded CSS color', () => {
+  const applied: Array<{color: string; symbolColor: string; height: number}> = [];
+  const contents = Object.assign(new EventEmitter(), {
+    mainFrame: {}, isDestroyed: () => false, send: () => assert.fail('Windows chrome does not send macOS events'),
+  });
+  const window = Object.assign(new EventEmitter(), {
+    webContents: contents,
+    isDestroyed: () => false,
+    isFullScreen: () => assert.fail('Windows chrome does not query macOS fullscreen'),
+    setWindowButtonVisibility: () => assert.fail('Windows chrome keeps the system caption buttons'),
+    setWindowButtonPosition: () => assert.fail('Windows chrome does not position traffic lights'),
+    setTitleBarOverlay: (options: {color: string; symbolColor: string; height: number}) => {applied.push(options);},
+  });
+  const release = installWindowChrome(window, 'win32');
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_TITLEBAR_COLOR_EVENT, 'rgb(246, 246, 246)');
+  assert.deepEqual(applied, [{color: 'rgb(246, 246, 246)', symbolColor: '#191C1F', height: 44}]);
+  const count = applied.length;
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_TITLEBAR_COLOR_EVENT, 'rgb(246, 246, 246)');
+  assert.equal(applied.length, count, 'the same color is not repainted');
+  for (const [frame, channel, args] of [
+    [{}, DESKTOP_TITLEBAR_COLOR_EVENT, ['rgb(1, 2, 3)']],
+    [contents.mainFrame, 'mioon:window-chrome:synthetic', ['rgb(1, 2, 3)']],
+    [contents.mainFrame, DESKTOP_TITLEBAR_COLOR_EVENT, ['synthetic']],
+    [contents.mainFrame, DESKTOP_TITLEBAR_COLOR_EVENT, ['rgb(1, 2, 3)', 'rgb(4, 5, 6)']],
+  ] as Array<[object, string, unknown[]]>) contents.emit('ipc-message', {senderFrame: frame}, channel, ...args);
+  assert.equal(applied.length, count);
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_TITLEBAR_COLOR_EVENT, '#141518');
+  assert.deepEqual(applied.at(-1), {color: '#141518', symbolColor: '#ECEDEF', height: 44});
+  release();
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_TITLEBAR_COLOR_EVENT, '#FFFFFF');
+  assert.equal(applied.length, 2);
+  assert.deepEqual(window.eventNames(), []);
+  assert.deepEqual(contents.eventNames(), []);
 });
 
 test('the measured native controls share the top bar center, outer inset and brand gap', () => {

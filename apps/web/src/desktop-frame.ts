@@ -1,4 +1,5 @@
 import {macWindowChrome, WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-window-chrome.ts';
+import {installWindowsTitleBarColor, reportWindowsTitleBarColor} from './windows-title-bar-color.ts';
 
 export type DesktopFrame = 'mac-inset' | 'win-overlay';
 
@@ -63,6 +64,8 @@ export function applyDesktopFrame(root: FrameRoot, userAgent: string = '', scale
   apply();
   overlay?.addEventListener?.('geometrychange', apply);
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('resize', apply);
+  installWindowsTitleBarColor();
+  reportWindowsTitleBarColor();
 }
 
 function isDesktopUiScale(value: number): boolean {

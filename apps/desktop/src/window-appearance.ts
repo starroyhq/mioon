@@ -34,12 +34,7 @@ export function createDesktopWindowAppearance<W extends Window>(options:Options<
   background=desktopWindowBackground(scope!==null&&scope===themeScope?appTheme:'system',nativeTheme);
   for(const window of options.getWindows()){
    if(!current())return;
-   try{
-    if(options.ownsWindow(window)&&!window.isDestroyed()){
-     window.setBackgroundColor(background);
-     options.onBackground?.(window,background);
-    }
-   }catch{/* A closed native window cannot block the remaining owned windows. */}
+   try{if(options.ownsWindow(window)&&!window.isDestroyed())window.setBackgroundColor(background);}catch{/* A closed native window cannot block the remaining owned windows. */}
   }
  }
  function readPreferences():Promise<void> {

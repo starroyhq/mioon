@@ -5,13 +5,13 @@ import {createHash} from 'node:crypto';
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {App, BrowserWindow, NativeImage} from 'electron';
-import {desktopCapturer, screen} from 'electron';
-import {WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-window-chrome.ts';
+import {desktopCapturer, nativeImage, screen} from 'electron';
+import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-window-chrome.ts';
 
 export const WINDOWS_TITLEBAR_SCENARIOS = Object.freeze(['normal-light', 'normal-dark', 'maximized-light',
   'maximized-dark', 'dpi-125', 'dpi-150'] as const);
 export type WindowsTitleBarScenario = typeof WINDOWS_TITLEBAR_SCENARIOS[number];
-export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES = Object.freeze(['launcher-ready', 'theme', 'appearance', 'maximize', 'settle', 'facts', 'capture', 'write'] as const);
+export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES = Object.freeze(['launcher-ready', 'theme', 'appearance', 'maximize', 'settle', 'facts', 'capture', 'verify-band', 'write'] as const);
 type ScreenshotPhase = typeof WINDOWS_TITLEBAR_SCREENSHOT_PHASES[number];
 export interface WindowsTitleBarScreenshotOptions {
   app: App;
@@ -34,6 +34,7 @@ interface TitleBarFacts {
   barHeight: number;
   trailing: number;
   barPaddingLeft: number;
+  innerHeight: number;
 }
 const record = (value: unknown): Record<string, unknown> => {
   assert.ok(value && typeof value === 'object' && !Array.isArray(value));
@@ -97,7 +98,7 @@ async function readFacts(window: BrowserWindow): Promise<TitleBarFacts> {
     return {
       frame: document.documentElement.dataset.desktopFrame || null,
       theme: document.documentElement.dataset.theme || null,
-      innerWidth: window.innerWidth,
+      innerWidth: window.innerWidth, innerHeight: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio,
       overlay: {visible: Boolean(overlay && overlay.visible === true), right: rect ? rect.right : 0},
       barHeight: bar ? bar.getBoundingClientRect().height : 0,
@@ -125,6 +126,25 @@ async function capture(window: BrowserWindow, title: string): Promise<{png: Buff
   assert.ok(png.length > 0, 'The screenshot capture produced no bytes');
   return {png, source: 'content'};
 }
+/** The caption band is painted by the OS with the color the page reported; the
+ * two pixels beside its left edge must therefore be the same rendered color. */
+function bandColorDelta(png: Buffer, facts: TitleBarFacts): number {
+  const image = nativeImage.createFromBuffer(png);
+  const size = image.getSize(), bitmap = image.toBitmap();
+  assert.ok(size.width > 0 && size.height > 0 && bitmap.length === size.width * size.height * 4, 'The screenshot bitmap is not RGBA');
+  const scaleX = size.width / facts.innerWidth, scaleY = size.height / facts.innerHeight;
+  const xInside = Math.round((facts.overlay.right + 8) * scaleX);
+  const xOutside = Math.round((facts.overlay.right - 8) * scaleX);
+  const y = Math.round((WINDOWS_WINDOW_CHROME.topbarHeight - 6) * scaleY);
+  assert.ok(xInside >= 0 && xInside < size.width && xOutside >= 0 && xOutside < size.width && y >= 0 && y < size.height, 'The band comparison point is outside the capture');
+  const pixel = (x: number): number[] => {
+    const offset = (y * size.width + x) * 4;
+    return [bitmap[offset]!, bitmap[offset + 1]!, bitmap[offset + 2]!];
+  };
+  const inside = pixel(xInside), outside = pixel(xOutside);
+  return Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!));
+}
+
 /** Runs one screenshot scenario, writes the fixed PNG and a fixed JSON record,
  * then returns so the caller can quit the application. */
 export async function runWindowsTitleBarScreenshot({app, getWindow, output, screenshot, scenario, theme, maximized, scale, refreshAppearance}: WindowsTitleBarScreenshotOptions): Promise<void> {
@@ -168,6 +188,9 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
     assert.equal(window.isMaximized(), maximized);
     phase = 'capture';
     const {png, source} = await capture(window, window.getTitle());
+    phase = 'verify-band';
+    const bandDelta = bandColorDelta(png, facts);
+    assert.ok(bandDelta <= WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, `Caption band color differs from the page by ${bandDelta}`);
     phase = 'write';
     await mkdir(path.dirname(screenshot), {recursive: true});
     await writeFile(screenshot, png);
@@ -176,7 +199,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
     await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: true, scenario,
       platform: 'win32', arch: 'x64', isPackaged: true, theme, scale, maximized, frame: facts.frame,
       devicePixelRatio: facts.devicePixelRatio, overlay: {visible: facts.overlay.visible, right: facts.overlay.right},
-      innerWidth: facts.innerWidth, barHeight: facts.barHeight, trailing: facts.trailing,
+      innerWidth: facts.innerWidth, barHeight: facts.barHeight, trailing: facts.trailing, bandColorDelta: bandDelta,
       screenshot: {bytes: png.length, sha256, source}}, null, 2) + '\n');
   } catch {
     await writeFailure();

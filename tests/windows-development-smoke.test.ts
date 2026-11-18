@@ -95,10 +95,10 @@ test('title bar screenshot records require the fixed overlay geometry and window
   const report = (overrides: Record<string, unknown> = {}) => ({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: true,
     scenario: scenario.name, platform: 'win32', arch: 'x64', isPackaged: true, theme: 'light', scale: 1, maximized: false,
     frame: 'win-overlay', devicePixelRatio: 1, overlay: {visible: true, right: 1302}, innerWidth: 1440, barHeight: 44,
-    trailing: 138, screenshot: {bytes: 24576, sha256: 'a'.repeat(64), source: 'window'}, ...overrides});
+    trailing: 138, bandColorDelta: 0, screenshot: {bytes: 24576, sha256: 'a'.repeat(64), source: 'window'}, ...overrides});
   const validated = validateWindowsTitleBarScreenshot(report(), scenario);
   assert.deepEqual(validated, {name: scenario.name, theme: 'light', scale: 1, maximized: false, frame: 'win-overlay',
-    devicePixelRatio: 1, overlay: {visible: true, right: 1302}, innerWidth: 1440, barHeight: 44, trailing: 138,
+    devicePixelRatio: 1, overlay: {visible: true, right: 1302}, innerWidth: 1440, barHeight: 44, trailing: 138, bandColorDelta: 0,
     screenshot: {bytes: 24576, sha256: 'a'.repeat(64), source: 'window'}});
   assert.notEqual(validated, report());
   const invalid: Array<Record<string, unknown>> = [
@@ -106,6 +106,7 @@ test('title bar screenshot records require the fixed overlay geometry and window
     report({devicePixelRatio: 1.1}), report({devicePixelRatio: 1.25}), report({overlay: {visible: false, right: 1302}}),
     report({overlay: {visible: true, right: 1302, extra: 1}}), report({overlay: {visible: true, right: 2000}}),
     report({innerWidth: 100}), report({barHeight: 43}), report({trailing: 100}), report({trailing: 200}),
+    report({bandColorDelta: 9}), report({bandColorDelta: -1}), report({bandColorDelta: 1.5}), report({bandColorDelta: '0'}),
     report({screenshot: {bytes: 1024, sha256: 'a'.repeat(64), source: 'window'}}),
     report({screenshot: {bytes: 24576.5, sha256: 'a'.repeat(64), source: 'window'}}),
     report({screenshot: {bytes: 24576, sha256: 'A'.repeat(64), source: 'window'}}),

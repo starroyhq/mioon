@@ -5,7 +5,7 @@ import path from 'node:path';
 import {promisify} from 'node:util';
 import {createRequire} from 'node:module';
 import {argumentsFor, isMain} from './media-environment.ts';
-import {WINDOWS_WINDOW_CHROME} from '../../packages/contracts/src/desktop-window-chrome.ts';
+import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../packages/contracts/src/desktop-window-chrome.ts';
 
 const paths = path.win32;
 export const WINDOWS_SMOKE_TIMEOUT_MS = 180000;
@@ -160,7 +160,7 @@ export interface WindowsTitleBarScreenshotScenario {
   readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number; readonly maximized: boolean;
 }
 export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.freeze(['launcher-ready', 'theme', 'appearance',
-  'maximize', 'settle', 'facts', 'capture', 'write']);
+  'maximize', 'settle', 'facts', 'capture', 'verify-band', 'write']);
 /** The packaged app writes this fixed failure shape when a screenshot step
  * assertion fails; only the shared phase name crosses the boundary. */
 export function screenshotCheckFailureName(value: unknown): string | undefined {
@@ -185,7 +185,7 @@ export const WINDOWS_TITLEBAR_SCENARIOS: readonly WindowsTitleBarScreenshotScena
 export interface WindowsTitleBarScreenshot {readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number;
   readonly maximized: boolean; readonly frame: 'win-overlay'; readonly devicePixelRatio: number;
   readonly overlay: {readonly visible: true; readonly right: number}; readonly innerWidth: number;
-  readonly barHeight: number; readonly trailing: number;
+  readonly barHeight: number; readonly trailing: number; readonly bandColorDelta: number;
   readonly screenshot: {readonly bytes: number; readonly sha256: string; readonly source: 'window' | 'content'}}
 export interface WindowsTitleBarScreenshotsReport {schemaVersion: 1; scope: 'windows-titlebar-screenshots'; ok: boolean;
   scenarios: WindowsTitleBarScreenshot[]}
@@ -195,7 +195,7 @@ interface WindowsTitleBarScreenshotDiagnostic {schemaVersion: 1; scope: 'windows
  * returns a detached copy without raw paths. */
 export function validateWindowsTitleBarScreenshot(value: unknown, scenario: WindowsTitleBarScreenshotScenario): WindowsTitleBarScreenshot {
   const keys = ['schemaVersion', 'scope', 'ok', 'scenario', 'platform', 'arch', 'isPackaged', 'theme', 'scale', 'maximized', 'frame',
-    'devicePixelRatio', 'overlay', 'innerWidth', 'barHeight', 'trailing', 'screenshot'];
+    'devicePixelRatio', 'overlay', 'innerWidth', 'barHeight', 'trailing', 'bandColorDelta', 'screenshot'];
   if (!record(value) || !exactKeys(value, keys) || value.schemaVersion !== 1 || value.scope !== 'windows-titlebar-screenshot' ||
       value.ok !== true || value.scenario !== scenario.name || value.platform !== 'win32' || value.arch !== 'x64' || value.isPackaged !== true ||
       value.theme !== scenario.theme || value.scale !== scenario.scale || value.maximized !== scenario.maximized || value.frame !== 'win-overlay' ||
@@ -205,13 +205,15 @@ export function validateWindowsTitleBarScreenshot(value: unknown, scenario: Wind
       typeof value.innerWidth !== 'number' || !Number.isFinite(value.innerWidth) || value.innerWidth <= value.overlay.right ||
       value.barHeight !== WINDOWS_WINDOW_CHROME.topbarHeight ||
       typeof value.trailing !== 'number' || Math.abs(value.trailing - (value.innerWidth - value.overlay.right)) > 1 ||
+      typeof value.bandColorDelta !== 'number' || !Number.isSafeInteger(value.bandColorDelta) || value.bandColorDelta < 0 ||
+      value.bandColorDelta > WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE ||
       !record(value.screenshot) || !exactKeys(value.screenshot, ['bytes', 'sha256', 'source']) ||
       !Number.isSafeInteger(value.screenshot.bytes) || (value.screenshot.bytes as number) < 20000 || (value.screenshot.bytes as number) > 64 * 1024 * 1024 ||
       typeof value.screenshot.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(value.screenshot.sha256) ||
       (value.screenshot.source !== 'window' && value.screenshot.source !== 'content')) fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');
   return {name: scenario.name, theme: scenario.theme, scale: scenario.scale, maximized: scenario.maximized, frame: 'win-overlay',
     devicePixelRatio: value.devicePixelRatio, overlay: {visible: true, right: value.overlay.right}, innerWidth: value.innerWidth,
-    barHeight: value.barHeight, trailing: value.trailing,
+    barHeight: value.barHeight, trailing: value.trailing, bandColorDelta: value.bandColorDelta as number,
     screenshot: {bytes: value.screenshot.bytes as number, sha256: value.screenshot.sha256 as string, source: value.screenshot.source}};
 }
 interface FileObservation {file: boolean; directory: boolean; link: boolean; size: number; canonical: string}
