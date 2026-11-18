@@ -214,7 +214,7 @@
 
 /* Match the existing mac-inset title-bar contract without changing other hosts. */
 :root[data-desktop-frame="mac-inset"] .project-home-settings-window .project-home-header {
-  padding-left: 88px;
+  padding-left: var(--mac-titlebar-leading);
   -webkit-app-region: drag;
 }
 :root[data-desktop-frame="mac-inset"] .project-home-settings-window .project-home-header :is(a, button, input, select, textarea, [role="tablist"], [role="button"], [tabindex]:not([tabindex="-1"]), summary) {

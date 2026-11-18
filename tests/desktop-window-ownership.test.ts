@@ -278,7 +278,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
         this.diagnosticsAvailable = false;
       }
     },
-    BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'), settingsWindowOptions,
+    BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'), settingsWindowOptions, installWindowChrome: () => {},
     screen: {getAllDisplays: () => [{workArea: {x: 0, y: 0, width: 1920, height: 1080}}]},
     createLauncherWindowState: (userData: string, workAreas: () => readonly WindowBounds[]) => {
       assert.equal(userData, '/synthetic/userData');

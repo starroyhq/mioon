@@ -11,6 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { transformSync } from 'esbuild';
 import * as contracts from '../packages/contracts/src/ui-preferences.ts';
 import * as appearance from '../apps/web/src/ui-appearance.ts';
+import * as desktopFrame from '../apps/web/src/desktop-frame.ts';
+import {macWindowChrome} from '../packages/contracts/src/desktop-window-chrome.ts';
 import * as preferenceSync from '../apps/web/src/ui-preferences-sync.ts';
 import { UiPreferencesRequestError } from '../apps/web/src/ui-preferences-client.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
@@ -53,7 +55,7 @@ function broadcastHub({ echo = false, failPost = false } = {}) {
 
 // Execute the actual Provider's hooks and client callbacks. This deliberately
 // does not stand in for the separate real-browser OS emulation acceptance.
-function fixture({ saved = snapshot(), systemDark = false, read, write, opened, hasMatchMedia = true, hub }: {saved?: UiPreferencesResponse; systemDark?: boolean; read?(count: number): unknown; write?(input: UiPreferencesPut, count: number): unknown; opened?(projectId: string, count: number): unknown; hasMatchMedia?: boolean; hub?: {BroadcastChannel: unknown}} = {}) {
+function fixture({ saved = snapshot(), systemDark = false, read, write, opened, hasMatchMedia = true, hub, userAgent = 'ordinary browser' }: {saved?: UiPreferencesResponse; systemDark?: boolean; read?(count: number): unknown; write?(input: UiPreferencesPut, count: number): unknown; opened?(projectId: string, count: number): unknown; hasMatchMedia?: boolean; hub?: {BroadcastChannel: unknown}; userAgent?: string} = {}) {
   const slots: RootHook[] = [], media = mediaQuery(systemDark), root = rootElement(), writes: UiPreferencesPut[] = [], reads: null[] = [], queries: string[] = [], opens: string[] = [];
   let cursor = 0, layout: number[] = [], passive: number[] = [], tree: UiTree;
   const sameDeps = (a?: readonly unknown[] | undefined, b?: readonly unknown[] | undefined) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
@@ -86,14 +88,15 @@ function fixture({ saved = snapshot(), systemDark = false, read, write, opened, 
     removeEventListener(type: string, listener: () => void) { listeners.get(type)?.delete(listener); },
   };
   const module = { exports: {} as {UiPreferencesProvider(props: Record<string, unknown>): UiTree} };
-  Function('require', 'module', 'exports', 'document', 'window', 'crypto', code)((name: string) => {
+  Function('require', 'module', 'exports', 'document', 'window', 'crypto', 'navigator', code)((name: string) => {
     if (name === 'react') return react;
     if (name.endsWith('/ui-preferences.ts')) return contracts;
     if (name === './ui-appearance.ts') return appearance;
+    if (name === './desktop-frame.ts') return desktopFrame;
     if (name === './ui-preferences-sync.ts') return preferenceSync;
     if (name === './ui-preferences-client.ts') return { UiPreferencesRequestError, createUiPreferencesClient: () => assert.fail('supplied client must be used') };
     assert.fail(`Unexpected provider import ${name}`);
-  }, module, module.exports, { documentElement: root }, window, { randomUUID });
+  }, module, module.exports, { documentElement: root }, window, { randomUUID }, {userAgent});
   const run = (queue: number[]) => { for (const index of queue) { const slot = slots[index]; slot.cleanup?.(); slot.cleanup = slot.callback!(); } };
   const f = {
     root, media, reads, writes, queries, opens, client, window: window as typeof window & {
@@ -117,6 +120,23 @@ function assertTheme(f: ReturnType<typeof fixture>, resolved: 'dark' | 'light', 
   assert.equal(f.root.style.colorScheme, resolved);
   assert.equal(f.state.resolvedTheme, resolved);
 }
+
+test('native Mac chrome follows the existing scale preview and discard', async t => {
+  const f = fixture({userAgent: 'Macintosh Electron/44.7.0'});
+  t.after(f.unmount);
+  await f.ready();
+  assert.equal(f.root.dataset.desktopFrame, 'mac-inset');
+  assert.equal(f.root.style.properties['--mac-titlebar-inset'], `${macWindowChrome().leadingInset}px`);
+  f.state.edit({scalePercent: 125});
+  f.render();
+  assert.equal(f.root.style.zoom, '1.25');
+  assert.equal(f.root.style.properties['--mac-titlebar-inset'], `${macWindowChrome(1.25).leadingInset}px`);
+  f.state.discard();
+  f.render();
+  assert.equal(f.root.style.zoom, '1');
+  assert.equal(f.root.style.properties['--mac-titlebar-inset'], `${macWindowChrome().leadingInset}px`);
+  assert.equal(f.writes.length, 0);
+});
 
 test('settings keep the skeleton theme while the first authoritative read is pending', async () => {
   const read = deferred(), f = fixture({read: () => read.promise});
