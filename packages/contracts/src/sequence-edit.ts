@@ -553,12 +553,13 @@ export interface SequenceEditReceipt {
   readonly timelineRevision: number;
   readonly syncRevision: number;
 }
-const historyActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema}).strict();
-const historyViewSchema = z.object({
+export const sequenceEditHistoryActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema}).strict();
+const historyActionSchema = sequenceEditHistoryActionSchema;
+export const sequenceEditHistoryViewSchema = z.object({
   epoch: uuidSchema, position: sequenceSchema, revision: revisionSchema,
   undo: historyActionSchema.nullable(), redo: historyActionSchema.nullable(),
 }).strict();
-const countsSchema = z.object({
+export const sequenceEditAffectedCountsSchema = z.object({
   nodes: sequenceSchema, edges: sequenceSchema, mainTrackClips: sequenceSchema,
   otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema,
 }).strict();
@@ -568,7 +569,7 @@ export const sequenceEditReceiptSchema = z.object({
   projectId: uuidSchema, actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes),
   originSide: z.enum(SEQUENCE_EDIT_SIDES), status: z.enum(['applied', 'not_applied']),
   code: z.string().min(1).max(SEQUENCE_EDIT_LIMITS.operationBytes).optional(),
-  affected: countsSchema, history: historyViewSchema,
+  affected: sequenceEditAffectedCountsSchema, history: sequenceEditHistoryViewSchema,
   contentRevision: sequenceSchema, timelineRevision: revisionSchema, syncRevision: revisionSchema,
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
   'Only a not-applied receipt carries an error code');
