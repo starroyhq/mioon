@@ -4,15 +4,29 @@ import {projectIdSchema} from './project-file.ts';
 const revision = z.number().int().safe().nonnegative();
 const version = revision.positive();
 
+/** K5a kernels only knew the 3 -> 4 upgrade; format 5 adds 3/4 -> 5. The
+ * source/target pair is explicit so a confirmed preview cannot be replayed
+ * against a different destination format. */
 export const projectFormatUpgradePreviewSchema = z.object({
   projectId: projectIdSchema,
   contentSequence: revision,
   contentToken: z.string().regex(/^[0-9a-f]{32}$/u),
-  projectVersion: z.literal(3),
+  projectVersion: z.union([z.literal(3), z.literal(4)]),
   historyVersion: version.nullable(),
-  targetProjectVersion: z.literal(4),
+  targetProjectVersion: z.union([z.literal(4), z.literal(5)]),
   targetHistoryVersion: version,
-}).strict();
+}).strict().superRefine((value, context) => {
+  const expectedHistory = value.targetProjectVersion === 4 ? 12 : 13;
+  if (value.targetHistoryVersion !== expectedHistory) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'Target project and history versions must pair', path: ['targetHistoryVersion']});
+  }
+  if (value.projectVersion >= value.targetProjectVersion) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'An upgrade must advance the project format', path: ['targetProjectVersion']});
+  }
+  if (value.historyVersion !== null && value.historyVersion >= expectedHistory) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'An upgrade must advance the history format', path: ['historyVersion']});
+  }
+});
 export type ProjectFormatUpgradePreview = z.infer<typeof projectFormatUpgradePreviewSchema>;
 export function projectFormatUpgradeFromError(error: unknown): ProjectFormatUpgradePreview | null {
   if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'PROJECT_FORMAT_UPGRADE_REQUIRED' || !('details' in error)) return null;

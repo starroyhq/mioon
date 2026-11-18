@@ -41,6 +41,8 @@ import {readSceneSplitCuts} from './scene-history.ts';
 import type {TimelineShotAppendPlan,TimelineSourceRefreshPlan} from './timeline-shot-sync.ts';
 import {createTimelineRecoveryBoundary as legacyRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse as legacyAdmitImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
+import type {Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {TimelineClipRecord,TimelineRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 import type {TimelineRecoveryBoundary,TimelineRecoveryInput,TimelineRejectionState} from './timeline-recovery.ts';
 import type {ReplacementInput} from './timeline-replacement.ts';
@@ -160,8 +162,16 @@ export function restoreProjectTimelineInside(store: ProjectStore, desired: Timel
  const revision=Math.max(current?.revision??0,current?0:desired.revision,ledger);
  if(!Number.isSafeInteger(revision)||revision>=Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
  const timeline={...desired,revision:revision+1,updatedAt:now,...(current?{createdAt:current.createdAt}:{})};
- const boundary=legacyRecoveryBoundary(store.db,{projectId:store.projectId,requestId});
- boundary.validate(timeline);legacyAdmitImageResponse(timeline);
+ if(format5){
+  // Native rows admit placeholder clips without a managed asset; the legacy
+  // media boundary would reject them. The put path and commit fence validate
+  // the whole format-5 aggregate, including anchors and native row identity.
+  const issue=getFormat5TimelineIssue(timeline as unknown as Format5Timeline,{projectId:store.projectId});
+  if(issue)throw new AppError(issue.code,issue.message,422,{database:'project',reason:'metadata'});
+ }else{
+  const boundary=legacyRecoveryBoundary(store.db,{projectId:store.projectId,requestId});
+  boundary.validate(timeline);legacyAdmitImageResponse(timeline);
+ }
  const before=current?editableTimelineSnapshot(current,true):{tracks:[],clips:[],durationFrames:0,format:timelineFrame(timeline)};
  const after=editableTimelineSnapshot(timeline,true);
  admitTimelineVolumeEnvelopeWrite(timeline,{before,after,related:{projectId:store.projectId,requestId}});

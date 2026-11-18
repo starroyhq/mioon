@@ -738,13 +738,24 @@ export function withFormat4RestoreLocks<T>(inputs: readonly Format4RestoreLockIn
 export function inspectLockedFormat4RestoreSource(db: DatabaseSync, database: 'project' | 'history', projectId: string): ProjectFormatIdentity | null {
   if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid(database, 'encoding', projectId);
   if (database === 'project') {
-    const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), FORMAT4_PROJECT_SCHEMA_VERSION);
+    const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), FORMAT5_PROJECT_SCHEMA_VERSION);
     checkProjectStructure(db, 'main', formatVersion, projectId);
     const identity = readProjectIdentity(db, 'main');
     if (identity.projectId !== projectId) throw invalid(database, 'project-mismatch', projectId);
     return {...identity, formatVersion};
   }
-  checkHistoryStructure(db, projectId, true);
+  // A restore can run while the current pair is 3, 4 or 5; the staged backup
+  // itself is validated against the exact source manifest it was made from.
+  const versionRows = db.prepare('SELECT version FROM main.schema_version').all();
+  const version = versionRows.length === 1 ? versionRows[0]?.version : undefined;
+  const historyManifest = typeof version === 'number'
+    ? historyManifestForVersion(version) ?? HISTORY_UPGRADES.find(upgrade => upgrade.from.version === version)?.from
+    : undefined;
+  if (!historyManifest) throw invalid(database, 'schema-version', projectId);
+  checkStructure(db, 'main', 'history', projectId, historyManifest);
+  if (version === FORMAT5_HISTORY_SCHEMA_VERSION) {
+    try { assertEditorStorageCounters(db); } catch { throw invalid('history', 'metadata', projectId); }
+  }
   const row = db.prepare('SELECT projectId FROM main.history_state WHERE singleton=1').get();
   if (row?.projectId !== projectId) throw invalid(database, 'project-mismatch', projectId);
   return null;

@@ -13,7 +13,7 @@ const contentToken = z.string().regex(/^[a-f0-9]{32}$/u);
  * restore targets. The snapshot inventory test checks this independently. */
 export const PROJECT_VERSION_CONTENT_TABLES = Object.freeze([
   'projects', 'assets', 'asset_annotations', 'asset_dispositions', 'asset_ranges', 'shots', 'nodes', 'edges', 'versions',
-  'timelines', 'subjects', 'subject_versions', 'subject_bindings', 'image_groups', 'image_versions', 'scene_results', 'project_lut_resources',
+  'timelines', 'timeline_clips', 'timeline_cues', 'shot_version_adoptions', 'sequence_sync_state', 'subjects', 'subject_versions', 'subject_bindings', 'image_groups', 'image_versions', 'scene_results', 'project_lut_resources',
 ] as const);
 
 /** These are project-level operations. Automatic capture stays internal; callers
