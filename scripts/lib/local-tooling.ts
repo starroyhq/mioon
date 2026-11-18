@@ -14,11 +14,12 @@ import {mediaEnvironment} from '../../packages/business/src/media-environment.ts
 import {run as runMedia} from '../../packages/business/src/media-runtime.ts';
 
 export type ToolingCommand = 'doctor' | 'build' | 'test' | 'typecheck';
+export type TestSuite = 'portable' | 'full' | 'full-darwin';
 export interface ParsedArguments {
   readonly command: ToolingCommand;
   channel: DesktopChannel;
   concurrency: number;
-  suite: 'portable' | 'full';
+  suite: TestSuite;
   files: string[];
   nativeReady: boolean;
   reporter?: 'tap' | 'spec';
@@ -74,7 +75,7 @@ export interface PreflightOptions {
   arch?: string;
   packageManagerEnvironment?: NodeJS.ProcessEnv;
 }
-export interface DiscoverTestsOptions {suite?: 'portable' | 'full'; files?: readonly string[]; platform?: NodeJS.Platform}
+export interface DiscoverTestsOptions {suite?: TestSuite; files?: readonly string[]; platform?: NodeJS.Platform}
 export interface ExecuteCommandOptions {
   env?: NodeJS.ProcessEnv;
   spawnChild?: typeof spawn;
@@ -118,7 +119,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     else if (key === '--compile-cache' && flag === key && command === 'test') result.compileCache = true;
     else if (key === '--timings' && command === 'test' && TIMINGS_PATH.test(value)) result.timings = value;
     else if (key === '--concurrency' && command === 'test' && /^[1-4]$/.test(value)) result.concurrency = Number(value);
-    else if (key === '--suite' && command === 'test' && ['portable', 'full'].includes(value)) result.suite = value as 'portable' | 'full';
+    else if (key === '--suite' && command === 'test' && ['portable', 'full', 'full-darwin'].includes(value)) result.suite = value as TestSuite;
     else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(value) && !result.files.includes(value)) result.files.push(value);
     else throw fail('TOOLING_USAGE', 'Unknown or invalid tooling option. See docs/PORTABLE-TOOLING.md.');
   }
@@ -143,6 +144,17 @@ export function toolingEnvironment(source: NodeJS.ProcessEnv = process.env, {pla
     if (typeof source[key] === 'string' && source[key]) result[key] = source[key];
   }
   return result;
+}
+/** The canonical macOS private temp root used by test children. The default
+ * `/var/folders/...` TMPDIR traverses the `/var` symlink, which the reviewed
+ * private-storage path policy rejects; `/private/tmp` is a real directory and
+ * is also the fixed root used by the Linux Docker gate. */
+export const MACOS_TEST_TMPDIR = '/private/tmp';
+export function testEnvironment(source: NodeJS.ProcessEnv = process.env,
+  {platform = process.platform, mediaPaths = true}: {platform?: NodeJS.Platform; mediaPaths?: boolean} = {}): Record<string, string> {
+  const environment = toolingEnvironment(source, {platform, mediaPaths});
+  if (platform === 'darwin') environment.TMPDIR = MACOS_TEST_TMPDIR;
+  return environment;
 }
 
 export function isContainedPath(parent: string, child: string, paths: typeof path = path): boolean {
@@ -214,11 +226,16 @@ export async function installedTypeScript(root: string): Promise<{readonly versi
 export async function typecheckCommands(root: string, execPath: string = process.execPath): Promise<CommandSpec[]> {
   await verifySourceLanguages(root);
   const compiler = await installedTypeScript(root);
-  // The complete strict tests graph is close to 4 GiB and has exhausted that
-  // budget on Linux. Give only that project 512 MiB of additional headroom;
-  // keep all compiler budgets fixed and local, without accepting NODE_OPTIONS.
-  return ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'].map(project => ({
-    command: execPath, args: [`--max-old-space-size=${project === 'tests/tsconfig.tests.json' ? 4608 : 4096}`, compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
+  // The complete tests catalog is split into two reviewed strict projects so
+  // every compiler stays inside a fixed 4 GiB budget. Each child gets that
+  // local budget independently of caller-provided NODE_OPTIONS.
+  return ([
+    ['tests/typecheck/tsconfig.foundation.json', 4096],
+    ['tests/typecheck/tsconfig.browser.json', 4096],
+    ['tests/tsconfig.tests-runtime.json', 4096],
+    ['tests/tsconfig.tests-media.json', 4096],
+  ] as const).map(([project, heap]) => ({
+    command: execPath, args: [`--max-old-space-size=${heap}`, compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
   }));
 }
 
@@ -372,8 +389,12 @@ export async function preflight(root: string, {channel = 'development', media = 
 }
 
 export async function discoverTests(root: string, {suite = 'portable', files = [], platform = process.platform}: DiscoverTestsOptions = {}): Promise<string[]> {
-  if (!['portable', 'full'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
-  if (suite === 'full' && platform !== 'linux') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full suite contains Linux/native storage assumptions. Run the reviewed portable lane; native platform validation remains required.');
+  if (!['portable', 'full', 'full-darwin'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
+  // The complete catalog has native storage assumptions that are reviewed for
+  // each platform separately: Linux keeps `full`, macOS must use the explicit
+  // `full-darwin` entry, and neither suite silently runs on the other platform.
+  if (suite === 'full' && platform !== 'linux') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full suite is Linux-only. On macOS use the explicit full-darwin suite; native platform validation remains required.');
+  if (suite === 'full-darwin' && platform !== 'darwin') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full-darwin suite is macOS-only. On Linux use the full suite.');
   // Current suites use TypeScript. Retained explicit .mjs selections may name
   // their .ts successor, without widening the reviewed portable allowlist.
   const available = (await readdir(path.join(root, 'tests'), {withFileTypes: true}))

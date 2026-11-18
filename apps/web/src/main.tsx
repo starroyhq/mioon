@@ -18,7 +18,7 @@ import './project-home.css';
 import './settings-center.css';
 import './viewport-scale.css';
 import { TooltipProvider } from '@mioon/ui/components/tooltip';
-import { desktopFrame } from './desktop-frame.ts';
+import { applyDesktopFrame } from './desktop-frame.ts';
 import type { LauncherSettingsProps } from './LauncherRoot.tsx';
 import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
 import type { NativeProjectEntryActions } from './native-project-entry.ts';
@@ -31,8 +31,7 @@ interface NativeAppProps {
 }
 const NativeApp = App as unknown as (props: NativeAppProps) => React.ReactElement;
 
-const frame = desktopFrame(navigator.userAgent);
-if (frame) document.documentElement.dataset.desktopFrame = frame;
+applyDesktopFrame(document.documentElement, navigator.userAgent);
 
 const launcherContracts: LauncherContractChecks = { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value), isDefinitiveCreateRejection: (error: unknown) => error instanceof ApiError && (error as ApiErrorWithDefinitive).definitive === true };
 const launcherRpc = rpc as unknown as LauncherRpc;

@@ -18,7 +18,7 @@
 }
 
 .launcher-home-titlebar { flex: none; height: 48px; margin-inline: -12px; }
-:root[data-desktop-frame="mac-inset"] .launcher-home-titlebar { -webkit-app-region: drag; }
+:root[data-desktop-frame="mac-inset"] .launcher-home-titlebar { height: var(--wb-topbar); -webkit-app-region: drag; }
 
 .launcher-home-brand { display: flex; align-items: center; gap: 14px; padding: 10px 10px 24px; }
 .launcher-home-brand > img { flex: none; border-radius: 8px; }

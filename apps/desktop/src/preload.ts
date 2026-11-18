@@ -2,8 +2,46 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { isLocale } from '../../../packages/i18n/src/locale.ts';
 import { SETTINGS_DIAGNOSTICS_CHANNEL, parseSettingsDiagnosticRequest } from './settings-diagnostics-protocol.ts';
 import type { SettingsDiagnosticsBridge } from './settings-diagnostics-protocol.ts';
+import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale } from '../../../packages/contracts/src/desktop-window-chrome.ts';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
+if (process.isMainFrame && process.platform === 'darwin') {
+  let fullscreen = false;
+  let lastScale: number | undefined;
+  let scaleObserver: MutationObserver | undefined;
+  const applyFullscreen = () => {
+    if (document.documentElement) document.documentElement.dataset.desktopFullscreen = String(fullscreen);
+  };
+  const publishScale = () => {
+    const root = document.documentElement;
+    if (!root) return;
+    const scale = Number(root.style.getPropertyValue('--mioon-ui-scale') || '1');
+    if (!isDesktopChromeScale(scale) || scale === lastScale) return;
+    lastScale = scale;
+    ipcRenderer.send(DESKTOP_CHROME_SCALE_EVENT, scale);
+  };
+  const ready = () => {
+    applyFullscreen();
+    if (!document.documentElement || scaleObserver) return;
+    scaleObserver = new MutationObserver(publishScale);
+    scaleObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['style']});
+    publishScale();
+  };
+  const receiveFullscreen = (_event: unknown, value: unknown) => {
+    if (typeof value !== 'boolean') return;
+    fullscreen = value;
+    applyFullscreen();
+  };
+  ipcRenderer.on(DESKTOP_FULLSCREEN_EVENT, receiveFullscreen);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, {once: true});
+  else ready();
+  window.addEventListener('unload', () => {
+    ipcRenderer.removeListener(DESKTOP_FULLSCREEN_EVENT, receiveFullscreen);
+    document.removeEventListener('DOMContentLoaded', ready);
+    scaleObserver?.disconnect();
+  }, {once: true});
+  applyFullscreen();
+}
 // Display metadata for shortening paths already present in the project list.
 if (process.isMainFrame) {
   const prefix = '--mioon-home-directory=';

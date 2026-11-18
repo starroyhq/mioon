@@ -8,6 +8,8 @@
     ".": "./src/index.ts",
     "./public-operations": "./src/public-operations.ts",
     "./project-entry": "./src/project-entry.ts",
+    "./project-format5": "./src/project-format5.ts",
+    "./sequence-edit": "./src/sequence-edit.ts",
     "./background-task-query": "./src/background-task-query.ts",
     "./project-entry-native": "./src/project-entry-native.ts",
     "./project-entry-desktop": "./src/project-entry-desktop.ts",

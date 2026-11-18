@@ -59,7 +59,7 @@ import type { RendererHealthContents } from './renderer-diagnostics.ts';
 import { exportDesktopDiagnostics } from './diagnostics-export.ts';
 import { SETTINGS_DIAGNOSTICS_CHANNEL, parseSettingsDiagnosticRequest } from './settings-diagnostics-protocol.ts';
 import { createSettingsOpeningDiagnostics } from './settings-opening-diagnostics.ts';
-import { windowChromeOptions } from './window-chrome.ts';
+import { installWindowChrome, windowChromeOptions } from './window-chrome.ts';
 import { createLauncherWindowState } from './launcher-window-state.ts';
 import { settingsWindowOptions } from './settings-window.ts';
 import { createDesktopTray } from './tray-host.ts';
@@ -609,6 +609,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
               [`--mioon-home-directory=${homeDirectory}`],
           },
         });
+        installWindowChrome(window);
         if (launcher) {
           window.on('page-title-updated', (event, pageTitle) => {
             if (pageTitle !== title) event.preventDefault();

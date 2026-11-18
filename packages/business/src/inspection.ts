@@ -8,6 +8,7 @@ import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.ts';
@@ -398,8 +399,13 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       return asset;
     }
     function ownedTimeline(): InspectionRecord|null {
-      const row = db.prepare(`SELECT ${columns('timelines')} FROM timelines WHERE projectId=? LIMIT 1`).get(projectId);
-      return row ? materialize('timelines', row) : null;
+      const snapshot = readTimelineStorage(db, projectId);
+      if (!snapshot) return null;
+      if (++readRecords > INSPECTION_LIMITS.maxReadRecords || (readBytes += Buffer.byteLength(snapshot.raw)) > INSPECTION_LIMITS.maxReadBytes) exhausted();
+      const value: unknown = snapshot.timeline;
+      if (!object(value) || snapshot.id !== value.id || value.projectId !== projectId) unavailable();
+      cache.set(`timelines:${value.id}`, value);
+      return value;
     }
     function timelineDto(timeline: InspectionRecord|null|undefined = ownedTimeline()): Record<string, unknown>|null {
       if (!timeline) return null;

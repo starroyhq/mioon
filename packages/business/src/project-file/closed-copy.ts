@@ -8,6 +8,7 @@ import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {AGENT_TASK_STATUSES} from '../../../contracts/src/agent-tasks-v2.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {isProjectFileHeld} from './held-files.ts';
+import {readTimelineStorage} from './timeline-storage.ts';
 import {assertNoFormat4Restore,inspectProjectFileReadOnly,openClosedProjectSnapshotConnection} from './connection.ts';
 import type {Format4Options} from './connection.ts';
 import {isHotJournal,isSuperJournalInUse,superJournalsIn} from './journals.ts';
@@ -258,15 +259,14 @@ export function readClosedProjectForFormatUpgrade(file: string, projectId: strin
      json_extract(data,'$.duration') AS duration FROM shots WHERE projectId=? ORDER BY orderIndex,id LIMIT ?`).all(projectId,limit+1);
   const nodes=db.prepare(`SELECT id,json_extract(data,'$.label') AS label,json_extract(data,'$.type') AS type
      FROM nodes WHERE projectId=? ORDER BY id LIMIT ?`).all(projectId,limit+1);
-  const timelineRow=db.prepare(`SELECT CASE WHEN length(CAST(data AS BLOB))<=? THEN data END AS data FROM timelines WHERE projectId=?`)
-   .get(16*1024*1024,projectId);
+  const timelineSnapshot=readTimelineStorage(db,projectId,{maxBytes:16*1024*1024});
   const display=(value:unknown, max:number=PROJECT_FORMAT_READ_ONLY_LIMITS.text)=>typeof value==='string'?value.slice(0,max).replace(/[\uD800-\uDBFF]$/u,''):'';
   const projectDescription=display(project.description,2000);
   let truncated=shots.length>limit||nodes.length>limit;
   let timeline:unknown=null;
-  if(timelineRow){
-   if(typeof timelineRow.data!=='string')throw invalid('project','metadata');
-   const {width,height,fps,durationFrames,tracks,clips}=JSON.parse(timelineRow.data);
+  if(timelineSnapshot){
+   if(timelineSnapshot.timeline===null||typeof timelineSnapshot.timeline!=='object')throw invalid('project','metadata');
+   const {width,height,fps,durationFrames,tracks,clips}=timelineSnapshot.timeline as Record<string,unknown>;
    if(!Array.isArray(tracks)||!Array.isArray(clips))throw invalid('project','metadata');
    truncated ||= tracks.length>limit||clips.length>limit;
    timeline={width,height,fps,durationFrames,tracks:tracks.slice(0,limit).map(({id,name,kind})=>({id,name:display(name),kind})),

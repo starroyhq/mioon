@@ -28,5 +28,9 @@ export type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 export {copyProjectBackup, copyProjectToNewFile} from './copy.ts';
 export type {CopyProjectOptions, ProjectCopyResult} from './copy.ts';
 
+export {applyFormat5TimelineEntities, deleteFormat5TimelineInside, insertFormat5TimelineEntitiesInside, putFormat5TimelineInside, readFormat5TimelineRecord, readFormat5TimelineState} from './format5-timeline.ts';
+export type {Format5TimelineEntityPatch, Format5TimelineEntityUpdatePlan} from './format5-timeline.ts';
+export {readTimelineHeaderStorage, readTimelineStorage, timelineStorageChanged, timelineStorageFormat, timelineStorageSchema} from './timeline-storage.ts';
+export type {TimelineHeaderSnapshot, TimelineReadOptions, TimelineStorageSnapshot} from './timeline-storage.ts';
 export {readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
 export type {ContentStamp, ProjectHistoryAdmission} from './content-stamp.ts';

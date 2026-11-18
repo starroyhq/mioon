@@ -21,6 +21,158 @@ SYNTHETIC_FIXTURE = ROOT / 'tests/helpers/browser-inspector-layout-fixture.ts'
 MAC_CHROME = Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 REQUIRED = ('provider-select', 'input-mode-select', 'shot-ratio', 'shot-duration')
 CONFIGURED = (*REQUIRED, 'model-select', 'generation-resolution')
+MAC_ELECTRON_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                   'AppleWebKit/537.36 (KHTML, like Gecko) '
+                   'Chrome/152.0.0.0 Electron/44.7.0 Safari/537.36')
+
+
+def check_topbar(page, state, height, inset, mode, scale=1):
+    bar = page.locator('.workbench-topbar')
+    required = ['.brand', '[data-testid="project-switcher"]',
+                '[data-testid="workspace-canvas"]', '[data-testid="workspace-editing"]',
+                '.topbar-status > summary', '[data-testid="jobs-button"]',
+                '[data-testid="workbench-actions"]', '[data-testid="global-settings-open"]']
+    if mode == 'editing':
+        required.append('[data-testid="export-timeline"]')
+    for selector in required:
+        expect(bar.locator(selector)).to_be_visible()
+    expect(page.get_by_test_id('workbench')).to_have_attribute('data-workspace-mode', mode)
+    measurement = bar.evaluate('''async bar => {
+        await document.fonts.ready;
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const bounds = element => element.getBoundingClientRect().toJSON();
+        const controls = [...bar.querySelectorAll('a, button, summary')].filter(element => {
+            const box = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return box.width > 0 && box.height > 0 && style.visibility !== 'hidden';
+        });
+        return {
+            bar: bounds(bar), padding: parseFloat(getComputedStyle(bar).paddingLeft),
+            brand: bounds(bar.querySelector('.brand')),
+            groups: ['.brand', '[data-testid="project-switcher"]',
+                     '.workbench-topbar-mode', '.topbar-actions'].map(selector => ({
+                name: selector, bounds: bounds(bar.querySelector(selector)),
+            })),
+            controls: controls.map(element => ({
+                name: element.dataset.testid || element.className || element.tagName,
+                bounds: bounds(element),
+            })),
+        };
+    }''')
+    box = measurement['bar']
+    assert abs(box['height'] - height) < 0.05, (state, measurement)
+    assert abs(measurement['padding'] - inset) < 0.01, (state, measurement)
+    assert abs(measurement['brand']['left'] - box['left'] - inset * scale) < 0.05, (state, measurement)
+    for group in measurement['groups']:
+        bounds = group['bounds']
+        assert bounds['width'] > 0 and bounds['height'] > 0, (state, group)
+        assert bounds['left'] >= box['left'] - 0.01 and bounds['right'] <= box['right'] + 0.01, (state, group, box)
+        assert bounds['top'] >= box['top'] - 0.01 and bounds['bottom'] <= box['bottom'] + 0.01, (state, group, box)
+    for one, other in combinations(measurement['groups'], 2):
+        a, b = one['bounds'], other['bounds']
+        overlap = min(a['right'], b['right']) - max(a['left'], b['left'])
+        assert overlap <= 0.01, f"{state}: {one['name']} and {other['name']} overlap by {overlap:.3f}px"
+    center = box['top'] + box['height'] / 2
+    differences = []
+    for control in measurement['controls']:
+        control_box = control['bounds']
+        delta = abs(control_box['top'] + control_box['height'] / 2 - center)
+        differences.append(delta)
+        assert delta < 1, f"{state}: {control['name']} differs from the topbar center by {delta:.3f}px"
+    assert len(differences) >= len(required), (state, measurement)
+    print(f'{state}: {len(differences)} visible controls, largest center difference '
+          f'{max(differences):.3f}px, leading inset {measurement["padding"]:.2f}px')
+
+
+def check_topbar_scale_controls(page, metadata):
+    page.set_viewport_size({'width': 1440, 'height': 900})
+    cases = {case['scale']: case for case in metadata['chromeScaleCases']}
+    # Return the real preference to 100% before opening the other host contexts.
+    for scale in (0.9, 1.25, 1):
+        chrome = cases[scale]
+        percent = round(scale * 100)
+        page.get_by_test_id('global-settings-open').click()
+        appearance = page.get_by_test_id('settings-appearance')
+        expect(appearance).to_be_visible()
+        slider = appearance.get_by_test_id('appearance-scale').get_by_role('slider')
+        expect(slider).to_be_enabled()
+        slider.press('End' if percent == 125 else 'Home')
+        if percent != 125:
+            for _ in range(percent - 90):
+                slider.press('ArrowRight')
+        expect(appearance.locator('.settings-appearance-scale > output')).to_have_text(f'{percent}%')
+        with page.expect_response(lambda response: response.request.method == 'PUT'
+                                  and response.url.endswith('/api/ui-preferences')) as saved:
+            appearance.get_by_test_id('appearance-save').click()
+        assert saved.value.ok, 'The appearance preference did not save'
+        expect(appearance.locator('.settings-appearance-actions > .wb-badge')).to_have_text('已保存')
+        page.get_by_test_id('settings-center-close').click()
+        expect(page.get_by_test_id('web-settings-dialog')).to_be_hidden()
+        page.wait_for_function('scale => Math.abs(parseFloat(getComputedStyle(document.documentElement).zoom) - scale) < 0.0001', arg=scale)
+        expected_inset = ((chrome['position']['x'] - chrome['controlOutset']
+                           + chrome['controlGroupWidth']) / scale + chrome['gap'])
+        assert abs(chrome['leadingInset'] - expected_inset) < 0.0001
+        for mode in ('canvas', 'editing'):
+            page.get_by_test_id('workspace-' + mode).click()
+            label = f'macOS desktop 1440x900 {percent}% {mode}'
+            check_topbar(page, label, chrome['topbarHeight'] * scale, chrome['leadingInset'], mode, scale)
+            page.evaluate("document.documentElement.dataset.desktopFullscreen = 'true'")
+            check_topbar(page, label + ' fullscreen', chrome['topbarHeight'] * scale, chrome['gap'], mode, scale)
+            page.evaluate("document.documentElement.dataset.desktopFullscreen = 'false'")
+            check_topbar(page, label + ' restored', chrome['topbarHeight'] * scale, chrome['leadingInset'], mode, scale)
+
+
+def check_topbar_hosts(browser, metadata, token, fixture_rpc):
+    chrome = metadata['windowChrome']
+    assert chrome['leadingInset'] == (chrome['position']['x'] - chrome['controlOutset']
+                                      + chrome['controlGroupWidth'] + chrome['gap'])
+    origin = metadata['origin']
+    hosts = [
+        ('macOS desktop', MAC_ELECTRON_UA, True),
+        ('Windows desktop', MAC_ELECTRON_UA.replace('Macintosh; Intel Mac OS X 10_15_7',
+                                                 'Windows NT 10.0; Win64; x64'), False),
+        ('Linux desktop', MAC_ELECTRON_UA.replace('Macintosh; Intel Mac OS X 10_15_7',
+                                               'X11; Linux x86_64'), False),
+        ('ordinary browser', MAC_ELECTRON_UA.replace(' Electron/44.7.0', ''), False),
+    ]
+    for host, user_agent, mac in hosts:
+        context = browser.new_context(viewport={'width': 1440, 'height': 900}, user_agent=user_agent,
+                                      locale='zh-CN', reduced_motion='reduce', service_workers='block')
+        try:
+            context.add_init_script("""localStorage.setItem('mioon.app-language.v1', JSON.stringify({version: 1, preference: 'zh-Hans'}))""")
+            assert context.request.post(origin + '/api/login', data={'token': token}).ok, 'Topbar fixture login failed'
+            context.route('**/*', fixture_rpc)
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.goto(origin, wait_until='domcontentloaded')
+            page.get_by_role('button', name=re.compile('^打开.*' + metadata['name'])).click()
+            expect(page.get_by_test_id('workbench')).to_be_visible()
+            frame = page.locator('html')
+            if mac:
+                expect(frame).to_have_attribute('data-desktop-frame', 'mac-inset')
+            else:
+                expect(frame).not_to_have_attribute('data-desktop-frame', 'mac-inset')
+            sizes = [(1440, 900), (1050, 680), (800, 680), (1050, 480)] if mac else [(1440, 900)]
+            for width, height in sizes:
+                page.set_viewport_size({'width': width, 'height': height})
+                if mac and (width <= 800 or height == 480):
+                    expect(page.get_by_test_id('workbench')).to_have_attribute('data-narrow', 'true')
+                for mode in ('canvas', 'editing'):
+                    page.get_by_test_id('workspace-' + mode).click()
+                    label = f'{host} {width}x{height} {mode}'
+                    check_topbar(page, label, chrome['topbarHeight'] if mac else 44,
+                                 chrome['leadingInset'] if mac else 12, mode)
+                    if mac:
+                        page.evaluate("document.documentElement.dataset.desktopFullscreen = 'true'")
+                        check_topbar(page, label + ' fullscreen', chrome['topbarHeight'], chrome['gap'], mode)
+                        page.evaluate("document.documentElement.dataset.desktopFullscreen = 'false'")
+                        check_topbar(page, label + ' restored', chrome['topbarHeight'], chrome['leadingInset'], mode)
+            if mac:
+                check_topbar_scale_controls(page, metadata)
+            assert not errors, f'{host} page errors: {errors}'
+        finally:
+            context.close()
 
 
 def check_layout(inspector, state, controls):
@@ -202,6 +354,7 @@ def run_browser(metadata, token, executable):
         check_layout(inspector, 'MiniMax with an unsupported persisted tail frame', CONFIGURED)
         check_model_badge(inspector)
         assert not page_errors, f'Browser page errors: {page_errors}'
+        check_topbar_hosts(browser, metadata, token, fixture_rpc)
 
 
 def main():

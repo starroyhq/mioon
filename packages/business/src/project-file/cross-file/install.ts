@@ -1,7 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
 import {CONVERTED_TEMP_TRIGGERS} from './converted-triggers.ts';
-import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from './relations.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT5_CROSS_FILE_RELATIONS} from './relations.ts';
 import type {CrossFileRelation} from './relations.ts';
 import {installRestoreScopeFunction} from './restore-admission.ts';
 
@@ -59,12 +59,14 @@ const triggerStatements = (relations: readonly CrossFileRelation[]): readonly st
 ]);
 const STATEMENTS = triggerStatements(CROSS_FILE_RELATIONS);
 const FORMAT4_STATEMENTS = triggerStatements(FORMAT4_CROSS_FILE_RELATIONS);
+const FORMAT5_STATEMENTS = triggerStatements(FORMAT5_CROSS_FILE_RELATIONS);
+type TriggerProfile = boolean | 3 | 4 | 5;
 
 /** Every connection-level trigger of the kernel in creation order: the format-72
  * triggers that cross files, four per cross-file relation, then the
  * content-sequence copy. */
-export function crossFileTriggerStatements(format4 = false): readonly string[] {
-  return format4 ? FORMAT4_STATEMENTS : STATEMENTS;
+export function crossFileTriggerStatements(format4: TriggerProfile = false): readonly string[] {
+  return format4 === 5 ? FORMAT5_STATEMENTS : format4 === true || format4 === 4 ? FORMAT4_STATEMENTS : STATEMENTS;
 }
 
 const CREATE_TEMP_TRIGGER = /^CREATE TEMP TRIGGER (\w+) /;
@@ -76,6 +78,8 @@ const storedTriggers = (statements: readonly string[]): ReadonlyMap<string, stri
 }));
 const EXPECTED = storedTriggers(STATEMENTS);
 const EXPECTED_FORMAT4 = storedTriggers(FORMAT4_STATEMENTS);
+const EXPECTED_FORMAT5 = storedTriggers(FORMAT5_STATEMENTS);
+const expectedForProfile = (profile: TriggerProfile): ReadonlyMap<string, string> => profile === 5 ? EXPECTED_FORMAT5 : profile === true || profile === 4 ? EXPECTED_FORMAT4 : EXPECTED;
 const SAVEPOINT = 'project_file_triggers';
 const DATABASES = [PROJECT_DATABASE_NAMES.history, PROJECT_DATABASE_NAMES.project, PROJECT_DATABASE_NAMES.cache] as const;
 
@@ -85,8 +89,8 @@ const listed = (names: readonly string[]): string => names.length > 5 ? `${names
  * main and the project file and the cache are attached. Returns without changes
  * when exactly these triggers already exist; throws when only some of them, or
  * other TEMP triggers, exist. */
-export function installCrossFileTriggers(db: DatabaseSync, format4 = false): void {
-  const expected = format4 ? EXPECTED_FORMAT4 : EXPECTED;
+export function installCrossFileTriggers(db: DatabaseSync, format4: TriggerProfile = false): void {
+  const expected = expectedForProfile(format4);
   installRestoreScopeFunction(db);
   const attached = new Set(db.prepare('PRAGMA database_list').all().map(row => String(row.name)));
   const absent = DATABASES.filter(schema => !attached.has(schema));
@@ -121,6 +125,18 @@ export function installCrossFileTriggers(db: DatabaseSync, format4 = false): voi
     }
     throw error;
   }
+}
+
+/** A version upgrade removes only its fully verified connection guards while
+ * rebuilding tables, then installs the new profile before validating/commit. */
+export function removeCrossFileTriggersInside(db: DatabaseSync, profile: TriggerProfile): void {
+  if (!db.isTransaction) throw new TypeError('Replacing connection triggers requires a transaction');
+  const expected = expectedForProfile(profile);
+  const existing = db.prepare("SELECT name,sql FROM temp.sqlite_master WHERE type='trigger'").all();
+  if (existing.length !== expected.size || existing.some(row => expected.get(String(row.name)) !== row.sql)) {
+    throw new Error('Connection-level triggers do not match the reviewed source profile');
+  }
+  for (const name of expected.keys()) db.exec(`DROP TRIGGER temp.${quote(name)}`);
 }
 
 /** Extra immutable connection guards for recovery sessions. query_only also

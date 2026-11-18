@@ -114,7 +114,7 @@ const relationKey = (relation: (typeof CROSS_FILE_RELATIONS)[number]): string =>
 
 test('the current manifest is generated from canonical declarations without rewriting its sources', () => {
   const inputs = [
-    ...['content', 'receipts', 'tasks', 'timeline-history', 'cache', 'mio', 'versions', 'canvas'].map(name => `../packages/business/src/project-file/schema/domains/${name}.ts`),
+    ...['content', 'receipts', 'tasks', 'timeline-history', 'cache', 'mio', 'versions', 'canvas', 'sequence'].map(name => `../packages/business/src/project-file/schema/domains/${name}.ts`),
     '../packages/business/src/project-file/cross-file/relations.ts', '../packages/business/src/project-file/cross-file/converted-triggers.ts',
   ].map(file => new URL(file, import.meta.url));
   const before = inputs.map(file => readFileSync(file, 'utf8'));

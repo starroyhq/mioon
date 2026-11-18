@@ -5,12 +5,12 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {buildDatabase, schemaStatements, PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, CACHE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
+import {buildDatabase, schemaStatements, PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, CACHE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import type {ManifestEntry} from '../../packages/business/src/project-file/schema/manifest-check.ts';
-import {CONTENT_TABLES, CACHE_TABLES, historyTablesForVersion} from '../../packages/business/src/project-file/schema/tables.ts';
-import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import {contentTablesForVersion, CACHE_TABLES, historyTablesForVersion} from '../../packages/business/src/project-file/schema/tables.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT5_CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
 import type {CrossFileRelation} from '../../packages/business/src/project-file/cross-file/relations.ts';
 import {CONVERTED_TEMP_TRIGGERS} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
 import type {ConvertedTempTrigger} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
@@ -52,13 +52,15 @@ export interface SchemaDeclarations {
   readonly relations: readonly CrossFileRelation[];
   readonly tempTriggers: readonly ConvertedTempTrigger[];
 }
-export function declaredSchema(format4 = false): SchemaDeclarations {
-  const project = format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
-  const history = format4 ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
+export function declaredSchema(profile: boolean | 3 | 4 | 5 = false): SchemaDeclarations {
+  const format5 = profile === FORMAT5_PROJECT_SCHEMA_VERSION;
+  const format4 = profile === true || profile === FORMAT4_PROJECT_SCHEMA_VERSION;
+  const project = format5 ? FORMAT5_PROJECT_SCHEMA_VERSION : format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
+  const history = format5 ? FORMAT5_HISTORY_SCHEMA_VERSION : format4 ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
   return {
     statements: {project: schemaStatements('project', undefined, project), history: schemaStatements('history', undefined, history), cache: schemaStatements('cache')},
-    tables: {project: CONTENT_TABLES, history: historyTablesForVersion(history), cache: CACHE_TABLES},
-    relations: format4 ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS,
+    tables: {project: contentTablesForVersion(project), history: historyTablesForVersion(history), cache: CACHE_TABLES},
+    relations: format5 ? FORMAT5_CROSS_FILE_RELATIONS : format4 ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS,
     tempTriggers: CONVERTED_TEMP_TRIGGERS,
   };
 }
@@ -228,6 +230,17 @@ export function renderDerivedFiles(input: SchemaDeclarations = declaredSchema())
     const after = buildManifest(kind, candidate.statements[kind]);
     const afterNames = new Set(after.map(entry => entry.name));
     if ([...before.keys()].some(name => !afterNames.has(name))) throw new Error(`The format 4 profile removes a ${kind} schema object`);
+    const changed = after.filter(entry => JSON.stringify(before.get(entry.name)) !== JSON.stringify(entry));
+    lines.push(`  ${kind}: {version: ${version}, entries: Object.freeze([`, ...changed.map(render), '  ])},');
+  }
+  lines.push('});', '', 'export const FORMAT5_MANIFEST_CHANGES: Readonly<Record<"project" | "history", SchemaManifest>> = Object.freeze({');
+  const format5 = declaredSchema(FORMAT5_PROJECT_SCHEMA_VERSION);
+  validateDeclaredSchema(format5);
+  for (const [kind, version] of [['project', FORMAT5_PROJECT_SCHEMA_VERSION], ['history', FORMAT5_HISTORY_SCHEMA_VERSION]] as const) {
+    const before = new Map(buildManifest(kind, input.statements[kind]).map(entry => [entry.name, entry]));
+    const after = buildManifest(kind, format5.statements[kind]);
+    const afterNames = new Set(after.map(entry => entry.name));
+    if ([...before.keys()].some(name => !afterNames.has(name))) throw new Error(`The format 5 profile removes a ${kind} schema object`);
     const changed = after.filter(entry => JSON.stringify(before.get(entry.name)) !== JSON.stringify(entry));
     lines.push(`  ${kind}: {version: ${version}, entries: Object.freeze([`, ...changed.map(render), '  ])},');
   }

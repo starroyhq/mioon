@@ -3,6 +3,7 @@ import {projectSummaryListSchema,projectSummaryCoverSchema} from '../../contract
 import type {ProjectSummary} from '../../contracts/src/project-home.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {canvasActiveCondition,canvasActiveEdgeCondition} from './canvas-active.ts';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 
 interface Store{db:DatabaseSync}
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
@@ -13,6 +14,15 @@ const visual=new Set(['image/png','image/jpeg','image/webp','video/mp4','video/w
 type Table='projects'|'shots'|'assets'|'versions'|'timelines'|'nodes'|'edges';
 
 function rows(db:DatabaseSync,table:Table,projectId?:string):Record<string,unknown>[] {
+    // The timeline is assembled from format-5 native rows so the saved cover and
+    // duration keep reading the full record through the same projection.
+    if(table==='timelines'&&projectId!==undefined){
+      let snapshot;
+      try{snapshot=readTimelineStorage(db,projectId,{maxBytes:2*1024*1024});}catch{invalid();}
+      if(!snapshot)return [];
+      if(!object(snapshot.timeline)||snapshot.timeline.id!==snapshot.id||snapshot.timeline.projectId!==projectId)invalid();
+      return [snapshot.timeline];
+    }
     const active=table==='edges'?canvasActiveEdgeCondition(db,'record'):table==='shots'||table==='nodes'?canvasActiveCondition(db,'record'):'1';
     const scope=projectId?`${table==='projects'?'id':'projectId'}=? AND `:'';
     const found=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 2097152 THEN data END AS data FROM ${table} record WHERE ${scope}${active} ORDER BY id LIMIT 4097`).all(...(projectId?[projectId]:[]));

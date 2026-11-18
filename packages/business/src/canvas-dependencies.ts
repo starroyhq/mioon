@@ -5,6 +5,7 @@ import {mioClaimSchema} from '../../contracts/src/mio-records.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../../contracts/src/timeline-replacement.ts';
 import {createMioRecords} from './agent/mio-records.ts';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {agentTaskExplicitTargets} from './agent/task-tools-v2.ts';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -153,8 +154,8 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
     const owners = assetVersionOwners.all(assetId);
     if (owners.length === 1 && typeof owners[0]?.id === 'string') return versionOwners.get(owners[0].id);
   }
-  const timelineRow = shots.size ? db.prepare(`SELECT id,${bounded('data', TIMELINE_RESPONSE_BYTES)} AS data FROM project.timelines WHERE projectId=?`).get(projectId) : undefined;
-  const timeline = timelineRow ? ownedRow(timelineRow.data, timelineRow.id, projectId) : null;
+  const timelineRow = shots.size ? readTimelineStorage(db, projectId) : null;
+  const timeline = timelineRow?.timeline ?? null;
   const clipIds = new Set<string>();
   let impactClips = 0;
   if (timelineRow) {

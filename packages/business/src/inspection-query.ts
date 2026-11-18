@@ -1,4 +1,4 @@
-import {TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
+import {TIMELINE_RESPONSE_BYTES} from '../../contracts/src/timeline-replacement.ts';
 // Shared byte guard and exact expression for both migration/index and reader.
 // An unguarded JSON expression can make malformed legacy rows break startup.
 export const INSPECTION_ROW_LIMITS = Object.freeze({projects: 16 * 1024, assets: 16 * 1024, shots: 32 * 1024,

@@ -216,7 +216,12 @@ test('optional foreign clip lineage and generated reverse ownership block before
 test('oversized relational timeline identity is replaced with SQL NULL before materialization',async t=>{
  const f=await fixture(t);await f.seed();f.store.db.prepare('UPDATE timelines SET id=? WHERE id=?').run('secret'.repeat(350000),(f.timeline)!.id);
  const original=f.store.db.prepare.bind(f.store.db);let sawTimeline=false;
- const mocked=t.mock.method(f.store.db,'prepare',function(sql:string){const statement=original(((sql) as unknown as Parameters<typeof original>[0]));if(sql.includes('FROM timelines WHERE projectId=')&&sql.includes('THEN id END AS id')){const get=statement.get.bind(statement);statement.get=(...args)=>{const row=get(...((args) as unknown as Parameters<NonNullable<typeof get>>));assert.equal(((row)!.id as unknown),null);sawTimeline=true;return row;};}return statement;});
+ const mocked=t.mock.method(f.store.db,'prepare',function(sql:string){const statement=original(((sql) as unknown as Parameters<typeof original>[0]));
+  if(/FROM (?:[a-z_]+\.)?timelines WHERE projectId=/u.test(sql)&&sql.includes('THEN id END AS id')){
+   const all=statement.all.bind(statement);
+   statement.all=(...args)=>{const rows=all(...((args) as unknown as Parameters<NonNullable<typeof all>>));assert.equal(((rows[0] as {id?:unknown}|undefined)?.id as unknown),null);sawTimeline=true;return rows;};
+  }
+  return statement;});
  try{assert.equal((await f.call()).status,'blocked');assert.equal(sawTimeline,true);}finally{mocked.mock.restore();}
 });
 

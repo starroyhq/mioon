@@ -2,13 +2,15 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {spawnSync} from 'node:child_process';
-import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, symlink} from 'node:fs/promises';
+import {access, chmod, mkdtemp, realpath, mkdir, writeFile, readFile, rm, symlink} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
-  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand,
+  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand, testEnvironment, MACOS_TEST_TMPDIR,
   type PackageManagerInspectionOptions} from '../scripts/lib/local-tooling.ts';
+import {BUILD_COMMAND_TIMING_STAGES} from '../scripts/lib/build-timings.ts';
+import {createTypecheckEvidence, hasOuterTypecheckEvidence, removeTypecheckEvidence, sourceFingerprint, TYPECHECK_EVIDENCE_ENV} from '../scripts/lib/typecheck-evidence.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 function runToolingNode(args: readonly string[]) {
@@ -256,6 +258,31 @@ test('portable manifest is explicit, sorted, present and not broadened by filena
   assert.equal((await discoverTests(directory, {suite: 'full', platform: 'linux'})).at(-1), 'tests/z-native.test.mjs');
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  assert.deepEqual(await discoverTests(directory, {suite: 'full-darwin', platform: 'darwin'}),
+    await discoverTests(directory, {suite: 'full', platform: 'linux'}));
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'linux'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+});
+test('macOS full lane needs the explicit suite and test children use the canonical private temp root', async t => {
+  const {directory} = await fixture(t);
+  assert.equal(parseArguments(['test', '--suite=full-darwin']).suite, 'full-darwin');
+  assert.equal(parseArguments(['test']).suite, 'portable');
+  assert.throws(() => parseArguments(['typecheck', '--suite=full-darwin']), {code: 'TOOLING_USAGE'});
+  assert.throws(() => parseArguments(['build', '--suite=full-darwin']), {code: 'TOOLING_USAGE'});
+  assert.throws(() => parseArguments(['test', '--suite=elsewhere']), {code: 'TOOLING_USAGE'});
+  assert.throws(() => parseArguments(['test', '--suite=full', '--suite=full-darwin']), {code: 'TOOLING_USAGE'});
+  await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'darwin'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'linux'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'full-darwin', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  assert.deepEqual(await discoverTests(directory, {suite: 'full-darwin', platform: 'darwin'}),
+    await discoverTests(directory, {suite: 'full', platform: 'linux'}));
+  const mac = testEnvironment({PATH: '/usr/bin', TMPDIR: '/var/folders/synthetic/T/', MIOON_API_KEY: 'secret',
+    MIOON_FFMPEG_PATH: '/opt/homebrew/bin/ffmpeg'}, {platform: 'darwin'});
+  assert.equal(mac.TMPDIR, MACOS_TEST_TMPDIR);
+  assert.equal(mac.MIOON_FFMPEG_PATH, '/opt/homebrew/bin/ffmpeg');
+  assert.equal(mac.MIOON_API_KEY, undefined);
+  assert.equal(testEnvironment({PATH: '/usr/bin', TMPDIR: '/tmp/custom'}, {platform: 'linux'}).TMPDIR, '/tmp/custom');
+  assert.notEqual(testEnvironment({PATH: 'C:\\Windows', TEMP: 'C:\\Temp'}, {platform: 'win32'}).TMPDIR, MACOS_TEST_TMPDIR);
 });
 test('full Linux selection supports more than the old 512-file limit within the argv budget', async t => {
   const {directory} = await fixture(t);
@@ -347,4 +374,178 @@ test('dependency pins share strict SemVer validation with application build meta
   await json('apps/web/package.json', {devDependencies: {vite: '7.3.1+fixture'}});
   await json('node_modules/vite/package.json', {name: 'vite', version: '7.3.1+fixture', bin: {vite: 'bin/vite.js'}});
   assert.equal((await installedPackages(directory)).vite.version, '7.3.1+fixture');
+});
+
+async function evidenceFixture(t: TestContext) {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon typecheck evidence 中 '));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const file = async (name: string, contents: string) => {
+    await mkdir(path.dirname(path.join(directory, name)), {recursive: true});
+    await writeFile(path.join(directory, name), contents);
+  };
+  await file('apps/desktop/src/main.ts', 'export const value = 1;\n');
+  await file('tests/tsconfig.tests.json', '{"compilerOptions":{}}\n');
+  await file('.github/scripts/release-preflight.ts', 'export {};\n');
+  await file('apps/web/dist/bundle.js', 'generated\n');
+  await file('apps/web/node_modules/vite/index.js', 'dependency\n');
+  await file('apps/desktop/build/main.cjs', 'staged\n');
+  return {directory, file};
+}
+
+test('typecheck evidence fingerprints checked sources deterministically and ignores generated outputs', async t => {
+  const {directory, file} = await evidenceFixture(t);
+  const before = await sourceFingerprint(directory);
+  assert.match(before, /^[a-f0-9]{64}$/u);
+  assert.equal(await sourceFingerprint(directory), before);
+  for (const [name, contents] of [
+    ['apps/web/dist/bundle.js', 'regenerated\n'],
+    ['apps/web/node_modules/vite/index.js', 'updated dependency\n'],
+    ['apps/desktop/build/main.cjs', 'restaged\n'],
+  ] as const) {
+    await file(name, contents);
+    assert.equal(await sourceFingerprint(directory), before, name);
+  }
+  await file('tests/tsconfig.tests.json', '{"compilerOptions":{"strict":true}}\n');
+  const afterConfig = await sourceFingerprint(directory);
+  assert.notEqual(afterConfig, before);
+  await file('apps/desktop/src/main.ts', 'export const value = 2;\n');
+  assert.notEqual(await sourceFingerprint(directory), afterConfig);
+});
+
+test('typecheck evidence rejects source symlinks instead of guessing their content', {skip: process.platform === 'win32'}, async t => {
+  const {directory} = await evidenceFixture(t);
+  await symlink(path.join(directory, 'apps/desktop/src/main.ts'), path.join(directory, 'apps/desktop/src/linked.ts'));
+  await assert.rejects(sourceFingerprint(directory), /source symlinks/u);
+});
+
+test('outer typecheck evidence is reused only for unchanged private owned sources', {skip: process.platform === 'win32'}, async t => {
+  const {directory, file} = await evidenceFixture(t);
+  const evidence = await createTypecheckEvidence(directory);
+  t.after(() => removeTypecheckEvidence(evidence));
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), true);
+  assert.equal(await hasOuterTypecheckEvidence(directory, {}), false);
+  await file('apps/desktop/src/main.ts', 'export const value = 2;\n');
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), false);
+  await removeTypecheckEvidence(evidence);
+  await assert.rejects(access(evidence.environment[TYPECHECK_EVIDENCE_ENV]!), {code: 'ENOENT'});
+});
+
+test('foreign, loose or malformed typecheck evidence falls back to checking', {skip: process.platform === 'win32'}, async t => {
+  const {directory} = await evidenceFixture(t);
+  const evidence = await createTypecheckEvidence(directory);
+  t.after(async () => {await chmod(evidence.directory, 0o700); await removeTypecheckEvidence(evidence);});
+  const marker = evidence.environment[TYPECHECK_EVIDENCE_ENV]!, valid = await readFile(marker, 'utf8');
+  await writeFile(marker, '{not json');
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), false);
+  await writeFile(marker, JSON.stringify({schema: 2, fingerprint: 'a'.repeat(64)}));
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), false);
+  await writeFile(marker, JSON.stringify({schema: 1, fingerprint: 'not-a-fingerprint'}));
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), false);
+  await writeFile(marker, valid);
+  await chmod(marker, 0o600);
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), true);
+  await chmod(marker, 0o644);
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), false);
+  await chmod(marker, 0o600);
+  await chmod(evidence.directory, 0o755);
+  assert.equal(await hasOuterTypecheckEvidence(directory, evidence.environment), false);
+  await chmod(evidence.directory, 0o700);
+  assert.equal(await hasOuterTypecheckEvidence(directory, {[TYPECHECK_EVIDENCE_ENV]: 'relative-marker.json'}), false);
+  const foreign = path.join(directory, 'foreign-evidence');
+  await mkdir(foreign, {mode: 0o700});
+  await writeFile(path.join(foreign, 'evidence.json'), valid, {mode: 0o600});
+  assert.equal(await hasOuterTypecheckEvidence(directory, {[TYPECHECK_EVIDENCE_ENV]: path.join(foreign, 'evidence.json')}), false);
+});
+
+async function buildCliFixture(t: TestContext) {
+  const state = await fixture(t);
+  const {directory, json} = state;
+  const logs = path.join(directory, 'logs');
+  await mkdir(logs, {recursive: true});
+  const projectLog = path.join(logs, 'projects.log'), viteLog = path.join(logs, 'vite.log'), report = path.join(logs, 'staging.json');
+  const write = async (name: string, contents: string) => {
+    await mkdir(path.dirname(path.join(directory, name)), {recursive: true});
+    await writeFile(path.join(directory, name), contents);
+  };
+  await json('package.json', {type: 'module', version: '0.4.1', packageManager: 'pnpm@11.25.0',
+    devDependencies: {esbuild: '0.27.7', electron: '44.7.0', typescript: '6.0.3'}});
+  await json('config/typecheck-legacy-sources.json', []);
+  await json('node_modules/typescript/package.json', {name: 'typescript', version: '6.0.3', bin: {tsc: './bin/tsc', tsserver: './bin/tsserver'}});
+  await write('node_modules/typescript/bin/tsc', "throw Error('UNEXPECTED_BIN_EXECUTION');\n");
+  await write('node_modules/typescript/lib/tsc.js',
+    `const fs=require('node:fs');const index=process.argv.indexOf('--project');fs.appendFileSync(${JSON.stringify(projectLog)},process.argv[index+1]+'\\n');\n`);
+  await write('node_modules/typescript/lib/_tsc.js', '// Synthetic implementation; the official tsc.js shim requires this file.\n');
+  await write('node_modules/vite/bin/vite.js', `require('node:fs').appendFileSync(${JSON.stringify(viteLog)},'vite\\n');\n`);
+  await write('apps/desktop/scripts/build.ts', [
+    "import {appendFileSync, writeFileSync} from 'node:fs';",
+    "import {fileURLToPath} from 'node:url';",
+    "import {hasOuterTypecheckEvidence} from '../../../scripts/lib/typecheck-evidence.ts';",
+    "const root = fileURLToPath(new URL('../../../', import.meta.url));",
+    "const reused = await hasOuterTypecheckEvidence(root);",
+    `writeFileSync(${JSON.stringify(report)}, JSON.stringify({reused, evidence: process.env.MIOON_DESKTOP_TYPECHECK_EVIDENCE ?? null}));`,
+    "process.exitCode = 0;",
+  ].join('\n') + '\n');
+  await write('scripts/tooling.ts', await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8'));
+  // Re-export the reviewed tooling modules instead of linking directories: the
+  // fixture has no source symlinks, so evidence fingerprinting stays comparable.
+  for (const name of ['local-tooling', 'build-timings', 'typecheck-evidence'])
+    await write(`scripts/lib/${name}.ts`, `export * from ${JSON.stringify(pathToFileURL(path.join(root, `scripts/lib/${name}.ts`)).href)};\n`);
+  return {...state, logs, report, projectLog, viteLog};
+}
+
+function runFixtureCli(directory: string, args: readonly string[], entry = 'scripts/tooling.ts', extraEnvironment: Record<string, string> = {}) {
+  const result = spawnSync(process.execPath, [entry, ...args], {cwd: directory, env: {...toolingEnvironment(), ...extraEnvironment},
+    encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  return result;
+}
+
+test('the full build checks TypeScript once and reuses private evidence for staging', {skip: process.platform === 'win32'}, async t => {
+  const {directory, report, projectLog, viteLog} = await buildCliFixture(t);
+  const result = runFixtureCli(directory, ['build', '--channel=development']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual((await readFile(projectLog, 'utf8')).trim().split('\n'),
+    ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json',
+      'tests/tsconfig.tests-runtime.json', 'tests/tsconfig.tests-media.json']);
+  const staging = JSON.parse(await readFile(report, 'utf8')) as {reused: boolean; evidence: string | null};
+  assert.equal(staging.reused, true);
+  assert.equal(typeof staging.evidence, 'string');
+  await assert.rejects(access(staging.evidence!), {code: 'ENOENT'});
+  assert.equal(await readFile(viteLog, 'utf8'), 'vite\n');
+  const timings = result.stdout.trim().split('\n').filter(line => line.startsWith('BUILD_TIMING '))
+    .map(line => JSON.parse(line.slice('BUILD_TIMING '.length)) as {stage: string; result: string});
+  assert.deepEqual(timings.map(record => record.stage), [...BUILD_COMMAND_TIMING_STAGES]);
+  assert.ok(timings.every(record => record.result === 'success'));
+  const standalone = runFixtureCli(directory, [], 'apps/desktop/scripts/build.ts');
+  assert.equal(standalone.status, 0, standalone.stderr);
+  const standaloneStaging = JSON.parse(await readFile(report, 'utf8')) as {reused: boolean; evidence: string | null};
+  assert.equal(standaloneStaging.reused, false);
+  assert.equal(standaloneStaging.evidence, null);
+});
+
+test('a changed source or leaked evidence makes staging check instead of reusing', {skip: process.platform === 'win32'}, async t => {
+  const {directory, report} = await buildCliFixture(t);
+  const evidence = await createTypecheckEvidence(directory);
+  t.after(() => removeTypecheckEvidence(evidence));
+  const fresh = runFixtureCli(directory, [], 'apps/desktop/scripts/build.ts', evidence.environment);
+  assert.equal(fresh.status, 0, fresh.stderr);
+  assert.equal((JSON.parse(await readFile(report, 'utf8')) as {reused: boolean}).reused, true);
+  const changed = path.join(directory, 'apps/desktop/src/changed.ts');
+  await mkdir(path.dirname(changed), {recursive: true});
+  await writeFile(changed, 'export const changed = true;\n');
+  const stale = runFixtureCli(directory, [], 'apps/desktop/scripts/build.ts', evidence.environment);
+  assert.equal(stale.status, 0, stale.stderr);
+  assert.equal((JSON.parse(await readFile(report, 'utf8')) as {reused: boolean}).reused, false);
+});
+
+test('a failed staging build removes its private typecheck evidence', {skip: process.platform === 'win32'}, async t => {
+  const {directory, report} = await buildCliFixture(t);
+  const staging = path.join(directory, 'apps/desktop/scripts/build.ts');
+  await writeFile(staging, (await readFile(staging, 'utf8')).replace('process.exitCode = 0;', 'process.exitCode = 3;'));
+  const result = runFixtureCli(directory, ['build', '--channel=development']);
+  assert.equal(result.status, 3);
+  const stagingReport = JSON.parse(await readFile(report, 'utf8')) as {evidence: string | null};
+  assert.equal(typeof stagingReport.evidence, 'string');
+  await assert.rejects(access(stagingReport.evidence!), {code: 'ENOENT'});
 });

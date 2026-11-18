@@ -9,6 +9,8 @@ import {timelinePointerFrameAtElement} from './timeline-view-geometry.ts';
 import Icon from './icons.tsx';
 import {TimelineTrackPlayhead, useTimelinePlaybackFrame} from './timeline-playhead.tsx';
 import type {TimelinePlaybackClock} from './timeline-playback-clock.ts';
+import {EditUiDetachedAnchor} from './edit-ui/anchors.tsx';
+import type {EditUiAnchorProjection} from './edit-ui/projection.ts';
 
 export interface SubtitleLaneProps {
   timeline: SubtitleTimeline;
@@ -23,9 +25,11 @@ export interface SubtitleLaneProps {
   onSeek: (frame: number) => unknown;
   busy: boolean;
   visible: boolean;
+  /** Cue anchors from the optional UI-E1 projection; absent renders exactly as before. */
+  cueAnchors?: ReadonlyMap<string, EditUiAnchorProjection> | null;
 }
 
-export default function SubtitleLane({ timeline, pixelsPerFrame, pixelsPerSecond, width, playhead, playbackClock, selectedCueId, onSelect, onAdd, onSeek, busy, visible }: SubtitleLaneProps): ReactElement {
+export default function SubtitleLane({ timeline, pixelsPerFrame, pixelsPerSecond, width, playhead, playbackClock, selectedCueId, onSelect, onAdd, onSeek, busy, visible, cueAnchors = null }: SubtitleLaneProps): ReactElement {
   const { t } = useI18n();
   const live = useRef({mounted: false, visible, timeline, busy, playhead, playbackClock});
   useLayoutEffect(() => {
@@ -42,6 +46,7 @@ export default function SubtitleLane({ timeline, pixelsPerFrame, pixelsPerSecond
   const cues = timeline?.subtitles?.cues || [];
   return <div className="timeline-track subtitle-track" data-testid="timeline-subtitle-track"><div className="track-label" data-text-selectable={false}><div><span className="track-kind">T</span><strong title={t('subtitles.ui.count', { count: cues.length })}>{t('round3.timeline.subtitles')}</strong></div><SubtitleAddButton timeline={timeline} playhead={playhead} playbackClock={playbackClock} busy={busy} onAdd={addAt} /></div><div className="track-lane subtitle-lane" style={{ width, backgroundSize: `${pixelsPerSecond}px 100%` }} aria-label={t('subtitles.ui.timeline')} onClick={event => { if (event.target === event.currentTarget) admit(() => onSeek(Math.max(0, Math.min(timeline.durationFrames, Math.round(timelinePointerFrameAtElement(event.clientX,event.currentTarget,pixelsPerFrame) ?? currentPlayhead()))))); }}>
     {cues.map(cue => <Button type="button" variant="ghost" key={cue.id} className={`timeline-clip subtitle-cue ${selectedCueId === cue.id ? 'selected' : ''}`} data-testid={`subtitle-cue-${cue.id}`} aria-label={t('subtitles.ui.cueAria', { text: cue.text, start: cue.startFrame, end: cue.startFrame + cue.durationFrames })} aria-pressed={selectedCueId === cue.id} style={{ left: cue.startFrame * pixelsPerFrame, width: Math.max(8, cue.durationFrames * pixelsPerFrame) }} title={t('subtitles.ui.cueTitle', { text: cue.text, start: cue.startFrame, end: cue.startFrame + cue.durationFrames })} onClick={event => { event.stopPropagation(); admit(() => onSelect(cue.id)); }}><span className="clip-copy"><strong>{cue.text.replaceAll('\n', ' / ')}</strong><small>{t('subtitles.ui.range', { start: cue.startFrame, end: cue.startFrame + cue.durationFrames })}</small></span></Button>)}
+    {cueAnchors && cues.map(cue => cueAnchors.get(cue.id)?.kind === 'detached' ? <EditUiDetachedAnchor key={`detached-${cue.id}`} left={(cue.startFrame + cue.durationFrames) * pixelsPerFrame + 6} testId={`edit-ui-detached-cue-${cue.id}`} /> : null)}
     {!cues.length && <SubtitleEmptyHint timeline={timeline} playhead={playhead} playbackClock={playbackClock} busy={busy} />}
     <TimelineTrackPlayhead clock={playbackClock} playhead={playhead} pixelsPerFrame={pixelsPerFrame} />
   </div></div>;

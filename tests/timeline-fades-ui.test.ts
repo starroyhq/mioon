@@ -87,6 +87,8 @@ async function inspectorHarness(patch: Record<string,unknown> = {}, lutRpc: clip
       if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => true };
       if (id === './ClipAudioControls.tsx') return load('ClipAudioControls.tsx');
       if (id === './Timeline.tsx') return { assetKind: (value: { mimeType: string; }) => value?.mimeType?.split('/')[0] || 'image', framesLabel: String };
+      if (id === './edit-ui/status.tsx') return { editUiTrackPickerLabel: (t: (key: string) => string, track: { id: string; kind?: string; name?: string }, tracks: { id: string; kind?: string }[]) => /^(Video|Audio)\s*\d+$/i.test(track.name ?? '') ? t(track.kind === 'audio' ? 'edit.track.music' : track.id === tracks.find(item => item.kind === 'video')?.id ? 'edit.track.picture' : 'edit.track.overlay') : track.name };
+      if (id === './edit-ui/ShotVersionBar.tsx') return { __esModule: true, default: 'ShotVersionBar' };
       if (id === '@mioon/contracts') return { sourceFrameCount: (duration: number) => Math.floor(duration * 30), isTimelineRecord };
       if (id === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
       if (id === './icons.tsx') return { default: 'Icon', __esModule: true };

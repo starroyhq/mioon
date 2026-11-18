@@ -100,7 +100,7 @@ doctor 检查 Node、构建身份、依赖包版本、内存 SQLite 和媒体工
 
 应用、CLI/MCP 实现元数据、后端 `/health` 与暂存包版本均从根应用版本读取，当前为 `0.2.0`。MCP 协议日期和连接描述文件版本是不同版本域。记录终端 Node 与 Electron utilityProcess 的实际版本时必须分开。
 
-本文只指导源码构建与试用，不运行安装包、签名或公证流程。完整测试入口的 `--suite=full` 当前限 Linux；不能把 Linux 检查或 Mac 上的可移植检查写成 Mac 原生通过。
+本文只指导源码构建与试用，不运行安装包、签名或公证流程。完整测试入口的 `--suite=full` 限 Linux；macOS 完整测试须用显式 `--suite=full-darwin`（macOS runner/夜间任务），不能把 Linux 检查或 Mac 上的可移植检查写成 Mac 原生通过。
 
 ## 数据位置与旧项目保护
 

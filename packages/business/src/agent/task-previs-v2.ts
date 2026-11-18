@@ -1,3 +1,4 @@
+import {readTimelineStorage} from '../project-file/timeline-storage.ts';
 import {listActiveCanvasRecords} from '../canvas-active.ts';
 import {PREVIS_HANDS,PREVIS_LIMITS,PREVIS_POSES,PREVIS_PROP_KINDS,PREVIS_SCENE_SCHEMA_VERSION,previsFrame,previsFramedElements,previsLookAt,previsSchemas,roundPrevisNumber} from '@mioon/contracts';
 import type {PrevisCamera,PrevisNodeRecord,PrevisScene} from '@mioon/contracts';
@@ -109,9 +110,8 @@ export const previsRequestedKeyframe=(input:unknown):unknown=>object(input)&&obj
 
 // ---- What Mio reads back ----
 function timelineFormat(store:Store,projectId:string):Value|null{
- const row=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
- if(typeof row?.data!=='string')return null;
- try{const value:unknown=JSON.parse(row.data);return object(value)&&value.projectId===projectId?value:null;}catch{return null;}
+ const snapshot=readTimelineStorage(store.db,projectId);
+ return snapshot&&object(snapshot.timeline)&&snapshot.timeline.projectId===projectId?snapshot.timeline:null;
 }
 /** A previs node as Mio reads it, also returned after Mio creates or saves one. */
 export function previsTaskView(store:Store,projectId:string,node:PrevisNodeRecord):AgentTaskJson{

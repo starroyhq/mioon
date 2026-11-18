@@ -3,7 +3,6 @@ import {prepareTimelineImageLayers} from './timeline-image-staging.ts';
 import {validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
 import {mkdtemp,writeFile,rm,open} from 'node:fs/promises';
 import {constants,mkdtempSync,openSync,fstatSync,lstatSync,closeSync,unlinkSync,rmdirSync} from 'node:fs';
-import {availableParallelism} from 'node:os';
 import path from 'node:path';
 import {run,probe} from './media.ts';
 import {validateTimeline} from './timeline-inputs.ts';
@@ -15,6 +14,8 @@ import {assertTimelineExportCapability,timelineExportVideoArgs} from './timeline
 import {checkMediaEffect,runStreaming} from './media-runtime.ts';
 import {withProbePermit} from './media-probe.ts';
 import {hasUnconfirmedMediaProcesses,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
+import {MAX_SEGMENT_ENCODERS,globalMediaEncoderPool} from './media-encoder-pool.ts';
+import type {MediaEncoderSlotPool} from './media-encoder-pool.ts';
 import {createTimelineFloatAudioChecker,assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure} from './timeline-float-audio-check.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
@@ -42,6 +43,7 @@ interface RenderAsset extends ManagedAssetRecord {path?: string;videoStreamIndex
 interface RenderTimelineOptions {
  signal?: AbortSignal;beforeEncode?: ()=>void;beforeStart?:()=>void;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown;
  segmentConcurrency?: number;
+ encoderPool?: MediaEncoderSlotPool;
  onSegmentProgress?: (completedFrames: number,totalFrames: number)=>void;
 }
 interface InodeIdentity {dev: number|bigint;ino: number|bigint;size: number;mtimeMs: number;ctimeMs: number}
@@ -54,7 +56,7 @@ interface OwnedTimelineWork {
  cleanup: ()=>void;
 }
 
-const FPS=30,SAMPLES_PER_FRAME=1600,MAX_SEGMENT_CONCURRENCY=4;
+const FPS=30,SAMPLES_PER_FRAME=1600;
 const checkFloatAudio=createTimelineFloatAudioChecker({run,runStreaming,withProbePermit,checkMediaEffect,terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs});
 const seconds=(frames: number): string=>(frames/FPS).toFixed(9);
 const sameInode=(a: InodeIdentity,b: InodeIdentity): boolean=>a.dev===b.dev&&a.ino===b.ino;
@@ -114,9 +116,16 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{
  signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
- segmentConcurrency=Math.min(MAX_SEGMENT_CONCURRENCY,Math.max(1,Math.floor((availableParallelism()-2)/2))),
+ segmentConcurrency: requestedSegmentConcurrency,encoderPool,
 }: RenderTimelineOptions={}): Promise<unknown>{
- if(!Number.isInteger(segmentConcurrency)||segmentConcurrency<1||segmentConcurrency>MAX_SEGMENT_CONCURRENCY)throw new RangeError('Invalid timeline segment concurrency');
+ // Every project window shares one backend process and this application-wide
+ // pool: two exports never start more segment encoders than the machine-wide
+ // cap, and each export still uses its full segment count when uncontended.
+ // One export never runs more than four segments, and never more than the
+ // application-wide pool admits.
+ const pool=encoderPool??globalMediaEncoderPool(),encoderOwner={};
+ const segmentConcurrency=requestedSegmentConcurrency??Math.min(MAX_SEGMENT_ENCODERS,pool.limit);
+ if(!Number.isInteger(segmentConcurrency)||segmentConcurrency<1||segmentConcurrency>MAX_SEGMENT_ENCODERS)throw new RangeError('Invalid timeline segment concurrency');
  // Nothing binds an opacity render: a snapshot with an opacity field is refused before any media work.
  getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  checkMediaEffect(beforeEffect,signal);
@@ -241,8 +250,11 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    const videoArgs=delivery?timelineExportVideoArgs(delivery as never):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
    args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
-   beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal:segmentSignal,ownerSignal:segmentOwner,onStopping,beforeEffect:effect});
-   checkMediaEffect(effect,segmentSignal);
+   const release=await pool.acquire(segmentSignal,encoderOwner);
+   try{
+    beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal:segmentSignal,ownerSignal:segmentOwner,onStopping,beforeEffect:effect});
+    checkMediaEffect(effect,segmentSignal);
+   }finally{release();}
    return {file:segmentFile,outputFrames:selected.outputFrames};
   };
   const ownedSegments: Awaited<ReturnType<typeof encodeSegment>>[]=new Array(plan.segments.length);
@@ -278,7 +290,10 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   if(floatChecked){audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect as never,ownedSegments});checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck as never);}
   // The fenced worker reserves and retains the destination inode and checks
   // it in beforeEffect. Only that owned empty output may be overwritten.
-  await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
+  const concatRelease=await pool.acquire(signal,encoderOwner);
+  try{
+   await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
+  }finally{concatRelease();}
   checkMediaEffect(effect,signal);
   const result=await probe(destination,{signal,beforeEffect:effect}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
   checkMediaEffect(effect,signal);
