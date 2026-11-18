@@ -10,6 +10,7 @@ import {join, relative, sep} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 import {createEditUiWireFixture} from './helpers/edit-ui-wire-fixture.ts';
+import {testEnv} from './helpers/test-env.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const args = process.argv.slice(2);
@@ -78,7 +79,7 @@ try {
   const {port} = server.address();
   const url = `http://127.0.0.1:${port}/index.html`;
   const child = spawn(value('--python') ?? 'python3', [join(root, 'tests/fixtures/edit-ui-wire/acceptance.py'), '--url', url,
-    ...(screens ? ['--screens', screens] : [])], {cwd: root, env: {...process.env, PYTHONPATH: ''}, stdio: 'inherit'});
+    ...(screens ? ['--screens', screens] : [])], {cwd: root, env: {...testEnv(), PYTHONPATH: ''}, stdio: 'inherit'});
   const code = await new Promise(resolve => child.on('close', resolve));
   process.exitCode = code ?? 1;
 } finally {
