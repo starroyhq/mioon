@@ -366,6 +366,10 @@ let quitFailureNotice: Promise<void> | null = null;
 let smokeDiscardDecision: boolean | undefined;
 const windowsPackageSmoke = app.isPackaged && process.platform === 'win32' && identity.channel === 'development' && process.env.MIOON_DESKTOP_WINDOWS_SMOKE === '1';
 const smokeOutput: string | false | undefined = identity.channel === 'development' && (!app.isPackaged || windowsPackageSmoke) && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
+// Fixed screenshot scenarios may request one of the supported device scale
+// factors; the switch must exist before the first window is created.
+const windowsScreenshotScale = windowsPackageSmoke ? process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCALE : undefined;
+if (windowsScreenshotScale === '1.25' || windowsScreenshotScale === '1.5') app.commandLine.appendSwitch('force-device-scale-factor', windowsScreenshotScale);
 
 let mediaTools: MediaToolsInstaller | null | undefined;
 /** Mioon's pinned FFmpeg download, shared by first-run setup and the settings page. */
@@ -1585,7 +1589,15 @@ else {
     trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
       const output = smokeOutput;
-      if (windowsPackageSmoke) {
+      if (windowsPackageSmoke && process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT) {
+        const { runWindowsTitleBarScreenshot } = await import('./windows-titlebar-screenshot.ts');
+        await runWindowsTitleBarScreenshot({ app, getWindow: () => win, output,
+          screenshot: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT,
+          scenario: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCENARIO ?? '',
+          theme: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_THEME === 'light' ? 'light' : 'dark',
+          maximized: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_MAXIMIZED === '1',
+          scale: Number(process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCALE ?? '1') });
+      } else if (windowsPackageSmoke) {
         const { runWindowsSmoke } = await import('./windows-smoke-checks.ts');
         await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output });
       } else {

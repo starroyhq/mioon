@@ -7,8 +7,11 @@ const read = (file: string): Promise<string> => readFile(new URL(`../${file}`, i
 test('Windows development packaging remains separate from the thirteen required checks and release workflow', async () => {
   const source = await read('.github/workflows/windows-development.yml');
   assert.match(source, /workflow_dispatch:/);
-  assert.match(source, /push:\s*\n\s*branches: \[howard\/windows-desktop-bringup\]/);
-  assert.doesNotMatch(source, /pull_request(?:_target)?:|branches:\s*\[main\]|tags:/);
+  assert.match(source, /pull_request:\s*\n\s*paths:/);
+  for (const path of ["apps/desktop/**", "packages/node-host/**", ".github/workflows/windows-development.yml", ".github/scripts/windows-desktop-smoke.ts"]) {
+    assert.ok(source.includes(`- '${path}'`), path);
+  }
+  assert.doesNotMatch(source, /push:|pull_request_target:|branches:\s*\[main\]|tags:/);
   assert.match(source, /runs-on: windows-2025/);
   assert.match(source, /contents: read/);
   assert.doesNotMatch(source, /contents: write|secrets\.|--publish always|--channel=production|package:win:production/);
@@ -29,17 +32,51 @@ test('Windows package smoke starts the delivered x64 executable in a new isolate
   assert.match(source, /Test-Path -LiteralPath \$workspace/);
   assert.match(source, /Test-Path -LiteralPath \$userData/);
   assert.match(source, /\$userData = Join-Path \$env:LOCALAPPDATA/);
-  assert.match(source, /"--binary=\$binary" "--output=\$output" "--workspace=\$workspace" "--user-data=\$userData"/);
+  assert.match(source, /\$screenshots = Join-Path \$env:GITHUB_WORKSPACE 'artifacts\/windows-development\/screenshots'/);
+  assert.match(source, /"--binary=\$binary" "--output=\$output" "--workspace=\$workspace" "--user-data=\$userData" "--screenshots=\$screenshots"/);
   assert.match(source, /Get-Command \(\$name \+ '\.exe'\)/);
   assert.match(source, /Get-FileHash -Algorithm SHA256/);
   assert.match(source, /MIOON_FFMPEG_PATH/);
   assert.match(source, /MIOON_FFPROBE_PATH/);
-  const evidence = source.slice(source.indexOf('- name: Upload text-only smoke evidence'));
+  const evidenceStart = source.indexOf('- name: Upload text-only smoke evidence');
+  const screenshotsStart = source.indexOf('- name: Upload title bar screenshots');
+  assert.ok(evidenceStart >= 0 && screenshotsStart > evidenceStart);
+  const evidence = source.slice(evidenceStart, screenshotsStart);
   assert.match(evidence, /if: always\(\)/);
   assert.match(evidence, /artifacts\/windows-development\/smoke\.json/);
   assert.match(evidence, /artifacts\/windows-development\/media-tools\.json/);
   assert.doesNotMatch(evidence, /\.png|\.jpe?g|screens|user-data|\*\*|path:\s*\|\s*\n\s*artifacts\/windows-development\/\s*$/m);
+  const screenshots = source.slice(screenshotsStart);
+  assert.match(screenshots, /name: windows-titlebar-screenshots/);
+  assert.match(screenshots, /artifacts\/windows-development\/screenshots\/\*\.png/);
+  assert.match(screenshots, /artifacts\/windows-development\/screenshots\.json/);
+  assert.match(screenshots, /retention-days: 7/);
   assert.doesNotMatch(source, /--no-sandbox|--remote-debugging|ELECTRON_RUN_AS_NODE/);
+});
+
+test('Windows title bar screenshots are fixed scenarios captured by the packaged app only', async () => {
+  const driver = await read('.github/scripts/windows-desktop-smoke.ts');
+  const scenarios = ['normal-light', 'normal-dark', 'maximized-light', 'maximized-dark', 'dpi-125', 'dpi-150'];
+  for (const name of scenarios) assert.ok(driver.includes(`name: '${name}'`), name);
+  assert.match(driver, /theme: 'light'/);
+  assert.match(driver, /theme: 'dark'/);
+  assert.match(driver, /scale: 1\.25/);
+  assert.match(driver, /scale: 1\.5/);
+  assert.match(driver, /validateWindowsTitleBarScreenshot/);
+  assert.match(driver, /WINDOWS_WINDOW_CHROME\.topbarHeight/);
+  for (const variable of ['MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT', 'MIOON_DESKTOP_WINDOWS_SMOKE_SCENARIO',
+    'MIOON_DESKTOP_WINDOWS_SMOKE_THEME', 'MIOON_DESKTOP_WINDOWS_SMOKE_MAXIMIZED', 'MIOON_DESKTOP_WINDOWS_SMOKE_SCALE']) {
+    assert.ok(driver.includes(variable), variable);
+  }
+  const screenshot = await read('apps/desktop/src/windows-titlebar-screenshot.ts');
+  assert.match(screenshot, /WINDOWS_TITLEBAR_SCENARIOS/);
+  assert.match(screenshot, /desktopCapturer/);
+  assert.match(screenshot, /WINDOWS_WINDOW_CHROME\.topbarHeight/);
+  assert.doesNotMatch(screenshot, /exec\(|spawn\(|child_process/u);
+  const main = await read('apps/desktop/src/main.ts');
+  assert.match(main, /process\.env\.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT/);
+  assert.match(main, /force-device-scale-factor/);
+  assert.doesNotMatch(main, /nativeTheme\.themeSource\s*=/);
 });
 
 test('missing Windows tools require the pinned publisher archive before extraction and executable probes', async () => {

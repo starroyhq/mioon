@@ -1,11 +1,15 @@
 name: Windows development desktop
 
 # Keep Windows bring-up separate from the existing thirteen required checks.
-# This branch-only run also verifies the new workflow before it reaches main.
+# Run on demand and on pull requests that touch the Windows desktop surface.
 on:
   workflow_dispatch:
-  push:
-    branches: [howard/windows-desktop-bringup]
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/node-host/**'
+      - '.github/workflows/windows-development.yml'
+      - '.github/scripts/windows-desktop-smoke.ts'
 
 permissions:
   contents: read
@@ -196,9 +200,10 @@ jobs:
           # alias (UNSAFE_ALIAS), while the user profile path is accepted. The app
           # creates this fresh directory itself through the ACL helper.
           $userData = Join-Path $env:LOCALAPPDATA ('mioon-windows-smoke-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $screenshots = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-development/screenshots'
           if (Test-Path -LiteralPath $workspace) { throw 'Smoke workspace must be new.' }
           if (Test-Path -LiteralPath $userData) { throw 'Smoke user data must be new.' }
-          node .github/scripts/windows-desktop-smoke.ts "--binary=$binary" "--output=$output" "--workspace=$workspace" "--user-data=$userData"
+          node .github/scripts/windows-desktop-smoke.ts "--binary=$binary" "--output=$output" "--workspace=$workspace" "--user-data=$userData" "--screenshots=$screenshots"
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaged startup smoke failed.' }
 
       - name: Upload text-only smoke evidence
@@ -209,5 +214,16 @@ jobs:
           path: |
             artifacts/windows-development/smoke.json
             artifacts/windows-development/media-tools.json
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload title bar screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-titlebar-screenshots
+          path: |
+            artifacts/windows-development/screenshots/*.png
+            artifacts/windows-development/screenshots.json
           retention-days: 7
           if-no-files-found: warn

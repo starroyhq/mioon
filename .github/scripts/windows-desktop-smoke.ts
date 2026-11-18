@@ -5,6 +5,7 @@ import path from 'node:path';
 import {promisify} from 'node:util';
 import {createRequire} from 'node:module';
 import {argumentsFor, isMain} from './media-environment.ts';
+import {WINDOWS_WINDOW_CHROME} from '../../packages/contracts/src/desktop-window-chrome.ts';
 
 const paths = path.win32;
 export const WINDOWS_SMOKE_TIMEOUT_MS = 180000;
@@ -25,6 +26,7 @@ const failureCodes = [
   'WINDOWS_SMOKE_MEDIA_TOOLS_REQUIRED', 'WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE', 'WINDOWS_SMOKE_REPORT_INVALID', 'WINDOWS_SMOKE_PACKAGE_IDENTITY_INVALID',
   'WINDOWS_SMOKE_APP_SPAWN_FAILED', 'WINDOWS_SMOKE_APP_EXIT_FAILED', 'WINDOWS_SMOKE_APP_TIMEOUT', 'WINDOWS_SMOKE_APP_QUIT_TIMEOUT',
   'WINDOWS_SMOKE_CHECK_FAILED', 'WINDOWS_SMOKE_STARTUP_FAILED', 'WINDOWS_SMOKE_APP_STARTUP_ERROR', 'WINDOWS_SMOKE_REPORT_MISSING',
+  'WINDOWS_SMOKE_SCREENSHOT_FAILED', 'WINDOWS_SMOKE_SCREENSHOT_INVALID',
   'WINDOWS_SMOKE_APP_STOP_UNCONFIRMED', 'WINDOWS_SMOKE_OUTPUT_FAILED', 'WINDOWS_SMOKE_FAILED',
 ] as const;
 type FailureCode = typeof failureCodes[number];
@@ -36,7 +38,7 @@ function fail(code: FailureCode): never {throw new SmokeFailure(code);}
 export function smokeFailureCode(error: unknown): FailureCode {
   return error instanceof SmokeFailure && failureCodes.includes(error.code) ? error.code : 'WINDOWS_SMOKE_FAILED';
 }
-interface SmokeArguments {binary: string; output: string; workspace: string; userData: string}
+interface SmokeArguments {binary: string; output: string; workspace: string; userData: string; screenshots?: string}
 interface SmokeCheck {name: string; status: 'passed' | 'blocked'; code?: string}
 export interface WindowsLaunchReport {
   schemaVersion: 1; scope: 'windows-development-launch'; ok: true; channel: 'development'; platform: 'win32'; arch: 'x64';
@@ -79,12 +81,14 @@ function inside(parent: string, child: string): boolean {
 }
 export function parseWindowsSmokeArguments(args: readonly string[]): SmokeArguments {
   let values: Record<string, string>;
-  try {values = argumentsFor(args, ['binary', 'output', 'workspace', 'user-data']);} catch {fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');}
-  const {binary, output, workspace} = values, userData = values['user-data']!;
+  try {values = argumentsFor(args, ['binary', 'output', 'workspace', 'user-data'], ['screenshots']);} catch {fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');}
+  const {binary, output, workspace} = values, userData = values['user-data']!, screenshots = values.screenshots;
   if (![binary, output, workspace, userData].every(absoluteLocalPath) || paths.basename(binary) !== 'mioon-dev.exe' ||
       paths.basename(paths.dirname(binary)) !== 'win-unpacked' || paths.extname(output).toLowerCase() !== '.json' || inside(workspace, output) ||
-      paths.normalize(userData) === paths.normalize(workspace) || inside(workspace, userData)) fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');
-  return {binary: paths.normalize(binary), output: paths.normalize(output), workspace: paths.normalize(workspace), userData: paths.normalize(userData)};
+      paths.normalize(userData) === paths.normalize(workspace) || inside(workspace, userData) ||
+      (screenshots !== undefined && (!absoluteLocalPath(screenshots) || inside(workspace, screenshots)))) fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');
+  return {binary: paths.normalize(binary), output: paths.normalize(output), workspace: paths.normalize(workspace),
+    userData: paths.normalize(userData), ...(screenshots === undefined ? {} : {screenshots: paths.normalize(screenshots)})};
 }
 /** The app receives only OS/session prerequisites and these fixed smoke inputs. */
 export function windowsSmokeEnvironment(source: NodeJS.ProcessEnv, workspace: string, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
@@ -152,13 +156,54 @@ export function readWindowsPackageMetadata(archive: string, reader: AsarReader =
   return JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(bytes)) as unknown;
 }
 
+export interface WindowsTitleBarScreenshotScenario {
+  readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number; readonly maximized: boolean;
+}
+export const WINDOWS_TITLEBAR_SCENARIOS: readonly WindowsTitleBarScreenshotScenario[] = Object.freeze([
+  Object.freeze({name: 'normal-light', theme: 'light', scale: 1, maximized: false}),
+  Object.freeze({name: 'normal-dark', theme: 'dark', scale: 1, maximized: false}),
+  Object.freeze({name: 'maximized-light', theme: 'light', scale: 1, maximized: true}),
+  Object.freeze({name: 'maximized-dark', theme: 'dark', scale: 1, maximized: true}),
+  Object.freeze({name: 'dpi-125', theme: 'light', scale: 1.25, maximized: false}),
+  Object.freeze({name: 'dpi-150', theme: 'light', scale: 1.5, maximized: false}),
+]);
+export interface WindowsTitleBarScreenshot {readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number;
+  readonly maximized: boolean; readonly frame: 'win-overlay'; readonly devicePixelRatio: number;
+  readonly overlay: {readonly visible: true; readonly right: number}; readonly innerWidth: number;
+  readonly barHeight: number; readonly trailing: number;
+  readonly screenshot: {readonly bytes: number; readonly sha256: string; readonly source: 'window' | 'content'}}
+export interface WindowsTitleBarScreenshotsReport {schemaVersion: 1; scope: 'windows-titlebar-screenshots'; ok: boolean;
+  scenarios: WindowsTitleBarScreenshot[]}
+/** Validates the fixed app record for one title bar screenshot scenario and
+ * returns a detached copy without raw paths. */
+export function validateWindowsTitleBarScreenshot(value: unknown, scenario: WindowsTitleBarScreenshotScenario): WindowsTitleBarScreenshot {
+  const keys = ['schemaVersion', 'scope', 'ok', 'scenario', 'platform', 'arch', 'isPackaged', 'theme', 'scale', 'maximized', 'frame',
+    'devicePixelRatio', 'overlay', 'innerWidth', 'barHeight', 'trailing', 'screenshot'];
+  if (!record(value) || !exactKeys(value, keys) || value.schemaVersion !== 1 || value.scope !== 'windows-titlebar-screenshot' ||
+      value.ok !== true || value.scenario !== scenario.name || value.platform !== 'win32' || value.arch !== 'x64' || value.isPackaged !== true ||
+      value.theme !== scenario.theme || value.scale !== scenario.scale || value.maximized !== scenario.maximized || value.frame !== 'win-overlay' ||
+      typeof value.devicePixelRatio !== 'number' || Math.abs(value.devicePixelRatio - scenario.scale) > 0.02 ||
+      !record(value.overlay) || !exactKeys(value.overlay, ['visible', 'right']) || value.overlay.visible !== true ||
+      typeof value.overlay.right !== 'number' || !Number.isFinite(value.overlay.right) || value.overlay.right <= 0 ||
+      typeof value.innerWidth !== 'number' || !Number.isFinite(value.innerWidth) || value.innerWidth <= value.overlay.right ||
+      value.barHeight !== WINDOWS_WINDOW_CHROME.topbarHeight ||
+      typeof value.trailing !== 'number' || Math.abs(value.trailing - (value.innerWidth - value.overlay.right)) > 1 ||
+      !record(value.screenshot) || !exactKeys(value.screenshot, ['bytes', 'sha256', 'source']) ||
+      !Number.isSafeInteger(value.screenshot.bytes) || (value.screenshot.bytes as number) < 20000 || (value.screenshot.bytes as number) > 64 * 1024 * 1024 ||
+      typeof value.screenshot.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(value.screenshot.sha256) ||
+      (value.screenshot.source !== 'window' && value.screenshot.source !== 'content')) fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');
+  return {name: scenario.name, theme: scenario.theme, scale: scenario.scale, maximized: scenario.maximized, frame: 'win-overlay',
+    devicePixelRatio: value.devicePixelRatio, overlay: {visible: true, right: value.overlay.right}, innerWidth: value.innerWidth,
+    barHeight: value.barHeight, trailing: value.trailing,
+    screenshot: {bytes: value.screenshot.bytes as number, sha256: value.screenshot.sha256 as string, source: value.screenshot.source}};
+}
 interface FileObservation {file: boolean; directory: boolean; link: boolean; size: number; canonical: string}
 interface SmokeServices {
   platform: NodeJS.Platform; arch: string; environment: NodeJS.ProcessEnv;
   inspect(file: string): Promise<FileObservation>;
   mkdir(directory: string, recursive: boolean): Promise<void>;
   read(file: string): Promise<string>;
-  write(file: string, value: WindowsLaunchReport | FailureReport): Promise<void>;
+  write(file: string, value: WindowsLaunchReport | FailureReport | WindowsTitleBarScreenshotsReport): Promise<void>;
   expected(): Promise<ExpectedPackage>;
   packagedMetadata(archive: string): Promise<unknown>;
   launch(binary: string, environment: NodeJS.ProcessEnv, workspace: string): Promise<void>;
@@ -223,8 +268,47 @@ function defaultServices(): SmokeServices {
   };
 }
 function canonical(file: string, info: FileObservation): boolean {return !info.link && paths.normalize(info.canonical).toLowerCase() === paths.normalize(file).toLowerCase();}
+async function runTitleBarScreenshots(options: SmokeArguments & {screenshots: string}, services: SmokeServices,
+  environment: NodeJS.ProcessEnv): Promise<void> {
+  const directory = options.screenshots;
+  try {await services.mkdir(directory, true);} catch {fail('WINDOWS_SMOKE_SCREENSHOT_FAILED');}
+  const evidenceFile = paths.join(paths.dirname(directory), 'screenshots.json');
+  const scenarios: WindowsTitleBarScreenshot[] = [];
+  const writeEvidence = async (ok: boolean) => {
+    try {
+      await services.mkdir(paths.dirname(evidenceFile), true);
+      await services.write(evidenceFile, {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok, scenarios: [...scenarios]});
+    } catch { /* The main smoke evidence still records the fixed failure code. */ }
+  };
+  try {
+    for (const scenario of WINDOWS_TITLEBAR_SCENARIOS) {
+      const resultFile = paths.join(options.workspace, `screenshot-${scenario.name}.json`);
+      const pngFile = paths.join(directory, `${scenario.name}.png`);
+      const scenarioEnvironment = {...environment, MIOON_DESKTOP_SMOKE_OUTPUT: resultFile,
+        MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT: pngFile, MIOON_DESKTOP_WINDOWS_SMOKE_SCENARIO: scenario.name,
+        MIOON_DESKTOP_WINDOWS_SMOKE_THEME: scenario.theme, MIOON_DESKTOP_WINDOWS_SMOKE_MAXIMIZED: scenario.maximized ? '1' : '0',
+        MIOON_DESKTOP_WINDOWS_SMOKE_SCALE: String(scenario.scale)};
+      try {await services.launch(options.binary, scenarioEnvironment, options.workspace);} catch {fail('WINDOWS_SMOKE_SCREENSHOT_FAILED');}
+      let reportInfo: FileObservation;
+      try {reportInfo = await services.inspect(resultFile);} catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
+      if (!reportInfo.file || !canonical(resultFile, reportInfo) || reportInfo.size < 1 || reportInfo.size > maximumReportBytes) fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');
+      let report: unknown;
+      try {report = JSON.parse(await services.read(resultFile)) as unknown;} catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
+      const validated = validateWindowsTitleBarScreenshot(report, scenario);
+      let pngInfo: FileObservation;
+      try {pngInfo = await services.inspect(pngFile);} catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
+      if (!pngInfo.file || !canonical(pngFile, pngInfo) || pngInfo.size !== validated.screenshot.bytes) fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');
+      scenarios.push(validated);
+    }
+    await writeEvidence(true);
+  } catch (error) {
+    await writeEvidence(false);
+    throw error;
+  }
+}
 export async function runWindowsDevelopmentSmoke(args: readonly string[], services: SmokeServices = defaultServices()): Promise<WindowsLaunchReport | FailureReport> {
   let options: SmokeArguments | undefined;
+  let screenshotRun: {options: SmokeArguments & {screenshots: string}; environment: NodeJS.ProcessEnv} | undefined;
   let result: WindowsLaunchReport | FailureReport;
   const optionalText = async (file: string): Promise<string | undefined> => {
     try {const text = await services.read(file); return typeof text === 'string' && text.length > 0 ? text : undefined;}
@@ -304,9 +388,16 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
         const phase = phaseMarkerName(parsed(await optionalText(`${reportFile}.phase`)));
         result = phase === undefined ? {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_STARTUP_ERROR'}
           : {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_STARTUP_ERROR', phase};
-      } else result = validateWindowsLaunchReport(value, expected);
+      } else {
+        result = validateWindowsLaunchReport(value, expected);
+        if (options.screenshots !== undefined) screenshotRun = {options: {...options, screenshots: options.screenshots}, environment};
+      }
     }
   } catch (error: unknown) {result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: smokeFailureCode(error)};}
+  if (options && result.ok && screenshotRun !== undefined) {
+    try {await runTitleBarScreenshots(screenshotRun.options, services, screenshotRun.environment);}
+    catch (error) {result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: smokeFailureCode(error)};}
+  }
   if (options) {
     try {
       await services.mkdir(paths.dirname(options.output), true);
