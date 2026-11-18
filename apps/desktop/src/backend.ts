@@ -155,12 +155,16 @@ process.parentPort.on('message', ({ data, ports }) => {
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
       startFailed = true;
-      // TEMP-DIAG: fixed stage only to the runner temp directory, never a path or error.
+      // TEMP-DIAG: stage and error detail only to the runner temp directory.
       try {
         const temp = process.env.TEMP;
         if (typeof temp === 'string' && path.isAbsolute(temp)) {
           const {appendFileSync} = await import('node:fs');
-          appendFileSync(path.join(temp, 'mioon-backend-startup-stage.txt'), `stage=${startupStage}\n`);
+          const coded = error as {name?: unknown; code?: unknown; message?: unknown; stack?: unknown};
+          const detail = error instanceof Error
+            ? `${String(coded.name)}:${typeof coded.code === 'string' ? coded.code : ''}:${error.message}\n${String(coded.stack ?? '').split('\n').slice(0, 8).join('\n')}`
+            : 'non-error';
+          appendFileSync(path.join(temp, 'mioon-backend-startup-stage.txt'), `stage=${startupStage}\n${detail}\n`);
         }
       } catch { /* TEMP-DIAG must never cause a second failure. */ }
       settingsEventLoop.close();
