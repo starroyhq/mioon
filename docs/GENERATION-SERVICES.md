@@ -30,7 +30,11 @@
 
 系统钥匙串等待授权时，设置页可以先查看和编辑普通字段。初始探测持续等待约 300 毫秒后，密钥一栏显示等待提示。macOS 如提示访问「Mioon Safe Storage」，请选择允许。若此前已拒绝，请完整退出 Mioon，重新打开并允许访问。
 
-任务记录用可选的 `error.diagnostic` 标识这类失败，包含固定类型 `video_credential`、原因码 `cause` 和处理方式 `recovery`（`automatic` 或 `user_action`）。短时故障期间，任务阶段为 `connection_retrying`；需要处理时为 `connection_required`。诊断不含密钥、密文或原始异常文本。
+任务记录用可选的 `error.diagnostic` 标识这类失败，包含固定类型 `video_credential`、原因码 `cause` 和处理方式 `recovery`（`automatic` 或 `user_action`）。短时故障期间，任务阶段为 `connection_retrying`；需要处理时为 `connection_required`。诊断不含密钥、密文或原始异常文本。Omni 的错误另可带严格脱敏的 `error.providerFailure`，保留已识别的服务商 type、code、简短原因及 HTTP 状态，查询凭据恢复期间也保留这份证据。
+
+## Google 视频与兼容网关
+
+Google 新任务默认使用 `gemini-omni-1.2-flash`，文生或一张首帧，3–15 秒、默认 720p、原生声音。升级后继续使用原 Google 连接和密钥，已受理的 Veo 任务仍按冻结的旧协议取结果。新建兼容视频服务须由用户填写网关的模型名称。协议、迁移、输入限制和待验收项见 [供应商说明](PROVIDERS.md#google-gemini-omni030)。
 
 ## 设置 HTTP
 

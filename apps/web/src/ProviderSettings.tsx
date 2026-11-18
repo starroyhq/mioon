@@ -10,7 +10,7 @@ import { WorkbenchSelect, WorkbenchTooltip } from './WorkspaceControls.tsx';
 import Icon from './icons.tsx';
 import ProviderBrandIcon from './ProviderBrandIcon.tsx';
 import GenerationInputSummary from './GenerationInputSummary.tsx';
-import { generationProviderIdentity, providerModels, providerStatus, providerStatusDescriptor } from './generation-settings.ts';
+import { generationProviderIdentity, isGenerationProviderCandidate, providerModels, providerStatus, providerStatusDescriptor } from './generation-settings.ts';
 import type { GenerationProvider } from './generation-settings.ts';
 
 export interface ProviderSettingsChange { providerId?: string; connectionId?: string; modelEntryId?: string; model?: string; inputMode?: string; parameters?: Record<string, unknown> }
@@ -29,7 +29,7 @@ const uniqueConfiguration = (values: unknown): string[] => [...new Set((Array.is
 
 export default function ProviderSettings({ providers, provider, model, modelEntryId, onChange, showEnvironmentSetup = false }: ProviderSettingsProps): ReactElement {
   const { t, renderMessage } = useI18n();
-  const available = providers.filter(item => item.id !== 'runway');
+  const available = providers.filter(isGenerationProviderCandidate);
   const models = providerModels(provider);
   const prefix = provider && Object.hasOwn(providerPrefixes, provider.id) ? providerPrefixes[provider.id] : undefined;
   const configuration = record(provider?.configuration) ? provider.configuration : null;

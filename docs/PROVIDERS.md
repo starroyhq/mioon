@@ -467,7 +467,8 @@ These are deliberately smaller than the providers' full catalogs. The UI and ser
 | mock | mock-motion-v1 | Text / simulated image workflow | 9:16 | 2, 4, 8 | 360×640 |
 | runway | gen4_turbo | One first-frame image | See Runway below | Integer 2–10 | Ratio-dependent |
 | ark | doubao-seedance-2-5-260628 | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 720p |
-| veo | veo-3.1-generate-preview | Text / one first-frame image | 9:16, 16:9 | 4, 6, 8 | 720p |
+| veo (saved connection) | gemini-omni-1.2-flash | Text / one first-frame image | 9:16, 16:9 | Integer 3–15 | 720p default; 360p / 1080p / 4k |
+| veo (historical environment adapter) | veo-3.1-generate-preview | Retired; existing result queries only | Historical | Historical | Historical |
 | minimax | MiniMax-H3 | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 2K for new submissions; historical 768P tasks remain readable |
 | vidu | viduq3-turbo | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 720p |
 
@@ -587,7 +588,25 @@ The mainland-China Ark adapter uses official `@volcengine/ark-runtime@1.0.12` ag
 
 No configurable seed is exposed: current create documentation restricts that request option to older model families, even though newer model responses may contain a seed. No undocumented request-ID lookup is inferred from task listing. `reconcile()` returns null; cancellation is local-only. [Official list API](https://docs.volcengine.com/docs/ark/list-video-generation-tasks-api?lang=zh).
 
+## Google Gemini Omni（0.3.0）
+
+Google 视频连接使用 `gemini-omni-1.2-flash` 和独立的 `gemini-omni-v1` 协议档案，继续使用 Gemini API 密钥。新生成支持纯文本或一张首帧，3–15 秒整秒、16:9／9:16、默认 720p，可选 360p／1080p／4k，24 fps。1080p 和 4k 为上采样。原生音轨按服务商默认生成。首尾帧和最多六张普通参考图的能力已记录，入口随 RI 接入。首尾模式的文档上限为 10 秒。独立参考音频与台词字段未接入。[Omni 指南](https://aistudio.google.com/docs/omni) · [型号档案](https://aistudio.google.com/docs/models/gemini-omni-flash#gemini-omni-1.2-flash)
+
+首帧只发送受管且已核对哈希的 PNG／JPEG，当前应用保守限制为 10 MiB、边长 1–16384 px、提示词 1000 UTF-16 单元。Omni 专属单文件字节和像素上限尚未确认，这些数值是本地限制。费用确认冻结模型、连接修订、素材和参数。
+
+通过固定 Gemini Developer 端点 `POST /v1beta/interactions` 提交，密钥使用 `x-goog-api-key`。文本和首帧在 `input` 中，`response_format` 指定视频、时长、比例和分辨率；图生显式指定 `generation_config.video_config.task=image_to_video`。后台任务保留 interaction ID，后续只 GET 原任务。完成结果读取 `steps[].type=model_output` 的视频内容。[Interactions API](https://aistudio.google.com/api-reference/interactions-api) · [后台执行](https://aistudio.google.com/docs/background-execution)
+
+Google 说明，GET 已完成的 interaction 会返回内联 Base64，即使原先请求 URI。该响应采用独立的有界读取，临时解码视频并走原受管 MP4 校验及原子落盘，原始视频内容不进入任务 JSON 或轮询缓存。URI 输出只访问严格校验的官方 files 路径，文件就绪后下载；重定向按已核验输出域名检查并移除鉴权。[输出交付](https://aistudio.google.com/docs/omni#retrieving-videos-with-an-uri)
+
+0.2.0 的精确旧默认 `veo-v1 / veo-3.1-generate-preview` 在读取时投影为 Omni，连接、模型条目 UUID、密钥引用及修订保留。旧文件读取时保持字节，首次明确改动设置后保存新投影。历史 Veo 绑定继续按原协议查询和下载，旧默认的新提交和重试被生命周期校验拒绝。远端已过期或删除的结果仍以服务商返回为准。Google 已于 2026-10-22 关闭这些 Preview。[停用记录](https://aistudio.google.com/docs/deprecations#veo-deprecated-models)
+
+新建 OpenAI 兼容视频连接没有预填模型，用户按网关填写模型 ID，使用现有 Videos 协议模板。已有连接中的型号按原值读取。官方 Sora API 已关闭，网关的型号、音轨和价格须以该网关的证据为准。[OpenAI 停用记录](https://developers.openai.com/api/docs/deprecations)
+
+本次验收使用官方形状的合成 HTTP 夹具。真实候选包验收经用户同意后，可显式选择 3 秒、360p、16:9 的静物文生视频一单，输出约 $0.07，另计输入 token、可能的思考 token 和税费。720p 三秒输出约 $0.21。真实生成和原声音轨仍待候选包验证。[价格](https://aistudio.google.com/docs/pricing#gemini-omni-1.2-flash)
+
 ## Gemini Veo 3.1 preview
+
+此节记录历史协议，用于已受理任务的查询和下载。当前新生成使用上文 Omni。
 
 This adapter targets the **Gemini Developer API**, not Vertex AI, using official `@google/genai@2.30.0`. It uses `GEMINI_API_KEY` in `x-goog-api-key` against `https://generativelanguage.googleapis.com/v1beta`. The SDK converts `models.generateVideos()` inputs into `POST /models/veo-3.1-generate-preview:predictLongRunning`; the body contains one `instances` element with prompt and optional `image: {bytesBase64Encoded, mimeType}`, plus `parameters: {aspectRatio, durationSeconds, resolution: 720p, sampleCount: 1}`. Inline bytes are raw base64, without a data-URI prefix. The complete returned `name` is persisted and queried through `operations.getVideosOperation()`. The bridge returns the raw transport response to the existing parser, preserving historical operation shapes even though the SDK's public result converter uses different field names. [Official Veo guide](https://ai.google.dev/gemini-api/docs/veo?hl=en), [official REST-field converter](https://raw.githubusercontent.com/googleapis/js-genai/main/src/converters/_models_converters.ts).
 

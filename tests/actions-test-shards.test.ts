@@ -55,6 +55,18 @@ function workflowJob(workflow: string, name: string): string {
   assert.ok(value, `the ${name} job must exist`);
   return value;
 }
+test('portable PR change detection can read the base after multiple follow-up commits', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
+  const portable = workflowJob(workflow, 'portable');
+  const checkout = /      - name: Checkout frozen source\r?\n([\s\S]*?)(?=      - name:|(?![\s\S]))/m.exec(portable)?.[1];
+  assert.ok(checkout, 'portable jobs must check out the frozen revision before comparing changes');
+  assert.match(checkout, /uses: actions\/checkout@[a-f0-9]{40}/);
+  assert.match(checkout, /ref: \$\{\{ inputs\.source_sha \}\}/);
+  assert.match(portable, /PR_BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(portable, /git diff --name-only "\$PR_BASE_SHA" HEAD/);
+  assert.match(checkout, /^          fetch-depth: 0\r?$/m,
+    'the PR base can be older than any fixed shallow depth after subsequent commits');
+});
 test('Linux CI prepares one exact cached media toolchain before distributing it to every shard', async () => {
   const workflow = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
   const preparation = workflowJob(workflow, 'ffmpeg'), quality = workflowJob(workflow, 'quality');

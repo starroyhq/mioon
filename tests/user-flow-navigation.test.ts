@@ -1,3 +1,4 @@
+import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
 import type {RootHook} from './helpers/strict-root-ui-types.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
@@ -74,7 +75,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     // Run the same no-op comparison used by App, so a state setter or preference
     // write cannot accidentally stand in for the new presentation publication.
     (env.dataRef.current as typeof env.dataRef.current&{project:unknown}).project = { id: key.projectId };
-    const viewEnv = { ...env, application: null, viewReady: { current: true }, viewRef: { current: state.view },
+    const viewEnv = { ...env, playbackClock: createTimelinePlaybackClock(), application: null, viewReady: { current: true }, viewRef: { current: state.view },
       useCallback: (callback: (...args: never[]) => unknown) => callback, clipLoudnessEpoch: { current: 0 },
       setView: rejectUnexpected('view state write for equivalent values'),
       preferencesRef: { current: { update: rejectUnexpected('project preference write for equivalent values') } },

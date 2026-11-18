@@ -135,6 +135,18 @@ test('single picker labels the current model in all four languages', () => {
   }
 });
 
+test('image-picker format copy appears only on unavailable IDs in all four languages', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const invalid = 'a'.repeat(121);
+    const unavailableLabel = translate(locale, 'image.settings.modelIdFormatUnsupported');
+    const picker = mount({mode: 'single', unavailableLabel, items: [{id: 'valid-id'}, {id: invalid, unavailable: true}]}, locale);
+    assert.equal(picker.label('valid-id')?.props.disabled, false);
+    assert.equal(picker.label(invalid)?.props.disabled, true);
+    const states = picker.render().filter(node => node.props.className === 'model-picker-row-state').map(text);
+    assert.deepEqual(states, ['', unavailableLabel]);
+  }
+});
+
 test('single picker retains the locked current model even without a usable remote list', () => {
   for (const status of ['loading', 'empty', 'error'] as const) {
     const picker = mount({mode: 'single', status, statusMessage: 'Synthetic status',

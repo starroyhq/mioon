@@ -18,6 +18,8 @@ import { createWebSettingsNavigation } from '../apps/web/src/web-settings-naviga
 import { hasOpenWorkbenchModal } from '../apps/web/src/workbench-modal-state.ts';
 import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
 import { timelineSplitActionForKey, timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
+import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
+import {timelineSplitState} from '../apps/web/src/timeline-split.ts';
 import {stripSourceTypes} from './helpers/eval-source.ts';
 import type { ProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
 import { isProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
@@ -526,12 +528,24 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = (event: KeyboardEvent) => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
   assert.ok(start >= 0 && end > start);
   const settings = modalElement({ role: 'dialog', hidden: '' }), confirmation = modalElement({ role: 'alertdialog', 'data-closed': '' });
-  const calls: unknown[] = [], env = { nativeMenuBridge: null as object | null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
-    hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, splitState: { canSplit: true }, historyState: { canUndo: true, canRedo: true },
+  const calls: unknown[] = [], playbackClock = createTimelinePlaybackClock();
+  const timeline = {id: 'timeline', revision: 1, clips: [{id: 'clip', name: 'Clip', startFrame: 10, durationFrames: 50}]};
+  const history = {projectId: 'project', timelineId: timeline.id, revision: timeline.revision, cursor: 1, length: 2,
+    canUndo: true, canRedo: true, undoEntry: {id: 'undo'}, redoEntry: {id: 'redo'}};
+  const env = { nativeMenuBridge: null as object | null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
+    hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, historyState: { canUndo: true, canRedo: true },
+    playbackClock, effectivePlayhead: 30, timelineSplitState, data: {project: {id: 'project'}, timelineHistory: history}, timeline,
+    busy: {}, timelinePending: false, clipDirty: false, subtitleDirty: false, online: true, auth: true, loading: false,
+    propertiesPage: 'inspector', selectedClipId: 'clip', workspaceMode: 'editing',
     splitTimelineClip: () => calls.push('split'), changeTimelineHistory: (direction: unknown) => calls.push(direction),
   };
+  const stateStart = app.indexOf('  const getSplitStateAt = '), stateEnd = app.indexOf('  const splitState = ', stateStart);
+  assert.ok(stateStart >= 0 && stateEnd > stateStart);
+  const getSplitStateAt = Function('env', `with (env) { ${stripSourceTypes(app.slice(stateStart, stateEnd))}; return getSplitStateAt; }`)(env) as (frame: number) => ReturnType<typeof timelineSplitState>;
+  assert.equal(getSplitStateAt(env.effectivePlayhead).canSplit, true);
+  Object.assign(env, {getSplitStateAt});
   const onKeyDown = Function('env', `with (env) { ${stripSourceTypes(app.slice(start, end))}; return onKeyDown; }`)(env);
-  const press = (key: string) => { let prevented = false; onKeyDown({ key, ctrlKey: true, metaKey: false, target: { closest: () => null }, preventDefault() { prevented = true; } }); return prevented; };
+  const press = (key: string, patch: Record<string, unknown> = {}) => { let prevented = false; onKeyDown({ key, ctrlKey: true, metaKey: false, target: { closest: () => null }, ...patch, preventDefault() { prevented = true; } }); return prevented; };
   assert.equal(press('b'), true); assert.equal(press('z'), true); assert.deepEqual(calls, ['split', 'undo']);
   delete settings.attributes.hidden; assert.equal(press('b'), false); assert.equal(press('z'), false);
   settings.attributes['data-closed'] = ''; assert.equal(press('b'), true); assert.equal(press('z'), true);
@@ -542,6 +556,22 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   assert.deepEqual(calls, ['split', 'undo', 'split', 'undo', 'split', 'undo']);
   env.nativeMenuBridge = {}; assert.equal(press('b'), false); assert.equal(press('z'), false);
   assert.deepEqual(calls, ['split', 'undo', 'split', 'undo', 'split', 'undo'], 'Desktop menu accelerators retain a single owner');
+
+  env.nativeMenuBridge = null;
+  const media = {};
+  playbackClock.start(media, 20);
+  playbackClock.tick(media, 60);
+  assert.equal(press('b'), false, 'the current live clip boundary blocks splitting while the saved position remains inside');
+  assert.equal(calls.length, 6);
+  playbackClock.tick(media, 31);
+  assert.equal(press('b', {isComposing: true}), false);
+  assert.equal(press('b', {keyCode: 229}), false);
+  assert.equal(calls.length, 6, 'live playback preserves the IME guards');
+  assert.equal(press('b'), true);
+  assert.equal(calls.at(-1), 'split');
+  assert.equal(playbackClock.stop(media), true);
+  assert.equal(press('b'), true, 'paused shortcut uses the explicit fallback position');
+  assert.equal(calls.length, 8);
 });
 
 function composerSettingsHandler(kind: string, callback: { (): Promise<unknown>; (): Promise<unknown>; (): unknown; }) {

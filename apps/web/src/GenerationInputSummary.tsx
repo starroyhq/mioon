@@ -77,7 +77,7 @@ export interface GenerationInputSummaryProps { provider?: unknown; model?: strin
 export default function GenerationInputSummary({ provider, model }: GenerationInputSummaryProps): ReactElement | null {
   const { t, renderMessage } = useI18n();
   const selection = generationProfileSelection(provider as GenerationProvider | null, model);
-  const { profile, state, evaluation, evaluatedAsOf } = selection;
+  const { profile, state, evaluation } = selection;
   const visible = useWorkspaceVisibility();
   const selectionKey = semanticKey([(provider as Record<string, unknown> | null)?.id, model, (provider as Record<string, unknown> | null)?.inputProfileVersion, selection]);
   const scope = useMemo(() => ({ selectionKey, visible }), [selectionKey, visible]);
@@ -90,7 +90,7 @@ export default function GenerationInputSummary({ provider, model }: GenerationIn
   if (!provider || !model) return null;
   const open = visible && disclosure.scope === scope && disclosure.open;
   const lifecycleIssue = evaluation?.issues?.[0];
-  const lifecycleMessage = lifecycleIssue?.code === 'MODEL_LIFECYCLE_REVALIDATION_REQUIRED' ? t('generation.inputs.lifecycleBlocked', { evaluatedAsOf: creationParameter(evaluatedAsOf) }) : renderMessage(generationIssueDescriptor(lifecycleIssue));
+  const lifecycleMessage = lifecycleIssue?.code === 'MODEL_LIFECYCLE_REVALIDATION_REQUIRED' ? t('generation.inputs.lifecycleBlocked') : renderMessage(generationIssueDescriptor(lifecycleIssue));
   return <section className="generation-input-summary" aria-label={t('generation.inputs.limitsAria')} data-testid="generation-input-summary" data-profile-state={state}>
     {lifecycleIssue ? <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-blocked">{lifecycleMessage}</p> : profile?.lifecycle && <p className="generation-input-warning" role="status" data-testid="generation-input-lifecycle-warning">{t('generation.inputs.lifecycleWarning', { earliestShutdownDate: creationParameter(profile.lifecycle.earliestShutdownDate), checkedOn: creationParameter(profile.lifecycle.checkedOn) })}</p>}
     <Collapsible open={open} onOpenChange={next => {

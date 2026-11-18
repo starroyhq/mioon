@@ -1,5 +1,10 @@
 # Wired model input limits
 
+0.3.0 Google update (2026-11-18): configured Google connections default to
+`gemini-omni-1.2-flash` through an independently versioned Interactions profile.
+The active modes are text or one first frame. Archived Veo profiles remain
+readable for accepted tasks. See [Omni limits and migration](PROVIDERS.md#google-gemini-omni030).
+
 Wan SDK update (2026-10-23): UI-configured Wan connections also provide exact
 `wan3.0-video` / `wan3.0-video-prime` profiles under `wan30-v1`. The reviewed
 model/region table drives local image-only input modes, request controls and

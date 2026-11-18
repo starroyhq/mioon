@@ -132,6 +132,7 @@ export const videoProviderMessages = {
   "video.seedance.skip.count": {"zh-Hans": "未加入，已到张数上限", "zh-Hant": "未加入，已到張數上限", "en": "not added; the image limit is reached", "ja": "未追加。枚数の上限に達しています"},
   "video.seedance.skip.budget": {"zh-Hans": "未加入，加上会超过编码后合计上限", "zh-Hant": "未加入，加上會超過編碼後合計上限", "en": "not added; it would exceed the encoded total limit", "ja": "未追加。追加するとエンコード後の合計上限を超えます"},
   "video.wan.reviewParameters": {"zh-Hans": "{model} · {mode} · {duration} · {ratio}", "zh-Hant": "{model} · {mode} · {duration} · {ratio}", "en": "{model} · {mode} · {duration} · {ratio}", "ja": "{model}・{mode}・{duration}・{ratio}"},
+  "video.providers.google": {"zh-Hans": "Google Gemini", "zh-Hant": "Google Gemini", "en": "Google Gemini", "ja": "Google Gemini"},
   "video.providers.compatible": {"zh-Hans": "兼容服务（OpenAI 视频格式）", "zh-Hant": "相容服務（OpenAI 影片格式）", "en": "Compatible service (OpenAI video format)", "ja": "互換サービス（OpenAI 動画形式）"},
   "video.providers.region.custom": {"zh-Hans": "自定义", "zh-Hant": "自訂", "en": "Custom", "ja": "カスタム"},
   "video.providers.baseUrl": {"zh-Hans": "服务地址", "zh-Hant": "服務位址", "en": "Service base URL", "ja": "サービスのベース URL"},

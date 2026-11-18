@@ -80,13 +80,9 @@ export const useGenerationComfyService = (options: GenerationImageServiceOptions
 /** Detail-only content: the shared parent owns title, navigation and Save. */
 function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: string; kind: GenerationImageDomainKind; owner: GenerationImageServicesOwner; state: GenerationImageDomainState; onSelect: (key: string) => void}) {
   const {t, renderMessage} = useI18n(), confirm = useConfirmation(), visibility = useSettingsServicesPanel();
-  const [picker, setPicker] = useState<{usesDraftKey: boolean} | null>(null);
+  const [picker, setPicker] = useState<symbol | null>(null);
   const activePicker = useRef<typeof picker>(null), pickerTrigger = useRef<HTMLElement | null>(null);
-  const password = useRef<HTMLInputElement | null>(null);
-  const inputRef = useMemo(() => (input: HTMLInputElement | null) => {
-    password.current = input;
-    owner.registerKey(id, input);
-  }, [owner, id]);
+  const inputRef = useMemo(() => (input: HTMLInputElement | null) => owner.registerKey(id, input), [owner, id]);
   const interaction = useMemo(() => ({id, active: visibility.active, version: state.version}), [id, visibility.active, state.version]);
   const current = useRef(interaction); current.current = interaction;
   const usable = () => current.current === interaction && visibility.active && documentVisible() && owner.interactionAllowed();
@@ -125,8 +121,8 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
   try {if (draft?.configuration.baseUrl) destination = kind === 'custom' ? getCustomImageDestination(normalizeCustomImageBaseUrl(draft.configuration.baseUrl)) : `${draft.configuration.baseUrl}/images/generations`;} catch {}
   const prefix = id.replaceAll(':', '-'), edit = (patch: Parameters<typeof owner.edit>[1], configuration: Parameters<typeof owner.edit>[2] = {}) => {if (usable()) owner.edit(id, patch, configuration);};
   function openPicker(trigger: HTMLElement) {
-    if (!usable() || !probeable || activePicker.current || !draft) return;
-    const next = {usesDraftKey: Boolean(password.current?.value)};
+    if (kind !== 'custom' || !usable() || !probeable || activePicker.current || !draft) return;
+    const next = Symbol();
     activePicker.current = next;
     pickerTrigger.current = trigger;
     setPicker(next);
@@ -148,11 +144,16 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
   };
   if (!draft) return <div className="image-settings-form" data-testid={`${prefix}-detail`}><p role="status">{t((state.notice ?? 'image.settings.loading') as MessageKey)}</p>{state.phase === 'load_error' && <Button type="button" disabled={!visibility.active} onClick={() => {if (usable()) void owner.load();}}>{t('connections.reload')}</Button>}</div>;
   const currentModel = draft.configuration.model;
-  const pickerItems = [
+  const pickerItems = kind === 'custom' && picker ? [
     ...(currentModel ? [{id: currentModel, added: true, unavailable: false}] : []),
     ...(listing?.models ?? []).filter(item => item.id !== currentModel).map(item => ({id: item.id, added: false,
-      unavailable: kind === 'official' || !customImageModelSchema.safeParse(item.id).success})),
-  ];
+      unavailable: !customImageModelSchema.safeParse(item.id).success})),
+  ] : [];
+  const officialModelReturned = listing?.result === 'ok' && listing.models?.some(item => item.id === currentModel) === true;
+  const showProbeResult = kind === 'official' ? Boolean(listing) : probe?.operation === 'check';
+  const probeSucceeded = kind === 'official' ? officialModelReturned : probe?.result.result === 'ok';
+  const checkLabel = kind === 'official' && state.phase === 'checking' ? 'settings.draftKey.checking'
+    : kind === 'official' && listing && !officialModelReturned ? 'settings.draftKey.recheck' : 'settings.draftKey.check';
   return <div className="image-settings-form" data-testid={`${prefix}-detail`} data-phase={state.phase}>
     {kind === 'custom' && <><Label htmlFor={`${prefix}-name`}>{t('image.settings.services.name')}</Label><Input id={`${prefix}-name`} data-testid={`${prefix}-name`} value={draft.name} maxLength={120} disabled={!editable} onChange={event => edit({name: event.target.value})} />
       <Button type="button" disabled={!editable} data-testid={`${prefix}-delete`} onClick={() => {void remove();}}>{t('image.settings.services.delete')}</Button></>}
@@ -169,17 +170,18 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
       <div className="image-settings-fixed">{destination && <span>{destination}</span>}<span>{draft.configuration.model || t('image.settings.modelEmpty')}</span><span>{t('image.settings.fixedOutput')}</span></div>
       {storage?.persistentAvailable && <><div className="settings-with-help"><Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><WorkbenchTooltip content={t('image.settings.keyHelp')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div><Input ref={inputRef} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={4096} disabled={!editable || draft.secretAction === 'remove'} onChange={() => {if (usable()) owner.keyChanged(id);}} />
       <div className="image-generation-actions">
-        <Button type="button" data-testid={`${prefix}-key-check`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, 'check');}}>{t('settings.draftKey.check')}</Button>
-        <Button type="button" data-testid={`${prefix}-model-list`} disabled={!probeable} onClick={event => openPicker(event.currentTarget)}>{t('settings.draftKey.list')}</Button>
+        <Button type="button" data-testid={`${prefix}-key-check`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, kind === 'official' ? 'models' : 'check');}}>{t(checkLabel)}</Button>
+        {kind === 'custom' && <Button type="button" data-testid={`${prefix}-model-list`} disabled={!probeable} onClick={event => openPicker(event.currentTarget)}>{t('settings.draftKey.list')}</Button>}
       </div>
-      {state.phase === 'checking' && !picker && <p role="status">{t('settings.draftKey.checking')}</p>}
-      {probe?.operation === 'check' && <p role={probe.result.result === 'ok' ? 'status' : 'alert'} data-testid={`${prefix}-probe-result`}>
-        {probeMessage}
+      {kind === 'custom' && state.phase === 'checking' && !picker && <p role="status">{t('settings.draftKey.checking')}</p>}
+      {showProbeResult && <p role={probeSucceeded ? 'status' : 'alert'} data-testid={`${prefix}-probe-result`}>
+        {kind === 'official' && listing?.result === 'ok'
+          ? t(officialModelReturned ? 'image.settings.officialCheckAvailable' : 'image.settings.officialCheckMissing', {model: currentModel})
+          : probeMessage}
       </p>}
-      {visibility.active && picker && <ModelPickerDialog mode="single"
-        serviceName={kind === 'official' ? t('image.settings.official') : draft.name} usesDraftKey={picker.usesDraftKey}
-        status={pickerStatus} statusMessage={listing?.result === 'unsupported' || pickerStatus === 'error' ? probeMessage
-          : pickerStatus === 'ready' && kind === 'official' ? t('settings.modelPicker.officialModel') : undefined}
+      {kind === 'custom' && visibility.active && picker && <ModelPickerDialog mode="single"
+        serviceName={draft.name} unavailableLabel={t('image.settings.modelIdFormatUnsupported')}
+        status={pickerStatus} statusMessage={listing?.result === 'unsupported' || pickerStatus === 'error' ? probeMessage : undefined}
         items={pickerItems} returnedModelCount={listing?.models?.length}
         triggerRef={pickerTrigger} onClose={closePicker} onAdd={chooseModel} />}
       {draft.needsKey && !draft.hasKey && <p role="status">{t('image.settings.notice.keyCleared')}</p>}</>}

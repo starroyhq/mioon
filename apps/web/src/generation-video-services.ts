@@ -1,7 +1,8 @@
 import {VIDEO_BUILTIN_PROVIDER_IDS, videoSettingsUpdateV2Schema} from '../../../packages/contracts/src/generation-video-settings.ts';
 import type {VideoConnectionConfigurationV2, VideoSettingsOperationV2, VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../../../packages/contracts/src/generation-video-settings.ts';
+import {GEMINI_OMNI_MODEL_ID} from '../../../packages/contracts/src/gemini-omni-video.ts';
 import {getSeedance25Capability} from '../../../packages/contracts/src/seedance-video.ts';
-import {defaultVideoModels, normalizeCompatibleVideoBaseUrl, VIDEO_SETTINGS_LIMITS, videoBindingCapabilities, videoConnectionEndpoint, videoModelEntrySchema} from '../../../packages/contracts/src/video-providers.ts';
+import {newVideoModelEntry, normalizeCompatibleVideoBaseUrl, VIDEO_SETTINGS_LIMITS, videoBindingCapabilities, videoConnectionEndpoint, videoModelEntrySchema} from '../../../packages/contracts/src/video-providers.ts';
 import type {MessageKey} from '../../../packages/i18n/src/index.ts';
 import {createVideoSettingsClient, newVideoConnection, safeVideoSettings} from './video-settings.ts';
 import type {VideoSettingsClient} from './video-settings.ts';
@@ -155,8 +156,8 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
       if (providerId !== 'compatible' && providerId !== 'ark' && providerId !== 'veo') return false;
       const existing = new Set(models.map(model => model.modelId));
       const additions = [...new Set(selectedIds)].filter(id => !existing.has(id));
-      if (!additions.length || models.length + additions.length > VIDEO_SETTINGS_LIMITS.models) return false;
-      const template = defaultVideoModels(providerId)[0]!;
+      if (!additions.length || models.length + additions.length > VIDEO_SETTINGS_LIMITS.models || providerId === 'veo' && additions.some(id => id !== GEMINI_OMNI_MODEL_ID)) return false;
+      const template = newVideoModelEntry(providerId);
       const entries = additions.map(modelId => videoModelEntrySchema.safeParse({
         ...template,
         id: crypto.randomUUID(),

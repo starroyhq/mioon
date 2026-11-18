@@ -18,10 +18,6 @@ export const mioSettingsMessages = {
   },
   "settings.modelPicker.useModel": {"zh-Hans":"选用这个模型","zh-Hant":"選用這個模型","en":"Use this model","ja":"このモデルを使う"},
   "settings.modelPicker.willUse": {"zh-Hans":"将选用","zh-Hant":"將選用","en":"Will use","ja":"使用予定"},
-  "settings.modelPicker.officialModel": {
-    "zh-Hans":"此连接使用固定的图片模型。","zh-Hant":"此連線使用固定的圖片模型。",
-    "en":"This connection uses a fixed image model.","ja":"この接続では固定の画像モデルを使用します。"
-  },
   "settings.modelPicker.search": {"zh-Hans":"搜索模型","zh-Hant":"搜尋模型","en":"Search models","ja":"モデルを検索"},
   "settings.modelPicker.list": {"zh-Hans":"获取的模型","zh-Hant":"取得的模型","en":"Fetched models","ja":"取得したモデル"},
   "settings.modelPicker.selectAll": {"zh-Hans":"全选新模型","zh-Hant":"全選新模型","en":"Select all new","ja":"新規モデルをすべて選択"},

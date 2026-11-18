@@ -760,13 +760,6 @@
     {
       "file": "apps/web/src/generation-settings.ts",
       "category": "cjk-source",
-      "hash": "d67b88bb49708a49010cedd1ec79869225f4896e11d98d694173a2d7f568edbe",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ProviderSettings uses providerStatusDescriptor/providerAvailabilityDescriptor/inputModeDescriptor. GenerationInputSummary renders selection.displayMessage and generationIssueDescriptor; App and Inspector use generationInputIssueDescriptor. Branches are selected from issue codes, paths and provider/model IDs, not source text. Four-locale counterpart: connections.generation.issue.lifecycle."
-    },
-    {
-      "file": "apps/web/src/generation-settings.ts",
-      "category": "cjk-source",
       "hash": "cad3a019faa0d66bc065571a7254900817b3b81625d716ad15d0799e81a63d41",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ProviderSettings uses providerStatusDescriptor/providerAvailabilityDescriptor/inputModeDescriptor. GenerationInputSummary renders selection.displayMessage and generationIssueDescriptor; App and Inspector use generationInputIssueDescriptor. Branches are selected from issue codes, paths and provider/model IDs, not source text. Four-locale counterpart: connections.generation.issue.frozenInvalid."
