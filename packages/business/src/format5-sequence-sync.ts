@@ -29,7 +29,7 @@ import {applySequenceEditBaselineChange, isSequenceEditEnvelope, sequenceEditOpe
 import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
-import type {ChainSyncPlan, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainSyncOperation, ChainSyncPlan, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncVersion} from '../../contracts/src/chain-main-track.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
@@ -296,16 +296,26 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope): Seq
   }
   if (operation.kind === 'track') {
     const edit = operation.edit;
-    const id = edit.kind === 'add' ? edit.clip.id : edit.clipId;
-    if (edit.kind !== 'version') return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', [id]);
-    const clip = context.clips.find(item => item.id === edit.clipId);
-    if (!clip) return failure('CLIP_NOT_FOUND', [edit.clipId]);
-    const versionId = edit.version?.id ?? null;
-    if (versionId === null) return failure('INVALID_MEDIA', [clip.nodeId]);
-    const resolved = resolveVersion(context, clip.nodeId, versionId);
-    if ('ok' in resolved) return resolved;
-    return checked(planChainSync(state, {kind: 'track', edit: {kind: 'version', clipId: clip.id,
-      version: resolved, locked: edit.locked}}));
+    if (edit.kind === 'version') {
+      const clip = context.clips.find(item => item.id === edit.clipId);
+      if (!clip) return failure('CLIP_NOT_FOUND', [edit.clipId]);
+      const versionId = edit.version?.id ?? null;
+      if (versionId === null) return failure('INVALID_MEDIA', [clip.nodeId]);
+      const resolved = resolveVersion(context, clip.nodeId, versionId);
+      if ('ok' in resolved) return resolved;
+      return checked(planChainSync(state, {kind: 'track', edit: {kind: 'version', clipId: clip.id,
+        version: resolved, locked: edit.locked}}));
+    }
+    if (edit.kind === 'add') {
+      const enriched = enrichAddEdit(context, edit);
+      if ('ok' in enriched && enriched.ok === false) return enriched;
+      return checked(planChainSync(state, {kind: 'track', edit: enriched as Extract<typeof edit, {kind: 'add'}>}));
+    }
+    if (edit.kind === 'move-off-track') {
+      const track = context.timeline.tracks.find(item => item.id === edit.trackId);
+      if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+    }
+    return checked(planChainSync(state, {kind: 'track', edit}));
   }
   return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
 }
@@ -326,8 +336,10 @@ function nodeName(context: SyncContext, nodeId: string): string {
   if (typeof node?.name === 'string' && node.name) return node.name;
   return 'Clip';
 }
-function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Format5Clip | undefined): Format5Clip {
-  const node = context.board.nodes.find(item => item.id === clip.nodeId)!;
+function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Format5Clip | undefined,
+  node: ChainNode | undefined = context.board.nodes.find(item => item.id === clip.nodeId),
+  copiedNodes: ReadonlySet<string> = new Set()): Format5Clip {
+  if (!node) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '主轨节点不在画板中。', 409, {reason: 'MISSING_NODE', id: clip.nodeId});
   const base: Format5Clip = existing ?? {
     id: clip.id, trackId: context.timeline.mainTrack.trackId, name: nodeName(context, clip.nodeId),
     startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame,
@@ -335,7 +347,9 @@ function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Forma
     assetId: null, versionId: null, jobId: null, sourceState: 'placeholder',
     sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId: clip.splitGroupId ?? clip.id, versionMode: 'follow'},
   };
-  const segmentGroupId = clip.splitGroupId ?? base.sequenceSource?.segmentGroupId ?? clip.id;
+  const copiedNode = copiedNodes.has(clip.nodeId);
+  const segmentGroupId = copiedNode && clip.splitGroupId === undefined ? clip.id
+    : clip.splitGroupId ?? base.sequenceSource?.segmentGroupId ?? clip.id;
   const frames = {startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame};
   if (node.kind === 'shot' && clip.versionId === null) {
     const {versionId: _v, assetId: _a, jobId: _j, shotId: _s, ...rest} = base;
@@ -352,17 +366,19 @@ function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Forma
     const jobId = isUuid(version?.jobId) ? version.jobId : null;
     const convertedPlaceholder = existing?.sourceState === 'placeholder';
     const versionChanged = (existing?.versionId ?? null) !== clip.versionId;
+    const lineageCopy = convertedPlaceholder || versionChanged || copiedNode;
     // Existing ready clips with the same applied version keep their stored
-    // lineage exactly; a converted placeholder or a version switch copies the
-    // applied version's ownership identity (fenced against the version row).
-    return {...(convertedPlaceholder || versionChanged ? rest : base), ...frames, assetId, versionId: clip.versionId,
-      sourceState: 'ready', ...(versionChanged || convertedPlaceholder ? {shotId: version?.shotId ?? clip.nodeId} : {}),
-      ...(convertedPlaceholder || versionChanged
-        ? {shotId: version?.shotId ?? clip.nodeId, ...(jobId ? {jobId} : {})}
-        : {shotId: clip.nodeId}),
+    // lineage exactly; a converted placeholder, a version switch or a copied
+    // node copies the applied version's ownership identity (fenced against the
+    // version row/adoption).
+    return {...(lineageCopy ? rest : base), ...frames, assetId, versionId: clip.versionId, sourceState: 'ready',
+      shotId: lineageCopy ? version?.shotId ?? clip.nodeId : clip.nodeId,
+      ...(lineageCopy && jobId ? {jobId} : {}),
       sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId, versionMode: clip.versionLocked ? 'locked' : 'follow'}};
   }
-  return {...base, ...frames, assetId, sourceState: 'ready',
+  const {versionId: _mv, jobId: _mj, shotId: _ms, ...mediaBase} = base;
+  void _mv; void _mj; void _ms;
+  return {...mediaBase, ...frames, assetId, sourceState: 'ready',
     sequenceSource: {kind: 'media', nodeId: clip.nodeId, segmentGroupId}};
 }
 
@@ -378,10 +394,11 @@ function anchorForOwner(item: {startFrame: number; anchorClipId?: string | null}
 function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format5Timeline {
   const existing = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
   const mainTrackId = context.timeline.mainTrack.trackId;
-  const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id)));
+  const planNodes = new Map(plan.after.board.nodes.map(node => [node.id, node]));
+  const copiedNodes = new Set(plan.copiedNode ? [plan.copiedNode.toNodeId] : []);
+  const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
   const ownerSegments = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
-  const durationFrames = mainClips.reduce((maximum, clip) => Math.max(maximum, clip.startFrame + clip.durationFrames), 0);
   const clips: Format5Clip[] = [...mainClips];
   for (const clip of context.timeline.clips) {
     if (clip.trackId === mainTrackId) continue;
@@ -389,16 +406,39 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
     const startFrame = item?.startFrame ?? clip.startFrame;
     clips.push({...clip, startFrame, anchor: item ? anchorForOwner(item, ownerSegments) ?? null : clip.anchor ?? null});
   }
+  // A segment moved off the main track keeps its content but becomes an
+  // other-track item with an explicit anchor.
+  if (plan.transfer) {
+    const original = existing.get(plan.transfer.clip.id);
+    if (!original) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '转移的片段不存在。', 409, {id: plan.transfer.clip.id});
+    const item = anchored.get(plan.transfer.clip.id);
+    const {sequenceSource: _removedSource, ...otherTrack} = original;
+    void _removedSource;
+    clips.push({...otherTrack, trackId: plan.transfer.trackId, startFrame: plan.transfer.clip.startFrame,
+      anchor: item ? anchorForOwner(item, ownerSegments) : null});
+  }
+  const ownerAt = (frame: number) => ownerSegments
+    .find(owner => owner.startFrame <= frame && frame < owner.startFrame + owner.durationFrames) ?? null;
   const cues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
     const item = anchored.get(cue.id);
-    if (!item) return cue;
-    return {...cue, startFrame: item.startFrame, anchor: anchorForOwner(item, ownerSegments) ?? cue.anchor};
+    const startFrame = item?.startFrame ?? cue.startFrame;
+    const anchor = item ? anchorForOwner(item, ownerSegments) : null;
+    if (anchor) return {...cue, startFrame, anchor};
+    // A cue cannot be detached (format-5 cues always carry an anchor): when the
+    // owner disappears, re-anchor at the same frame if a main segment covers it.
+    const owner = ownerAt(startFrame);
+    return owner === null ? {...cue, startFrame, anchor: cue.anchor}
+      : {...cue, startFrame, anchor: {clipId: owner.id, offsetFrames: startFrame - owner.startFrame}};
   });
+  const ends = [...clips.map(clip => clip.startFrame + clip.durationFrames), ...cues.map(cue => cue.startFrame + cue.durationFrames)];
+  const durationFrames = ends.reduce((maximum, value) => Math.max(maximum, value), 0);
   return {...context.timeline, revision: context.timeline.revision + 1, updatedAt: now(),
     durationFrames, clips, subtitles: context.timeline.subtitles ? {...context.timeline.subtitles, cues} : undefined};
 }
 
-function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpdates: ReadonlyMap<string, Row>): Format5SyncBaseline {
+function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpdates: ReadonlyMap<string, Row>,
+  extraShots: ReadonlyMap<string, Row> = new Map(), extraNodeKinds: ReadonlyMap<string, ChainNode['kind']> = new Map(),
+  extraNodeRows: ReadonlyMap<string, Row> = new Map()): Format5SyncBaseline {
   const mainTrackId = timeline.mainTrack.trackId;
   const mainClips = timeline.clips.filter(clip => clip.trackId === mainTrackId);
   const chainNodeIds: string[] = [];
@@ -407,9 +447,12 @@ function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpda
     if (chainNodeIds.at(-1) !== nodeId) chainNodeIds.push(nodeId);
   }
   const nodeKind = new Map(context.board.nodes.map(node => [node.id, node.kind]));
+  for (const [nodeId, kind] of extraNodeKinds) nodeKind.set(nodeId, kind);
   const shotById = new Map(context.shots);
   for (const [nodeId, value] of shotUpdates) shotById.set(nodeId, value);
+  for (const [nodeId, value] of extraShots) shotById.set(nodeId, value);
   const nodeRow = new Map(context.nodeRows);
+  for (const [nodeId, value] of extraNodeRows) nodeRow.set(nodeId, value);
   const board = chainNodeIds.map(nodeId => {
     const kind = nodeKind.get(nodeId)!;
     if (kind === 'shot') return {nodeId, kind: 'shot' as const,
@@ -431,6 +474,176 @@ function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpda
   return parsed.data;
 }
 
+/** Resolve an `add` edit against the live board/media projection. Only existing
+ * chain nodes are added here; creating a media card/track belongs to CS. */
+function enrichAddEdit(context: SyncContext, edit: Extract<ChainSyncOperation, {kind: 'track'}>['edit'] & {kind: 'add'}):
+  | {readonly ok: true; readonly kind: 'add'; readonly clip: ChainSyncClip; readonly beforeClipId: string | null;
+    readonly media: ChainSyncMedia; readonly nodeKind?: 'shot' | 'video' | 'image'}
+  | SequenceEditTransactionFailure {
+  const clip = edit.clip;
+  const node = context.board.nodes.find(item => item.id === clip.nodeId);
+  if (!node) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [clip.nodeId]);
+  if (!['shot', 'video', 'image'].includes(node.kind)) return failure('INVALID_MEDIA', [clip.nodeId]);
+  const media = context.media.find(item => item.nodeId === clip.nodeId);
+  if (!media) return failure('MISSING_MEDIA', [clip.nodeId]);
+  const selected = media.selectedVersion?.id ?? null;
+  const versionId = clip.versionId ?? null;
+  if (node.kind === 'shot') {
+    if (clip.versionLocked) {
+      if (versionId === null) return failure('INVALID_MEDIA', [clip.nodeId]);
+      const resolved = resolveVersion(context, clip.nodeId, versionId);
+      if ('ok' in resolved) return resolved;
+    } else if (versionId !== null && versionId !== selected) {
+      return failure('INVALID_CLIP_VERSION', [clip.id]);
+    }
+  } else if (versionId !== null && versionId !== selected) {
+    return failure('INVALID_CLIP_VERSION', [clip.id]);
+  }
+  return {ok: true, kind: 'add', clip: {...clip, versionId: node.kind === 'shot' ? (clip.versionId ?? null) : (versionId ?? selected),
+    versionLocked: clip.versionLocked ?? false}, beforeClipId: edit.beforeClipId,
+    media, nodeKind: edit.nodeKind ?? (node.kind as 'shot' | 'video' | 'image')};
+}
+
+interface BoardPlanEntities {
+  readonly before: SequenceEditBoardDelta;
+  readonly after: SequenceEditBoardDelta;
+  readonly extraShots: ReadonlyMap<string, Row>;
+  readonly extraNodeRows: ReadonlyMap<string, Row>;
+  readonly extraNodeKinds: ReadonlyMap<string, ChainNode['kind']>;
+}
+
+const edgeKey = (edge: {readonly fromId: string; readonly toId: string}): string => `${edge.fromId}>${edge.toId}`;
+
+/** Build the full board half: version selection shot rows, copied nodes/shots and
+ * the chain edge rewiring. New edge ids come from the accepted allocation; a
+ * missing allocation is a contract error, never a silently invented id. */
+function boardPlanEntities(context: SyncContext, plan: SequenceEditPlan, envelope: SequenceEditEnvelope): BoardPlanEntities | SequenceEditTransactionFailure {
+  const writesAfter: SequenceEditBoardEntity[] = [];
+  const writesBefore: SequenceEditBoardEntity[] = [];
+  const removalsAfter: SequenceEditBoardEntity[] = [];
+  const removalsBefore: SequenceEditBoardEntity[] = [];
+  const extraShots = new Map<string, Row>();
+  const extraNodeRows = new Map<string, Row>();
+  const extraNodeKinds = new Map<string, ChainNode['kind']>();
+  for (const change of shotChanges(context, plan)) {
+    writesAfter.push({kind: 'shot', id: String(change.after.id), data: change.after});
+    writesBefore.push({kind: 'shot', id: String(change.before.id), data: change.before});
+  }
+  // Copied node for a split piece that is moved off its group.
+  if (plan.copiedNode) {
+    const {fromNodeId, toNodeId} = plan.copiedNode;
+    const sourceNode = context.board.nodes.find(node => node.id === fromNodeId);
+    if (!sourceNode) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [fromNodeId]);
+    const allocation = envelope.allocation.nodes.find(item => item.fromNodeId === fromNodeId && item.nodeId === toNodeId);
+    if (!allocation) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [toNodeId]);
+    const copiedClip = plan.after.clips.find(clip => clip.nodeId === toNodeId);
+    if (!copiedClip) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [toNodeId]);
+    extraNodeKinds.set(toNodeId, sourceNode.kind);
+    if (sourceNode.kind === 'shot') {
+      const sourceShot = context.shots.get(fromNodeId);
+      if (!sourceShot) return failure('INVALID_MEDIA', [fromNodeId]);
+      const shot: Row = {...sourceShot, id: toNodeId, selectedVersionId: copiedClip.versionId ?? null,
+        createdAt: now(), updatedAt: now()};
+      extraShots.set(toNodeId, shot);
+      writesAfter.push({kind: 'shot', id: toNodeId, data: shot});
+      removalsBefore.push({kind: 'shot', id: toNodeId, data: shot});
+      if (copiedClip.versionId !== null) {
+        const adoption = {id: randomUUID(), projectId: context.projectId, shotId: toNodeId,
+          versionId: copiedClip.versionId, createdAt: now()};
+        writesAfter.push({kind: 'adoption', id: adoption.id, data: adoption});
+        removalsBefore.push({kind: 'adoption', id: adoption.id, data: adoption});
+      }
+    } else {
+      const sourceRow = context.nodeRows.get(fromNodeId);
+      if (!sourceRow) return failure('INVALID_MEDIA', [fromNodeId]);
+      const nodeRow: Row = {...sourceRow, id: toNodeId};
+      extraNodeRows.set(toNodeId, nodeRow);
+      writesAfter.push({kind: 'node', id: toNodeId, data: nodeRow});
+      removalsBefore.push({kind: 'node', id: toNodeId, data: nodeRow});
+    }
+  }
+  // Chain edge rewiring: removals by pair, additions by accepted allocation.
+  const beforePairs = context.board.edges;
+  const afterPairs = plan.after.board.edges;
+  const beforeByKey = new Map(beforePairs.map(edge => [edgeKey(edge), edge]));
+  const afterByKey = new Map(afterPairs.map(edge => [edgeKey(edge), edge]));
+  const existingEdgeRows = new Map<string, Row>();
+  for (const row of context.edgeRows.values()) {
+    if (row.kind === 'sequence' && typeof row.source === 'string' && typeof row.target === 'string') {
+      existingEdgeRows.set(`${row.source}>${row.target}`, row);
+    }
+  }
+  for (const [key, edge] of beforeByKey) {
+    if (afterByKey.has(key)) continue;
+    const row = existingEdgeRows.get(key);
+    if (!row) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [edge.fromId, edge.toId]);
+    removalsAfter.push({kind: 'edge', id: String(row.id), data: row});
+    writesBefore.push({kind: 'edge', id: String(row.id), data: row});
+  }
+  for (const [key, edge] of afterByKey) {
+    if (beforeByKey.has(key)) continue;
+    const allocated = envelope.allocation.edges.find(item => item.fromId === edge.fromId && item.toId === edge.toId);
+    if (!allocated) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [edge.fromId, edge.toId]);
+    const row = {id: allocated.id, projectId: context.projectId, kind: 'sequence', source: edge.fromId,
+      target: edge.toId, createdAt: now()};
+    writesAfter.push({kind: 'edge', id: allocated.id, data: row});
+    removalsBefore.push({kind: 'edge', id: allocated.id, data: row});
+  }
+  return {before: {writes: writesBefore, removals: removalsBefore},
+    after: {writes: writesAfter, removals: removalsAfter}, extraShots, extraNodeRows, extraNodeKinds};
+}
+
+interface AnchorIssue {readonly ok: false; readonly ids: readonly string[]}
+/** D3: after a track/version change the other-track items and cues must stay
+ * inside the timeline, keep a resolvable anchor and not overlap each other. */
+function validateAnchoredTimeline(timeline: Format5Timeline): AnchorIssue | null {
+  const mainClips = timeline.clips.filter(clip => clip.trackId === timeline.mainTrack.trackId);
+  const owners = new Map(mainClips.map(clip => [clip.id, clip]));
+  const problems = new Set<string>();
+  const byTrack = new Map<string, {id: string; startFrame: number; durationFrames: number}[]>();
+  for (const clip of timeline.clips) {
+    if (clip.trackId === timeline.mainTrack.trackId) continue;
+    const anchor = clip.anchor ?? null;
+    if (anchor !== null) {
+      const owner = owners.get(anchor.clipId);
+      if (!owner || anchor.offsetFrames < 0 || anchor.offsetFrames >= owner.durationFrames
+        || clip.startFrame !== owner.startFrame + anchor.offsetFrames) problems.add(clip.id);
+    }
+    if (!Number.isSafeInteger(clip.startFrame) || clip.startFrame < 0
+      || clip.startFrame + clip.durationFrames > timeline.durationFrames) problems.add(clip.id);
+    const lane = byTrack.get(clip.trackId) ?? [];
+    lane.push({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames});
+    byTrack.set(clip.trackId, lane);
+  }
+  for (const lane of byTrack.values()) {
+    lane.sort((left, right) => left.startFrame - right.startFrame || (left.id < right.id ? -1 : 1));
+    for (let index = 1; index < lane.length; index++) {
+      const previous = lane[index - 1]!, current = lane[index]!;
+      if (previous.startFrame + previous.durationFrames > current.startFrame) {
+        problems.add(previous.id); problems.add(current.id);
+      }
+    }
+  }
+  const cues = [...(timeline.subtitles?.cues ?? [])].sort((left, right) => left.startFrame - right.startFrame || (left.id < right.id ? -1 : 1));
+  for (const cue of cues) {
+    if (cue.anchor === null || cue.anchor === undefined) {
+      problems.add(cue.id);
+      continue;
+    }
+    const owner = owners.get(cue.anchor.clipId);
+    if (!owner || cue.anchor.offsetFrames < 0 || cue.anchor.offsetFrames >= owner.durationFrames
+      || cue.startFrame !== owner.startFrame + cue.anchor.offsetFrames
+      || cue.startFrame + cue.durationFrames > timeline.durationFrames) problems.add(cue.id);
+  }
+  for (let index = 1; index < cues.length; index++) {
+    const previous = cues[index - 1]!, current = cues[index]!;
+    if (previous.startFrame + previous.durationFrames > current.startFrame) {
+      problems.add(previous.id); problems.add(current.id);
+    }
+  }
+  return problems.size ? {ok: false, ids: [...problems].sort()} : null;
+}
+
 // ---------------------------------------------------------------------------
 // Delta composition and application
 // ---------------------------------------------------------------------------
@@ -448,17 +661,6 @@ function shotChanges(context: SyncContext, plan: SequenceEditPlan): ShotChange[]
     if (after.selectedVersionId !== shot.selectedVersionId) changes.push({before: shot, after});
   }
   return changes;
-}
-
-function boardDeltaPair(plan: SequenceEditPlan, changes: readonly ShotChange[]): {
-  readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta;
-} {
-  if (plan.changes.nodes.length || plan.changes.edges.length) {
-    throw new AppError('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', '画板节点/边写入需要 CS 的画板事务接缝。', 409, {reason: 'SEAM'});
-  }
-  const entity = (row: Row): SequenceEditBoardEntity => ({kind: 'shot', id: String(row.id), data: row});
-  return {before: {writes: changes.map(change => entity(change.before)), removals: []},
-    after: {writes: changes.map(change => entity(change.after)), removals: []}};
 }
 
 function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
@@ -496,13 +698,31 @@ function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, 
 }
 
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): void {
-  for (const entity of delta.writes) {
-    store.put(entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges', entity.data);
+  const rank = (entity: SequenceEditBoardEntity): number => entity.kind === 'adoption' ? 0
+    : entity.kind === 'node' ? 1 : entity.kind === 'shot' ? 2 : 3;
+  // Delete adoptions before their shot, and write the shot before its adoption.
+  for (const entity of [...delta.removals].sort((left, right) => rank(left) - rank(right))) {
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      const result = store.db.prepare('DELETE FROM project.shot_version_adoptions WHERE shotId=? AND versionId=? AND projectId=?')
+        .run(String(data.shotId), String(data.versionId), store.projectId);
+      if (Number(result.changes) !== 1) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '撤销/重做的版本采纳已不存在。', 409, {id: entity.id});
+    } else {
+      const table = entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges';
+      const result = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
+      if (Number(result.changes) !== 1) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '撤销/重做的对象已不存在。', 409, {id: entity.id});
+    }
   }
-  for (const entity of delta.removals) {
-    const table = entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges';
-    const result = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
-    if (Number(result.changes) !== 1) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '撤销/重做的对象已不存在。', 409, {id: entity.id});
+  const writeRank = (entity: SequenceEditBoardEntity): number => entity.kind === 'adoption' ? 4
+    : entity.kind === 'node' ? 1 : entity.kind === 'shot' ? 2 : 3;
+  for (const entity of [...delta.writes].sort((left, right) => writeRank(left) - writeRank(right))) {
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      store.db.prepare('INSERT INTO project.shot_version_adoptions(projectId,shotId,versionId,createdAt) VALUES(?,?,?,?)')
+        .run(store.projectId, String(data.shotId), String(data.versionId), String(data.createdAt));
+    } else {
+      store.put(entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges', entity.data);
+    }
   }
 }
 
@@ -518,9 +738,9 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const cues = new Map((current.subtitles?.cues ?? []).map(cue => [cue.id, cue]));
   for (const cue of delta.cues) cues.set(cue.id, cue);
   for (const id of delta.removedCueIds) cues.delete(id);
-  const mainTrackId = current.mainTrack.trackId;
-  const durationFrames = [...clips.values()].filter(clip => clip.trackId === mainTrackId)
-    .reduce((maximum, clip) => Math.max(maximum, clip.startFrame + clip.durationFrames), 0);
+  const durationFrames = [...[...clips.values()].map(clip => clip.startFrame + clip.durationFrames),
+    ...[...cues.values()].map(cue => cue.startFrame + cue.durationFrames)]
+    .reduce((maximum, value) => Math.max(maximum, value), 0);
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
     clips: [...clips.values()], subtitles: current.subtitles ? {...current.subtitles, cues: [...cues.values()]} : undefined};
   const update = planFormat5TimelineEntityUpdate(state, {clips: delta.clips, cues: delta.cues,
@@ -560,16 +780,19 @@ function applyBaselineDelta(store: ProjectStore, context: SyncContext, change: S
 // ---------------------------------------------------------------------------
 
 function affectedFromDelta(delta: SequenceEditStateDelta, context: SyncContext, mainTrackId: string): SequenceEditAffectedCounts {
-  const mainIds = new Set(context.timeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
   const countBoard = (kind: SequenceEditBoardEntity['kind'] | readonly SequenceEditBoardEntity['kind'][]) => {
     const kinds = Array.isArray(kind) ? kind : [kind];
     return delta.board.writes.filter(item => kinds.includes(item.kind)).length
       + delta.board.removals.filter(item => kinds.includes(item.kind)).length;
   };
+  const beforeMain = new Set(context.timeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
+  const mainClips = delta.timeline.clips.filter(clip => clip.trackId === mainTrackId).length
+    + delta.timeline.removedClipIds.filter(id => beforeMain.has(id)).length;
   return {
     nodes: countBoard(['node', 'shot']), edges: countBoard('edge'),
-    mainTrackClips: delta.timeline.clips.filter(clip => mainIds.has(clip.id)).length + delta.timeline.removedClipIds.filter(id => mainIds.has(id)).length,
-    otherTrackItems: delta.timeline.clips.filter(clip => !mainIds.has(clip.id)).length + delta.timeline.removedClipIds.filter(id => !mainIds.has(id)).length,
+    mainTrackClips: mainClips,
+    otherTrackItems: delta.timeline.clips.filter(clip => clip.trackId !== mainTrackId).length
+      + delta.timeline.removedClipIds.filter(id => !beforeMain.has(id)).length,
     subtitleCues: delta.timeline.cues.length + delta.timeline.removedCueIds.length,
   };
 }
@@ -595,6 +818,39 @@ function targetKinds(envelope: SequenceEditEnvelope): {kind: 'shot' | 'node' | '
 export interface SequenceSyncPreview {
   readonly envelope: SequenceEditEnvelope;
   readonly warnings: readonly ChainSyncWarning[];
+  /** Digest of the exact accepted envelope; the confirm request must repeat it
+   * (`runSequenceSync(store, envelope, {expectedPlanDigest})`) or be rejected. */
+  readonly planDigest: string;
+}
+
+function allocationForCommand(context: SyncContext, command: SequenceSyncCommand) {
+  const allocation = {clips: [] as {nodeId: string; clipId: string}[], nodes: [] as {fromNodeId: string; nodeId: string}[],
+    splitClips: [] as {clipId: string; rightClipId: string}[], edges: [] as {id: string; fromId: string; toId: string}[]};
+  if (command.kind === 'sync-board') {
+    allocation.clips = Object.entries(command.newClipIds ?? {}).map(([nodeId, clipId]) => ({nodeId, clipId}));
+  } else if (command.kind === 'clip-add') {
+    allocation.clips.push({nodeId: command.clip.nodeId, clipId: command.clip.id});
+  } else if (command.kind === 'clip-split') {
+    allocation.splitClips.push({clipId: command.clipId, rightClipId: command.rightClipId});
+  } else if ((command.kind === 'clip-move' || command.kind === 'clip-move-off-track') && command.copyNodeId) {
+    const clip = context.clips.find(item => item.id === command.clipId);
+    if (clip) allocation.nodes.push({fromNodeId: clip.nodeId, nodeId: command.copyNodeId});
+  }
+  return allocation;
+}
+
+/** Fill new sequence-edge ids into the accepted allocation. The retry/confirm
+ * request reuses exactly this envelope; ids are never reallocated on confirm. */
+function allocateEdgeIds(context: SyncContext, plan: SequenceEditPlan,
+  allocation: {edges: {id: string; fromId: string; toId: string}[]}): void {
+  const before = new Set(context.board.edges.map(edge => `${edge.fromId}>${edge.toId}`));
+  const existing = new Set(allocation.edges.map(item => `${item.fromId}>${item.toId}`));
+  for (const edge of plan.after.board.edges) {
+    const key = `${edge.fromId}>${edge.toId}`;
+    if (before.has(key) || existing.has(key)) continue;
+    allocation.edges.push({id: randomUUID(), fromId: edge.fromId, toId: edge.toId});
+    existing.add(key);
+  }
 }
 
 /** Read the live state once, plan with SA and build the shared contract envelope
@@ -608,6 +864,7 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     const intent = sequenceSyncIntent(command);
     const {state} = prepareSequenceEditHistory(store);
     const content = readProjectContentStamp(store.db).contentSequence;
+    const allocation = allocationForCommand(context, command);
     const provisional: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
       actionId: options.actionId ?? randomUUID(), requestId: options.requestId,
@@ -615,23 +872,31 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       baseline: {contentRevision: content, timelineRevision: context.timeline.revision, syncRevision: context.syncRevision,
         historyPosition: state.position, historyRevision: state.revision, targets: []},
       impact: {nodeIds: [], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},
-      allocation: command.kind === 'sync-board'
-        ? {clips: Object.entries(command.newClipIds ?? {}).map(([nodeId, clipId]) => ({nodeId, clipId})),
-          nodes: [], splitClips: [], edges: []}
-        : {clips: [], nodes: [], splitClips: [], edges: []},
+      allocation,
     };
     const plan = planEnvelope(context, provisional);
     if ('ok' in plan && plan.ok === false) return plan;
     const successful = plan as SequenceEditPlan;
     const mainTrackId = context.timeline.mainTrack.trackId;
+    const nextTimeline = patchMainTimeline(context, successful);
+    const anchorIssue = validateAnchoredTimeline(nextTimeline);
+    if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
+    allocateEdgeIds(context, successful, allocation);
     const mainTrackClipSet = new Set(context.timeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
-    const mainClipIds = plan.changes.clips.map(change => change.after?.id ?? change.before?.id)
+    const mainClipIds = successful.changes.clips.map(change => change.after?.id ?? change.before?.id)
       .filter((clipId): clipId is string => !!clipId && mainTrackClipSet.has(clipId));
-    const otherItemIds = [...new Set(plan.changes.anchored.map(change => change.after?.id ?? change.before?.id).filter((id): id is string => !!id))];
+    const otherItemIds = [...new Set(successful.changes.anchored.map(change => change.after?.id ?? change.before?.id).filter((id): id is string => !!id))];
+    const changedEdgeIds: string[] = [];
+    for (const edge of successful.changes.edges) {
+      const key = `${edge.after?.fromId ?? edge.before?.fromId}>${edge.after?.toId ?? edge.before?.toId}`;
+      const existing = context.edgeRows.values();
+      for (const row of existing) if (row.kind === 'sequence' && `${row.source}>${row.target}` === key) changedEdgeIds.push(String(row.id));
+    }
+    const copiedNodeIds = successful.changes.nodes.flatMap(change => change.after ? [change.after.id] : []);
     const impact: SequenceEditImpact = {
-      nodeIds: plan.changes.nodes.map(change => change.after?.id ?? change.before?.id ?? '').filter(Boolean),
-      edgeIds: plan.changes.edges.map(change => change.after?.fromId ?? change.before?.fromId ?? '').filter(Boolean),
-      mainTrackClipIds: mainClipIds.filter(id => plan.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)),
+      nodeIds: copiedNodeIds,
+      edgeIds: [...new Set([...changedEdgeIds, ...provisional.allocation.edges.map(item => item.id)])],
+      mainTrackClipIds: mainClipIds.filter(id => successful.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)),
       otherTrackItemIds: otherItemIds.filter(id => context.timeline.clips.some(clip => clip.id === id && clip.trackId !== mainTrackId)),
       subtitleCueIds: otherItemIds.filter(id => (context.timeline.subtitles?.cues ?? []).some(cue => cue.id === id)),
     };
@@ -642,9 +907,9 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
         .get(kindName(target.kind), target.id) as Row | undefined;
       return row && Number.isSafeInteger(row.revision) ? [{kind: target.kind, id: target.id, revision: Number(row.revision)}] : [];
     });
-    const envelope: SequenceEditEnvelope = {...provisional, impact, baseline: {...provisional.baseline, targets}};
+    const envelope: SequenceEditEnvelope = {...provisional, allocation, impact, baseline: {...provisional.baseline, targets}};
     if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
-    return {envelope, warnings: planWarnings(successful)};
+    return {envelope, warnings: planWarnings(successful), planDigest: sequenceEditInputDigest(envelope)};
   });
 }
 
@@ -689,7 +954,8 @@ function receiptDraft(envelope: SequenceEditEnvelope, inputDigest: string, recei
 /** One shared transaction: replay, CAS, plan, write both halves, one history
  * action and the immutable receipt. Failures before the first write leave no
  * data or history row; a no-op stores a `not_applied` receipt only. */
-export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvelope): SequenceSyncResult {
+export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvelope,
+  options: {readonly expectedPlanDigest?: string} = {}): SequenceSyncResult {
   if (!format5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (envelope.projectId !== store.projectId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
@@ -697,6 +963,9 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
   return store.tx(() => {
     const replay = findSequenceEditReceipt(store, envelope.requestId);
     if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
+    if (options.expectedPlanDigest !== undefined && options.expectedPlanDigest !== inputDigest) {
+      return failure('SEQUENCE_EDIT_PATCH_INVALID');
+    }
     const context = readSyncContext(store);
     if (envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
     const revisionFailure = revisionMatches(store, envelope, context);
@@ -704,21 +973,24 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     const plan = planEnvelope(context, envelope);
     if ('ok' in plan && plan.ok === false) return writeFailure(store, envelope, plan.code);
     const successful = plan as SequenceEditPlan;
-    const changedShots = shotChanges(context, successful);
-    let board: {before: SequenceEditBoardDelta; after: SequenceEditBoardDelta};
-    try { board = boardDeltaPair(successful, changedShots); }
-    catch (error) { if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE') return writeFailure(store, envelope, error.code); throw error; }
     const nextTimeline = patchMainTimeline(context, successful);
+    const anchorIssue = validateAnchoredTimeline(nextTimeline);
+    if (anchorIssue) return writeFailure(store, envelope, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
+    const board = boardPlanEntities(context, successful, envelope);
+    if ('ok' in board && board.ok === false) return writeFailure(store, envelope, board.code);
+    const boardEntities = board as BoardPlanEntities;
+    const changedShots = shotChanges(context, successful);
     const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
-    const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates);
-    const patch = timelineDeltaPair(context, nextTimeline, successful, board, nextBaseline);
+    const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
+      boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
+    const patch = timelineDeltaPair(context, nextTimeline, successful, boardEntities, nextBaseline);
     const baselineChanged = !sameJson(context.baseline, nextBaseline);
-    const noop = patch.after.board.writes.length === 0
+    const noop = patch.after.board.writes.length === 0 && patch.after.board.removals.length === 0
       && patch.after.timeline.clips.length === 0 && patch.after.timeline.cues.length === 0
       && patch.after.timeline.removedClipIds.length === 0 && patch.after.timeline.removedCueIds.length === 0
       && !baselineChanged;
     if (noop) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
-    applyBoardDelta(store, board.after);
+    applyBoardDelta(store, boardEntities.after);
     const timelineApply = applyTimelineDelta(store, patch.after.timeline);
     const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
@@ -746,14 +1018,17 @@ export function createMainTrackProjectionPort(store: ProjectStore): MainTrackPro
     projectMainTrack(request): SequenceEditTimelineCommit | SequenceEditTransactionFailure {
       const context = readSyncContext(store);
       if (request.envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
-      const changedShots = shotChanges(context, request.plan);
-      let board: {before: SequenceEditBoardDelta; after: SequenceEditBoardDelta};
-      try { board = boardDeltaPair(request.plan, changedShots); }
-      catch (error) { if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE') return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE'); throw error; }
       const nextTimeline = patchMainTimeline(context, request.plan);
+      const anchorIssue = validateAnchoredTimeline(nextTimeline);
+      if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
+      const board = boardPlanEntities(context, request.plan, request.envelope);
+      if ('ok' in board && board.ok === false) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', board.ids);
+      const boardEntities = board as BoardPlanEntities;
+      const changedShots = shotChanges(context, request.plan);
       const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
-      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates);
-      const patch = timelineDeltaPair(context, nextTimeline, request.plan, board, nextBaseline);
+      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
+        boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
+      const patch = timelineDeltaPair(context, nextTimeline, request.plan, boardEntities, nextBaseline);
       const baselineChanged = !sameJson(context.baseline, nextBaseline);
       return {ok: true, delta: patch.after.timeline, warnings: planWarnings(request.plan),
         timelineRevision: patch.after.timeline.clips.length || patch.after.timeline.cues.length

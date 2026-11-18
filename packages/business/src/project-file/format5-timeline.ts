@@ -304,11 +304,12 @@ export function planFormat5TimelineEntityUpdate(state: Format5TimelineState, pat
     seen.add(entity.id);
     if (cueOld.get(entity.id)?.raw !== entity.raw) cueWrites.push(entity);
   }
+  const clipDeletes = [...new Set(patch.removedClipIds ?? [])].filter(id => clipOld.has(id));
+  const cueDeletes = [...new Set(patch.removedCueIds ?? [])].filter(id => cueOld.has(id));
   return {
     timelineId: state.header!.id, projectId: state.header!.projectId, clipWrites, cueWrites,
-    clipDeletes: [...new Set(patch.removedClipIds ?? [])].filter(id => clipOld.has(id)),
-    cueDeletes: [...new Set(patch.removedCueIds ?? [])].filter(id => cueOld.has(id)),
-    changed: clipWrites.length + cueWrites.length > 0,
+    clipDeletes, cueDeletes,
+    changed: clipWrites.length + cueWrites.length + clipDeletes.length + cueDeletes.length > 0,
   };
 }
 
