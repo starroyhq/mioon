@@ -6,11 +6,11 @@ import {
   FINGERPRINT_PRELOAD_SCENARIOS, FINGERPRINT_FORMATS,
 } from './helpers/agent-task-request-fingerprints-v2.ts';
 
-for (const format of FINGERPRINT_FORMATS) test(`${format}: reviewed raw model requests retain their fingerprints across three protocols and runtime scenarios`, {timeout: 120_000}, async () => {
-  const actual = await collectTaskRequestFingerprints({format}), expected = readTaskRequestFingerprintFixture(format);
-  assert.deepEqual(actual, expected.requests,
+for (const format of FINGERPRINT_FORMATS) for (const protocol of FINGERPRINT_PROTOCOLS) test(`${format}/${protocol}: reviewed raw model requests retain their fingerprints across runtime scenarios`, {timeout: 120_000}, async () => {
+  const actual = await collectTaskRequestFingerprints({format, protocol}), expected = readTaskRequestFingerprintFixture(format);
+  assert.deepEqual(actual, expected.requests.filter(value => value.protocol === protocol),
     'Model request bytes changed. Review the request/scenario differences before running node tests/helpers/agent-task-request-fingerprints-v2.ts --update.');
-  for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of [...FINGERPRINT_SCENARIOS, ...OFFICIAL_FINGERPRINT_SCENARIOS]) {
+  for (const scenario of [...FINGERPRINT_SCENARIOS, ...OFFICIAL_FINGERPRINT_SCENARIOS]) {
     const requests = actual.filter(value => value.protocol === protocol && value.scenario === scenario);
     assert.ok(requests.length > 0, `${protocol}/${scenario} is missing`);
     assert.deepEqual(requests.map(value => value.index), requests.map((_value, index) => index + 1));
