@@ -6,6 +6,7 @@ import {chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, r
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {DatabaseSync} from 'node:sqlite';
 import {inspectProjectFormatReadOnly} from '../packages/business/src/project-file/connection.ts';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -23,6 +24,8 @@ import {createServerProject} from './helpers/project-database.ts';
 import {publishOutputFixture, markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
+import {INSPECTION_ROW_LIMITS} from '../packages/business/src/inspection-query.ts';
+import {readFormat5JsonRows} from '../packages/business/src/project-file/format5-content.ts';
 
 const releases = Object.keys(FORMAT5_SOURCE_RELEASES) as Format5SourceRelease[];
 type Sample = ReturnType<typeof prepareFormat5Release>;
@@ -54,6 +57,46 @@ function headerVersions(store: ProjectStore) {
 }
 const expected = {project: FORMAT5_PROJECT_SCHEMA_VERSION, history: FORMAT5_HISTORY_SCHEMA_VERSION, cache: CACHE_SCHEMA_VERSION};
 function parsed<T>(value: T): T {return JSON.parse(JSON.stringify(value)) as T;}
+
+test('active edge archive filtering preserves the old SQL projection before JSON identity and size checks', () => {
+  const db = new DatabaseSync(':memory:'), projectId = randomUUID(), otherProjectId = randomUUID();
+  const archivedShot = randomUUID(), archivedNode = randomUUID(), foreignNode = randomUUID(), liveNode = randomUUID();
+  const hiddenShotEdge = randomUUID(), hiddenNodeEdge = randomUUID(), liveEdge = randomUUID(), foreignEdge = randomUUID();
+  const at = '2026-01-01T00:00:00.000Z';
+  const previous = `SELECT id,data FROM main.edges WHERE archivedAt IS NULL
+    AND NOT EXISTS(SELECT 1 FROM main.shots s WHERE s.projectId=edges.projectId AND s.archivedAt IS NOT NULL AND s.id IN (json_extract(edges.data,'$.source'),json_extract(edges.data,'$.target')))
+    AND NOT EXISTS(SELECT 1 FROM main.nodes n WHERE n.projectId=edges.projectId AND n.archivedAt IS NOT NULL AND n.id IN (json_extract(edges.data,'$.source'),json_extract(edges.data,'$.target')))
+    ORDER BY id`;
+  try {
+    for (const table of ['shots', 'nodes', 'edges']) db.exec(`CREATE TABLE ${table}(id TEXT PRIMARY KEY,projectId TEXT NOT NULL,data TEXT NOT NULL,archivedAt TEXT)`);
+    // Only native archive identities participate; their retained JSON is not parsed.
+    db.prepare('INSERT INTO shots VALUES(?,?,?,?)').run(archivedShot, projectId, '{invalid retained JSON', at);
+    db.prepare('INSERT INTO nodes VALUES(?,?,?,?)').run(archivedNode, projectId, '{invalid retained JSON', at);
+    db.prepare('INSERT INTO nodes VALUES(?,?,?,?)').run(foreignNode, otherProjectId, '{invalid retained JSON', at);
+    const insert = (id: string, source: string, target: string, extra: Record<string, unknown> = {}) => {
+      db.prepare('INSERT INTO edges VALUES(?,?,?,NULL)').run(id, projectId, JSON.stringify({id, projectId, source, target, ...extra}));
+    };
+    insert(hiddenShotEdge, archivedShot, liveNode, {id: randomUUID(), projectId: otherProjectId});
+    insert(hiddenNodeEdge, liveNode, archivedNode, {padding: 'x'.repeat(INSPECTION_ROW_LIMITS.edges + 1)});
+    insert(liveEdge, liveNode, randomUUID());
+    insert(foreignEdge, foreignNode, liveNode);
+    db.prepare('INSERT INTO edges VALUES(?,?,?,?)').run(randomUUID(), projectId, '{invalid archived edge JSON', at);
+    const projected = db.prepare(previous).all().map(row => row.id);
+    assert.deepEqual(projected, [liveEdge, foreignEdge].sort());
+    assert.deepEqual(readFormat5JsonRows(db, 'main', 'edges', true).map(row => row.id), projected);
+    db.prepare('UPDATE shots SET archivedAt=NULL WHERE id=?').run(archivedShot);
+    assert.ok(db.prepare(previous).all().some(row => row.id === hiddenShotEdge));
+    assert.throws(() => readFormat5JsonRows(db, 'main', 'edges', true), {code: 'PROJECT_INVALID'},
+      'making the hidden mismatched row live restores the existing identity rejection');
+    db.prepare('UPDATE shots SET archivedAt=? WHERE id=?').run(at, archivedShot);
+    const invalidEdge = randomUUID();
+    db.prepare('INSERT INTO edges VALUES(?,?,?,NULL)').run(invalidEdge, projectId, '[]');
+    assert.throws(() => readFormat5JsonRows(db, 'main', 'edges', true), {code: 'PROJECT_INVALID'});
+    db.prepare('UPDATE edges SET data=? WHERE id=?').run('{malformed', invalidEdge);
+    assert.throws(() => db.prepare(previous).all(), /malformed JSON/u);
+    assert.throws(() => readFormat5JsonRows(db, 'main', 'edges', true), /malformed JSON/u);
+  } finally {db.close();}
+});
 
 /** Source ownership uses the real byte publisher and immutable version rows.
  * These metadata-only MP4 fixtures exercise no decoder or remote provider. */

@@ -131,7 +131,6 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 editing budget
     });
     const committed = () => ({milliseconds: committedMs, count: commits});
     const cold = sample(store, 'single', committed), results = [];
-    assert.ok(cold.totalMs <= (process.platform === 'linux' ? 400 : 200), JSON.stringify(cold));
     for (const mode of modes) {
       for (let iteration = 0; iteration < 5; iteration++) sample(store, mode, committed);
       const samples = Array.from({length: 30}, () => sample(store, mode, committed));
@@ -141,9 +140,6 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 editing budget
         beginMs: distribution(samples.map(sample => sample.beginMs)), terminalFenceMs: distribution(samples.map(sample => sample.terminalFenceMs)), commitMs: distribution(samples.map(sample => sample.commitMs)),
         changedRows: distribution(samples.map(sample => sample.changedRows)), timelineBytes: samples[0]!.bytes};
       results.push(result);
-      const linux = process.platform === 'linux';
-      assert.ok(result.totalMs.p95 <= (linux ? 200 : 100), JSON.stringify(result));
-      assert.ok(result.totalMs.max <= (linux ? 400 : 200), JSON.stringify(result));
     }
     t.diagnostic(JSON.stringify({scope: 'kernel-timeline-aggregate-with-terminal-fence', platform: process.platform, arch: process.arch,
       cpu: cpus()[0]?.model, sqlite: store.db.prepare('SELECT sqlite_version() AS version').get()!.version,
@@ -151,5 +147,11 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 editing budget
       totalClips: total, mainClips: Math.min(total, FORMAT5_LIMITS.mainTrackClips), subtitleCues: timeline.subtitles!.cues.length,
       cold: Object.fromEntries(Object.entries(cold).map(([key, value]) => [key, round(value)])), results,
       peakProcessRssMiB: round(process.resourceUsage().maxRSS / 1024)}));
+    const linux = process.platform === 'linux';
+    assert.ok(cold.totalMs <= (linux ? 400 : 200), JSON.stringify(cold));
+    for (const result of results) {
+      assert.ok(result.totalMs.p95 <= (linux ? 200 : 100), JSON.stringify(result));
+      assert.ok(result.totalMs.max <= (linux ? 400 : 200), JSON.stringify(result));
+    }
   } finally {store.close(); rmSync(root, {recursive: true, force: true});}
 });

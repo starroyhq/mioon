@@ -95,6 +95,55 @@ test('main-track packing, placeholder nulls, split ownership and both kinds of a
   assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_DIALOGUE_DUPLICATE');
 });
 
+test('timeline field checks reject additional and missing fields at every aggregate level',()=>{
+  const cases:readonly [(f:ReturnType<typeof format5SequenceFixture>)=>void,string][]=[
+    [f=>{Object.assign(f.timeline,{unknown:true});},'FORMAT5_TIMELINE_INVALID'],
+    [f=>{Object.assign(f.timeline.mainTrack,{unknown:true});},'FORMAT5_TIMELINE_INVALID'],
+    [f=>{Object.assign(f.timeline.tracks[0]!,{unknown:true});},'FORMAT5_TRACK_INVALID'],
+    [f=>{Object.assign(f.timeline.clips[0]!,{unknown:true});},'FORMAT5_CLIP_INVALID'],
+    [f=>{Object.assign(f.timeline.subtitles!,{unknown:true});},'FORMAT5_SUBTITLES_INVALID'],
+    [f=>{Object.assign(f.timeline.subtitles!.cues[0]!,{unknown:true});},'FORMAT5_SUBTITLES_INVALID'],
+    [f=>{Reflect.deleteProperty(f.timeline.clips[2]!,'anchor');},'FORMAT5_ANCHOR_INVALID'],
+    [f=>{Reflect.deleteProperty(f.timeline.subtitles!.cues[0]!,'anchor');},'FORMAT5_SUBTITLES_INVALID'],
+  ];
+  for(const [change,code] of cases){
+    const f=format5SequenceFixture();change(f);assert.equal(getFormat5TimelineIssue(f.timeline)?.code,code);
+  }
+  const f=format5SequenceFixture();
+  Object.assign(f.timeline.subtitles!,{profileId:'bottom_cjk_relative_v2',basisPresetId:'portrait_720'});
+  assertFormat5Timeline(f.timeline);
+  Object.assign(f.timeline.subtitles!,{unknown:true});
+  assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_SUBTITLES_INVALID');
+});
+
+test('anchor syntax, relation checks and error precedence remain independent on every validation',()=>{
+  const invalidAnchors:readonly unknown[]=[
+    {clipId:id(9),offsetFrames:2,unknown:true},{clipId:'missing',offsetFrames:2},
+    {clipId:id(9),offsetFrames:-1},{clipId:id(9),offsetFrames:2.5},
+    {clipId:id(9),offsetFrames:12},{clipId:id(99),offsetFrames:2},{clipId:id(9),offsetFrames:3},
+  ];
+  for(const anchor of invalidAnchors){
+    const f=format5SequenceFixture();Object.assign(f.timeline.clips[2]!,{anchor});
+    assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_ANCHOR_INVALID');
+  }
+  const f=format5SequenceFixture(),before=JSON.stringify(f.timeline);
+  for(let pass=0;pass<3;pass++)assertFormat5Timeline(f.timeline);
+  assert.equal(JSON.stringify(f.timeline),before);
+  Object.assign(f.timeline.clips[2]!.anchor!,{unknown:true});
+  assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_ANCHOR_INVALID');
+  Reflect.deleteProperty(f.timeline.clips[2]!.anchor!,'unknown');
+  assertFormat5Timeline(f.timeline);
+  Object.assign(f.timeline.subtitles!.cues[0]!.anchor!,{unknown:true});
+  assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_SUBTITLES_INVALID');
+  f.timeline.clips[1]!.startFrame++;f.timeline.durationFrames++;
+  f.timeline.clips[2]!.anchor={clipId:id(99),offsetFrames:2};
+  assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_MAIN_TRACK_GAP');
+  Object.assign(f.timeline.clips[2]!.anchor!,{unknown:true});
+  assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_ANCHOR_INVALID');
+  f.timeline.clips[2]!.gain=3;
+  assert.equal(getFormat5TimelineIssue(f.timeline)?.code,'FORMAT5_CLIP_INVALID');
+});
+
 test('ready shot content requires its direct immutable version or an explicit adoption',()=>{
   const f=format5SequenceFixture(),assetId=id(40),versionId=id(41),jobId=id(42),hash='a'.repeat(64);
   Object.assign(f.timeline.clips[0]!,{sourceState:'ready',assetId,versionId,jobId,shotId:f.shotId});
