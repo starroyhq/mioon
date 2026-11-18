@@ -72,8 +72,9 @@ test('Mio previs tools are canvas tools with reviewed tiers and parameters every
  const f=await fixture(t),tools=f.tools.list(),find=(name:string)=>tools.find(tool=>tool.name===name);
  assert.deepEqual(['mioon_previs_inspect','mioon_previs_create','mioon_previs_scene_set'].map(name=>[find(name)?.risk,agentTaskToolGroupForName(name)]),
   [['read_only','canvas'],['local_irreversible','canvas'],['local_reversible','canvas']]);
- assert.equal(tools.some(tool=>tool.operation.startsWith('previs.thumbnail.')),false);
- for(const operation of ['previs.thumbnail.set','previs.thumbnail.get'])assert.equal((AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed:boolean}>)[operation]?.allowed,false);
+ assert.deepEqual(tools.filter(tool=>tool.operation.startsWith('previs.thumbnail.')).map(({operation})=>operation).sort(),['previs.thumbnail.get','previs.thumbnail.set']);
+ assert.deepEqual(['mioon_previs_thumbnail_get','mioon_previs_thumbnail_set'].map(name=>[find(name)?.risk,agentTaskToolGroupForName(name)]),[['read_only','canvas'],['local_irreversible','canvas']]);
+ for(const [operation,tier] of [['previs.thumbnail.get','read_only'],['previs.thumbnail.set','local_irreversible']])assert.deepEqual((AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed:boolean;tier?:string}>)[operation],{allowed:true,tier});
  const parameters=find('mioon_previs_scene_set')!.parameters;
  walk(parameters,item=>{
   assert.equal(Array.isArray(item.items),false,'arrays use one item schema, never a tuple');

@@ -21,6 +21,8 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 
 测试 job 不安装随后会被替代的系统 FFmpeg，也不安装只供桌面窗口冒烟使用的 GTK、Xvfb、DBus 和 xdotool 依赖。FFmpeg 仍依赖 Ubuntu 的动态库，因此准备 job 和各消费者保留相同的媒体依赖包；分片不会重新下载源码或编译。字幕使用仓库内固定哈希的字体文件，无需下载整套系统 Noto CJK；DejaVu 为模拟视频的英文标记提供默认字体。apt 步骤独立限时 10 分钟，HTTP/HTTPS 下载超时为 30 秒，最多重试两次；超限直接失败，不占满整个测试窗口。发布 job 仍保留生产应用构建、桌面运行依赖和真实安装包冒烟；当前 macOS 打包明确安装并选择 Homebrew 的 `ffmpeg-full`；Linux 仍保留源码 CI 与媒体测试
 
+Mio 运行时回归按模型协议、控制与预算、撤销、生成、后台任务、会话、消息压缩、冲突八个场景放在 `tests/agent-task-runtime-*-v2.test.ts`，共用夹具在 `tests/helpers/agent-task-runtime-fixture.ts`。每个文件由 full 清单自动发现，并在独立进程中运行。109 步离线压缩用例位于 control 文件；Node 的 TAP 输出可能在长用例执行期间停留在先前的用例，定位慢测时应核对用例自身的 `duration_ms` 和采样栈，不能仅按相邻日志的时间间隔归因。新增文件的实测耗时在拆分合入 main、整轮检查成功后，按上面的流程通过独立 PR 刷新，不在拆分 PR 中估填
+
 项目文件测试的媒体 fixture 同样优先使用已选定的 `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH`，避免 Linux 已安装工具却因检测 Mac 目录而跳过导入、导出和备份用例。没有显式路径时保留既有测试目录约定；显式路径不存在时不能用备用目录掩盖配置错误
 
 Linux full 完整检出现有 Git 历史，以读取历史回归中固定提交的源码；历史对象不足时直接失败，不改用当前源码替代旧基线
@@ -61,13 +63,22 @@ macOS 发布 runner 使用 [Homebrew `ffmpeg-full`](https://formulae.brew.sh/for
 
 在 **Actions → Desktop release → Run workflow** 选择 main，保持 `release_tag` 为空。本次通用包发布流程改动也可在 `howard/mac-universal-update-feed` 分支做候选演练。
 
-这会对确定的提交执行完整检查。Apple 芯片 runner 打包并启动通用 DMG，Intel runner 下载并启动同一份 DMG。两边都通过后才上传最终 Actions 产物。候选包也需要配置上述签名和公证凭据。
+预检冻结源码 SHA，并查询同一仓库 `CI` 工作流由 main push 触发、在该 SHA 上已完成且成功的运行。复用前还核对冻结源码与发布工作流所用的 `checks.yml` 一致。预检摘要和 `release-source-check-decision` 产物会记录来源 run、尝试次数和链接。没有匹配结果、查询暂不可用或启用 `force_checks` 时，完整检查与 Apple 芯片打包并行。Intel runner 下载并启动同一份通用 DMG。只有检查证据、签名、公证、包检查和两架构冒烟都通过，才会暂存最终 Actions 产物。候选包也需要签名和公证凭据。
 
-验证应用内更新时，可填 `update_feed_url`，用 HTTPS 目录地址或本机回环 HTTP 地址，例如 `http://127.0.0.1:8420/`。留空时使用正式的 GitHub 更新源。用 `version_override` 给候选包设置更高的三段版本号。将新版的 `latest-mac.yml`、ZIP 和 ZIP blockmap 放到同一个目录，让指向该目录的旧候选包检查更新。正式标签构建使用标签版本和固定的 GitHub 更新源。
+验证应用内更新时，可填 `update_feed_url`，用 HTTPS 目录或本机回环 HTTP 地址。留空时使用正式的 GitHub 更新源。用 `version_override` 给候选包设置稳定的三段版本号。等当前 main 的 push CI 成功，在 main 保持同一提交时连续触发两次即可并行打包。下面用 0.2.0、0.2.1 举例，每次 dispatch 使用独立并发组。
+
+```sh
+gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0.1:4319/ -f version_override=0.2.0
+gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0.1:4319/ -f version_override=0.2.1
+```
+
+核对两次预检的源码 SHA 和复用的 CI run 一致。将新版的 `latest-mac.yml`、ZIP 和 ZIP blockmap 放到同一个目录，让指向该目录的旧候选包检查更新。正式标签构建使用标签版本和固定的 GitHub 更新源。排查时可加 `-f force_checks=true` 强制执行完整检查。
 
 每个平台的检查使用当前源码构建 Web、桌面暂存和安装包，不复用旧 dist。原生冒烟自己生成临时合成媒体及私有工作区，不依赖未入库的演示数据库；核对真实窗口、后端、认证拒绝、本地合成和退出清理。它不调用真实供应商，也不等于所有界面和系统密钥链场景均已验收
 
 检查会比较主程序和 Helper 的 `arm64`、`x86_64` 切片，并对 DMG 和 ZIP 中的应用校验签名、装订票据和 Gatekeeper。应用在制作 ZIP 前完成公证和装订。DMG 制作后另外公证和装订。FFmpeg/ffprobe 在 runner 上另行准备。
+
+打包诊断中的 `build-timings.jsonl` 记录两轮 TypeScript 检查、Web 打包、桌面 bundle 和暂存的分阶段耗时。`desktop-build` 包含该进程的子阶段。通用包合并和公证在后续打包步骤计时。Apple 芯片 runner 支持按 Homebrew bottle 的完整 SHA-256 缓存 `ffmpeg-full` 下载文件，安装和媒体能力探针仍逐轮执行。Intel 和未找到匹配 bottle 的 runner 沿用 Homebrew 安装。依赖下载使用既有的 pnpm store 缓存。
 
 ## 正式发布
 

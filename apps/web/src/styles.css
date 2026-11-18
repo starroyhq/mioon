@@ -517,7 +517,9 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 
 /* Desktop host on macOS: the native title bar is hidden (apps/desktop/src/window-chrome.ts).
    The top bar reserves room for the inset traffic lights and doubles as the window drag handle. */
-:root[data-desktop-frame="mac-inset"] .workbench .topbar { padding-left: 88px; -webkit-app-region: drag; }
+:root[data-desktop-frame="mac-inset"] { --mac-titlebar-leading: var(--mac-titlebar-inset); }
+:root[data-desktop-frame="mac-inset"][data-desktop-fullscreen="true"] { --mac-titlebar-leading: var(--mac-titlebar-gap); }
+:root[data-desktop-frame="mac-inset"] .workbench .topbar { padding-left: var(--mac-titlebar-leading); -webkit-app-region: drag; }
 :root[data-desktop-frame="mac-inset"] .topbar :is(a, button, input, select, textarea, [role="tablist"], [role="button"], [tabindex]:not([tabindex="-1"])) { -webkit-app-region: no-drag; }
 /* Dialogs and menus can open over the top bar; a drag region beneath them must not swallow their clicks. */
 :root[data-desktop-frame="mac-inset"] :is([data-slot$="-overlay"], [data-slot$="-content"]) { -webkit-app-region: no-drag; }
@@ -700,3 +702,29 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 .shell-redesign.dock-narrow.mode-canvas .canvas-controls { left: 12px; bottom: 12px; }
 
 .status-dot.neutral{background:var(--wb-muted)}.dock-resize:focus-visible{outline:none;background:transparent}.dock-resize:focus-visible>span{opacity:1;background:var(--wb-accent)}
+
+/* Native controls share one row with the workbench controls, including the
+   compact dock layout whose older rules place actions on a second row. */
+:root[data-desktop-frame="mac-inset"] .shell-redesign .workbench-topbar {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--mac-titlebar-gap);
+  row-gap: 0;
+  padding-block: 0;
+}
+:root[data-desktop-frame="mac-inset"] .shell-redesign .workbench-topbar > * {
+  grid-row: 1;
+  grid-column: auto;
+  align-self: center;
+}
+:root[data-desktop-frame="mac-inset"] .workbench-topbar-project,
+:root[data-desktop-frame="mac-inset"] .workbench-topbar-mode,
+:root[data-desktop-frame="mac-inset"] .shell-redesign .workbench-topbar .topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mac-titlebar-gap);
+}
+:root[data-desktop-frame="mac-inset"] .shell-redesign .workbench-topbar .project-trigger > span {
+  display: block;
+}

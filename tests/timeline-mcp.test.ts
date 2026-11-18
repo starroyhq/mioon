@@ -80,9 +80,9 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
     catch (error) { assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code, -32602); response = { code: (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code, message: (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message }; }
     report.checks.push((({ name: 'strict MCP rejection', tool: name, input: args, response }) as unknown as Parameters<typeof report.checks.push>[0]));
   }
-  const p = await call('project_create', { name: 'Timeline MCP durable parity' }), projectId = p.id;
+  const p = await http('project.create', { name: 'Timeline MCP durable parity' }), projectId = p.id;
   let timeline = await call('timeline_get', { projectId }); assert.equal(timeline.revision, 1); assert.equal(timeline.clips.length, 0);
-  assert.deepEqual((await call('project_get', { projectId })).timeline, timeline);
+  assert.deepEqual((await http('project.get', { projectId })).timeline, timeline);
   const imageFile = path.join(root, 'green.png');
   await exec('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=green:s=64x64:r=1', '-frames:v', '1', '-threads', '1', imageFile]);
   const image = await call('asset_import', { projectId, name: 'local-green.png', mimeType: 'image/png', dataBase64: (await readFile(imageFile)).toString('base64') });
@@ -112,7 +112,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   await invalid('timeline_clip_update', { projectId, expectedRevision: timeline.revision, requestId: randomUUID(), clipId: visualId, patch: { rect: { x: 0, y: 0, width: 100, height: 100, rotation: 90 } } });
   assert.deepEqual(await call('timeline_get', { projectId }), beforeInvalid);
   assert.deepEqual(await http('timeline.get', { projectId }), timeline, 'SDK writes must be visible via HTTP');
-  assert.deepEqual(await http('project.get', { projectId }), await call('project_get', { projectId }), 'HTTP UI model is exactly MCP model');
+  assert.deepEqual((await http('project.get',{projectId})).timeline,await call('timeline_get',{projectId}),'HTTP UI timeline is exactly the MCP model');
   const duplicateArgs = { projectId, expectedRevision: timeline.revision, requestId: randomUUID(), trackId: (addedTrack)!.id, patch: { name: 'One concurrent update' } };
   const responses = await Promise.all(Array.from({ length: 12 }, () => call('timeline_track_update', duplicateArgs)));
   for (const response of responses) assert.deepEqual(response, responses[0]); timeline = responses[0];
@@ -128,19 +128,19 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   do { rendered = await call('export_get', { projectId, exportId: queued.id }); if (['succeeded', 'failed'].includes(rendered.status)) break; await pause(100); } while (Date.now() < renderDeadline);
   assert.equal(rendered.status, 'succeeded', JSON.stringify(rendered));
   assert.deepEqual(await call('timeline_render', renderArgs), queued, 'render replay remains the original queued response even after success');
-  const firstPid = backend.pid; const preRestart = await call('project_get', { projectId });
+  const firstPid = backend.pid; const preRestart = await http('project.get', { projectId });
   await stop(); await start(); assert.notEqual(backend.pid, firstPid, 'a new HTTP process actually started');
-  assert.deepEqual(await call('project_get', { projectId }), preRestart, 'backend process restart preserves project, tracks, clips, imported media, and completed render');
+  assert.deepEqual(await http('project.get', { projectId }), preRestart, 'backend process restart preserves project, tracks, clips, imported media, and completed render');
   for (const item of history) assert.deepEqual(await call(item.name, item.args), item.result, `${item.name} exact original replay survives actual backend restart`);
   assert.deepEqual(await call('timeline_render', renderArgs), queued);
   assert.deepEqual(await http('timeline.get', { projectId }), timeline);
   const mediaResponse = await fetch(base + projectMediaPath(rendered.projectId, rendered.assetId!), { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } });
   assert.equal(mediaResponse.status, 206); assert.equal((await mediaResponse.arrayBuffer()).byteLength, 32);
-  const publicState = JSON.stringify(await call('project_get', { projectId }));
+  const publicState = JSON.stringify(await http('project.get', { projectId }));
   assert.ok(!publicState.includes(root)); assert.ok(!publicState.includes('relativePath')); assert.ok(!publicState.includes('requestHash')); assert.ok(!publicState.includes(token));
   // A real generated mock version proves timeline_seed works through the SDK,
   // not merely through injected store rows or a private service helper.
-  const seededProject = await call('project_create', { name: 'SDK explicit seed' });
+  const seededProject = await http('project.create', { name: 'SDK explicit seed' });
   const reference = await call('asset_import', { projectId: seededProject.id, name: 'seed.png', mimeType: 'image/png', dataBase64: (await readFile(imageFile)).toString('base64') });
   const shot = await call('shot_create', { projectId: seededProject.id, title: 'Explicitly seeded shot', referenceAssetIds: [reference.id], duration: 2 });
   const generated = await call('generation_submit', { projectId: seededProject.id, shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' });

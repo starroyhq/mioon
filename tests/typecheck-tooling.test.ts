@@ -40,8 +40,8 @@ async function fixtureCli(t: TestContext, compiler = "process.stdout.write(JSON.
   return state;
 }
 
-function runCli(directory: string, args: readonly string[]) {
-  const result = spawnSync(process.execPath, ['scripts/tooling.ts', ...args], {
+function runCli(directory: string, args: readonly string[], entry = 'scripts/tooling.ts') {
+  const result = spawnSync(process.execPath, [entry, ...args], {
     cwd: directory, env: toolingEnvironment(), encoding: 'utf8', timeout: 10000, shell: false, windowsHide: true,
   });
   assert.equal(result.error, undefined);
@@ -207,6 +207,34 @@ test('actual standalone typecheck CLI runs three fixed checks without applicatio
   assert.equal(result.stderr, '');
   assert.deepEqual(result.stdout.trim().split('\n').map(line => JSON.parse(line)),
     projects.map(project => ['--project', project, '--noEmit', '--pretty', 'false']));
+});
+
+test('desktop timing scope observes all three real compiler commands without changing their arguments', async t => {
+  const {directory, file} = await fixtureCli(t);
+  await file('scripts/timed-typecheck.ts', "import {main} from './tooling.ts';\nimport {withDesktopTypecheckTiming} from './lib/build-timings.ts';\nprocess.exitCode = await withDesktopTypecheckTiming(() => main(['typecheck']));\n");
+  const result = runCli(directory, [], 'scripts/timed-typecheck.ts');
+  assert.equal(result.status, 0); assert.equal(result.stderr, '');
+  const lines = result.stdout.trim().split('\n'), prefix = 'BUILD_TIMING ';
+  assert.deepEqual(lines.filter(line => !line.startsWith(prefix)).map(line => JSON.parse(line)),
+    projects.map(project => ['--project', project, '--noEmit', '--pretty', 'false']));
+  const timings = lines.filter(line => line.startsWith(prefix)).map(line => JSON.parse(line.slice(prefix.length)) as Record<string, unknown>);
+  assert.deepEqual(timings.map(record => record.stage), ['desktop-typecheck-foundation', 'desktop-typecheck-browser', 'desktop-typecheck-tests']);
+  for (const record of timings) {
+    assert.deepEqual(Object.keys(record), ['schema', 'stage', 'durationMs', 'result', 'exitCode']);
+    assert.equal(record.schema, 1); assert.equal(record.result, 'success'); assert.equal(record.exitCode, 0);
+    assert.ok(typeof record.durationMs === 'number' && Number.isInteger(record.durationMs) && record.durationMs >= 0);
+  }
+});
+
+test('desktop timing records the first compiler failure and preserves the stop boundary', async t => {
+  const {directory, file} = await fixtureCli(t, "process.stdout.write('synthetic-compiler-failure\\n'); process.exit(7);\n");
+  await file('scripts/timed-typecheck.ts', "import {main} from './tooling.ts';\nimport {withDesktopTypecheckTiming} from './lib/build-timings.ts';\nprocess.exitCode = await withDesktopTypecheckTiming(() => main(['typecheck']));\n");
+  const result = runCli(directory, [], 'scripts/timed-typecheck.ts');
+  assert.equal(result.status, 7); assert.equal(result.stderr, '');
+  const lines = result.stdout.trim().split('\n'); assert.equal(lines.length, 2); assert.equal(lines[0], 'synthetic-compiler-failure');
+  assert.ok(lines[1]!.startsWith('BUILD_TIMING '));
+  const timing = JSON.parse(lines[1]!.slice('BUILD_TIMING '.length));
+  assert.equal(timing.stage, 'desktop-typecheck-foundation'); assert.equal(timing.result, 'failed'); assert.equal(timing.exitCode, 7);
 });
 
 test('actual compiler children use a fixed bounded heap without caller-provided Node options', async t => {

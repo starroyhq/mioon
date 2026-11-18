@@ -3,8 +3,8 @@ import {imageSchemas, canonicalImageInput} from './images.ts';
 import {customImageConnectionIdV2Schema, customImageConnectionV2Schema} from './generation-image-settings.ts';
 import {isImageReviewResponse} from './image-reviews.ts';
 
-// Web HTTP/client only. These operations are deliberately absent from the
-// public RPC, CLI, MCP and fixed Mio tool catalogs.
+// Listing is public, with strict credential-free response validation. Review
+// preparation remains an explicit HTTP/client entry pending its approval policy.
 const projectId = z.string().uuid().regex(/^[a-f0-9-]{36}$/);
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const customGeneration = imageSchemas['image.generate'].refine(value => value.providerId === 'openai-compatible');

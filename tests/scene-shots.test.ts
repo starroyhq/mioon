@@ -122,7 +122,7 @@ test('storyboard operations are registered, described, effect-annotated, restore
  for(const operation of ['scene.task.get','scene.task.list','scene.task.cancel'] as const)assert.equal(translate('zh-Hans',`operation.${operation}`),descriptions[operation]);
  assert.equal(operationEffect('scene.shots.create').localProcess,true);
  assert.deepEqual(AGENT_TASK_OPERATION_ADMISSION['scene.shots.create'],{allowed:true,tier:'local_irreversible'});
- assert.equal(AGENT_TASK_OPERATION_ADMISSION['scene.shots.undo'].allowed,false);
+ assert.deepEqual(AGENT_TASK_OPERATION_ADMISSION['scene.shots.undo'],{allowed:true,tier:'local_irreversible'});
  assert.ok(translate('zh-Hans','agent.display.operation.scene.shots.create'));
 });
 

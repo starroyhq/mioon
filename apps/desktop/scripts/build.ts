@@ -6,38 +6,47 @@ import { fileURLToPath } from 'node:url';
 import desktopIdentity from '../identity.ts';
 import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
+import {measureBuildStage, withDesktopTypecheckTiming, type BuildTimingStage} from '../../../scripts/lib/build-timings.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
 import {stageProjectNotices} from './stage-project-notices.ts';
 import {verifySettingsWarmAssets} from './settings-warm-assets.ts';
 import {stageProjectExampleResources, verifyProjectExampleResources} from '../../../packages/business/src/project-example-resources.ts';
+import {verifySubtitleResources,SUBTITLE_RESOURCE_FILES} from '../subtitle-resources.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
 // Every direct desktop/package entry checks real TS before replacing staging.
-if (await checkTypes(['typecheck']) !== 0) throw new Error('Type checking failed; desktop staging was not replaced.');
+await withDesktopTypecheckTiming(async () => {
+  if (await checkTypes(['typecheck']) !== 0) throw new Error('Type checking failed; desktop staging was not replaced.');
+});
 // Keep the ignored electron-builder CJS entrypoints derived from typed source.
-await prepareBuilderConfig();
+await measureBuildStage('desktop-builder-config', () => prepareBuilderConfig());
 const desktop = path.join(root, 'apps/desktop');
 const output = path.join(desktop, 'build');
 const web = path.join(root, 'apps/web/dist');
-await Promise.all(['index.html', 'settings.html'].map(file => readFile(path.join(web, file)))).catch(() => {
-  throw new Error('Build the shared web UI first: pnpm build');
-});
-await verifySettingsWarmAssets(file => readFile(path.join(web, file), 'utf8'));
 const examples = path.join(web, 'project-examples');
-verifyProjectExampleResources(examples);
-await rm(output, { recursive: true, force: true });
-await mkdir(output, { recursive: true });
+await measureBuildStage('desktop-web-validation', async () => {
+  await Promise.all(['index.html', 'settings.html'].map(file => readFile(path.join(web, file)))).catch(() => {
+    throw new Error('Build the shared web UI first: pnpm build');
+  });
+  await verifySettingsWarmAssets(file => readFile(path.join(web, file), 'utf8'));
+  verifyProjectExampleResources(examples);
+});
+await measureBuildStage('desktop-staging-reset', async () => {
+  await rm(output, { recursive: true, force: true });
+  await mkdir(output, { recursive: true });
+});
 const desktopModuleManifests = new Set<string>();
 for (const name of ['main', 'backend', 'project-catalog']) {
-  const result = await build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
+  // The audit test pins this loop line; the cast only narrows the fixed names above to timing stages.
+  const result = await measureBuildStage(`desktop-${name}-bundle` as BuildTimingStage, () => build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
     absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron', 'original-fs'], metafile: name === 'main',
     plugins:[localRequireBundlePlugin(root)],
     define: { 'import.meta.url': '__mioon_import_meta_url', __MIOON_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
     banner: { js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },
-    sourcemap: false, legalComments: 'eof', logLevel: 'info' });
+    sourcemap: false, legalComments: 'eof', logLevel: 'info' }));
   if (name === 'main') {
     const emitted = Object.values(result.metafile!.outputs).flatMap(bundle => Object.entries(bundle.inputs)
       .filter(([, input]) => input.bytesInOutput > 0).map(([file]) => file));
@@ -56,9 +65,10 @@ for (const name of ['main', 'backend', 'project-catalog']) {
   }
 }
 // A sandboxed preload has only Electron's fixed bridge API, never Node imports.
-await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path.join(output, 'preload.cjs'),
+await measureBuildStage('desktop-preload-bundle', () => build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path.join(output, 'preload.cjs'),
   bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
-  sourcemap: false, legalComments: 'eof', logLevel: 'info' });
+  sourcemap: false, legalComments: 'eof', logLevel: 'info' }));
+await measureBuildStage('desktop-resource-staging', async () => {
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true,
   filter: source => source !== examples });
 await stageProjectExampleResources(examples, path.join(output, 'examples'));
@@ -66,21 +76,24 @@ await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
 await stageTrayResources(path.join(desktop, 'resources/tray'), path.join(output, 'icons/tray'));
 const subtitleSource=path.join(root,'packages/business/resources/subtitles');
-import {verifySubtitleResources,SUBTITLE_RESOURCE_FILES} from '../subtitle-resources.ts';
 await verifySubtitleResources(subtitleSource);
 await mkdir(path.join(output,'subtitles'));
 for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));
 await verifySubtitleResources(path.join(output,'subtitles'));
+});
 // Windows desktop storage opens only through the ACL helper staged beside the
 // bundles (outside ASAR when packaged); it is built separately, never here.
 if(process.platform==='win32'){
+  await measureBuildStage('desktop-native-staging', async () => {
   const helper=path.join(root,'packages/node-host/build/Release/mioon_private_storage.node');
   await access(helper).catch(()=>{throw new Error('Build the Windows private storage helper first: pnpm --filter @mioon/node-host build:native');});
   await mkdir(path.join(output,'native'));
   await cp(helper,path.join(output,'native','mioon_private_storage.node'));
+  });
 }
 await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
   private: true, license: pkg.license, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
+await measureBuildStage('desktop-license-staging', async () => {
 await mkdir(path.join(output, 'licenses'), { recursive: true });
 await stageProjectNotices(root, path.join(output, 'licenses'));
 const seen = new Set(), notices = ['# Third-party notices', '',
@@ -131,5 +144,6 @@ await cp(path.join(root, 'packages/ui/src/LICENSE.shadcn.md'), path.join(output,
 notices.push('- Noto Sans CJK SC 2.004, extracted face: SIL OFL 1.1 (external subtitles/OFL-1.1.txt, SOURCE-COPYRIGHT.txt and README.md).');
 notices.push('- shadcn/ui checked-in components: MIT (shadcn-ui-LICENSE.md)');
 await writeFile(path.join(output, 'licenses/THIRD-PARTY-NOTICES.md'), notices.join('\n') + '\n');
+});
 console.log(`Desktop identity: ${identity.appId} (${identity.channel})`);
 console.log('Desktop staging contains bundled shared backend and the same built web UI; no node_modules or data directories.');

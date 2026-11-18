@@ -1,6 +1,6 @@
 # HTTP API
 
-HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述。本文包含 S7 的公开入口退役状态。项目备份采用独立的 `project.backup.*` 契约。
+HTTP、CLI 和官方 MCP 对共同开放的操作使用相同的严格参数、权限与副作用描述。MCP 不发现或调用用户专属的授权管理、项目外目录确认/撤销、新建/浏览其他项目、整体恢复或删除项目操作。本文包含 S7 的公开入口退役状态。项目备份采用独立的 `project.backup.*` 契约。
 
 Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login, including project-scoped media, require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
 
@@ -89,7 +89,7 @@ S6-C 2b 消费原生桥：重新指向直接使用 `__mioonAssetMediaNative` 的
 
 模板未知回执不能靠重放已拒绝的 promise 核对。界面如实提示项目可能已建好，允许刷新列表和关闭对话框；不自动实例化、不开假回执，也不把列表刷新当作完成证明。关闭后可以明确打开已有项目，未知关闭元数据仍保留，新写继续阻止。按 requestId 查 S5 回执留 0.1.x。模板目标占用检查在位置探测之后异步执行，签票前同时检查所选文件和实际项目目录。
 
-应用 RPC `project.delete` 已采用 S5-C 的移到废纸篓语义：严格确认登记路径、文件身份及项目 revision，仅受信桌面主进程调用 `shell.trashItem`，确定成功后撤登记并保存固定回执。素材及全部本机记录保留；打开窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝，S8 草稿不阻止。没有受信能力的网页/headless 返回 `PROJECT_TRASH_UNAVAILABLE`；CLI/MCP 命令留 0.1.x，在输入/私有存储/后端访问前明确拒绝。同键重放确定回执，结果不明不重做、不撤登记。旧 `confirmPermanentDeletion` 严格报 `VALIDATION_ERROR`（400），没有永久清理或 `cleanup:'pending'`。详见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。
+应用 RPC `project.delete` 已采用 S5-C 的移到废纸篓语义：严格确认登记路径、文件身份及项目 revision，仅受信桌面主进程调用 `shell.trashItem`，确定成功后撤登记并保存固定回执。素材及全部本机记录保留；打开窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝，S8 草稿不阻止。没有受信能力的网页/headless 返回 `PROJECT_TRASH_UNAVAILABLE`；CLI 命令留 0.1.x，在输入/私有存储/后端访问前明确拒绝；MCP 不发现删除工具，直接调用返回 `UNKNOWN_OPERATION`。同键重放确定回执，结果不明不重做、不撤登记。旧 `confirmPermanentDeletion` 严格报 `VALIDATION_ERROR`（400），没有永久清理或 `cleanup:'pending'`。详见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。
 
 首页废纸篓使用私有 browser RPC 客户端区分确定 4xx 拒绝与网络/协议未知；明确 unconfirmed 的 4xx 仍未知。页面 lifetime 变化后，只在目录身份相同且用户重新明确同意时使用原请求核对；其他 native unknown、busy、输入、上下文及租约守卫不豁免。
 
@@ -172,7 +172,7 @@ K2 曾保留的旧项目地址已在 P4 退役：把项目操作发到应用 `/a
 
 Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISION_CONFLICT","message":"...","details":{"currentRevision":2},"retryable":false}}`. HTTP 400 invalid input, 401 unauthenticated, 403 invalid origin/provider disabled, 404 missing record/operation, 409 stale revision or idempotency conflict. Do not blindly retry a generation with a new key when a response is lost; replay the original exact request.
 
-For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these schemas plus the project-address field for the 11 entity-addressed operations through tools/list.
+For business RPC, the core runtime schemas and `packages/contracts/src/public-operations.ts` adapters are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP `tools/list` uses the public registry with its explicit user-only exclusions; the 11 entity-addressed operations add a transport project address. The public registry also includes `canvas.copy.snapshot`, `asset.media.location.list` and `image.service.list`.
 
 ### 画布编辑（格式 4）
 
@@ -610,12 +610,14 @@ public-DNS HTTPS URL and a bounded ASCII model. Model changes keep the recipient
 key; an address change with `keep` detaches it. Saving validates syntax without
 probing. See [generation services](GENERATION-SERVICES.md) for fields and limits.
 
-Web/client-only `POST /api/projects/{projectId}/images/services` accepts
+`POST /api/projects/{projectId}/images/services` accepts
 `{operation,input}` for `image.service.list` and `image.service.review.prepare`.
 The latter freezes the explicit connection UUID, its configuration revision,
 full configuration and actual destination. Old no-ID entry points resolve an
-exact single service and reject ambiguous collections. The new operations are
-absent from RPC/CLI/MCP/Mio discovery; both fixed request catalogs remain intact.
+exact single service and reject ambiguous collections. `image.service.list` is now
+publicly discoverable in CLI/MCP and available to Mio; the shared client sends it
+to this existing HTTP route and validates the bounded, credential-free response.
+`image.service.review.prepare` remains outside discovery pending its approval policy.
 Official and retained custom v1 review DTOs stay readable.
 
 Authenticated `POST /api/images/reviews/approve` and `/reject` each take exactly
@@ -1200,7 +1202,7 @@ The model, rendering and editor are described in
 
 ## V4 discovery and capability validation
 
-`pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
+`pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions after excluding user-only operations. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
 
 Each schema definition also contains explicit advisory `effects`: `readOnly`,
 `idempotent`, `destructive`, `openWorld`, `databaseWrite`, `fileWrite`,
@@ -1872,9 +1874,9 @@ Exact retained ACK replay precedes media or current-revision admission, includin
 
 `asset.import` 是严格互斥的路径/上传输入。路径分支必须有requestId；上传仍接受原字段和30 MiB上限，可选requestId。同一key同一规范化输入精确重放，不同内容冲突。普通RPC永远不因输入中的路径或来源标记授予目录许可。
 
-独立资产接口：`asset.media.status.list` 返回有界items/nextCursor；`asset.media.prepare` 在事务外算完整哈希并按referenceRevision核对后返回assets；`asset.media.relink.preview/apply` 预览并重指向同内容；`asset.media.acceptChanged` 创建新素材身份，保留旧历史。
+独立资产接口：`asset.media.location.list` 普通项目 RPC 返回严格的 `{assets:[{assetId,pathForm,outside}],nextCursor}`，每页最多100项，不返回路径、卷名或授权票据，不写项目、应用库或私有证据文件；`asset.media.status.list` 返回有界items/nextCursor；`asset.media.prepare` 在事务外算完整哈希并按referenceRevision核对后返回assets；`asset.media.relink.preview/apply` 预览并重指向同内容；`asset.media.acceptChanged` 创建新素材身份，保留旧历史。
 
-敏感操作通过已认证且通过Origin检查的 `POST /api/projects/<ID>/asset-media/trusted`，请求 `{operation,input}`。`asset.import.path` 仅由桌面真实文件选择/拖入和CLI显式目录确认调用，返回asset和confirmedDirectories；`asset.media.location.list`、outside.confirm/revoke不进入MCP或Mio的普通操作目录。用户动作header仅表达意图，不能替代认证、窗口/项目所有权或目录能力检查。
+敏感操作通过已认证且通过Origin检查的 `POST /api/projects/<ID>/asset-media/trusted`，请求 `{operation,input}`。`asset.import.path` 仅由桌面真实文件选择/拖入和CLI显式目录确认调用，返回asset和confirmedDirectories；同名 `asset.media.location.list` 在此受信入口保留原先含显示路径、目录与 locationToken 的 UI 投影；outside.confirm/revoke仅由该用户入口执行，MCP/Mio不能调用。用户动作header仅表达意图，不能替代认证、窗口/项目所有权或目录能力检查。
 
 公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP 使用上述路径或上传导入和可选 `referenceRevisions`。Mio 的模型目录接受生成画幅来源 `aspectSource`，网页确认专用字段 `referenceRevisions` 仍由受信客户端提交。模型冻结 schema 可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
 

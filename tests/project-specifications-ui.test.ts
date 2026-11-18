@@ -407,6 +407,8 @@ test('a changed aspect frame uses the existing preview refresh action and keeps 
 
 test('actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles', () => {
   const Inspector = component('TimelineInspector.tsx', { './clip-audio-state.ts': audio, './Timeline.tsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true }, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './clip-draft-state.ts': clipDraft,
+    './edit-ui/status.tsx': { editUiTrackPickerLabel: (_t: unknown, track: { name?: string }) => track.name ?? '' },
+    './edit-ui/ShotVersionBar.tsx': { __esModule: true, default: 'ShotVersionBar' },
     './clip-draft-hook.ts': { useClipDraft: ({context}:{context:Parameters<typeof clipDraft.createClipDraftController>[0]["context"]}) => { const controller = clipDraft.createClipDraftController(({ context, client: { get: () => assert.fail('Static bounds inspection does not load persistence') } } as unknown as Parameters<typeof clipDraft.createClipDraftController>[0])); return { state: controller.getState(), controller }; } },
   }).default;
   for (const preset of ['landscape_1080', 'square_1080']) {

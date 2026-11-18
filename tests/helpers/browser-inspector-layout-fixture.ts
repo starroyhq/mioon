@@ -7,6 +7,7 @@ import {computeFullSha256, referenceForFile} from '../../packages/business/src/m
 import {listVideoConnections} from '../../packages/business/src/video/generation.ts';
 import {createVideoSettingsV2} from '../../packages/business/src/video/settings-v2.ts';
 import {projectMediaPath} from '../../packages/contracts/src/project-file.ts';
+import {MAC_WINDOW_CHROME, macWindowChrome} from '../../packages/contracts/src/desktop-window-chrome.ts';
 import {closeQaProject, createQaProject} from './kernel-qa-fixture.mjs';
 import {startServer} from './test-server.ts';
 import {png} from './timeline-image-fixtures.ts';
@@ -61,4 +62,5 @@ try {
 
 const server = await startServer({dataDir, port: 0, distDir, token, ...testServerSecretCodecs()});
 process.once('SIGTERM', () => { void server.close(); });
-await writeFile(path.join(dataDir, 'ready.json'), JSON.stringify({origin: server.url, name, plainTitle, tailTitle, tailId, connections}), {mode: 0o600, flag: 'wx'});
+const chromeScaleCases = [0.9, 1, 1.25].map(scale => ({scale, ...macWindowChrome(scale)}));
+await writeFile(path.join(dataDir, 'ready.json'), JSON.stringify({origin: server.url, name, plainTitle, tailTitle, tailId, connections, windowChrome: MAC_WINDOW_CHROME, chromeScaleCases}), {mode: 0o600, flag: 'wx'});

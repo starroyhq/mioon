@@ -4,10 +4,12 @@ import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import { stripTypeScriptTypes } from 'node:module';
+import { installWindowChrome, windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale, macWindowChrome, MAC_WINDOW_CHROME } from '../packages/contracts/src/desktop-window-chrome.ts';
 import { createLauncherWindowState } from '../apps/desktop/src/launcher-window-state.ts';
 import type { WindowBounds } from '../apps/desktop/src/launcher-window-state.ts';
-import { desktopFrame } from '../apps/web/src/desktop-frame.ts';
+import { applyDesktopFrame, desktopFrame } from '../apps/web/src/desktop-frame.ts';
 
 const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
 const macShell = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Mioon/0.4.1 Chrome/152.0.0.0 Electron/44.7.0 Safari/537.36';
@@ -20,6 +22,215 @@ test('macOS hides the native title bar and insets the traffic lights; other plat
   for (const platform of ['win32', 'linux', 'freebsd'] as const) assert.deepEqual(windowChromeOptions(platform as Parameters<typeof windowChromeOptions>[0]), {});
 });
 
+test('the measured native controls share the top bar center, outer inset and brand gap', () => {
+  const chrome = MAC_WINDOW_CHROME;
+  assert.equal(chrome.position.y - chrome.controlOutset + chrome.controlHeight / 2, chrome.topbarHeight / 2);
+  assert.equal(chrome.position.x, chrome.position.y);
+  assert.equal(chrome.leadingInset - (chrome.position.x - chrome.controlOutset) - chrome.controlGroupWidth, chrome.gap);
+  assert.equal(MAC_TRAFFIC_LIGHT_POSITION, chrome.position);
+});
+
+test('supported page scales preserve native control centers and the scaled brand gap', () => {
+  for (const scale of [0.9, 0.95, 1, 1.1, 1.25]) {
+    const chrome = macWindowChrome(scale);
+    const inset = chrome.position.x - chrome.controlOutset;
+    assert.ok(Math.abs(inset + chrome.controlHeight / 2 - chrome.topbarHeight * scale / 2) < 1);
+    assert.equal(chrome.position.x, chrome.position.y);
+    assert.ok(Math.abs(chrome.leadingInset * scale - (inset + chrome.controlGroupWidth + chrome.gap * scale)) < 1e-9);
+  }
+  for (const invalid of [0.89, 1.26, NaN, Infinity, '1', null, undefined]) {
+    assert.equal(isDesktopChromeScale(invalid), false);
+    if (invalid !== undefined) assert.throws(() => macWindowChrome(invalid as number), RangeError);
+  }
+  assert.deepEqual(macWindowChrome(), MAC_WINDOW_CHROME);
+});
+
+test('native showing and fullscreen transitions restore the inset and publish only current window state', async t => {
+  let destroyed = false, contentsDestroyed = false, fullscreen = false, visible = true;
+  let position = {x: 8, y: 8};
+  const sent: Array<{channel: string; fullscreen: boolean}> = [];
+  const visibilityChanges: boolean[] = [];
+  const contents = Object.assign(new EventEmitter(), {
+    mainFrame: {},
+    isDestroyed: () => contentsDestroyed,
+    send: (channel: string, value: boolean) => {sent.push({channel, fullscreen: value});},
+  });
+  const window = Object.assign(new EventEmitter(), {
+    webContents: contents,
+    isDestroyed: () => destroyed,
+    isFullScreen: () => fullscreen,
+    setWindowButtonVisibility: (value: boolean) => {visible = value; visibilityChanges.push(value);},
+    setWindowButtonPosition: (value: {x: number; y: number}) => {position = value;},
+  });
+  const release = installWindowChrome(window, 'darwin');
+  t.after(release);
+  assert.deepEqual(position, MAC_TRAFFIC_LIGHT_POSITION);
+  assert.notEqual(position, MAC_TRAFFIC_LIGHT_POSITION);
+  assert.equal(visible, true);
+  assert.deepEqual(visibilityChanges, [], 'ordinary windows and modal sheets retain their native visibility');
+  assert.deepEqual(sent.at(-1), {channel: DESKTOP_FULLSCREEN_EVENT, fullscreen: false});
+
+  window.emit('ready-to-show');
+  window.emit('show');
+  position = {x: 8, y: 8}; // Native layout can finish after the show callback.
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.deepEqual(position, MAC_TRAFFIC_LIGHT_POSITION);
+  assert.deepEqual(visibilityChanges, []);
+
+  fullscreen = true;
+  window.emit('enter-full-screen');
+  assert.equal(visible, false);
+  assert.deepEqual(sent.at(-1), {channel: DESKTOP_FULLSCREEN_EVENT, fullscreen: true});
+  const fullscreenPosition = position;
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_CHROME_SCALE_EVENT, 1.25);
+  assert.equal(position, fullscreenPosition);
+  contents.emit('dom-ready');
+  assert.deepEqual(sent.at(-1), {channel: DESKTOP_FULLSCREEN_EVENT, fullscreen: true});
+
+  fullscreen = false;
+  window.emit('leave-full-screen');
+  position = {x: 8, y: 8};
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(visible, true);
+  assert.deepEqual(visibilityChanges, [false, true]);
+  assert.deepEqual(position, macWindowChrome(1.25).position);
+  assert.deepEqual(sent.at(-1), {channel: DESKTOP_FULLSCREEN_EVENT, fullscreen: false});
+
+  contentsDestroyed = true;
+  const count = sent.length;
+  contents.emit('dom-ready');
+  assert.equal(sent.length, count);
+  window.emit('show');
+  destroyed = true;
+  window.emit('closed');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.deepEqual(window.eventNames(), []);
+  assert.deepEqual(contents.eventNames(), []);
+  assert.equal(sent.length, count);
+});
+
+test('only the current main frame can update its own native chrome scale within the supported bounds', t => {
+  let position = {...MAC_TRAFFIC_LIGHT_POSITION};
+  const contents = Object.assign(new EventEmitter(), {
+    mainFrame: {},
+    isDestroyed: () => false,
+    send() {},
+  });
+  const window = Object.assign(new EventEmitter(), {
+    webContents: contents,
+    isDestroyed: () => false,
+    isFullScreen: () => false,
+    setWindowButtonVisibility() {},
+    setWindowButtonPosition: (value: {x: number; y: number}) => {position = value;},
+  });
+  const release = installWindowChrome(window, 'darwin');
+  t.after(release);
+  for (const scale of [0.9, 1, 1.1, 1.25]) {
+    contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_CHROME_SCALE_EVENT, scale);
+    assert.deepEqual(position, macWindowChrome(scale).position);
+  }
+  const expected = position;
+  for (const value of [0.89, 1.26, NaN, Infinity, '1', null, undefined]) {
+    contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_CHROME_SCALE_EVENT, value);
+    assert.equal(position, expected);
+  }
+  contents.emit('ipc-message', {senderFrame: {}}, DESKTOP_CHROME_SCALE_EVENT, 1);
+  contents.emit('ipc-message', {senderFrame: null}, DESKTOP_CHROME_SCALE_EVENT, 1);
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, 'unrelated-channel', 1);
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_CHROME_SCALE_EVENT, 1, 1.25);
+  assert.equal(position, expected);
+  const previousFrame = contents.mainFrame;
+  contents.mainFrame = {};
+  contents.emit('ipc-message', {senderFrame: previousFrame}, DESKTOP_CHROME_SCALE_EVENT, 1);
+  assert.equal(position, expected);
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_CHROME_SCALE_EVENT, 1);
+  assert.deepEqual(position, MAC_TRAFFIC_LIGHT_POSITION);
+  release();
+  const releasedPosition = position;
+  contents.emit('ipc-message', {senderFrame: contents.mainFrame}, DESKTOP_CHROME_SCALE_EVENT, 1.25);
+  assert.equal(position, releasedPosition);
+});
+
+test('native chrome lifecycle leaves other platforms untouched', () => {
+  for (const platform of ['linux', 'win32', 'freebsd'] as const) {
+    const window = Object.assign(new EventEmitter(), {
+      isDestroyed: () => assert.fail('Native chrome is macOS-only'),
+      isFullScreen: () => assert.fail('Native chrome is macOS-only'),
+      setWindowButtonVisibility: () => assert.fail('Native chrome is macOS-only'),
+      setWindowButtonPosition: () => assert.fail('Native chrome is macOS-only'),
+      webContents: Object.assign(new EventEmitter(), {
+        mainFrame: {},
+        isDestroyed: () => assert.fail('Native chrome is macOS-only'),
+        send: () => assert.fail('Native chrome is macOS-only'),
+      }),
+    });
+    installWindowChrome(window, platform)();
+    assert.deepEqual(window.eventNames(), []);
+    assert.deepEqual(window.webContents.eventNames(), []);
+  }
+});
+
+test('the macOS main-frame preload retains early fullscreen state and removes its passive listener on unload', () => {
+  const source = readFileSync(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
+  const block = source.match(/if \(process\.isMainFrame && process\.platform === 'darwin'\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(block);
+  for (const process of [{isMainFrame: true, platform: 'darwin'}, {isMainFrame: false, platform: 'darwin'}, {isMainFrame: true, platform: 'linux'}, {isMainFrame: true, platform: 'win32'}]) {
+    const published: Array<{channel: string; scale: number}> = [];
+    const ipc = Object.assign(new EventEmitter(), {send: (channel: string, scale: number) => {published.push({channel, scale});}});
+    const documentEvents = new EventEmitter(), windowEvents = new EventEmitter();
+    const styles = new Map<string, string>();
+    const observed: unknown[] = [];
+    let observer: TestObserver | undefined;
+    class TestObserver {
+      disconnected = false;
+      readonly callback: () => void;
+      constructor(callback: () => void) {this.callback = callback; observer = this;}
+      observe(target: unknown, options: unknown) {observed.push({target, options});}
+      disconnect() {this.disconnected = true;}
+      styleChanged() {if (!this.disconnected) this.callback();}
+    }
+    const document = {
+      readyState: 'loading',
+      documentElement: null as null | {dataset: Record<string, string>; style: {getPropertyValue: (name: string) => string}},
+      addEventListener: documentEvents.on.bind(documentEvents),
+      removeEventListener: documentEvents.removeListener.bind(documentEvents),
+    };
+    const window = {addEventListener: windowEvents.on.bind(windowEvents)};
+    Function('process', 'document', 'window', 'ipcRenderer', 'DESKTOP_FULLSCREEN_EVENT', 'DESKTOP_CHROME_SCALE_EVENT', 'isDesktopChromeScale', 'MutationObserver', stripTypeScriptTypes(block))(
+      process, document, window, ipc, DESKTOP_FULLSCREEN_EVENT, DESKTOP_CHROME_SCALE_EVENT, isDesktopChromeScale, TestObserver);
+    const active = process.isMainFrame && process.platform === 'darwin';
+    assert.equal(ipc.listenerCount(DESKTOP_FULLSCREEN_EVENT), Number(active));
+    ipc.emit(DESKTOP_FULLSCREEN_EVENT, {}, true);
+    document.documentElement = {dataset: {}, style: {getPropertyValue: name => styles.get(name) ?? ''}};
+    documentEvents.emit('DOMContentLoaded');
+    assert.deepEqual(published, active ? [{channel: DESKTOP_CHROME_SCALE_EVENT, scale: 1}] : []);
+    assert.deepEqual(observed, active ? [{target: document.documentElement, options: {attributes: true, attributeFilter: ['style']}}] : []);
+    styles.set('--mioon-ui-scale', '1.25');
+    observer?.styleChanged();
+    observer?.styleChanged();
+    for (const invalid of ['0.89', '1.26', 'NaN', 'Infinity', 'invalid']) {
+      styles.set('--mioon-ui-scale', invalid);
+      observer?.styleChanged();
+    }
+    assert.deepEqual(published, active ? [{channel: DESKTOP_CHROME_SCALE_EVENT, scale: 1}, {channel: DESKTOP_CHROME_SCALE_EVENT, scale: 1.25}] : []);
+    assert.equal(document.documentElement.dataset.desktopFullscreen, active ? 'true' : undefined);
+    ipc.emit(DESKTOP_FULLSCREEN_EVENT, {}, 'false');
+    assert.equal(document.documentElement.dataset.desktopFullscreen, active ? 'true' : undefined);
+    ipc.emit(DESKTOP_FULLSCREEN_EVENT, {}, false);
+    assert.equal(document.documentElement.dataset.desktopFullscreen, active ? 'false' : undefined);
+    windowEvents.emit('unload');
+    assert.equal(ipc.listenerCount(DESKTOP_FULLSCREEN_EVENT), 0);
+    assert.equal(documentEvents.listenerCount('DOMContentLoaded'), 0);
+    assert.equal(observer?.disconnected, active ? true : undefined);
+    const publishedCount = published.length;
+    styles.set('--mioon-ui-scale', '1');
+    observer?.styleChanged();
+    assert.equal(published.length, publishedCount);
+    ipc.emit(DESKTOP_FULLSCREEN_EVENT, {}, true);
+    assert.equal(document.documentElement.dataset.desktopFullscreen, active ? 'false' : undefined);
+  }
+});
+
 test('the renderer insets its top bar only inside the macOS desktop shell', () => {
   assert.equal(desktopFrame(macShell), 'mac-inset');
   assert.equal(desktopFrame(macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'Windows NT 10.0; Win64; x64')), null);
@@ -29,12 +240,27 @@ test('the renderer insets its top bar only inside the macOS desktop shell', () =
   assert.equal(desktopFrame(), null);
 });
 
+test('the macOS renderer derives its height and reserved space from the shared native geometry', () => {
+  const agents = [macShell, macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'Windows NT 10.0; Win64; x64'),
+    macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'X11; Linux x86_64'), 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'];
+  for (const userAgent of agents) {
+    const properties = new Map<string, string>();
+    const root = {dataset: {} as Record<string, string>, style: {setProperty: (key: string, value: string) => {properties.set(key, value);}}};
+    applyDesktopFrame(root as unknown as Parameters<typeof applyDesktopFrame>[0], userAgent);
+    const mac = userAgent === macShell;
+    assert.equal(root.dataset.desktopFrame, mac ? 'mac-inset' : undefined);
+    assert.deepEqual([...properties], mac ? [
+      ['--wb-topbar', `${MAC_WINDOW_CHROME.topbarHeight}px`],
+      ['--mac-titlebar-inset', `${MAC_WINDOW_CHROME.leadingInset}px`],
+      ['--mac-titlebar-gap', `${MAC_WINDOW_CHROME.gap}px`],
+    ] : []);
+  }
+});
+
 test('the top bar reserves room for the traffic lights, drags the window and keeps its controls clickable', () => {
   const bar = css.match(/:root\[data-desktop-frame="mac-inset"\] \.workbench \.topbar \{([^}]*)\}/)?.[1] ?? '';
   assert.match(bar, /-webkit-app-region:\s*drag/);
-  // Three 12px lights with 8px gaps start at the configured x; the brand must begin after them.
-  const inset = Number(bar.match(/padding-left:\s*(\d+)px/)?.[1]);
-  assert.ok(inset >= MAC_TRAFFIC_LIGHT_POSITION.x + 3 * 12 + 2 * 8, `top bar inset ${inset}px overlaps the traffic lights`);
+  assert.match(bar, /padding-left:\s*var\(--mac-titlebar-leading\)/);
   const controls = css.match(/:root\[data-desktop-frame="mac-inset"\] \.topbar :is\(([^)]*\)?[^)]*)\) \{([^}]*)\}/);
   assert.match(controls?.[2] ?? '', /-webkit-app-region:\s*no-drag/);
   for (const selector of ['a', 'button', 'input', '\\[role="tablist"\\]']) assert.match(controls![1], new RegExp(`(^|, )${selector}(,|$)`));

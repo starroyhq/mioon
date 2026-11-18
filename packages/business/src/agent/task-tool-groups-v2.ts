@@ -1,3 +1,4 @@
+import {mioCanvasCopyOperations} from '../../../contracts/src/mio-canvas-copy.ts';
 import type {AgentTaskLocale,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import {MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL} from '../../../contracts/src/mio-project-media.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL} from '../../../contracts/src/mio-project-import.ts';
@@ -34,9 +35,9 @@ export const AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS:Readonly<Record<AgentTaskLocale,
 export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
   core:['project.inspect','asset.list','asset.inspect','shot.inspect','timeline.inspect','timeline.format.get','version.list','job.get','export.get','node.inspect','edge.inspect','task.wait','tools.load','mio.ask','skill.read','continuity.report','goal.set','project.rules.set'],
   // C8 v2: camera previs nodes live on the canvas; reading a scene is loaded with the tools that change it.
-  canvas:['shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select','project.rename','previs.inspect','previs.create','previs.scene.set'],
-  subjects:['subject.list','subject.version.list','subject.binding.list','subject.create','subject.version.add','subject.binding.set'],
-  assets:['asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected',MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_FILE_IMPORT_OPERATION],
+  canvas:['project.version.save','project.version.list','project.version.preview','previs.thumbnail.get','previs.thumbnail.set','shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select','project.rename','previs.inspect','previs.create','previs.scene.set'],
+  subjects:['subject.variants.list','subject.variants.get','subject.variants.retry','subject.variants.undo','subject.list','subject.version.list','subject.binding.list','subject.create','subject.version.add','subject.binding.set'],
+  assets:['asset.import','asset.media.status.list','asset.media.location.list','asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected',MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_FILE_IMPORT_OPERATION],
   // A crossfade decides how two overlapping clips hand over.
   editing:['timeline.seed','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.clip.refreshSources','timeline.shots.append','timeline.format.set','timeline.history.get','timeline.clip.crossfade'],
   subtitles:['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove'],
@@ -45,8 +46,8 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
   colour:['lut.list','lut.inspect','lut.look.inspect','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect','lut.importSelected'],
   exports:['timeline.export.preflight','timeline.export.capabilities','timeline.render','export.create','export.activity.get'],
   video:['provider.list','video.connection.list','generation.submit','job.list','task.disposition.list'],
-  images:['image.profile.list','image.generate','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get'],
-  scenes:['scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','timeline.clip.splitAtScenes','scene.shots.create','frame.extract','frame.request.get','frame.task.get','frame.task.list'],
+  images:['image.service.list','image.review.list','image.review.get','image.task.cancelQueued','image.profile.list','image.generate','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get'],
+  scenes:['scene.cuts.save','scene.shots.undo','scene.task.cancel','frame.task.cancelQueued','task.disposition.archiveCompleted','scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','timeline.clip.splitAtScenes','scene.shots.create','frame.extract','frame.request.get','frame.task.get','frame.task.list'],
 } as const satisfies Readonly<Record<AgentTaskToolGroupId,readonly string[]>>);
 
 function toolName(operation:string):string{
@@ -58,19 +59,19 @@ function toolName(operation:string):string{
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));
 export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4';
-const format4GroupedTools=[...groupedTools,...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
+const format4GroupedTools=[...groupedTools,...mioCanvasCopyOperations.map(operation=>({group:'canvas' as const,operation,name:`mioon_${operation.replaceAll('.','_')}`})),...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
 export function agentTaskToolCatalogProfile(definitions:readonly {name:string}[]):AgentTaskToolCatalogProfile{
  if(definitions.some(tool=>mioCanvasOperationForTool(tool.name)))return 'format4';
  return definitions.some(tool=>tool.name==='mioon_project_notes_set')?'legacy':'native';
 }
-const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION||tool.operation===MIO_PROJECT_FILE_IMPORT_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
+const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='asset.import'||tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION||tool.operation===MIO_PROJECT_FILE_IMPORT_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
 const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='format4'?format4GroupedTools:profile==='legacy'?legacyGroupedTools:groupedTools;
 export const AGENT_TASK_LOADABLE_TOOL_NAMES=Object.freeze(groupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 export const AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES=Object.freeze(legacyGroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 const format4LoadableNames=Object.freeze(format4GroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 const loadableNames=(profile:AgentTaskToolCatalogProfile)=>profile==='format4'?format4LoadableNames:profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES:AGENT_TASK_LOADABLE_TOOL_NAMES;
-const toolNameLoadLimit=(profile:AgentTaskToolCatalogProfile)=>profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.length:AGENT_TASK_LOADABLE_TOOL_NAMES.length;
-export const agentTaskToolSupportsGroupLoad=(name:string):boolean=>name!==MIO_PROJECT_MEDIA_LIST_TOOL&&name!==MIO_PROJECT_FILE_IMPORT_TOOL&&!mioCanvasOperationForTool(name);
+const toolNameLoadLimit=(profile:AgentTaskToolCatalogProfile)=>loadableNames(profile).length;
+export const agentTaskToolSupportsGroupLoad=(name:string):boolean=>name!==MIO_PROJECT_MEDIA_LIST_TOOL&&name!==MIO_PROJECT_FILE_IMPORT_TOOL&&!mioCanvasOperationForTool(name)&&!mioCanvasCopyOperations.some(operation=>toolName(operation)===name);
 export type AgentTaskToolLoadMode='names'|'groups';
 export const agentTaskToolGroupForName=(name:string,profile:AgentTaskToolCatalogProfile='native'):AgentTaskToolGroupId|undefined=>catalogTools(profile).find(tool=>tool.name===name)?.group;
 export const agentTaskToolNamesForGroup=(group:AgentTaskToolGroupId,profile:AgentTaskToolCatalogProfile='native'):string[]=>catalogTools(profile).filter(tool=>tool.group===group).map(tool=>tool.name);
@@ -93,7 +94,7 @@ export const AGENT_TASK_TOOLS_LOAD_PARAMETERS=Object.freeze({
   type:'object',properties:{names:{type:'array',items:{type:'string',enum:AGENT_TASK_LOADABLE_TOOL_NAMES},minItems:1,maxItems:AGENT_TASK_LOADABLE_TOOL_NAMES.length}},required:['names'],additionalProperties:false,
 });
 export const AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS=Object.freeze({
- ...AGENT_TASK_TOOLS_LOAD_PARAMETERS,properties:{names:{...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names,items:{type:'string',enum:format4LoadableNames}}},
+ ...AGENT_TASK_TOOLS_LOAD_PARAMETERS,properties:{names:{...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names,items:{type:'string',enum:format4LoadableNames},maxItems:format4LoadableNames.length}},
 });
 export const AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS=Object.freeze({
   type:'object',properties:{names:{type:'array',items:{type:'string',enum:AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES},minItems:1,maxItems:AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.length}},required:['names'],additionalProperties:false,

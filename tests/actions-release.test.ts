@@ -6,6 +6,7 @@ import {mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile} from 
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {APPLE_SECRET_FLAGS, isFrozenBranchCandidate, pushedTagForEvent, requireAppleSecrets, resolvePreflight} from '../.github/scripts/release-preflight.ts';
+import {decideChecks, findSuccessfulMainCI} from '../.github/scripts/release-ci-evidence.ts';
 import {stageRelease, validatePackageReport} from '../.github/scripts/stage-release.ts';
 import {collectReleaseBundle, ownershipMarker, publishRelease, validateDraft} from '../.github/scripts/publish-release.ts';
 import type {DraftRelease, PublishTransport, ReleaseBundle, RemoteAsset, UploadFile} from '../.github/scripts/publish-release.ts';
@@ -20,6 +21,37 @@ const report = (arch: ReleaseArch | 'arm64' | 'x64') => ({
   ok: true, platform: 'darwin', arch, package: {name: names.dmg, sha256: hash(dmgContents)},
 });
 const preflight = {rootVersion: version, desktopVersion: version, checkoutSha: sha, resolveTag: () => sha, isOnMain: () => true};
+
+const ciLookup = {repository: 'owner/repo', sha, server: 'https://github.com'};
+const ciRun = {
+  id: 42, run_attempt: 1, html_url: 'https://github.com/owner/repo/actions/runs/42',
+  head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success',
+  name: 'CI', path: '.github/workflows/ci.yml', repository: {full_name: ciLookup.repository}, head_repository: {full_name: ciLookup.repository},
+};
+
+test('only a successful main push CI for the exact release source can supply reuse evidence', () => {
+  const invalid = [
+    {head_sha: changedSha}, {head_branch: 'other'}, {event: 'pull_request'}, {event: 'workflow_dispatch'},
+    {status: 'in_progress'}, {conclusion: 'failure'}, {conclusion: 'cancelled'},
+    {path: '.github/workflows/release-desktop.yml'}, {name: 'Other'}, {repository: {full_name: 'owner/other'}},
+    {head_repository: {full_name: 'fork/repo'}}, {id: '42'}, {run_attempt: 0}, {html_url: 'https://example.test/actions/runs/42'},
+  ].map(patch => ({...ciRun, ...patch}));
+  assert.equal(findSuccessfulMainCI({workflow_runs: invalid}, ciLookup), undefined);
+  assert.deepEqual(findSuccessfulMainCI({workflow_runs: [...invalid, {...ciRun, run_attempt: 2}]}, ciLookup),
+    {runId: 42, attempt: 2, url: ciRun.html_url}, 'a successful rerun still proves the same frozen source');
+});
+
+test('forced, unmatched, incompatible or unavailable evidence requires full checks', async () => {
+  const unused = async (): Promise<never> => assert.fail('the lookup must not be called');
+  assert.deepEqual(await decideChecks(ciLookup, true, true, unused), {mode: 'full', reason: 'forced'});
+  assert.deepEqual(await decideChecks(ciLookup, false, false, unused), {mode: 'full', reason: 'workflow-differs'});
+  assert.deepEqual(await decideChecks(ciLookup, false, true, async () => ({workflow_runs: []})), {mode: 'full', reason: 'no-match'});
+  assert.deepEqual(await decideChecks(ciLookup, false, true, async () => ({})), {mode: 'full', reason: 'lookup-unavailable'});
+  assert.deepEqual(await decideChecks(ciLookup, false, true, async () => {throw Error('temporary API error');}),
+    {mode: 'full', reason: 'lookup-unavailable'});
+  assert.deepEqual(await decideChecks(ciLookup, false, true, async () => ({workflow_runs: [ciRun]})),
+    {mode: 'reuse', run: {runId: 42, attempt: 1, url: ciRun.html_url}});
+});
 
 test('release preflight freezes a valid release tag and main SHA', () => {
   assert.deepEqual(resolvePreflight({...preflight, pushedTag: tag}), {release_sha: sha, version, release_tag: tag, should_publish: true, prerelease: false});
