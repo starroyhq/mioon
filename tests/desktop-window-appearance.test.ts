@@ -19,11 +19,11 @@ function fixture(t:TestContext,{cached=null,read=async()=>response('light')}:{ca
  const controller=new AbortController(),nativeTheme=Object.assign(new EventEmitter(),{shouldUseDarkColors:true});
  Object.defineProperty(nativeTheme,'themeSource',{get:()=> 'system',set:()=>assert.fail('Renderer OS queries must not be overridden')});
  const window=():AppearanceWindow=>({destroyed:false,owned:true,colors:[],isDestroyed(){return this.destroyed;},setBackgroundColor(value){this.colors.push(value);}}),windows=[window(),window(),window()];windows[1].destroyed=true;windows[2].owned=false;
- let current=true,calls=0,reader=read;
- const options={cache,nativeTheme,signal:controller.signal,isCurrent:()=>current,getWindows:()=>windows,ownsWindow:(window:AppearanceWindow)=>window.owned,readPreferences:()=>{calls++;return reader();}};
+ let current=true,calls=0,reader=read;const backgrounds:Array<{window:AppearanceWindow;background:string}>=[];
+ const options={cache,nativeTheme,signal:controller.signal,isCurrent:()=>current,getWindows:()=>windows,ownsWindow:(window:AppearanceWindow)=>window.owned,readPreferences:()=>{calls++;return reader();},onBackground:(window:AppearanceWindow,background:string)=>{backgrounds.push({window,background});}};
  const appearance=createDesktopWindowAppearance(options);
  t.after(()=>{appearance.dispose();rmSync(root,{recursive:true,force:true});});
- return {root,dataRoot,db,file,cache,controller,nativeTheme,windows,appearance,options,calls:()=>calls,current:(value:boolean)=>{current=value;},read:(value:()=>Promise<unknown>)=>{reader=value;}};
+ return {root,dataRoot,db,file,cache,controller,nativeTheme,windows,appearance,options,backgrounds,calls:()=>calls,current:(value:boolean)=>{current=value;},read:(value:()=>Promise<unknown>)=>{reader=value;}};
 }
 test('cold native fill uses only an independent same-library cache and never old preference bytes',async t=>{
  const pending=Promise.withResolvers<unknown>(),f=fixture(t,{cached:'light',read:()=>pending.promise});
@@ -31,6 +31,10 @@ test('cold native fill uses only an independent same-library cache and never old
  const before=readFileSync(f.file),files=readdirSync(f.root);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);assert.equal(f.calls(),1);assert.deepEqual(readFileSync(f.file),before);assert.deepEqual(readdirSync(f.root),files);
  assert.deepEqual(f.windows[1].colors,[]);assert.deepEqual(f.windows[2].colors,[]);assert.equal(readFileSync(f.db,'utf8'),'synthetic application identity');
  pending.resolve(response('dark'));await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);assert.equal(f.cache.read()?.theme,'dark');
+ assert.ok(f.backgrounds.every(call=>call.window.owned&&!call.window.destroyed));
+ assert.deepEqual(f.backgrounds.map(call=>call.background),f.windows[0].colors);
+ assert.ok(f.backgrounds.some(call=>call.background===WINDOW_BACKGROUNDS.light));
+ assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);
 });
 test('a cache miss follows OS color and does not write until authenticated preferences succeed',async t=>{
  const pending=Promise.withResolvers<unknown>(),f=fixture(t,{read:()=>pending.promise});f.nativeTheme.shouldUseDarkColors=false;

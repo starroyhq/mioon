@@ -1,14 +1,39 @@
-import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale, macWindowChrome, MAC_WINDOW_CHROME } from '../../../packages/contracts/src/desktop-window-chrome.ts';
+import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale, macWindowChrome, MAC_WINDOW_CHROME,
+  windowsTitleBarOverlay } from '../../../packages/contracts/src/desktop-window-chrome.ts';
+import type { WindowsTitleBarAppearance } from '../../../packages/contracts/src/desktop-window-chrome.ts';
 import type { EventEmitter } from 'node:events';
+import { WINDOW_BACKGROUNDS } from './window-appearance.ts';
 
 export const MAC_TRAFFIC_LIGHT_POSITION = MAC_WINDOW_CHROME.position;
 
-export type WindowChromeOptions = {titleBarStyle?: 'hidden'; trafficLightPosition?: {x: number; y: number}};
+export type WindowTitleBarOverlay = ReturnType<typeof windowsTitleBarOverlay>;
+export type WindowChromeOptions = {
+  titleBarStyle?: 'hidden';
+  trafficLightPosition?: {x: number; y: number};
+  titleBarOverlay?: WindowTitleBarOverlay;
+};
 
-export function windowChromeOptions(platform: NodeJS.Platform = process.platform): WindowChromeOptions {
-  return platform === 'darwin'
-    ? {titleBarStyle: 'hidden', trafficLightPosition: {...MAC_TRAFFIC_LIGHT_POSITION}}
-    : {};
+/** The desktop appearance module owns the two native fill colors; anything that
+ * is not the dark fill follows the light palette. */
+export function windowsTitleBarAppearance(background: string): WindowsTitleBarAppearance {
+  return background.trim().toLowerCase() === WINDOW_BACKGROUNDS.dark.toLowerCase() ? 'dark' : 'light';
+}
+
+export function windowChromeOptions(platform: NodeJS.Platform = process.platform, background?: string): WindowChromeOptions {
+  if (platform === 'darwin') return {titleBarStyle: 'hidden', trafficLightPosition: {...MAC_TRAFFIC_LIGHT_POSITION}};
+  if (platform === 'win32' && typeof background === 'string' && background) {
+    return {titleBarStyle: 'hidden', titleBarOverlay: windowsTitleBarOverlay(windowsTitleBarAppearance(background))};
+  }
+  return {};
+}
+
+interface OverlayWindow {isDestroyed(): boolean; setTitleBarOverlay?(options: WindowTitleBarOverlay): void}
+
+/** Native System caption buttons follow the application appearance changes that
+ * the window appearance module applies to the window fill. */
+export function applyWindowsTitleBarOverlay(window: OverlayWindow, background: string): void {
+  if (window.isDestroyed() || typeof window.setTitleBarOverlay !== 'function') return;
+  try {window.setTitleBarOverlay(windowsTitleBarOverlay(windowsTitleBarAppearance(background)));} catch { /* A disappearing native window keeps its last painted overlay. */ }
 }
 
 type ChromeEvents = Pick<EventEmitter, 'on' | 'once' | 'removeListener'>;

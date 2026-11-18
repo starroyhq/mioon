@@ -28,3 +28,21 @@ export const MAC_WINDOW_CHROME = macWindowChrome();
 
 export const DESKTOP_FULLSCREEN_EVENT = 'mioon:window-chrome:fullscreen:v1';
 export const DESKTOP_CHROME_SCALE_EVENT = 'mioon:window-chrome:scale:v1';
+
+/** Windows reuses the measured top bar height for the native overlay band. The
+ * window button width is not a local constant: the renderer reserves whatever
+ * the OS overlay reports at runtime. */
+export const WINDOWS_WINDOW_CHROME = Object.freeze({topbarHeight});
+
+/** Mirrors the web tokens `--wb-panel`/`--wb-text` so the system-painted window
+ * buttons sit on the same background as the custom top bar. */
+const windowsTitleBarPalette = Object.freeze({
+  dark: Object.freeze({color: '#141518', symbolColor: '#ECEDEF'}),
+  light: Object.freeze({color: '#FFFFFF', symbolColor: '#191C1F'}),
+});
+export type WindowsTitleBarAppearance = keyof typeof windowsTitleBarPalette;
+
+export function windowsTitleBarOverlay(appearance: WindowsTitleBarAppearance) {
+  const palette = windowsTitleBarPalette[appearance];
+  return Object.freeze({color: palette.color, symbolColor: palette.symbolColor, height: WINDOWS_WINDOW_CHROME.topbarHeight});
+}

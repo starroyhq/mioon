@@ -5,21 +5,53 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
-import { installWindowChrome, windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
-import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale, macWindowChrome, MAC_WINDOW_CHROME } from '../packages/contracts/src/desktop-window-chrome.ts';
+import { applyWindowsTitleBarOverlay, installWindowChrome, windowChromeOptions, windowsTitleBarAppearance, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import type { WindowTitleBarOverlay } from '../apps/desktop/src/window-chrome.ts';
+import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, isDesktopChromeScale, macWindowChrome, MAC_WINDOW_CHROME,
+  WINDOWS_WINDOW_CHROME, windowsTitleBarOverlay } from '../packages/contracts/src/desktop-window-chrome.ts';
+import { WINDOW_BACKGROUNDS } from '../apps/desktop/src/window-appearance.ts';
 import { createLauncherWindowState } from '../apps/desktop/src/launcher-window-state.ts';
 import type { WindowBounds } from '../apps/desktop/src/launcher-window-state.ts';
-import { applyDesktopFrame, desktopFrame } from '../apps/web/src/desktop-frame.ts';
+import { applyDesktopFrame, desktopFrame, windowsTitleBarTrailingInset } from '../apps/web/src/desktop-frame.ts';
+import type { WindowControlsOverlayLike } from '../apps/web/src/desktop-frame.ts';
 
 const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
 const macShell = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Mioon/0.4.1 Chrome/152.0.0.0 Electron/44.7.0 Safari/537.36';
 
-test('macOS hides the native title bar and insets the traffic lights; other platforms keep their native frame', () => {
+test('macOS hides the title bar for traffic lights and Windows uses the system caption overlay; other platforms keep their native frame', () => {
   const options = windowChromeOptions('darwin');
   assert.equal(options.titleBarStyle, 'hidden');
   assert.deepEqual(options.trafficLightPosition, MAC_TRAFFIC_LIGHT_POSITION);
   assert.notEqual(options.trafficLightPosition, MAC_TRAFFIC_LIGHT_POSITION, 'the frozen default must not be handed to Electron');
-  for (const platform of ['win32', 'linux', 'freebsd'] as const) assert.deepEqual(windowChromeOptions(platform as Parameters<typeof windowChromeOptions>[0]), {});
+  for (const platform of ['linux', 'freebsd'] as const) assert.deepEqual(windowChromeOptions(platform as Parameters<typeof windowChromeOptions>[0]), {});
+  assert.deepEqual(windowChromeOptions('win32'), {}, 'the overlay needs the resolved app appearance');
+  for (const background of [WINDOW_BACKGROUNDS.dark, WINDOW_BACKGROUNDS.light]) {
+    const appearance = windowsTitleBarAppearance(background);
+    const win = windowChromeOptions('win32', background);
+    assert.deepEqual(win, {titleBarStyle: 'hidden', titleBarOverlay: windowsTitleBarOverlay(appearance)});
+    assert.equal(win.titleBarOverlay!.height, MAC_WINDOW_CHROME.topbarHeight, 'the overlay band shares the measured top bar height');
+    assert.equal(win.titleBarOverlay!.height, WINDOWS_WINDOW_CHROME.topbarHeight);
+    assert.notEqual(win.titleBarOverlay, windowsTitleBarOverlay(appearance), 'the frozen table must not be handed to Electron');
+  }
+  assert.equal(windowsTitleBarAppearance(WINDOW_BACKGROUNDS.dark.toUpperCase()), 'dark');
+  assert.equal(windowsTitleBarAppearance('#F6F6F6'), 'light');
+  assert.deepEqual(windowsTitleBarOverlay('dark'), {color: '#141518', symbolColor: '#ECEDEF', height: 44});
+  assert.deepEqual(windowsTitleBarOverlay('light'), {color: '#FFFFFF', symbolColor: '#191C1F', height: 44});
+});
+
+test('the Windows caption overlay follows the same appearance updates as the native window fill', () => {
+  const applied: unknown[] = [];
+  const holder = {destroyed: false};
+  const window = {isDestroyed: () => holder.destroyed, setTitleBarOverlay(options: WindowTitleBarOverlay) {applied.push(options);}};
+  applyWindowsTitleBarOverlay(window, WINDOW_BACKGROUNDS.dark);
+  applyWindowsTitleBarOverlay(window, WINDOW_BACKGROUNDS.light);
+  assert.deepEqual(applied, [windowsTitleBarOverlay('dark'), windowsTitleBarOverlay('light')]);
+  holder.destroyed = true;
+  applyWindowsTitleBarOverlay(window, WINDOW_BACKGROUNDS.dark);
+  assert.equal(applied.length, 2, 'a destroyed window keeps its last painted overlay');
+  applyWindowsTitleBarOverlay({isDestroyed: () => false}, WINDOW_BACKGROUNDS.dark);
+  const failing = {isDestroyed: () => false, setTitleBarOverlay() {throw new Error('synthetic native failure');}};
+  applyWindowsTitleBarOverlay(failing, WINDOW_BACKGROUNDS.dark);
 });
 
 test('the measured native controls share the top bar center, outer inset and brand gap', () => {
@@ -231,9 +263,11 @@ test('the macOS main-frame preload retains early fullscreen state and removes it
   }
 });
 
-test('the renderer insets its top bar only inside the macOS desktop shell', () => {
+test('the renderer insets its top bar only inside the supported desktop shells', () => {
+  const windowsShell = macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'Windows NT 10.0; Win64; x64');
   assert.equal(desktopFrame(macShell), 'mac-inset');
-  assert.equal(desktopFrame(macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'Windows NT 10.0; Win64; x64')), null);
+  assert.equal(desktopFrame(windowsShell), 'win-overlay');
+  assert.equal(desktopFrame(windowsShell.replace(' Electron/44.7.0', '')), null, 'a Windows browser keeps its own chrome');
   assert.equal(desktopFrame(macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'X11; Linux x86_64')), null);
   assert.equal(desktopFrame('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'), null);
   assert.equal(desktopFrame(''), null);
@@ -246,15 +280,46 @@ test('the macOS renderer derives its height and reserved space from the shared n
   for (const userAgent of agents) {
     const properties = new Map<string, string>();
     const root = {dataset: {} as Record<string, string>, style: {setProperty: (key: string, value: string) => {properties.set(key, value);}}};
-    applyDesktopFrame(root as unknown as Parameters<typeof applyDesktopFrame>[0], userAgent);
-    const mac = userAgent === macShell;
-    assert.equal(root.dataset.desktopFrame, mac ? 'mac-inset' : undefined);
+    applyDesktopFrame(root as unknown as Parameters<typeof applyDesktopFrame>[0], userAgent, 1, undefined, 1440);
+    const mac = userAgent === macShell, windows = userAgent.includes('Windows NT');
+    assert.equal(root.dataset.desktopFrame, mac ? 'mac-inset' : windows ? 'win-overlay' : undefined);
     assert.deepEqual([...properties], mac ? [
       ['--wb-topbar', `${MAC_WINDOW_CHROME.topbarHeight}px`],
       ['--mac-titlebar-inset', `${MAC_WINDOW_CHROME.leadingInset}px`],
       ['--mac-titlebar-gap', `${MAC_WINDOW_CHROME.gap}px`],
+    ] : windows ? [
+      ['--wb-topbar', `${WINDOWS_WINDOW_CHROME.topbarHeight}px`],
+      ['--win-titlebar-trailing', '0px'],
     ] : []);
   }
+});
+
+test('the Windows renderer reserves exactly the window-control overlay width from the live API', () => {
+  const controlWidth = 138;
+  let rectRight = 1440 - controlWidth, overlayVisible = true;
+  const listeners: Array<() => void> = [];
+  const overlay: WindowControlsOverlayLike = {
+    get visible() {return overlayVisible;},
+    getTitlebarAreaRect: () => ({right: rectRight}),
+    addEventListener: (_type, listener) => {listeners.push(listener);},
+  };
+  const properties = new Map<string, string>();
+  const root = {dataset: {} as Record<string, string>, style: {setProperty: (key: string, value: string) => {properties.set(key, value);}}};
+  applyDesktopFrame(root as unknown as Parameters<typeof applyDesktopFrame>[0],
+    macShell.replace('Macintosh; Intel Mac OS X 10_15_7', 'Windows NT 10.0; Win64; x64'), 1, overlay, 1440);
+  assert.equal(root.dataset.desktopFrame, 'win-overlay');
+  assert.equal(properties.get('--wb-topbar'), `${WINDOWS_WINDOW_CHROME.topbarHeight}px`);
+  assert.equal(`${parseFloat(properties.get('--win-titlebar-trailing')!)}px`, `${controlWidth}px`);
+  rectRight = 1440 - 152;
+  for (const listener of listeners) listener();
+  assert.equal(properties.get('--win-titlebar-trailing'), '152px');
+  overlayVisible = false;
+  for (const listener of listeners) listener();
+  assert.equal(properties.get('--win-titlebar-trailing'), '0px', 'a hidden overlay reserves nothing (fullscreen)');
+  assert.equal(windowsTitleBarTrailingInset({visible: true, getTitlebarAreaRect: () => ({right: 1302})}, 1440), 138);
+  assert.equal(windowsTitleBarTrailingInset({visible: true, getTitlebarAreaRect: () => ({right: 1302})}, 1440, 1.25), 110.4);
+  assert.equal(windowsTitleBarTrailingInset({visible: false, getTitlebarAreaRect: () => ({right: 1302})}, 1440), 0);
+  assert.equal(windowsTitleBarTrailingInset({visible: true, getTitlebarAreaRect: () => {throw new Error('closed');}}, 1440), 0);
 });
 
 test('the top bar reserves room for the traffic lights, drags the window and keeps its controls clickable', () => {
@@ -266,6 +331,23 @@ test('the top bar reserves room for the traffic lights, drags the window and kee
   for (const selector of ['a', 'button', 'input', '\\[role="tablist"\\]']) assert.match(controls![1], new RegExp(`(^|, )${selector}(,|$)`));
   // Dialogs and menus can open over the drag region and must keep their pointer events.
   assert.match(css, /:root\[data-desktop-frame="mac-inset"\] :is\(\[data-slot\$="-overlay"\], \[data-slot\$="-content"\]\) \{ -webkit-app-region: no-drag; \}/);
+});
+
+test('the top bar reserves the reported Windows control band, drags the window and keeps its controls clickable', () => {
+  const bar = css.match(/:root\[data-desktop-frame="win-overlay"\] \.workbench \.topbar \{([^}]*)\}/)?.[1] ?? '';
+  assert.match(bar, /-webkit-app-region:\s*drag/);
+  assert.match(bar, /padding-right:\s*var\(--win-titlebar-trailing\)/);
+  assert.doesNotMatch(bar, /padding-left/, 'Windows has no traffic lights');
+  const controls = css.match(/:root\[data-desktop-frame="win-overlay"\] \.topbar :is\(([^)]*\)?[^)]*)\) \{([^}]*)\}/);
+  assert.match(controls?.[2] ?? '', /-webkit-app-region:\s*no-drag/);
+  for (const selector of ['a', 'button', 'input', '\\[role="tablist"\\]']) assert.match(controls![1], new RegExp(`(^|, )${selector}(,|$)`));
+  assert.match(css, /:root\[data-desktop-frame="win-overlay"\] :is\(\[data-slot\$="-overlay"\], \[data-slot\$="-content"\]\) \{ -webkit-app-region: no-drag; \}/);
+  assert.match(css, /:root\[data-desktop-frame="win-overlay"\] \.shell-redesign \.workbench-topbar \{[^}]*column-gap: var\(--win-titlebar-gap\)/);
+  const launcher = readFileSync(new URL('../apps/web/src/launcher-home.css', import.meta.url), 'utf8');
+  assert.match(launcher, /:root\[data-desktop-frame="win-overlay"\] \.launcher-home-titlebar \{ height: var\(--wb-topbar\); -webkit-app-region: drag; \}/);
+  assert.match(launcher, /:root\[data-desktop-frame="win-overlay"\] \.project-home-screen > \.project-home\.launcher-home > \.project-home-layout::before \{[^}]*-webkit-app-region: drag/);
+  const settings = readFileSync(new URL('../apps/web/src/settings-center.css', import.meta.url), 'utf8');
+  assert.match(settings, /:root\[data-desktop-frame="win-overlay"\] \.project-home\.project-home-settings-window > \.project-home-header \{[^}]*padding-right: var\(--win-titlebar-trailing\)[^}]*-webkit-app-region: drag/);
 });
 
 test('launcher geometry survives a cancelled close, a native destroy, and a cold restart', t => {

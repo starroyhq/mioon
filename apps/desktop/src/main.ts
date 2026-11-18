@@ -59,7 +59,7 @@ import type { RendererHealthContents } from './renderer-diagnostics.ts';
 import { exportDesktopDiagnostics } from './diagnostics-export.ts';
 import { SETTINGS_DIAGNOSTICS_CHANNEL, parseSettingsDiagnosticRequest } from './settings-diagnostics-protocol.ts';
 import { createSettingsOpeningDiagnostics } from './settings-opening-diagnostics.ts';
-import { installWindowChrome, windowChromeOptions } from './window-chrome.ts';
+import { applyWindowsTitleBarOverlay, installWindowChrome, windowChromeOptions } from './window-chrome.ts';
 import { createLauncherWindowState } from './launcher-window-state.ts';
 import { settingsWindowOptions } from './settings-window.ts';
 import { createDesktopTray } from './tray-host.ts';
@@ -558,7 +558,8 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     context.appearance = createDesktopWindowAppearance<BrowserWindow>({cache:appearanceCache!,nativeTheme,signal:startup.signal,
       readPreferences:()=>readNativeBackendMetadata({base:started.url,token,resource:'/api/ui-preferences',signal:startup.signal,
         check:()=>{if(!ownsWindowContext(context))throw new Error('Application preferences owner unavailable.');}}),
-      isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
+      isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context),
+      onBackground:(window,background)=>{if(process.platform==='win32')applyWindowsTitleBarOverlay(window,background);}});
     await context.appearance.ready();startup.checkpoint();incident.assertAlive();
     let ownedRelinkHost:typeof assetRelinkHost=null;
     const launcherWindowState = createLauncherWindowState(paths.userData, () => screen.getAllDisplays().map(display => display.workArea));
@@ -601,7 +602,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           ...(launcher ? launcherWindowState.options() : {width: 1500, height: 960, minWidth: 1050, minHeight: 680}),
           icon: path.join(app.getAppPath(), 'icons/icon.png'),
           backgroundColor: context.appearance.backgroundColor(), show: false,
-          autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(),
+          autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(process.platform, context.appearance.backgroundColor()),
           ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
           webPreferences: {
             ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs'),

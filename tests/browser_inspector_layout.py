@@ -26,7 +26,7 @@ MAC_ELECTRON_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                    'Chrome/152.0.0.0 Electron/44.7.0 Safari/537.36')
 
 
-def check_topbar(page, state, height, inset, mode, scale=1):
+def check_topbar(page, state, height, inset, mode, scale=1, trailing=None):
     bar = page.locator('.workbench-topbar')
     required = ['.brand', '[data-testid="project-switcher"]',
                 '[data-testid="workspace-canvas"]', '[data-testid="workspace-editing"]',
@@ -48,6 +48,7 @@ def check_topbar(page, state, height, inset, mode, scale=1):
         });
         return {
             bar: bounds(bar), padding: parseFloat(getComputedStyle(bar).paddingLeft),
+            paddingRight: parseFloat(getComputedStyle(bar).paddingRight),
             brand: bounds(bar.querySelector('.brand')),
             groups: ['.brand', '[data-testid="project-switcher"]',
                      '.workbench-topbar-mode', '.topbar-actions'].map(selector => ({
@@ -62,6 +63,8 @@ def check_topbar(page, state, height, inset, mode, scale=1):
     box = measurement['bar']
     assert abs(box['height'] - height) < 0.05, (state, measurement)
     assert abs(measurement['padding'] - inset) < 0.01, (state, measurement)
+    if trailing is not None:
+        assert abs(measurement['paddingRight'] - trailing) < 0.01, (state, measurement)
     assert abs(measurement['brand']['left'] - box['left'] - inset * scale) < 0.05, (state, measurement)
     for group in measurement['groups']:
         bounds = group['bounds']
@@ -74,14 +77,17 @@ def check_topbar(page, state, height, inset, mode, scale=1):
         assert overlap <= 0.01, f"{state}: {one['name']} and {other['name']} overlap by {overlap:.3f}px"
     center = box['top'] + box['height'] / 2
     differences = []
+    right_limit = box['right'] - (trailing or 0) + 0.01
     for control in measurement['controls']:
         control_box = control['bounds']
+        assert control_box['right'] <= right_limit, (state, control, right_limit)
         delta = abs(control_box['top'] + control_box['height'] / 2 - center)
         differences.append(delta)
         assert delta < 1, f"{state}: {control['name']} differs from the topbar center by {delta:.3f}px"
     assert len(differences) >= len(required), (state, measurement)
     print(f'{state}: {len(differences)} visible controls, largest center difference '
-          f'{max(differences):.3f}px, leading inset {measurement["padding"]:.2f}px')
+          f'{max(differences):.3f}px, leading inset {measurement["padding"]:.2f}px, '
+          f'trailing inset {measurement["paddingRight"]:.2f}px')
 
 
 def check_topbar_scale_controls(page, metadata):
@@ -122,22 +128,33 @@ def check_topbar_scale_controls(page, metadata):
             check_topbar(page, label + ' restored', chrome['topbarHeight'] * scale, chrome['leadingInset'], mode, scale)
 
 
+WINDOWS_WCO_CONTROL_WIDTH = 138
+WINDOWS_WCO_SCRIPT = '''Object.defineProperty(navigator, 'windowControlsOverlay', {configurable: true, value: {
+  visible: true,
+  getTitlebarAreaRect: () => ({right: Math.max(0, window.innerWidth - %d)}),
+  addEventListener() {},
+  removeEventListener() {},
+}});''' % WINDOWS_WCO_CONTROL_WIDTH
+
+
 def check_topbar_hosts(browser, metadata, token, fixture_rpc):
     chrome = metadata['windowChrome']
     assert chrome['leadingInset'] == (chrome['position']['x'] - chrome['controlOutset']
                                       + chrome['controlGroupWidth'] + chrome['gap'])
     origin = metadata['origin']
     hosts = [
-        ('macOS desktop', MAC_ELECTRON_UA, True),
+        ('macOS desktop', MAC_ELECTRON_UA, 'mac'),
         ('Windows desktop', MAC_ELECTRON_UA.replace('Macintosh; Intel Mac OS X 10_15_7',
-                                                 'Windows NT 10.0; Win64; x64'), False),
+                                                 'Windows NT 10.0; Win64; x64'), 'windows'),
         ('Linux desktop', MAC_ELECTRON_UA.replace('Macintosh; Intel Mac OS X 10_15_7',
-                                               'X11; Linux x86_64'), False),
-        ('ordinary browser', MAC_ELECTRON_UA.replace(' Electron/44.7.0', ''), False),
+                                               'X11; Linux x86_64'), 'linux'),
+        ('ordinary browser', MAC_ELECTRON_UA.replace(' Electron/44.7.0', ''), 'browser'),
     ]
-    for host, user_agent, mac in hosts:
+    for host, user_agent, kind in hosts:
         context = browser.new_context(viewport={'width': 1440, 'height': 900}, user_agent=user_agent,
                                       locale='zh-CN', reduced_motion='reduce', service_workers='block')
+        if kind == 'windows':
+            context.add_init_script(WINDOWS_WCO_SCRIPT)
         try:
             context.add_init_script("""localStorage.setItem('mioon.app-language.v1', JSON.stringify({version: 1, preference: 'zh-Hans'}))""")
             assert context.request.post(origin + '/api/login', data={'token': token}).ok, 'Topbar fixture login failed'
@@ -149,26 +166,36 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
             page.get_by_role('button', name=re.compile('^打开.*' + metadata['name'])).click()
             expect(page.get_by_test_id('workbench')).to_be_visible()
             frame = page.locator('html')
-            if mac:
+            if kind == 'mac':
                 expect(frame).to_have_attribute('data-desktop-frame', 'mac-inset')
+            elif kind == 'windows':
+                expect(frame).to_have_attribute('data-desktop-frame', 'win-overlay')
             else:
                 expect(frame).not_to_have_attribute('data-desktop-frame', 'mac-inset')
-            sizes = [(1440, 900), (1050, 680), (800, 680), (1050, 480)] if mac else [(1440, 900)]
+                expect(frame).not_to_have_attribute('data-desktop-frame', 'win-overlay')
+            sizes = [(1440, 900), (1050, 680), (800, 680), (1050, 480)] if kind == 'mac' else (
+                [(1440, 900), (1050, 680)] if kind == 'windows' else [(1440, 900)])
             for width, height in sizes:
                 page.set_viewport_size({'width': width, 'height': height})
-                if mac and (width <= 800 or height == 480):
+                if kind == 'mac' and (width <= 800 or height == 480):
                     expect(page.get_by_test_id('workbench')).to_have_attribute('data-narrow', 'true')
                 for mode in ('canvas', 'editing'):
                     page.get_by_test_id('workspace-' + mode).click()
                     label = f'{host} {width}x{height} {mode}'
-                    check_topbar(page, label, chrome['topbarHeight'] if mac else 44,
-                                 chrome['leadingInset'] if mac else 12, mode)
-                    if mac:
+                    if kind == 'mac':
+                        check_topbar(page, label, chrome['topbarHeight'], chrome['leadingInset'], mode)
+                    elif kind == 'windows':
+                        # The renderer reserves exactly the live overlay width at
+                        # both window sizes; the mock reports a constant band.
+                        check_topbar(page, label, 44, 12, mode, trailing=WINDOWS_WCO_CONTROL_WIDTH)
+                    else:
+                        check_topbar(page, label, 44, 12, mode)
+                    if kind == 'mac':
                         page.evaluate("document.documentElement.dataset.desktopFullscreen = 'true'")
                         check_topbar(page, label + ' fullscreen', chrome['topbarHeight'], chrome['gap'], mode)
                         page.evaluate("document.documentElement.dataset.desktopFullscreen = 'false'")
                         check_topbar(page, label + ' restored', chrome['topbarHeight'], chrome['leadingInset'], mode)
-            if mac:
+            if kind == 'mac':
                 check_topbar_scale_controls(page, metadata)
             assert not errors, f'{host} page errors: {errors}'
         finally:
