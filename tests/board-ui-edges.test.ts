@@ -10,8 +10,14 @@ import type {BoardPortEndpoint} from '../apps/web/src/board-ui/connection-ports.
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 
+type Side = 'left'|'right'|'top'|'bottom';
+interface ReferenceGeometry {
+  sourceX: number; sourceY: number; targetX: number; targetY: number;
+  sourcePosition: Side; targetPosition: Side;
+}
 interface Scenes {
   edge(kind: 'sequence'|'reference', locale: Locale, role?: ChainReferenceRole, reduced?: boolean, layout?: 'turn'|'straight'|'folded'): string;
+  reference(geometry: ReferenceGeometry): string;
   ports(locale: Locale, drag?: BoardPortEndpoint, disabled?: boolean): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -33,6 +39,9 @@ function fixture(): Promise<Scenes> {
         return renderToStaticMarkup(language(locale,<svg>{kind==='sequence'
           ? <SequenceEdgeView {...props} {...coords} markerEnd="forbidden-arrow" data={{reduceMotion:reduced}}/>
           : <ReferenceEdgeView {...props} {...coords} markerEnd="forbidden-arrow" data={{role,reduceMotion:reduced}}/>}</svg>));
+      }
+      export function reference(geometry){
+        return renderToStaticMarkup(language('en',<svg><ReferenceEdgeView {...props} {...geometry} data={{role:'first_frame'}}/></svg>));
       }
       export function ports(locale,drag,disabled=false){
         const kinds=['film','shot','image','video','audio','subject','previs','text'];
@@ -66,6 +75,17 @@ function sequencePaths(html: string) {
 }
 function pathPoints(path: string): number[] {
   return (path.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/giu) ?? []).map(Number);
+}
+function referenceControls(html: string) {
+  const line = html.match(/<path[^>]*class="react-flow__edge-path board-reference-line"[^>]*>/u)?.[0] ?? '';
+  const path = line.match(/\bd="([^"]+)"/u)?.[1];
+  assert.ok(path);
+  const values = pathPoints(path);
+  assert.equal(values.length, 8, 'the reference curve has two explicit tangent control points');
+  return [0, 2, 4, 6].map(index => ({x: values[index]!, y: values[index + 1]!}));
+}
+function cubicY(points: ReturnType<typeof referenceControls>, t: number): number {
+  return (1-t)**3*points[0]!.y + 3*(1-t)**2*t*points[1]!.y + 3*(1-t)*t*t*points[2]!.y + t**3*points[3]!.y;
 }
 
 test('sequence edges render one moving dot on a solid path and never forward arrow markers', async () => {
@@ -108,6 +128,54 @@ test('reference edge role labels use the current locale for all five supported r
     assert.match(html, /class="react-flow__edge-path board-reference-line"[^>]*stroke-dasharray:7 6/);
     assert.ok(html.includes(translate(locale, key)), `${locale}/${role}`);
     assert.doesNotMatch(html, /<circle |marker-end|forbidden-arrow/);
+  }
+});
+
+test('facing reference ports approach the target monotonically even across a narrow vertical gap', async () => {
+  const render = await fixture();
+  for (const [sourcePosition, targetPosition, sign] of [['bottom','top',1], ['top','bottom',-1]] as const) {
+    for (const gap of [.25, 1, 24, 500]) {
+      const geometry: ReferenceGeometry = {sourceX: 20, sourceY: 100, targetX: 900, targetY: 100 + sign * gap, sourcePosition, targetPosition};
+      const points = referenceControls(render.reference(geometry));
+      assert.deepEqual(points[0], {x: geometry.sourceX, y: geometry.sourceY});
+      assert.deepEqual(points[3], {x: geometry.targetX, y: geometry.targetY});
+      for (let index = 1; index < points.length; index++) assert.ok(sign*(points[index]!.y-points[index-1]!.y) >= 0);
+      let previous = geometry.sourceY;
+      for (let index = 1; index <= 200; index++) {
+        const y = cubicY(points, index/200);
+        assert.ok(sign*(y-previous) >= -1e-9, 'the curve must not overshoot and hook back');
+        previous = y;
+      }
+      assert.ok(sign*(geometry.targetY-cubicY(points, .999)) > 0, 'the last interval moves inward through the chosen target side');
+    }
+  }
+});
+
+test('level reference endpoints retain a nonzero vertical tangent into top and bottom handles', async () => {
+  const render = await fixture();
+  for (const [sourcePosition, targetPosition, sign] of [['bottom','top',1], ['top','bottom',-1]] as const) {
+    const points = referenceControls(render.reference({sourceX:20,sourceY:100,targetX:400,targetY:100,sourcePosition,targetPosition}));
+    assert.ok(sign*(points[1]!.y-points[0]!.y) > 0, 'the source leaves through the stated port normal');
+    assert.ok(sign*(points[3]!.y-points[2]!.y) > 0, 'the target tangent points into its card instead of becoming horizontal');
+    assert.ok(sign*(points[3]!.y-cubicY(points,.999)) > 0, 'the last path interval approaches the selected target from outside');
+  }
+});
+
+test('explicit reference sides retain outward source and inward target tangents with bounded controls', async () => {
+  const render = await fixture();
+  const normals = {left:{x:-1,y:0},right:{x:1,y:0},top:{x:0,y:-1},bottom:{x:0,y:1}} as const;
+  for (const sourcePosition of Object.keys(normals) as Side[]) for (const targetPosition of Object.keys(normals) as Side[]) {
+    const geometry: ReferenceGeometry = {sourceX: 600, sourceY: 1000, targetX: 10, targetY: 20, sourcePosition, targetPosition};
+    const points = referenceControls(render.reference(geometry));
+    const sourceNormal = normals[sourcePosition], targetNormal = normals[targetPosition];
+    const start = {x: points[1]!.x-points[0]!.x, y: points[1]!.y-points[0]!.y};
+    const end = {x: points[3]!.x-points[2]!.x, y: points[3]!.y-points[2]!.y};
+    assert.ok(start.x*sourceNormal.x + start.y*sourceNormal.y > 0);
+    assert.equal(Math.abs(start.x*sourceNormal.y - start.y*sourceNormal.x), 0);
+    assert.ok(end.x*targetNormal.x + end.y*targetNormal.y < 0);
+    assert.equal(Math.abs(end.x*targetNormal.y - end.y*targetNormal.x), 0);
+    assert.ok(Math.hypot(start.x,start.y) <= 96);
+    assert.ok(Math.hypot(end.x,end.y) <= 96);
   }
 });
 

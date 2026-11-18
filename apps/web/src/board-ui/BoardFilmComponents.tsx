@@ -13,6 +13,15 @@ export function boardFrameTime(frames: number): string {
   return frames % 30 ? `${clock}:${String(frames % 30).padStart(2, '0')}` : clock;
 }
 
+export function useBoardDuration() {
+  const {t, formatNumber} = useI18n();
+  return (frames: number | null, compact = false) => frames === null
+    ? t('boardUi.durationUnknown')
+    : t(compact ? 'boardUi.secondsCompact' : 'boardUi.seconds', {
+      seconds: formatNumber(frames / 30, {maximumFractionDigits: 2}),
+    });
+}
+
 export function BoardFilmOverview({overview}: {overview: Overview}) {
   const {t, formatNumber} = useI18n();
   const rows = [
@@ -44,10 +53,11 @@ export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLoca
   onAddShot: () => void;
 }) {
   const {t, formatNumber} = useI18n();
+  const durationLabel = useBoardDuration();
   const listId = useId();
   return <section className="board-film-strip" data-testid="board-film-strip" aria-label={film.name}>
     <header><strong>{film.name}</strong><span>{t('boardUi.shotCount', {count: film.shotCount})}</span><span>·</span>
-      <span>{film.durationFrames === null ? t('boardUi.durationUnknown') : boardFrameTime(film.durationFrames)}</span><span>·</span><span>{t('boardUi.synced')}</span>
+      <span>{durationLabel(film.durationFrames)}</span><span>·</span><span>{t('boardUi.synced')}</span>
       <button type="button" className="board-strip-toggle" data-testid="board-film-strip-toggle" aria-expanded={open} aria-controls={listId}
         aria-label={t(open ? 'boardUi.collapse' : 'boardUi.expand')} title={t(open ? 'boardUi.collapse' : 'boardUi.expand')} onClick={() => onOpenChange(!open)}>
         <span aria-hidden="true">{open ? '⌄' : '⌃'}</span>
@@ -59,7 +69,7 @@ export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLoca
           aria-label={t('boardUi.locate', {name: item.name})} aria-pressed={selectedNodeId === item.nodeId} title={item.name} onClick={() => onLocateNode(item.nodeId)}>
           {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false}/> : <span className="board-thumbnail-placeholder" aria-hidden="true">▱</span>}
           <span className="board-film-order">{formatNumber(index + 1, {minimumIntegerDigits: 2})}</span>
-          <span className="board-film-duration">{item.durationFrames === null ? t('boardUi.durationUnknown') : t('boardUi.seconds', {seconds: formatNumber(item.durationFrames / 30, {maximumFractionDigits: 2})})}</span>
+          <span className="board-film-duration">{durationLabel(item.durationFrames, true)}</span>
         </button>
       </li>)}</ol> : <p className="board-film-empty">{t('boardUi.empty')}</p>}
       <button type="button" className="board-film-add" data-testid="board-film-add" aria-label={t('redesign.board.addShot')} title={t('redesign.board.addShot')} onClick={onAddShot}>+</button>

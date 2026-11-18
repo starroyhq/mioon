@@ -23,7 +23,7 @@ test('film strip follows SA chain order rather than presentation enumeration', (
     {fromId: 'third', toId: 'last'}, {fromId: 'film', toId: 'first'},
     {fromId: 'second', toId: 'third'}, {fromId: 'first', toId: 'second'},
   ]});
-  const projection = projectBoardUi(derivation, nodes);
+  const projection = projectBoardUi(derivation, nodes, []);
   assert.deepEqual(projection.films[0]!.items.map(item => item.nodeId), ['first', 'second', 'third', 'last']);
   assert.equal(projection.films[0]!.name, 'Evening');
   assert.equal(projection.films[0]!.aspectRatio, '9:16');
@@ -41,7 +41,7 @@ test('every film root contributes members and is never counted as floating', () 
   const derivation = deriveFilmChains({nodes, edges: [
     {fromId: 'film-b', toId: 'b'}, {fromId: 'film-a', toId: 'a'}, {fromId: 'alone-a', toId: 'alone-b'},
   ]});
-  const projection = projectBoardUi(derivation, nodes);
+  const projection = projectBoardUi(derivation, nodes, []);
   assert.deepEqual(projection.films.map(film => film.id), ['film-a', 'film-b']);
   assert.deepEqual(projection.floatingNodeIds, ['alone-a', 'alone-b', 'annotation']);
   assert.deepEqual(projection.films.map(film => film.durationFrames), [30, 60]);
@@ -52,12 +52,49 @@ test('every film root contributes members and is never counted as floating', () 
   assert.equal(projection.films[1]!.overview.floatingCount, 3);
 });
 
+test('reference sources attached to shots in any film are not floating, including the second root', () => {
+  const nodes = [node('film-a', 'film'), node('shot-a', 'shot', 30), node('film-b', 'film'), node('shot-b', 'shot', 60),
+    node('image', 'image'), node('subject', 'subject'), node('floating-shot', 'shot', 90)];
+  const derivation = deriveFilmChains({nodes, edges: [
+    {fromId: 'film-a', toId: 'shot-a'}, {fromId: 'film-b', toId: 'shot-b'},
+  ]});
+  const references = Object.freeze([
+    Object.freeze({sourceId: 'image', targetId: 'shot-a'}),
+    Object.freeze({sourceId: 'subject', targetId: 'shot-b'}),
+    Object.freeze({sourceId: 'image', targetId: 'floating-shot'}),
+  ]);
+  const before = JSON.stringify({derivation, references});
+  const projection = projectBoardUi(derivation, nodes, references);
+  assert.deepEqual(projection.floatingNodeIds, ['floating-shot']);
+  assert.equal(projection.overview.floatingCount, 1);
+  assert.equal(projection.films[0]!.overview.floatingCount, 1);
+  assert.equal(projection.films[1]!.overview.floatingCount, 1);
+  assert.deepEqual(derivation.detachedNodeIds, ['floating-shot', 'image', 'subject'], 'SA membership remains unchanged');
+  assert.equal(JSON.stringify({derivation, references}), before);
+});
+
+test('reference sources connected only to a floating shot remain floating', () => {
+  const nodes = [node('film', 'film'), node('in-film', 'shot', 30), node('floating-shot', 'shot', 60), node('image', 'image')];
+  const derivation = deriveFilmChains({nodes, edges: [{fromId: 'film', toId: 'in-film'}]});
+  const projection = projectBoardUi(derivation, nodes, [{sourceId: 'image', targetId: 'floating-shot'}]);
+  assert.deepEqual(projection.floatingNodeIds, ['floating-shot', 'image']);
+  assert.equal(projection.overview.floatingCount, 2);
+  assert.equal(projection.overview.shotCount, 1);
+});
+
+test('nodes with no connection remain floating while a bare film root does not', () => {
+  const nodes = [node('empty-film', 'film'), node('film', 'film'), node('in-film', 'shot', 30), node('image', 'image'), node('text', 'text')];
+  const projection = projectBoardUi(deriveFilmChains({nodes, edges: [{fromId: 'film', toId: 'in-film'}]}), nodes, []);
+  assert.deepEqual(projection.floatingNodeIds, ['image', 'text']);
+  assert.equal(projection.overview.floatingCount, 2);
+});
+
 test('image and video chain members affect duration but not generated shot status counts', () => {
   const nodes: readonly BoardUiNode[] = [node('film', 'film'), {...node('image', 'image', 30), status: 'ready'},
     {...node('video', 'video', 60), status: 'generating'}, node('shot', 'shot', 90), node('subject', 'subject')];
   const projection = projectBoardUi(deriveFilmChains({nodes, edges: [
     {fromId: 'film', toId: 'image'}, {fromId: 'image', toId: 'video'}, {fromId: 'video', toId: 'shot'},
-  ]}), nodes);
+  ]}), nodes, []);
   assert.deepEqual(projection.overview, {
     shotCount: 1, completedCount: 0, generatingCount: 0, pendingCount: 1, floatingCount: 1, durationFrames: 180,
   });
@@ -69,7 +106,7 @@ test('unknown member duration stays unknown while an empty film has an exact zer
   const nodes = [node('empty', 'film'), node('film', 'film'), node('shot', 'shot', 90), node('unknown', 'image')];
   const projection = projectBoardUi(deriveFilmChains({nodes, edges: [
     {fromId: 'film', toId: 'shot'}, {fromId: 'shot', toId: 'unknown'},
-  ]}), nodes);
+  ]}), nodes, []);
   assert.equal(projection.films[0]!.durationFrames, 0);
   assert.equal(projection.films[0]!.aspectRatio, null);
   assert.equal(projection.films[1]!.durationFrames, null);
@@ -81,7 +118,7 @@ test('unknown member duration stays unknown while an empty film has an exact zer
 test('broken-chain diagnostics and detached membership remain available to the static view', () => {
   const nodes = [node('film', 'film'), node('a', 'shot', 30), node('b', 'shot', 30)];
   const derivation = deriveFilmChains({nodes, edges: [{fromId: 'a', toId: 'b'}, {fromId: 'b', toId: 'a'}]});
-  const projection = projectBoardUi(derivation, nodes);
+  const projection = projectBoardUi(derivation, nodes, []);
   assert.deepEqual(projection.issues, derivation.issues);
   assert.ok(projection.issues.some(issue => issue.code === 'CYCLE'));
   assert.deepEqual(projection.floatingNodeIds, ['a', 'b']);
@@ -96,7 +133,7 @@ test('projection does not mutate the supplied SA or display data', () => {
   Object.freeze(derived.chains[0]); Object.freeze(derived.chains);
   Object.freeze(derived.detachedNodeIds); Object.freeze(derived.issues); Object.freeze(derived);
   const before = JSON.stringify({nodes, derived});
-  const projection = projectBoardUi(derived, nodes);
+  const projection = projectBoardUi(derived, nodes, []);
   assert.equal(projection.films[0]!.items[0]!.nodeId, 'shot');
   assert.equal(JSON.stringify({nodes, derived}), before);
 });
@@ -104,16 +141,16 @@ test('projection does not mutate the supplied SA or display data', () => {
 test('incomplete or invalid presentation adapters fail rather than inventing durations or roots', () => {
   const nodes = [node('film', 'film'), node('shot', 'shot', 30)];
   const derived = deriveFilmChains({nodes, edges: [{fromId: 'film', toId: 'shot'}]});
-  assert.throws(() => projectBoardUi(derived, [nodes[0]!]), /node is missing/);
-  assert.throws(() => projectBoardUi(derived, [...nodes, nodes[1]!]), /Duplicate/);
-  assert.throws(() => projectBoardUi(derived, [node('film', 'shot'), nodes[1]!]), /root is not a film/);
+  assert.throws(() => projectBoardUi(derived, [nodes[0]!], []), /node is missing/);
+  assert.throws(() => projectBoardUi(derived, [...nodes, nodes[1]!], []), /Duplicate/);
+  assert.throws(() => projectBoardUi(derived, [node('film', 'shot'), nodes[1]!], []), /root is not a film/);
   for (const frames of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.throws(() => projectBoardUi(derived, [nodes[0]!, node('shot', 'shot', frames)]), /Invalid board presentation duration/);
+    assert.throws(() => projectBoardUi(derived, [nodes[0]!, node('shot', 'shot', frames)], []), /Invalid board presentation duration/);
   }
   const overflowNodes = [node('film', 'film'), node('a', 'shot', Number.MAX_SAFE_INTEGER), node('b', 'shot', 1)];
   assert.throws(() => projectBoardUi(deriveFilmChains({nodes: overflowNodes, edges: [
     {fromId: 'film', toId: 'a'}, {fromId: 'a', toId: 'b'},
-  ]}), overflowNodes), /safe integer range/);
+  ]}), overflowNodes, []), /safe integer range/);
 });
 
 test('sequence handles stay on the sides and the film exposes only its right output', () => {

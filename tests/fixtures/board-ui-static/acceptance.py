@@ -71,6 +71,35 @@ def edge_endpoint_geometry(page):
     })''',edges)
 
 
+def reference_motion_geometry(page):
+    targets=[['reference-1','shot-3','reference-in-top'],['reference-2','shot-3','reference-in-bottom'],['reference-3','shot-4','reference-in-bottom']]
+    return page.evaluate('''targets => targets.map(([id,node,port])=>{
+      const path=document.querySelector(`[data-edge-id="${id}"] .board-reference-line`);
+      const handle=document.querySelector(`[data-testid="board-port-${node}-${port}"]`);
+      const side=handle.dataset.portSide;
+      if(side!=='top'&&side!=='bottom')throw new Error('Reference target must be a top or bottom handle');
+      const normal=side==='top'?1:-1,length=path.getTotalLength();
+      const end=path.getPointAtLength(length),start=path.getPointAtLength(0);
+      const samples=Array.from({length:257},(_,index)=>path.getPointAtLength(length*index/256));
+      const lastHalf=path.getPointAtLength(Math.max(0,length-.5));
+      const lastOne=path.getPointAtLength(Math.max(0,length-1));
+      const normalSteps=samples.slice(1).map((point,index)=>(point.y-samples[index].y)*normal);
+      return {id,targetSide:side,length,
+        lastHalfArcNormalAdvance:(end.y-lastHalf.y)*normal,
+        lastOneArcNormalAdvance:(end.y-lastOne.y)*normal,
+        minimumNormalStep:Math.min(...normalSteps),
+        targetNormalOvershoot:Math.max(...samples.map(point=>(point.y-end.y)*normal)),
+        lateralOvershoot:Math.max(0,...samples.map(point=>Math.max(Math.min(start.x,end.x)-point.x,point.x-Math.max(start.x,end.x))))};
+    })''',targets)
+
+
+def assert_reference_motion_geometry(rows):
+    for row in rows:
+        assert row['lastHalfArcNormalAdvance']>.05 and row['lastOneArcNormalAdvance']>.05, 'Reference path enters from the wrong side: '+json.dumps(row)
+        assert row['minimumNormalStep']>=-.01, 'Reference path turns back before its target: '+json.dumps(row)
+        assert row['targetNormalOvershoot']<=.01 and row['lateralOvershoot']<=.01, 'Reference path overshoots its target corridor: '+json.dumps(row)
+
+
 def wait_ready(page, scenario='sample'):
     expect(page.get_by_test_id('board-ui-static')).to_be_visible()
     expect(page.locator('[data-fixture-scenario]')).to_have_attribute('data-fixture-scenario', scenario)
@@ -174,6 +203,8 @@ def acceptance(page, options):
     assert max(row['maxPhaseErrorPx'] for row in result['sequenceMotionGeometry'])<2, 'Sequence light dot is not following its own edge from source to target: '+json.dumps(result['sequenceMotionGeometry'])
     result['edgeEndpointGeometry']=edge_endpoint_geometry(page)
     assert max(max(row['sourceErrorPx'],row['targetErrorPx']) for row in result['edgeEndpointGeometry'])<2, 'Edge path is not attached to its selected handle: '+json.dumps(result['edgeEndpointGeometry'])
+    result['referenceMotionGeometry']=reference_motion_geometry(page)
+    assert_reference_motion_geometry(result['referenceMotionGeometry'])
     expect(page.locator('.board-reference-label').filter(has_text='首帧')).to_have_count(1)
     expect(page.locator('[data-testid^="board-port-film-"]')).to_have_count(1)
     expect(page.locator('[data-testid^="board-port-shot-1-"]')).to_have_count(4)
@@ -184,10 +215,14 @@ def acceptance(page, options):
     items=page.locator('[data-testid^="board-film-item-"]')
     assert items.evaluate_all('nodes => nodes.map(node => node.dataset.testid)')==[f'board-film-item-shot-{index}' for index in range(1,5)]
     expect(page.get_by_test_id('board-film-overview')).to_contain_text('画板概览')
-    assert page.get_by_test_id('board-film-overview').locator('dd').all_text_contents()==['4','2','1','1','3','0:15']
-    expect(page.get_by_test_id('board-card-film')).to_contain_text('9:16 · 0:15')
-    expect(page.get_by_test_id('board-floating-label')).to_have_count(3)
-    assert page.get_by_test_id('board-floating-label').evaluate_all('nodes => nodes.map(node => node.closest("article").dataset.testid).sort()')==['board-card-image','board-card-subject','board-card-text']
+    assert page.get_by_test_id('board-film-overview').locator('dd').all_text_contents()==['4','2','1','1','1','0:15']
+    expect(page.get_by_test_id('board-card-film')).to_contain_text('9:16 · 15 秒')
+    expect(page.get_by_test_id('board-card-shot-1').locator('footer')).to_have_text('16:9 · 4s')
+    assert page.locator('.board-film-duration').all_text_contents()==['4s','3s','3s','5s']
+    expect(page.get_by_test_id('board-film-strip').locator('header')).to_contain_text('15 秒')
+    expect(page.locator('.react-flow__attribution')).to_have_count(0)
+    expect(page.get_by_test_id('board-floating-label')).to_have_count(1)
+    assert page.get_by_test_id('board-floating-label').evaluate_all('nodes => nodes.map(node => node.closest("article").dataset.testid).sort()')==['board-card-text']
     expect(page.get_by_test_id('board-film-strip')).to_contain_text('与剪辑同步')
     result['checks'].append('real React Flow edges, CSS animations, role labels, port families and chain order')
     if options.screens:
@@ -273,6 +308,11 @@ def acceptance(page, options):
         page.evaluate('value => window.__boardFixture.setLocale(value)',locale)
         expect(page.locator('html')).to_have_attribute('lang',locale)
         assert page.locator('.board-reference-label').evaluate_all('nodes => nodes.every(node => node.textContent.trim().length>0)')
+        long_duration='15 s' if locale=='en' else '15 秒'
+        expect(page.get_by_test_id('board-card-film')).to_contain_text('9:16 · '+long_duration)
+        expect(page.get_by_test_id('board-film-strip').locator('header')).to_contain_text(long_duration)
+        expect(page.get_by_test_id('board-card-shot-1').locator('footer')).to_have_text('16:9 · 4s')
+        assert page.locator('.board-film-duration').all_text_contents()==['4s','3s','3s','5s']
     result['checks'].append('four locales render role and component labels through the real provider')
     if not options.skip_performance:
         page.evaluate('window.__boardFixture.setScenario("stress")');wait_ready(page,'stress')

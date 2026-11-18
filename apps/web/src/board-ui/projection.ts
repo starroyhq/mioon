@@ -48,6 +48,12 @@ export interface BoardUiProjection {
   readonly issues: readonly BoardSequenceIssue[];
 }
 
+/** Only reference edges belong here; sequence membership comes from SA. */
+export interface BoardUiReference {
+  readonly sourceId: string;
+  readonly targetId: string;
+}
+
 function duration(node: BoardUiNode): number | null {
   const frames = node.durationFrames;
   if (frames == null) return null;
@@ -77,8 +83,12 @@ function overview(items: readonly BoardFilmItem[], floatingCount: number): Board
   };
 }
 
-/** Follow SA's order and membership; coordinates and reference edges do not define a film. */
-export function projectBoardUi(derivation: FilmChainDerivation, nodes: readonly BoardUiNode[]): BoardUiProjection {
+/** Follow SA's film order, then attach references to the shots reachable from every root. */
+export function projectBoardUi(
+  derivation: FilmChainDerivation,
+  nodes: readonly BoardUiNode[],
+  references: readonly BoardUiReference[],
+): BoardUiProjection {
   const byId = new Map<string, BoardUiNode>();
   for (const node of nodes) {
     if (byId.has(node.id)) throw new TypeError('Duplicate board presentation node');
@@ -89,7 +99,10 @@ export function projectBoardUi(derivation: FilmChainDerivation, nodes: readonly 
     if (!node) throw new TypeError('Board presentation node is missing');
     return node;
   };
-  const floatingNodeIds = derivation.detachedNodeIds.filter(id => requiredNode(id).kind !== 'film');
+  const reachableShotIds = new Set(derivation.chains.flatMap(chain => chain.nodeIds)
+    .filter(id => requiredNode(id).kind === 'shot'));
+  const referenceSources = new Set(references.filter(edge => reachableShotIds.has(edge.targetId)).map(edge => edge.sourceId));
+  const floatingNodeIds = derivation.detachedNodeIds.filter(id => requiredNode(id).kind !== 'film' && !referenceSources.has(id));
   const itemsById = new Map<string, BoardFilmItem>();
   const films = derivation.chains.map(chain => {
     const root = requiredNode(chain.filmId);

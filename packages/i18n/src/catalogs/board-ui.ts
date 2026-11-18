@@ -13,6 +13,8 @@ export const boardUiMessages = {
   'boardUi.durationUnknown': {'zh-Hans':'时长待定','zh-Hant':'時長待定',en:'Duration pending',ja:'長さ未定'},
   'boardUi.aspectUnknown': {'zh-Hans':'画幅未定','zh-Hant':'畫幅未定',en:'Aspect ratio pending',ja:'画面比率未定'},
   'boardUi.seconds': {'zh-Hans':'{seconds} 秒','zh-Hant':'{seconds} 秒',en:'{seconds} s',ja:'{seconds} 秒'},
+  'boardUi.secondsCompact': {'zh-Hans':'{seconds}s','zh-Hant':'{seconds}s',en:'{seconds}s',ja:'{seconds}s'},
+  'boardUi.aspectDuration': {'zh-Hans':'{aspect} · {duration}','zh-Hant':'{aspect} · {duration}',en:'{aspect} · {duration}',ja:'{aspect} · {duration}'},
   'boardUi.overview.shots': {'zh-Hans':'成片里的镜头','zh-Hant':'成片裡的鏡頭',en:'Shots in films',ja:'完成映像内のショット'},
   'boardUi.overview.floating': {'zh-Hans':'游离','zh-Hant':'游離',en:'Detached',ja:'未接続'},
   'boardUi.overview.duration': {'zh-Hans':'成片时长','zh-Hant':'成片時長',en:'Film duration',ja:'完成映像の長さ'},

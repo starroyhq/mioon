@@ -30,9 +30,9 @@ const sampleEdges: readonly BoardUiEdge[] = [
   {id:'reference-3',kind:'reference',sourceId:'subject',targetId:'shot-4',role:'subject_reference',sourcePort:'reference-out-top',targetPort:'reference-in-bottom'},
 ];
 const samplePositions = {
-  film:{x:20,y:155},'shot-1':{x:205,y:45},'shot-2':{x:505,y:45},
+  film:{x:20,y:116},'shot-1':{x:205,y:45},'shot-2':{x:505,y:45},
   'shot-3':{x:315,y:355},'shot-4':{x:595,y:355},
-  image:{x:20,y:300},subject:{x:480,y:625},text:{x:20,y:630},
+  image:{x:20,y:190},subject:{x:480,y:625},text:{x:20,y:630},
 };
 
 export function boardScene(stress = false) {
@@ -49,5 +49,6 @@ export function boardScene(stress = false) {
     edges.push({id:`stress-reference-${index}`,kind:'reference',sourceId:imageId,targetId:shotId,role:'first_frame'});
   }
   const derivation=deriveFilmChains({nodes,edges:edges.filter(edge=>edge.kind==='sequence').map(edge=>({fromId:edge.sourceId,toId:edge.targetId}))});
-  return {nodes,edges,positions,projection:projectBoardUi(derivation,nodes)};
+  const references=edges.filter(edge=>edge.kind==='reference').map(edge=>({sourceId:edge.sourceId,targetId:edge.targetId}));
+  return {nodes,edges,positions,projection:projectBoardUi(derivation,nodes,references)};
 }

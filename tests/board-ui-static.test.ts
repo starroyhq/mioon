@@ -8,7 +8,7 @@ import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 
 interface Scenes {
-  render(kind: 'strip'|'overview'|'floating', locale: Locale, state?: 'collapsed'|'empty'|'unknown'): string;
+  render(kind: 'strip'|'overview'|'floating', locale: Locale, state?: 'collapsed'|'empty'|'unknown'|'partial'): string;
   clock(frames: number): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -24,7 +24,8 @@ function scenes(): Promise<Scenes> {
       export function render(kind,locale,state){
         const projection=boardScene().projection;
         const film=projection.films[0];
-        const shown=state==='empty'?{...film,items:[],shotCount:0,durationFrames:0}:state==='unknown'?{...film,durationFrames:null,items:film.items.map(item=>({...item,durationFrames:null}))}:film;
+        const shown=state==='empty'?{...film,items:[],shotCount:0,durationFrames:0}:state==='unknown'?{...film,durationFrames:null,items:film.items.map(item=>({...item,durationFrames:null}))}:
+          state==='partial'?{...film,durationFrames:1,items:[{...film.items[0],durationFrames:1}],shotCount:1}:film;
         const content=kind==='strip'?<BoardFilmStrip film={shown} open={state!=='collapsed'} selectedNodeId="shot-3" onOpenChange={()=>{}} onLocateNode={()=>{}} onAddShot={()=>{}}/>:
           kind==='overview'?<BoardFilmOverview overview={projection.overview}/>:<BoardFloatingLabel/>;
         return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>{content}</I18nProvider>);
@@ -45,12 +46,12 @@ test('film strip follows the chain and labels all four ordered locations and the
     assert.deepEqual(ids, ['shot-1', 'shot-2', 'shot-3', 'shot-4']);
     assert.ok(html.includes(translate(locale, 'boardUi.shotCount', {count: 4})));
     assert.ok(html.includes(translate(locale, 'boardUi.synced')));
-    assert.match(html, /0:15/);
+    assert.ok(html.includes(locale === 'en' ? '>15 s<' : '>15 秒<'));
     assert.match(html, /aria-expanded="true"/);
     assert.match(html, /data-testid="board-film-item-shot-3"[^>]*aria-pressed="true"/);
     assert.ok(html.includes(translate(locale, 'boardUi.locate', {name: '霓虹特写'})));
-    assert.ok(html.includes(translate(locale, 'boardUi.seconds', {seconds: '4'})));
-    assert.ok(html.includes(translate(locale, 'boardUi.seconds', {seconds: '5'})));
+    assert.match(html, /class="board-film-duration">4s<\/span>/);
+    assert.match(html, /class="board-film-duration">5s<\/span>/);
   }
 });
 
@@ -72,15 +73,21 @@ test('empty and unknown film data remain distinct and do not invent a known dura
   assert.doesNotMatch(empty, /board-film-item-/);
   const unknown = render.render('strip', 'zh-Hans', 'unknown');
   assert.ok(unknown.includes(translate('zh-Hans', 'boardUi.durationUnknown')));
-  assert.doesNotMatch(unknown, /0:15|0:00/);
+  assert.doesNotMatch(unknown, />0 秒<|>0s</);
 });
 
-test('overview counts only film shots and includes reference and annotation nodes as detached', async () => {
+test('seconds labels preserve a duration shorter than a second', async () => {
+  const html = (await scenes()).render('strip', 'zh-Hans', 'partial');
+  assert.match(html, />0\.03 秒<\/span>/);
+  assert.match(html, /class="board-film-duration">0\.03s<\/span>/);
+});
+
+test('overview counts film shots and only flags the unconnected annotation as detached', async () => {
   const render = await scenes();
   for (const locale of LOCALES) {
     const html = render.render('overview', locale);
     const values = [...html.matchAll(/<dd>([^<]+)<\/dd>/gu)].map(match => match[1]);
-    assert.deepEqual(values, ['4', '2', '1', '1', '3', '0:15']);
+    assert.deepEqual(values, ['4', '2', '1', '1', '1', '0:15']);
     assert.ok(html.includes(translate(locale, 'boardUi.overview.shots')));
     assert.ok(html.includes(translate(locale, 'boardUi.overview.duration')));
     assert.ok(render.render('floating', locale).includes(translate(locale, 'boardUi.floating')));

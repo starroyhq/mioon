@@ -9,7 +9,7 @@ import type {BoardReferenceEdge, BoardSequenceEdge} from './BoardEdges.tsx';
 import {resolveBoardPortConnection, boardPorts} from './connection-ports.ts';
 import type {BoardPortConnection, BoardPortEndpoint, BoardPortId} from './connection-ports.ts';
 import type {BoardUiNode, BoardUiProjection} from './projection.ts';
-import {BoardFilmOverview, BoardFilmStrip, BoardFloatingLabel, boardFrameTime} from './BoardFilmComponents.tsx';
+import {BoardFilmOverview, BoardFilmStrip, BoardFloatingLabel, useBoardDuration} from './BoardFilmComponents.tsx';
 import '@xyflow/react/dist/style.css';
 import './board-ui.css';
 
@@ -50,17 +50,18 @@ type CardNode = Node<CardData, 'board-card'>;
 const BoardCardView = memo(function BoardCardView({data, selected}: NodeProps<CardNode>) {
   const {model, film} = data;
   const {t, formatNumber} = useI18n();
+  const durationLabel = useBoardDuration();
   const frames = film ? film.durationFrames : model.durationFrames ?? null;
-  const duration = frames === null ? t('boardUi.durationUnknown') : boardFrameTime(frames);
+  const duration = durationLabel(frames, !film);
   const statusKey = model.status === 'ready' ? 'redesign.board.completed' : model.status === 'generating' ? 'redesign.board.generating' : 'redesign.board.waiting';
   return <article className={`board-ui-card board-ui-card-${model.kind}${selected ? ' is-selected' : ''}`} data-testid={`board-card-${model.id}`} aria-label={model.name}>
     {data.floating && <BoardFloatingLabel/>}
-    {film ? <div className="board-film-root"><span aria-hidden="true">▱</span><div><strong>{film.name}</strong><span>{film.aspectRatio ?? t('boardUi.aspectUnknown')} · {duration}</span></div></div>
+    {film ? <div className="board-film-root"><span aria-hidden="true">▱</span><div><strong>{film.name}</strong><span>{t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'), duration})}</span></div></div>
       : <><header>{data.order !== undefined && <span className="board-card-order">{formatNumber(data.order, {minimumIntegerDigits: 2})}</span>}<strong title={model.name}>{model.name}</strong>
         {model.kind === 'shot' && <span className={`board-card-status status-${model.status ?? 'pending'}`}>{t(statusKey)}</span>}</header>
         {model.kind === 'text' ? <p className="board-text-content">{model.name}</p> : <div className="board-card-picture">{model.thumbnailUrl ? <img src={model.thumbnailUrl} alt="" draggable={false}/> : <span aria-hidden="true">▱</span>}</div>}
         {(model.kind === 'shot' || (model.kind === 'video' || model.kind === 'image') && (model.aspectRatio || frames !== null)) && <footer>
-          {model.aspectRatio && <><span>{model.aspectRatio}</span><span>·</span></>}<span>{duration}</span>
+          <span>{model.aspectRatio ? t('boardUi.aspectDuration', {aspect: model.aspectRatio, duration}) : duration}</span>
         </footer>}
       </>}
     <BoardPorts nodeId={model.id} kind={model.kind} drag={data.drag} onActivate={data.activatePort}/>
@@ -156,6 +157,7 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   return <div className="board-ui-static" data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') setDrag(null);}}>
     <div className="board-ui-canvas" data-testid="board-ui-canvas">
       <ReactFlow<CardNode, BoardSequenceEdge | BoardReferenceEdge> nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={boardEdgeTypes}
+        proOptions={{hideAttribution: true}}
         fitView fitViewOptions={{padding: .12, maxZoom: .9}} minZoom={.05} maxZoom={2} onlyRenderVisibleElements={false}
         onNodesChange={positionsChanged} onNodeClick={(_, node) => select(node.id)} onPaneClick={() => select(null)}
         onConnectStart={(_, start) => {
