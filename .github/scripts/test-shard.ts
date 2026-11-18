@@ -40,6 +40,7 @@ export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
   'tests/inspection-wire.test.ts', // 35%
   'tests/mock-renderer-capability-fences.test.ts', // 61%
   'tests/races.test.ts', // 62%; timed out while sharing CPUs
+  'tests/sequence-edit-performance.test.ts', // K1 p95 221/279 ms while sharing CPUs in run 44345117309 (budget 200)
   'tests/server-worker-shutdown.test.ts', // 67%
   'tests/test-compile-cache.test.ts', // a self-sent SIGTERM must land while the cache handler is installed
   'tests/timeline-history-transports.test.ts', // 35%

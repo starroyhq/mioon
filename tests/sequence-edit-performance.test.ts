@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createSequenceEditing} from '../packages/business/src/sequence-edit.ts';
+import {withK1BenchmarkLock} from './helpers/k1-benchmark-lock.ts';
 import {readSequenceEditContext} from '../packages/business/src/sequence-edit.ts';
 import {prepareSequenceEditHistory} from '../packages/business/src/format5-editor-history.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
@@ -20,7 +21,7 @@ const sha = (letter: string): string => letter.repeat(64);
  * receipt replay, revision checks, projection read, SA plan, changed-row writes,
  * three-state baseline, one history action and commit. Envelope preview is the
  * separate read-only step a real UI/MT caller runs before confirmation. */
-test('K1 500+500+1,000 board version selection meets the shared-transaction p95 budget', t => {
+test('K1 500+500+1,000 board version selection meets the shared-transaction p95 budget', t => withK1BenchmarkLock(() => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-perf-'));
   const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
@@ -114,4 +115,4 @@ test('K1 500+500+1,000 board version selection meets the shared-transaction p95 
   const singleMax = process.platform === 'linux' ? 400 : 200;
   assert.ok(p95 <= budget, `K1 p95 ${p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
   assert.ok(maximum <= singleMax, `K1 max ${maximum.toFixed(1)}ms exceeds the ${singleMax}ms single-call budget`);
-});
+}));

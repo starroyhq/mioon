@@ -753,9 +753,9 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
 interface TimelineApplyResult {readonly timeline: Format5Timeline; readonly changed: boolean}
 
 function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
-  cachedState?: ReturnType<typeof readFormat5TimelineState>): TimelineApplyResult {
-  const state = cachedState ?? readFormat5TimelineState(store.db, 'project');
-  const current = assembleFormat5Timeline(state);
+  cachedContext?: SequenceSyncContext): TimelineApplyResult {
+  const state = cachedContext?.timelineState ?? readFormat5TimelineState(store.db, 'project');
+  const current = cachedContext?.timeline ?? assembleFormat5Timeline(state);
   if (!current) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
   const clips = new Map(current.clips.map(clip => [clip.id, clip]));
   for (const clip of delta.clips) clips.set(clip.id, clip);
@@ -1017,7 +1017,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       && !baselineChanged;
     if (noop) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
     applyBoardDelta(store, boardEntities.after);
-    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context.timelineState);
+    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
     const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
     const receipt = receiptDraft(envelope, inputDigest, {
@@ -1048,17 +1048,14 @@ export function createMainTrackProjectionPort(store: ProjectStore,
       const nextTimeline = patchMainTimeline(context, request.plan);
       const anchorIssue = validateAnchoredTimeline(nextTimeline);
       if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
-      const board = boardPlanEntities(context, request.plan, request.envelope);
-      if ('ok' in board && board.ok === false) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', board.ids);
-      const boardEntities = board as BoardPlanEntities;
       const changedShots = shotChanges(context, request.plan);
       const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
       // Nodes restored by the CS board transaction in the same tx are not in
       // this pre-write context yet; expose their kind/archived row so the
       // baseline projection stays complete.
-      const extraNodeKinds = new Map(boardEntities.extraNodeKinds);
-      const extraNodeRows = new Map(boardEntities.extraNodeRows);
-      const extraShots = new Map(boardEntities.extraShots);
+      const extraNodeKinds = new Map<string, ChainNode['kind']>();
+      const extraNodeRows = new Map<string, Row>();
+      const extraShots = new Map<string, Row>();
       for (const node of request.plan.after.board.nodes) {
         if (context.board.nodes.some(current => current.id === node.id)) continue;
         extraNodeKinds.set(node.id, node.kind);
@@ -1072,7 +1069,10 @@ export function createMainTrackProjectionPort(store: ProjectStore,
       }
       const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, extraShots,
         extraNodeKinds, extraNodeRows);
-      const patch = timelineDeltaPair(context, nextTimeline, request.plan, boardEntities, nextBaseline);
+      // The CS caller owns the board half; this port only projects the timeline
+      // half, so the full board plan is deliberately skipped here.
+      const emptyBoard = {before: {writes: [], removals: []}, after: {writes: [], removals: []}};
+      const patch = timelineDeltaPair(context, nextTimeline, request.plan, emptyBoard, nextBaseline);
       const baselineChanged = !sameJson(context.baseline, nextBaseline);
       return {ok: true, delta: patch.after.timeline, warnings: planWarnings(request.plan),
         timelineRevision: patch.after.timeline.clips.length || patch.after.timeline.cues.length
@@ -1091,7 +1091,7 @@ function undoApplyPatch(store: ProjectStore, patch: SequenceEditStateDelta, cont
   readonly contentRevision: number; readonly timelineRevision: number; readonly syncRevision: number;
 } {
   applyBoardDelta(store, patch.board);
-  const timelineApply = applyTimelineDelta(store, patch.timeline);
+  const timelineApply = applyTimelineDelta(store, patch.timeline, context);
   const baselineApply = applyBaselineDelta(store, context, patch.timeline.baseline);
   return {contentRevision: readProjectContentStamp(store.db).contentSequence,
     timelineRevision: timelineApply.timeline.revision, syncRevision: baselineApply.revision};
@@ -1160,7 +1160,7 @@ function writeHistoryFailure(store: ProjectStore, command: SequenceEditHistoryCo
  * the shared history module still owns the cursor and receipt. */
 export function applySequenceEditTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
   providedContext?: SequenceSyncContext): {readonly timelineRevision: number} {
-  const result = applyTimelineDelta(store, delta, providedContext?.timelineState);
+  const result = applyTimelineDelta(store, delta, providedContext);
   return {timelineRevision: result.timeline.revision};
 }
 
