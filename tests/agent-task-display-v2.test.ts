@@ -43,7 +43,10 @@ function step(name:string,args:AgentTaskJson,target?:{kind:string;id:string}):Ag
   return {id:randomUUID(),runId:randomUUID(),position:2,kind:'tool',status:'awaiting_approval',createdAt:now,updatedAt:now,toolCall:{id:'call_synthetic',name,arguments:args},...(target?{targets:[{...target,revision:1}]}:{})};
 }
 test('canvas archive approval projects only the selected objects and server-prepared shot impact',()=>{
-  const first=randomUUID(),second=randomUUID(),node=randomUUID(),guard=randomUUID(),foreign=randomUUID();
+  // Fixed ids keep the leak assertion deterministic: a random UUID can contain
+  // "999" legitimately, without any leaked approval data.
+  const first='11111111-1111-4111-8111-111111111111',second='22222222-2222-4222-8222-222222222222';
+  const node='33333333-3333-4333-8333-333333333333',guard='44444444-4444-4444-8444-444444444444',foreign='55555555-5555-4555-8555-555555555555';
   const planned=step('mioon_canvas_archive',{shotId:foreign,versions:999,clips:999,usedVersions:999});
   const selected=[{kind:'node',id:node},{kind:'shot',id:second},{kind:'shot',id:first}];
   planned.targets=[{kind:'shot',id:guard,revision:5},...selected.map(item=>({...item,revision:5}))];
