@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import {recentProjectSchema} from '../packages/contracts/src/project-registry.ts';
@@ -257,11 +258,16 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     const offline = await mcpFixture(subtest, offlineEnv);
     report.initialize = offline.client.getServerVersion();
     const catalog = (await runCli(['schema'], offlineEnv, undefined, subtest.signal)).data;
-    assert.deepEqual((await offline.call('mioon_schema')).data, catalog);
+    assert.deepEqual((await offline.call('mioon_schema')).data, mcpOperationCatalog(catalog));
     const tools = (await offline.client.listTools()).tools;
     for (const operation of [...operations, 'project.get', 'timeline.get']) {
       const definition = (await runCli(['schema', operation], offlineEnv, undefined, subtest.signal)).data;
       const tool = tools.find(item => item.name === toolName(operation));
+      if(operation==='project.get'){
+        assert.equal(tool,undefined);await offline.call('mioon_schema',{operation},'UNKNOWN_OPERATION');
+        assert.deepEqual(definition,catalog.operations.find((item:{operation:string})=>item.operation===operation));
+        continue;
+      }
       assert.ok(tool, `${operation} is discoverable`);
       assert.deepEqual(definition, catalog.operations.find((item: { operation: string; }) => item.operation === operation));
       assert.deepEqual((await offline.call('mioon_schema', {operation})).data, definition);
@@ -435,7 +441,8 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     const fromProject = (await backend.http('project.get', {projectId: IDS.legacyGet})).data;
     assert.ok(fromProject.timeline.id);
     assert.deepEqual((await cli('project.get', {projectId: IDS.legacyGet})).data, fromProject);
-    assert.deepEqual((await mcp.call('project_get', {projectId: IDS.legacyGet})).data, fromProject);
+    assert.equal((await mcp.call('project_get',{projectId:IDS.legacyGet},'UNKNOWN_OPERATION')).error?.code,'UNKNOWN_OPERATION');
+    assert.deepEqual((await mcp.call('timeline_get',{projectId:IDS.legacyGet})).data,fromProject.timeline);
     assert.equal((await backend.http('timeline.inspect', {projectId: IDS.legacyTimeline})).data, null);
     const created = (await backend.http('timeline.get', {projectId: IDS.legacyTimeline})).data;
     assert.ok(created.id); assert.equal(created.revision, 1);

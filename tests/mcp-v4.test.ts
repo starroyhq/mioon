@@ -13,6 +13,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, COMFY_IMAGE_OPTIONS} from '@mioon/contracts';
 import {schemas, operationDefinition} from '@mioon/client';
+import {isMcpOperationAllowed,MCP_USER_ONLY_OPERATIONS} from '../apps/mcp/src/tool-policy.ts';
 import {assertOperationInputBranches} from './helpers/catalog-input-branches.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -62,11 +63,13 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
   assert.equal(mcp.client.getServerVersion()?.name, 'mioon');
   const listing = await mcp.client.listTools();
   const actual = listing.tools.map(tool => tool.name).sort();
-  const expected = [...Object.keys(schemas).map(operation => operation.replaceAll('.','_')), 'mioon_doctor','mioon_capabilities','mioon_schema'].sort();
+  const expected = [...Object.keys(schemas).filter(isMcpOperationAllowed).map(operation => operation.replaceAll('.','_')), 'mioon_doctor','mioon_capabilities','mioon_schema'].sort();
   assert.deepEqual(actual, expected);
+  const schemaTool=listing.tools.find(tool=>tool.name==='mioon_schema')!;
+  assert.deepEqual((schemaTool.inputSchema.properties?.operation as {enum:string[]}).enum.sort(),Object.keys(schemas).filter(isMcpOperationAllowed).sort());
   const catalog = await mcp.call('mioon_schema') as {operations: CatalogOperation[]; validation: string};
-  assert.deepEqual(catalog.operations.map(item => item.operation).sort(), Object.keys(schemas).sort());
-  for (const operation of Object.keys(schemas)) {
+  assert.deepEqual(catalog.operations.map(item => item.operation).sort(), Object.keys(schemas).filter(isMcpOperationAllowed).sort());
+  for (const operation of Object.keys(schemas).filter(isMcpOperationAllowed)) {
     const definition = catalog.operations.find(item => item.operation === operation)!;
     const tool = listing.tools.find(item => item.name === operation.replaceAll('.','_'))!;
     assert.equal(definition.toolName, tool.name);
@@ -80,9 +83,15 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
   assert.match(catalog.validation, /Zod/);
   await mcp.call('mioon_schema', {operation:'unregistered.operation'}, 'VALIDATION_ERROR');
   await mcp.call('mioon_schema', {unexpected:true}, 'VALIDATION_ERROR');
-  await mcp.call('project_create', {name:'must not dispatch', unexpected:true}, 'VALIDATION_ERROR');
+  await mcp.call('shot_create', {projectId:randomUUID(),title:'must not dispatch',unexpected:true}, 'VALIDATION_ERROR');
+  for(const operation of MCP_USER_ONLY_OPERATIONS){
+    assert.equal(actual.includes(operation.replaceAll('.','_')),false,operation);
+    await mcp.call(operation.replaceAll('.','_'),{},'UNKNOWN_OPERATION');
+    if(Object.hasOwn(schemas,operation))await mcp.call('mioon_schema',{operation},'UNKNOWN_OPERATION');
+  }
+  for(const operation of ['canvas.copy.snapshot','asset.media.location.list','image.service.list','image.review.list','image.review.get'])assert.ok(actual.includes(operation.replaceAll('.','_')),operation);
   await mcp.call('generation_submit', {shotId:randomUUID(), expectedRevision:1, providerId:'mock'}, 'VALIDATION_ERROR');
-  await mcp.call('project_get', {projectId:'not-a-uuid'}, 'VALIDATION_ERROR');
+  await mcp.call('project_inspect', {projectId:'not-a-uuid'}, 'VALIDATION_ERROR');
   const imageCases: Array<[string, unknown, unknown]> = [['mock', IMAGE_MODELS.mock, IMAGE_FIXED_OPTIONS],
     ['openai', IMAGE_MODELS.openai, IMAGE_FIXED_OPTIONS], ['openai-compatible', 'vendor/model', IMAGE_FIXED_OPTIONS],
     ['comfy-local', 'model.safetensors', COMFY_IMAGE_OPTIONS]];
@@ -97,7 +106,7 @@ test('MCP initializes offline; discovery schemas exactly cover shared contracts 
     }
   }
   await mcp.call('unregistered_tool', {}, 'UNKNOWN_OPERATION');
-  await mcp.call('project_list', {}, 'CONNECTION_CONFIG_ERROR');
+  await mcp.call('provider_list', {}, 'CONNECTION_CONFIG_ERROR');
   await mcp.call('mioon_doctor', {}, 'CONNECTION_CONFIG_ERROR');
   await mcp.call('mioon_capabilities', {}, 'CONNECTION_CONFIG_ERROR');
   assert.ok(!mcp.stderr().includes('Bearer'));
@@ -142,7 +151,10 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   const mcp = await bridge(t, {MIOON_CONNECTION_FILE:connectionFile});
   const processId = mcp.transport.pid;
   assert.ok(Number.isSafeInteger(processId) && Number(processId) > 0);
-  const project = await mcp.call('project_create', {name:'Durable desktop rotation fixture'}) as {id: string};
+  const created=await httpRpc(service,'project.create',{name:'Durable desktop rotation fixture'});assert.equal(created.body.ok,true);
+  const project=created.body.data as {id:string};
+  assert.deepEqual(await mcp.call('asset_media_location_list',{projectId:project.id}),{assets:[],nextCursor:null});
+  assert.deepEqual(await mcp.call('image_service_list',{projectId:project.id}),{projectId:project.id,items:[]});
   const shot = await mcp.call('shot_create', {projectId:project.id, title:'Before revision'}) as {id: string; revision: number};
   const updateInput = {shotId:shot.id, expectedRevision:shot.revision, patch:{title:'After revision'}};
   // The MCP tool takes the owning project beside the shared input.
@@ -160,30 +172,31 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   const capabilities = await mcp.call('mioon_capabilities');
   assert.deepEqual(capabilities, (await httpRpc(service, 'provider.list')).body.data);
   assert.doesNotMatch(JSON.stringify(capabilities), /MAX_GENERATIONS|maxGenerations|usedGenerations|remainingGenerations/);
-  const before = await mcp.call('project_get', {projectId:project.id}) as {shots: Array<{title: string}>};
-  assert.equal(before.shots[0].title, updated.title);
+  const before=await mcp.call('shot_inspect',{projectId:project.id});
+  assert.ok(JSON.stringify(before).includes(updated.title));
 
   await service.close();
-  const unavailable = await mcp.call('project_list', {}, 'BACKEND_UNAVAILABLE') as ErrorEnvelope;
+  const unavailable = await mcp.call('provider_list', {}, 'BACKEND_UNAVAILABLE') as ErrorEnvelope;
   assert.ok(!JSON.stringify(unavailable).includes(token));
   assert.ok(!JSON.stringify(unavailable).includes(connectionFile));
   service = await startServer({dataDir, port:0, token:token + '-rotated'});
   await publish();
-  assert.deepEqual(await mcp.call('project_get', {projectId:project.id}), before);
+  assert.deepEqual(await mcp.call('shot_inspect', {projectId:project.id}), before);
   assert.equal(mcp.transport.pid, processId, 'rotation must work without restarting the MCP stdio process');
   await mcp.call('shot_update', updateTool, 'REVISION_CONFLICT');
 
   const direct = await httpRpc(service, 'project.create', {name:'HTTP writes after rotation'});
   assert.equal(direct.body.ok, true);
-  const projects = await mcp.call('project_list') as Array<{id: string}>;
-  assert.ok(projects.some(item => item.id === (direct.body.data as {id?: string} | undefined)?.id));
+  const projects=(await httpRpc(service,'project.list')).body.data as unknown as Array<{id:string}>;
+  assert.ok(projects.some(item=>item.id===direct.body.data?.id));
+  assert.ok(await mcp.call('project_inspect',{projectId:direct.body.data?.id}));
   if (process.platform !== 'win32') {
     await chmod(tokenFile, 0o644);
-    const unsafe = await mcp.call('project_list', {}, 'CONNECTION_CONFIG_ERROR') as ErrorEnvelope;
+    const unsafe = await mcp.call('provider_list', {}, 'CONNECTION_CONFIG_ERROR') as ErrorEnvelope;
     assert.ok(!JSON.stringify(unsafe).includes(root));
     await chmod(tokenFile, 0o600);
-    const recovered = await mcp.call('project_list') as Array<{id: string}>;
-    assert.ok(recovered.some(item => item.id === project.id));
+    const recovered=await mcp.call('shot_inspect',{projectId:project.id});
+    assert.deepEqual(recovered,before);
   }
   const allOutput = JSON.stringify([doctor, before, unavailable, conflict]) + mcp.stderr();
   assert.ok(!allOutput.includes(token));
@@ -206,17 +219,17 @@ test('MCP rejects malformed arguments before backend mutation and sanitizes unsa
   const address = fixture.address();
   if (!address || typeof address === 'string') throw new Error('Expected a bound TCP address');
   const mcp = await bridge(t, {MIOON_BASE_URL:`http://127.0.0.1:${address.port}`, MIOON_TOKEN:token});
-  await mcp.call('project_list', {unexpected:true}, 'VALIDATION_ERROR');
+  await mcp.call('provider_list', {unexpected:true}, 'VALIDATION_ERROR');
   await mcp.call('timeline_clip_update', {projectId:randomUUID(), expectedRevision:1, requestId:randomUUID(), clipId:randomUUID(), patch:{}}, 'VALIDATION_ERROR');
   assert.equal(calls.length, 0, 'shared Zod refinement and strictness must run before HTTP');
-  const error = await mcp.call('project_list', {}, 'REVISION_CONFLICT') as {code: string; details: {safe?: string; nested?: Record<string, unknown>; [key: string]: unknown}};
+  const error = await mcp.call('provider_list', {}, 'REVISION_CONFLICT') as {code: string; details: {safe?: string; nested?: Record<string, unknown>; [key: string]: unknown}};
   assert.equal(error.details.safe, 'retained');
   for (const key of ['token','authorization','tokenFile']) assert.ok(!Object.hasOwn(error.details, key));
   assert.ok(!Object.hasOwn(error.details.nested ?? {}, 'secret'));
   assert.ok(!JSON.stringify(error).includes(token));
   assert.ok(!JSON.stringify(error).includes('/private/hidden-token'));
   mode = 'invalid-json';
-  const malformed = await mcp.call('project_list', {}, 'BACKEND_PROTOCOL_ERROR');
+  const malformed = await mcp.call('provider_list', {}, 'BACKEND_PROTOCOL_ERROR');
   assert.ok(!JSON.stringify(malformed).includes(token));
   assert.ok(!mcp.stderr().includes(token));
   assert.equal(calls.length, 2);

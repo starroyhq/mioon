@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
@@ -312,7 +313,7 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
   await t.test('discovery preserves strict inputs, bounded lists, required set keys and effect annotations', async () => {
     const before = await backend.checkpoint(), catalog = discoverSchema() as unknown as DispositionCatalog;
     assert.deepEqual((await backend.cliArgs(['schema'])).data, catalog);
-    assert.deepEqual((await backend.mcp('mioon_schema')).data, catalog);
+    assert.deepEqual((await backend.mcp('mioon_schema')).data, mcpOperationCatalog(catalog));
     const listed = (await backend.client.listTools()).tools;
     for (const operation of operations) {
       const definition = catalog.operations.find((value: { operation: string; }) => value.operation === operation), saved = operation.endsWith('.set');

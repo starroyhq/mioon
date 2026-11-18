@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
@@ -109,7 +110,7 @@ function invalidInputs(operation: string, projectId: string = randomUUID()) {
 test('timeline history CLI and official MCP advertise identical strict schemas and require caller-owned request IDs offline', {timeout: 60_000}, async t => {
   const mcp = await connectMcp(t);
   const catalog = await cli(['schema']);
-  assert.deepEqual(await mcp.call('mioon_schema'), catalog);
+  assert.deepEqual(await mcp.call('mioon_schema'), mcpOperationCatalog(catalog));
   const tools = ((await mcp.client.listTools() as {tools:TestTool[]})).tools;
   for (const operation of operations) {
     const definition = await cli(['schema', operation]);
@@ -253,9 +254,12 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
     assertHistory(((history) as unknown as Parameters<NonNullable<typeof assertHistory>>[0]), ((current) as unknown as Parameters<typeof assertHistory>[1]), cursor, length);
     for (const {name, call} of transports.slice(1)) {
       assert.deepEqual(await call('timeline.history.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), history, `${name} sees exact history metadata`);
-      const project = await call('project.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>));
-      assert.deepEqual(project.timeline, current, `${name} project.get sees current timeline`);
-      assert.deepEqual(project.timelineHistory, history, `${name} project.get includes coherent history`);
+      if(name==='MCP')await call('project.get',query,'UNKNOWN_OPERATION');
+      else {
+        const project = await call('project.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>));
+        assert.deepEqual(project.timeline, current, `${name} project.get sees current timeline`);
+        assert.deepEqual(project.timelineHistory, history, `${name} project.get includes coherent history`);
+      }
     }
     const project = await backend.http('project.get', query);
     assert.deepEqual(project.timeline, current);

@@ -332,7 +332,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const explicit=step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,journal.run(step.runId).projectId).map(target=>({...target,revision:0})):[];
     return [...dispatchTargets(step),...references.map(value=>{const parsed=agentTaskTargetSchema.safeParse(value);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');return parsed.data;}),...explicit];
   }
-  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{})})).digest('hex');
+  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasCopyProof==='string'?{canvasCopyProof:step.data.canvasCopyProof}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
   /** The user's answer becomes the question's tool result. It is input, never an approval. */
   function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
@@ -427,6 +427,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const run=fence(runId),step=journal.step(stepId);
     if(step.runId!==run.id||step.status==='rejected'||step.status==='denied')throw agentTaskFailure('AGENT_TASK_PAUSED');
     assertNotSkipped(run,prepared.referencedTargets??prepared.targets);
+    if(prepared.canvasCopy&&(!record(step.data)||step.data.canvasCopyProof!==prepared.canvasCopy.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if(prepared.canvas&&(!record(step.data)||step.data.canvasProof!==prepared.canvas.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     journal.assertTargets(run.projectId,prepared.targets);
@@ -544,6 +545,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
       const canvas=prepared.canvas;
+      if(prepared.canvasCopy&&record(step.data)&&typeof step.data.canvasCopyProof==='string'&&step.data.canvasCopyProof!==prepared.canvasCopy.proof){
+        conflicts=prepared.referencedTargets??prepared.targets;
+        throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+      }
       if(canvas&&record(step.data)&&typeof step.data.canvasProof==='string'&&step.data.canvasProof!==canvas.proof){
         conflicts=prepared.targets;
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
@@ -551,7 +556,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const canvasEvidence=canvas?{canvasProof:canvas.proof,...(canvas.input.operation==='archive'?{canvasArchiveImpact:json({
         ...canvas.impact,shotIds:canvas.impact.shots.map(shot=>shot.id),selected:canvas.input.targets,
       })}:{})}:{};
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...canvasEvidence}});
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...canvasEvidence}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       const serviceIssue=toolset().generationServiceIssue(prepared);

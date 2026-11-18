@@ -100,10 +100,11 @@ export const trustedAssetMediaLocationSchemas = Object.freeze({
   'asset.media.outside.revoke': z.object({projectId: id, requestId, locationToken: id}).strict(),
 });
 
-/** Deliberate client composition: paths and permission writes never enter the
- * generic CLI/MCP discovery surface or Mio's model catalog. */
+/** Ordinary discovery exposes location categories, never paths or authority.
+ * The trusted UI entry retains its separate location-token projection. */
 export const assetMediaPublicSchemas = Object.freeze({
   'asset.media.status.list': assetMediaSchemas['asset.media.status.list'],
+  'asset.media.location.list': assetMediaSchemas['asset.media.location.list'],
   'asset.media.prepare': assetMediaSchemas['asset.media.prepare'],
   'asset.media.relink.preview': assetMediaSchemas['asset.media.relink.preview'],
   'asset.media.relink.apply': assetMediaSchemas['asset.media.relink.apply'],
@@ -120,6 +121,7 @@ export const isAssetMediaOperation = (value: string): value is AssetMediaOperati
 export const isTrustedAssetMediaOperation = (value: string): value is TrustedAssetMediaOperation => Object.hasOwn(trustedAssetMediaSchemas, value);
 export const assetMediaDescriptions = Object.freeze({
   'asset.media.status.list': '读取有界素材引用状态，不读取未确认位置的媒体内容',
+  'asset.media.location.list': '读取有界素材的位置类别和项目内外状态，不返回文件路径或授权票据',
   'asset.media.prepare': '在事务外准备完整素材哈希并按引用修订核对保存，不执行生成',
   'asset.media.relink.preview': '检查用户选择的重新指向候选，不修改素材或确认目录',
   'asset.media.relink.apply': '按预览和引用修订重新指向同内容素材，不改不可变历史',
@@ -128,12 +130,14 @@ export const assetMediaDescriptions = Object.freeze({
 const mediaRead = {readOnly:true,idempotent:true,destructive:false,openWorld:false,databaseWrite:false,fileWrite:false,externalIO:false,localProcess:false,paidGeneration:false,notes:undefined};
 export const assetMediaEffects = Object.freeze({
   'asset.media.status.list': Object.freeze({...mediaRead,notes:'Reads bounded local reference metadata/status; no permission confirmation or provider call.'}),
+  'asset.media.location.list': Object.freeze({...mediaRead,notes:'Reads bounded location categories only; no paths, directory tokens, permission grants or writes.'}),
   'asset.media.prepare': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,notes:'Hashes admitted media and CAS-pins its full hash; no paid work or permission grant.'}),
   'asset.media.relink.preview': Object.freeze({...mediaRead,readOnly:false,idempotent:false,fileWrite:true,notes:'Examines an admitted candidate and writes a private preview token; never changes an asset or grants directory access.'}),
   'asset.media.relink.apply': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,fileWrite:true,destructive:true,notes:'CAS-updates an asset reference to the same full content under an exact request key.'}),
   'asset.media.acceptChanged': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,fileWrite:true,notes:'Creates a new asset ID for explicit changed-content acceptance; preserves the old identity/history.'}),
 });
 export const assetMediaStatusListResponseSchema = z.object({items:z.array(assetMediaStateSchema).max(ASSET_MEDIA_PAGE_LIMIT),nextCursor:id.nullable()}).strict();
+export const assetMediaLocationListResponseSchema = z.object({assets:z.array(z.object({assetId:id,pathForm:z.enum(MEDIA_PATH_FORMS),outside:z.boolean()}).strict()).max(ASSET_MEDIA_PAGE_LIMIT),nextCursor:id.nullable()}).strict();
 export const assetMediaPrepareResponseSchema = z.object({assets:z.array(assetMediaDtoSchema).max(ASSET_MEDIA_PAGE_LIMIT)}).strict();
 
 /** The only public asset projection. No reference path, volume or local status

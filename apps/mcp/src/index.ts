@@ -8,6 +8,7 @@ import type {Locale, MessageKey} from '@mioon/i18n';
 import {localizeToolDescription} from '@mioon/i18n/presentation';
 
 import {localizedLaunchOptions} from './launch-presentation.ts';
+import {isMcpOperationAllowed,mcpOperationCatalog} from './tool-policy.ts';
 type JsonSchema = ReturnType<typeof jsonSchema>;
 type EffectAnnotations = ReturnType<typeof effectAnnotations>;
 interface ToolCallOptions {signal?: AbortSignal | undefined}
@@ -42,7 +43,7 @@ catch (error) {
   process.exit(2);
 }
 const client = createClient();
-const tools = new Map<string, McpTool>(Object.keys(schemas).map(operation => {
+const tools = new Map<string, McpTool>(Object.keys(schemas).filter(isMcpOperationAllowed).map(operation => {
   const definition = operationDefinition(operation);
   return [definition.toolName, {
     name: definition.toolName,
@@ -59,13 +60,24 @@ const tools = new Map<string, McpTool>(Object.keys(schemas).map(operation => {
 const discoveryTools: ReadonlyArray<readonly [DiscoveryName, string, (input: unknown, options: ToolCallOptions) => Promise<unknown>]> = [
   ['doctor', 'Check authenticated local backend readiness and provider capabilities without revealing credential paths or tokens.', (_, options) => client.doctor(options)],
   ['capabilities', 'List current configured provider and per-model capabilities from the running backend. This does not submit generation.', (_, options) => client.capabilities(options)],
-  ['schema', 'Discover exact shared RPC JSON Schemas, stable requestId requirements, and advisory operation effects. Works without a running backend.', async input => discoverSchema(input)],
+  ['schema', 'Discover exact shared RPC JSON Schemas, stable requestId requirements, and advisory operation effects. Works without a running backend.', async input => {
+    const result=discoverSchema(input);
+    if('operation' in result){
+      if(!isMcpOperationAllowed(result.operation))throw new ClientError('UNKNOWN_OPERATION','This operation is only available through a user action.');
+      return result;
+    }
+    return mcpOperationCatalog(result);
+  }],
 ];
-for (const [name, description, call] of discoveryTools) tools.set(`mioon_${name}`, {name: `mioon_${name}`, description: locale === undefined ? description : translate(locale, `mcp.${name}`), inputSchema: jsonSchema(discoverySchemas[name]), annotations: effectAnnotations(discoveryEffects[name]), call: async (input: unknown, options: ToolCallOptions) => call(validateDiscovery(name, input), options)});
+function discoveryInputSchema(name:DiscoveryName):JsonSchema{
+  const schema=jsonSchema(discoverySchemas[name]);
+  return name==='schema'?{...schema,properties:{...schema.properties as Record<string,unknown>,operation:{type:'string',enum:Object.keys(schemas).filter(isMcpOperationAllowed)}}}:schema;
+}
+for (const [name, description, call] of discoveryTools) tools.set(`mioon_${name}`, {name: `mioon_${name}`, description: locale === undefined ? description : translate(locale, `mcp.${name}`), inputSchema: discoveryInputSchema(name), annotations: effectAnnotations(discoveryEffects[name]), call: async (input: unknown, options: ToolCallOptions) => call(validateDiscovery(name, input), options)});
 
 const server = new Server({name: 'mioon', version: VERSION}, {
   capabilities: {tools: {}},
-  instructions: locale === undefined ? 'All operations use one existing local backend and shared schemas. Prefer project_inspect, asset_inspect, shot_inspect and timeline_inspect for bounded, non-creating metadata inspection. Legacy project_get and timeline_get may initialize an empty timeline. Effect annotations are advisory, not authorization. Preserve the exact requestId and input on retry after an uncertain response. Never invent a new requestId to recover an unknown submission, automatically retry paid generation, or assume local job.cancel cancelled a remote provider job. Use provider_list before choosing models. Desktop connection files are re-read per request; credentials must never enter tool arguments.' : translate(locale, 'mcp.instructions'),
+  instructions: locale === undefined ? 'All operations use one existing local backend and shared schemas. Prefer project_inspect, asset_inspect, shot_inspect and timeline_inspect for bounded, non-creating metadata inspection. User-only authorization, outside-directory consent, cross-project browsing and whole-project restoration are not model tools. Legacy timeline_get may initialize an empty timeline. Effect annotations are advisory, not authorization. Preserve the exact requestId and input on retry after an uncertain response. Never invent a new requestId to recover an unknown submission, automatically retry paid generation, or assume local job.cancel cancelled a remote provider job. Use provider_list before choosing models. Desktop connection files are re-read per request; credentials must never enter tool arguments.' : translate(locale, 'mcp.instructions'),
 });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({tools: [...tools.values()].map(({call, ...definition}) => definition)}));
 server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -73,9 +85,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   try {
     const tool = tools.get(request.params.name);
     if (!tool) throw new ClientError('UNKNOWN_OPERATION', 'Unknown tool. Use tools/list to discover supported tools.');
-    // Keep discovery available, but do not turn a desktop backend capability
-    // into a CLI/MCP lifecycle command before the 0.1.x client work.
-    if(request.params.name==='project_delete')throw new ClientError('PROJECT_TRASH_UNAVAILABLE','Project trash commands are not available in this client yet.',{status:409});
     if(request.params.name!=='mioon_schema')await (await import('@mioon/node-host/private-storage-bootstrap')).initializeNodePrivateStorage();
     result = successEnvelope(await tool.call(request.params.arguments ?? {}, {signal: extra.signal}));
   } catch (error) { result = errorEnvelope(error); }

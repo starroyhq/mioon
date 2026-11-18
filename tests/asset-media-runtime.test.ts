@@ -216,3 +216,20 @@ for(const failure of [
  assert.equal(f.store.db.prepare('SELECT 1 FROM idempotency WHERE scope=? AND requestId=?').get('asset.media.acceptChanged',input.requestId),undefined);
  assert.deepEqual(readFileSync(file),changed?third:second);
 });
+
+test('public location listing exposes categories without paths, evidence tokens or project/application writes',async t=>{
+ const f=await fixture(t),file=path.join(f.external,'outside.png');writeFileSync(file,png());
+ const imported=row(await f.media.trustedCall('asset.import.path',{projectId:f.store.projectId,requestId:randomUUID(),sourcePath:file}));
+ const asset=row(imported.asset);f.app.outsidePaths.revoke(f.store.projectId,f.external);
+ const before={project:f.store.db.prepare('SELECT total_changes() AS n').get()!.n,application:f.app.db.prepare('SELECT total_changes() AS n').get()!.n,
+  files:readdirSync(f.store.tempDir,{recursive:true}).sort(),grants:f.app.outsidePaths.list(f.store.projectId)};
+ const result=await f.services.call('asset.media.location.list',{projectId:f.store.projectId,limit:1});
+ assert.deepEqual(result,{assets:[{assetId:asset.id,pathForm:'relative',outside:true}],nextCursor:null});
+ assert.ok(!JSON.stringify(result).includes(f.external));
+ assert.deepEqual({project:f.store.db.prepare('SELECT total_changes() AS n').get()!.n,application:f.app.db.prepare('SELECT total_changes() AS n').get()!.n,
+  files:readdirSync(f.store.tempDir,{recursive:true}).sort(),grants:f.app.outsidePaths.list(f.store.projectId)},before);
+ const trusted=row(await f.media.trustedCall('asset.media.location.list',{projectId:f.store.projectId}));
+ assert.ok(row((trusted.assets as unknown[])[0]).displayPath);assert.ok((trusted.locations as unknown[]).length>0,'trusted user projection retains location tickets');
+ await assert.rejects(f.media.call('asset.media.location.list',{projectId:randomUUID()}),{code:'NOT_FOUND'});
+ await assert.rejects(f.media.call('asset.media.location.list',{projectId:f.store.projectId,limit:101}),{code:'VALIDATION_ERROR'});
+});

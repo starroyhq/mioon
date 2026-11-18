@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="e2e9a4ef3a095aeed4616364446d401a6bcaebe5f7e6432850f173a50283e06b";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="469df5bfa0ba6db6bf730a960e2cc3475f70e8c387fa9e02756e09469d12f94c";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -6457,6 +6457,290 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
+ "asset.media.status.list": {
+  "type": "object",
+  "properties": {
+   "cursor": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 100
+   },
+   "assetIds": {
+    "type": "array",
+    "items": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [],
+  "additionalProperties": false
+ },
+ "asset.media.location.list": {
+  "type": "object",
+  "properties": {
+   "cursor": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 100
+   }
+  },
+  "required": [],
+  "additionalProperties": false
+ },
+ "asset.media.prepare": {
+  "type": "object",
+  "properties": {
+   "assets": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "assetId": {
+       "type": "string",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
+      "referenceRevision": {
+       "type": "integer",
+       "exclusiveMinimum": 0,
+       "maximum": 9007199254740991
+      }
+     },
+     "required": [
+      "assetId",
+      "referenceRevision"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   },
+   "purpose": {
+    "type": "string",
+    "enum": [
+     "generation",
+     "frame",
+     "scene",
+     "timeline",
+     "export"
+    ]
+   }
+  },
+  "required": [
+   "assets",
+   "purpose"
+  ],
+  "additionalProperties": false
+ },
+ "asset.media.relink.preview": {
+  "type": "object",
+  "properties": {
+   "assetId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "sourcePath": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 4096
+   },
+   "expectedReferenceRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "assetId",
+   "sourcePath",
+   "expectedReferenceRevision"
+  ],
+  "additionalProperties": false
+ },
+ "asset.media.relink.apply": {
+  "type": "object",
+  "properties": {
+   "previewToken": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   }
+  },
+  "required": [
+   "previewToken"
+  ],
+  "additionalProperties": false
+ },
+ "asset.media.acceptChanged": {
+  "type": "object",
+  "properties": {
+   "assetId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "expectedReferenceRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "assetId",
+   "expectedReferenceRevision"
+  ],
+  "additionalProperties": false
+ },
+ "previs.output.publish": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "keyframeId": {
+    "type": "string",
+    "pattern": "^k[1-9][0-9]{0,3}$"
+   },
+   "sceneRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0,
+    "maximum": 9007199254740991
+   },
+   "name": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 200
+   },
+   "sha256": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   },
+   "width": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 4096
+   },
+   "height": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 4096
+   },
+   "dataBase64": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 41943040
+   }
+  },
+  "required": [
+   "nodeId",
+   "keyframeId",
+   "sceneRevision",
+   "name",
+   "sha256",
+   "width",
+   "height",
+   "dataBase64"
+  ],
+  "additionalProperties": false
+ },
+ "previs.output.lookup": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "keyframeId": {
+    "type": "string",
+    "pattern": "^k[1-9][0-9]{0,3}$"
+   },
+   "sceneRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0,
+    "maximum": 9007199254740991
+   },
+   "name": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 200
+   },
+   "sha256": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   },
+   "width": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 4096
+   },
+   "height": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 4096
+   }
+  },
+  "required": [
+   "nodeId",
+   "keyframeId",
+   "sceneRevision",
+   "name",
+   "sha256",
+   "width",
+   "height"
+  ],
+  "additionalProperties": false
+ },
+ "canvas.copy.snapshot": {
+  "type": "object",
+  "properties": {
+   "targets": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "shot",
+        "node",
+        "edge"
+       ]
+      },
+      "id": {
+       "type": "string",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      }
+     },
+     "required": [
+      "kind",
+      "id"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [
+   "targets"
+  ],
+  "additionalProperties": false
+ },
+ "image.service.list": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false
+ },
  "canvas.layout": {
   "type": "object",
   "properties": {
@@ -6560,5 +6844,238 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "targets"
   ],
   "additionalProperties": false
+ },
+ "canvas.paste": {
+  "type": "object",
+  "properties": {
+   "snapshotId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+   },
+   "viewport": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number",
+      "minimum": -10000000,
+      "maximum": 10000000
+     },
+     "y": {
+      "type": "number",
+      "minimum": -10000000,
+      "maximum": 10000000
+     },
+     "width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 20000000
+     },
+     "height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 20000000
+     }
+    },
+    "required": [
+     "x",
+     "y",
+     "width",
+     "height"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "snapshotId",
+   "viewport"
+  ],
+  "additionalProperties": false
+ },
+ "canvas.duplicate": {
+  "type": "object",
+  "properties": {
+   "targets": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "shot",
+        "node",
+        "edge"
+       ]
+      },
+      "id": {
+       "type": "string",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      }
+     },
+     "required": [
+      "kind",
+      "id"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   },
+   "viewport": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number",
+      "minimum": -10000000,
+      "maximum": 10000000
+     },
+     "y": {
+      "type": "number",
+      "minimum": -10000000,
+      "maximum": 10000000
+     },
+     "width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 20000000
+     },
+     "height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 20000000
+     }
+    },
+    "required": [
+     "x",
+     "y",
+     "width",
+     "height"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "targets",
+   "viewport"
+  ],
+  "additionalProperties": false
+ }
+};
+export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown={
+ "type": "object",
+ "properties": {
+  "nodeId": {
+   "type": "string",
+   "format": "uuid"
+  },
+  "slots": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "pattern": "^(?:card|k[1-9][0-9]{0,3})$"
+   },
+   "minItems": 1,
+   "maxItems": 1
+  }
+ },
+ "required": [
+  "nodeId",
+  "slots"
+ ],
+ "additionalProperties": false,
+ "$schema": "http://json-schema.org/draft-07/schema#"
+};
+export const AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS:Readonly<Record<string,unknown>>={
+ "previs.thumbnail.get": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "slots": {
+    "type": "array",
+    "items": {
+     "type": "string",
+     "pattern": "^(?:card|k[1-9][0-9]{0,3})$"
+    },
+    "minItems": 1,
+    "maxItems": 1
+   },
+   "framePresetId": {
+    "type": "string",
+    "enum": [
+     "portrait_1080",
+     "landscape_1080",
+     "square_1080",
+     "portrait_720",
+     "landscape_720",
+     "square_720",
+     "landscape_4_3_1080",
+     "portrait_3_4_1080",
+     "ultrawide_1080",
+     "landscape_4_3_720",
+     "portrait_3_4_720",
+     "ultrawide_720"
+    ]
+   }
+  },
+  "required": [
+   "nodeId",
+   "slots",
+   "framePresetId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "previs.thumbnail.set": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "slot": {
+    "type": "string",
+    "pattern": "^(?:card|k[1-9][0-9]{0,3})$"
+   },
+   "sceneRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   },
+   "dataBase64": {
+    "type": "string",
+    "minLength": 4,
+    "maxLength": 87384,
+    "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+   },
+   "framePresetId": {
+    "type": "string",
+    "enum": [
+     "portrait_1080",
+     "landscape_1080",
+     "square_1080",
+     "portrait_720",
+     "landscape_720",
+     "square_720",
+     "landscape_4_3_1080",
+     "portrait_3_4_1080",
+     "ultrawide_1080",
+     "landscape_4_3_720",
+     "portrait_3_4_720",
+     "ultrawide_720"
+    ]
+   }
+  },
+  "required": [
+   "nodeId",
+   "slot",
+   "sceneRevision",
+   "dataBase64",
+   "framePresetId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
  }
 };
