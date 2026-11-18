@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {parseArguments, nativeReadiness, toolingEnvironment, installedPackages, inspectPackageManager, preflight, discoverTests,
-  PORTABLE_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand, testEnvironment, MACOS_TEST_TMPDIR,
+  PORTABLE_TEST_FILES, MACOS_DESKTOP_TEST_FILES, isContainedPath, buildCommands, testCommand, executeCommand, testEnvironment, MACOS_TEST_TMPDIR,
   type PackageManagerInspectionOptions} from '../scripts/lib/local-tooling.ts';
 import {BUILD_COMMAND_TIMING_STAGES} from '../scripts/lib/build-timings.ts';
 import {createTypecheckEvidence, hasOuterTypecheckEvidence, removeTypecheckEvidence, sourceFingerprint, TYPECHECK_EVIDENCE_ENV} from '../scripts/lib/typecheck-evidence.ts';
@@ -283,6 +283,23 @@ test('macOS full lane needs the explicit suite and test children use the canonic
   assert.equal(mac.MIOON_API_KEY, undefined);
   assert.equal(testEnvironment({PATH: '/usr/bin', TMPDIR: '/tmp/custom'}, {platform: 'linux'}).TMPDIR, '/tmp/custom');
   assert.notEqual(testEnvironment({PATH: 'C:\\Windows', TEMP: 'C:\\Temp'}, {platform: 'win32'}).TMPDIR, MACOS_TEST_TMPDIR);
+});
+test('macOS desktop group is an explicit reviewed manifest limited to macOS', async t => {
+  const {directory} = await fixture(t);
+  assert.equal(parseArguments(['test', '--suite=macos-desktop']).suite, 'macos-desktop');
+  await assert.rejects(discoverTests(directory, {suite: 'macos-desktop', platform: 'linux'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  await assert.rejects(discoverTests(directory, {suite: 'macos-desktop', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});
+  assert.deepEqual(await discoverTests(root, {suite: 'macos-desktop', platform: 'darwin'}),
+    MACOS_DESKTOP_TEST_FILES.map(name => `tests/${name}`));
+  assert.deepEqual([...MACOS_DESKTOP_TEST_FILES], [...MACOS_DESKTOP_TEST_FILES].sort());
+  assert.equal(new Set(MACOS_DESKTOP_TEST_FILES).size, MACOS_DESKTOP_TEST_FILES.length);
+  assert.ok(MACOS_DESKTOP_TEST_FILES.length >= 100 && MACOS_DESKTOP_TEST_FILES.length <= 200);
+  assert.ok(MACOS_DESKTOP_TEST_FILES.every(name => /^[a-z0-9][a-z0-9._-]*\.test\.ts$/u.test(name)));
+  assert.ok(MACOS_DESKTOP_TEST_FILES.every(name => !name.includes('windows')));
+  assert.deepEqual(await discoverTests(root, {suite: 'macos-desktop', platform: 'darwin', files: [MACOS_DESKTOP_TEST_FILES[0]!]}),
+    [`tests/${MACOS_DESKTOP_TEST_FILES[0]!}`]);
+  await assert.rejects(discoverTests(root, {suite: 'macos-desktop', platform: 'darwin', files: ['timeline-audio-continuous-types.test.ts']}),
+    {code: 'TEST_SELECTION_INVALID'});
 });
 test('full Linux selection supports more than the old 512-file limit within the argv budget', async t => {
   const {directory} = await fixture(t);
