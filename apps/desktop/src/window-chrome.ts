@@ -125,8 +125,8 @@ export function installWindowChrome(window: ChromeWindow, platform: NodeJS.Platf
 
 /** Bounded diagnostics for the screenshot smoke: how many page colors reached
  * the native band and which one was painted last. */
-const windowsChromeDiagnostics = new WeakMap<object, {received: number; applied: string | undefined}>();
-export function windowsTitleBarDiagnostics(window: object): {received: number; applied: string | undefined} | undefined {
+const windowsChromeDiagnostics = new WeakMap<object, {received: number; lastReceived: string | undefined; applied: string | undefined; error: string | undefined}>();
+export function windowsTitleBarDiagnostics(window: object): {received: number; lastReceived: string | undefined; applied: string | undefined; error: string | undefined} | undefined {
   return windowsChromeDiagnostics.get(window);
 }
 
@@ -136,20 +136,34 @@ function installWindowsWindowChrome(window: ChromeWindow): () => void {
   const contents = window.webContents;
   let disposed = false;
   let lastColor: string | undefined;
-  const diagnostics = {received: 0, applied: undefined as string | undefined};
+  const diagnostics = {received: 0, lastReceived: undefined as string | undefined,
+    applied: undefined as string | undefined, error: undefined as string | undefined};
   windowsChromeDiagnostics.set(window, diagnostics);
+  const paint = (): void => {
+    if (disposed || window.isDestroyed() || contents.isDestroyed() || typeof window.setTitleBarOverlay !== 'function') return;
+    try {window.setTitleBarOverlay(windowsTitleBarOverlay(lastColor!)); diagnostics.applied = lastColor;}
+    catch (error) {diagnostics.error = String((error as Error)?.message ?? error).slice(0, 80);}
+  };
   const receiveColor = (event: {senderFrame: object | null}, channel: string, ...args: unknown[]): void => {
     if (disposed || window.isDestroyed() || contents.isDestroyed() || channel !== DESKTOP_TITLEBAR_COLOR_EVENT ||
         event.senderFrame !== contents.mainFrame || args.length !== 1 || !isTitleBarBackgroundColor(args[0]) ||
         typeof window.setTitleBarOverlay !== 'function' || args[0] === lastColor) return;
     lastColor = args[0];
     diagnostics.received += 1;
-    try {window.setTitleBarOverlay(windowsTitleBarOverlay(lastColor)); diagnostics.applied = lastColor;} catch { /* A disappearing window keeps its last painted band. */ }
+    diagnostics.lastReceived = lastColor;
+    paint();
   };
   contents.on('ipc-message', receiveColor);
+  // Windows can apply the stored overlay without repainting if the first update
+  // lands before the window is visibly active; repaint on activation.
+  const repaint = (): void => {if (lastColor !== undefined) paint();};
+  window.on('focus', repaint);
+  window.on('show', repaint);
   const dispose = () => {
     disposed = true;
     contents.removeListener('ipc-message', receiveColor);
+    window.removeListener('focus', repaint);
+    window.removeListener('show', repaint);
     window.removeListener('closed', dispose);
   };
   window.once('closed', dispose);

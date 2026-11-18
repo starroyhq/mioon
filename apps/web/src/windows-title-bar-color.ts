@@ -121,11 +121,9 @@ export function installWindowsTitleBarColor(): void {
   document.addEventListener('visibilitychange', report);
   overlayOf()?.addEventListener?.('geometrychange', report);
   if (typeof window.matchMedia === 'function') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', report);
-  // The control overlay can report its geometry a frame or two after the first
-  // paint; retry a bounded number of times instead of waiting for a user event.
-  const attempt = (remaining: number): void => {
-    report();
-    if (last === null && remaining > 0) setTimeout(() => attempt(remaining - 1), 250);
-  };
-  attempt(8);
+  // The control overlay and the persisted appearance can both settle a few
+  // frames after the first paint; report again at fixed bounded moments instead
+  // of waiting for a user event. Repeated colors are not repainted.
+  for (const delay of [0, 200, 600, 1200, 2500]) setTimeout(report, delay);
+  report();
 }

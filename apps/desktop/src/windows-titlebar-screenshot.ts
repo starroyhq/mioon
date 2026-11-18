@@ -238,7 +238,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
       })()`) as {bridge: boolean; frame: string; visible: boolean; bandRight: number};
       const diagnostics = windowsTitleBarDiagnostics(window);
       const pageColor = await window.webContents.executeJavaScript(pageBandColorScript) as string;
-      diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${diagnostics?.received ?? 0} page=${pageColor} applied=${cssColorToHex(diagnostics?.applied)}`;
+      diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${diagnostics?.received ?? 0} page=${pageColor} received=${cssColorToHex(diagnostics?.lastReceived)} applied=${cssColorToHex(diagnostics?.applied)} error=${diagnostics?.error === undefined ? 'none' : diagnostics.error.replace(/[^A-Za-z0-9 =:._#-]/gu, '_')}`;
     } catch { diag = ' diagnostics=unavailable'; }
     const {png, source} = await capture(window, window.getTitle());
     captured = png;
