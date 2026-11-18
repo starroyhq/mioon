@@ -25,7 +25,8 @@ import type {
   SequenceEditReceipt, SequenceEditStateDelta, SequenceEditTimelineCommit, SequenceEditTimelineDelta,
   SequenceEditTransactionFailure, MainTrackProjectionPort,
 } from '@mioon/contracts/sequence-edit';
-import {applySequenceEditBaselineChange, isSequenceEditEnvelope, sequenceEditOperationName} from '@mioon/contracts/sequence-edit';
+import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName, sequenceEditOperationName} from '@mioon/contracts/sequence-edit';
+import {planSubjectBindingAction, readSubjectBinding} from './format5-subject-binding.ts';
 import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
@@ -495,14 +496,63 @@ function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, 
   };
 }
 
+/** Applies one board delta. Subject binding rows are tombstones: their native
+ * revision always advances and a removal is never valid (the shared contract
+ * rejects it before this point). */
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): void {
+  let subjectTouched = false;
   for (const entity of delta.writes) {
+    if (entity.kind === 'subject_binding') {
+      applySubjectBindingWrite(store, entity.data);
+      subjectTouched = true;
+      continue;
+    }
     store.put(entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges', entity.data);
   }
   for (const entity of delta.removals) {
+    if (entity.kind === 'subject_binding') {
+      throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '主体绑定是墓碑，不能删除。', 409, {id: entity.id});
+    }
     const table = entity.kind === 'shot' ? 'shots' : entity.kind === 'node' ? 'nodes' : 'edges';
     const result = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
     if (Number(result.changes) !== 1) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '撤销/重做的对象已不存在。', 409, {id: entity.id});
+  }
+  if (subjectTouched) bumpFormat5ContentStampInside(store.db, 'project');
+}
+
+/** Native-column binding row: content comes from the patch, revision is always
+ * the live row + 1 (or 1 when the tombstone is created). */
+function applySubjectBindingWrite(store: ProjectStore, data: Row): void {
+  const current = readSubjectBinding(store, String(data.id));
+  const revision = current ? Number(current.revision) + 1 : 1;
+  if (!Number.isSafeInteger(revision) || revision >= Number.MAX_SAFE_INTEGER) {
+    throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', '主体绑定 revision 超出上限', 409, {});
+  }
+  if (current && (data.projectId !== current.projectId || data.shotId !== current.shotId
+    || data.subjectId !== current.subjectId || data.role !== current.role)) {
+    throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', '主体绑定身份不可替换', 409, {id: current.id});
+  }
+  const value = {...data, revision, projectId: store.projectId,
+    createdAt: current ? current.createdAt : String(data.createdAt)} as Record<string, unknown>;
+  const bindingMode = String(value.bindingMode);
+  const subjectVersionId = value.subjectVersionId === null ? null : String(value.subjectVersionId);
+  const reviewedHeadVersionId = value.reviewedHeadVersionId === null ? null : String(value.reviewedHeadVersionId);
+  const updatedAt = String(value.updatedAt);
+  if (current) {
+    // A replacement INSERT would trip the tombstone trigger; only content
+    // columns (and the monotonic revision) may change.
+    const saved = store.db.prepare(`UPDATE project.subject_bindings SET revision=?,bindingMode=?,subjectVersionId=?,
+      reviewedHeadVersionId=?,updatedAt=? WHERE id=? AND projectId=? AND revision=?`)
+      .run(revision, bindingMode, subjectVersionId, reviewedHeadVersionId, updatedAt, current.id,
+        store.projectId, Number(current.revision));
+    if (Number(saved.changes) !== 1) {
+      throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '主体绑定 revision 已变化。', 409, {id: current.id});
+    }
+  } else {
+    store.db.prepare(`INSERT INTO project.subject_bindings(id,projectId,shotId,subjectId,role,revision,bindingMode,
+      subjectVersionId,reviewedHeadVersionId,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(String(value.id), store.projectId, String(value.shotId), String(value.subjectId), String(value.role), revision,
+        bindingMode, subjectVersionId, reviewedHeadVersionId, String(value.createdAt), updatedAt);
   }
 }
 
@@ -679,7 +729,7 @@ function receiptDraft(envelope: SequenceEditEnvelope, inputDigest: string, recei
 }): Omit<SequenceEditReceipt, 'history'> {
   return {
     version: 1, requestId: envelope.requestId, inputDigest, projectId: envelope.projectId, actionId: envelope.actionId,
-    operation: operationOf(envelope), originSide: envelope.originSide, status: 'applied',
+    operation: sequenceEditEnvelopeOperationName(envelope), originSide: envelope.originSide, status: 'applied',
     ...(receipt.warnings && receipt.warnings.length ? {warnings: receipt.warnings} : {}),
     affected: receipt.affected, contentRevision: receipt.contentRevision,
     timelineRevision: receipt.timelineRevision, syncRevision: receipt.syncRevision,
@@ -694,6 +744,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
   if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (envelope.projectId !== store.projectId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   const inputDigest = sequenceEditInputDigest(envelope);
+  if (envelope.subjectIntent) return runSubjectBindingSync(store, envelope, inputDigest);
   return store.tx(() => {
     const replay = findSequenceEditReceipt(store, envelope.requestId);
     if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
@@ -727,6 +778,46 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       warnings: planWarnings(successful), contentRevision,
       timelineRevision: timelineApply.timeline.revision, syncRevision: baselineApply.revision,
     });
+    const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
+    return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
+  });
+}
+
+/** One shared transaction for a subject binding action: replay, revision CAS,
+ * board delta, one history entry and the immutable receipt. */
+function runSubjectBindingSync(store: ProjectStore, envelope: SequenceEditEnvelope, inputDigest: string): SequenceSyncResult {
+  return store.tx(() => {
+    const replay = findSequenceEditReceipt(store, envelope.requestId);
+    if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
+    const content = readProjectContentStamp(store.db).contentSequence;
+    const state = readFormat5TimelineState(store.db, 'project');
+    const header = state.header ? JSON.parse(state.header.raw) as Row : {};
+    const sync = store.db.prepare('SELECT revision FROM project.sequence_sync_state').get() as Row | undefined;
+    if (envelope.baseline.contentRevision !== content
+      || envelope.baseline.timelineRevision !== Number(header.revision ?? 1)
+      || envelope.baseline.syncRevision !== Number(sync?.revision ?? 1)) {
+      return writeFailure(store, envelope, 'SEQUENCE_EDIT_REVISION_CONFLICT');
+    }
+    let plan;
+    try { plan = planSubjectBindingAction(store, envelope); }
+    catch (error) {
+      if (error instanceof AppError && isSequenceEditErrorCode(error.code)) {
+        return writeFailure(store, envelope, error.code);
+      }
+      throw error;
+    }
+    if (sameJson(plan.before.board, plan.after.board)) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
+    applyBoardDelta(store, plan.after.board);
+    const contentRevision = readProjectContentStamp(store.db).contentSequence;
+    const affected: SequenceEditAffectedCounts = {
+      nodes: 0,
+      edges: plan.after.board.writes.filter(item => item.kind === 'edge').length + plan.after.board.removals.length,
+      mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0,
+      subjectBindings: plan.after.board.writes.filter(item => item.kind === 'subject_binding').length,
+    };
+    const receipt = receiptDraft(envelope, inputDigest, {affected, contentRevision,
+      timelineRevision: Number(header.revision ?? 1), syncRevision: Number(sync?.revision ?? 1)});
+    const patch: SequenceEditPatch = {version: 1, before: plan.before, after: plan.after};
     const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
     return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
   });
@@ -806,7 +897,7 @@ export function moveSequenceSyncHistory(store: ProjectStore, command: SequenceEd
     const operation = entry.operation;
     const receipt = moveSequenceEditHistoryCursor(store, command, {
       version: 1, requestId: command.requestId, inputDigest, projectId: store.projectId, actionId: command.actionId,
-      operation, originSide: operation.startsWith('board.') ? 'board' : 'timeline', status: 'applied',
+      operation, originSide: operation.startsWith('timeline.') ? 'timeline' : 'board', status: 'applied',
       affected: emptyCounts(), contentRevision: revisions.contentRevision,
       timelineRevision: revisions.timelineRevision, syncRevision: revisions.syncRevision,
     });
