@@ -76,3 +76,51 @@
 - 显式改绑主轨/根的协调命令放 TSb；本卡只读关联。
 - 撤销/重做目前只覆盖 TSa 的动作和共享游标；旧两栈合并、Mio 独立补偿按 P5 D5。
 - 真实导出预检票据和 `edit-tasks.ts` 未知结果查询归 TSb（本卡已经有 requestId 回执重放）。
+
+## TSb 增补（锚、切分/挪动/删除、复制并挪动、导出边界）
+
+TSb 在同一个共享合同和同一个事务入口上补齐主轨编辑和导出边界；envelope/回执/错误码/history 仍只来自 `sequence-edit.ts`，history/回执仍只由 `format5-editor-history.ts` 写。
+
+### 新命令（`sequence-sync.ts`，都包装成合同 intent）
+
+| 命令 | SA operation | 说明 |
+| --- | --- | --- |
+| `clip-remove` | `track.remove` | 删除主轨段，链自动重接、后缀压紧、锚按 D3 处理。 |
+| `clip-add` | `track.add` | 把已存在的游离镜头/素材节点插入主轨；新节点/素材卡由 CS 创建，本卡只接已有节点。 |
+| `clip-split` | `track.split` | 左段保 ID，右段用确认时给的 `rightClipId`；同一 `segmentGroupId`。 |
+| `clip-trim` | `track.trim` | 整数帧改长度/入点；后缀移动，锚偏移保留。 |
+| `clip-move` | `track.move` | 主轨重排；跨切分组需要 `copyNodeId`。 |
+| `clip-move-off-track` | `track.move-off-track` | 移到其它轨并建立显式锚；切分片段需要 `copyNodeId`。 |
+
+### 复制并挪动
+
+- 预览生成 `SequenceEditEnvelope`（含 `allocation.nodes`/`allocation.edges`/`rightClipId`）和 `planDigest`；确认请求必须带同一 `requestId/actionId/envelope` 和 `expectedPlanDigest`，不一致返回 `SEQUENCE_EDIT_PATCH_INVALID`，不会重新分配 ID。
+- 服务端确认时重读现场并做 SA 规划；复制镜头会新建 shot 行、通过 `shot_version_adoptions` 采纳实际应用版本，并按新的 `segmentGroupId` 建独立组；复制素材节点复制节点行。
+- 复制产生的节点/边/采纳行都在同一个 `SequenceEditPatch` 里，撤销会删除新 shot/节点/采纳并恢复原组和边。
+
+### 锚和 D3
+
+- 每次主轨变化后按 `planTrackAnchors` 重算其它轨和字幕：owner 消失/偏移越界时在原位解除锚（字幕不能空锚，会在同一帧重新挂到覆盖它的主轨段）。
+- 重算后若同轨片段/字幕重叠、越界或锚无效，整次动作返回 `SEQUENCE_EDIT_ANCHOR_CONFLICT` 和受影响 ID，零写入。
+- 缩短导致锚偏移出界也按原位解除；不自动裁剪、不避让。
+
+### 导出边界（`format5-timeline-export.ts`）
+
+- `createFormat5ExportTicket(store, range?)` 冻结 `contentRevision`/`timelineRevision`/`syncRevision`、冻结投影和 sha256；返回 blockers：选定范围内 `PLACEHOLDER_CLIP`、跟随但所选版本过短的 `VERSION_TOO_SHORT`（带 clip/node/version/短少帧数）。
+- `recheckFormat5ExportTicket` 在最终入队前重读三个修订和快照 hash；不一致返回 `EXPORT_SNAPSHOT_STALE`，不拿旧票据入队。
+- `assertFormat5ExportAdmissible` 有 blocker 时返回 `EXPORT_BLOCKED` 和具体片段；已入队导出使用自己的冻结快照，后续同步不影响旧导出。
+- 现有 `timeline-export-admission.ts` 的 capabilities issue 表固定四项（TIMELINE_MISSING/INVALID_TIMELINE_SNAPSHOT/TIMELINE_SOURCE_UNAVAILABLE/EXPORT_CAPABILITY_STALE），新增 blocker 需要合同扩展；本 PR 只提供模块与测试，不改异步 RPC 入口。
+
+### 覆盖和性能
+
+- `tests/format5-timeline-sync-b.test.ts` 9/9：切分（左保 ID/右新 ID/组和边）、删除中间段（压紧、链重接、孤儿锚原位解除、重叠拒绝）、修剪（后缀移动、越界锚解除）、重排（链边重接、锚随 owner 移动）、跨轨（显式锚）、插入游离素材（新组和链边）、复制并挪动（shot+adoption+新组、撤销删除、同分配确认）、plan digest 不匹配拒绝、精确重放。
+- `tests/format5-timeline-export.test.ts` 3/3：占位 blocker、范围排除、过短 blocker、三修订过期。
+- `tests/format5-timeline-sync-b-performance.test.ts`：K1 499 镜头 + 499 主轨段 + 1,000 辅轨段 + 500 字幕；split/trim/remove/add 四类动作（预热 5 + 30 采样）本机 p95 43.6/37.3/42.1/46.5 ms（预算 100）；单条 history 平均 229,081 bytes、最大 305,372 bytes（协调人门槛平均 ≤256 KiB，通过）。CI 首轮 Linux 上超预算后改为只比较 SA 变更 id + 锚身份、复用已读时间线、确定性基线比较，减少整条投影的重复序列化；重跑结果见 PR CI。
+- 合同扩展（本 PR 列出）：`SequenceEditBoardEntity.kind` 增加 `adoption`（复制镜头的版本采纳行要进正反补丁才能正确撤销）；新错误码 `SEQUENCE_EDIT_ANCHOR_CONFLICT`。其余 envelope/回执/patch/history 字段不变。
+- 修复 K5a 实体 delta 的 `changed` 标志漏算删除行：`planFormat5TimelineEntityUpdate` 之前对纯删除返回 changed=false，TSb 的撤销/删除会跳过写入；现在把 clip/cue 删除计入 changed。
+
+### 接缝和遗留
+
+- `jobs.ts` 的首个生成版本自动选择仍是旧路径（format4 语义）；格式 5 的生成提交/自动选择需要和 job 提交事务一起改，属于后续接线，不在本 PR 偷写。
+- 真实导出 RPC 的票据字段/最终 enqueue 由导出能力卡消费本模块；本 PR 只提供 ticket/recheck/blocker 模块和测试，未改异步 admission 的 RPC 契约。
+- CS 的画板事务可能同时改 `sequence-edit.ts`/`format5-sequence-sync.ts`：本 PR 按后合入方 merge main 处理；CS 只通过 `BoardSeamProjectionPort`/`MainTrackProjectionPort` 和 `format5-editor-history.ts` 对接。

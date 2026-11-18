@@ -412,12 +412,13 @@ export const isSequenceEditEnvelope = (value: unknown): value is SequenceEditEnv
 /** One persisted board object. `data` is the full row JSON the CS reader owns:
  * a shot record, a `Format5Node` or a `Format5Edge`; additions and removals
  * carry the complete object so undo can restore fields SA does not model. */
+export const SEQUENCE_EDIT_BOARD_ENTITY_KINDS = Object.freeze(['shot', 'node', 'edge', 'subject_binding', 'adoption'] as const);
+export type SequenceEditBoardEntityKind = (typeof SEQUENCE_EDIT_BOARD_ENTITY_KINDS)[number];
 export interface SequenceEditBoardEntity {
-  readonly kind: 'shot' | 'node' | 'edge' | 'subject_binding';
+  readonly kind: SequenceEditBoardEntityKind;
   readonly id: string;
   readonly data: Readonly<Record<string, unknown>>;
 }
-export const SEQUENCE_EDIT_BOARD_ENTITY_KINDS = Object.freeze(['shot', 'node', 'edge', 'subject_binding'] as const);
 
 export interface SequenceEditBoardDelta {
   readonly writes: readonly SequenceEditBoardEntity[];
@@ -775,6 +776,9 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   the requested state; nothing was written, no history entry or revision moved,
  *   and only the immutable receipt (status `not_applied`) is stored so an exact
  *   retry returns the same answer.
+ * - `SEQUENCE_EDIT_ANCHOR_CONFLICT`: after a track edit the other-track clips or
+ *   cues would overlap, leave the timeline, or lose their anchor target; the
+ *   whole action is rejected with the affected ids and nothing is written (P5 D3).
  * - `SEQUENCE_EDIT_SUBJECT_BINDING_INVALID`: a subject-binding intent names a
  *   missing/foreign shot or subject, a role that does not match the subject kind,
  *   a locked version that does not belong to the same subject, or an edge/row
@@ -790,8 +794,8 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
-  'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', 'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN',
-  'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
+  'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
+  'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
