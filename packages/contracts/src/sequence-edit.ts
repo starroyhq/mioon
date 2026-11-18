@@ -1,7 +1,7 @@
 import {z} from 'zod';
-import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5SyncBaselineSchema} from './project-format5.ts';
+import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
 import type {
-  Format5Clip, Format5Cue, Format5ErrorCode, Format5SyncBaseline,
+  Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline,
 } from './project-format5.ts';
 import type {BoardSequenceErrorCode} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
@@ -89,13 +89,52 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.connect', 'board.disconnect', 'board.insert', 'board.delete', 'board.sync', 'board.version',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
+  'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
+/**
+ * SB subject-binding board actions (0.3.0). A subject binding is a board object
+ * like a shot/node/edge: the whole row lives in `SequenceEditBoardDelta`, so
+ * undo restores identity, mode, applied version, revision and timestamps
+ * byte-for-byte. These operations are board-origin and belong to the same
+ * history entry and the same undo step as the reference edge that connects a
+ * subject card to a shot.
+ *
+ * `create` is only allowed for a new binding row; a retained `detached`
+ * tombstone is restored with `restore`. `set-mode` switches follow/locked;
+ * `detach` keeps the row identity and clears the applied version.
+ */
+export type SubjectBindingOperation =
+  | {readonly kind: 'subject-binding'; readonly edit: {readonly kind: 'create'; readonly bindingId: string;
+    readonly shotId: string; readonly subjectId: string; readonly role: 'subject' | 'style'}}
+  | {readonly kind: 'subject-binding'; readonly edit: {readonly kind: 'set-mode'; readonly bindingId: string;
+    readonly bindingMode: 'follow' | 'locked'; readonly subjectVersionId: string | null}}
+  | {readonly kind: 'subject-binding'; readonly edit: {readonly kind: 'detach'; readonly bindingId: string}}
+  | {readonly kind: 'subject-binding'; readonly edit: {readonly kind: 'restore'; readonly bindingId: string;
+    readonly bindingMode: 'follow' | 'locked'; readonly subjectVersionId: string | null}};
+
+/** One subject intent: always board side, never combined with a sync-board
+ * projection because it writes no timeline row. */
+export interface SequenceEditSubjectIntent {
+  readonly side: 'board';
+  readonly operation: SubjectBindingOperation;
+}
+
 /** The side a plan operation belongs to. Board edits and projections are CS,
  * track edits are TS. */
-export function sequenceEditIntentSide(operation: Pick<ChainSyncOperation, 'kind'>): SequenceEditSide {
+export function sequenceEditIntentSide(operation: Pick<ChainSyncOperation, 'kind'> | SubjectBindingOperation): SequenceEditSide {
   return operation.kind === 'track' ? 'timeline' : 'board';
+}
+
+/** Stable `history13.operation` name of one subject-binding edit. */
+export function sequenceEditSubjectOperationName(operation: SubjectBindingOperation): SequenceEditOperationName {
+  switch (operation.edit.kind) {
+    case 'create': return 'subject.binding.create';
+    case 'set-mode': return 'subject.binding.set-mode';
+    case 'detach': return 'subject.binding.detach';
+    case 'restore': return 'subject.binding.restore';
+  }
 }
 
 export function sequenceEditIntentOperationName(operation: ChainSyncOperation): SequenceEditOperationName {
@@ -130,6 +169,13 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
   return intents.map(intent => sequenceEditIntentOperationName(intent.operation)).join('+');
 }
 
+/** `history13.operation` for the action envelope. One subject action uses its
+ * own stable name; every existing action keeps its intent-joined name. */
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent'>): string {
+  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
+  return sequenceEditOperationName(envelope.intents);
+}
+
 // ---------------------------------------------------------------------------
 // Actions, baseline, impact and allocation
 // ---------------------------------------------------------------------------
@@ -155,11 +201,11 @@ export function isSequenceEditIntentSequence(intents: readonly SequenceEditInten
  * planning; the transaction re-reads every target and rejects a mismatch.
  */
 export interface SequenceEditExpectedTarget {
-  readonly kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue';
+  readonly kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue' | 'subject_binding';
   readonly id: string;
   readonly revision: number;
 }
-export const SEQUENCE_EDIT_TARGET_KINDS = Object.freeze(['shot', 'node', 'edge', 'clip', 'cue'] as const);
+export const SEQUENCE_EDIT_TARGET_KINDS = Object.freeze(['shot', 'node', 'edge', 'clip', 'cue', 'subject_binding'] as const);
 
 /**
  * The exact revisions one action was planned against (plan §4). A transaction
@@ -191,10 +237,14 @@ export interface SequenceEditImpact {
   readonly mainTrackClipIds: readonly string[];
   readonly otherTrackItemIds: readonly string[];
   readonly subtitleCueIds: readonly string[];
+  /** SB: binding rows created/changed/detached by this action (never a
+   * tombstone delete; `detach` keeps the row and only clears the applied
+   * version). Optional so every pre-SB envelope and stored patch still parses. */
+  readonly subjectBindingIds?: readonly string[];
 }
 export function sequenceEditImpactCount(impact: SequenceEditImpact): number {
   return impact.nodeIds.length + impact.edgeIds.length + impact.mainTrackClipIds.length
-    + impact.otherTrackItemIds.length + impact.subtitleCueIds.length;
+    + impact.otherTrackItemIds.length + impact.subtitleCueIds.length + (impact.subjectBindingIds?.length ?? 0);
 }
 
 /**
@@ -230,6 +280,11 @@ export interface SequenceEditEnvelope {
   /** Active `sequence_root` node; 0.3.0 actions target one film root. */
   readonly filmId: string;
   readonly intents: readonly SequenceEditIntent[];
+  /** SB board actions; exactly one of `intents` and `subjectIntent` is present.
+   * A reference edge and its binding row travel in the same intent's board
+   * delta, so one undo step restores both. Optional and additive: existing
+   * CS/TS envelopes and receipts are unchanged. */
+  readonly subjectIntent?: SequenceEditSubjectIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -266,6 +321,7 @@ const impactSchema = z.object({
   mainTrackClipIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds),
   otherTrackItemIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds),
   subtitleCueIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds),
+  subjectBindingIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds).optional(),
 }).strict().superRefine((value, context) => {
   if (sequenceEditImpactCount(value) > SEQUENCE_EDIT_LIMITS.impactIds) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'Too many impacted ids'});
@@ -300,14 +356,45 @@ const intentSchema = z.object({side: z.enum(SEQUENCE_EDIT_SIDES), operation: ope
  * not re-implement SA planning: a valid shell still returns the SA failure code
  * (`CYCLE`, `MULTIPLE_PREDECESSORS`, ...) from `planChainSync`.
  */
+const subjectBindingEditSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('create'), bindingId: uuidSchema, shotId: uuidSchema, subjectId: uuidSchema,
+    role: z.enum(['subject', 'style'])}).strict(),
+  z.object({kind: z.literal('set-mode'), bindingId: uuidSchema, bindingMode: z.enum(['follow', 'locked']),
+    subjectVersionId: uuidSchema.nullable()}).strict(),
+  z.object({kind: z.literal('detach'), bindingId: uuidSchema}).strict(),
+  z.object({kind: z.literal('restore'), bindingId: uuidSchema, bindingMode: z.enum(['follow', 'locked']),
+    subjectVersionId: uuidSchema.nullable()}).strict(),
+]).superRefine((value, context) => {
+  if (value.kind !== 'set-mode' && value.kind !== 'restore') return;
+  const locked = value.bindingMode === 'locked';
+  if (locked !== (value.subjectVersionId !== null)) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'Only a locked binding stores an applied subject version'});
+  }
+});
+export const sequenceEditSubjectIntentSchema = z.object({
+  side: z.literal('board'),
+  operation: z.object({kind: z.literal('subject-binding'), edit: subjectBindingEditSchema}).strict(),
+}).strict();
+const subjectIntentSchema = sequenceEditSubjectIntentSchema;
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
   requestId: z.string().refine(isSequenceEditRequestId, 'Invalid request id'),
   originSide: z.enum(SEQUENCE_EDIT_SIDES),
-  intents: z.array(intentSchema).min(1).max(SEQUENCE_EDIT_LIMITS.intents),
+  intents: z.array(intentSchema).max(SEQUENCE_EDIT_LIMITS.intents),
+  subjectIntent: subjectIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
+  const hasSubject = value.subjectIntent !== undefined;
+  if (hasSubject) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action carries no CS/TS intent'});
+    if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action is board-origin'});
+    return;
+  }
+  if (value.intents.length === 0) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'An action requires an intent or a subject intent'});
+    return;
+  }
   if (!isSequenceEditIntentSequence(value.intents as unknown as readonly SequenceEditIntent[])) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'Invalid intent sequence'});
   }
@@ -326,11 +413,11 @@ export const isSequenceEditEnvelope = (value: unknown): value is SequenceEditEnv
  * a shot record, a `Format5Node` or a `Format5Edge`; additions and removals
  * carry the complete object so undo can restore fields SA does not model. */
 export interface SequenceEditBoardEntity {
-  readonly kind: 'shot' | 'node' | 'edge';
+  readonly kind: 'shot' | 'node' | 'edge' | 'subject_binding';
   readonly id: string;
   readonly data: Readonly<Record<string, unknown>>;
 }
-export const SEQUENCE_EDIT_BOARD_ENTITY_KINDS = Object.freeze(['shot', 'node', 'edge'] as const);
+export const SEQUENCE_EDIT_BOARD_ENTITY_KINDS = Object.freeze(['shot', 'node', 'edge', 'subject_binding'] as const);
 
 export interface SequenceEditBoardDelta {
   readonly writes: readonly SequenceEditBoardEntity[];
@@ -518,6 +605,9 @@ export interface SequenceEditAffectedCounts {
   readonly mainTrackClips: number;
   readonly otherTrackItems: number;
   readonly subtitleCues: number;
+  /** SB subject bindings created/changed/detached by this action. Optional so
+   * pre-SB receipts still parse; a subject action always reports it. */
+  readonly subjectBindings?: number;
 }
 export interface SequenceEditHistoryAction {
   readonly actionId: string;
@@ -570,7 +660,7 @@ export const sequenceEditHistoryViewSchema = z.object({
 }).strict();
 export const sequenceEditAffectedCountsSchema = z.object({
   nodes: sequenceSchema, edges: sequenceSchema, mainTrackClips: sequenceSchema,
-  otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema,
+  otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema, subjectBindings: sequenceSchema.optional(),
 }).strict();
 export const sequenceEditReceiptSchema = z.object({
   version: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
@@ -686,11 +776,23 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   the requested state; nothing was written, no history entry or revision moved,
  *   and only the immutable receipt (status `not_applied`) is stored so an exact
  *   retry returns the same answer.
+ * - `SEQUENCE_EDIT_SUBJECT_BINDING_INVALID`: a subject-binding intent names a
+ *   missing/foreign shot or subject, a role that does not match the subject kind,
+ *   a locked version that does not belong to the same subject, or an edge/row
+ *   identity that already has a different owner. The board transaction refuses
+ *   it instead of writing a dangling reference edge.
+ * - `SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN`: a locked mode selected a subject
+ *   version that belongs to an undone angle/lighting batch; the version stays
+ *   readable as history evidence but cannot become a new generation input.
+ * - `SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT`: the shot already has the frozen
+ *   number of active (follow/locked) subject/style bindings; a detached
+ *   tombstone never counts toward the limit.
  */
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
-  'SEQUENCE_EDIT_NOOP',
+  'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', 'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN',
+  'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
