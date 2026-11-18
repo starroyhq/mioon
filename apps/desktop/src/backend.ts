@@ -47,8 +47,6 @@ process.on('uncaughtExceptionMonitor', (_error, origin) => {
 });
 
 let server: BackendServer | undefined, starting = false, startFailed = false, closing = false;
-// TEMP-DIAG: fixed numeric startup stage, written only on failure for W0 diagnosis.
-let startupStage = 1;
 let projectControl: ReturnType<typeof createProjectEntryControlBroker> | undefined;
 let initialization: Promise<void> | undefined;
 let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
@@ -114,9 +112,7 @@ process.parentPort.on('message', ({ data, ports }) => {
   initialization = (async () => {
     try {
       // Windows storage opens only through the helper main verified and named.
-      startupStage = 2;
       initializeDesktopPrivateStorage(process.env.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER ?? '');
-      startupStage = 3;
       if (ports?.length) {
         for (const port of ports) port.close();
         throw new TypeError('Unexpected backend startup ports');
@@ -132,41 +128,23 @@ process.parentPort.on('message', ({ data, ports }) => {
       projectCatalog = createDesktopProjectCatalogClient(data.backendId, message => process.parentPort!.postMessage(message));
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
-      startupStage = 4;
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
-      startupStage = 5;
       try { await videoSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
-      startupStage = 6;
       initializeSubtitleResources(data.subtitleResourcesDir);
-      startupStage = 7;
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
-      startupStage = 8;
       server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir,
         projectTemplatesDir: data.projectTemplatesDir,
         projectCatalogClient: projectCatalog,
         projectTrash: data.projectTrashAvailable === true ? projectTrash : undefined,
         token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
-      startupStage = 9;
       projectControl = createProjectEntryControlBroker({backendId:data.backendId, control:server.projectEntries,
         send:message=>process.parentPort!.postMessage(message), isCurrent:()=>!closing});
       if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
       startFailed = true;
-      // TEMP-DIAG: stage and error detail only to the runner temp directory.
-      try {
-        const temp = process.env.TEMP;
-        if (typeof temp === 'string' && path.isAbsolute(temp)) {
-          const {appendFileSync} = await import('node:fs');
-          const coded = error as {name?: unknown; code?: unknown; reason?: unknown; message?: unknown; stack?: unknown};
-          const detail = error instanceof Error
-            ? `${String(coded.name)}:${typeof coded.code === 'string' ? coded.code : ''}:${typeof coded.reason === 'string' ? coded.reason : ''}:${error.message}\n${String(coded.stack ?? '').split('\n').slice(0, 8).join('\n')}`
-            : 'non-error';
-          appendFileSync(path.join(temp, 'mioon-backend-startup-stage.txt'), `stage=${startupStage}\n${detail}\n`);
-        }
-      } catch { /* TEMP-DIAG must never cause a second failure. */ }
       settingsEventLoop.close();
       reportExitDiagnostic('startup-failed');
       // No stack, token, provider key, raw body, or entire config in process messages.
