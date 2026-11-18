@@ -1,7 +1,921 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="469df5bfa0ba6db6bf730a960e2cc3475f70e8c387fa9e02756e09469d12f94c";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="724e9355ae38d46f8ff8e38faf62a01210fc14fb1ea62898c725607e876db3ff";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
+ "sequence.preview": {
+  "type": "object",
+  "properties": {
+   "actionId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "command": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "sync-board"
+       },
+       "newClipIds": {
+        "type": "object",
+        "additionalProperties": {
+         "type": "string",
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        }
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "board-version"
+       },
+       "nodeId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "versionId": {
+        "anyOf": [
+         {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "nodeId",
+       "versionId"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-version"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "versionId": {
+        "anyOf": [
+         {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "mode": {
+        "type": "string",
+        "enum": [
+         "follow",
+         "locked"
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "clipId",
+       "versionId",
+       "mode"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-remove"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       }
+      },
+      "required": [
+       "kind",
+       "clipId"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-add"
+       },
+       "clip": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         "nodeId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         "segmentGroupId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         "startFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+         },
+         "durationFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+         },
+         "sourceInFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+         },
+         "versionId": {
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         },
+         "locked": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "id",
+         "nodeId",
+         "segmentGroupId",
+         "startFrame",
+         "durationFrames",
+         "sourceInFrame"
+        ],
+        "additionalProperties": false
+       },
+       "beforeClipId": {
+        "anyOf": [
+         {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "nodeKind": {
+        "type": "string",
+        "enum": [
+         "shot",
+         "video",
+         "image"
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "clip",
+       "beforeClipId"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-split"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "offsetFrames": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000000
+       },
+       "rightClipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "rightSourceInFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000000
+       }
+      },
+      "required": [
+       "kind",
+       "clipId",
+       "offsetFrames",
+       "rightClipId"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-trim"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "durationFrames": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000000
+       },
+       "sourceInFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000000
+       }
+      },
+      "required": [
+       "kind",
+       "clipId",
+       "durationFrames"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-move"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "beforeClipId": {
+        "anyOf": [
+         {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "copyNodeId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       }
+      },
+      "required": [
+       "kind",
+       "clipId",
+       "beforeClipId"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-move-off-track"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "trackId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       },
+       "startFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000000
+       },
+       "copyNodeId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+       }
+      },
+      "required": [
+       "kind",
+       "clipId",
+       "trackId",
+       "startFrame"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "required": [
+   "command"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.commit": {
+  "type": "object",
+  "properties": {
+   "envelope": {
+    "type": "object",
+    "properties": {
+     "contractVersion": {
+      "type": "number",
+      "const": 1
+     },
+     "epoch": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+     },
+     "actionId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+     },
+     "filmId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+     },
+     "originSide": {
+      "type": "string",
+      "enum": [
+       "board",
+       "timeline"
+      ]
+     },
+     "intents": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "side": {
+         "type": "string",
+         "enum": [
+          "board",
+          "timeline"
+         ]
+        },
+        "operation": {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "enum": [
+            "board",
+            "sync-board",
+            "board-version",
+            "track"
+           ]
+          }
+         },
+         "required": [
+          "kind"
+         ],
+         "additionalProperties": true
+        }
+       },
+       "required": [
+        "side",
+        "operation"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 2
+     },
+     "subjectIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "board"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "subject-binding"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "create"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "subjectId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "subject",
+               "style"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "shotId",
+             "subjectId",
+             "role"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "set-mode"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "detach"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "restore"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "baseline": {
+      "type": "object",
+      "properties": {
+       "contentRevision": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "timelineRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+       },
+       "syncRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+       },
+       "historyPosition": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "historyRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+       },
+       "targets": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "enum": [
+            "shot",
+            "node",
+            "edge",
+            "clip",
+            "cue",
+            "subject_binding"
+           ]
+          },
+          "id": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "revision": {
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          }
+         },
+         "required": [
+          "kind",
+          "id",
+          "revision"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       }
+      },
+      "required": [
+       "contentRevision",
+       "timelineRevision",
+       "syncRevision",
+       "historyPosition",
+       "historyRevision",
+       "targets"
+      ],
+      "additionalProperties": false
+     },
+     "impact": {
+      "type": "object",
+      "properties": {
+       "nodeIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "edgeIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "mainTrackClipIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "otherTrackItemIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "subtitleCueIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "subjectBindingIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       }
+      },
+      "required": [
+       "nodeIds",
+       "edgeIds",
+       "mainTrackClipIds",
+       "otherTrackItemIds",
+       "subtitleCueIds"
+      ],
+      "additionalProperties": false
+     },
+     "allocation": {
+      "type": "object",
+      "properties": {
+       "clips": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "nodeId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "clipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "nodeId",
+          "clipId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       },
+       "nodes": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "fromNodeId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "nodeId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "fromNodeId",
+          "nodeId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       },
+       "splitClips": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "clipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "rightClipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "clipId",
+          "rightClipId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       },
+       "edges": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "id": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "fromId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "toId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "id",
+          "fromId",
+          "toId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       }
+      },
+      "required": [
+       "clips",
+       "nodes",
+       "splitClips",
+       "edges"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "contractVersion",
+     "epoch",
+     "actionId",
+     "filmId",
+     "originSide",
+     "intents",
+     "baseline",
+     "impact",
+     "allocation"
+    ],
+    "additionalProperties": false
+   },
+   "expectedPlanDigest": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   }
+  },
+  "required": [
+   "envelope",
+   "expectedPlanDigest"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.history.get": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.undo": {
+  "type": "object",
+  "properties": {
+   "actionId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "expected": {
+    "type": "object",
+    "properties": {
+     "position": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000000
+     },
+     "revision": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+     }
+    },
+    "required": [
+     "position",
+     "revision"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "actionId",
+   "expected"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.redo": {
+  "type": "object",
+  "properties": {
+   "actionId": {
+    "type": "string",
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+   },
+   "expected": {
+    "type": "object",
+    "properties": {
+     "position": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000000
+     },
+     "revision": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+     }
+    },
+    "required": [
+     "position",
+     "revision"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "actionId",
+   "expected"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
  "export.cancel": {
   "type": "object",
   "properties": {

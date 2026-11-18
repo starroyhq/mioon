@@ -825,6 +825,36 @@ export const operationMessages = {
     "en": "Query export progress and files",
     "ja": "書き出しの進捗とファイルを照会します"
   },
+  "operation.sequence.preview": {
+    "zh-Hans": "只读预览一条格式5主轨或画板同步命令，返回共享动作 envelope 和计划摘要；不写画板、时间线、回执或历史条目，首次可能创建统一历史游标",
+    "zh-Hant": "唯讀預覽一條格式5主軌或畫板同步命令，回傳共用動作 envelope 和計畫摘要；不寫畫板、時間軸、回執或歷史條目，首次可能建立統一歷史游標",
+    "en": "Read-only preview of one format-5 main-track or board sync command; returns the shared action envelope and plan digest without writing the board, timeline, receipt or history row",
+    "ja": "フォーマット5のメイントラックまたはボード同期コマンドを読み取り専用でプレビューし、共有アクション envelope と計画ダイジェストを返します。ボード、タイムライン、回執、履歴行は書き込みません"
+  },
+  "operation.sequence.commit": {
+    "zh-Hans": "只提交与预览计划摘要一致的共享格式5同步 envelope；一个事务写画板、时间线、基线、回执和历史，稳定请求重放不重复写",
+    "zh-Hant": "只提交與預覽計畫摘要一致的共用格式5同步 envelope；一個交易寫畫板、時間軸、基線、回執和歷史，穩定請求重放不重複寫",
+    "en": "Commit one shared format-5 sync envelope only when it matches the previewed plan digest; one transaction writes the board, timeline, baseline, receipt and history, and stable request replay does not write twice",
+    "ja": "プレビューした計画ダイジェストと一致する共有フォーマット5同期 envelope のみをコミットします。1つのトランザクションでボード、タイムライン、ベースライン、回執、履歴を書き込み、安定したリクエストの再実行では二重書き込みしません"
+  },
+  "operation.sequence.history.get": {
+    "zh-Hans": "只读查询格式5统一编辑历史的游标和当前撤销/重做动作摘要；不创建时间线、不写回执",
+    "zh-Hant": "唯讀查詢格式5統一編輯歷史的游標和目前復原/重做動作摘要；不建立時間軸、不寫回執",
+    "en": "Read-only read of the format-5 unified history cursor and current undo/redo action summaries; creates no timeline and writes no receipt",
+    "ja": "フォーマット5の統合編集履歴のカーソルと現在の元に戻す/やり直すアクション概要を読み取り専用で取得します。タイムラインを作成せず、回執も書き込みません"
+  },
+  "operation.sequence.undo": {
+    "zh-Hans": "按格式5统一历史游标撤销一个已保存动作；仅当动作、位置和修订仍匹配时写回原逆补丁并推进业务修订",
+    "zh-Hant": "依格式5統一歷史游標復原一個已儲存動作；僅當動作、位置和修訂仍符合時寫回原逆向補丁並推進業務修訂",
+    "en": "Undo one saved format-5 unified-history action only while its action, position and revision still match; writes the original inverse patch and advances business revisions",
+    "ja": "フォーマット5の統合履歴カーソルに従って保存済みアクションを1つ元に戻します。アクション、位置、リビジョンが一致する場合のみ元の逆パッチを書き込み、業務リビジョンを進めます"
+  },
+  "operation.sequence.redo": {
+    "zh-Hans": "按格式5统一历史游标重做一个已撤销动作，复用原正向补丁和身份；不重新规划或分配ID",
+    "zh-Hant": "依格式5統一歷史游標重做一個已復原動作，重用原正向補丁和身分；不重新規劃或分配ID",
+    "en": "Redo one undone format-5 unified-history action with its original forward patch and identity; never re-plans or allocates ids",
+    "ja": "フォーマット5の統合履歴カーソルに従って取り消したアクションをやり直し、元の順方向パッチと同一性を再利用します。再計画やID割り当ては行いません"
+  },
   "operation.timeline.get": {
     "zh-Hans": "读取持久化30fps多轨时间线；旧项目首次读取时仅创建空轨道",
     "zh-Hant": "讀取持久化30fps多軌時間軸；舊專案首次讀取時僅建立空軌道",
