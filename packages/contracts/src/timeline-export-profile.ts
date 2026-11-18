@@ -82,7 +82,7 @@ export const timelineExportCapabilityResultSchema=z.object({status:z.enum(['avai
 export const timelineExportCapabilitySchemas=Object.freeze({
  'timeline.export.capabilities':z.object({projectId:z.string().uuid(),expectedRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),exportSettings:timelineExportSettingsSchema}).strict(),
 });
-const issueCode=z.enum([...TIMELINE_EXPORT_CAPABILITY_CODES,'TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE'] as unknown as [string, ...string[]]);
+const issueCode=z.enum([...TIMELINE_EXPORT_CAPABILITY_CODES,'TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE','PLACEHOLDER_CLIP','VERSION_TOO_SHORT'] as unknown as [string, ...string[]]);
 export const timelineExportCapabilitiesResponseSchema=z.object({
  projectId:z.string().uuid(),timelineId:z.string().uuid().nullable(),timelineRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable(),
  expectedRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),exportSettings:timelineExportSettingsSchema,delivery:timelineExportDeliverySchema.nullable(),
@@ -99,7 +99,7 @@ export const timelineExportCapabilitiesResponseSchema=z.object({
  if(['available','unavailable','incomplete'].includes(value.status)){
   if(!value.delivery||value.timelineId===null||value.timelineRevision!==value.expectedRevision)fail();
   if(value.status==='available'?value.issues.length!==0:value.issues.length!==1||!timelineExportCapabilityResultSchema.safeParse({status:value.status,code:value.issues[0]?.code}).success)fail();
- }else if(value.issues.length!==1||!['TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE'].includes(value.issues[0]?.code))fail();
+ }else if(value.issues.length!==1||!['TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE','PLACEHOLDER_CLIP','VERSION_TOO_SHORT'].includes(value.issues[0]?.code))fail();
 });
 export type TimelineExportCapabilitiesResponse = z.infer<typeof timelineExportCapabilitiesResponseSchema>;
 export function isTimelineExportCapabilitiesResponse(value: unknown, input?: unknown): boolean {

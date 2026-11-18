@@ -228,3 +228,10 @@
 .edit-ui-notice-dismiss {
   color: var(--wb-muted) !important;
 }
+
+/* UI-E2 mounting: the confirmation sits above the timeline, the undo bar just
+ * inside its top edge. UI-E1's standalone fixture keeps its viewport-centered
+ * rules; the real workbench uses the measured timeline height variable. */
+.workbench-v2 .edit-ui-dialog-layer {inset: auto 0 auto 0; top: calc(100% - var(--timeline-h) - 72px); pointer-events: none;}
+.workbench-v2 .edit-ui-copy-move {top: 0; left: 0; transform: none; margin: 0 auto;}
+.workbench-v2 .edit-ui-notice {top: auto; bottom: calc(var(--timeline-h) - 54px);}

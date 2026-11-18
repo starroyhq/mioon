@@ -63,6 +63,7 @@ import type {GenerationAsset,GenerationJob,GenerationRecord,GenerationShot,Gener
 import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
+import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
@@ -562,6 +563,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  });
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
+ const sequenceEdit=createFormat5SequenceEditService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
@@ -703,6 +705,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...previs.handlers,
   ...inspection.handlers,
   ...timeline.handlers,
+  'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
+  'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
+  'sequence.history.get':(input: ServiceRow)=>sequenceEdit.history(input as never),
+  'sequence.undo':(input: ServiceRow)=>sequenceEdit.undo(input as never),
+  'sequence.redo':(input: ServiceRow)=>sequenceEdit.redo(input as never),
   ...references.handlers,
   ...localMutations.handlers,
   ...projectHome.handlers,

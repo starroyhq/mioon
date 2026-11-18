@@ -146,7 +146,9 @@ const volumeEnvelope=z.custom(value=>isVolumeEnvelope(value,18000),{message:'Inv
 const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRoleSchema.optional(),colour:clipColourSchema.optional(),trackId:id,name:z.string().min(1).max(200),startFrame:frame,durationFrames,sourceInFrame:sourceFrame,rect,gain:z.number().finite().min(0).max(2),
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
+import {sequenceEditRpcSchemas} from './sequence-edit-rpc.ts';
 export const schemas={
+...sequenceEditRpcSchemas,
 ...exportControlSchemas,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
