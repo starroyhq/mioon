@@ -2,16 +2,19 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {spawnSync} from 'node:child_process';
+import {readdirSync} from 'node:fs';
 import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, rename, symlink} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import ts from 'typescript';
 import {parseArguments, installedTypeScript, typecheckCommands, verifySourceLanguages, executeCommand, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const version = '6.0.3';
 const metadata = {name: 'typescript', version, bin: {tsc: './bin/tsc', tsserver: './bin/tsserver'}};
-const projects = ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'];
+const projects = ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json',
+  'tests/tsconfig.tests-runtime.json', 'tests/tsconfig.tests-media.json'];
 const directoryLink = (target: string, link: string) => symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');
 
 async function fixture(t: TestContext, compiler = "process.stdout.write(JSON.stringify(process.argv.slice(2)) + '\\n');\n") {
@@ -61,7 +64,7 @@ test('local TypeScript requires the exact declared metadata and reviewed JavaScr
   const {directory} = await fixture(t);
   assert.deepEqual(await installedTypeScript(directory), {version, entry: path.join(directory, 'node_modules/typescript/lib/tsc.js')});
   assert.deepEqual(await typecheckCommands(directory), projects.map(project => ({command: process.execPath,
-    args: [`--max-old-space-size=${project === 'tests/tsconfig.tests.json' ? 5120 : 4096}`, path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
+    args: [`--max-old-space-size=4096`, path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
 });
 
 test('normal pnpm package links remain within the repository and use the canonical compiler entry', async t => {
@@ -176,20 +179,60 @@ test('runtime TSX outside the browser and unchecked alternate TypeScript extensi
 test('fixed compiler projects cover all runtime TypeScript without legacy browser exclusions', async () => {
   const foundation = JSON.parse(await readFile(path.join(root, projects[0]), 'utf8'));
   const browser = JSON.parse(await readFile(path.join(root, projects[1]), 'utf8'));
-  const testsProject = JSON.parse(await readFile(path.join(root, projects[2]), 'utf8'));
   assert.deepEqual(foundation.include, ['../../.github/scripts/**/*.ts', '../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(foundation.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx', 'timeline-mix-loudness.consumer.tsx', 'timeline-clip-loudness.consumer.tsx', 'timeline-loudness-apply.consumer.tsx']);
   assert.deepEqual(browser.exclude, []);
-  assert.deepEqual(testsProject.include, ['./**/*.ts', './**/*.tsx', '../apps/web/src/style-modules.d.ts']);
-  assert.deepEqual(testsProject.exclude, ['./helpers/timeline-mix-loudness-ui-fixture.ts', './typecheck/**']);
-  for (const config of [foundation, browser, testsProject]) {
+  const testsRuntime = JSON.parse(await readFile(path.join(root, projects[2]), 'utf8'));
+  const testsMedia = JSON.parse(await readFile(path.join(root, projects[3]), 'utf8'));
+  assert.deepEqual(testsMedia.include, ['./**/*.ts', './**/*.tsx', '../apps/web/src/style-modules.d.ts']);
+  assert.equal(testsMedia.exclude[0], './helpers/timeline-mix-loudness-ui-fixture.ts');
+  assert.equal(testsMedia.exclude[1], './typecheck/**');
+  assert.ok(testsRuntime.include.at(-1) === '../apps/web/src/style-modules.d.ts');
+  for (const config of [foundation, browser, testsRuntime, testsMedia]) {
     assert.equal(config.compilerOptions.strict, true); assert.equal(config.compilerOptions.noEmit, true);
     assert.equal(config.compilerOptions.erasableSyntaxOnly, true); assert.equal(config.compilerOptions.skipLibCheck, false);
   }
-  assert.deepEqual(testsProject.compilerOptions.lib, ['ES2022', 'ES2023.Array', 'ES2024.Promise', 'ES2024.String', 'DOM', 'DOM.Iterable']);
-  assert.equal(testsProject.compilerOptions.jsx, 'react-jsx');
-  assert.deepEqual(testsProject.compilerOptions.types, ['node', 'react', 'react-dom']);
+  for (const config of [testsRuntime, testsMedia]) {
+    assert.deepEqual(config.compilerOptions.lib, ['ES2022', 'ES2023.Array', 'ES2024.Promise', 'ES2024.String', 'DOM', 'DOM.Iterable']);
+    assert.equal(config.compilerOptions.jsx, 'react-jsx');
+    assert.deepEqual(config.compilerOptions.types, ['node', 'react', 'react-dom']);
+  }
+  assert.deepEqual(stripConfigPath(testsRuntime.compilerOptions), stripConfigPath(testsMedia.compilerOptions));
+});
+
+function stripConfigPath(options: Record<string, unknown>): Record<string, unknown> {
+  const {configFilePath: _ignored, ...rest} = options;
+  return rest;
+}
+function portableRelative(file: string): string {
+  return path.relative(root, file).split(path.sep).join('/');
+}
+function catalogFiles(directory = path.join(root, 'tests')): string[] {
+  return readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) return entry.name === 'typecheck' ? [] : catalogFiles(file);
+    if (!entry.isFile() || !/\.(?:ts|tsx)$/u.test(entry.name) || entry.name === 'timeline-mix-loudness-ui-fixture.ts') return [];
+    return [portableRelative(file)];
+  });
+}
+test('split strict test projects cover every current test exactly once', async () => {
+  const parsedProjects = await Promise.all(projects.slice(2).map(async project => {
+    const configFile = path.join(root, project);
+    const config = ts.readConfigFile(configFile, ts.sys.readFile);
+    assert.equal(config.error, undefined);
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configFile));
+    assert.deepEqual(parsed.errors, []);
+    return parsed.fileNames.map(portableRelative);
+  }));
+  const union = parsedProjects.flat();
+  const expected = [...catalogFiles(), 'apps/web/src/style-modules.d.ts'].sort();
+  assert.deepEqual([...new Set(union)].sort(), expected);
+  assert.equal(union.filter(file => file.endsWith('.test.ts')).length, expected.filter(file => file.endsWith('.test.ts')).length);
+  const shared = union.filter((file, index) => union.indexOf(file) !== index);
+  assert.deepEqual(shared, ['apps/web/src/style-modules.d.ts']);
+  assert.deepEqual(parsedProjects[0]!.filter(file => file.endsWith('.test.ts')).length + parsedProjects[1]!.filter(file => file.endsWith('.test.ts')).length,
+    expected.filter(file => file.endsWith('.test.ts')).length);
 });
 
 test('source symlink directories cannot hide new JavaScript from the language guard', async t => {
@@ -200,7 +243,7 @@ test('source symlink directories cannot hide new JavaScript from the language gu
   await assert.rejects(verifySourceLanguages(local.directory), {code: 'TYPECHECK_SOURCE_POLICY_INVALID'});
 });
 
-test('actual standalone typecheck CLI runs three fixed checks without application/build/media prerequisites', async t => {
+test('actual standalone typecheck CLI runs four fixed checks without application/build/media prerequisites', async t => {
   const {directory} = await fixtureCli(t);
   const result = runCli(directory, ['typecheck']);
   assert.equal(result.status, 0);
@@ -209,7 +252,7 @@ test('actual standalone typecheck CLI runs three fixed checks without applicatio
     projects.map(project => ['--project', project, '--noEmit', '--pretty', 'false']));
 });
 
-test('desktop timing scope observes all three real compiler commands without changing their arguments', async t => {
+test('desktop timing scope observes all four real compiler commands without changing their arguments', async t => {
   const {directory, file} = await fixtureCli(t);
   await file('scripts/timed-typecheck.ts', "import {main} from './tooling.ts';\nimport {withDesktopTypecheckTiming} from './lib/build-timings.ts';\nprocess.exitCode = await withDesktopTypecheckTiming(() => main(['typecheck']));\n");
   const result = runCli(directory, [], 'scripts/timed-typecheck.ts');
@@ -218,7 +261,8 @@ test('desktop timing scope observes all three real compiler commands without cha
   assert.deepEqual(lines.filter(line => !line.startsWith(prefix)).map(line => JSON.parse(line)),
     projects.map(project => ['--project', project, '--noEmit', '--pretty', 'false']));
   const timings = lines.filter(line => line.startsWith(prefix)).map(line => JSON.parse(line.slice(prefix.length)) as Record<string, unknown>);
-  assert.deepEqual(timings.map(record => record.stage), ['desktop-typecheck-foundation', 'desktop-typecheck-browser', 'desktop-typecheck-tests']);
+  assert.deepEqual(timings.map(record => record.stage), ['desktop-typecheck-foundation', 'desktop-typecheck-browser',
+    'desktop-typecheck-tests-runtime', 'desktop-typecheck-tests-media']);
   for (const record of timings) {
     assert.deepEqual(Object.keys(record), ['schema', 'stage', 'durationMs', 'result', 'exitCode']);
     assert.equal(record.schema, 1); assert.equal(record.result, 'success'); assert.equal(record.exitCode, 0);
@@ -244,7 +288,7 @@ test('actual compiler children use a fixed bounded heap without caller-provided 
   const rows = result.stdout.trim().split('\n').map(line => JSON.parse(line) as {project: string; execArgv: string[]; heap: number});
   assert.deepEqual(rows.map(row => row.project), projects);
   for (const row of rows) {
-    const budget = row.project === 'tests/tsconfig.tests.json' ? 5120 : 4096;
+    const budget = 4096;
     assert.deepEqual(row.execArgv, [`--max-old-space-size=${budget}`]);
     // V8 adds platform-dependent young-generation headroom to the old-space cap.
     assert.ok(row.heap >= budget * 1024 * 1024 && row.heap <= (budget + 512) * 1024 * 1024, `compiler heap: ${row.heap}`);

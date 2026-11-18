@@ -2,10 +2,10 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {performance} from 'node:perf_hooks';
 
 export const BUILD_COMMAND_TIMING_STAGES = Object.freeze([
-  'typecheck-foundation', 'typecheck-browser', 'typecheck-tests', 'web-bundle', 'desktop-build',
+  'typecheck-foundation', 'typecheck-browser', 'typecheck-tests-runtime', 'typecheck-tests-media', 'web-bundle', 'desktop-build',
 ] as const);
 export const DESKTOP_TYPECHECK_TIMING_STAGES = Object.freeze([
-  'desktop-typecheck-foundation', 'desktop-typecheck-browser', 'desktop-typecheck-tests',
+  'desktop-typecheck-foundation', 'desktop-typecheck-browser', 'desktop-typecheck-tests-runtime', 'desktop-typecheck-tests-media',
 ] as const);
 export const BUILD_TIMING_STAGES = Object.freeze([
   ...BUILD_COMMAND_TIMING_STAGES, ...DESKTOP_TYPECHECK_TIMING_STAGES,

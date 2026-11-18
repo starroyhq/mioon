@@ -506,7 +506,8 @@ test('the full build checks TypeScript once and reuses private evidence for stag
   const result = runFixtureCli(directory, ['build', '--channel=development']);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual((await readFile(projectLog, 'utf8')).trim().split('\n'),
-    ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json']);
+    ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json',
+      'tests/tsconfig.tests-runtime.json', 'tests/tsconfig.tests-media.json']);
   const staging = JSON.parse(await readFile(report, 'utf8')) as {reused: boolean; evidence: string | null};
   assert.equal(staging.reused, true);
   assert.equal(typeof staging.evidence, 'string');
