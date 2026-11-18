@@ -15,6 +15,7 @@ node scripts/tooling.ts build --channel=development
 node scripts/tooling.ts test
 node scripts/tooling.ts test --suite=portable --concurrency=1
 node scripts/tooling.ts test --suite=full --concurrency=1
+node scripts/tooling.ts test --suite=full-darwin --concurrency=3
 node scripts/tooling.ts test --suite=portable --file=agent-protocol.test.ts
 ```
 
@@ -24,7 +25,7 @@ Use development staging for local desktop builds and tests. The desktop release 
 
 - **Doctor:** checks Node, root/desktop metadata, exact installed dependency versions, in-memory SQLite and bounded FFmpeg/ffprobe version responses. It also reports a separate, advisory static pnpm version observation. It does not open a workspace, read credentials/user settings, initialize a token, install, repair permissions or call a provider. Explicit `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` overrides are honored by the existing media runner; otherwise its ordinary executable lookup applies. Version probes do not verify codecs, render correctness or native Electron runtime availability.
 - **Build:** validates prerequisites, runs the complete TypeScript check once, then invokes the verified local Vite JavaScript entrypoint and the existing desktop staging build, strictly serially. The staging step repeats the check only when it cannot confirm a private, owned evidence file from this build for the same source fingerprint; a standalone desktop staging run still checks itself. The Vite heap budget is passed as a Node argument (768 MiB), not an inline shell environment assignment. Failure or interruption stops the sequence; there is no retry, automatic installation, signing or packaging. Ordinary staging output is still replaced as before after preflight passes.
-- **Tests:** portable is the default. Files come from a reviewed explicit manifest, or an explicit sorted directory enumeration for the full lane. `--file` accepts only existing basename entries within the chosen lane (`.test.ts`); no globs, traversal, arbitrary command strings or silently missing tests. Concurrency defaults to 1 and accepts 1–4. The current argument budget is 131,072 characters and at most 2,048 files; select smaller groups if a future suite exceeds it.
+- **Tests:** portable is the default. Files come from a reviewed explicit manifest, or an explicit sorted directory enumeration for the complete catalog. The complete catalog has a reviewed platform entry: `--suite=full` is Linux-only and `--suite=full-darwin` is the explicit macOS entry; neither entry runs on the other platform. `--file` accepts only existing basename entries within the chosen lane (`.test.ts`); no globs, traversal, arbitrary command strings or silently missing tests. Concurrency defaults to 1 and accepts 1–4. The current argument budget is 131,072 characters and at most 2,048 files; select smaller groups if a future suite exceeds it. Test children on macOS use `/private/tmp` as `TMPDIR` instead of the default `/var/folders` path, which traverses the `/var` symlink and is rejected by the reviewed private-storage path policy. The CI shard driver applies a per-file deadline (three times the recorded time plus two minutes, a 10-minute floor and 35 minutes for unrecorded files) and runs the `full-darwin` entry on macOS.
 
 ### First-run diagnostics
 

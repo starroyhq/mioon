@@ -1,7 +1,7 @@
 import {mkdir, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, toolingEnvironment} from './lib/local-tooling.ts';
+import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, testEnvironment, toolingEnvironment} from './lib/local-tooling.ts';
 import {BUILD_COMMAND_TIMING_STAGES, DESKTOP_TYPECHECK_TIMING_STAGES, hasDesktopTypecheckTiming, measureBuildStage} from './lib/build-timings.ts';
 import {createTypecheckEvidence, removeTypecheckEvidence, type OwnedTypecheckEvidence} from './lib/typecheck-evidence.ts';
 
@@ -51,7 +51,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
             return undefined;
           });
         }
-        const env = {...toolingEnvironment(process.env, {mediaPaths: options.command === 'test'}),
+        const env = {...(options.command === 'test' ? testEnvironment(process.env) : toolingEnvironment(process.env)),
           ...(index === stagingIndex && typecheckEvidence ? typecheckEvidence.environment : {})};
         const run = async () => options.command === 'test' && options.compileCache
           ? await (await import('./lib/test-compile-cache.ts')).withOwnedTestCompileCache(env, cachedEnv => executeCommand(command, {env: cachedEnv}))

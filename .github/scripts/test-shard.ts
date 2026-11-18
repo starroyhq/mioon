@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {discoverTests, preflight, toolingEnvironment} from '../../scripts/lib/local-tooling.ts';
+import {discoverTests, preflight, testEnvironment, type TestSuite} from '../../scripts/lib/local-tooling.ts';
 import {runShardFiles} from './test-shard-runner.ts';
 
 export interface ShardOptions {index: number; count: number; concurrency?: number}
@@ -133,6 +133,15 @@ export function shardReport(full: readonly string[], options: ShardOptions, sour
     fullCount: sorted.length, shardIndex: options.index, shardCount: options.count, selectedCount: files.length, estimatedSeconds, files,
     exclusiveFiles: files.filter(file => exclusive.has(file))};
 }
+/** The complete catalog has a reviewed platform entry: Linux keeps `full`,
+ * macOS must use the explicit `full-darwin` suite (nightly macOS lane). */
+export function fullSuiteForPlatform(platform: NodeJS.Platform = process.platform): Extract<TestSuite, 'full' | 'full-darwin'> {
+  return platform === 'darwin' ? 'full-darwin' : 'full';
+}
+/** Shard evidence directory; Linux keeps the existing names consumed by CI. */
+export function shardArtifactDirectory(index: number, platform: NodeJS.Platform = process.platform): string {
+  return `artifacts/checks-${platform === 'darwin' ? 'macos' : 'linux'}-${index}`;
+}
 export function shardFileTimeoutMs(seconds: number | undefined): number {
   // Before per-file deadlines, H1E finished in 332.51 s on a 108.22 s
   // recording. Leave two minutes beyond triple the recording, with a 10 min floor.
@@ -148,16 +157,17 @@ export function shardPhases(report: Pick<ShardReport, 'files' | 'exclusiveFiles'
 }
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number> {
   const options = parseShardArguments(args), root = fileURLToPath(new URL('../../', import.meta.url));
-  const full = await discoverTests(root, {suite: 'full'});
-  const environment = toolingEnvironment(process.env, {mediaPaths: true});
+  const suite = fullSuiteForPlatform();
+  const full = await discoverTests(root, {suite});
+  const environment = testEnvironment(process.env);
   const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, env: environment, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
   const timingsText = await readFile(path.join(root, TIMINGS_FILE), 'utf8');
   const timings = parseTestTimings(timingsText);
   const report = shardReport(full, options, sourceSha, timings, timingsText);
   // Reuse the full lane's own selection validation before launching any test.
-  const admitted = await discoverTests(root, {suite: 'full', files: report.files.map(file => file.slice('tests/'.length))});
+  const admitted = await discoverTests(root, {suite, files: report.files.map(file => file.slice('tests/'.length))});
   if (JSON.stringify(admitted) !== JSON.stringify(report.files)) fail('SHARD_SELECTION_MISMATCH');
-  const output = path.join(root, `artifacts/checks-linux-${options.index}/shard.json`);
+  const output = path.join(root, shardArtifactDirectory(options.index), 'shard.json');
   await mkdir(path.dirname(output), {recursive: true});
   await writeFile(output, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
   process.stdout.write(`Full test shard ${options.index}/${options.count}: ${report.selectedCount}/${report.fullCount} files (${report.exclusiveFiles.length} alone), about ${report.estimatedSeconds} s, ${options.concurrency ?? 1} at a time; catalog SHA256 ${report.fullListSha256}\n`);
