@@ -160,9 +160,9 @@ process.parentPort.on('message', ({ data, ports }) => {
         const temp = process.env.TEMP;
         if (typeof temp === 'string' && path.isAbsolute(temp)) {
           const {appendFileSync} = await import('node:fs');
-          const coded = error as {name?: unknown; code?: unknown; message?: unknown; stack?: unknown};
+          const coded = error as {name?: unknown; code?: unknown; reason?: unknown; message?: unknown; stack?: unknown};
           const detail = error instanceof Error
-            ? `${String(coded.name)}:${typeof coded.code === 'string' ? coded.code : ''}:${error.message}\n${String(coded.stack ?? '').split('\n').slice(0, 8).join('\n')}`
+            ? `${String(coded.name)}:${typeof coded.code === 'string' ? coded.code : ''}:${typeof coded.reason === 'string' ? coded.reason : ''}:${error.message}\n${String(coded.stack ?? '').split('\n').slice(0, 8).join('\n')}`
             : 'non-error';
           appendFileSync(path.join(temp, 'mioon-backend-startup-stage.txt'), `stage=${startupStage}\n${detail}\n`);
         }
