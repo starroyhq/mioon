@@ -479,3 +479,4 @@ export function getGenerationIssue(snapshot: unknown, capabilities: unknown): Ge
 export {ASSET_ANNOTATION_LIMITS,assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from './asset-annotations.ts';
 
 export * from './agent-tasks-v2.ts';
+export * from './timeline-time-map.ts';
