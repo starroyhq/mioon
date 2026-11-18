@@ -44,6 +44,10 @@ export const sequenceHistoryViewResponseSchema = z.object({
   undo: sequenceEditHistoryActionSchema.nullable(), redo: sequenceEditHistoryActionSchema.nullable(),
   conflict: z.boolean(), undoConflict: z.boolean(), redoConflict: z.boolean(),
   undoAvailable: z.boolean(), redoAvailable: z.boolean(),
+  /** Lowest retained history position, or null while the stack is empty. */
+  earliestPosition: z.number().int().safe().min(1).nullable(),
+  /** No retained action can be undone any further. */
+  atEarliest: z.boolean(),
 }).strict();
 export interface SequenceHistoryViewResponse extends SequenceEditHistoryView {
   readonly projectId: string;
@@ -52,6 +56,8 @@ export interface SequenceHistoryViewResponse extends SequenceEditHistoryView {
   readonly redoConflict: boolean;
   readonly undoAvailable: boolean;
   readonly redoAvailable: boolean;
+  readonly earliestPosition: number | null;
+  readonly atEarliest: boolean;
 }
 
 export const sequenceEditingResponses = Object.freeze({

@@ -9,7 +9,7 @@ import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import {format5SyncBaselineSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {
-  applySequenceEditBaselineChange, isSequenceEditIntentSequence, sequenceEditOperationName,
+  applySequenceEditBaselineChange, isSequenceEditIntentSequence, sequenceEditEnvelopeOperationName, sequenceEditOperationName,
 } from '../../contracts/src/sequence-edit.ts';
 import type {
   BoardSeamProjectionPort, SequenceEditAffectedCounts, SequenceEditAllocation, SequenceEditBaselineChange,
@@ -29,7 +29,8 @@ import {
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
-  readSequenceEditHistoryEntry, sequenceEditInputDigest, writeSequenceEditAction, writeSequenceEditFailure,
+  readSequenceEditHistoryEntry, sequenceEditHistoryFloor, sequenceEditInputDigest, writeSequenceEditAction,
+  writeSequenceEditFailure,
 } from './format5-editor-history.ts';
 import type {SequenceEditHistoryState, SequenceEditReceiptDraft} from './format5-editor-history.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
@@ -371,6 +372,9 @@ function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, f
 }
 
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mode: 'forward' | 'restore'): void {
+  if ([...delta.writes, ...delta.removals].some(entity => entity.kind === 'subject_binding')) {
+    fail('SEQUENCE_EDIT_CONTRACT_INVALID', '主体绑定行由 SB 卡接线后恢复。', [], {reason: 'SUBJECT_SEAM'});
+  }
   for (const entity of delta.removals) {
     const table = tableOf(entity.kind);
     const removed = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
@@ -503,6 +507,7 @@ function assertEnvelope(store: ProjectStore, context: EditContext, envelope: Seq
   state: SequenceEditHistoryState): void {
   if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
   if (envelope.filmId !== context.rootNodeId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '成片根与时间线不一致。', [envelope.filmId, context.rootNodeId]);
+  if (envelope.subjectIntent) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '主体绑定动作由 SB 卡接线后处理。', [], {reason: 'SUBJECT_SEAM'});
   if (!isSequenceEditIntentSequence(envelope.intents)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '动作组合无效。');
   for (const intent of envelope.intents) validateOperation(intent);
   const stamp = contentStamp(store);
@@ -575,7 +580,7 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     const context = editContextOf(syncContext);
     const prepared = prepareSequenceEditHistory(store, envelope.epoch);
     assertEnvelope(store, context, envelope, prepared.state);
-    const operation = sequenceEditOperationName(envelope.intents);
+    const operation = sequenceEditEnvelopeOperationName(envelope);
     const requestDigest = inputDigest;
     const allocatedCopyIds = new Set(envelope.allocation.nodes.map(item => item.nodeId));
     const referenced = referencedNodeIds(envelope);
@@ -713,6 +718,10 @@ export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' 
     if (request.expected.position !== prepared.state.position || request.expected.revision !== prepared.state.revision) {
       fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state: prepared.state});
     }
+    const floor = sequenceEditHistoryFloor(store);
+    if (direction === 'undo' && (floor === null || prepared.state.position < floor)) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '已经到最早可撤销的一步。', [], {reason: 'EARLIEST', floor});
+    }
     const targetPosition = direction === 'undo' ? prepared.state.position : prepared.state.position + 1;
     const entry = readSequenceEditHistoryEntry(store, request.actionId);
     if (!entry || entry.position !== targetPosition) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
@@ -747,10 +756,13 @@ export interface SequenceEditHistoryProjection extends SequenceEditHistoryView {
   readonly redoConflict: boolean;
   readonly undoAvailable: boolean;
   readonly redoAvailable: boolean;
+  readonly earliestPosition: number | null;
+  readonly atEarliest: boolean;
 }
 export function readSequenceEditHistory(store: ProjectStore): SequenceEditHistoryProjection {
   assertFormat5(store);
   const prepared = prepareSequenceEditHistory(store);
+  const floor = sequenceEditHistoryFloor(store);
   const undoEntry = prepared.view.undo ? readSequenceEditHistoryEntry(store, prepared.view.undo.actionId) : null;
   const redoEntry = prepared.view.redo ? readSequenceEditHistoryEntry(store, prepared.view.redo.actionId) : null;
   const stale = (entry: SequenceEditHistoryEntry | null, patch: SequenceEditStateDelta | null): boolean =>
@@ -759,9 +771,11 @@ export function readSequenceEditHistory(store: ProjectStore): SequenceEditHistor
   const redoConflict = stale(redoEntry, redoEntry?.beforePatch ?? null);
   const action = (entry: SequenceEditHistoryEntry | null) => entry
     ? {actionId: entry.actionId, operation: entry.operation, affected: entryAffected(entry)} : null;
+  const atEarliest = floor === null || prepared.state.position < floor;
   return {...prepared.view, projectId: store.projectId, undo: action(undoEntry), redo: action(redoEntry),
     conflict: undoConflict || redoConflict, undoConflict, redoConflict,
-    undoAvailable: !!undoEntry && !undoConflict, redoAvailable: !!redoEntry && !redoConflict};
+    undoAvailable: !!undoEntry && !undoConflict, redoAvailable: !!redoEntry && !redoConflict,
+    earliestPosition: floor, atEarliest};
 }
 
 // ---------------------------------------------------------------------------

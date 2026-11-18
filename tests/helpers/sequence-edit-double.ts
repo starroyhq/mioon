@@ -24,6 +24,8 @@ export interface VersionFixture {
   readonly assetId: string;
   readonly sha256: string;
   readonly durationSeconds: number;
+  /** Owner shot for a version that is not the owner's selected version. */
+  readonly shotId?: string;
 }
 export interface ChainWorld {
   readonly store: ProjectStore;
@@ -121,8 +123,8 @@ export function createChainWorld(t: test.TestContext, spec: ChainWorldSpec): Cha
   for (const fixture of spec.versions ?? []) {
     assets.set(fixture.assetId, {id: fixture.assetId, projectId, mimeType: 'video/mp4', duration: fixture.durationSeconds,
       sha256: fixture.sha256, name: 'source.mp4'});
-    versions.set(fixture.versionId, {id: fixture.versionId, projectId, shotId: '', jobId: uuid(), assetId: fixture.assetId,
-      sha256: fixture.sha256, number: 1, createdAt: at});
+    versions.set(fixture.versionId, {id: fixture.versionId, projectId, shotId: fixture.shotId ?? '', jobId: uuid(),
+      assetId: fixture.assetId, sha256: fixture.sha256, number: 1, createdAt: at});
   }
   for (const shot of spec.shots) {
     const version = typeof shot.versionId === 'string' ? versions.get(shot.versionId) : undefined;
