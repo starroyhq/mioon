@@ -1,3 +1,4 @@
+import {mcpOperationCatalog,isMcpOperationAllowed} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import type {SchemaNode} from './helpers/strict-timeline-audio-types.ts';
 import test from 'node:test';
@@ -154,12 +155,12 @@ test('offline CLI schema and official MCP list/schema expose identical inspectio
     return envelope;
   };
   const tools = (await client.listTools()).tools;
-  assert.deepEqual(tools.map(tool => tool.name).sort(), [...Object.keys(clientSchemas).map(operation => operation.replaceAll('.', '_')), 'mioon_doctor', 'mioon_capabilities', 'mioon_schema'].sort());
+  assert.deepEqual(tools.map(tool => tool.name).sort(), [...Object.keys(clientSchemas).filter(isMcpOperationAllowed).map(operation => operation.replaceAll('.', '_')), 'mioon_doctor', 'mioon_capabilities', 'mioon_schema'].sort());
   const cliCatalog = await cli() as Extract<ReturnType<typeof discoverSchema>,{operations:unknown}>, mcpCatalog = await call('mioon_schema');
   assert.equal(mcpCatalog.ok, true);
-  assert.deepEqual(mcpCatalog.data, cliCatalog);
+  assert.deepEqual(mcpCatalog.data, mcpOperationCatalog(cliCatalog));
   assert.deepEqual(cliCatalog, discoverSchema());
-  for (const operation of Object.keys(clientSchemas)) {
+  for (const operation of Object.keys(clientSchemas).filter(isMcpOperationAllowed)) {
     const definition = cliCatalog.operations.find((item: { operation: string; }) => item.operation === operation);
     const tool = tools.find(item => item.name === definition!.toolName);
     assert.deepEqual(tool!.inputSchema, definition!.inputSchema);

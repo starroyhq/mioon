@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
 import {databaseFiles,dataFileSnapshot} from './helpers/data-file-snapshot.ts';
@@ -272,7 +273,7 @@ function downloadName(header: string|null) {
 test('named delivery discovery stays identical in offline CLI and official MCP and does not expand unrelated operations', {timeout: 45_000}, async (t: test.TestContext) => {
   const catalog = discoverSchema() as Extract<ReturnType<typeof discoverSchema>,{operations:unknown}>; assert.deepEqual(success(await cli(undefined, ['schema'])), catalog);
   const official: Awaited<ReturnType<typeof officialMcp>> = await officialMcp(t), tools = (await official.client.listTools()).tools;
-  assert.deepEqual(success(await official.call('mioon_schema', {})), catalog);
+  assert.deepEqual(success(await official.call('mioon_schema', {})), mcpOperationCatalog(catalog));
   for (const operation of ['timeline.render', 'timeline.export.preflight', 'timeline.export.capabilities', 'export.create']) {
     const definition = catalog.operations.find((item: { operation: string; }) => item.operation === operation);
     const tool = tools.find(item => item.name === operation.replaceAll('.', '_'));

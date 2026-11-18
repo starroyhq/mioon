@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -88,7 +89,7 @@ async function mcpFixture(t: test.TestContext, env: {MIOON_BASE_URL?: string; MI
 
 test('fade CLI and official MCP schemas are optional, strict, offline and retain existing operation effects', {timeout: 60000}, async t => {
   const mcp = await mcpFixture(t), catalog = await cli(['schema']);
-  assert.deepEqual(await mcp.call('mioon_schema', {}), catalog);
+  assert.deepEqual(await mcp.call('mioon_schema', {}), mcpOperationCatalog(catalog));
   const tools = ((await mcp.client.listTools() as {tools:TestTool[]})).tools;
   const timelineOperations = ['timeline.audioPreview.continuousPlan', 'timeline.colour.source.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.audioPreview.plan', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.format.get', 'timeline.format.set', 'timeline.get', 'timeline.inspect', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.loudness.apply', 'timeline.undo', 'timeline.redo', 'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.render', 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform', 'timeline.clip.setTransition'];
   assert.deepEqual(catalog.operations.filter((item) => item.operation.startsWith('timeline.')).map((item) => item.operation).sort(), timelineOperations.sort(), 'timeline discovery includes explicit source replacement and ripple removal alongside existing fade fields');
@@ -133,7 +134,8 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
     const {requestId, ...missingKey} = inputWith({fadeInFrames: 0});
     assert.deepEqual(await mcp.call(tool.name, missingKey, 'VALIDATION_ERROR'), await cli([...operation.split('.'), '--input', JSON.stringify(missingKey)], {}, 'VALIDATION_ERROR'));
   }
-  for (const name of (['project_get', 'timeline_get'] as const)) assert.equal(((tools.find(item => item.name === name))!.annotations)!.readOnlyHint, false, 'legacy full reads retain lazy timeline creation');
+  assert.equal(tools.find(item=>item.name==='project_get'),undefined,'project browsing is a user-only entry');
+  assert.equal(tools.find(item=>item.name==='timeline_get')!.annotations!.readOnlyHint,false,'legacy timeline reads retain lazy creation');
   assert.equal(((tools.find(item => item.name === 'timeline_inspect'))!.annotations)!.readOnlyHint, true);
 });
 

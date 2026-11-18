@@ -2,6 +2,24 @@ import type {MessageCatalog } from '../types.ts';
 
 /** Localized operation prose only; operation names, schemas and effect contracts stay unchanged. */
 export const operationMessages = {
+  "operation.canvas.copy.snapshot": {
+    "zh-Hans": "按白名单选择建立当前项目的有界画板复制快照，不返回快照内容",
+    "zh-Hant": "依白名單選取建立目前專案的有限畫板複製快照，不傳回快照內容",
+    "en": "Create a bounded canvas copy snapshot from an allowlisted selection in the current project, without returning its contents",
+    "ja": "現在のプロジェクトの許可された選択範囲から上限付きのキャンバスコピースナップショットを作成します。内容は返しません"
+  },
+  "operation.image.service.list": {
+    "zh-Hans": "读取可用的图片服务及其公开配置元数据，不返回凭证",
+    "zh-Hant": "讀取可用的圖片服務及其公開設定中繼資料，不傳回憑證",
+    "en": "List available image services and their public configuration metadata, without credentials",
+    "ja": "利用可能な画像サービスと公開設定メタデータを一覧表示します。認証情報は返しません"
+  },
+  "operation.asset.media.location.list": {
+    "zh-Hans": "读取有界素材的位置类别和项目内外状态，不返回文件路径或授权票据",
+    "zh-Hant": "讀取有限素材的位置類別和專案內外狀態，不傳回檔案路徑或授權票據",
+    "en": "Read bounded asset location categories and project-relative status, without file paths or authorization tickets",
+    "ja": "素材の場所の種類とプロジェクト内外の状態を上限付きで確認します。ファイルパスや認可チケットは返しません"
+  },
   "operation.asset.media.status.list": {
     "zh-Hans": "读取有界素材引用状态，不读取未确认位置的媒体内容",
     "zh-Hant": "讀取有限素材引用狀態，不讀取未確認位置的媒體內容",

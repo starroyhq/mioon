@@ -1,3 +1,4 @@
+import {isMcpOperationAllowed} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -94,8 +95,8 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('frame.task.recoverResult') + 1, 0, 'scene.detect', 'scene.request.get', 'scene.task.get', 'scene.task.list', 'scene.task.cancel', 'scene.result.get', 'scene.cuts.save', 'scene.shots.create', 'scene.shots.undo');
   expectedOperations.push('project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status');
   expectedOperations.push('project.version.list', 'project.version.save', 'project.version.preview', 'project.version.restore');
-  expectedOperations.push('asset.media.status.list','asset.media.prepare','asset.media.relink.preview','asset.media.relink.apply','asset.media.acceptChanged');
-  expectedOperations.push('previs.output.publish','previs.output.lookup');
+  expectedOperations.push('asset.media.status.list','asset.media.location.list','asset.media.prepare','asset.media.relink.preview','asset.media.relink.apply','asset.media.acceptChanged');
+  expectedOperations.push('previs.output.publish','previs.output.lookup','canvas.copy.snapshot','image.service.list');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
   expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');
@@ -124,7 +125,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
 });
 test('MCP offline list/instructions translate while schemas, effects and call envelopes stay exact', {timeout:180000}, async t => {
   const legacy=await mcp(t), baseline=(await legacy.request('tools/list')).result.tools as McpToolView[];
-  for (const operation of Object.keys(schemas)) { const tool=baseline.find(value=>value.name===operation.replaceAll('.','_')); assert.ok(tool); assert.equal(tool.description,operationDefinition(operation).description); }
+  for (const operation of Object.keys(schemas).filter(isMcpOperationAllowed)) { const tool=baseline.find(value=>value.name===operation.replaceAll('.','_')); assert.ok(tool); assert.equal(tool.description,operationDefinition(operation).description); }
   const schemaResult=await legacy.request('tools/call',{name:'mioon_schema',arguments:{operation:'project.create'}});
   for (const locale of LOCALES) {
     const localized=await mcp(t,['--locale',locale]);

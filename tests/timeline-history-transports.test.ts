@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
@@ -109,7 +110,7 @@ function invalidInputs(operation: string, projectId: string = randomUUID()) {
 test('timeline history CLI and official MCP advertise identical strict schemas and require caller-owned request IDs offline', {timeout: 60_000}, async t => {
   const mcp = await connectMcp(t);
   const catalog = await cli(['schema']);
-  assert.deepEqual(await mcp.call('mioon_schema'), catalog);
+  assert.deepEqual(await mcp.call('mioon_schema'), mcpOperationCatalog(catalog));
   const tools = ((await mcp.client.listTools() as {tools:TestTool[]})).tools;
   for (const operation of operations) {
     const definition = await cli(['schema', operation]);
