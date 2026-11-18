@@ -5,7 +5,6 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {getFormat5TimelineIssue} from '../packages/contracts/src/project-format5.ts';
-import {defaultPrevisScene, isPrevisScene, previsSceneSchema} from '../packages/contracts/src/previs.ts';
 import {upgradeProjectFormatTo5} from '../packages/business/src/project-file/index.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
 import {prepareFormat5Release} from './helpers/format5-release-fixture.ts';
@@ -193,15 +192,9 @@ test('a detached binding refuses direct set-mode and a duplicate create is refus
   } finally {store.close();}
 });
 
-test('previs mannequin and prop may name a subject and follow/locked resolves like a binding', () => {
+test('previs mannequin and prop subject references follow/locked resolve like a binding', () => {
   const f = fixture(), seeded = seed(f), store = seeded.store;
   try {
-    const scene = defaultPrevisScene();
-    scene.figures[0] = {...scene.figures[0]!, subject: {subjectId: seeded.subjectId, subjectVersionId: null}};
-    assert.equal(isPrevisScene(scene), true);
-    scene.props = [{id: 'p1', kind: 'box', name: '', visible: true, position: [0, 0, 0], rotation: 0,
-      size: [0.5, 0.5, 0.5], subject: {subjectId: seeded.subjectId, subjectVersionId: seeded.versionIds[0]!}}];
-    assert.equal(previsSceneSchema.safeParse(scene).success, true);
     const follow = resolvePrevisSubjectReference(store, {subjectId: seeded.subjectId, subjectVersionId: null});
     assert.equal(follow.mode, 'follow');
     assert.equal(follow.subjectVersionId, seeded.versionIds[0]);

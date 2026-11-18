@@ -350,6 +350,12 @@ export function resolveGenerationSubjectInputs(store: ProjectStore, shotIds: rea
   return result.sort((a, b) => a.bindingId.localeCompare(b.bindingId));
 }
 
+/**
+ * Previs mannequin/prop subject reference (`{subjectId, subjectVersionId?}`).
+ * The previs scene contract fields are added by the previs card together with
+ * its Mio tool schema/fingerprint update; this resolver is the service seam the
+ * scene save path calls. A null version keeps follow, a version is locked.
+ */
 export interface PrevisSubjectReference {
   readonly subjectId: string;
   readonly subjectVersionId: string | null;

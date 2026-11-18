@@ -58,17 +58,12 @@ const figureId = z.string().regex(/^f[1-9][0-9]{0,3}$/), propId = z.string().reg
 const coordinate = measure(-100, 100), angle = measure(-180, 180), tilt = measure(-90, 90), extent = measure(0.01, 20);
 const vector = z.tuple([coordinate, coordinate, coordinate]);
 export const previsCameraSchema = z.object({position: vector, yaw: angle, pitch: tilt, focalLength: measure(10, 300)}).strict();
-// A mannequin/prop may name the subject it depicts. `subjectVersionId` null
-// keeps the follow/head interpretation; a concrete version is the same
-// drawable lock a shot binding uses (`format5` scenes only; the field is
-// optional so every previously saved format-3/4 scene stays valid).
-const previsSubjectRef = {subject: z.object({subjectId: id, subjectVersionId: id.nullable()}).strict().optional()};
 export const previsFigureSchema = z.object({id: figureId, name, visible: z.boolean(), position: vector, rotation: angle, pose: z.enum(PREVIS_POSES),
-  held: z.object({propId, hand: z.enum(PREVIS_HANDS)}).strict().nullable(), ...previsSubjectRef}).strict();
+  held: z.object({propId, hand: z.enum(PREVIS_HANDS)}).strict().nullable()}).strict();
 // Sizes are width, height and depth in metres; a cylinder or sphere uses the
 // width as its diameter.
 export const previsPropSchema = z.object({id: propId, kind: z.enum(PREVIS_PROP_KINDS), name, visible: z.boolean(), position: vector, rotation: angle,
-  size: z.tuple([extent, extent, extent]), ...previsSubjectRef}).strict();
+  size: z.tuple([extent, extent, extent])}).strict();
 export const previsLightSchema = z.object({visible: z.boolean(), azimuth: angle, elevation: tilt, intensity: measure(0, 4)}).strict();
 // Exports are the newest exported images of a keyframe, oldest first.
 export const previsKeyframeSchema = z.object({id: keyframeId, name, camera: previsCameraSchema,
