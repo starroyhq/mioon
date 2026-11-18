@@ -10,14 +10,15 @@ import {
   SEQUENCE_EDIT_OPERATIONS, SEQUENCE_EDIT_TARGET_KINDS, applySequenceEditBaselineChange,
   canonicalSequenceEditInput, invertSequenceEditPatch, isSequenceEditEnvelope, isSequenceEditErrorCode,
   isSequenceEditInputDigest, isSequenceEditIntentSequence, isSequenceEditRequestId, isSequenceEditUuid,
-  sequenceEditEnvelopeSchema, sequenceEditHistoryEntrySchema, sequenceEditImpactCount,
-  sequenceEditIntentOperationName, sequenceEditIntentSide, sequenceEditOperationName, sequenceEditReceiptSchema,
-  sequenceEditUtf8Bytes,
+  sequenceEditEnvelopeOperationName, sequenceEditEnvelopeSchema, sequenceEditHistoryEntrySchema,
+  sequenceEditImpactCount, sequenceEditIntentOperationName, sequenceEditIntentSide, sequenceEditOperationName,
+  sequenceEditReceiptSchema, sequenceEditSubjectIntentSchema, sequenceEditSubjectOperationName, sequenceEditUtf8Bytes,
 } from '../packages/contracts/src/sequence-edit.ts';
 import type {
   BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditBaselineChange, SequenceEditEnvelope,
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
-  SequenceEditService, SequenceEditStateDelta, SequenceEditTransactionRequest,
+  SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
+  SubjectBindingOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -33,6 +34,21 @@ const emptyDelta: SequenceEditStateDelta = {board: {...boardDelta}, timeline: {.
 const intent = (operation: ChainSyncOperation): SequenceEditIntent => ({side: sequenceEditIntentSide(operation), operation});
 const connect: ChainSyncOperation = {kind: 'board', edit: {kind: 'connect', fromId: shotA, toId: shotB}};
 const syncBoard: ChainSyncOperation = {kind: 'sync-board'};
+const bindingA = uuid('90'), shotSubjectA = uuid('12');
+const createBinding: SubjectBindingOperation = {kind: 'subject-binding', edit: {kind: 'create',
+  bindingId: bindingA, shotId: shotA, subjectId: shotSubjectA, role: 'subject'}};
+const lockBinding: SubjectBindingOperation = {kind: 'subject-binding', edit: {kind: 'set-mode',
+  bindingId: bindingA, bindingMode: 'locked', subjectVersionId: uuid('91')}};
+const detachBinding: SubjectBindingOperation = {kind: 'subject-binding', edit: {kind: 'detach', bindingId: bindingA}};
+const restoreBinding: SubjectBindingOperation = {kind: 'subject-binding', edit: {kind: 'restore',
+  bindingId: bindingA, bindingMode: 'follow', subjectVersionId: null}};
+const subjectIntent = (operation: SubjectBindingOperation): SequenceEditSubjectIntent => ({side: 'board', operation});
+function subjectEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
+  return envelope({intents: [], subjectIntent: subjectIntent(createBinding),
+    impact: {...envelope().impact, subjectBindingIds: [bindingA]},
+    baseline: {...envelope().baseline, targets: [{kind: 'subject_binding', id: bindingA, revision: 1}]},
+    ...overrides});
+}
 
 function envelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
   return {
@@ -97,7 +113,22 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
   ];
-  assert.equal(samples.length, SEQUENCE_EDIT_OPERATIONS.length);
+  const subjectSamples: Array<[SubjectBindingOperation, string]> = [
+    [createBinding, 'subject.binding.create'],
+    [lockBinding, 'subject.binding.set-mode'],
+    [detachBinding, 'subject.binding.detach'],
+    [restoreBinding, 'subject.binding.restore'],
+  ];
+  assert.equal(subjectSamples.length, 4);
+  assert.equal(samples.length + subjectSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
+  for (const [operation, name] of subjectSamples) {
+    assert.equal(sequenceEditSubjectOperationName(operation), name);
+    assert.equal(sequenceEditIntentSide(operation), 'board');
+    assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
+    assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
+  }
+  assert.equal(sequenceEditEnvelopeOperationName(subjectEnvelope()), 'subject.binding.create');
+  assert.equal(sequenceEditEnvelopeOperationName(envelope()), 'board.connect');
   for (const [operation, name] of samples) {
     assert.equal(sequenceEditIntentOperationName(operation), name);
     assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
@@ -155,11 +186,94 @@ test('the envelope validator accepts a valid board action and rejects contract v
     JSON.stringify(candidate).slice(0, 160));
 });
 
-test('impact counts cover nodes, edges, main-track and other-track items and cues', () => {
+test('impact counts cover nodes, edges, main-track and other-track items, cues and bindings', () => {
   const impact = {nodeIds: [nodeA, nodeB], edgeIds: [uuid('40')], mainTrackClipIds: [clipA],
-    otherTrackItemIds: [uuid('60')], subtitleCueIds: [uuid('70')]};
-  assert.equal(sequenceEditImpactCount(impact), 6);
-  assert.deepEqual(SEQUENCE_EDIT_TARGET_KINDS, ['shot', 'node', 'edge', 'clip', 'cue']);
+    otherTrackItemIds: [uuid('60')], subtitleCueIds: [uuid('70')], subjectBindingIds: [bindingA]};
+  assert.equal(sequenceEditImpactCount(impact), 7);
+  assert.deepEqual(SEQUENCE_EDIT_TARGET_KINDS, ['shot', 'node', 'edge', 'clip', 'cue', 'subject_binding']);
+});
+
+test('subject binding intents validate the mode/version pair and stay board-only', () => {
+  assert.equal(isSequenceEditEnvelope(subjectEnvelope()), true);
+  assert.equal(sequenceEditSubjectIntentSchema.safeParse(subjectIntent(createBinding)).success, true);
+  for (const operation of [lockBinding, detachBinding, restoreBinding]) {
+    assert.equal(sequenceEditSubjectIntentSchema.safeParse(subjectIntent(operation)).success, true);
+    assert.equal(isSequenceEditEnvelope(subjectEnvelope({subjectIntent: subjectIntent(operation)})), true);
+  }
+  // A subject action is exactly one subject intent: no CS/TS intents, board origin.
+  const bad: unknown[] = [
+    subjectEnvelope({intents: [intent(connect)]}),
+    subjectEnvelope({originSide: 'timeline'}),
+    subjectEnvelope({subjectIntent: {side: 'timeline', operation: createBinding} as unknown as SequenceEditSubjectIntent}),
+  ];
+  for (const candidate of bad) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
+    JSON.stringify(candidate).slice(0, 160));
+  const invalidEdits = [
+    {kind: 'set-mode', bindingId: bindingA, bindingMode: 'locked', subjectVersionId: null},
+    {kind: 'set-mode', bindingId: bindingA, bindingMode: 'follow', subjectVersionId: uuid('91')},
+    {kind: 'restore', bindingId: bindingA, bindingMode: 'locked', subjectVersionId: null},
+    {kind: 'detach', bindingId: bindingA, subjectVersionId: null},
+    {kind: 'create', bindingId: bindingA, shotId: shotA},
+  ];
+  for (const edit of invalidEdits) {
+    assert.equal(sequenceEditSubjectIntentSchema.safeParse({side: 'board',
+      operation: {kind: 'subject-binding', edit}}).success, false, JSON.stringify(edit));
+  }
+  assert.equal(sequenceEditEnvelopeSchema.safeParse({...subjectEnvelope(),
+    impact: {...envelope().impact, subjectBindingIds: [bindingA, bindingA]}}).success, false);
+  assert.equal(isSequenceEditEnvelope({...subjectEnvelope(), intents: [], subjectIntent: undefined}), false,
+    'an empty intents array without a subject intent is still invalid');
+});
+
+test('a subject binding row is a board entity: mixed patches invert and stay in one history entry', () => {
+  const bindingRow = {id: bindingA, projectId, shotId: shotA, subjectId: shotSubjectA, role: 'subject',
+    revision: 1, bindingMode: 'follow', subjectVersionId: null, reviewedHeadVersionId: null,
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z'};
+  const createdBinding = {...bindingRow};
+  const lockedBinding = {...bindingRow, revision: 2, bindingMode: 'locked', subjectVersionId: uuid('91')};
+  const edgeRow = {id: uuid('40'), projectId, source: shotSubjectA, target: shotA, kind: 'reference',
+    role: 'subject_reference', subjectBindingId: bindingA};
+  const shotRow = {id: shotA, projectId, revision: 2, selectedVersionId: null};
+  const patch: SequenceEditPatch = {
+    version: SEQUENCE_EDIT_CONTRACT_VERSION,
+    before: emptyDelta,
+    after: {
+      board: {
+        writes: [
+          {kind: 'shot', id: shotA, data: shotRow},
+          {kind: 'edge', id: edgeRow.id, data: edgeRow},
+          {kind: 'subject_binding', id: bindingA, data: createdBinding},
+        ],
+        removals: [],
+      },
+      timeline: {...timelineDelta, removedCueIds: [uuid('70')]},
+    },
+  };
+  assert.equal(sequenceEditHistoryEntrySchema.safeParse({actionId, projectId, epoch, position: 1,
+    operation: 'subject.binding.create', origin: 'user', beforePatch: patch.before, afterPatch: patch.after,
+    createdAt: '2026-01-01T00:00:00.000Z'}).success, true);
+  assert.deepEqual(invertSequenceEditPatch(invertSequenceEditPatch(patch)), patch);
+  // The mode change keeps the same row identity and is a full-row write, so undo
+  // restores follow and the applied version without consulting another service.
+  const modePatch: SequenceEditPatch = {version: SEQUENCE_EDIT_CONTRACT_VERSION,
+    before: {board: {writes: [{kind: 'subject_binding', id: bindingA, data: createdBinding}], removals: []},
+      timeline: timelineDelta},
+    after: {board: {writes: [{kind: 'subject_binding', id: bindingA, data: lockedBinding}], removals: []},
+      timeline: timelineDelta}};
+  const inverted = invertSequenceEditPatch(modePatch);
+  assert.deepEqual(inverted.before.board.writes[0]!.data, lockedBinding);
+  assert.deepEqual(inverted.after.board.writes[0]!.data, createdBinding);
+  assert.deepEqual(invertSequenceEditPatch(inverted), modePatch);
+  // Detach keeps the row and clears only the applied version; it is a write, not
+  // a tombstone deletion.
+  const detached = {...lockedBinding, revision: 3, bindingMode: 'detached', subjectVersionId: null};
+  const detachPatch: SequenceEditPatch = {version: SEQUENCE_EDIT_CONTRACT_VERSION,
+    before: modePatch.after, after: {board: {writes: [{kind: 'subject_binding', id: bindingA, data: detached}],
+      removals: []}, timeline: timelineDelta}};
+  assert.equal(sequenceEditHistoryEntrySchema.safeParse({actionId, projectId, epoch, position: 2,
+    operation: 'subject.binding.detach', origin: 'user', beforePatch: detachPatch.before,
+    afterPatch: detachPatch.after, createdAt: '2026-01-01T00:00:00.000Z'}).success, true);
+  assert.deepEqual(invertSequenceEditPatch(detachPatch).before.board.writes[0]!.data, detached);
 });
 
 test('the idempotency input is canonical across key order and stable for the same action', () => {
@@ -204,7 +318,7 @@ test('receipts keep the applied/not-applied and error-code invariants', () => {
   const history = {epoch, position: 1, revision: 2, undo: {actionId, operation: 'board.connect', affected: 1}, redo: null};
   const applied: SequenceEditReceipt = {version: SEQUENCE_EDIT_CONTRACT_VERSION, requestId: 'request-0001',
     inputDigest: 'a'.repeat(64), projectId, actionId, operation: 'board.connect', originSide: 'board', status: 'applied',
-    affected: {nodes: 1, edges: 1, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0}, history,
+    affected: {nodes: 1, edges: 1, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0, subjectBindings: 1}, history,
     contentRevision: 8, timelineRevision: 3, syncRevision: 2};
   assert.equal(sequenceEditReceiptSchema.safeParse(applied).success, true);
   assert.equal(sequenceEditReceiptSchema.safeParse({...applied, code: 'CYCLE'}).success, false);
@@ -230,6 +344,8 @@ test('the shared error table covers K5a, SA and contract codes exactly once', ()
     assert.equal(codes.includes(code), true, `missing sync code ${code}`);
   }
   for (const code of SEQUENCE_EDIT_NEW_ERROR_CODES) assert.equal(codes.includes(code), true, `missing new ${code}`);
+  for (const code of ['SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', 'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN',
+    'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT'] as const) assert.equal(codes.includes(code), true, `missing sb ${code}`);
   const format5 = new Set<string>(FORMAT5_STORAGE_ERROR_CODES);
   for (const entry of SEQUENCE_EDIT_ERRORS) {
     if (format5.has(entry.code)) assert.equal(entry.source, 'format5', entry.code);

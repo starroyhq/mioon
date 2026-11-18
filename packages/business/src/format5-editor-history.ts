@@ -27,7 +27,7 @@ import type {
   SequenceEditPatch, SequenceEditReceipt, SequenceEditStateDelta,
 } from '@mioon/contracts/sequence-edit';
 import {
-  canonicalSequenceEditInput, isSequenceEditEnvelope, sequenceEditHistoryEntrySchema, sequenceEditOperationName,
+  canonicalSequenceEditInput, isSequenceEditEnvelope, sequenceEditEnvelopeOperationName, sequenceEditHistoryEntrySchema,
   sequenceEditReceiptSchema,
 } from '@mioon/contracts/sequence-edit';
 import type {ProjectStore} from './project-file/store.ts';
@@ -192,7 +192,7 @@ export function writeSequenceEditAction(store: ProjectStore, input: {
     .run(store.projectId, state.epoch, position);
   const entry: SequenceEditHistoryEntry = {
     actionId: input.envelope.actionId, projectId: store.projectId, epoch: state.epoch, position,
-    operation: sequenceEditOperationName(input.envelope.intents), origin: 'user',
+    operation: sequenceEditEnvelopeOperationName(input.envelope), origin: 'user',
     beforePatch: input.patch.before, afterPatch: input.patch.after, createdAt: now(),
   };
   const parsedEntry = sequenceEditHistoryEntrySchema.safeParse(entry);
@@ -233,7 +233,7 @@ export function writeSequenceEditFailure(store: ProjectStore, envelope: Sequence
   const timelineRevision = timeline && typeof timeline.data === 'string' ? Number(JSON.parse(String(timeline.data)).revision) : 1;
   const receipt: SequenceEditReceipt = {
     version: 1, requestId: envelope.requestId, inputDigest: sequenceEditInputDigest(envelope), projectId: store.projectId,
-    actionId: envelope.actionId, operation: sequenceEditOperationName(envelope.intents), originSide: envelope.originSide,
+    actionId: envelope.actionId, operation: sequenceEditEnvelopeOperationName(envelope), originSide: envelope.originSide,
     status: 'not_applied', code, affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
     history: view, contentRevision: Number(content?.contentSequence ?? 0), timelineRevision,
     syncRevision: Number(sync?.revision ?? 1),
