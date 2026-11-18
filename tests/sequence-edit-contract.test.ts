@@ -6,6 +6,7 @@ import type {Format5SyncBaseline} from '../packages/contracts/src/project-format
 import type {ChainSyncOperation, ChainSyncState, ChainSyncPlan} from '../packages/contracts/src/chain-sync-algorithm.ts';
 import {
   SEQUENCE_EDIT_CONTRACT_VERSION, SEQUENCE_EDIT_DIGEST_DOMAIN, SEQUENCE_EDIT_ERRORS, SEQUENCE_EDIT_ERROR_CODES,
+  SEQUENCE_EDIT_BOARD_ENTITY_KINDS,
   SEQUENCE_EDIT_BASELINE_CHANGE_KINDS, SEQUENCE_EDIT_LIMITS, SEQUENCE_EDIT_NEW_ERROR_CODES,
   SEQUENCE_EDIT_OPERATIONS, SEQUENCE_EDIT_TARGET_KINDS, applySequenceEditBaselineChange,
   canonicalSequenceEditInput, invertSequenceEditPatch, isSequenceEditEnvelope, isSequenceEditErrorCode,
@@ -451,4 +452,15 @@ test('both transaction entries are typed for CS → TS and TS → CS use inside 
   assert.equal(service.apply({envelope: envelope()}).ok, false);
   const failureResult = board.projectBoardSeam(request);
   assert.equal('delta' in failureResult, true);
+});
+
+test('board entity kinds retain both subject-binding and TS adoption extensions', () => {
+  assert.deepEqual(SEQUENCE_EDIT_BOARD_ENTITY_KINDS, ['shot', 'node', 'edge', 'subject_binding', 'adoption']);
+  const anchor = SEQUENCE_EDIT_ERRORS.find(entry => entry.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
+  assert.ok(anchor);
+  assert.equal(anchor.source, 'sequence-edit');
+  assert.equal(anchor.retryable, false);
+  const subject = SEQUENCE_EDIT_ERRORS.find(entry => entry.code === 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID');
+  assert.ok(subject);
+  assert.equal(subject.source, 'sequence-edit');
 });
