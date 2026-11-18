@@ -13,6 +13,7 @@ import { parseProbeOutput, withProbePermit, MEDIA_PROBE_LIMITS } from '../packag
 import { run, probe, fileHash, fileInfo, stitch } from '../packages/business/src/media.ts';
 import { renderTimeline } from '../packages/business/src/timeline-media.ts';
 import { onMediaProcess } from '../packages/business/src/media-processes.ts';
+import {defaultTimelineSegmentConcurrency} from './helpers/timeline-segment-concurrency.ts';
 import { createMockProvider } from '../packages/business/src/providers/mock.ts';
 
 const pause = (ms: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
@@ -199,11 +200,15 @@ test('timeline cancellation between segments prevents another spawn and removes 
     tracks: [{ id: 'video', kind: 'video', orderIndex: 0, hidden: false, muted: false }],
     clips: [0, 3].map((startFrame, i) => ({ id: `clip-${i}`, trackId: 'video', assetId: 'image', startFrame, durationFrames: 3, sourceInFrame: 0, rect: { x: 0, y: 0, width: 720, height: 1280 }, gain: 1 })) };
   const assets = new Map([['image', { path: image, mimeType: 'image/png', hasVideo: true, hasAudio: false, duration: 0 }]]);
+  // Two planned segments; the render starts one worker per plan slot, so on a
+  // multi-core runner both encoders are already in flight when the first one
+  // exits. Cancellation still has to stop every later segment, concat and probe.
+  const wave = Math.min(2, defaultTimelineSegmentConcurrency());
   const events: (MediaProcessEvent)[] = [], controller = new AbortController();
   const off = onMediaProcess(event => { events.push(event); if (event.kind === 'ffmpeg' && event.type === 'exited') controller.abort(); });
   try {
     await assert.rejects(renderTimeline({ timeline } as unknown as Parameters<typeof renderTimeline>[0], assets as unknown as Parameters<typeof renderTimeline>[1], path.join(root, 'never.mp4'), { signal: controller.signal }), { code: 'MEDIA_CANCELLED' });
-    assert.deepEqual(events.map(event => event.type), ['started', 'exited']);
+    assert.deepEqual(events.map(event => event.type), [...Array.from({length: wave}, () => 'started'), ...Array.from({length: wave}, () => 'exited')]);
     assert.deepEqual(await readdir(root), ['synthetic.png']);
   } finally { off(); }
 });

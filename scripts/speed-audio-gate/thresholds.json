@@ -1,0 +1,37 @@
+{
+  "profile": "sp-e0-audio-gate-v1",
+  "sampleRate": 48000,
+  "fps": 30,
+  "atempo": {
+    "unexplainedTailMs": 20,
+    "transientDeviationMs": 10,
+    "phaseDeviationMs": 0.2,
+    "seamStepRatio": 2,
+    "durationErrorSamples": 0
+  },
+  "resample": {
+    "unexplainedTailMs": 1,
+    "transientDeviationMs": 10,
+    "phaseDeviationMs": 0.2,
+    "seamStepRatio": 1.1,
+    "durationErrorSamples": 0
+  },
+  "curve": {
+    "unexplainedTailMs": 20,
+    "transientDeviationMs": 10,
+    "phaseDeviationMs": 0.5,
+    "chunkBoundaryClickRatio": 2,
+    "durationErrorSamples": 0
+  },
+  "rationale": {
+    "transientDeviationMs": "10 ms is one third of a 30 fps project frame and below typical cut-timing perception; a larger shift means transients land on a different frame.",
+    "unexplainedTailMs": "20 ms is under one project frame at 30 fps; the intentional ceil-hold samples are subtracted and reported separately.",
+    "phaseDeviationMs": "0.2 ms is about ten 48 kHz samples; a larger change moves the stereo image audibly for transient material.",
+    "seamMaxDiffDb": "-40 dBFS relative to peak is a 1% amplitude step at the join, empirically below an audible click in this material set; the click ratio additionally compares the boundary first difference with the same join in the whole-source render.",
+    "seamClickRatio": "The joined first difference must not exceed twice the whole-source first difference at the same boundary.",
+    "chunkBoundaryClickRatio": "Curve chunk joins are compared against the 99.5th percentile of the same output's first differences; twice that value is treated as a click.",
+    "chunkBoundaryJumpDb": "An absolute -40 dBFS step check backs up the relative click ratio at chunk edges.",
+    "resamplePhase": "Continuous resampling is expected to scale the inter-channel delay with the stretch factor; only deviation from that model is gated.",
+    "note": "Thresholds are prototype gates for the built-in algorithm, not a final product spec. Failures are reported with measured numbers and alternative algorithms are costed in the report."
+  }
+}
