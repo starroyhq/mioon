@@ -1,0 +1,230 @@
+/* UI-E1 static editing components. Everything here is additive: selectors are
+ * scoped to the optional projection classes, so timelines without a projection
+ * keep their previous pixels. */
+
+.edit-ui-anchor-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.edit-ui-anchor-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.edit-ui-anchor-line {
+  stroke: var(--wb-text);
+  stroke-width: 1;
+  opacity: 0.9;
+}
+
+.edit-ui-anchor-dot {
+  fill: var(--wb-text);
+  stroke: var(--wb-bg);
+  stroke-width: 1;
+}
+
+.edit-ui-detached-anchor {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 7px 0 5px;
+  border: 1px solid var(--wb-warning);
+  border-radius: 999px;
+  background: var(--wb-warning-subtle);
+  color: var(--wb-warning);
+  font-size: var(--wb-text-min);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.edit-ui-clip-status {
+  color: inherit;
+  opacity: 0.78;
+}
+
+.timeline-panel.edit-timeline .timeline-clip.edit-ui-placeholder {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.edit-ui-placeholder-pattern {
+  position: absolute;
+  inset: 5px 8px;
+  pointer-events: none;
+  background-image: radial-gradient(circle, var(--wb-warning) 2px, transparent 2.5px);
+  background-size: 26px 100%;
+  background-position: 13px 0;
+  background-repeat: repeat-x;
+  opacity: 0.55;
+}
+
+/* Properties panel: shot identity, board reveal, follow/locked version mode. */
+.edit-ui-shot-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 12px;
+  border-bottom: 1px solid var(--wb-line);
+}
+
+.edit-ui-shot-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.edit-ui-shot-heading > svg {
+  flex: none;
+  color: var(--wb-muted);
+}
+
+.edit-ui-shot-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--wb-text);
+}
+
+.edit-ui-shot-reveal {
+  flex: none;
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 2px 7px !important;
+  border-color: var(--wb-line) !important;
+  color: var(--wb-soft) !important;
+  font-size: var(--wb-text-min) !important;
+}
+
+.edit-ui-version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.edit-ui-version-label {
+  flex: none;
+  font-size: 11px;
+  color: var(--wb-muted);
+}
+
+.edit-ui-version-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-ui-version-lock {
+  flex: none;
+  color: var(--wb-muted);
+}
+
+.edit-ui-version-lock[aria-pressed="true"] {
+  color: var(--wb-text);
+  background: var(--wb-selected);
+}
+
+/* Copy-and-move confirmation: title and two buttons only. */
+.edit-ui-dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.edit-ui-copy-move {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(var(--wb-dialog-confirm), calc(100vw - 40px));
+  padding: 22px 24px 18px;
+  border: 1px solid var(--wb-line-strong);
+  border-radius: 12px;
+  background: var(--wb-card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  pointer-events: auto;
+}
+
+.edit-ui-copy-move h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--wb-text);
+}
+
+.edit-ui-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edit-ui-dialog-actions .button {
+  min-height: 30px;
+  padding: 5px 14px;
+  font-size: 11px;
+}
+
+/* Single undoable-result bar. */
+.edit-ui-notice {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--wb-line-strong);
+  border-radius: 8px;
+  background: var(--wb-raised);
+  box-shadow: 0 5px 35px var(--wb-shadow-color);
+  color: var(--wb-text);
+  font-size: 12px;
+}
+
+.edit-ui-notice > svg {
+  flex: none;
+  color: var(--wb-success);
+}
+
+.edit-ui-notice-message {
+  max-width: min(560px, 60vw);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.edit-ui-notice-undo {
+  color: var(--wb-text) !important;
+  font-size: 11px !important;
+}
+
+.edit-ui-notice-dismiss {
+  color: var(--wb-muted) !important;
+}
