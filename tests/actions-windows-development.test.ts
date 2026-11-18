@@ -85,7 +85,11 @@ test('missing Windows tools require the pinned publisher archive before extracti
   assert.match(source, /https:\/\/www\.gyan\.dev\/ffmpeg\/builds\/packages\/ffmpeg-8\.1\.2-essentials_build\.zip/);
   assert.match(source, /db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec/);
   const publisher = source.indexOf('$published -cne $expected');
-  const download = source.indexOf('Invoke-WebRequest -Uri $url -OutFile $archive');
+  const download = source.indexOf('Get-PinnedMediaResponse $url $archive');
+  assert.match(source, /function Get-PinnedMediaResponse\(\[string\]\$Uri, \[string\]\$OutFile = ''\)/);
+  assert.match(source, /for \(\$attempt = 1; \$attempt -le 4; \$attempt\+\+\)/);
+  assert.match(source, /Start-Sleep -Seconds \(5 \* \$attempt\)/);
+  assert.match(source, /Get-PinnedMediaResponse \(\$url \+ '\.sha256'\)/);
   const archiveHash = source.indexOf('if ($actual -cne $expected)');
   const inspect = source.indexOf('[IO.Compression.ZipFile]::OpenRead($archive)');
   const extract = source.indexOf('[IO.Compression.ZipFile]::ExtractToDirectory($archive, $extracted)');
