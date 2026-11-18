@@ -35,6 +35,7 @@ runs:
         cache_state='unavailable'
         download_cache=''
         if [[ -n "${BOTTLE_SHA:-}" ]]; then
+          cache_state='miss'
           # Every cache hit is re-hashed before it is allowed back into the
           # Homebrew cache; a corrupted or foreign file is discarded instead.
           if [[ "${CACHE_HIT:-false}" == 'true' ]]; then

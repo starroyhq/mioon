@@ -130,7 +130,7 @@ test('the macOS media workflow uses the cached, re-verified toolchain and upload
   assert.match(action, /macos-media-toolchain\.ts evidence/);
   const workflow = await readFile(path.join(root, '.github/workflows/macos-media-toolchain.yml'), 'utf8');
   assert.match(workflow, /^on:\r?\n  workflow_dispatch:$/m);
-  assert.doesNotMatch(workflow, /^  pull_request:/m);
+  assert.doesNotMatch(workflow, /^  (push|pull_request):/m);
   assert.match(workflow, /runs-on: macos-15/);
   assert.match(workflow, /timeout-minutes: 60/);
   assert.match(workflow, /uses: \.\/\.github\/actions\/macos-media-toolchain/);

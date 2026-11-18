@@ -7,11 +7,6 @@ name: macOS media toolchain
 # toolchain. Linux keeps using the prepared toolchain from checks.yml.
 on:
   workflow_dispatch:
-  # Temporary push trigger used only while this workflow is still on its PR
-  # branch (workflow_dispatch requires the file on the default branch). It is
-  # removed before review; the recorded run stays linked in the PR.
-  push:
-    branches: [howard/ci-macos-media-toolchain]
 
 permissions:
   contents: read
