@@ -77,14 +77,20 @@ test('v1 and float deliveries scale from each native geometry, and capability AC
 
 test('storyboard exports freeze current geometry without initializing a timeline and retain old queued output',()=>{
   const projectId=randomUUID(),calls: string[]=[];
-  const db=(value?: { data: string; }|undefined)=>({prepare(sql: string){calls.push(sql);return {get(id: unknown){assert.equal(id,projectId);return value;}};}});
+  // A released-format read: schema detection reports `main`, then the bounded
+  // timeline row read returns the saved record.
+  const db=(value?: { data: string; }|undefined)=>({prepare(sql: string){calls.push(sql);
+    if(sql==='PRAGMA database_list')return {all:()=>[{name:'main'}]};
+    if(/^PRAGMA main\.user_version$/u.test(sql))return {get:()=>({user_version:3})};
+    return {get:(id: unknown)=>{assert.equal(id,projectId);return value;},all:(_bytes: unknown,id: unknown)=>{assert.equal(id,projectId);return value===undefined?[]:[{id:randomUUID(),projectId,data:value.data}];}};
+  }}) as unknown as import('node:sqlite').DatabaseSync;
   assert.deepEqual(freezeStoryboardOutputGeometry(db(undefined),projectId),{fps:30,width:1080,height:1920});
   for(const preset of TIMELINE_OUTPUT_PRESETS){
     const expected={fps:30,width:preset.width,height:preset.height};
     assert.deepEqual(freezeStoryboardOutputGeometry(db({data:JSON.stringify(expected)}),projectId),expected);
     assert.deepEqual(storyboardOutputGeometry({outputGeometry:expected}),expected);
   }
-  assert.ok(calls.every(sql=>sql==='SELECT data FROM timelines WHERE projectId=?'));
+  assert.ok(calls.filter(sql=>sql!=='PRAGMA database_list'&&!/^PRAGMA main\.user_version$/u.test(sql)).every(sql=>sql.startsWith('SELECT id,projectId,CASE WHEN typeof(data)')));
   assert.deepEqual(storyboardOutputGeometry({snapshot:[]}),{fps:30,width:720,height:1280});
   for(const outputGeometry of [null,undefined,{fps:60,width:1080,height:1920},{fps:30,width:1920,height:1920},{fps:30,width:1080,height:1280}])
     assert.throws(()=>storyboardOutputGeometry({outputGeometry}),e=>(e as {code?: string}).code==='INVALID_TIMELINE_SNAPSHOT');

@@ -1,4 +1,5 @@
 import {randomUUID,createHash} from 'node:crypto';
+import {readTimelineHeaderStorage} from '../project-file/timeline-storage.ts';
 import {isDeepStrictEqual} from 'node:util';
 import {setTimeout as waitDelay} from 'node:timers/promises';
 import {AppError,deriveAgentEndpoint} from '@mioon/contracts';
@@ -1142,7 +1143,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const diagnostic=diagnosticHttpFailure(found);
       return {test:{runId:run.id,projectId:run.projectId,status:run.status,createdAt:run.createdAt,updatedAt:run.updatedAt,protocol:text(configuration.protocol),baseUrl:text(configuration.baseUrl),model:text(configuration.model),...(failureCode?{failureCode}:{}),...(diagnostic?{diagnostic}:{})}};},
     conversation:(projectId:string,conversationId:string,cursor?:string)=>{checkOpen();if(!hasTables||!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const page=journal.conversation(projectId,conversationId,{cursor});return {...page,runs:page.runs.map(run=>{const {context,...summary}=run;return summary;})};},
-    timelineRevision:(projectId:string)=>{checkOpen();const row=store.db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(projectId);return row?Number(row.revision):null;},
+    timelineRevision:(projectId:string)=>{checkOpen();const snapshot=readTimelineHeaderStorage(store.db,projectId);const value=snapshot?.header as Record<string,unknown>|undefined;return value&&typeof value.revision==='number'?value.revision:null;},
     get:(projectId:string,id:string)=>{owned(projectId,id);return safeSnapshot(journal.snapshot(id),store);},
     usage:(projectId:string,id:string)=>{owned(projectId,id);return readMioRunUsage(store,id);},
     checks:(projectId:string,id:string,{preflight=false,signal}:{preflight?:boolean;signal?:AbortSignal}={})=>{owned(projectId,id);return readAgentTaskChecks(store,journal.snapshot(id),{preflight:checksPreflight,includePreflight:preflight,signal});},

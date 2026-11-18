@@ -7,6 +7,7 @@ import path from 'node:path';
 import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTimelineExportSnapshot} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile,retainManagedUnavailableCause} from './managed-media.ts';
 import {run,runStreaming,checkMediaEffect} from './media-runtime.ts';
 import {parseProbeOutput,withProbePermit} from './media-probe.ts';
@@ -119,10 +120,10 @@ export function readTimelinePreflightSnapshot(store: {db: DatabaseSync},projectI
   const projectRow=db.prepare(`SELECT ${bounded('data','projects')} AS data FROM projects WHERE id=?`).get(projectId);
   const project=parse(projectRow?.data);
   if(!object(project)||project.id!==projectId)throw new AppError('NOT_FOUND','找不到记录',404);
-  const row=db.prepare(`SELECT CASE WHEN typeof(id)='text' AND length(CAST(id AS BLOB))=36 THEN id END AS id,${bounded('data','timelines')} AS data FROM timelines WHERE projectId=? LIMIT 1`).get(projectId);
-  if(!row)return {timeline:null,snapshot:null};
-  const timeline=parse(row.data);
-  if(!object(timeline)||!uuid(row.id)||timeline.id!==row.id||timeline.projectId!==projectId||
+  const stored=readTimelineStorage(db,projectId);
+  if(!stored)return {timeline:null,snapshot:null};
+  const timeline=stored.timeline as TimelineRecord;
+  if(!object(timeline)||!uuid(stored.id)||timeline.id!==stored.id||timeline.projectId!==projectId||
    !Number.isSafeInteger(timeline.revision)||timeline.revision<1||!Array.isArray(timeline.clips)||timeline.clips.length>100||
    !Array.isArray(timeline.tracks)||timeline.tracks.length>12||timeline.clips.some((c: unknown)=>!object(c)||!uuid((c as {id?: unknown}).id)||!uuid((c as {assetId?: unknown}).assetId)||!uuid((c as {trackId?: unknown}).trackId))||
    timeline.tracks.some((t: unknown)=>!object(t)||!uuid((t as {id?: unknown}).id)))throw invalid();

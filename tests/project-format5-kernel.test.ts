@@ -40,6 +40,7 @@ import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {INSPECTION_ROW_LIMITS} from '../packages/business/src/inspection-query.ts';
 import {readFormat5JsonRows} from '../packages/business/src/project-file/format5-content.ts';
+import {readTimelineHeaderStorage, readTimelineStorage} from '../packages/business/src/project-file/timeline-storage.ts';
 
 const releases = Object.keys(FORMAT5_SOURCE_RELEASES) as Format5SourceRelease[];
 type Sample = ReturnType<typeof prepareFormat5Release>;
@@ -187,6 +188,14 @@ for (const release of releases) for (const withHistory of [true, false]) test(`p
   const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location, format5: true});
   try {
     assert.deepEqual(parsed(format5KernelSnapshot(reopened)), parsed(after!));
+    // Every legacy direct reader now resolves through the shared storage reader.
+    const stored = readTimelineStorage(reopened.db, reopened.projectId);
+    assert.ok(stored?.format5 && stored.stamp);
+    const expectedTimeline = reopened.get('timelines', stored.id) as Format5Timeline;
+    assert.deepEqual(stored.timeline, expectedTimeline);
+    const header = readTimelineHeaderStorage(reopened.db, reopened.projectId);
+    assert.ok(header?.format5);
+    assert.deepEqual(header.header, format5TimelineHeader(expectedTimeline));
     const project = reopened.get('projects', reopened.projectId); assert.ok(object(project));
     reopened.put('projects', {...project, name: 'Writable after upgrade', revision: Number(project.revision) + 1});
     assert.equal(classifyHistoryStamp(reopened.db, false).state, 'current');

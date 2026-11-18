@@ -422,6 +422,15 @@ export function applyFormat5TimelineEntities(store: Format5TimelineEntityWriter,
   });
 }
 
+/** Remove one timeline and its native entity rows inside the caller's
+ * transaction; the content stamp is advanced once by the caller. */
+export function deleteFormat5TimelineInside(db: DatabaseSync, schema: ProjectSchema, timelineId: string): void {
+  if (!db.isTransaction) throw new TypeError('Timeline deletion requires an open transaction');
+  prepared(db, `DELETE FROM ${schema}.timeline_clips WHERE timelineId=?`).run(timelineId);
+  prepared(db, `DELETE FROM ${schema}.timeline_cues WHERE timelineId=?`).run(timelineId);
+  prepared(db, `DELETE FROM ${schema}.timelines WHERE id=?`).run(timelineId);
+}
+
 // ---------------------------------------------------------------------------
 // Commit fence: indexed SQL cross-row invariants over the native columns plus
 // bounded graph validation in format5-content. Per-row grammar is enforced by

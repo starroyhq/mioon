@@ -5,6 +5,7 @@ import {generationAspectSourceSchema} from '../../../contracts/src/generation-as
 import {isMioCanvasOperation} from '../../../contracts/src/mio-canvas.ts';
 import {TIMELINE_OUTPUT_PRESETS,timelineOutputPreset,timelineOutputRatio} from '../../../contracts/src/timeline-output-geometry.ts';
 import type { Store } from '../store-contract.ts';
+import {readTimelineStorage} from '../project-file/timeline-storage.ts';
 
 type Value=Record<string,unknown>;
 type Property=AgentTaskDisplayField['property'];
@@ -223,7 +224,7 @@ export function agentTaskDisplayTargetReader(store:Store,projectId:string):Targe
     const table=Object.hasOwn(tables,target.kind)?tables[target.kind]:undefined;
     if(table){const value:unknown=store.get(table,target.id);return object(value)&&value.id===target.id&&(target.kind==='project'?value.id===projectId:value.projectId===projectId)?value:undefined;}
     if((target.kind==='timeline'&&target.id!==projectId)||!['timeline','timeline_clip','timeline_track','timeline_subtitle'].includes(target.kind))return;
-    if(!loaded){loaded=true;const row=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);if(typeof row?.data==='string'){let value:unknown;try{value=JSON.parse(row.data);}catch{return;}if(object(value)&&value.projectId===projectId)timeline=value;}}
+    if(!loaded){loaded=true;const snapshot=readTimelineStorage(store.db,projectId);if(snapshot&&object(snapshot.timeline)&&snapshot.timeline.projectId===projectId)timeline=snapshot.timeline;}
     if(target.kind==='timeline')return timeline&&{fps:timeline.fps,width:timeline.width,height:timeline.height};
     const values=target.kind==='timeline_clip'?timeline?.clips:target.kind==='timeline_track'?timeline?.tracks:object(timeline?.subtitles)?timeline.subtitles.cues:undefined;
     return Array.isArray(values)?values.find((item):item is Value=>object(item)&&item.id===target.id):undefined;
