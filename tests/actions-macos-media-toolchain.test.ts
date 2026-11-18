@@ -6,6 +6,7 @@ import {mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile} from 'node:f
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {testEnv} from './helpers/test-env.ts';
 import {bottleShaFromInfo, sha256File, verifyBottleArchive, writeToolchainEvidence} from '../.github/scripts/macos-media-toolchain.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -100,16 +101,16 @@ test('the media toolchain CLI reads the brew metadata and verifies a cached bott
   const {directory, file} = await fixture(t);
   const info = await file('brew-info.json', brewInfo([{name: 'ffmpeg@7', bottle: {stable: {files: {arm64_sequoia: {sha256: sha}}}}}]) );
   const cli = spawnSync(process.execPath, ['.github/scripts/macos-media-toolchain.ts', 'bottle-sha', `--input=${info}`],
-    {cwd: root, encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
+    {cwd: root, env: testEnv(), encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
   assert.equal(cli.error, undefined); assert.equal(cli.signal, null);
   assert.equal(cli.status, 0); assert.equal(cli.stdout, sha + '\n');
   const archive = await file('archive.tar.gz', 'reviewed bottle bytes');
   const expected = createHash('sha256').update('reviewed bottle bytes').digest('hex');
   const verified = spawnSync(process.execPath, ['.github/scripts/macos-media-toolchain.ts', 'verify-bottle', `--archive=${archive}`, `--sha=${expected}`],
-    {cwd: root, encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
+    {cwd: root, env: testEnv(), encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
   assert.equal(verified.status, 0); assert.equal(verified.stdout, 'bottle=verified\n');
   const rejected = spawnSync(process.execPath, ['.github/scripts/macos-media-toolchain.ts', 'verify-bottle', `--archive=${archive}`, `--sha=${sha}`],
-    {cwd: root, encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
+    {cwd: root, env: testEnv(), encoding: 'utf8', timeout: 20000, shell: false, windowsHide: true});
   assert.equal(rejected.status, 1); assert.equal(rejected.stderr.trim(), 'BOTTLE_HASH_MISMATCH');
   assert.equal(await readFile(path.join(directory, 'nothing-written'), 'utf8').catch(() => 'absent'), 'absent');
 });
