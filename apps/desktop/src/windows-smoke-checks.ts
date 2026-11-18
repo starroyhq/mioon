@@ -105,9 +105,15 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   }
   passed('private-discovery-acl');
   await mark('configured-windows-media-tools');
+  // report.tools carries the probed version lines; the renderer bridge reads
+  // the configured absolute paths (env wins over the stored config document).
   const tools=record(await evaluate(`window.__mioonWorkspaceTools.read()`));
-  assert.equal(tools.ffmpeg,report.tools.ffmpeg);assert.equal(tools.ffprobe,report.tools.ffprobe);
-  assert.ok(path.isAbsolute(report.tools.ffmpeg)&&path.isAbsolute(report.tools.ffprobe));
+  const ffmpegPath=process.env.MIOON_FFMPEG_PATH,ffprobePath=process.env.MIOON_FFPROBE_PATH;
+  assert.ok(typeof ffmpegPath==='string'&&path.isAbsolute(ffmpegPath));
+  assert.ok(typeof ffprobePath==='string'&&path.isAbsolute(ffprobePath));
+  assert.equal(tools.ffmpeg,ffmpegPath);assert.equal(tools.ffprobe,ffprobePath);
+  assert.ok(typeof report.tools.ffmpeg==='string'&&report.tools.ffmpeg.length>0);
+  assert.ok(typeof report.tools.ffprobe==='string'&&report.tools.ffprobe.length>0);
   passed('configured-windows-media-tools');
   await mark('dpapi-app-scoped-roundtrip');
   const codec=createDesktopSecretCodec({safeStorage,appId:report.identity.appId,platform:'win32'});
