@@ -7,6 +7,7 @@ import type {ProjectFileFormat} from '../packages/business/src/project-file/sche
 import {compareManifest, readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {historyManifestForVersion, projectManifestForVersion} from '../packages/business/src/project-file/schema/format-manifests.ts';
 import {assertEditorStorageCounters, assertEditorStorageInventory, editorStorageInventory} from '../packages/business/src/project-file/schema/domains/sequence.ts';
+import {format5TimelineEntityColumns} from '../packages/business/src/project-file/format5-timeline.ts';
 import {addFormat5HistoryStructureInside, addFormat5ProjectStructureInside, writeFormat5HistoryVersionInside, writeFormat5ProjectVersionInside} from '../packages/business/src/project-file/schema/format5-upgrade.ts';
 import {installCrossFileTriggers, removeCrossFileTriggersInside} from '../packages/business/src/project-file/cross-file/install.ts';
 import {foreignKeyCheck} from '../packages/business/src/project-file/cross-file/inspect.ts';
@@ -37,7 +38,7 @@ test('format 5 declares an independent exact project and history catalog', () =>
   const db = connection();
   try {
     for (const [schema, expected, digest] of [
-      ['project', projectManifestForVersion(FORMAT5_PROJECT_SCHEMA_VERSION), '28fea0a8061440956a409aa65ed358b8a6f9c3b7b7a61b51f5fef0176d492442'],
+      ['project', projectManifestForVersion(FORMAT5_PROJECT_SCHEMA_VERSION), 'e1e8c1981367a2cea4cfcf2d86ee0a1ad0d143274ab32332b8ac9069736d80dd'],
       ['main', historyManifestForVersion(FORMAT5_HISTORY_SCHEMA_VERSION), '7372a5fff07b2d29a5ca6e913fcc3c75b0c6ab0582f2ac028cb1a3610efff1b5'],
     ] as const) {
       assert.ok(expected);
@@ -65,31 +66,55 @@ test('format 5 edge CHECK and partial uniqueness reject malformed/live ambiguous
   } finally {db.close();}
 });
 
-test('format 5 target revisions compare raw unique-ID subobjects for reorder, addition, deletion and byte changes', () => {
+test('format 5 native entity rows advance exactly the changed target revisions and keep raw byte semantics', () => {
   const db = connection();
-  const track = {id: id(2), kind: 'video'};
-  const clip = {id: id(3), trackId: id(2), startFrame: 0, durationFrames: 30};
-  const cue = {id: id(4), startFrame: 0, durationFrames: 10, text: 'A'};
-  const timeline = {id: id(5), projectId: id(1), width: 720, height: 1280, fps: 30, tracks: [track], clips: [clip], subtitles: {cues: [cue]}};
-  const write = (value: string) => db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(value, timeline.id);
+  const at = '2026-01-01T00:00:00.000Z';
+  const track = {id: id(2), name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false};
+  const header = {id: id(5), projectId: id(1), revision: 1, width: 720, height: 1280, fps: 30, durationFrames: 60,
+    createdAt: at, updatedAt: at, mainTrack: {trackId: id(2), sequenceNodeId: id(3)}, tracks: [track]};
+  const clip = (number: number, extra: Record<string, unknown> = {}) => ({id: id(number), trackId: id(2),
+    name: `Clip ${number}`, startFrame: 0, durationFrames: 30, sourceInFrame: 0,
+    rect: {x: 0, y: 0, width: 720, height: 1280}, gain: .5, assetId: id(20), sourceState: 'ready', ...extra});
+  const cue = (number: number, extra: Record<string, unknown> = {}) => ({id: id(number), text: 'A', startFrame: 0, durationFrames: 10, anchor: null, ...extra});
+  const clipColumns = ['trackId', 'startFrame', 'durationFrames', 'sourceInFrame', 'sourceState', 'anchorPresent', 'anchorClipId', 'anchorOffset', 'sourceKind', 'sourceNodeId', 'segmentGroupId', 'versionMode', 'versionId', 'assetId', 'shotId', 'jobId'];
+  const cueColumns = ['startFrame', 'durationFrames', 'anchorClipId', 'anchorOffset', 'dialogueShotId', 'dialogueLineId'];
+  const insertRow = (table: string, columns: readonly string[], timelineId: string, value: {id: string}) => {
+    const projected = format5TimelineEntityColumns(table === 'timeline_clips' ? 'clip' : 'cue', value as never);
+    db.prepare(`INSERT INTO project.${table}(timelineId,id,projectId,${columns.join(',')},data) VALUES(?,?,?,${columns.map(() => '?').join(',')},?)`)
+      .run(timelineId, value.id, id(1), ...columns.map(column => projected[column] ?? null), JSON.stringify(value));
+  };
+  const writeRow = (table: string, columns: readonly string[], value: {id: string}) => {
+    const projected = format5TimelineEntityColumns(table === 'timeline_clips' ? 'clip' : 'cue', value as never);
+    db.prepare(`UPDATE project.${table} SET data=?,${columns.map(column => `${column}=?`).join(',')} WHERE id=?`)
+      .run(JSON.stringify(value), ...columns.map(column => projected[column] ?? null), value.id);
+  };
+  const insertClip = (value: ReturnType<typeof clip>) => insertRow('timeline_clips', clipColumns, header.id, value);
+  const writeClip = (value: ReturnType<typeof clip>) => writeRow('timeline_clips', clipColumns, value);
+  const insertCue = (value: ReturnType<typeof cue>) => insertRow('timeline_cues', cueColumns, header.id, value);
+  const writeCue = (value: ReturnType<typeof cue>) => writeRow('timeline_cues', cueColumns, value);
   const revision = (kind: string, targetId: string) => Number(db.prepare('SELECT revision FROM project.agent_task_target_revisions_v2 WHERE kind=? AND targetId=?').get(kind, targetId)?.revision);
   try {
-    db.prepare('INSERT INTO project.timelines VALUES(?,?,?)').run(timeline.id, id(1), JSON.stringify(timeline));
-    write(JSON.stringify({...timeline, revision: 2}));
-    for (const [kind, targetId] of [['timeline_clip', clip.id], ['timeline_track', track.id], ['timeline_subtitle', cue.id]]) assert.equal(revision(kind!, targetId!), 1);
-    write(JSON.stringify(timeline).replace('"text":"A"', '"text":"\\u0041"'));
-    assert.equal(revision('timeline_subtitle', cue.id), 2, 'semantically equivalent JSON escape is still a byte change');
-    write(JSON.stringify({...timeline, clips: [clip, {...clip, id: id(6), startFrame: 30}]}));
-    assert.equal(revision('timeline_clip', clip.id), 1);
-    assert.equal(revision('timeline_clip', id(6)), 1);
-    write(JSON.stringify({...timeline, clips: [{...clip, id: id(6), startFrame: 30}, clip]}));
-    assert.equal(revision('timeline_clip', clip.id), 1);
-    assert.equal(revision('timeline_clip', id(6)), 1);
-    write(JSON.stringify(timeline));
-    assert.equal(revision('timeline_clip', id(6)), 2);
-    assert.throws(() => write(JSON.stringify({...timeline, clips: [clip, clip]})), /FORMAT5_TIMELINE_INVALID/u);
-    assert.throws(() => write(JSON.stringify({...timeline, tracks: [track, track]})), /FORMAT5_TIMELINE_INVALID/u);
-    assert.throws(() => write(JSON.stringify({...timeline, subtitles: {cues: [cue, cue]}})), /FORMAT5_TIMELINE_INVALID/u);
+    db.prepare('INSERT INTO project.timelines VALUES(?,?,?)').run(header.id, id(1), JSON.stringify(header));
+    insertClip(clip(10)); insertCue(cue(20));
+    assert.equal(revision('timeline_clip', id(10)), 1);
+    assert.equal(revision('timeline_subtitle', id(20)), 1);
+    // Identical bytes never advance a revision.
+    writeClip(clip(10)); writeCue(cue(20));
+    assert.equal(revision('timeline_clip', id(10)), 1);
+    assert.equal(revision('timeline_subtitle', id(20)), 1);
+    // A semantically equivalent JSON escape is still a byte change.
+    writeCue(cue(20, {text: '\\u0041'}));
+    assert.equal(revision('timeline_subtitle', id(20)), 2);
+    writeClip(clip(10, {name: 'Changed'}));
+    assert.equal(revision('timeline_clip', id(10)), 2);
+    insertClip(clip(11, {startFrame: 30}));
+    assert.equal(revision('timeline_clip', id(11)), 1);
+    db.prepare('DELETE FROM project.timeline_clips WHERE id=?').run(id(11));
+    assert.equal(revision('timeline_clip', id(11)), 2);
+    assert.throws(() => insertClip(clip(10)), /constraint/u);
+    assert.throws(() => insertRow('timeline_clips', clipColumns, header.id, clip(12, {startFrame: -1} as never)), /constraint/u);
+    assert.throws(() => db.prepare('INSERT INTO project.timeline_clips(timelineId,id,projectId,data) VALUES(?,?,?,?)')
+      .run(header.id, id(21), id(1), JSON.stringify(clip(21))), /constraint/u);
   } finally {db.close();}
 });
 

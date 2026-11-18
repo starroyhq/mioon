@@ -6,8 +6,12 @@ import path from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
-import {FORMAT5_LIMITS, assertFormat5Timeline} from '../packages/contracts/src/project-format5.ts';
+import {FORMAT5_LIMITS} from '../packages/contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+import {
+  applyFormat5TimelineEntityUpdateInside, bumpFormat5ContentStampInside, planFormat5TimelineEntityUpdate,
+  readFormat5TimelineState, readFormat5TimelineStateForIds,
+} from '../packages/business/src/project-file/format5-timeline.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
@@ -58,23 +62,27 @@ function sample(store: ProjectStore, mode: Mode, committed: () => {milliseconds:
   const started = performance.now();
   store.tx(() => {
     let step = performance.now(); beginMs = step - started;
-    const raw = store.db.prepare('SELECT data FROM project.timelines WHERE id=?').get(id(5))!.data;
-    assert.equal(typeof raw, 'string');
-    const timeline: unknown = JSON.parse(raw as string);
+    // A single-clip edit reads only the one affected row; batch and reorder
+    // enumeration read the full row set they intend to compare.
+    const state = mode === 'single'
+      ? readFormat5TimelineStateForIds(store.db, 'project', {clipIds: [first]})
+      : readFormat5TimelineState(store.db, 'project');
+    bytes = (state.header ? Buffer.byteLength(state.header.raw) : 0)
+      + state.clips.reduce((sum, row) => sum + Buffer.byteLength(row.raw), 0)
+      + state.cues.reduce((sum, row) => sum + Buffer.byteLength(row.raw), 0);
     readMs = performance.now() - step;
     step = performance.now();
-    assertFormat5Timeline(timeline, {projectId: store.projectId});
-    if (mode === 'single') {
-      const clip = timeline.clips.find(clip => clip.id === first)!;
-      clip.gain = clip.gain === .5 ? .75 : .5;
-    } else if (mode === 'batch') {
-      for (const clip of timeline.clips) clip.gain = clip.gain === .5 ? .75 : .5;
-    } else timeline.clips.reverse();
-    assertFormat5Timeline(timeline, {projectId: store.projectId});
-    const next = JSON.stringify(timeline); bytes = Buffer.byteLength(next);
+    const flip = (clip: Format5Clip): Format5Clip => ({...clip, gain: clip.gain === .5 ? .75 : .5});
+    const patch = mode === 'single'
+      ? {clips: [flip(JSON.parse(state.clips[0]!.raw) as Format5Clip)]}
+      : mode === 'batch'
+        ? {clips: state.clips.map(row => flip(JSON.parse(row.raw) as Format5Clip))}
+        : {clips: [...state.clips].reverse().map(row => JSON.parse(row.raw) as Format5Clip)};
+    const plan = planFormat5TimelineEntityUpdate(state, patch);
     validateMs = performance.now() - step;
     step = performance.now();
-    store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(next, id(5));
+    if (plan.changed) applyFormat5TimelineEntityUpdateInside(store.db, 'project', plan);
+    if (plan.changed) bumpFormat5ContentStampInside(store.db, 'project');
     writeMs = performance.now() - step;
     commitStarted = performance.now();
   });
@@ -83,7 +91,8 @@ function sample(store: ProjectStore, mode: Mode, committed: () => {milliseconds:
   assert.equal(afterCommit.count - beforeCommit.count, 1, 'each sample measures one real COMMIT');
   const terminalFenceMs = Math.max(0, finished - commitStarted - commitMs);
   const after = [targetRevision(store, first), targetRevision(store, last), targetRevision(store, cue, 'timeline_subtitle')];
-  assert.deepEqual(after, before.map((value, index) => value + Number(index < 2 && (mode === 'batch' || mode === 'single' && index === 0))));
+  const expectedDelta = mode === 'batch' ? [1, 1, 0] : mode === 'single' ? [1, 0, 0] : [0, 0, 0];
+  assert.deepEqual(after, before.map((value, index) => value + expectedDelta[index]!));
   return {totalMs, readMs, validateMs, writeMs, beginMs, terminalFenceMs, commitMs,
     changedRows: Number(store.db.prepare('SELECT total_changes() AS n').get()!.n) - changes, bytes};
 }
@@ -92,13 +101,13 @@ function distribution(values: readonly number[]) {
   return {p50: round(sorted[Math.floor(sorted.length * .5)]!), p95: round(sorted[Math.ceil(sorted.length * .95) - 1]!), max: round(sorted.at(-1)!)};
 }
 
-for (const total of [100, 500, 1500]) test(`format 5 persisted K1 editing budget with ${total} clips`, t => {
+for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing budget with ${total} clips`, t => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-format5-performance-'));
   const options = {projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true as const,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})};
   let store = createProjectStore(options);
   try {
-    const timeline = fixture(total); assertFormat5Timeline(timeline, {projectId: options.projectId});
+    const timeline = fixture(total);
     store.tx(() => {
       store.put('projects', {id: options.projectId, name: 'Synthetic budget', createdAt: at, updatedAt: at, revision: 1});
       store.put('nodes', {id: id(7), projectId: options.projectId, type: 'sequence_root', name: 'Film', position: {x: 0, y: 0}, createdAt: at});
@@ -141,7 +150,7 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 editing budget
         changedRows: distribution(samples.map(sample => sample.changedRows)), timelineBytes: samples[0]!.bytes};
       results.push(result);
     }
-    t.diagnostic(JSON.stringify({scope: 'kernel-timeline-aggregate-with-terminal-fence', platform: process.platform, arch: process.arch,
+    t.diagnostic(JSON.stringify({scope: 'kernel-timeline-native-rows-with-terminal-fence', platform: process.platform, arch: process.arch,
       cpu: cpus()[0]?.model, sqlite: store.db.prepare('SELECT sqlite_version() AS version').get()!.version,
       journal: store.db.prepare('PRAGMA project.journal_mode').get()!.journal_mode,
       totalClips: total, mainClips: Math.min(total, FORMAT5_LIMITS.mainTrackClips), subtitleCues: timeline.subtitles!.cues.length,

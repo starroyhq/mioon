@@ -8,7 +8,8 @@ import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './schema/databases.ts';
-import {assertFormat5ProjectContent} from './format5-content.ts';
+import {fenceFormat5ProjectContent} from './format5-content.ts';
+import {putFormat5TimelineInside, readFormat5TimelineRecord} from './format5-timeline.ts';
 import {readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
 import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
 import {markBackgroundTaskChanged, flushBackgroundTaskChanges, discardBackgroundTaskChanges, closeBackgroundTaskEvents,
@@ -161,11 +162,22 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     if (!TABLES.has(t)) throw Error('Unknown table');
     return t;
   };
+  const format5 = (): boolean => database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION;
   const get = (t: string, id: string): unknown => {
+    table(t);
+    if (t === 'timelines' && format5()) {
+      const record = readFormat5TimelineRecord(database, 'project');
+      return record && record.id === id ? record : null;
+    }
     const row = database.prepare(`SELECT data FROM ${table(t)} WHERE id=?`).get(id);
     return row ? parseRowData(row.data) : null;
   };
   const list = (t: string, projectId?: string): unknown[] => {
+    table(t);
+    if (t === 'timelines' && format5()) {
+      const record = readFormat5TimelineRecord(database, 'project');
+      return record && (projectId === undefined || record.projectId === projectId) ? [record] : [];
+    }
     const rows = projectId ? database.prepare(`SELECT data FROM ${table(t)} WHERE projectId=?`).all(projectId) : database.prepare(`SELECT data FROM ${table(t)}`).all();
     return rows.map(row => parseRowData(row.data));
   };
@@ -175,6 +187,11 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
       return tx(() => put(t, value));
     }
     if (connection.historyState === 'diverged') throw new AppError('PROJECT_HISTORY_DIVERGED','项目内容与本机记录不一致，请先确认处置。',409,{projectId:connection.projectId});
+    if (t === 'timelines' && format5()) {
+      connection.throwIfMoved();
+      putFormat5TimelineInside(database, 'project', value, connection.projectId);
+      return value;
+    }
     const columns = t === 'projects' ? ['id', 'data'] : t === 'versions' ? ['id', 'projectId', 'jobId', 'data'] : ['id', 'projectId', 'data'];
     const record = value as Readonly<Record<string, unknown>>;
     const values = columns.map(column => column === 'data' ? JSON.stringify(value) : sqlValue(record[column]));
@@ -221,7 +238,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
       for (const observer of transactionObservers.get(database) ?? []) observer(result);
       if (database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION &&
           (!format5Content || !sameContentStamp(format5Content, readProjectContentStamp(database)) ||
-           schemaBefore !== database.prepare('PRAGMA project.schema_version').get()?.schema_version)) assertFormat5ProjectContent(database, 'project');
+           schemaBefore !== database.prepare('PRAGMA project.schema_version').get()?.schema_version)) fenceFormat5ProjectContent(database, 'project');
       // A pure quota check prevents a committed task from exceeding the
       // discovery bound. It never writes a prepared app-library record.
       validateBackgroundTaskChanges(database);

@@ -15,6 +15,20 @@ import {CACHE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SC
 import {classifyHistoryStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {newTimelineRecord} from '../packages/business/src/timeline-new-record.ts';
 import {timelineOutputPreset} from '../packages/contracts/src/timeline-output-geometry.ts';
+import {format5TimelineHeader} from '../packages/contracts/src/project-format5.ts';
+import type {Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+
+/** The format-5 storage shape keeps the header in `timelines.data` and each
+ * clip/cue as an exact native row. Assertions compare both projections so the
+ * byte-level row contract stays visible. */
+function convertStoredTimeline(store: ProjectStore, timeline: Format5Timeline) {
+  const header = store.db.prepare('SELECT data FROM project.timelines').get();
+  assert.equal(header!.data, JSON.stringify(format5TimelineHeader(timeline)));
+  const expectedClips = timeline.clips.map(clip => ({id: clip.id, data: JSON.stringify(clip)})).sort((a, b) => a.id.localeCompare(b.id));
+  const expectedCues = (timeline.subtitles?.cues ?? []).map(cue => ({id: cue.id, data: JSON.stringify(cue)})).sort((a, b) => a.id.localeCompare(b.id));
+  assert.deepEqual(store.db.prepare('SELECT id,data FROM project.timeline_clips ORDER BY id').all().map(row => ({...row})), expectedClips);
+  assert.deepEqual(store.db.prepare('SELECT id,data FROM project.timeline_cues ORDER BY id').all().map(row => ({...row})), expectedCues);
+}
 import type {Format5LegacyTimeline} from '../packages/business/src/project-file/format5-conversion.ts';
 import {assertOldReleaseRejectsNewer, releaseProjectPaths} from './helpers/format4-release-fixture.ts';
 import {FORMAT5_SOURCE_RELEASES, format5ConversionAllocation, format5KernelSnapshot, prepareFormat5Release} from './helpers/format5-release-fixture.ts';
@@ -151,8 +165,7 @@ for (const release of releases) for (const withHistory of [true, false]) test(`p
     assert.deepEqual(seen.map(item => item.phase), ['after-content', 'after-structure', 'before-version-write', 'after-version-write']);
     for (const step of seen.slice(0, -1)) assert.deepEqual(step.versions, before.versions, 'the old pair remains the only published version until the terminal writes');
     assert.deepEqual(seen.at(-1)!.versions, expected);
-    const current = store.db.prepare('SELECT data FROM project.timelines').get()!;
-    assert.equal(current.data, JSON.stringify(prepared.plan.timeline));
+    convertStoredTimeline(store, prepared.plan.timeline! as unknown as Format5Timeline);
     assert.equal(store.db.prepare('SELECT baseline FROM project.sequence_sync_state').get()!.baseline, JSON.stringify(prepared.plan.syncState!.baseline));
     assert.deepEqual(format5KernelSnapshot(store).receipts, before.receipts, 'old request acknowledgements and history bodies retain their exact bytes');
     assert.equal(classifyHistoryStamp(store.db, false).state, 'current');
@@ -414,7 +427,14 @@ for (const release of ['v0.1.0', 'v0.2.0'] as const) for (const boundary of ['af
       assert.deepEqual(evidence.snapshot.receipts, parsed(before!).receipts);
       const timelines = evidence.snapshot.project.find(item => item.table === 'timelines')!.rows;
       assert.equal(timelines.length, 1);
-      assert.deepEqual(JSON.parse(String(timelines[0]!.data)), observed.plan.timeline);
+      const plan = observed.plan.timeline as {clips: {id: string}[]; subtitles?: {cues: {id: string}[]}};
+      assert.deepEqual(JSON.parse(String(timelines[0]!.data)), format5TimelineHeader(plan as never));
+      const clipRows = evidence.snapshot.project.find(item => item.table === 'timeline_clips')!.rows;
+      const cueRows = evidence.snapshot.project.find(item => item.table === 'timeline_cues')!.rows;
+      assert.deepEqual(clipRows.map(row => ({id: row.id, data: String(row.data)})).sort((a, b) => String(a.id).localeCompare(String(b.id))),
+        plan.clips.map(clip => ({id: clip.id, data: JSON.stringify(clip)})).sort((a, b) => a.id.localeCompare(b.id)));
+      assert.deepEqual(cueRows.map(row => ({id: row.id, data: String(row.data)})).sort((a, b) => String(a.id).localeCompare(String(b.id))),
+        (plan.subtitles?.cues ?? []).map(cue => ({id: cue.id, data: JSON.stringify(cue)})).sort((a, b) => a.id.localeCompare(b.id)));
       assert.equal(evidence.snapshot.historyState.seenContentSequence, evidence.snapshot.content.contentSequence);
       assert.equal(evidence.snapshot.historyState.seenContentToken, evidence.snapshot.content.contentToken);
     }

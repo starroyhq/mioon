@@ -36,7 +36,8 @@ export function format5KernelSnapshot(store: ProjectStore) {
     content, historyState: {...db.prepare('SELECT * FROM main.history_state').get()},
     manifests: {project: readSchemaManifest(db, 'project'), history: readSchemaManifest(db, 'main'), cache: readSchemaManifest(db, 'cache')},
     targetRevisions: db.prepare('SELECT * FROM project.agent_task_target_revisions_v2 ORDER BY kind,targetId').all(),
-    project: ['projects', 'shots', 'nodes', 'edges', 'assets', 'versions', 'timelines', 'subject_bindings']
+    project: [...['projects', 'shots', 'nodes', 'edges', 'assets', 'versions', 'timelines', 'subject_bindings'],
+      ...['timeline_clips', 'timeline_cues'].filter(table => db.prepare("SELECT 1 FROM project.sqlite_master WHERE type='table' AND name=?").get(table))]
       .map(table => ({table, rows: db.prepare(`SELECT * FROM project.${table} ORDER BY id`).all()})),
     receipts: ['mutation_requests', 'timeline_requests', 'project_version_requests', 'timeline_history']
       .map(table => ({table, rows: db.prepare(`SELECT * FROM main.${table} ORDER BY rowid`).all()})),

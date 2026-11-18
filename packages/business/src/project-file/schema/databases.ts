@@ -10,7 +10,7 @@ import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
 import {DRAFT_SCHEMA} from './domains/drafts.ts';
 import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, FORMAT4_HISTORY_SCHEMA_VERSION, canvasArchiveColumnDefinitions, canvasArchiveRevisionStatements} from './domains/canvas.ts';
-import {EDITOR_HISTORY_SCHEMA, initializeEditorStorageCounters, FORMAT5_CONTENT_TABLES_ADDED, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, format5ContentStatements} from './domains/sequence.ts';
+import {EDITOR_HISTORY_SCHEMA, initializeEditorStorageCounters, FORMAT5_SEQUENCED_TABLES_ADDED, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, format5ContentStatements} from './domains/sequence.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -86,7 +86,7 @@ export const FORMAT4_CONTENT_SCHEMA = [
 ];
 
 const FORMAT5_CONTENT_SCHEMA = format5ContentStatements(FORMAT4_CONTENT_SCHEMA);
-const FORMAT5_CONTENT_SEQUENCE_TRIGGERS = FORMAT5_CONTENT_TABLES_ADDED.flatMap(table =>
+const FORMAT5_CONTENT_SEQUENCE_TRIGGERS = FORMAT5_SEQUENCED_TABLES_ADDED.flatMap(table =>
   (['insert', 'update', 'delete'] as const).map(operation =>
     `CREATE TRIGGER project_file_sequence_${table}_${operation} AFTER ${operation.toUpperCase()} ON ${table} BEGIN UPDATE project_file SET contentSequence=contentSequence+1,contentToken=lower(hex(randomblob(16)));END`));
 

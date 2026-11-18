@@ -159,16 +159,19 @@ const integer=(value:unknown,min:number,max:number):value is number=>Number.isSa
 const text=(value:unknown,max:number):value is string=>typeof value==='string'&&value.length>0&&value.length<=max;
 const issue=(code:Format5ErrorCode,message:string,ids?:readonly string[]):Format5Issue=>({code,message,...(ids?{ids}:{})});
 const timelineFields=fields(['id','projectId','revision','fps','width','height','tracks','clips','durationFrames','createdAt','updatedAt','mainTrack'],['subtitles']);
+const headerFields=fields(['id','projectId','revision','fps','width','height','tracks','durationFrames','createdAt','updatedAt','mainTrack'],['subtitles']);
 const mainTrackFields=fields(['trackId','sequenceNodeId']);
 const trackFields=fields(['id','name','kind','orderIndex','hidden','muted']);
 const clipFields=fields(['id','trackId','assetId','name','startFrame','durationFrames','sourceInFrame','rect','gain','sourceState'],
   ['versionId','shotId','jobId','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope','transform','transitionIn','layout','sequenceSource','anchor']);
 const fixedSubtitleFields=fields(['profileId','cues']);
 const relativeSubtitleFields=fields(['profileId','basisPresetId','cues']);
+const headerFixedSubtitleFields=fields(['profileId']);
+const headerRelativeSubtitleFields=fields(['profileId','basisPresetId']);
 const cueFields=fields(['id','text','startFrame','durationFrames','anchor'],['dialogueRef']);
 
-function clipEffectsValid(clip:RecordValue,timeline:RecordValue,kind:unknown):boolean {
-  if(!isClipLayoutRect(clip,timeline)||typeof clip.gain!=='number'||!Number.isFinite(clip.gain)||clip.gain<0||clip.gain>2)return false;
+function clipEffectsValid(clip:RecordValue,frame:unknown,kind:unknown):boolean {
+  if(!isClipLayoutRect(clip,frame)||typeof clip.gain!=='number'||!Number.isFinite(clip.gain)||clip.gain<0||clip.gain>2)return false;
   if(Object.hasOwn(clip,'audioRole')&&!isClipAudioRole(clip.audioRole)||
       Object.hasOwn(clip,'volumeEnvelope')&&!isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames as number)||
       Object.hasOwn(clip,'transform')&&(clip.transform===null||!isClipTransform(clip.transform,clip.durationFrames as number)||kind!=='video')||
@@ -176,6 +179,106 @@ function clipEffectsValid(clip:RecordValue,timeline:RecordValue,kind:unknown):bo
       Object.hasOwn(clip,'colour')&&(!isTimelineClipColour(clip.colour)||clip.colour!==null&&kind!=='video'))return false;
   for(const key of ['fadeInFrames','fadeOutFrames'])if(Object.hasOwn(clip,key)&&!integer(clip[key],0,clip.durationFrames as number))return false;
   return Number(clip.fadeInFrames??0)+Number(clip.fadeOutFrames??0)<=(clip.durationFrames as number);
+}
+
+/** Entity that owns the shape of one persisted timeline row. The frame-only
+ * helpers are the same checks the whole-timeline contract runs, so a row write
+ * and a read projection never diverge on grammar or error codes. */
+export function getFormat5TrackIssue(track:unknown):Format5Issue|null {
+  if(!trackFields(track)||!uuid(track.id)||!text(track.name,150)||
+      !['video','audio'].includes(String(track.kind))||!integer(track.orderIndex,0,11)||
+      typeof track.hidden!=='boolean'||typeof track.muted!=='boolean'||track.kind==='audio'&&track.hidden)
+    return issue('FORMAT5_TRACK_INVALID','Invalid format-5 track');
+  return null;
+}
+
+export interface Format5ClipIssueContext {
+  readonly width:number;
+  readonly height:number;
+  readonly fps:number;
+  readonly trackKind:'video'|'audio'|undefined;
+  readonly main:boolean;
+}
+export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext):Format5Issue|null {
+  if(!clipFields(clip)||!uuid(clip.id)||!uuid(clip.trackId)||!text(clip.name,200)||
+      !integer(clip.startFrame,0,FORMAT5_LIMITS.durationFrames)||
+      !integer(clip.durationFrames,1,FORMAT5_LIMITS.durationFrames)||
+      clip.startFrame+clip.durationFrames>FORMAT5_LIMITS.durationFrames||
+      !integer(clip.sourceInFrame,0,Number.MAX_SAFE_INTEGER-FORMAT5_LIMITS.durationFrames)||
+      !clipEffectsValid(clip,{width:context.width,height:context.height,fps:context.fps},context.trackKind))
+    return issue('FORMAT5_CLIP_INVALID','Invalid format-5 clip');
+  const main=context.main;
+  if(main){
+    if(!format5SequenceSourceSchema.safeParse(clip.sequenceSource).success||Object.hasOwn(clip,'anchor'))
+      return issue('FORMAT5_SEQUENCE_SOURCE_INVALID','Invalid main-track sequence source',[clip.id]);
+  }else if(Object.hasOwn(clip,'sequenceSource')||!format5AnchorSchema.safeParse(clip.anchor).success)
+    return issue('FORMAT5_ANCHOR_INVALID','Other-track clips must carry an explicit anchor',[clip.id]);
+  if(clip.sourceState==='placeholder'){
+    if(!main||!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
+        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
+        Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
+      return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+  }else if(clip.sourceState!=='ready'||!uuid(clip.assetId)||
+      ['versionId','shotId','jobId'].some(key=>Object.hasOwn(clip,key)&&!uuid(clip[key]))||
+      main&&object(clip.sequenceSource)&&clip.sequenceSource.kind==='shot'&&!uuid(clip.versionId))
+    return issue('FORMAT5_SOURCE_INVALID','Invalid ready clip source',[clip.id]);
+  return null;
+}
+
+/** Syntax-only checks of one persisted cue. Owner/anchor cross-row checks stay
+ * in the timeline and full-state validators. */
+export function getFormat5CueIssue(cue:unknown,{durationFrames}:{readonly durationFrames:number}):Format5Issue|null {
+  if(!cueFields(cue)||!uuid(cue.id)||
+      !integer(cue.startFrame,0,durationFrames)||!integer(cue.durationFrames,1,durationFrames)||
+      cue.startFrame+cue.durationFrames>durationFrames||
+      !format5AnchorSchema.safeParse(cue.anchor).success||getTimelineSubtitleTextIssue(cue.text))
+    return issue('FORMAT5_SUBTITLES_INVALID','Invalid format-5 subtitle cue');
+  if(Object.hasOwn(cue,'dialogueRef')&&!format5DialogueRefSchema.safeParse(cue.dialogueRef).success)
+    return issue('FORMAT5_DIALOGUE_INVALID','Invalid subtitle dialogue reference',[cue.id]);
+  return null;
+}
+
+export interface Format5TimelineHeader extends Omit<TimelineRecord,'tracks'|'clips'|'subtitles'> {
+  id:string;projectId:string;revision:number;fps:number;width:number;height:number;
+  durationFrames:number;createdAt:string;updatedAt:string;
+  tracks:TimelineTrackRecord[];
+  mainTrack:{trackId:string;sequenceNodeId:string};
+  subtitles?:{profileId:string;basisPresetId?:string};
+}
+
+/** The persisted `timelines.data` value. Clips and cues are native rows, so the
+ * header never carries either array. */
+export function format5TimelineHeader(value:Format5Timeline):Format5TimelineHeader {
+  const {clips:_clips,subtitles,...rest}=value;
+  const header:{[key:string]:unknown}={...rest};
+  if(subtitles!==undefined){const {cues:_cues,...profile}=subtitles as {profileId:string;basisPresetId?:string;cues:unknown};header.subtitles=profile;}
+  return header as Format5TimelineHeader;
+}
+
+/** Header-only validation used by the commit fence before scanning row state. */
+export function getFormat5TimelineHeaderIssue(value:unknown,{projectId}:{projectId?:string}={}):Format5Issue|null {
+  if(!headerFields(value)||!uuid(value.id)||!uuid(value.projectId)||
+      projectId!==undefined&&value.projectId!==projectId||!integer(value.revision,1,Number.MAX_SAFE_INTEGER)||
+      !timelineOutputPreset(value)||!integer(value.durationFrames,0,FORMAT5_LIMITS.durationFrames)||
+      !timestamp.safeParse(value.createdAt).success||!timestamp.safeParse(value.updatedAt).success||
+      !mainTrackFields(value.mainTrack)||!uuid(value.mainTrack.trackId)||!uuid(value.mainTrack.sequenceNodeId)||
+      !Array.isArray(value.tracks)||value.tracks.length<1||value.tracks.length>FORMAT5_LIMITS.tracks)
+    return issue('FORMAT5_TIMELINE_INVALID','Invalid format-5 timeline record');
+  const tracks=new Map<string,RecordValue>();
+  for(const track of value.tracks){
+    if(!object(track)||tracks.has(String(track.id))||getFormat5TrackIssue(track))return issue('FORMAT5_TRACK_INVALID','Invalid format-5 track');
+    tracks.set(String(track.id),track);
+  }
+  if(tracks.get(value.mainTrack.trackId)?.kind!=='video')return issue('FORMAT5_MAIN_TRACK_INVALID','The main track must be a video track');
+  if(Object.hasOwn(value,'subtitles')){
+    const subtitles=value.subtitles;
+    if(!object(subtitles)||Object.hasOwn(subtitles,'cues')||
+        !((subtitles.profileId===TIMELINE_SUBTITLE_PROFILE_ID&&headerFixedSubtitleFields(subtitles))||
+          (subtitles.profileId===TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID&&headerRelativeSubtitleFields(subtitles)&&
+           typeof subtitles.basisPresetId==='string'&&timelineOutputPreset(subtitles.basisPresetId))))
+      return issue('FORMAT5_SUBTITLES_INVALID','Invalid format-5 subtitle layout or capacity');
+  }
+  return null;
 }
 
 /** Validate persisted editing structure, without resolving any filesystem source. */
@@ -190,39 +293,21 @@ export function getFormat5TimelineIssue(value:unknown,{projectId}:{projectId?:st
     return issue('FORMAT5_TIMELINE_INVALID','Invalid format-5 timeline record');
   const tracks=new Map<string,RecordValue>(),byTrack=new Map<string,RecordValue[]>(),clipIds=new Set<string>();
   for(const track of value.tracks){
-    if(!trackFields(track)||!uuid(track.id)||tracks.has(track.id)||!text(track.name,150)||
-        !['video','audio'].includes(String(track.kind))||!integer(track.orderIndex,0,11)||
-        typeof track.hidden!=='boolean'||typeof track.muted!=='boolean'||track.kind==='audio'&&track.hidden)
-      return issue('FORMAT5_TRACK_INVALID','Invalid format-5 track');
-    tracks.set(track.id,track);byTrack.set(track.id,[]);
+    if(!object(track)||tracks.has(String(track.id))||getFormat5TrackIssue(track))return issue('FORMAT5_TRACK_INVALID','Invalid format-5 track');
+    tracks.set(String(track.id),track);byTrack.set(String(track.id),[]);
   }
   if(tracks.get(value.mainTrack.trackId)?.kind!=='video')return issue('FORMAT5_MAIN_TRACK_INVALID','The main track must be a video track');
   let duration=0,mainCount=0;
   for(const clip of value.clips){
-    if(!clipFields(clip)||!uuid(clip.id)||clipIds.has(clip.id)||!uuid(clip.trackId)||
-        !tracks.has(clip.trackId)||!text(clip.name,200)||!integer(clip.startFrame,0,FORMAT5_LIMITS.durationFrames)||
-        !integer(clip.durationFrames,1,FORMAT5_LIMITS.durationFrames)||
-        clip.startFrame+clip.durationFrames>FORMAT5_LIMITS.durationFrames||
-        !integer(clip.sourceInFrame,0,Number.MAX_SAFE_INTEGER-FORMAT5_LIMITS.durationFrames)||
-        !clipEffectsValid(clip,value,tracks.get(clip.trackId)?.kind))return issue('FORMAT5_CLIP_INVALID','Invalid format-5 clip');
-    const main=clip.trackId===value.mainTrack.trackId;
-    if(main){
-      mainCount++;
-      if(!format5SequenceSourceSchema.safeParse(clip.sequenceSource).success||Object.hasOwn(clip,'anchor'))
-        return issue('FORMAT5_SEQUENCE_SOURCE_INVALID','Invalid main-track sequence source',[clip.id]);
-    }else if(Object.hasOwn(clip,'sequenceSource')||!format5AnchorSchema.safeParse(clip.anchor).success)
-      return issue('FORMAT5_ANCHOR_INVALID','Other-track clips must carry an explicit anchor',[clip.id]);
-    if(clip.sourceState==='placeholder'){
-      if(!main||!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
-          clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
-          Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
-        return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
-    }else if(clip.sourceState!=='ready'||!uuid(clip.assetId)||
-        ['versionId','shotId','jobId'].some(key=>Object.hasOwn(clip,key)&&!uuid(clip[key]))||
-        main&&object(clip.sequenceSource)&&clip.sequenceSource.kind==='shot'&&!uuid(clip.versionId))
-      return issue('FORMAT5_SOURCE_INVALID','Invalid ready clip source',[clip.id]);
-    clipIds.add(clip.id);byTrack.get(clip.trackId)!.push(clip);
-    duration=Math.max(duration,clip.startFrame+clip.durationFrames);
+    if(clipIds.has(String((clip as RecordValue)?.id))||!uuid((clip as RecordValue)?.trackId)||!tracks.has(String((clip as RecordValue)?.trackId)))
+      return issue('FORMAT5_CLIP_INVALID','Invalid format-5 clip');
+    const main=(clip as RecordValue).trackId===value.mainTrack.trackId;
+    const problem=getFormat5ClipIssue(clip,{width:value.width as number,height:value.height as number,fps:value.fps as number,trackKind:tracks.get(String((clip as RecordValue).trackId))?.kind as 'video'|'audio'|undefined,main});
+    if(problem)return problem;
+    if(main)mainCount++;
+    clipIds.add(String((clip as RecordValue).id));
+    byTrack.get(String((clip as RecordValue).trackId))!.push(clip as RecordValue);
+    duration=Math.max(duration,Number((clip as RecordValue).startFrame)+Number((clip as RecordValue).durationFrames));
   }
   if(mainCount>FORMAT5_LIMITS.mainTrackClips||value.clips.length-mainCount>FORMAT5_LIMITS.otherTrackClips)
     return issue('FORMAT5_CAPACITY','The format-5 editing capacity was exceeded');
@@ -254,8 +339,8 @@ export function getFormat5TimelineIssue(value:unknown,{projectId}:{projectId?:st
   };
   // Other-track syntax passed above; the unchanged records still need every
   // owner/offset check here, after the existing packing and overlap checks.
-  for(const clip of value.clips)if(clip.trackId!==value.mainTrack.trackId&&!validAnchor(clip,true))
-    return issue('FORMAT5_ANCHOR_INVALID','Clip anchor does not identify its current main-track offset',[clip.id]);
+  for(const clip of value.clips)if(clip.trackId!==value.mainTrack.trackId&&!validAnchor(clip as RecordValue,true))
+    return issue('FORMAT5_ANCHOR_INVALID','Clip anchor does not identify its current main-track offset',[String(clip.id)]);
   if(Object.hasOwn(value,'subtitles')){
     const error=subtitleIssue(value.subtitles,value.durationFrames,validAnchor);
     if(error)return error;
@@ -271,22 +356,19 @@ function subtitleIssue(value:unknown,duration:number,validAnchor:(item:RecordVal
         value.profileId===TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID&&relativeSubtitleFields(value)&&
         typeof value.basisPresetId==='string'&&timelineOutputPreset(value.basisPresetId)))
     return issue('FORMAT5_SUBTITLES_INVALID','Invalid format-5 subtitle layout or capacity');
-  const ids=new Set<string>(),dialogue=new Set<string>(),cues:RecordValue[]=[];
+  const ids=new Set<string>(),dialogue=new Set<string>();
   for(const cue of value.cues){
-    if(!cueFields(cue)||!uuid(cue.id)||ids.has(cue.id)||
-        !integer(cue.startFrame,0,duration)||!integer(cue.durationFrames,1,duration)||cue.startFrame+cue.durationFrames>duration||
-        !validAnchor(cue)||getTimelineSubtitleTextIssue(cue.text))return issue('FORMAT5_SUBTITLES_INVALID','Invalid format-5 subtitle cue');
-    if(Object.hasOwn(cue,'dialogueRef')){
-      if(!format5DialogueRefSchema.safeParse(cue.dialogueRef).success)return issue('FORMAT5_DIALOGUE_INVALID','Invalid subtitle dialogue reference',[cue.id]);
-      if(cue.dialogueRef!==null){
-        const ref=cue.dialogueRef as Exclude<Format5DialogueRef,null>,key=ref.shotId+'/'+ref.lineId;
-        if(dialogue.has(key))return issue('FORMAT5_DIALOGUE_DUPLICATE','A dialogue line may appear only once per timeline',[cue.id]);
-        dialogue.add(key);
-      }
+    const problem=getFormat5CueIssue(cue,{durationFrames:duration});
+    if(problem||ids.has(String((cue as RecordValue)?.id)))return issue('FORMAT5_SUBTITLES_INVALID','Invalid format-5 subtitle cue');
+    if(!validAnchor(cue as RecordValue))return issue('FORMAT5_SUBTITLES_INVALID','Invalid format-5 subtitle cue');
+    if(Object.hasOwn(cue as RecordValue,'dialogueRef')&&(cue as RecordValue).dialogueRef!==null){
+      const ref=(cue as RecordValue).dialogueRef as Exclude<Format5DialogueRef,null>,key=ref.shotId+'/'+ref.lineId;
+      if(dialogue.has(key))return issue('FORMAT5_DIALOGUE_DUPLICATE','A dialogue line may appear only once per timeline',[String((cue as RecordValue).id)]);
+      dialogue.add(key);
     }
-    ids.add(cue.id);cues.push(cue);
+    ids.add(String((cue as RecordValue).id));
   }
-  cues.sort((a,b)=>(a.startFrame as number)-(b.startFrame as number));
+  const cues=[...value.cues as RecordValue[]].sort((a,b)=>(a.startFrame as number)-(b.startFrame as number));
   for(let index=1;index<cues.length;index++)if((cues[index]!.startFrame as number)<(cues[index-1]!.startFrame as number)+(cues[index-1]!.durationFrames as number))
     return issue('FORMAT5_SUBTITLE_OVERLAP','Subtitle cues overlap',[String(cues[index-1]!.id),String(cues[index]!.id)]);
   return null;

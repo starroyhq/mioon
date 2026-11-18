@@ -15,6 +15,9 @@ import {removeCrossFileTriggersInside, installCrossFileTriggers} from './cross-f
 import {foreignKeyCheck} from './cross-file/inspect.ts';
 import {addFormat5HistoryStructureInside, addFormat5ProjectStructureInside, writeFormat5HistoryVersionInside, writeFormat5ProjectVersionInside} from './schema/format5-upgrade.ts';
 import {assertFormat5ProjectContent, readFormat5JsonRows} from './format5-content.ts';
+import {insertFormat5TimelineEntitiesInside} from './format5-timeline.ts';
+import {format5TimelineHeader} from '../../../contracts/src/project-format5.ts';
+import type {Format5Timeline} from '../../../contracts/src/project-format5.ts';
 import {planFormat5Conversion} from './format5-conversion.ts';
 import type {Format5ConversionAllocation, Format5ConversionInput, Format5ConversionPlan, Format5LegacyTimeline, Format5ProvenVersion} from './format5-conversion.ts';
 
@@ -142,10 +145,13 @@ export function applyFormat5ConversionInside(store: ProjectStore, prepared: Prep
   for (const edgeId of plan.removedEdgeIds) db.prepare('DELETE FROM project.edges WHERE id=? AND projectId=?').run(edgeId, store.projectId);
   save('nodes', plan.nodes);
   save('edges', plan.edges);
-  if (plan.timeline) save('timelines', [plan.timeline]);
+  // The old aggregate row is replaced by the format-5 header before the DDL
+  // step; clips and cues become native rows once their tables exist.
+  if (plan.timeline) save('timelines', [format5TimelineHeader(plan.timeline as unknown as Format5Timeline)]);
   onBoundary?.('after-content');
   addFormat5ProjectStructureInside(db, 'project', profile.project);
   addFormat5HistoryStructureInside(db, profile.history);
+  if (plan.timeline) insertFormat5TimelineEntitiesInside(db, 'project', plan.timeline as unknown as Format5Timeline);
   if (plan.syncState) db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
     .run(plan.syncState.timelineId, store.projectId, plan.syncState.sequenceNodeId, plan.syncState.revision, JSON.stringify(plan.syncState.baseline));
   installCrossFileTriggers(db, FORMAT5_PROJECT_SCHEMA_VERSION);

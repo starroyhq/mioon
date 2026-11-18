@@ -41,13 +41,7 @@ export function addFormat5ProjectStructureInside(db: DatabaseSync, schema: 'main
     }
   }
   const existing = new Set(db.prepare(`SELECT name FROM ${schema}.sqlite_master`).all().map(row => String(row.name)));
-  for (const sql of statements) {
-    const name = objectName(sql);
-    if (name.startsWith('agent_target_timeline_timeline_') && name.endsWith('_update_v2')) {
-      db.exec(`DROP TRIGGER ${schema}.${name}`);
-      db.exec(qualify(schema, sql));
-    } else if (!existing.has(name)) db.exec(qualify(schema, sql));
-  }
+  for (const sql of statements) if (!existing.has(objectName(sql))) db.exec(qualify(schema, sql));
 }
 
 /** Existing local history is retained; the unified stack starts with no entry. */

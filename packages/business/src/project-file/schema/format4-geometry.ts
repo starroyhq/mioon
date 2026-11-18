@@ -1,6 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {TIMELINE_RESPONSE_BYTES} from '../../../../contracts/src/timeline-replacement.ts';
-import {FORMAT5_LIMITS, assertFormat5Timeline} from '../../../../contracts/src/project-format5.ts';
+import {FORMAT5_LIMITS} from '../../../../contracts/src/project-format5.ts';
 import {projectFileError} from '../errors.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './databases.ts';
 
@@ -43,9 +43,15 @@ export function assertProjectTimelineGeometryProfile(db: DatabaseSync, schema: '
     if (typeof row.data !== 'string') throw invalid();
     let decoded: unknown;
     try { decoded = JSON.parse(row.data); } catch { throw invalid(); }
-    if (!isTimelineGeometryProfileAllowed(decoded, formatVersion)) throw invalid();
     if (formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION) {
-      try { assertFormat5Timeline(decoded); } catch { throw invalid(); }
+      // Format 5 stores clips and cues as rows; the header keeps the geometry
+      // profile and subtitle basis. Row grammar is checked by the format-5
+      // content validator on the same opening path.
+      const header = record(decoded) && decoded.subtitles !== undefined && record(decoded.subtitles)
+        ? {...decoded, subtitles: {...decoded.subtitles, cues: []}} : decoded;
+      if (!isTimelineGeometryProfileAllowed(header, formatVersion)) throw invalid();
+      continue;
     }
+    if (!isTimelineGeometryProfileAllowed(decoded, formatVersion)) throw invalid();
   }
 }
