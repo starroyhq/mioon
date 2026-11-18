@@ -11,6 +11,8 @@ import {WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-win
 export const WINDOWS_TITLEBAR_SCENARIOS = Object.freeze(['normal-light', 'normal-dark', 'maximized-light',
   'maximized-dark', 'dpi-125', 'dpi-150'] as const);
 export type WindowsTitleBarScenario = typeof WINDOWS_TITLEBAR_SCENARIOS[number];
+export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES = Object.freeze(['launcher-ready', 'theme', 'appearance', 'maximize', 'settle', 'facts', 'capture', 'write'] as const);
+type ScreenshotPhase = typeof WINDOWS_TITLEBAR_SCREENSHOT_PHASES[number];
 export interface WindowsTitleBarScreenshotOptions {
   app: App;
   getWindow(): BrowserWindow | null;
@@ -126,38 +128,57 @@ async function capture(window: BrowserWindow, title: string): Promise<{png: Buff
 /** Runs one screenshot scenario, writes the fixed PNG and a fixed JSON record,
  * then returns so the caller can quit the application. */
 export async function runWindowsTitleBarScreenshot({app, getWindow, output, screenshot, scenario, theme, maximized, scale, refreshAppearance}: WindowsTitleBarScreenshotOptions): Promise<void> {
-  const window = getWindow();
-  assert.ok(window && !window.isDestroyed(), 'The screenshot launcher window must be live');
-  assert.ok((WINDOWS_TITLEBAR_SCENARIOS as readonly string[]).includes(scenario), 'Unknown Windows title bar screenshot scenario');
-  assert.equal(app.isPackaged, true);
-  assert.equal(process.platform, 'win32');
-  assert.equal(process.arch, 'x64');
-  await launcherReady(window);
-  await applyTheme(window, theme);
-  // The saved preference is authoritative only after the window appearance reads
-  // it back; that callback also repaints the system caption overlay colors.
-  refreshAppearance();
-  await new Promise(resolve => setTimeout(resolve, 300));
-  if (maximized) await maximize(window);
-  await settle(window);
-  const facts = await readFacts(window);
-  assert.equal(facts.frame, 'win-overlay');
-  assert.equal(facts.theme, theme);
-  assert.ok(Math.abs(facts.barHeight - WINDOWS_WINDOW_CHROME.topbarHeight) < 0.5, `Screenshot top bar height ${facts.barHeight}`);
-  assert.equal(facts.overlay.visible, true, 'The system window controls overlay must be visible');
-  assert.ok(facts.overlay.right > 0 && facts.overlay.right < facts.innerWidth);
-  const reserved = facts.innerWidth - facts.overlay.right;
-  assert.ok(Math.abs(facts.trailing - reserved) <= 1, `Reserved ${facts.trailing} must equal the reported control band ${reserved}`);
-  assert.ok(Math.abs(facts.devicePixelRatio - scale) < 0.02, `Device scale factor ${facts.devicePixelRatio} differs from ${scale}`);
-  assert.equal(window.isMaximized(), maximized);
-  const {png, source} = await capture(window, window.getTitle());
-  await mkdir(path.dirname(screenshot), {recursive: true});
-  await writeFile(screenshot, png);
-  const sha256 = createHash('sha256').update(png).digest('hex');
-  await mkdir(path.dirname(output), {recursive: true});
-  await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: true, scenario,
-    platform: 'win32', arch: 'x64', isPackaged: true, theme, scale, maximized, frame: facts.frame,
-    devicePixelRatio: facts.devicePixelRatio, overlay: {visible: facts.overlay.visible, right: facts.overlay.right},
-    innerWidth: facts.innerWidth, barHeight: facts.barHeight, trailing: facts.trailing,
-    screenshot: {bytes: png.length, sha256, source}}, null, 2) + '\n');
+  let phase: ScreenshotPhase = 'launcher-ready';
+  const writeFailure = async (): Promise<void> => {
+    try {
+      await mkdir(path.dirname(output), {recursive: true});
+      await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: false,
+        code: 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED', check: phase}) + '\n');
+    } catch { /* The outer smoke driver records its own fixed failure code. */ }
+  };
+  try {
+    const window = getWindow();
+    assert.ok(window && !window.isDestroyed(), 'The screenshot launcher window must be live');
+    assert.ok((WINDOWS_TITLEBAR_SCENARIOS as readonly string[]).includes(scenario), 'Unknown Windows title bar screenshot scenario');
+    assert.equal(app.isPackaged, true);
+    assert.equal(process.platform, 'win32');
+    assert.equal(process.arch, 'x64');
+    await launcherReady(window);
+    phase = 'theme';
+    await applyTheme(window, theme);
+    phase = 'appearance';
+    // The saved preference is authoritative only after the window appearance reads
+    // it back; that callback also repaints the system caption overlay colors.
+    refreshAppearance();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    phase = 'maximize';
+    if (maximized) await maximize(window);
+    phase = 'settle';
+    await settle(window);
+    phase = 'facts';
+    const facts = await readFacts(window);
+    assert.equal(facts.frame, 'win-overlay');
+    assert.equal(facts.theme, theme);
+    assert.ok(Math.abs(facts.barHeight - WINDOWS_WINDOW_CHROME.topbarHeight) < 0.5, `Screenshot top bar height ${facts.barHeight}`);
+    assert.equal(facts.overlay.visible, true, 'The system window controls overlay must be visible');
+    assert.ok(facts.overlay.right > 0 && facts.overlay.right < facts.innerWidth);
+    const reserved = facts.innerWidth - facts.overlay.right;
+    assert.ok(Math.abs(facts.trailing - reserved) <= 1, `Reserved ${facts.trailing} must equal the reported control band ${reserved}`);
+    assert.ok(Math.abs(facts.devicePixelRatio - scale) < 0.02, `Device scale factor ${facts.devicePixelRatio} differs from ${scale}`);
+    assert.equal(window.isMaximized(), maximized);
+    phase = 'capture';
+    const {png, source} = await capture(window, window.getTitle());
+    phase = 'write';
+    await mkdir(path.dirname(screenshot), {recursive: true});
+    await writeFile(screenshot, png);
+    const sha256 = createHash('sha256').update(png).digest('hex');
+    await mkdir(path.dirname(output), {recursive: true});
+    await writeFile(output, JSON.stringify({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: true, scenario,
+      platform: 'win32', arch: 'x64', isPackaged: true, theme, scale, maximized, frame: facts.frame,
+      devicePixelRatio: facts.devicePixelRatio, overlay: {visible: facts.overlay.visible, right: facts.overlay.right},
+      innerWidth: facts.innerWidth, barHeight: facts.barHeight, trailing: facts.trailing,
+      screenshot: {bytes: png.length, sha256, source}}, null, 2) + '\n');
+  } catch {
+    await writeFailure();
+  }
 }

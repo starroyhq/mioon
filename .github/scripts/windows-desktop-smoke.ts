@@ -159,6 +159,21 @@ export function readWindowsPackageMetadata(archive: string, reader: AsarReader =
 export interface WindowsTitleBarScreenshotScenario {
   readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number; readonly maximized: boolean;
 }
+export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.freeze(['launcher-ready', 'theme', 'appearance',
+  'maximize', 'settle', 'facts', 'capture', 'write']);
+/** The packaged app writes this fixed failure shape when a screenshot step
+ * assertion fails; only the shared phase name crosses the boundary. */
+export function screenshotCheckFailureName(value: unknown): string | undefined {
+  if (!record(value) || !exactKeys(value, ['schemaVersion', 'scope', 'ok', 'code', 'check']) || value.schemaVersion !== 1 ||
+      value.scope !== 'windows-titlebar-screenshot' || value.ok !== false || value.code !== 'WINDOWS_SMOKE_SCREENSHOT_CHECK_FAILED' ||
+      typeof value.check !== 'string' || !WINDOWS_TITLEBAR_SCREENSHOT_PHASES.includes(value.check)) return undefined;
+  return value.check;
+}
+const sanitizedFailureMessage = (value: unknown): string | undefined => {
+  if (!record(value) || !exactKeys(value, ['ok', 'error']) || value.ok !== false || typeof value.error !== 'string') return undefined;
+  const text = value.error.replace(/[A-Za-z]:\\[^\s"']*/gu, '<path>').replace(/(?:\/Users\/|\/private\/)[^\s"']*/gu, '<path>');
+  return text.slice(0, 300);
+};
 export const WINDOWS_TITLEBAR_SCENARIOS: readonly WindowsTitleBarScreenshotScenario[] = Object.freeze([
   Object.freeze({name: 'normal-light', theme: 'light', scale: 1, maximized: false}),
   Object.freeze({name: 'normal-dark', theme: 'dark', scale: 1, maximized: false}),
@@ -174,6 +189,8 @@ export interface WindowsTitleBarScreenshot {readonly name: string; readonly them
   readonly screenshot: {readonly bytes: number; readonly sha256: string; readonly source: 'window' | 'content'}}
 export interface WindowsTitleBarScreenshotsReport {schemaVersion: 1; scope: 'windows-titlebar-screenshots'; ok: boolean;
   scenarios: WindowsTitleBarScreenshot[]}
+interface WindowsTitleBarScreenshotDiagnostic {schemaVersion: 1; scope: 'windows-titlebar-screenshots'; ok: false; scenario: string;
+  check?: string; message?: string}
 /** Validates the fixed app record for one title bar screenshot scenario and
  * returns a detached copy without raw paths. */
 export function validateWindowsTitleBarScreenshot(value: unknown, scenario: WindowsTitleBarScreenshotScenario): WindowsTitleBarScreenshot {
@@ -203,7 +220,7 @@ interface SmokeServices {
   inspect(file: string): Promise<FileObservation>;
   mkdir(directory: string, recursive: boolean): Promise<void>;
   read(file: string): Promise<string>;
-  write(file: string, value: WindowsLaunchReport | FailureReport | WindowsTitleBarScreenshotsReport): Promise<void>;
+  write(file: string, value: WindowsLaunchReport | FailureReport | WindowsTitleBarScreenshotsReport | WindowsTitleBarScreenshotDiagnostic): Promise<void>;
   expected(): Promise<ExpectedPackage>;
   packagedMetadata(archive: string): Promise<unknown>;
   launch(binary: string, environment: NodeJS.ProcessEnv, workspace: string): Promise<void>;
@@ -301,12 +318,16 @@ async function runTitleBarScreenshots(options: SmokeArguments & {screenshots: st
       } catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
       let validated: WindowsTitleBarScreenshot;
       try {validated = validateWindowsTitleBarScreenshot(report, scenario);} catch (error) {
-        // Fixed app records only: the raw report is already path-free evidence.
-        if (reportText !== undefined && (report as Record<string, unknown>)?.ok === false &&
-            exactKeys(report as Record<string, unknown>, ['ok', 'error'])) {
-          try {await services.write(paths.join(directory, `${scenario.name}.invalid.json`), {schemaVersion: 1,
-            scope: 'windows-titlebar-screenshots', ok: false, scenarios: [...scenarios]});}
-          catch { /* The main smoke evidence still records the fixed failure code. */ }
+        const check = screenshotCheckFailureName(report), message = sanitizedFailureMessage(report);
+        const diagnostic: WindowsTitleBarScreenshotDiagnostic = check !== undefined
+          ? {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name, check}
+          : message !== undefined ? {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name, message}
+          : {schemaVersion: 1, scope: 'windows-titlebar-screenshots', ok: false, scenario: scenario.name};
+        try {await services.write(paths.join(directory, `${scenario.name}.invalid.json`), diagnostic);}
+        catch { /* The main smoke evidence still records the fixed failure code. */ }
+        if (check !== undefined) {
+          const failure = new SmokeFailure('WINDOWS_SMOKE_SCREENSHOT_INVALID');
+          throw Object.assign(failure, {check});
         }
         throw error;
       }
@@ -408,7 +429,11 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
         if (options.screenshots !== undefined) screenshotRun = {options: {...options, screenshots: options.screenshots}, environment};
       }
     }
-  } catch (error: unknown) {result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: smokeFailureCode(error)};}
+  } catch (error: unknown) {
+    const check = error instanceof SmokeFailure && 'check' in error && typeof (error as {check?: unknown}).check === 'string' &&
+      WINDOWS_TITLEBAR_SCREENSHOT_PHASES.includes((error as {check: string}).check) ? (error as {check: string}).check : undefined;
+    result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: smokeFailureCode(error), ...(check === undefined ? {} : {check})};
+  }
   if (options && result.ok && screenshotRun !== undefined) {
     try {await runTitleBarScreenshots(screenshotRun.options, services, screenshotRun.environment);}
     catch (error) {result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: smokeFailureCode(error)};}
