@@ -1,5 +1,7 @@
 import type {RootModule,RootControlledModules} from './helpers/strict-root-ui-types.ts';
-type SubtitleProps = {state?:subtitles.SubtitleState;controller?:ReturnType<typeof subtitles.createSubtitleController>;renderJob?:{timelineRevision:number};onBack?:()=>void;onOpenTasks?:()=>void;timeline?:unknown;pixelsPerFrame?:number;pixelsPerSecond?:number;width?:number;playhead?:number;visible?:boolean;onSelect?:(cueId:unknown)=>unknown;onAdd?:(frame:unknown)=>unknown;onSeek?:(frame:unknown)=>unknown};
+import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
+import type {TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
+type SubtitleProps = {state?:subtitles.SubtitleState;controller?:ReturnType<typeof subtitles.createSubtitleController>;renderJob?:{timelineRevision:number};onBack?:()=>void;onOpenTasks?:()=>void;timeline?:unknown;pixelsPerFrame?:number;pixelsPerSecond?:number;width?:number;playhead?:number;playbackClock?:TimelinePlaybackClock;visible?:boolean;onSelect?:(cueId:unknown)=>unknown;onAdd?:(frame:unknown)=>unknown;onSeek?:(frame:unknown)=>unknown};
 import type {RootHook} from './helpers/strict-root-ui-types.ts';
 import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
 import { i18nTestModule, message, renderMessage, translate } from './helpers/i18n.ts';
@@ -142,9 +144,9 @@ test('undo/redo snapshots refresh a clean selection, preserve dirty edits, and e
 
 function componentHarness<File extends 'SubtitleInspector.tsx'|'SubtitleLane.tsx'>(filename: File, imports: { [x: string]: unknown; }|undefined = {}, locale: string|undefined = 'zh-Hans') {
   let slots: RootHook[] = [], cursor = 0, visible = true, props: SubtitleProps, tree: string|number|boolean|RootNode|RootTree[]|null|undefined, confirm:(...args:unknown[])=>Promise<unknown> = async () => true;
-  const hooks = { createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }), useRef: (value: unknown) => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn: () => void | (() => void), deps: readonly unknown[] | undefined) => { const i = cursor++, prior = slots[i] as RootHook|undefined; if (!prior || deps!.some((value, n) => value !== prior.deps![n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; } } };
+  const hooks = { createElement: (type: string | ((props:Record<string,unknown>)=>RootNode), props: Record<string, unknown> | null, ...children: RootTree[]) => typeof type==='function' ? type({...props,children}) : ({type,props:{...props,children}}), useRef: (value: unknown) => { const i = cursor++; return slots[i] ||= { current: value }; }, useLayoutEffect: (fn: () => void | (() => void), deps: readonly unknown[] | undefined) => { const i = cursor++, prior = slots[i] as RootHook|undefined; if (!prior || deps!.some((value, n) => value !== prior.deps![n])) { prior?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; } } };
   const source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), module = { exports: {} as RootModule<RootControlledModules[File]> };
-  const require = (name: string) => name === './i18n/I18nProvider.tsx' ? i18nTestModule(((locale) as unknown as Parameters<typeof i18nTestModule>[0])) : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args: unknown[]) => confirm(...args) } : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.ts') ? subtitles : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
+  const require = (name: string) => name === './i18n/I18nProvider.tsx' ? i18nTestModule(((locale) as unknown as Parameters<typeof i18nTestModule>[0])) : name.endsWith('packages/i18n/src/index.ts') ? i18n : name === 'react' ? { ...hooks, default: hooks } : name.endsWith('workbench-confirm') ? { useConfirmation: () => (...args: unknown[]) => confirm(...args) } : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => visible } : name.endsWith('subtitle-state.ts') ? subtitles : name==='./timeline-playhead.tsx' ? {TimelineTrackPlayhead:'TimelineTrackPlayhead', useTimelinePlaybackFrame:(clock:TimelinePlaybackClock | undefined, fallback:number)=>clock?.getSnapshot() ?? fallback} : name.endsWith('.css') ? {} : imports[name] || new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(require, module, module.exports);
   const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   return { render(next: SubtitleProps = props) { props = next; cursor = 0; tree = (module.exports.default as RootModule<RootControlledModules['SubtitleInspector.tsx']>['default']|RootModule<RootControlledModules['SubtitleLane.tsx']>['default'])(props as unknown as Parameters<RootControlledModules['SubtitleInspector.tsx']['default']>[0]&Parameters<RootControlledModules['SubtitleLane.tsx']['default']>[0]); return tree; }, find: (testId: unknown) => nodes(tree).find(node => node.props?.['data-testid'] === testId), nodes: () => nodes(tree),
@@ -180,6 +182,24 @@ test('actual lane buttons select and add once, reject hidden/unmounted and super
   ui.render(props); const last = (ui.find('subtitle-add'))!.props.onClick; ui.unmount(); last(); assert.deepEqual((calls as unknown), []);
 });
 
+test('subtitle insertion reads the newest playing frame and guards the live boundary', () => {
+  const ui = componentHarness('SubtitleLane.tsx');
+  const clock = createTimelinePlaybackClock(), owner = {};
+  const frames: unknown[] = [];
+  clock.start(owner, 110);
+  ui.render({timeline: timeline(), pixelsPerFrame: 2, pixelsPerSecond: 60, width: 780, playhead: 25,
+    playbackClock: clock, visible: true, onAdd: frame => frames.push(frame)});
+  const add = ui.find('subtitle-add')!.props;
+  assert.equal(add.disabled, false);
+  clock.tick(owner, 122);
+  add.onClick();
+  assert.deepEqual(frames, [122]);
+  clock.tick(owner, 180);
+  add.onClick();
+  assert.deepEqual(frames, [122], 'timeline end cannot add a subtitle even with a stale DOM button');
+  ui.unmount();
+});
+
 test('English subtitle track uses a short visible name with full count and add action labels', () => {
   const ui = componentHarness('SubtitleLane.tsx', {}, 'en');
   ui.render({timeline: timeline(), pixelsPerFrame: 2, pixelsPerSecond: 60, width: 780, playhead: 120, visible: true, onSelect() {}, onAdd() {}, onSeek() {}});
@@ -198,7 +218,7 @@ const compile = (source: string, name: string, scope:Record<string,unknown>) => 
 test('actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard', async () => {
   const h = fixture(), updates: unknown[] = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };
   let approved = false, current = true;
-  const scope = { context: () => ({ projectId, epoch: 1 }), panelIntent: { current: 1 }, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false,
+  const scope = { playbackClock: createTimelinePlaybackClock(), context: () => ({ projectId, epoch: 1 }), panelIntent: { current: 1 }, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false,
     confirm: async () => approved, isCurrent: () => current, notify: () => {}, openTasks: () => {}, setPropertiesPage: (value: unknown) => updates.push(['page', value]), setRightDockTab: (value: unknown) => updates.push(['tab', value]), setPanelOpen: (...args: unknown[]) => updates.push(['panel', ...args]) };
   const open = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scope);
   await open(cueId); assert.equal(h.controller.getState().cueId, cueId); h.controller.edit('text', 'subtitle draft'); updates.length = 0;
@@ -210,7 +230,7 @@ test('actual App subtitle selection keeps other Properties/Agent drafts and requ
 test('actual App selection confirmation rejects later edits and panel intent instead of reopening a hidden pane', async () => {
   for (const change of ['draft', 'panel']) {
     const h = fixture(), hold = deferred(), updates: unknown[] = []; h.controller.select(cueId); h.controller.edit('text', 'old');
-    const panelIntent = { current: 1 }, scope = { context: () => ({ projectId }), panelIntent, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false, confirm: () => hold.promise, isCurrent: () => true, notify() {}, openTasks() {}, setPropertiesPage: (value: unknown) => updates.push(value), setRightDockTab() {}, setPanelOpen() {} };
+    const panelIntent = { current: 1 }, scope = { playbackClock: createTimelinePlaybackClock(), context: () => ({ projectId }), panelIntent, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false, confirm: () => hold.promise, isCurrent: () => true, notify() {}, openTasks() {}, setPropertiesPage: (value: unknown) => updates.push(value), setRightDockTab() {}, setPanelOpen() {} };
     const open = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scope), selecting = open(secondId);
     if (change === 'draft') h.controller.edit('text', 'new'); else panelIntent.current++;
     (hold.resolve)!(true); await selecting; assert.equal(h.controller.getState().cueId, cueId); assert.deepEqual((updates as unknown), []);

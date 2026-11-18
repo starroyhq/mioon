@@ -1599,10 +1599,10 @@ export const connectionMessages = {
     "ja": "同じ参照素材を重複して送信することはできません"
   },
   "connections.generation.issue.lifecycle": {
-    "zh-Hans": "模型已到复核日期，已阻止新提交",
-    "zh-Hant": "模型已到複核日期，已阻止新送出",
-    "en": "Model review is due. New submissions are blocked",
-    "ja": "モデル再確認の期限に達したため、新規送信を停止しています"
+    "zh-Hans": "此模型已停止服务，请在生成服务中选择 Gemini Omni",
+    "zh-Hant": "此模型已停止服務，請在生成服務中選擇 Gemini Omni",
+    "en": "This model has been retired. Select Gemini Omni in Generation Services",
+    "ja": "このモデルの提供は終了しました。生成サービスで Gemini Omni を選択してください"
   },
   "connections.generation.issue.frozenInvalid": {
     "zh-Hans": "冻结的参考素材清单无效",
@@ -1858,6 +1858,10 @@ export const connectionMessages = {
   "settings.draftKey.footer": {"zh-Hans":"草稿 · 未保存","zh-Hant":"草稿 · 未儲存","en":"Draft · Unsaved","ja":"下書き · 未保存"},
   "settings.draftKey.resultHint": {"zh-Hans":"检查使用当前草稿。保存后才会替换原设置。","zh-Hant":"檢查使用目前草稿。儲存後才會取代原設定。","en":"The check uses this draft. Save to replace the previous settings.","ja":"確認には現在の下書きを使います。保存すると元の設定が置き換わります。"},
   "settings.draftKey.check": {"zh-Hans":"检查","zh-Hant":"檢查","en":"Check","ja":"確認"},
+  "settings.draftKey.recheck": {"zh-Hans":"重新检查","zh-Hant":"重新檢查","en":"Check again","ja":"再確認"},
+  "image.settings.officialCheckAvailable": {"zh-Hans":"密钥可用 · {model}","zh-Hant":"金鑰可用 · {model}","en":"Key accepted · {model}","ja":"キーを確認済み · {model}"},
+  "image.settings.officialCheckMissing": {"zh-Hans":"此密钥的模型列表中没有 {model}","zh-Hant":"此金鑰的模型清單中沒有 {model}","en":"The model list for this key does not include {model}","ja":"このキーのモデル一覧に {model} がありません"},
+  "image.settings.modelIdFormatUnsupported": {"zh-Hans":"ID 格式不支持","zh-Hant":"不支援此 ID 格式","en":"Unsupported ID format","ja":"未対応の ID 形式"},
   "settings.draftKey.list": {"zh-Hans":"获取模型","zh-Hant":"取得模型","en":"Get models","ja":"モデルを取得"},
   "settings.draftKey.checking": {"zh-Hans":"正在连接…","zh-Hant":"正在連線…","en":"Connecting…","ja":"接続中…"},
   "settings.draftKey.success": {"zh-Hans":"连接正常","zh-Hant":"連線正常","en":"Connection successful","ja":"接続できました"},

@@ -7,6 +7,7 @@ import * as settings from '../apps/web/src/video-settings.ts';
 import * as sessions from '../apps/web/src/generation-video-services.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as contracts from '../packages/contracts/src/video-providers.ts';
+import * as omni from '../packages/contracts/src/gemini-omni-video.ts';
 import type {CompatibleVideoCheckResult} from '../packages/contracts/src/video-providers.ts';
 import type {CompatibleVideoCheck} from '../packages/contracts/src/video-providers.ts';
 import type {VideoSettingsClient} from '../apps/web/src/video-settings.ts';
@@ -20,9 +21,10 @@ function nodes(value: unknown): Element[] {return Array.isArray(value) ? value.f
 function invoke(element: Element, method: string, ...args: unknown[]) {const callback = element.props[method]; assert.equal(typeof callback, 'function'); return (callback as (...args: unknown[]) => unknown)(...args);}
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 const flush = async () => {for (let index = 0; index < 6; index++) await new Promise<void>(resolve => setImmediate(resolve));};
-function fixture({check, modelsList, write, storage = {persistentAvailable: true, reasonCode: null}, desktop = false}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']; desktop?: boolean} = {}) {
+function fixture({check, modelsList, write, storage = {persistentAvailable: true, reasonCode: null}, desktop = false, emptyGoogle = false}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']; desktop?: boolean; emptyGoogle?: boolean} = {}) {
   const a = newVideoConnection('compatible'), b = newVideoConnection('compatible'); a.name = 'A'; b.name = 'B'; a.baseUrl = b.baseUrl = 'https://api.example.com/v1';
   let snapshot: VideoSettingsSnapshotV2 = {revision: 1, connections: [a, b].map(configuration => ({configuration, revision: 1, secret: {configured: true, storage: 'persistent'}})), storage, notice: null};
+  if (emptyGoogle) snapshot.connections.push({configuration: {...newVideoConnection('veo'), models: []}, revision: 1, secret: {configured: true, storage: 'persistent'}});
   const keyA = `video:${a.id}`, keyB = `video:${b.id}`;
   const hooks = new Map<string, Hook[]>(), inputs = new Map<string, {value: string}>(), trees = new Map<string, unknown>(), reports: navigation.SettingsNavigationState[] = [];
   let context = 'domain', cursor = 0, effects: Array<() => void> = [], pageVisible = true, selected = keyA, locale = 'zh-Hans', confirmValue: boolean | Promise<boolean> = true, interaction = true, domain: GenerationServiceDomain;
@@ -44,6 +46,7 @@ function fixture({check, modelsList, write, storage = {persistentAvailable: true
     if (name === './video-settings.ts') return settings;
     if (name === './settings-navigation-state.ts') return navigation;
     if (name === '../../../packages/contracts/src/video-providers.ts') return contracts;
+    if (name === '../../../packages/contracts/src/gemini-omni-video.ts') return omni;
     if (name === '../../../packages/i18n/src/index.ts') return {message: (key: string, parameters: unknown) => ({key, parameters})};
     if (name === './i18n/I18nProvider.tsx') return {useI18n: () => ({t: (key: string) => `${locale}:${key}`})};
     if (name === './SettingsServicesLayout.tsx') return {useSettingsServicesPanel: () => ({selected: context === selected, pageVisible, active: context === selected && pageVisible})};
@@ -257,9 +260,10 @@ test('built-in check and model discovery use one-time draft values and retain no
   const requests: VideoModelsListInput[] = [];
   let writes = 0;
   const f = fixture({
+    emptyGoogle: true,
     modelsList: async input => {
       requests.push(structuredClone(input));
-      return input.operation === 'models' ? {result: 'ok', models: [{id: 'veo-3.1-generate-preview'}, {id: 'veo-test-video'}, {id: 'veo-test-not-selected'}]} : {result: 'ok'};
+      return input.operation === 'models' ? {result: 'ok', models: [{id: 'gemini-omni-1.2-flash'}, {id: 'veo-3.1-generate-preview'}, {id: 'veo-test-not-selected'}]} : {result: 'ok'};
     },
     write: async () => {writes++; throw Error('Unexpected save');},
   });
@@ -285,9 +289,9 @@ test('built-in check and model discovery use one-time draft values and retain no
   assert.equal(picker.props.status, 'ready');
   assert.equal(picker.props.usesDraftKey, true);
   assert.deepEqual(picker.props.items, [
-    {id: 'veo-3.1-generate-preview', added: true, unavailable: false},
-    {id: 'veo-test-video', added: false, unavailable: false},
-    {id: 'veo-test-not-selected', added: false, unavailable: false},
+    {id: 'gemini-omni-1.2-flash', added: false, unavailable: false},
+    {id: 'veo-3.1-generate-preview', added: false, unavailable: true},
+    {id: 'veo-test-not-selected', added: false, unavailable: true},
   ]);
   assert.equal(f.all('video:veo').some(node => node.props.model && (node.props.model as {modelId?: unknown}).modelId === 'veo-test-video'), false);
   const visibleProps = {...picker.props};
@@ -299,13 +303,16 @@ test('built-in check and model discovery use one-time draft values and retain no
   invoke(picker, 'onAdd', ['veo-not-returned']);
   f.render();
   assert.equal(f.picker('video:veo')?.props.status, 'ready');
-  invoke(picker, 'onAdd', ['veo-test-video']);
+  invoke(picker, 'onAdd', ['veo-3.1-generate-preview']);
+  f.render();
+  assert.equal(f.picker('video:veo')?.props.status, 'ready');
+  invoke(picker, 'onAdd', ['gemini-omni-1.2-flash']);
   f.render();
   assert.equal(f.picker('video:veo'), undefined);
   assert.deepEqual(f.all('video:veo').filter(node => node.type === 'ModelEditor').map(node => {
     const model = node.props.model as {modelId: string; enabled: boolean};
     return [model.modelId, model.enabled];
-  }), [['veo-3.1-generate-preview', true], ['veo-test-video', true]]);
+  }), [['gemini-omni-1.2-flash', true]]);
   assert.equal(f.domain().navigation.dirty, true);
   assert.doesNotMatch(JSON.stringify(f.reports), /synthetic-video-ui-draft/);
   f.domain().discard();
@@ -338,7 +345,7 @@ test('video model discovery lists IDs outside the existing video contract withou
   invoke(picker, 'onAdd', [valid]);
   f.render();
   assert.equal(f.picker(f.keyA), undefined);
-  assert.deepEqual(f.all(f.keyA).filter(node => node.type === 'ModelEditor').map(node => (node.props.model as {modelId: string}).modelId), ['sora-2', valid]);
+  assert.deepEqual(f.all(f.keyA).filter(node => node.type === 'ModelEditor').map(node => (node.props.model as {modelId: string}).modelId), [valid]);
   f.unmount();
 });
 
@@ -458,5 +465,25 @@ test('a saved password cannot be reused by a retained callback after the draft a
   assert.deepEqual(requests, [
     {operation: 'models', source: 'draft', providerId: 'compatible', region: 'custom', workspaceId: '', baseUrl: 'https://new.example.com/v2', value: 'synthetic-new-video-ui-draft'},
   ]);
+  f.unmount();
+});
+
+test('an empty compatible connection adds a blank protocol entry without supplying a gateway model', async () => {
+  let writes = 0;
+  const f = fixture({write: async () => {writes++; throw Error('Unexpected save');}});
+  await flush(); f.render();
+  assert.deepEqual(f.all(f.keyA).filter(node => node.type === 'ModelEditor'), []);
+  invoke(f.find(f.keyA, 'video-add-model'), 'onClick');
+  f.render();
+  const editors = f.all(f.keyA).filter(node => node.type === 'ModelEditor');
+  assert.equal(editors.length, 1);
+  const model = editors[0]!.props.model as contracts.VideoModelEntry;
+  assert.deepEqual([model.modelId, model.name, model.templateId], ['', '', 'openai-video-v1']);
+  invoke(editors[0]!, 'onChange', {modelId: 'gateway-model', name: 'Gateway model'});
+  f.render();
+  const edited = f.all(f.keyA).find(node => node.type === 'ModelEditor')!.props.model as contracts.VideoModelEntry;
+  assert.deepEqual([edited.modelId, edited.name], ['gateway-model', 'Gateway model']);
+  assert.equal(f.domain().navigation.dirty, true);
+  assert.equal(writes, 0);
   f.unmount();
 });

@@ -9,6 +9,7 @@ import {createDesktopMenuController, readDesktopMenuBridge, workbenchMenuView, l
 import type {WorkbenchMenuAvailability, MenuPlaybackControl} from '../apps/web/src/desktop-menu-client.ts';
 import {timelineHistoryActionForKey, timelineSplitActionForKey} from '../apps/web/src/timeline-keyboard.ts';
 import {timelineAudioPreviewPosition} from '../apps/web/src/use-timeline-audio-preview.ts';
+import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 
 const flush = async () => {for (let index = 0; index < 20; index++) await Promise.resolve();};
 const availability = (patch: Partial<WorkbenchMenuAvailability> = {}): WorkbenchMenuAvailability => ({
@@ -111,7 +112,8 @@ function canvasStoryboardApp() {
     clipDraftRef: {current: null}, trackLocksRef: {current: {}}, document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}},
     hasOpenWorkbenchModal: () => false, comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
     assetsCollapsed: false, inspectorCollapsed: false, isBusy: () => false, online: true, auth: true,
-    canOpenExport: false, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: false},
+    canOpenExport: false, historyState: {canUndo: true, canRedo: true},
+    getSplitStateAt: () => ({canSplit: false}), playbackClock: createTimelinePlaybackClock(), effectivePlayhead: 0,
     menuRemoval: {current: null}, menuPlayback: {current: null}, workbenchMenuView,
     canvasEditingEnabled: false, canvasArea: {current: {}}, canvasOwnsShortcutFocus: () => true, storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
     canvasCopyBlocked: 'No selection', canvasEditingScope: 'canvas-doc', renderedCanvasSelection: 0, canvasTargets: [],
@@ -357,7 +359,9 @@ test('actual App availability retains live import and follows text focus and tra
     document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}}, hasOpenWorkbenchModal: () => false,
     comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
     assetsCollapsed: false, inspectorCollapsed: false,
-    isBusy: () => false, online: true, auth: true, canOpenExport: true, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: true},
+    isBusy: () => false, online: true, auth: true, canOpenExport: true, historyState: {canUndo: true, canRedo: true},
+    getSplitStateAt: (frame: number) => ({canSplit: frame > 0 && frame < 60}),
+    playbackClock: createTimelinePlaybackClock(), effectivePlayhead: 30,
     menuRemoval: {current: {available: () => true}}, menuPlayback: {current: {available: () => true}}, workbenchMenuView,
     canvasCopyBlocked: 'No selection',
   };
@@ -365,6 +369,13 @@ test('actual App availability retains live import and follows text focus and tra
   assert.equal(read().commands['import-media'], true, 'Live workspaces retain the existing import capability');
   trackLocks.current.project.push('track'); assert.equal(read().commands['clip-split'], false); assert.equal(read().commands['edit-undo'], false);
   trackLocks.current.project.length = 0; assert.equal(read().commands['clip-split'], true);
+  const mediaOwner = {};
+  bindings.playbackClock.start(mediaOwner, 60);
+  assert.equal(read().commands['clip-split'], false, 'live clip boundary overrides the saved split point');
+  bindings.playbackClock.tick(mediaOwner, 45);
+  assert.equal(read().commands['clip-split'], true, 'native menu reads the latest playing frame');
+  assert.equal(bindings.effectivePlayhead, 30, 'playback does not write the saved position');
+  bindings.playbackClock.stop(mediaOwner);
   document.activeElement = {closest: () => ({})}; assert.equal(read().editingContext, 'text'); assert.equal(read().commands['clip-split'], false); assert.equal(read().commands['playback-toggle'], false);
 });
 
@@ -397,9 +408,10 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   const end = appSource.indexOf("    window.addEventListener('keydown', onKeyDown)", start);
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
-  const calls: string[] = [], doc = {modal: false};
-  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'timelineSplitActionForKey', 'splitState', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', `${code};return onKeyDown;`)(
-    desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, timelineSplitActionForKey, {canSplit: true}, () => calls.push('split'), timelineHistoryActionForKey,
+  const calls: string[] = [], doc = {modal: false}, playbackClock = createTimelinePlaybackClock();
+  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', `${code};return onKeyDown;`)(
+    desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, timelineSplitActionForKey,
+    (frame: number) => ({canSplit: frame > 0 && frame < 60}), playbackClock, 30, () => calls.push('split'), timelineHistoryActionForKey,
     {canUndo: true, canRedo: true}, (direction: string) => calls.push(direction),
   ) as (event: unknown) => void;
   const event = (key: string, patch = {}) => ({key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}, ...patch});
@@ -408,6 +420,16 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   const web = keyboard(false); web(event('z')); web(event('b')); assert.deepEqual(calls, ['redo', 'undo', 'split']);
   web(event('z', {isComposing: true})); web(event('b', {target: {closest: () => ({})}}));
   doc.modal = true; web(event('z')); assert.deepEqual(calls, ['redo', 'undo', 'split']);
+  doc.modal = false;
+  const mediaOwner = {};
+  playbackClock.start(mediaOwner, 60);
+  const boundary = event('b'); web(boundary);
+  assert.equal(boundary.defaultPrevented, false, 'the live boundary cannot split');
+  assert.deepEqual(calls, ['redo', 'undo', 'split']);
+  playbackClock.tick(mediaOwner, 45);
+  const inside = event('b'); web(inside);
+  assert.equal(inside.defaultPrevented, true);
+  assert.deepEqual(calls, ['redo', 'undo', 'split', 'split']);
 });
 
 test('absent bridges remain Web and malformed desktop bridges never become a usable transport', async () => {

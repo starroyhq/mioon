@@ -9,7 +9,7 @@ import {crc32,deflateSync} from 'node:zlib';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
 import {videoCredentialDiagnostic} from '../packages/business/src/video/credential.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
-import {defaultVideoModels,resolveVideoEndpoint,VIDEO_REGIONS} from '../packages/contracts/src/video-providers.ts';
+import {defaultVideoModels,newVideoModelEntry,resolveVideoEndpoint,VIDEO_REGIONS} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoProviderId,VideoTemplateId} from '../packages/contracts/src/video-providers.ts';
 
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}});
@@ -23,7 +23,9 @@ function png(width=360,height=640):Buffer {
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc((width*3+1)*height))),chunk('IEND',Buffer.alloc(0))]);
 }
 function bindingFor(providerId:VideoProviderId,templateId?:VideoTemplateId):VideoExecutionBinding {
-  const model=defaultVideoModels(providerId).find(model=>!templateId||model.templateId===templateId)!;
+  const model=providerId==='compatible'?newVideoModelEntry(providerId,'synthetic-video-model'):providerId==='veo'
+    ?{...newVideoModelEntry(providerId,'veo-3.1-generate-preview'),templateId:'veo-v1' as const,inputModes:['text','image'] as ('text'|'image')[],durationResolutionMap:[{duration:[4,6,8],resolution:['720p']}]}
+    :defaultVideoModels(providerId).find(model=>!templateId||model.templateId===templateId)!;
   const region=VIDEO_REGIONS[providerId][0]!;
   const endpoint=providerId==='compatible'?'https://api.example.com/v1':resolveVideoEndpoint(providerId,region);
   return {version:1,connectionId:randomUUID(),configurationRevision:1,providerId,region,workspaceId:'',endpoint,credentialRef:randomUUID(),model,outputHosts:['result.example']};
@@ -201,7 +203,7 @@ test('Kling reconciliation queries its stable external ID and never creates a ta
 });
 
 test('Kling audio follows the frozen model policy and explicit optional switch',async t=>{
-  const f=await fixture(t,'kling');f.binding.model.audio='optional';const provider=createConfiguredVideoProvider({root:f.root,binding:f.binding,acquireCredential:async()=> 'PRIVATE-KEY',fetchImpl:async(_url,init)=>{assert.equal(view(view(JSON.parse(String(init?.body))).settings).audio,'native');return json(receipt(f.binding));}});
+  const f=await fixture(t,'kling');f.binding.model.audio='optional';const provider=createConfiguredVideoProvider({root:f.root,binding:f.binding,now:f.now,acquireCredential:async()=> 'PRIVATE-KEY',fetchImpl:async(_url,init)=>{assert.equal(view(view(JSON.parse(String(init?.body))).settings).audio,'native');return json(receipt(f.binding));}});
   await provider.submit({...f.snapshot,parameters:{...f.snapshot.parameters,generateAudio:true}},{requestId:'audio-request-123'});
 });
 
@@ -331,7 +333,7 @@ test('Runway WebP dimensions, checksum and 5 MiB encoded size use actual managed
 for(const [family,templateId]of entries)test(`${family}/${templateId??'default'} manual model IDs remain bounded by the selected native protocol and SDK`,async t=>{
   const f=await fixture(t,family,templateId);f.binding.model.modelId='official-model-snapshot-2026';if(family==='ark')f.binding.model.inputModes=['text','image'];
   const calls:Array<{url:string;body:Record<string,unknown>}> = [];
-  const provider=createConfiguredVideoProvider({root:f.root,binding:f.binding,acquireCredential:async()=> 'PRIVATE-KEY',fetchImpl:async(url,init)=>{calls.push({url:String(url),body:view(JSON.parse(String(init?.body)))});return json(receipt(f.binding));}});
+  const provider=createConfiguredVideoProvider({root:f.root,binding:f.binding,now:f.now,acquireCredential:async()=> 'PRIVATE-KEY',fetchImpl:async(url,init)=>{calls.push({url:String(url),body:view(JSON.parse(String(init?.body)))});return json(receipt(f.binding));}});
   if(family==='minimax'){
     await assert.rejects(provider.submit({...f.snapshot,model:f.binding.model.modelId},{requestId:'manual-model-request'}),{code:'UNSUPPORTED_MODEL'});
     assert.equal(calls.length,0,'Unsupported official SDK models never fall back to REST');return;

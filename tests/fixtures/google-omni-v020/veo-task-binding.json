@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "connectionId": "b810d63d-1b33-4e90-b743-7c74eada114f",
+  "configurationRevision": 1,
+  "providerId": "veo",
+  "region": "global",
+  "workspaceId": "",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta",
+  "credentialRef": "8b611f35-510f-4950-8575-4efd8e4feab7",
+  "model": {
+    "id": "66d63898-fede-4a16-a432-6bbd880b4f43",
+    "name": "veo-3.1-generate-preview",
+    "modelId": "veo-3.1-generate-preview",
+    "templateId": "veo-v1",
+    "enabled": true,
+    "archived": false,
+    "inputModes": [
+      "text",
+      "image"
+    ],
+    "aspectRatios": [
+      "9:16",
+      "16:9"
+    ],
+    "durationResolutionMap": [
+      {
+        "duration": [
+          4,
+          6,
+          8
+        ],
+        "resolution": [
+          "720p"
+        ]
+      }
+    ],
+    "audio": "on",
+    "seed": false
+  },
+  "outputHosts": []
+}

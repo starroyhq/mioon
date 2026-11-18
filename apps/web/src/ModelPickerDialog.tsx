@@ -23,6 +23,7 @@ interface ModelPickerDialogProps {
   returnedModelCount?: number;
   status: 'loading' | 'error' | 'empty' | 'ready';
   statusMessage?: string;
+  unavailableLabel?: string;
   usesDraftKey?: boolean;
   mode?: 'multiple' | 'single';
   maxAdditions?: number;
@@ -32,7 +33,7 @@ interface ModelPickerDialogProps {
 }
 
 /** Mount once per fetch. Only the parent can add models to the settings draft. */
-export default function ModelPickerDialog({serviceName, items, status, statusMessage, usesDraftKey = false,
+export default function ModelPickerDialog({serviceName, items, status, statusMessage, unavailableLabel, usesDraftKey = false,
   mode = 'multiple', returnedModelCount = items.length, maxAdditions, onClose, onAdd, triggerRef}: ModelPickerDialogProps) {
   const {t} = useI18n();
   const radioName = useId(), single = mode === 'single';
@@ -121,7 +122,7 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
                 </span>
                 {item.verified !== undefined && <WorkbenchBadge tone={item.verified ? 'success' : 'warning'}>{t(item.verified ? 'agent.settings.x6.adapted' : 'agent.settings.x6.unverified')}</WorkbenchBadge>}
                 <span className="model-picker-row-state">{item.active ? t('settings.modelPicker.inUse') : locked ? t(single ? 'settings.modelPicker.current' : 'settings.modelPicker.added') :
-                  item.unavailable ? t('settings.modelPicker.unavailable') : checked ? t(single ? 'settings.modelPicker.willUse' : 'settings.modelPicker.willAdd') : null}</span>
+                  item.unavailable ? (unavailableLabel ?? t('settings.modelPicker.unavailable')) : checked ? t(single ? 'settings.modelPicker.willUse' : 'settings.modelPicker.willAdd') : null}</span>
               </label>
             </li>;
           })}

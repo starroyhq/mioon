@@ -276,6 +276,7 @@ function componentHarness({ hook = false, realTimelineWaveforms = false, wavefor
       return { type, props: { ...props, children } };
     },
     useState(initial: unknown) { const index = cursor++; slots[index] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[index].value, (next: unknown) => { const value = typeof next === 'function' ? next(slots[index].value) : next; if (!Object.is(value, slots[index].value)) { slots[index].value = value; needsRender = true; } }]; },
+    useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { return getSnapshot(); },
     useRef(initial: unknown) { const index = cursor++; return slots[index] ||= { current: initial }; },
     useLayoutEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { const index = cursor++, prior = slots[index]; if (prior && equalDeps(deps, prior.deps)) return; slots[index] = { deps, callback, cleanup: prior?.cleanup }; effects.push(index); },
   };
@@ -294,7 +295,7 @@ function componentHarness({ hook = false, realTimelineWaveforms = false, wavefor
       if (id === './timeline-compact-layout.ts') return compactLayout;
       if (id === './timeline-removal.ts') return removalState;
       if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
-      if (id === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');
+      if (id === './TimelineToolbar.tsx' || id === './timeline-playhead.tsx') return load(id.slice(2));
       if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
       if (id === './waveform-state.ts') return waveform;
       if (id === './api.ts') return { rpc: (operation: string, input: unknown) => { const pending = deferred(); requests.push({ operation, input: input as WaveformInput, ...pending }); return pending.promise; }, assetUrl: () => '' };

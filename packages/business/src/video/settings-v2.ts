@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {VIDEO_SECRET_NAMESPACE, VIDEO_SETTINGS_LIMITS, parseVideoBinding, videoConnectionEndpoint, videoOutputHosts} from '../../../contracts/src/video-providers.ts';
+import {VIDEO_SECRET_NAMESPACE, VIDEO_SETTINGS_LIMITS, migrateGoogleVideoConfiguration, parseVideoBinding, videoConnectionEndpoint, videoOutputHosts} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding, VideoSecretUpdate} from '../../../contracts/src/video-providers.ts';
 import {VIDEO_SETTINGS_V1_RESET_NOTICE, videoConnectionConfigurationV2Schema, videoExecutionBindingV2Schema, videoModelsListEndpoint, videoSettingsSelectionV2Schema, videoSettingsUpdateV2Schema, videoSettingsUuidV2Schema, videoStorageV2Schema} from '../../../contracts/src/generation-video-settings.ts';
 import type {VideoConnectionConfigurationV2, VideoConnectionViewV2, VideoModelsListRecipient, VideoSettingsOperationV2, VideoSettingsSnapshotV2, VideoSettingsUpdateV2, VideoStorageV2} from '../../../contracts/src/generation-video-settings.ts';
@@ -150,12 +150,11 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
   // An old in-memory key left an empty ciphertext slot. Preserve that ref for
   // frozen jobs and treat it exactly like a removed credential.
   const material = (ref: string | null): VideoConnectionViewV2['secret']['storage'] => secretCodec && state.credentials.find(credential => credential.ref === ref)?.encrypted ? 'persistent' : 'none';
-  const view = (entry: RevisionV2): VideoConnectionViewV2 => {const selected = material(entry.credentialRef); return {configuration: copy(entry.configuration), revision: entry.revision, secret: {configured: selected !== 'none', storage: selected}};};
+  const view = (entry: RevisionV2): VideoConnectionViewV2 => {const selected = material(entry.credentialRef); return {configuration: copy(migrateGoogleVideoConfiguration(entry.configuration)), revision: entry.revision, secret: {configured: selected !== 'none', storage: selected}};};
   const snapshot = (): VideoSettingsSnapshotV2 => ({revision: state.revision, connections: state.connections.map(view), storage: capabilities(), notice});
-  const binding = (entry: RevisionV2, modelEntryId: string): VideoExecutionBinding => {
-    const model = entry.configuration.models.find(model => model.id === modelEntryId);
+  const binding = (entry: RevisionV2, modelEntryId: string, configuration = entry.configuration): VideoExecutionBinding => {
+    const model = configuration.models.find(model => model.id === modelEntryId);
     if (!model || !entry.credentialRef) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
-    const configuration = entry.configuration;
     return parseVideoBinding({version: 1, connectionId: configuration.id, configurationRevision: entry.revision, providerId: configuration.providerId, region: configuration.region, workspaceId: configuration.workspaceId, endpoint: videoConnectionEndpoint(configuration), credentialRef: entry.credentialRef, model: copy(model), outputHosts: copy(configuration.outputHosts)});
   };
   const assertFrozenBinding = (input: unknown): VideoExecutionBinding => {
@@ -167,7 +166,10 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       const error = videoSettingsV2Error('VIDEO_BINDING_INVALID');
       unavailableBindingHistory.add(error); throw error;
     }
-    if (!same(binding(historical, selected.model.id), selected)) return fail('VIDEO_BINDING_INVALID');
+    // Preserve the exact paid Veo task and the deterministic Omni selection
+    // made from that revision. The persisted history remains the source proof.
+    if (!same(binding(historical, selected.model.id), selected) &&
+        !same(binding(historical, selected.model.id, migrateGoogleVideoConfiguration(historical.configuration)), selected)) return fail('VIDEO_BINDING_INVALID');
     return selected;
   };
   const assertBinding = (input: unknown): VideoExecutionBinding => {
@@ -230,7 +232,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       }
       check(); secretChanged = existing !== secret.value;
     }
-    if (current && same(current.configuration, configuration) && !secretChanged) return null;
+    if (current && (same(current.configuration, configuration) || same(migrateGoogleVideoConfiguration(current.configuration), configuration)) && !secretChanged) return null;
     if (secret.action === 'remove' && ref && secretChanged) {
       currentCredential!.encrypted = null;
     }
@@ -286,9 +288,9 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       if (state.deletedConnectionIds.includes(connectionId)) return fail('VIDEO_SETTINGS_DELETED');
       const entry = state.connections.find(entry => entry.configuration.id === connectionId);
       if (!entry || entry.revision !== configurationRevision) return fail('VIDEO_SETTINGS_CONFLICT');
-      const model = entry.configuration.models.find(model => model.id === modelEntryId);
-      if (!entry.configuration.enabled || !model?.enabled || model.archived) return fail('VIDEO_SETTINGS_DISABLED');
-      const selected = binding(entry, modelEntryId);
+      const configuration = migrateGoogleVideoConfiguration(entry.configuration), model = configuration.models.find(model => model.id === modelEntryId);
+      if (!configuration.enabled || !model?.enabled || model.archived) return fail('VIDEO_SETTINGS_DISABLED');
+      const selected = binding(entry, modelEntryId, configuration);
       if (!videoOutputHosts(selected).length) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
       assertBinding(selected); return selected;
     },
