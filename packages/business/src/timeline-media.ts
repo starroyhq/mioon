@@ -14,7 +14,7 @@ import {assertTimelineExportCapability,timelineExportVideoArgs} from './timeline
 import {checkMediaEffect,runStreaming} from './media-runtime.ts';
 import {withProbePermit} from './media-probe.ts';
 import {hasUnconfirmedMediaProcesses,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
-import {MAX_SEGMENT_ENCODERS,segmentEncoderConcurrency,globalMediaEncoderPool} from './media-encoder-pool.ts';
+import {MAX_SEGMENT_ENCODERS,globalMediaEncoderPool} from './media-encoder-pool.ts';
 import type {MediaEncoderSlotPool} from './media-encoder-pool.ts';
 import {createTimelineFloatAudioChecker,assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure} from './timeline-float-audio-check.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
@@ -116,13 +116,16 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{
  signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
- segmentConcurrency=segmentEncoderConcurrency(),encoderPool,
+ segmentConcurrency: requestedSegmentConcurrency,encoderPool,
 }: RenderTimelineOptions={}): Promise<unknown>{
- if(!Number.isInteger(segmentConcurrency)||segmentConcurrency<1||segmentConcurrency>MAX_SEGMENT_ENCODERS)throw new RangeError('Invalid timeline segment concurrency');
  // Every project window shares one backend process and this application-wide
  // pool: two exports never start more segment encoders than the machine-wide
  // cap, and each export still uses its full segment count when uncontended.
+ // One export never runs more than four segments, and never more than the
+ // application-wide pool admits.
  const pool=encoderPool??globalMediaEncoderPool(),encoderOwner={};
+ const segmentConcurrency=requestedSegmentConcurrency??Math.min(MAX_SEGMENT_ENCODERS,pool.limit);
+ if(!Number.isInteger(segmentConcurrency)||segmentConcurrency<1||segmentConcurrency>MAX_SEGMENT_ENCODERS)throw new RangeError('Invalid timeline segment concurrency');
  // Nothing binds an opacity render: a snapshot with an opacity field is refused before any media work.
  getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  checkMediaEffect(beforeEffect,signal);

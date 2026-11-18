@@ -6,11 +6,15 @@ import { interruptedMediaError, throwIfMediaAborted } from './media-processes.ts
 // project windows, previews and Mio renders together. Light media tools
 // (probes, frame/waveform decoders, thumbnails) are not encoded segments and
 // keep their own existing limits.
+//
+// Global slots = min(cores form, memory form). The four-segment ceiling belongs
+// to a single export; the application total scales with the machine, with the
+// memory form bounding encoders on small machines.
 /** Every timeline segment encoder runs with `-threads 2` (unchanged by this cap). */
 const THREADS_PER_ENCODER = 2;
 /** Keep two logical cores for the UI, the backend and light media tooling. */
 const CORE_HEADROOM = 2;
-/** Same ceiling the per-render segment loop has always used. */
+/** Per render: one export gains nothing from more concurrent segments. */
 export const MAX_SEGMENT_ENCODERS = 4;
 /**
  * Measured peak resident memory of one extra concurrent segment encoder on a
@@ -24,10 +28,12 @@ export const ENCODER_RESIDENT_BYTES = 512 * 1024 * 1024;
  * System and application allowance for the memory form of the cap: the desktop
  * shell (main process plus renderer windows and helpers) and the system work
  * alongside the encoders, and light media tools may overlap an export. Three
- * GiB keeps the memory form from reacting to page cache; it binds only on
- * machines small enough that four encoders would otherwise not fit.
+ * GiB keeps the memory form from reacting to page cache; it binds on machines
+ * where the core form would otherwise crowd the available memory.
  */
 export const ENCODER_MEMORY_RESERVE_BYTES = 3 * 1024 * 1024 * 1024;
+/** Defensive bound for constructing a pool; the formula is far below this. */
+export const MAX_ENCODER_POOL_SLOTS = 256;
 
 export interface EncoderPoolLimitInput {
   readonly parallelism?: number;
@@ -36,9 +42,9 @@ export interface EncoderPoolLimitInput {
 export interface EncoderPoolLimits {
   /** Final global slot count; the smaller of the core and memory forms. */
   readonly slots: number;
-  /** Segments that may encode at once when only the CPU form applies. */
+  /** Global slots the machine's cores can keep occupied. */
   readonly coreSlots: number;
-  /** Encoders that the machine's memory can admit, bounded by the core form. */
+  /** Global slots the machine's memory can admit. */
   readonly memorySlots: number;
   readonly residentBytes: number;
   readonly reserveBytes: number;
@@ -49,22 +55,30 @@ function positiveInteger(value: unknown, name: string): number {
   return value as number;
 }
 
-/** The long-standing per-render formula, now also the whole-application ceiling. */
-export function segmentEncoderConcurrency(parallelism: number = availableParallelism()): number {
+/** Global slots that the machine's cores can keep busy across all exports.
+ * Unlike the per-render formula this is not capped at four: the four is a
+ * per-export ceiling, not the ceiling of the whole application. */
+export function coreEncoderSlots(parallelism: number = availableParallelism()): number {
   const cores = positiveInteger(parallelism, 'available parallelism');
-  return Math.min(MAX_SEGMENT_ENCODERS, Math.max(1, Math.floor((cores - CORE_HEADROOM) / THREADS_PER_ENCODER)));
+  return Math.max(1, Math.floor((cores - CORE_HEADROOM) / THREADS_PER_ENCODER));
 }
 
-export function encoderMemorySlots(totalMemoryBytes: number = totalmem()): number {
+export function memoryEncoderSlots(totalMemoryBytes: number = totalmem()): number {
   if (typeof totalMemoryBytes !== 'number' || !Number.isFinite(totalMemoryBytes) || totalMemoryBytes <= 0) throw new RangeError('Invalid total memory');
-  return Math.min(MAX_SEGMENT_ENCODERS, Math.max(1, Math.floor((totalMemoryBytes - ENCODER_MEMORY_RESERVE_BYTES) / ENCODER_RESIDENT_BYTES)));
+  return Math.max(1, Math.floor((totalMemoryBytes - ENCODER_MEMORY_RESERVE_BYTES) / ENCODER_RESIDENT_BYTES));
 }
 
 export function encoderPoolLimits({ parallelism = availableParallelism(), totalMemoryBytes = totalmem() }: EncoderPoolLimitInput = {}): EncoderPoolLimits {
-  const coreSlots = segmentEncoderConcurrency(parallelism);
-  const memorySlots = encoderMemorySlots(totalMemoryBytes);
+  const coreSlots = coreEncoderSlots(parallelism);
+  const memorySlots = memoryEncoderSlots(totalMemoryBytes);
   return Object.freeze({ slots: Math.min(coreSlots, memorySlots), coreSlots, memorySlots,
     residentBytes: ENCODER_RESIDENT_BYTES, reserveBytes: ENCODER_MEMORY_RESERVE_BYTES });
+}
+
+/** One export still runs at most four segments at a time, and never more than
+ * the application-wide pool admits. */
+export function segmentConcurrencyFor(slots: number): number {
+  return Math.min(MAX_SEGMENT_ENCODERS, positiveInteger(slots, 'encoder pool slots'));
 }
 
 export type EncoderSlotOwner = object;
@@ -93,7 +107,7 @@ interface EncoderSlotWaiter {
 }
 
 export function createMediaEncoderPool(limit: number): MediaEncoderSlotPool {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_SEGMENT_ENCODERS) throw new RangeError('Invalid encoder pool limit');
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ENCODER_POOL_SLOTS) throw new RangeError('Invalid encoder pool limit');
   let active = 0, waiting = 0;
   const queues = new Map<EncoderSlotOwner, EncoderSlotWaiter[]>();
   // Owners with queued work, in first-arrival order; grants rotate through it.

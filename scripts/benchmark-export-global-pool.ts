@@ -24,6 +24,7 @@ import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '../packages/contracts/src/timeli
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
+import {encoderPoolLimits} from '../packages/business/src/media-encoder-pool.ts';
 
 const width = 1080, height = 1920, fps = 30;
 const date = '2026-01-01T00:00:00.000Z';
@@ -237,7 +238,10 @@ async function benchmark() {
     assert.equal(unique.length, 1, 'every variant and mode must render the same bytes');
     console.log(JSON.stringify({tool, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model,
       logicalCores: cpus().length, availableParallelism: availableParallelism(), memoryGiB: round(totalmem() / 2 ** 30),
-      sampleIntervalMs, segmentConcurrencyOverride: concurrency ?? null, fixture, outputSha256: unique[0], results}, null, 2));
+      sampleIntervalMs, segmentConcurrencyOverride: concurrency ?? null,
+      // The application-wide slot limit this run admitted, for the report.
+      encoderPool: Object.fromEntries(Object.entries(encoderPoolLimits()).map(([key, value]) => [key, typeof value === 'number' ? round(value / (key === 'residentBytes' || key === 'reserveBytes' ? 2 ** 20 : 1)) : value])),
+      fixture, outputSha256: unique[0], results}, null, 2));
   } finally {
     await rm(root, {recursive: true, force: true});
   }
