@@ -27,7 +27,9 @@ test('Windows package smoke starts the delivered x64 executable in a new isolate
   assert.ok(packaging >= 0 && smoke > packaging);
   assert.match(source, /release\/desktop\/development\/win-unpacked\/mioon-dev\.exe/);
   assert.match(source, /Test-Path -LiteralPath \$workspace/);
-  assert.match(source, /"--binary=\$binary" "--output=\$output" "--workspace=\$workspace"/);
+  assert.match(source, /Test-Path -LiteralPath \$userData/);
+  assert.match(source, /\$userData = Join-Path \$env:LOCALAPPDATA/);
+  assert.match(source, /"--binary=\$binary" "--output=\$output" "--workspace=\$workspace" "--user-data=\$userData"/);
   assert.match(source, /Get-Command \(\$name \+ '\.exe'\)/);
   assert.match(source, /Get-FileHash -Algorithm SHA256/);
   assert.match(source, /MIOON_FFMPEG_PATH/);

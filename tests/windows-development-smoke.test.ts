@@ -12,7 +12,8 @@ import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArgumen
   WINDOWS_SMOKE_PHASES, appCheckFailureName, phaseMarkerName, startupFailureReason} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
-const args = [`--binary=${binary}`, `--output=${output}`, `--workspace=${workspace}`];
+const userData = 'C:\\Users\\Synthetic\\AppData\\Local\\mioon-smoke', userDataParent = 'C:\\Users\\Synthetic\\AppData\\Local';
+const args = [`--binary=${binary}`, `--output=${output}`, `--workspace=${workspace}`, `--user-data=${userData}`];
 const expected = {appVersion: '0.2.0', electron: '44.7.0', license: 'Apache-2.0', description: 'Synthetic development package'};
 const archive = 'C:\\package\\win-unpacked\\resources\\app.asar';
 function metadata() {
@@ -40,6 +41,7 @@ function fixture() {
   const writes: Array<{file: string; value: unknown}> = [];
   const file = (name: string, text = '') => files.set(name, {file: true, directory: false, link: false, size: Buffer.byteLength(text), canonical: name, text});
   file(binary); file(archive, 'Synthetic archive'); file('C:\\tools\\ffmpeg.exe'); file('C:\\tools\\ffprobe.exe');
+  files.set(userDataParent, {file: false, directory: true, link: false, size: 0, canonical: userDataParent});
   const environment = {SystemRoot: 'C:\\Windows', PATH: 'C:\\Windows\\System32', TEMP: 'C:\\Temp',
     MIOON_FFMPEG_PATH: 'C:\\tools\\ffmpeg.exe', MIOON_FFPROBE_PATH: 'C:\\tools\\ffprobe.exe',
     NODE_OPTIONS: '--require=synthetic-injection', ELECTRON_RUN_AS_NODE: '1', ARK_API_KEY: 'synthetic-provider-secret'};
@@ -63,8 +65,8 @@ function fixture() {
   return {services, files, calls, reads, created, writes, file};
 }
 
-test('Windows CLI arguments accept only an absolute delivered x64 executable, evidence, and isolated workspace', () => {
-  assert.deepEqual(parseWindowsSmokeArguments(args), {binary, output, workspace});
+test('Windows CLI arguments accept only an absolute delivered x64 executable, evidence, isolated workspace and fresh user data', () => {
+  assert.deepEqual(parseWindowsSmokeArguments(args), {binary, output, workspace, userData});
   for (const invalid of [[], [...args, '--output=C:\\other.json'], [...args, '--remote-debugging-port=9222'],
     args.map(value => value.startsWith('--binary=') ? '--binary=relative.exe' : value),
     args.map(value => value.startsWith('--binary=') ? '--binary=C:\\package\\mioon.exe' : value),
@@ -72,6 +74,8 @@ test('Windows CLI arguments accept only an absolute delivered x64 executable, ev
     args.map(value => value.startsWith('--workspace=') ? '--workspace=C:relative' : value),
     args.map(value => value.startsWith('--output=') ? `--output=${workspace}\\result.json` : value),
     args.map(value => value.startsWith('--output=') ? '--output=C:\\evidence\\smoke.json\nmalformed' : value),
+    args.map(value => value.startsWith('--user-data=') ? `--user-data=${workspace}\\user-data` : value),
+    args.map(value => value.startsWith('--user-data=') ? '--user-data=relative-user-data' : value),
   ]) assert.throws(() => parseWindowsSmokeArguments(invalid), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_INVALID_ARGUMENTS');
 });
 
@@ -80,12 +84,12 @@ test('the app environment preserves Windows prerequisites but excludes provider,
     USERPROFILE: 'C:\\SyntheticProfile', TEMP: 'C:\\Temp', TMP: 'C:\\Temp', node_options: 'synthetic', ELECTRON_RUN_AS_NODE: '1',
     NODE_PATH: 'synthetic', ARK_API_KEY: 'synthetic', OPENAI_API_KEY: 'synthetic', HTTPS_PROXY: 'synthetic',
     MIOON_ENABLE_LIVE_PROVIDER: '1', MIOON_DESKTOP_USER_DATA: 'C:\\untrusted', MIOON_DESKTOP_SMOKE_OUTPUT: 'C:\\untrusted.json'},
-  workspace, 'C:\\tools\\ffmpeg.exe', 'C:\\tools\\ffprobe.exe');
+  workspace, userData, 'C:\\tools\\ffmpeg.exe', 'C:\\tools\\ffprobe.exe');
   assert.equal(result.PATH, 'SyntheticPath'); assert.equal(result.SystemRoot, 'C:\\Windows');
   for (const key of ['LOCALAPPDATA', 'APPDATA', 'USERPROFILE', 'TEMP', 'TMP']) assert.ok(result[key]);
   for (const key of ['node_options', 'NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE', 'ARK_API_KEY', 'OPENAI_API_KEY', 'HTTPS_PROXY', 'MIOON_ENABLE_LIVE_PROVIDER']) assert.equal(result[key], undefined);
   assert.equal(result.MIOON_DESKTOP_WINDOWS_SMOKE, '1');
-  assert.equal(result.MIOON_DESKTOP_USER_DATA, `${workspace}\\user-data`);
+  assert.equal(result.MIOON_DESKTOP_USER_DATA, userData);
   assert.equal(result.MIOON_DESKTOP_SMOKE_OUTPUT, `${workspace}\\result.json`);
 });
 
@@ -167,7 +171,8 @@ test('injected Windows launch flow creates only a fresh workspace, leaves user-d
   assert.equal(result.ok, true); assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls.map(call => ({binary: call.binary, workspace: call.workspace})), [{binary, workspace}]);
   assert.ok(f.created.some(call => call.directory === workspace && !call.recursive));
-  assert.equal(f.created.some(call => call.directory === `${workspace}\\user-data`), false);
+  assert.equal(f.created.some(call => call.directory === userData), false);
+  assert.equal(f.calls[0].environment.MIOON_DESKTOP_USER_DATA, userData);
   assert.deepEqual(f.reads, [`${workspace}\\result.json`]);
   assert.deepEqual(f.writes, [{file: output, value: report()}]);
   assert.equal(f.calls[0].environment.NODE_OPTIONS, undefined);
@@ -181,7 +186,7 @@ test('wrong host, reused workspace, relative or missing tools, and binary symlin
     assert.equal(f.created.length, 0); assert.equal(f.writes.length, 0); assert.equal(f.calls.length, 0);
   }
   const variants: Array<(f: ReturnType<typeof fixture>) => void> = [
-    f => {f.services.arch = 'arm64';}, f => {f.file(workspace);},
+    f => {f.services.arch = 'arm64';}, f => {f.file(workspace);}, f => {f.file(userData);},
     f => {f.services.environment.MIOON_FFMPEG_PATH = 'ffmpeg.exe';}, f => {delete f.services.environment.MIOON_FFPROBE_PATH;},
     f => {f.files.get(binary)!.link = true;}, f => {f.files.delete('C:\\tools\\ffprobe.exe');},
   ];

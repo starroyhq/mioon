@@ -35,7 +35,7 @@ function fail(code: FailureCode): never {throw new SmokeFailure(code);}
 export function smokeFailureCode(error: unknown): FailureCode {
   return error instanceof SmokeFailure && failureCodes.includes(error.code) ? error.code : 'WINDOWS_SMOKE_FAILED';
 }
-interface SmokeArguments {binary: string; output: string; workspace: string}
+interface SmokeArguments {binary: string; output: string; workspace: string; userData: string}
 interface SmokeCheck {name: string; status: 'passed' | 'blocked'; code?: string}
 export interface WindowsLaunchReport {
   schemaVersion: 1; scope: 'windows-development-launch'; ok: true; channel: 'development'; platform: 'win32'; arch: 'x64';
@@ -75,21 +75,22 @@ function inside(parent: string, child: string): boolean {
 }
 export function parseWindowsSmokeArguments(args: readonly string[]): SmokeArguments {
   let values: Record<string, string>;
-  try {values = argumentsFor(args, ['binary', 'output', 'workspace']);} catch {fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');}
-  const {binary, output, workspace} = values;
-  if (![binary, output, workspace].every(absoluteLocalPath) || paths.basename(binary) !== 'mioon-dev.exe' ||
-      paths.basename(paths.dirname(binary)) !== 'win-unpacked' || paths.extname(output).toLowerCase() !== '.json' || inside(workspace, output)) fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');
-  return {binary: paths.normalize(binary), output: paths.normalize(output), workspace: paths.normalize(workspace)};
+  try {values = argumentsFor(args, ['binary', 'output', 'workspace', 'user-data']);} catch {fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');}
+  const {binary, output, workspace} = values, userData = values['user-data']!;
+  if (![binary, output, workspace, userData].every(absoluteLocalPath) || paths.basename(binary) !== 'mioon-dev.exe' ||
+      paths.basename(paths.dirname(binary)) !== 'win-unpacked' || paths.extname(output).toLowerCase() !== '.json' || inside(workspace, output) ||
+      paths.normalize(userData) === paths.normalize(workspace) || inside(workspace, userData)) fail('WINDOWS_SMOKE_INVALID_ARGUMENTS');
+  return {binary: paths.normalize(binary), output: paths.normalize(output), workspace: paths.normalize(workspace), userData: paths.normalize(userData)};
 }
 /** The app receives only OS/session prerequisites and these fixed smoke inputs. */
-export function windowsSmokeEnvironment(source: NodeJS.ProcessEnv, workspace: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
+export function windowsSmokeEnvironment(source: NodeJS.ProcessEnv, workspace: string, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
   const allowed = ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'LOCALAPPDATA', 'APPDATA', 'USERPROFILE', 'LANG', 'LC_ALL'];
   const result: NodeJS.ProcessEnv = {};
   for (const key of allowed) {
     const sourceKey = Object.keys(source).find(name => name.toUpperCase() === key.toUpperCase());
     if (sourceKey && source[sourceKey] !== undefined) result[key] = source[sourceKey];
   }
-  return {...result, MIOON_DESKTOP_WINDOWS_SMOKE: '1', MIOON_DESKTOP_USER_DATA: paths.join(workspace, 'user-data'),
+  return {...result, MIOON_DESKTOP_WINDOWS_SMOKE: '1', MIOON_DESKTOP_USER_DATA: userData,
     MIOON_DESKTOP_SMOKE_OUTPUT: paths.join(workspace, 'result.json'), MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
 }
 export function validateWindowsLaunchReport(value: unknown, expected: {appVersion: string; electron: string}): WindowsLaunchReport {
@@ -257,8 +258,14 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
       if (!parent.directory || !canonical(paths.dirname(options.workspace), parent)) fail('WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE');
       // No recursive mkdir here: existing workspaces/reports may belong to another run.
       await services.mkdir(options.workspace, false);
-    } catch {fail('WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE');}
-    const environment = windowsSmokeEnvironment(services.environment, options.workspace, tools[0], tools[1]);
+      // The app creates its own user data through the native ACL helper; the
+      // driver only requires a fresh absolute path with an existing parent.
+      try {await services.inspect(options.userData); fail('WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE');}
+      catch (error) {if (error instanceof SmokeFailure) throw error;}
+      const userDataParent = await services.inspect(paths.dirname(options.userData));
+      if (!userDataParent.directory || !canonical(paths.dirname(options.userData), userDataParent)) fail('WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE');
+    } catch (error) {if (error instanceof SmokeFailure) throw error; fail('WINDOWS_SMOKE_WORKSPACE_UNAVAILABLE');}
+    const environment = windowsSmokeEnvironment(services.environment, options.workspace, options.userData, tools[0], tools[1]);
     const reportFile = paths.join(options.workspace, 'result.json');
     let launchError: unknown;
     try {await services.launch(options.binary, environment, options.workspace);} catch (error) {launchError = error;}

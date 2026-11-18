@@ -191,8 +191,14 @@ jobs:
           $binary = Join-Path $env:GITHUB_WORKSPACE 'release/desktop/development/win-unpacked/mioon-dev.exe'
           $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/windows-development/smoke.json'
           $workspace = Join-Path $env:RUNNER_TEMP ('mioon-windows-smoke-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          # Native private storage validates the real ancestry: the runner temp
+          # volume fails closed as FOREIGN_OWNER and the temp path is a junction
+          # alias (UNSAFE_ALIAS), while the user profile path is accepted. The app
+          # creates this fresh directory itself through the ACL helper.
+          $userData = Join-Path $env:LOCALAPPDATA ('mioon-windows-smoke-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           if (Test-Path -LiteralPath $workspace) { throw 'Smoke workspace must be new.' }
-          node .github/scripts/windows-desktop-smoke.ts "--binary=$binary" "--output=$output" "--workspace=$workspace"
+          if (Test-Path -LiteralPath $userData) { throw 'Smoke user data must be new.' }
+          node .github/scripts/windows-desktop-smoke.ts "--binary=$binary" "--output=$output" "--workspace=$workspace" "--user-data=$userData"
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaged startup smoke failed.' }
 
       - name: Upload text-only smoke evidence
