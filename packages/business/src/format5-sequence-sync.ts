@@ -59,22 +59,9 @@ const failure = (code: SequenceEditErrorCode, ids: readonly string[] = []): Sequ
 const emptyDelta = (): SequenceEditStateDelta => ({board: {writes: [], removals: []},
   timeline: {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged'}}});
 const emptyCounts = (): SequenceEditAffectedCounts => ({nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0});
-const stableJson = (value: unknown): string => {
-  const sort = (item: unknown): unknown => {
-    if (Array.isArray(item)) return item.map(sort);
-    if (item !== null && typeof item === 'object') {
-      const sorted: Row = {};
-      for (const key of Object.keys(item as Row).sort()) {
-        const next = (item as Row)[key];
-        if (next !== undefined) sorted[key] = sort(next);
-      }
-      return sorted;
-    }
-    return item;
-  };
-  return JSON.stringify(sort(value));
-};
-const sameJson = (left: unknown, right: unknown): boolean => stableJson(left) === stableJson(right);
+// Both sides are built by this service in deterministic field order; plain JSON
+// comparison avoids sorting a 500-entry baseline on every action.
+const sameJson = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
 
 // ---------------------------------------------------------------------------
 // Projection
@@ -666,17 +653,25 @@ function shotChanges(context: SyncContext, plan: SequenceEditPlan): ShotChange[]
 function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
   board: {readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta},
   nextBaseline: Format5SyncBaseline): SequenceEditPatch {
-  const beforeClips = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
-  const afterClips = new Map(nextTimeline.clips.map(clip => [clip.id, clip]));
-  const beforeCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue]));
-  const afterCues = new Map((nextTimeline.subtitles?.cues ?? []).map(cue => [cue.id, cue]));
-  const changed = new Set<string>();
+  const beforeClips = new Map(context.timeline.clips.map(clip => [clip.id, clip] as const));
+  const afterClips = new Map(nextTimeline.clips.map(clip => [clip.id, clip] as const));
+  const beforeCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  const afterCues = new Map((nextTimeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  // SA already reports every changed clip/anchored item; restricting the patch to
+  // those ids keeps a 500-segment edit from re-serializing the whole projection.
+  const changedIds = new Set<string>();
   for (const item of [...plan.changes.clips.map(change => change.after?.id ?? change.before?.id),
-    ...plan.changes.anchored.map(change => change.after?.id ?? change.before?.id)]) if (item) changed.add(item);
-  const clipIds = [...new Set([...beforeClips.keys(), ...afterClips.keys()])]
-    .filter(clipId => changed.has(clipId) || !sameJson(beforeClips.get(clipId), afterClips.get(clipId)));
-  const cueIds = [...new Set([...beforeCues.keys(), ...afterCues.keys()])]
-    .filter(cueId => changed.has(cueId) || !sameJson(beforeCues.get(cueId), afterCues.get(cueId)));
+    ...plan.changes.anchored.map(change => change.after?.id ?? change.before?.id)]) if (item) changedIds.add(item);
+  // SA reports an anchored item only when its start frame changes; an owner
+  // detach/re-anchor can keep the same frame, so compare the anchor identity too.
+  for (const item of context.anchored) {
+    const beforeRow = beforeClips.get(item.id) ?? beforeCues.get(item.id);
+    const afterRow = afterClips.get(item.id) ?? afterCues.get(item.id);
+    if (!sameJson(beforeRow, afterRow)) changedIds.add(item.id);
+  }
+  for (const item of plan.after.anchored) if (!beforeClips.has(item.id) && !beforeCues.has(item.id)) changedIds.add(item.id);
+  const clipIds = [...changedIds].filter(id => beforeClips.has(id) || afterClips.has(id));
+  const cueIds = [...changedIds].filter(id => beforeCues.has(id) || afterCues.has(id));
   const baselineChanged = !sameJson(context.baseline, nextBaseline);
   const baselineAfter: SequenceEditBaselineChange = baselineChanged ? {kind: 'set', value: nextBaseline} : {kind: 'unchanged'};
   const baselineBefore: SequenceEditBaselineChange = baselineChanged ? {kind: 'set', value: context.baseline} : {kind: 'unchanged'};
@@ -728,8 +723,9 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
 
 interface TimelineApplyResult {readonly timeline: Format5Timeline; readonly changed: boolean}
 
-function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta): TimelineApplyResult {
-  const state = readFormat5TimelineState(store.db, 'project');
+function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
+  cachedState?: ReturnType<typeof readFormat5TimelineState>): TimelineApplyResult {
+  const state = cachedState ?? readFormat5TimelineState(store.db, 'project');
   const current = assembleFormat5Timeline(state);
   if (!current) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
   const clips = new Map(current.clips.map(clip => [clip.id, clip]));
@@ -991,7 +987,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       && !baselineChanged;
     if (noop) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
     applyBoardDelta(store, boardEntities.after);
-    const timelineApply = applyTimelineDelta(store, patch.after.timeline);
+    const timelineApply = applyTimelineDelta(store, patch.after.timeline, context.timelineState);
     const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
     const receipt = receiptDraft(envelope, inputDigest, {

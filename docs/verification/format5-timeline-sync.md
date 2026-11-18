@@ -115,7 +115,7 @@ TSb 在同一个共享合同和同一个事务入口上补齐主轨编辑和导�
 
 - `tests/format5-timeline-sync-b.test.ts` 9/9：切分（左保 ID/右新 ID/组和边）、删除中间段（压紧、链重接、孤儿锚原位解除、重叠拒绝）、修剪（后缀移动、越界锚解除）、重排（链边重接、锚随 owner 移动）、跨轨（显式锚）、插入游离素材（新组和链边）、复制并挪动（shot+adoption+新组、撤销删除、同分配确认）、plan digest 不匹配拒绝、精确重放。
 - `tests/format5-timeline-export.test.ts` 3/3：占位 blocker、范围排除、过短 blocker、三修订过期。
-- `tests/format5-timeline-sync-b-performance.test.ts`：K1 499 镜头 + 499 主轨段 + 1,000 辅轨段 + 500 字幕；split/trim/remove/add 四类动作本机两轮 p95 58.2–58.8/41.5–44.5/47.5–58.0/52.4–75.0 ms（预算 100）；单条 history 平均 229,081 bytes、最大 305,372 bytes（协调人门槛平均 ≤256 KiB，通过）。
+- `tests/format5-timeline-sync-b-performance.test.ts`：K1 499 镜头 + 499 主轨段 + 1,000 辅轨段 + 500 字幕；split/trim/remove/add 四类动作（预热 5 + 30 采样）本机 p95 43.6/37.3/42.1/46.5 ms（预算 100）；单条 history 平均 229,081 bytes、最大 305,372 bytes（协调人门槛平均 ≤256 KiB，通过）。CI 首轮 Linux 上超预算后改为只比较 SA 变更 id + 锚身份、复用已读时间线、确定性基线比较，减少整条投影的重复序列化；重跑结果见 PR CI。
 - 合同扩展（本 PR 列出）：`SequenceEditBoardEntity.kind` 增加 `adoption`（复制镜头的版本采纳行要进正反补丁才能正确撤销）；新错误码 `SEQUENCE_EDIT_ANCHOR_CONFLICT`。其余 envelope/回执/patch/history 字段不变。
 - 修复 K5a 实体 delta 的 `changed` 标志漏算删除行：`planFormat5TimelineEntityUpdate` 之前对纯删除返回 changed=false，TSb 的撤销/删除会跳过写入；现在把 clip/cue 删除计入 changed。
 

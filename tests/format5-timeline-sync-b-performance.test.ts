@@ -86,7 +86,7 @@ test('K1 TSb track edits stay inside the local p95 and history budget', t => {
   const historyBytes: number[] = [];
   for (const action of actions) {
     timings[action.name] = [];
-    for (let iteration = 0; iteration < 12; iteration++) {
+    for (let iteration = 0; iteration < 35; iteration++) {
       const requestId = `k1-${action.name}-${iteration}-${Date.now()}`;
       const preview = previewSequenceSync(store, action.command, {requestId});
       assert.ok('envelope' in preview, `preview ${action.name} failed: ${'code' in preview ? preview.code : ''}`);
@@ -95,10 +95,10 @@ test('K1 TSb track edits stay inside the local p95 and history budget', t => {
       const elapsed = performance.now() - started;
       assert.ok(result.ok, `sync ${action.name} failed: ${'code' in result ? result.code : ''}`);
       const committed = result as SequenceEditCommitResult;
-      if (iteration >= 2) timings[action.name]!.push(elapsed);
+      if (iteration >= 5) timings[action.name]!.push(elapsed);
       const row = store.db.prepare(`SELECT length(CAST(beforePatch AS BLOB))+length(CAST(afterPatch AS BLOB)) AS bytes
         FROM main.editor_history_entries WHERE actionId=?`).get(committed.actionId) as Record<string, any>;
-      if (iteration >= 2) historyBytes.push(Number(row.bytes));
+      if (iteration >= 5) historyBytes.push(Number(row.bytes));
       const undoCommand: SequenceEditHistoryCommand = {projectId, requestId: `undo-${requestId}`,
         actionId: committed.actionId, direction: 'undo',
         expected: {position: committed.receipt.history.position, revision: committed.receipt.history.revision}};
