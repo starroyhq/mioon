@@ -1,0 +1,81 @@
+name: macOS media toolchain
+description: Install and verify the Homebrew ffmpeg-full toolchain, caching the exact bottle bytes and recording capability evidence.
+runs:
+  using: composite
+  steps:
+    - name: Identify the Homebrew ffmpeg-full bottle
+      id: bottle
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+      run: |
+        if brew list --versions ffmpeg-full >/dev/null 2>&1 || [[ "$(sw_vers -productVersion)" != 15.* ]]; then exit 0; fi
+        brew info --json=v2 ffmpeg-full > "$RUNNER_TEMP/mioon-ffmpeg-full.json"
+        sha="$(node .github/scripts/macos-media-toolchain.ts bottle-sha --input="$RUNNER_TEMP/mioon-ffmpeg-full.json")"
+        if [[ "$sha" =~ ^[a-f0-9]{64}$ ]]; then printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"; fi
+
+    - name: Restore the exact FFmpeg bottle download
+      id: restore
+      if: steps.bottle.outputs.sha != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/mioon-ffmpeg-bottle/archive.tar.gz
+        key: mioon-ffmpeg-full-arm64-sequoia-${{ steps.bottle.outputs.sha }}
+
+    - name: Install ffmpeg-full and record capability evidence
+      id: install
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+        BOTTLE_SHA: ${{ steps.bottle.outputs.sha }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        set -euo pipefail
+        bottle_archive="$RUNNER_TEMP/mioon-ffmpeg-bottle/archive.tar.gz"
+        cache_state='unavailable'
+        download_cache=''
+        if [[ -n "${BOTTLE_SHA:-}" ]]; then
+          # Every cache hit is re-hashed before it is allowed back into the
+          # Homebrew cache; a corrupted or foreign file is discarded instead.
+          if [[ "${CACHE_HIT:-false}" == 'true' ]]; then
+            if node .github/scripts/macos-media-toolchain.ts verify-bottle --archive="$bottle_archive" --sha="$BOTTLE_SHA" >/dev/null; then
+              cache_state='hit'
+            else
+              rm -f "$bottle_archive"
+              cache_state='invalid'
+            fi
+          fi
+          if actual_sha="$(brew info --json=v2 ffmpeg-full > "$RUNNER_TEMP/mioon-ffmpeg-full.json" && node .github/scripts/macos-media-toolchain.ts bottle-sha --input="$RUNNER_TEMP/mioon-ffmpeg-full.json")" &&
+            [[ "$actual_sha" == "$BOTTLE_SHA" ]] &&
+            download_cache="$(brew --cache --force-bottle --bottle-tag=arm64_sequoia ffmpeg-full)"; then
+            if [[ -f "$bottle_archive" ]] && node .github/scripts/macos-media-toolchain.ts verify-bottle --archive="$bottle_archive" --sha="$BOTTLE_SHA" >/dev/null; then
+              mkdir -p "$(dirname "$download_cache")"
+              cp "$bottle_archive" "$download_cache"
+              echo 'Reusing verified FFmpeg bottle download.'
+              if [[ "$cache_state" == 'unavailable' ]]; then cache_state='reused'; fi
+            fi
+          fi
+        fi
+        if ! brew list --versions ffmpeg-full >/dev/null 2>&1; then brew install ffmpeg-full; fi
+        if [[ -n "${BOTTLE_SHA:-}" && -n "$download_cache" ]] &&
+          node .github/scripts/macos-media-toolchain.ts verify-bottle --archive="$download_cache" --sha="$BOTTLE_SHA" >/dev/null; then
+          mkdir -p "$(dirname "$bottle_archive")"
+          cp "$download_cache" "$bottle_archive"
+          printf 'cache-ready=true\n' >> "$GITHUB_OUTPUT"
+        fi
+        mioon_media_prefix="$(brew --prefix ffmpeg-full)"
+        printf 'MIOON_FFMPEG_PATH=%s/bin/ffmpeg\nMIOON_FFPROBE_PATH=%s/bin/ffprobe\n' "$mioon_media_prefix" "$mioon_media_prefix" >> "$GITHUB_ENV"
+        mkdir -p artifacts/macos-media-environment
+        node .github/scripts/media-environment.ts --platform=darwin --output=artifacts/macos-media-environment/media.json
+        evidence_args=(--cache="$cache_state" --media=artifacts/macos-media-environment/media.json --output=artifacts/macos-media-environment/toolchain.json)
+        if [[ -n "${BOTTLE_SHA:-}" ]]; then evidence_args+=(--bottle-sha="$BOTTLE_SHA"); fi
+        node .github/scripts/macos-media-toolchain.ts evidence "${evidence_args[@]}"
+        printf 'bottle-sha=%s\ncache-state=%s\n' "${BOTTLE_SHA:-}" "$cache_state" >> "$GITHUB_OUTPUT"
+
+    - name: Save the capability-checked FFmpeg bottle download
+      id: save
+      if: steps.install.outputs.cache-ready == 'true' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/mioon-ffmpeg-bottle/archive.tar.gz
+        key: mioon-ffmpeg-full-arm64-sequoia-${{ steps.bottle.outputs.sha }}

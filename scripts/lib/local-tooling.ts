@@ -14,7 +14,7 @@ import {mediaEnvironment} from '../../packages/business/src/media-environment.ts
 import {run as runMedia} from '../../packages/business/src/media-runtime.ts';
 
 export type ToolingCommand = 'doctor' | 'build' | 'test' | 'typecheck';
-export type TestSuite = 'portable' | 'full' | 'full-darwin' | 'macos-desktop';
+export type TestSuite = 'portable' | 'full' | 'full-darwin' | 'macos-desktop' | 'macos-media';
 export interface ParsedArguments {
   readonly command: ToolingCommand;
   channel: DesktopChannel;
@@ -141,6 +141,22 @@ export const MACOS_DESKTOP_TEST_FILES: readonly string[] = Object.freeze([
   'web-project-package-flow.test.ts', 'web-project-package-ui.test.ts', 'workspace-layout.test.ts', 'workspace-panel-intent.test.ts',
   'workspace-state.test.ts',
 ]);
+// The macOS media group reflects the H0 evidence set: the 26 test files that
+// failed on a Homebrew FFmpeg without drawtext/subtitles/zscale/libwebp and
+// then passed with the complete toolchain. The macOS media toolchain job
+// installs Homebrew ffmpeg-full before running this explicit manifest.
+export const MACOS_MEDIA_TEST_FILES: readonly string[] = Object.freeze([
+  'cli-v4.test.ts', 'export-settings-media.test.ts', 'integration.test.ts',
+  'look-pack-portability.test.ts', 'mcp.test.ts', 'media-runtime-bounds.test.ts',
+  'media-runtime-paths.test.ts', 'providers.test.ts', 'subject-video-provider.test.ts',
+  'subtitles-media.test.ts', 'timeline-colour-media.test.ts', 'timeline-colour-worker.test.ts',
+  'timeline-export-range-media.test.ts', 'timeline-float-media.test.ts', 'timeline-image-concurrency.test.ts',
+  'timeline-image-filter.test.ts', 'timeline-image-media.test.ts', 'timeline-image-restored-render.test.ts',
+  'timeline-jpeg-concurrency.test.ts', 'timeline-jpeg-decode.test.ts', 'timeline-jpeg-restored-render.test.ts',
+  'timeline-mcp.test.ts', 'timeline-media.test.ts', 'timeline-preflight-business.test.ts',
+  'version-comparison-media.test.ts', 'workspace-restore-local-execution.test.ts',
+]);
+
 /** Per-file test timings may only be written under the repository's artifacts directory. */
 export const TIMINGS_PATH = /^artifacts(?:\/[a-zA-Z0-9][a-zA-Z0-9._-]*)+\.json$/;
 export function parseArguments(args: readonly string[]): ParsedArguments {
@@ -159,7 +175,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     else if (key === '--compile-cache' && flag === key && command === 'test') result.compileCache = true;
     else if (key === '--timings' && command === 'test' && TIMINGS_PATH.test(value)) result.timings = value;
     else if (key === '--concurrency' && command === 'test' && /^[1-4]$/.test(value)) result.concurrency = Number(value);
-    else if (key === '--suite' && command === 'test' && ['portable', 'full', 'full-darwin', 'macos-desktop'].includes(value)) result.suite = value as TestSuite;
+    else if (key === '--suite' && command === 'test' && ['portable', 'full', 'full-darwin', 'macos-desktop', 'macos-media'].includes(value)) result.suite = value as TestSuite;
     else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(value) && !result.files.includes(value)) result.files.push(value);
     else throw fail('TOOLING_USAGE', 'Unknown or invalid tooling option. See docs/PORTABLE-TOOLING.md.');
   }
@@ -429,13 +445,14 @@ export async function preflight(root: string, {channel = 'development', media = 
 }
 
 export async function discoverTests(root: string, {suite = 'portable', files = [], platform = process.platform}: DiscoverTestsOptions = {}): Promise<string[]> {
-  if (!['portable', 'full', 'full-darwin', 'macos-desktop'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
+  if (!['portable', 'full', 'full-darwin', 'macos-desktop', 'macos-media'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
   // The complete catalog has native storage assumptions that are reviewed for
   // each platform separately: Linux keeps `full`, macOS must use the explicit
   // `full-darwin` entry, and neither suite silently runs on the other platform.
   if (suite === 'full' && platform !== 'linux') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full suite is Linux-only. On macOS use the explicit full-darwin suite; native platform validation remains required.');
   if (suite === 'full-darwin' && platform !== 'darwin') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full-darwin suite is macOS-only. On Linux use the full suite.');
   if (suite === 'macos-desktop' && platform !== 'darwin') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The macos-desktop group is macOS-only. Run the reviewed Linux full lane instead.');
+  if (suite === 'macos-media' && platform !== 'darwin') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The macos-media group is macOS-only and requires the macOS ffmpeg-full toolchain job.');
   // Current suites use TypeScript. Retained explicit .mjs selections may name
   // their .ts successor, without widening the reviewed portable allowlist.
   const available = (await readdir(path.join(root, 'tests'), {withFileTypes: true}))
@@ -446,7 +463,8 @@ export async function discoverTests(root: string, {suite = 'portable', files = [
     return available.includes(migrated) ? migrated : null;
   };
   const allowed: readonly string[] = suite === 'portable' ? PORTABLE_TEST_FILES
-    : suite === 'macos-desktop' ? MACOS_DESKTOP_TEST_FILES : available;
+    : suite === 'macos-desktop' ? MACOS_DESKTOP_TEST_FILES
+      : suite === 'macos-media' ? MACOS_MEDIA_TEST_FILES : available;
   const selected = files.length ? files : allowed;
   const resolved = selected.map(resolve);
   if (!selected.length || selected.length > 2048 || new Set(resolved).size !== resolved.length ||

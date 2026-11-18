@@ -1,0 +1,74 @@
+name: macOS media toolchain
+
+# Manual macOS media verification lane. It installs the cached Homebrew
+# ffmpeg-full bottle, re-hashes it on every cache hit, records the capability
+# evidence and runs the reviewed media group with that toolchain. Linux keeps
+# using the prepared toolchain from .github/workflows/checks.yml.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-media-toolchain-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  media:
+    name: macOS media group (ffmpeg-full)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout selected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare the macOS media toolchain
+        id: toolchain
+        uses: ./.github/actions/macos-media-toolchain
+
+      - name: Run the reviewed macOS media group
+        id: media_tests
+        run: node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap
+
+      - name: Write safe diagnostics
+        if: always()
+        env:
+          TOOLCHAIN_RESULT: ${{ steps.toolchain.outcome }}
+          MEDIA_RESULT: ${{ steps.media_tests.outcome }}
+        run: |
+          mkdir -p artifacts/macos-media-environment
+          {
+            node --version
+            pnpm --version
+            printf 'toolchain=%s\nmedia-tests=%s\n' "$TOOLCHAIN_RESULT" "$MEDIA_RESULT"
+          } > artifacts/macos-media-environment/status.log
+          cat artifacts/macos-media-environment/status.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload media toolchain and test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: macos-media-toolchain-evidence
+          path: artifacts/macos-media-environment/
+          retention-days: 14
+          if-no-files-found: warn

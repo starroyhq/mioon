@@ -80,6 +80,14 @@ gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0
 
 打包诊断中的 `build-timings.jsonl` 记录一次完整 TypeScript 检查、Web 打包、桌面 bundle 和暂存的分阶段耗时。桌面暂存只在私有证据确认同一份源码指纹时跳过重复检查，单独运行桌面暂存仍会检查。`desktop-build` 包含该进程的子阶段。通用包合并和公证在后续打包步骤计时。Apple 芯片 runner 支持按 Homebrew bottle 的完整 SHA-256 缓存 `ffmpeg-full` 下载文件，安装和媒体能力探针仍逐轮执行。Intel 和未找到匹配 bottle 的 runner 沿用 Homebrew 安装。依赖下载使用既有的 pnpm store 缓存。
 
+## macOS 媒体工具链（手动）
+
+`.github/workflows/macos-media-toolchain.yml`（`workflow_dispatch`）在 `macos-15` 上安装并验证 Homebrew `ffmpeg-full`，然后运行 `node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap`（H0 中需要完整 FFmpeg 能力的 26 个媒体文件）。Linux 仍使用 `checks.yml` 里准备 job 的固定工具链。
+
+- `.github/actions/macos-media-toolchain` 按 `brew info --json=v2 ffmpeg-full` 的 `arm64_sequoia` bottle SHA-256 缓存下载文件；缓存命中后先用 `verify-bottle` 重算哈希，不匹配就丢弃，再决定是否复制回 Homebrew 缓存。`ffmpeg-full` 未安装时回退到 `brew install ffmpeg-full`。
+- 安装后用 `.github/scripts/media-environment.ts` 探测版本、`drawtext`/`subtitles`/`zscale`/`loudnorm`/`ebur128` 滤镜、`libx264`/`aac`/`libwebp`/`libwebp_anim` 编码器以及 filter 文件参数、`fps_mode`、PNG 编解码；任一能力缺失直接失败。
+- 证据上传为 `macos-media-toolchain-evidence` artifact：`media.json`（版本与能力探针）和 `toolchain.json`（bottle SHA-256、缓存状态、ffmpeg/ffprobe 路径与 SHA-256、能力汇总）。夜间 macOS 完整测试（C 卡）会复用同一个 action。
+
 ## 正式发布
 
 1. 合并版本修改，保证根 `package.json` 和桌面包版本一致
