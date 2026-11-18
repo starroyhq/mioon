@@ -1,4 +1,5 @@
 import {testEnv} from './helpers/test-env.ts';
+import {GEMINI_OMNI_MODEL_ID,GEMINI_OMNI_PROTOCOL_VERSION} from '../packages/contracts/src/gemini-omni-video.ts';
 import { providerDisplayName } from '../apps/web/src/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,7 +34,7 @@ test('explicitly applying the MiniMax settings template offers only SDK-supporte
   const source = readFileSync(new URL('../apps/web/src/VideoProviderSettings.tsx', import.meta.url), 'utf8');
   const template = videoTemplate('minimax-v2'), before = structuredClone(template);
   let pairs = '', patch: Record<string, unknown> = {};
-  const apply = lenientFunction('setPairs', 'onChange', `${extractBetween(source, '  const changeTemplate =', '  return <article')}; return changeTemplate;`)((value: string) => { pairs = value; }, (value: Record<string, unknown>) => { patch = value; }) as (value: typeof template) => void;
+  const apply = lenientFunction('setPairs', 'onChange', 'GEMINI_OMNI_PROTOCOL_VERSION', 'GEMINI_OMNI_MODEL_ID', 'model', `${extractBetween(source, '  const changeTemplate =', '  return <article')}; return changeTemplate;`)((value: string) => { pairs = value; }, (value: Record<string, unknown>) => { patch = value; }, GEMINI_OMNI_PROTOCOL_VERSION, GEMINI_OMNI_MODEL_ID, defaultVideoModels('minimax')[0]) as (value: typeof template) => void;
   apply(template);
   assert.equal(pairs, '4:2K\n8:2K');
   assert.deepEqual(patch.durationResolutionMap, [{ duration: [4, 8], resolution: ['2K'] }]);

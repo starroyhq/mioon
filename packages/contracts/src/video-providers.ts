@@ -8,13 +8,14 @@ export * from './wan-video.ts';
 import {getSeedance25Capability,isSeedance25Binding,seedanceAudioDataUriPrefix,seedanceEncodedBytes,SEEDANCE25_CAPABILITIES,SEEDANCE25_REVIEWED_ON} from './seedance-video.ts';
 export * from './seedance-video.ts';
 import {normalizeCustomImageBaseUrl} from './image-compatible.ts';
+import {GEMINI_OMNI_CAPABILITY,GEMINI_OMNI_MODEL_ID,GEMINI_OMNI_PROFILE_VERSION,GEMINI_OMNI_PROTOCOL_VERSION,GEMINI_OMNI_REVIEWED_ON,isGeminiOmniBinding} from './gemini-omni-video.ts';
 
 export const VIDEO_PROVIDER_IDS=['runway','ark','veo','minimax','vidu','kling','wan','compatible'] as const;
 export type VideoProviderId=typeof VIDEO_PROVIDER_IDS[number];
 // Keep historical protocol IDs readable while limiting the suppliers offered in the UI.
 export const VIDEO_CATALOG_PROVIDER_IDS=VIDEO_PROVIDER_IDS.filter(id=>id!=='runway');
 export const isVideoCatalogProvider=(id:string):boolean=>VIDEO_CATALOG_PROVIDER_IDS.some(providerId=>providerId===id);
-export const VIDEO_TEMPLATE_IDS=['runway-v1','ark-v3','veo-v1','minimax-v2','vidu-v2','kling-v1','wan27-t2v','wan27-i2v','wan30-v1','openai-video-v1'] as const;
+export const VIDEO_TEMPLATE_IDS=['runway-v1','ark-v3','veo-v1','gemini-omni-v1','minimax-v2','vidu-v2','kling-v1','wan27-t2v','wan27-i2v','wan30-v1','openai-video-v1'] as const;
 export type VideoTemplateId=typeof VIDEO_TEMPLATE_IDS[number];
 export const VIDEO_INPUT_MODES=['text','image','frames','subject','reference'] as const;
 export type VideoInputMode=typeof VIDEO_INPUT_MODES[number];
@@ -45,6 +46,7 @@ export const VIDEO_TEMPLATES:readonly VideoTemplate[]=Object.freeze([
  // Subject and reference images stay limited to the exact Seedance 2.5 row.
  {id:'ark-v3',providerId:'ark',inputModes:['text','image','frames','subject','reference'],aspectRatios:seedance25Protocol.aspectRatios,durations:seedance25Protocol.durationsSeconds,resolutions:seedance25Protocol.resolutions,audio:['optional','off'],seed:false,...image,minDimension:300,maxDimension:6000,defaultOutputHosts:['ark-content-generation-cn-beijing.tos-cn-beijing.volces.com','ark-acg-cn-beijing.tos-cn-beijing.volces.com']},
  {id:'veo-v1',providerId:'veo',inputModes:['text','image'],aspectRatios:['9:16','16:9'],durations:[4,6,8],resolutions:['720p'],audio:['on'],seed:false,...image,defaultOutputHosts:['generativelanguage.googleapis.com']},
+ {id:GEMINI_OMNI_PROTOCOL_VERSION,providerId:'veo',inputModes:['text','image'],aspectRatios:GEMINI_OMNI_CAPABILITY.aspectRatios,durations:GEMINI_OMNI_CAPABILITY.durationsSeconds,resolutions:GEMINI_OMNI_CAPABILITY.resolutions,audio:['on'],seed:false,maxImageBytes:GEMINI_OMNI_CAPABILITY.maxImageBytes,minDimension:GEMINI_OMNI_CAPABILITY.minDimension,maxDimension:GEMINI_OMNI_CAPABILITY.maxDimension,mimeTypes:GEMINI_OMNI_CAPABILITY.mimeTypes,defaultOutputHosts:['generativelanguage.googleapis.com']},
  {id:'minimax-v2',providerId:'minimax',inputModes:['text','image'],aspectRatios:['9:16','16:9'],durations:[4,8],resolutions:['2K','768P'],audio:['default'],seed:false,...image,minDimension:256,maxDimension:5760,defaultOutputHosts:['cdn.hailuoai.com','video-product.cdn.minimax.io']},
  {id:'vidu-v2',providerId:'vidu',inputModes:['text','image'],aspectRatios:['9:16','16:9'],durations:[4,8],resolutions:['720p'],audio:['off'],seed:false,...image,maxImageBytes:9999999,defaultOutputHosts:[]},
  {id:'kling-v1',providerId:'kling',inputModes:['text','image'],aspectRatios:['9:16','16:9','1:1'],durations:range(3,15),resolutions:['720p','1080p','4k'],audio:['off','on','optional'],seed:false,...image,minDimension:300,defaultOutputHosts:[]},
@@ -75,6 +77,7 @@ export const videoConnectionConfigurationSchema=z.object({
   if(!template||template.providerId!==value.providerId||model.inputModes.some(mode=>!template.inputModes.includes(mode))||model.aspectRatios.some(ratio=>!template.aspectRatios.includes(ratio))||!template.audio.includes(model.audio)||model.seed&&!template.seed||model.durationResolutionMap.some(pair=>pair.duration.some(duration=>!template.durations.includes(duration))||pair.resolution.some(resolution=>!template.resolutions.includes(resolution))))ctx.addIssue({code:'custom',path:['models',index],message:'Model capabilities exceed the selected implemented protocol.'});
   if(model.inputModes.includes('subject')&&model.modelId!=='doubao-seedance-2-5-260628')ctx.addIssue({code:'custom',path:['models',index,'inputModes'],message:'Subject reference is implemented only for the existing exact Seedance model.'});
   if(model.templateId==='ark-v3'&&model.inputModes.includes('reference')&&!getSeedance25Capability(model.modelId,value.region,model.templateId))ctx.addIssue({code:'custom',path:['models',index,'inputModes'],message:'Reference images are implemented only for the reviewed Seedance 2.5 model, region and protocol row.'});
+  if(model.templateId===GEMINI_OMNI_PROTOCOL_VERSION&&!isGeminiOmniBinding({providerId:value.providerId,region:value.region,model}))ctx.addIssue({code:'custom',path:['models',index],message:'Gemini Omni requires the exact reviewed model, region and protocol.'});
   if(model.templateId==='wan30-v1'&&!getWan30Capability(model.modelId,value.region,model.templateId))ctx.addIssue({code:'custom',path:['models',index],message:'Wan 3.0 requires an exact reviewed model, region and protocol capability row. Use an existing Wan 2.7 template for legacy custom models.'});
  }
 });
@@ -165,9 +168,35 @@ export function videoOutputHosts(binding:VideoExecutionBinding):string[]{
  const defaults=binding.providerId==='minimax'?minimaxOutputHosts(binding.region):videoTemplate(binding.model.templateId).defaultOutputHosts;
  return [...new Set([...defaults,...own,...binding.outputHosts])];
 }
+const defaultModelIds:Readonly<Record<VideoTemplateId,readonly string[]>>={
+ 'runway-v1':['gen4_turbo'],'ark-v3':['doubao-seedance-2-5-260628'],'veo-v1':[],
+ 'gemini-omni-v1':[GEMINI_OMNI_MODEL_ID],'minimax-v2':['MiniMax-H3'],'vidu-v2':['viduq3-turbo'],
+ 'kling-v1':['kling-3.0'],'wan27-t2v':['wan2.7-t2v'],'wan27-i2v':['wan2.7-i2v'],
+ 'wan30-v1':['wan3.0-video','wan3.0-video-prime'],'openai-video-v1':[],
+};
+function videoModelFromTemplate(template:VideoTemplate,modelId:string):VideoModelEntry {
+ const providerId=template.providerId;
+ return {id:crypto.randomUUID(),name:modelId,modelId,templateId:template.id,enabled:true,archived:false,
+  inputModes:[...template.inputModes],aspectRatios:(providerId==='compatible'?['9:16','16:9']:[...template.aspectRatios]) as VideoModelEntry['aspectRatios'],
+  durationResolutionMap:[{duration:template.id==='wan30-v1'?[...template.durations]:providerId==='kling'?[5,10]:providerId==='wan'?[5,10,15]:providerId==='compatible'?[4,8,12]:[...template.durations],
+   resolution:template.id==='wan30-v1'||template.id==='ark-v3'||template.id===GEMINI_OMNI_PROTOCOL_VERSION?[...template.resolutions]:[providerId==='compatible'?'720p':template.resolutions[0]!]}],
+  audio:template.audio[0]!,seed:template.seed};
+}
 export function defaultVideoModels(providerId:VideoProviderId):VideoModelEntry[]{
- const modelNames:Record<VideoProviderId,string[]>={runway:['gen4_turbo'],ark:['doubao-seedance-2-5-260628'],veo:['veo-3.1-generate-preview'],minimax:['MiniMax-H3'],vidu:['viduq3-turbo'],kling:['kling-3.0'],wan:['wan2.7-t2v','wan2.7-i2v'],compatible:['sora-2']};
- return VIDEO_TEMPLATES.filter(template=>template.providerId===providerId).flatMap((template,index)=>(template.id==='wan30-v1'?['wan3.0-video','wan3.0-video-prime']:[modelNames[providerId][index]!]).map(modelId=>({id:crypto.randomUUID(),name:modelId,modelId,templateId:template.id,enabled:true,archived:false,inputModes:[...template.inputModes],aspectRatios:(providerId==='compatible'?['9:16','16:9']:[...template.aspectRatios]) as VideoModelEntry['aspectRatios'],durationResolutionMap:[{duration:template.id==='wan30-v1'?[...template.durations]:providerId==='kling'?[5,10]:providerId==='wan'?[5,10,15]:providerId==='compatible'?[4,8,12]:[...template.durations],resolution:template.id==='wan30-v1'||template.id==='ark-v3'?[...template.resolutions]:[providerId==='compatible'?'720p':template.resolutions[0]!]}],audio:template.audio[0]!,seed:template.seed})));
+ return VIDEO_TEMPLATES.filter(template=>template.providerId===providerId).flatMap(template=>defaultModelIds[template.id].map(modelId=>videoModelFromTemplate(template,modelId)));
+}
+/** A manual entry starts blank until the user names the gateway's model. */
+export function newVideoModelEntry(providerId:VideoProviderId,modelId=''):VideoModelEntry {
+ const template=VIDEO_TEMPLATES.find(item=>item.providerId===providerId&&item.id!=='veo-v1');
+ if(!template)throw videoSettingsError();
+ return videoModelFromTemplate(template,modelId);
+}
+/** Reading an old connection changes its current execution projection only. */
+export function migrateGoogleVideoConfiguration<T extends {providerId:string;models:VideoModelEntry[]}>(configuration:T):T {
+ if(configuration.providerId!=='veo')return configuration;
+ const models=configuration.models.map(model=>model.templateId==='veo-v1'&&model.modelId==='veo-3.1-generate-preview'
+  ? {...model,modelId:GEMINI_OMNI_MODEL_ID,templateId:GEMINI_OMNI_PROTOCOL_VERSION,name:model.name===model.modelId?GEMINI_OMNI_MODEL_ID:model.name} : model);
+ return models.some((model,index)=>model!==configuration.models[index])?{...configuration,models}:configuration;
 }
 
 // Keep historical 768P settings/bindings readable; new MiniMax dispatch is bounded
@@ -175,11 +204,11 @@ export function defaultVideoModels(providerId:VideoProviderId):VideoModelEntry[]
 const submissionResolutions=(binding:VideoExecutionBinding,resolutions:string[]):string[]=>binding.providerId==='minimax'?resolutions.filter(resolution=>resolution==='2K'):resolutions;
 /** Capability data is compiled from the bounded, backend-owned connection, never from a generation request. */
 export function videoInputProfile(binding:VideoExecutionBinding):GenerationInputProfile {
- const template=videoTemplate(binding.model.templateId),model=binding.model,original=getCapabilityProfile(binding.providerId,model.modelId,binding.region),wan30=isWan30Binding(binding),seedance=isSeedance25Binding(binding);
+ const template=videoTemplate(binding.model.templateId),model=binding.model,original=getCapabilityProfile(binding.providerId,model.modelId,binding.region),wan30=isWan30Binding(binding),seedance=isSeedance25Binding(binding),omni=isGeminiOmniBinding(binding);
  const roles=Object.fromEntries(INPUT_ROLES.map(role=>[role,{implemented:false,min:0,max:0,reason:'This video protocol does not implement this reference role.'}])) as GenerationInputProfile['inputs']['roles'];
  // Seedance 2.5 frames still match a fixed generated ratio; with adaptive they
  // only need Ark's 0.4–2.5 image ratio, because the output follows the first frame.
- const constraints={mimeTypes:[...template.mimeTypes],maxBytes:template.maxImageBytes,maxBytesSource:wan30?'Wan 3.0 official API limit':'Mioon video protocol limit',dimensions:{min:template.minDimension,max:template.maxDimension,matchAspectRatio:!wan30,...(wan30?{minAspectRatio:1/8,maxAspectRatio:8}:seedance?{minAspectRatio:.4,maxAspectRatio:2.5}:{})}};
+ const constraints={mimeTypes:[...template.mimeTypes],maxBytes:template.maxImageBytes,maxBytesSource:omni?GEMINI_OMNI_CAPABILITY.maxImageBytesSource:wan30?'Wan 3.0 official API limit':'Mioon video protocol limit',dimensions:{min:template.minDimension,max:template.maxDimension,matchAspectRatio:!wan30,...(wan30?{minAspectRatio:1/8,maxAspectRatio:8}:seedance?{minAspectRatio:.4,maxAspectRatio:2.5}:{})}};
  if(model.inputModes.some(mode=>mode==='image'||mode==='frames'))roles.first_frame={...constraints,implemented:true,min:model.inputModes.includes('text')?0:1,max:1};
  if(model.inputModes.includes('frames'))roles.last_frame={...constraints,implemented:true,min:0,max:1};
  if(model.inputModes.includes('subject'))roles.subject_reference={...constraints,implemented:true,min:0,max:1,dimensions:{...constraints.dimensions,matchAspectRatio:false,minAspectRatio:.4,maxAspectRatio:2.5}};
@@ -193,9 +222,9 @@ export function videoInputProfile(binding:VideoExecutionBinding):GenerationInput
  if(model.inputModes.includes('frames'))combinations.push(['first_frame','last_frame']);
  if(model.inputModes.includes('subject'))combinations.push(['subject_reference']);
  if(referenceMax&&model.inputModes.includes('reference'))for(let count=1;count<=referenceMax;count++)combinations.push(Array<string>(count).fill('reference_image'));
- return {profileVersion:original&&model.inputModes.includes('subject')?original.profileVersion:VIDEO_INPUT_PROFILE_VERSION,profileId:original&&model.inputModes.includes('subject')?original.profileId:`video:${binding.connectionId}:${binding.configurationRevision}:${model.id}`,
-  reviewedOn:wan30?WAN30_REVIEWED_ON:seedance?SEEDANCE25_REVIEWED_ON:'2026-10-20',implemented:true,liveVerified:false,runtimeAvailability:'configured',prompt:{required:!wan30,maxCodeUnits:wan30?20000:seedance?seedance25Protocol.maxPromptLength:1000},aspectRatios:[...model.aspectRatios,...(wan30||seedance?['adaptive']:[])],durationsSeconds:[...new Set(model.durationResolutionMap.flatMap(pair=>pair.duration)),...(wan30||seedance?[-1]:[])],parameters:{...(model.seed?{seed:{type:'integer' as const,min:wan30?-1:0,max:binding.providerId==='wan'?2147483647:4294967295}}:{}),resolution:{type:'enum',values:submissionResolutions(binding,[...new Set(model.durationResolutionMap.flatMap(pair=>pair.resolution))])},...(model.audio==='optional'?{generateAudio:{type:'enum' as const,values:['true','false']}}:{}),...(wan30||seedance?{durationSeconds:{type:'integer' as const,min:-1,max:30},aspectRatio:{type:'enum' as const,values:[...model.aspectRatios,'adaptive']}}:{}),...(wan30?{promptExtend:{type:'enum' as const,values:['true','false']},watermark:{type:'enum' as const,values:['true','false']}}:{})},approvalRequired:true,requiresManagedImageVerification:true,
-  providerId:binding.providerId,model:model.modelId,regions:[binding.region],regionMeaning:'Explicit official API region; credentials must match.',apiFamily:model.templateId,origins:{[binding.region]:binding.endpoint},adapterSource:'packages/business/src/video/runtime.ts',inputModes:[...new Set(model.inputModes.map(mode=>mode==='frames'?'image':mode))],output:{audio:model.audio},inputs:{minReferences:Math.min(...combinations.map(combination=>combination.length)),maxReferences:Math.max(...combinations.map(combination=>combination.length)),combinations,roles},...(original?.lifecycle?{lifecycle:original.lifecycle}:{}),};
+ return {profileVersion:omni?GEMINI_OMNI_PROFILE_VERSION:original&&model.inputModes.includes('subject')?original.profileVersion:VIDEO_INPUT_PROFILE_VERSION,profileId:original&&model.inputModes.includes('subject')?original.profileId:`video:${binding.connectionId}:${binding.configurationRevision}:${model.id}`,
+  reviewedOn:omni?GEMINI_OMNI_REVIEWED_ON:wan30?WAN30_REVIEWED_ON:seedance?SEEDANCE25_REVIEWED_ON:'2026-10-20',implemented:true,liveVerified:false,runtimeAvailability:'configured',prompt:{required:!wan30,maxCodeUnits:wan30?20000:seedance?seedance25Protocol.maxPromptLength:1000},aspectRatios:[...model.aspectRatios,...(wan30||seedance?['adaptive']:[])],durationsSeconds:[...new Set(model.durationResolutionMap.flatMap(pair=>pair.duration)),...(wan30||seedance?[-1]:[])],parameters:{...(model.seed?{seed:{type:'integer' as const,min:wan30?-1:0,max:binding.providerId==='wan'?2147483647:4294967295}}:{}),resolution:{type:'enum',values:submissionResolutions(binding,[...new Set(model.durationResolutionMap.flatMap(pair=>pair.resolution))])},...(model.audio==='optional'?{generateAudio:{type:'enum' as const,values:['true','false']}}:{}),...(wan30||seedance?{durationSeconds:{type:'integer' as const,min:-1,max:30},aspectRatio:{type:'enum' as const,values:[...model.aspectRatios,'adaptive']}}:{}),...(wan30?{promptExtend:{type:'enum' as const,values:['true','false']},watermark:{type:'enum' as const,values:['true','false']}}:{})},approvalRequired:true,requiresManagedImageVerification:true,
+  providerId:binding.providerId,model:model.modelId,regions:[binding.region],regionMeaning:'Explicit official API region; credentials must match.',apiFamily:model.templateId,origins:{[binding.region]:binding.endpoint},adapterSource:'packages/business/src/video/runtime.ts',inputModes:[...new Set(model.inputModes.map(mode=>mode==='frames'?'image':mode))],output:{audio:model.audio,...(omni?{mimeType:GEMINI_OMNI_CAPABILITY.output.mimeType,fps:GEMINI_OMNI_CAPABILITY.output.fps}:{})},inputs:{minReferences:Math.min(...combinations.map(combination=>combination.length)),maxReferences:Math.max(...combinations.map(combination=>combination.length)),combinations,roles},...(original?.lifecycle?{lifecycle:original.lifecycle}:model.templateId==='veo-v1'?{lifecycle:{status:'retired',earliestShutdownDate:'2026-10-22',checkedOn:GEMINI_OMNI_REVIEWED_ON,source:'https://aistudio.google.com/docs/deprecations',replacementImplemented:true,policy:'Select Gemini Omni for a new task; existing Veo tasks remain readable.'}}:{}),};
 }
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapshot:unknown,{asOf=new Date().toISOString().slice(0,10)}:{}&{asOf?:string}={}):true {
@@ -206,7 +235,7 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
  // work here rather than leaving the SDK's local rejection in a retry loop.
  if(binding.providerId==='minimax'&&model.modelId!=='MiniMax-H3')fail('UNSUPPORTED_MODEL','MiniMax 官方 SDK 仅支持 MiniMax-H3 新生成；历史自定义模型任务仍可查询和下载。');
  const value=snapshot as Record<string,unknown>,profile=videoInputProfile(binding),params=value.parameters??{};
- if(profile.lifecycle&&asOf>=profile.lifecycle.earliestShutdownDate)fail('MODEL_LIFECYCLE_REVALIDATION_REQUIRED','此视频模型已到达需要重新核验的日期。');
+ if(profile.lifecycle&&asOf>=profile.lifecycle.earliestShutdownDate)fail('MODEL_LIFECYCLE_REVALIDATION_REQUIRED','此模型已停止服务，请在生成服务中选择 Gemini Omni。');
  const explicit=value.videoInput===undefined?null:wanVideoInputSchema.safeParse(value.videoInput);
  if(value.videoInput!==undefined&&(!requestLevel||!explicit?.success))fail('UNSUPPORTED_INPUT_ROLE','此模型不支持所选显式视频输入。');
  if(value.videoInput!==undefined&&(value.subjectReference!==undefined||value.subjectVersionId!==undefined))fail('UNSUPPORTED_INPUT_ROLE','显式视频输入不能与主体参考组合。');
@@ -265,7 +294,7 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
 export function videoBindingCapabilities(binding:VideoExecutionBinding,{configured=true,enabled=true,asOf=new Date().toISOString().slice(0,10)}:{configured?:boolean;enabled?:boolean;asOf?:string}={}) {
  const model=binding.model,profile=videoInputProfile(binding),wanCapabilities=binding.providerId==='wan'?getWan30Capability(model.modelId,binding.region,model.templateId):undefined,seedanceCapabilities=binding.providerId==='ark'?getSeedance25Capability(model.modelId,binding.region,model.templateId):undefined,retired=Boolean(profile.lifecycle&&asOf>=profile.lifecycle.earliestShutdownDate),hosts=videoOutputHosts(binding),missing=[...(!configured?['API_KEY']:[]),...(!hosts.length?['OUTPUT_HOSTS']:[])];
  // Protocol fixtures do not verify an arbitrary catalog model or its account availability.
- return {id:binding.providerId,providerId:binding.providerId,connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,modelEntryId:model.id,name:model.name,models:[model.modelId],region:binding.region,providerRegion:binding.region,mock:false,configured:configured&&hosts.length>0,enabled,status:missing.length?'not_configured':!enabled?'disabled':'available',liveVerified:false,verification:'unverified',protocolVerification:'offline-tested',configuration:{missing},inputProfileVersion:'mioon-input-profiles/1',profileEvaluationDate:asOf,inputProfiles:[profile],inputProfileEvaluations:[{profileId:profile.profileId,evaluatedAsOf:asOf,ok:!retired,issues:retired?[{code:'MODEL_LIFECYCLE_REVALIDATION_REQUIRED',message:'此模型需要重新核验。'}]:[],warnings:[]}],modelCapabilities:[{id:model.modelId,name:model.name,inputModes:[...model.inputModes],aspectRatios:profile.aspectRatios,durations:profile.durationsSeconds,resolutions:submissionResolutions(binding,[...new Set(model.durationResolutionMap.flatMap(pair=>pair.resolution))]),referenceImages:{min:profile.inputs.minReferences,max:profile.inputs.maxReferences},parameters:Object.keys(profile.parameters),promptRequired:profile.prompt.required,maxPromptLength:profile.prompt.maxCodeUnits,...(wanCapabilities?{wanCapabilities}:{}),...(seedanceCapabilities?{seedanceCapabilities}:{})}],videoModel:model,videoConnection:{version:binding.version,connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,providerId:binding.providerId,region:binding.region,workspaceId:binding.workspaceId,endpoint:binding.endpoint,outputHosts:binding.outputHosts}};
+ return {id:binding.providerId,providerId:binding.providerId,connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,modelEntryId:model.id,name:model.name,models:[model.modelId],region:binding.region,providerRegion:binding.region,mock:false,configured:configured&&hosts.length>0,enabled,status:missing.length?'not_configured':!enabled?'disabled':'available',liveVerified:false,verification:'unverified',protocolVerification:'offline-tested',configuration:{missing},inputProfileVersion:'mioon-input-profiles/1',profileEvaluationDate:asOf,inputProfiles:[profile],inputProfileEvaluations:[{profileId:profile.profileId,evaluatedAsOf:asOf,ok:!retired,issues:retired?[{code:'MODEL_LIFECYCLE_REVALIDATION_REQUIRED',message:'此模型已停止服务，请在生成服务中选择 Gemini Omni。'}]:[],warnings:[]}],modelCapabilities:[{id:model.modelId,name:model.name,inputModes:[...model.inputModes],aspectRatios:profile.aspectRatios,durations:profile.durationsSeconds,resolutions:submissionResolutions(binding,[...new Set(model.durationResolutionMap.flatMap(pair=>pair.resolution))]),referenceImages:{min:profile.inputs.minReferences,max:profile.inputs.maxReferences},parameters:Object.keys(profile.parameters),promptRequired:profile.prompt.required,maxPromptLength:profile.prompt.maxCodeUnits,...(wanCapabilities?{wanCapabilities}:{}),...(seedanceCapabilities?{seedanceCapabilities}:{})}],videoModel:model,videoConnection:{version:binding.version,connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,providerId:binding.providerId,region:binding.region,workspaceId:binding.workspaceId,endpoint:binding.endpoint,outputHosts:binding.outputHosts}};
 }
 export interface VideoConnectionDescriptor {
  connectionId:string;configurationRevision:number;providerId:VideoProviderId;name:string;region:string;enabled:boolean;archived:boolean;configured:boolean;

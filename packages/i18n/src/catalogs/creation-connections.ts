@@ -1599,10 +1599,10 @@ export const connectionMessages = {
     "ja": "同じ参照素材を重複して送信することはできません"
   },
   "connections.generation.issue.lifecycle": {
-    "zh-Hans": "模型已到复核日期，已阻止新提交",
-    "zh-Hant": "模型已到複核日期，已阻止新送出",
-    "en": "Model review is due. New submissions are blocked",
-    "ja": "モデル再確認の期限に達したため、新規送信を停止しています"
+    "zh-Hans": "此模型已停止服务，请在生成服务中选择 Gemini Omni",
+    "zh-Hant": "此模型已停止服務，請在生成服務中選擇 Gemini Omni",
+    "en": "This model has been retired. Select Gemini Omni in Generation Services",
+    "ja": "このモデルの提供は終了しました。生成サービスで Gemini Omni を選択してください"
   },
   "connections.generation.issue.frozenInvalid": {
     "zh-Hans": "冻结的参考素材清单无效",

@@ -122,6 +122,7 @@ export function agentTimelineGainDisplay(gain: number, t: CreationTranslator): s
 
 /** Provider identities are fixed. Human-readable built-in descriptions are localized. */
 export function providerDisplayName(provider: { id?: string; connectionId?: string; name?: string } | null | undefined, t: CreationTranslator): string {
+  if (provider?.id === 'veo' && provider.connectionId) return t('video.providers.google');
   if (provider?.connectionId && provider.name) return provider.name;
   switch (provider?.id) {
     case 'mock': return t('generation.provider.localSimulation');

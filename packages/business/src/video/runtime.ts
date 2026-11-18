@@ -17,6 +17,8 @@ import {createPinnedVideoFetch} from './network.ts';
 import {createCompatibleVideoSdkClient} from './compatible-sdk.ts';
 import {createRunwaySdkClient} from './runway-sdk.ts';
 import {createVeoSdkClient} from './veo-sdk.ts';
+import {createGeminiOmniClient} from './gemini-omni.ts';
+import {getOmniFailure,getOmniTaskFailure,isOmniTaskLookupFailure} from './gemini-omni-errors.ts';
 import {createArkSdkClient} from './ark-sdk.ts';
 import {createMinimaxSdkClient} from './minimax-sdk.ts';
 
@@ -77,6 +79,9 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   const ensureHosts=()=>{if(!hosts.size)throw providerError('PROVIDER_CONFIGURATION','Configure independently reviewed exact output hosts before generation.');};
   const validate=(snapshot: unknown): true=>{ensureHosts();return validateVideoSnapshot(frozen,snapshot,{asOf:asOf()});};
   const credential = (context: ProviderContext) => acquireBoundVideoCredential(acquireCredential, context.signal);
+  const omni = frozen.model.templateId === 'gemini-omni-v1'
+    ? createGeminiOmniClient({root, api:frozen.endpoint, model:frozen.model.modelId, acquireCredential:credential, fetchImpl:transport, now, outputHosts:[...hosts]})
+    : null;
   async function request(endpoint: string,{method='GET',body,raw,headers={},context={}}: {method?:string;body?:unknown;raw?:{bytes:Uint8Array;contentType:string};headers?:Record<string,string>;context?:ProviderContext}={}): Promise<Record<string,unknown>> {
     const secret=await credential(context);
     const authentication:Record<string,string>=frozen.providerId==='veo'?{'x-goog-api-key':secret}:{Authorization:`${frozen.providerId==='vidu'?'Token':'Bearer'} ${secret}`};
@@ -88,17 +93,21 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   const sdk=compatibleSdk??(frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient({...sdkOptions,audio:frozen.model.audio}):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null);
   const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,async retrieve(id,context){
     try{
+      if(omni){
+        const task=await omni.retrieve(id,context),failure=getOmniTaskFailure(task);
+        return {...task,...(failure?{error:{code:'PROVIDER_GENERATION_FAILED',message:failure.message??'Google Gemini could not generate this video.',retryable:false,providerFailure:failure}}:{})};
+      }
       return wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))};
     }catch(error){
       // This is the bound task lookup. A missing output file or rejected
       // submission has a different meaning even when it returns HTTP 404.
       const failure=record(error);
-      if(failure?.code==='PROVIDER_HTTP_404'&&failure.httpStatus===404)throw configuredTaskNotFound();
+      if(failure?.code==='PROVIDER_HTTP_404'&&failure.httpStatus===404&&(!omni||isOmniTaskLookupFailure(error))&&getOmniFailure(error)?.code!=='model_not_found')throw configuredTaskNotFound();
       throw error;
     }
   }});
   const retrieve=async(id: string,context: ProviderContext,providerAcceptedAt?: string):Promise<ConfiguredVideoTask>=>{
-    assertConfiguredTaskId(selection,id);
+    if(!omni)assertConfiguredTaskId(selection,id);
     // A cached successful observation must not let a removed key authorize a
     // later poll or download. The network wrapper reacquires again at actual I/O.
     await credential(context);
@@ -144,13 +153,14 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       const requestId=registered.requestId;
       if(frozen.providerId==='kling'&&(typeof requestId!=='string'||!requestId||requestId.length>200))throw providerError('INVALID_REQUEST_ID','A stable request ID is required before creating a Kling task.');
       if(wan)return {providerJobId:await wan.submit(input,context)};
+      if(omni)return omni.submit(input,context);
       if(sdk)return {providerJobId:configuredSubmissionId(selection,await sdk.submit(input,context))};
       const submission=configuredSubmission({...selection,resolution},input,requestId??'');
       return {providerJobId:configuredSubmissionId(selection,await request(submission.path,{method:'POST',body:submission.body,raw:submission.raw,headers:submission.headers,context}))};
     },
     async poll(id: string,registered: RegisteredContext={}){
       const task=await retrieve(id,contextOf(registered),registered.providerAcceptedAt);
-      return task.status==='failed'?{status:'failed',error:{code:'PROVIDER_GENERATION_FAILED',message:'The provider generation failed. Review the existing task before retrying.'}}:{status:task.status,progress:task.status==='succeeded'?1:task.progress??0};
+      return task.status==='failed'?{status:'failed',error:task.error??{code:'PROVIDER_GENERATION_FAILED',message:'The provider generation failed. Review the existing task before retrying.'}}:{status:task.status,progress:task.status==='succeeded'?1:task.progress??0};
     },
     async reconcile(requestId: string,registered: RegisteredContext={}){
       if(frozen.providerId!=='kling')return null;
@@ -161,6 +171,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     async download(id: string,destination: string,registered: RegisteredContext={}){
       ensureHosts();const context=contextOf(registered),task=await retrieve(id,context,registered.providerAcceptedAt);
       if(task.status!=='succeeded')throw providerError('PROVIDER_NOT_READY','The existing provider task has no completed output.',{retryable:true});
+      if(omni)return omni.download(id,destination,context);
       let url:URL,headers:Record<string,string>|undefined;
       // The OpenAI shape streams the result from the service's own authenticated
       // /content route; a redirect may only reach a declared output host.

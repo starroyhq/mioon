@@ -17,6 +17,7 @@ export interface VideoAdapterInput {
 export interface VideoSubmissionRequest {path: string; body?: Record<string, unknown>; raw?: {bytes: Uint8Array; contentType: string}; headers?: Record<string,string>}
 export interface ConfiguredVideoTask {
   id: string; status: 'running'|'succeeded'|'failed'; progress?: number; url?: string; externalId?: string;
+  error?: {code:string;message:string;retryable:boolean;providerFailure?:import('../../../contracts/src/video-provider-failure.ts').VideoProviderFailure};
 }
 const object=(value: unknown): Record<string,unknown>|null=>value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
 const uri=(image: VideoAdapterImage)=>`data:${image.mimeType};base64,${image.base64}`;

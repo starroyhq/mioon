@@ -1,5 +1,7 @@
 # Mioon 单次真实生成授权确认草案
 
+2026-11-18 更新：下列 Veo Preview 条目已下线，Google 候选包验收应选择 [Gemini Omni 的现行参数](PROVIDERS.md#google-gemini-omni030)。
+
 核对日期：2026-10-10 UTC；代码基线：`7b85186`。与[供应商试用准备](PROVIDER-TRIAL-READINESS.zh-CN.md)配套。
 
 **当前状态：仅为未来确认模板，尚未获得真实调用、付费、上传或配置修改授权。** 文档的存在、勾选项、已配置密钥、会员方案、mock 成功和离线测试通过都不构成执行许可。当前工作只准备文档；五家真实供应商均保持 `liveVerified: false`。

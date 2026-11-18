@@ -18,9 +18,9 @@ function modelEntries(providerId: ProbeTarget['providerId'], payload: unknown): 
     const model = record(entry);
     if (!model) return [];
     if (providerId === 'veo') {
-      const id = typeof model.name === 'string' && model.name.startsWith('models/veo-') ? model.name.slice('models/'.length) : '';
-      return videoModelId.test(id) && Array.isArray(model.supportedGenerationMethods)
-        && model.supportedGenerationMethods.includes('predictLongRunning') ? [id] : [];
+      // The reviewed Interactions model has no documented legacy
+      // predictLongRunning marker in Models metadata.
+      return model.name === 'models/gemini-omni-1.2-flash' ? ['gemini-omni-1.2-flash'] : [];
     }
     if (typeof model.id !== 'string' || !videoModelId.test(model.id)) return [];
     if (providerId === 'ark') {

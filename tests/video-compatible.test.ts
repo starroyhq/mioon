@@ -24,7 +24,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord,ServiceRow} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
-import {defaultVideoModels,normalizeCompatibleVideoBaseUrl,parseVideoBinding,videoConnectionConfigurationSchema,videoConnectionEndpoint,videoOutputHosts,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
+import {defaultVideoModels,newVideoModelEntry,normalizeCompatibleVideoBaseUrl,parseVideoBinding,videoConnectionConfigurationSchema,videoConnectionEndpoint,videoOutputHosts,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration,VideoExecutionBinding} from '../packages/contracts/src/video-providers.ts';
 
 const BASE='https://api.example.com/v1',KEY='synthetic-compatible-key';
@@ -35,7 +35,7 @@ function png(width=360,height=640):Buffer {
   const header=Buffer.alloc(13);header.writeUInt32BE(width);header.writeUInt32BE(height,4);header[8]=8;header[9]=2;
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc((width*3+1)*height))),chunk('IEND',Buffer.alloc(0))]);
 }
-const configuration=(patch:Partial<VideoConnectionConfiguration>={}):VideoConnectionConfiguration=>({id:randomUUID(),providerId:'compatible',name:'My aggregator',region:'custom',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('compatible'),baseUrl:BASE,...patch});
+const configuration=(patch:Partial<VideoConnectionConfiguration>={}):VideoConnectionConfiguration=>({id:randomUUID(),providerId:'compatible',name:'My aggregator',region:'custom',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:[newVideoModelEntry('compatible','sora-2')],baseUrl:BASE,...patch});
 
 test('a compatible connection names one normalized https origin; official providers never carry one',()=>{
   assert.equal(videoConnectionConfigurationSchema.safeParse(configuration()).success,true);
@@ -48,12 +48,12 @@ test('a compatible connection names one normalized https origin; official provid
   assert.equal(normalizeCompatibleVideoBaseUrl('https://API.Example.com/v1/'),BASE);
   assert.equal(videoConnectionEndpoint(configuration()),BASE);
   assert.equal(videoConnectionEndpoint(official),'https://api.minimax.io');
-  const model=defaultVideoModels('compatible')[0]!;
+  const model=newVideoModelEntry('compatible','sora-2');
   assert.deepEqual([model.modelId,model.templateId,model.aspectRatios,model.durationResolutionMap],['sora-2','openai-video-v1',['9:16','16:9'],[{duration:[4,8,12],resolution:['720p']}]]);
 });
 
 test('frozen compatible bindings keep their own host as an output host and reject a changed origin',()=>{
-  const binding:VideoExecutionBinding={version:1,connectionId:randomUUID(),configurationRevision:1,providerId:'compatible',region:'custom',workspaceId:'',endpoint:BASE,credentialRef:randomUUID(),model:defaultVideoModels('compatible')[0]!,outputHosts:['cdn.example.com']};
+  const binding:VideoExecutionBinding={version:1,connectionId:randomUUID(),configurationRevision:1,providerId:'compatible',region:'custom',workspaceId:'',endpoint:BASE,credentialRef:randomUUID(),model:newVideoModelEntry('compatible','sora-2'),outputHosts:['cdn.example.com']};
   assert.equal(parseVideoBinding(binding).endpoint,BASE);
   assert.deepEqual(videoOutputHosts(binding),['api.example.com','cdn.example.com']);
   assert.throws(()=>parseVideoBinding({...binding,endpoint:'http://api.example.com/v1'}),{code:'VIDEO_BINDING_INVALID'});
@@ -104,7 +104,7 @@ test('a compatible key is bound to its exact base URL; moving the service requir
 
 async function runtimeFixture(t:{after(fn:()=>unknown):void}){
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-compatible-')));t.after(()=>rm(root,{recursive:true,force:true}));
-  const model=defaultVideoModels('compatible')[0]!;
+  const model=newVideoModelEntry('compatible','sora-2');
   const binding:VideoExecutionBinding={version:1,connectionId:randomUUID(),configurationRevision:1,providerId:'compatible',region:'custom',workspaceId:'',endpoint:BASE,credentialRef:randomUUID(),model,outputHosts:['cdn.example.com']};
   const bytes=png(),file=path.join(root,'frame.png');await writeFile(file,bytes);
   const asset={id:randomUUID(),path:file,mimeType:'image/png',sizeBytes:bytes.length,width:360,height:640,sha256:createHash('sha256').update(bytes).digest('hex'),role:'first_frame'};

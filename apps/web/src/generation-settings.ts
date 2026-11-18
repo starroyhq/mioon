@@ -1,3 +1,4 @@
+import {GEMINI_OMNI_PROFILE_VERSION} from '../../../packages/contracts/src/gemini-omni-video.ts';
 import {assetMediaStatusListResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
 import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue, wanVideoInputSchema } from '../../../packages/contracts/src/video-providers.ts';
 import { resolveWanGenerationParameters } from '../../../packages/contracts/src/wan-video.ts';
@@ -142,8 +143,9 @@ export function providerModels(provider: GenerationProvider | null | undefined):
   return (provider?.models || []).map(model => typeof model === 'string' ? { id: model, name: model } : { ...model, id: model.id || model.name });
 }
 
+export const isGenerationProviderCandidate = (provider: GenerationProvider): boolean => provider.id !== 'runway' && (provider.id !== 'veo' || Boolean(provider.connectionId));
 export const videoGenerationServiceAvailable = (providers: readonly GenerationProvider[]): boolean =>
-  providers.some(provider => provider.id !== 'runway' && provider.enabled !== false && providerModels(provider).some(model =>
+  providers.some(provider => isGenerationProviderCandidate(provider) && provider.enabled !== false && providerModels(provider).some(model =>
     Boolean(model.id) && providerStatus(generationProviderForModel(provider, model.id ?? '', model.modelEntryId)) === 'available'));
 
 export interface GenerationInputDimensions { min?: unknown; max?: unknown; matchAspectRatio?: unknown; minAspectRatio?: unknown; maxAspectRatio?: unknown; [key: string]: unknown }
@@ -190,7 +192,7 @@ export function generationProfileSelection(provider: GenerationProvider | null |
     const rule = profile.inputs?.roles?.[role];
     return Boolean(rule && typeof rule.implemented === 'boolean' && countKnown(rule.min) && countKnown(rule.max) && rule.min <= rule.max && (!rule.implemented || Array.isArray(rule.mimeTypes) && rule.mimeTypes.length > 0 && typeof rule.maxBytes === 'number' && Number.isSafeInteger(rule.maxBytes) && rule.maxBytes > 0));
   };
-  if (typeof profile.profileVersion !== 'string' || ![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, VIDEO_INPUT_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
+  if (typeof profile.profileVersion !== 'string' || ![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, VIDEO_INPUT_PROFILE_VERSION, GEMINI_OMNI_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
   const date = provider.profileEvaluationDate;
   const evaluations = (Array.isArray(provider.inputProfileEvaluations) ? provider.inputProfileEvaluations as GenerationInputEvaluation[] : []).filter(item => item?.profileId === profile.profileId);
   const evaluation = evaluations[0];
@@ -224,7 +226,7 @@ const advisoryGenerationIssue = (snapshot: Record<string, unknown>, provider: Ge
 // Provider capabilities are read-only metadata. Explicit session UI choices belong
 // in this session map; none are merged into a shot's persisted parameters.
 export function generationSelection(providers: readonly GenerationProvider[], options: GenerationSelectionOptions = {}, shot: GenerationShot = {}): GenerationSelectionResult {
-  const available = providers.filter(item => item.id !== 'runway');
+  const available = providers.filter(isGenerationProviderCandidate);
   const provider = options.connectionId ? available.find(item => item.connectionId === options.connectionId)
     : options.providerId ? available.find(item => !item.connectionId && item.id === options.providerId)
     : available.find(item => item.mock && providerStatus(item) === 'available') || available.find(item => !item.connectionId && providerStatus(item) === 'available');
@@ -257,7 +259,7 @@ const inputIssueMessages: Record<string, string> = {
   INVALID_REFERENCE_COUNT: renderMessage('zh-Hans', message('connections.generation.issue.count')),
   UNSUPPORTED_REFERENCE_MIME: '当前 Mioon 适配器未接入此参考图片格式。',
   DUPLICATE_REFERENCE: '同一参考素材不能重复提交。',
-  MODEL_LIFECYCLE_REVALIDATION_REQUIRED: '此模型已到生命周期复核日期，服务器已阻止新提交。请重新核验该精确模型；不会自动替换模型。',
+  MODEL_LIFECYCLE_REVALIDATION_REQUIRED: renderMessage('zh-Hans', message('connections.generation.issue.lifecycle')),
 };
 export function generationIssueMessage(issue: GenerationIssueLike | null | undefined): string {
   if (!issue) return '';
@@ -506,7 +508,7 @@ export function videoConnectionProviders(value: unknown): GenerationProvider[] {
   if (!Array.isArray(value)) throw new TypeError('Invalid video connections.');
   return value.map(item => {
     if (!item || typeof item !== 'object' || typeof item.connectionId !== 'string' || typeof item.providerId !== 'string' || typeof item.configurationRevision !== 'number' || typeof item.name !== 'string' || !Array.isArray(item.models)) throw new TypeError('Invalid video connection.');
-    const entries: Array<{ entry: import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry; capabilities: GenerationProvider }> = item.models.filter((entry: unknown): entry is { entry: import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry; capabilities: GenerationProvider } => Boolean(entry && typeof entry === 'object' && 'entry' in entry && 'capabilities' in entry && entry.entry && typeof entry.entry === 'object' && 'enabled' in entry.entry && entry.entry.enabled && 'archived' in entry.entry && !entry.entry.archived));
+    const entries: Array<{ entry: import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry; capabilities: GenerationProvider }> = item.models.filter((entry: unknown): entry is { entry: import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry; capabilities: GenerationProvider } => Boolean(entry && typeof entry === 'object' && 'entry' in entry && 'capabilities' in entry && entry.entry && typeof entry.entry === 'object' && 'enabled' in entry.entry && entry.entry.enabled && 'archived' in entry.entry && !entry.entry.archived && 'templateId' in entry.entry && entry.entry.templateId !== 'veo-v1'));
     const first = entries[0]?.capabilities;
     return { ...first, id: item.providerId, providerId: item.providerId, connectionId: item.connectionId, configurationRevision: item.configurationRevision, source: 'settings', name: item.name, enabled: item.enabled && !item.archived,
       configured: first?.configured ?? item.configured, status: item.archived || !item.enabled ? 'disabled' : first?.status ?? 'not_configured',
