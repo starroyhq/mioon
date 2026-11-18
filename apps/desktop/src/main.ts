@@ -1497,8 +1497,8 @@ if (startupStorageError) {
   // Packaged Windows smoke never waits on a storage dialog: a dialog would look
   // like a hung launch. Only a fixed error code is written as evidence.
   if (windowsPackageSmoke && smokeOutput) {
-    const detected = errorCode(startupStorageError);
-    const reason = typeof detected === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/.test(detected) ? detected : 'DESKTOP_STARTUP_FAILED';
+    const detected = codedFailure(startupStorageError);
+    const reason = [detected.reason, detected.code].find(value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/.test(value)) ?? 'DESKTOP_STARTUP_FAILED';
     void writeFile(smokeOutput, JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_STARTUP_FAILED',reason})+'\n')
       .then(() => app.exit(1), () => app.exit(1));
   } else void showStorageStartupFailure(app, dialog, startupStorageError);
