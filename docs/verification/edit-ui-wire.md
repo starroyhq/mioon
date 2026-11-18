@@ -30,6 +30,25 @@ UI-E2 把 UI-E1 的静态组件接到格式 5 的共享 `sequence-edit` 合同�
 - UI-E1 回归 `edit-ui-static`、`edit-ui-i18n`、`edit-ui-projection`、导出 preflight/能力相关测试通过；typecheck、五个守卫通过；格式 3/4 的 App/timeline 测试 `agent-timeline-app` 等 75 项通过。
 - 无头截图：当前 `screens/` 下是 UI-E1 静态夹具的 21-02/03/04 截图（真实组件、无 RPC）；格式 5 真实项目夹具和本机开发渠道实拍未在本机完成，见报告遗留。
 
+
+## 统一 RPC（合并 main `887a0f95` 后）
+
+B 的 CS（#296）与 C 的主体绑定（#300）合入后，只保留一套对外操作（`packages/contracts/src/sequence-edit-rpc.ts`）：
+
+| 操作 | 说明 |
+| --- | --- |
+| `sequence.preview` | 任意 intent（画板、时间线、主体绑定）→ 共享 envelope + `planDigest` + warnings；server 负责补 baseline/history/impact/allocation。 |
+| `sequence.commit` | 校验 `expectedPlanDigest` 后按 intent 路由：画板 → `sequence-edit.ts`（CS）；时间线 → `format5-sequence-sync.ts`（TS）；主体绑定 → 共享 TS 事务里的 subject planner。 |
+| `sequence.history.get` / `sequence.undo` / `sequence.redo` | 只有 CS 的实现（`format5-editor-history.ts`），含最旧条目淘汰和 `atEarliest`/conflict 字段。 |
+
+B 原来的 `sequence.edit` 不再是公开操作（只在 CS 内部单测/协调方使用）；`sequence.commit` 已覆盖它。我们的旧 `sequence.preview/commit` 服务已删除重复实现，只做统一 dispatcher。主体/画板/时间线现有测试（#296/#300/TSb）通过统一入口全部通过。
+
+## 真实格式 5 项目的无头流程
+
+- `tests/helpers/edit-ui-wire-fixture.ts` 建真实格式 5 kernel（主轨/辅轨、镜头、切开的片段、占位、版本、adoption 基线），`tests/browser_edit_ui_wire.mjs` 用真实 `createServices` 通过 `POST /rpc` 暴露项目服务，并用 Vite 打包真实 `Timeline`、`ShotVersionBar`、`CopyMoveConfirmDialog`、`EditUiNoticeBar`、`Format5EditSession`。
+- `tests/fixtures/edit-ui-wire/acceptance.py` 用 Playwright 跑：21-04 删除→唯一撤销条→撤销；Cmd/Ctrl+Z、Shift+Cmd/Ctrl+Z；21-02 版本锁定；21-03 复制并挪动取消/确认（`COPY_NODE_REQUIRED` 二次预览后提交同一 envelope）；导出 preflight 返回 `PLACEHOLDER_CLIP` 并定位片段。
+- 截图和报告写到本卡笔记目录 `screens/ui-e2/`（本地证据，不提交）。本机开发渠道实拍留给格式 5 激活前 Q 验收。
+
 ## 合同/固定文件
 
 - 新增 `sequence.preview/commit/history.get/undo/redo` schema 与效果描述；`timeline-export-profile.ts` 的 issue 表扩 `PLACEHOLDER_CLIP`、`VERSION_TOO_SHORT`。

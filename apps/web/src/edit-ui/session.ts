@@ -10,6 +10,7 @@ import type {EditUiCopyMoveRequest} from './CopyMoveConfirmDialog.tsx';
 import type {EditUiInspectorSequence} from './status.tsx';
 import {projectEditUi} from './projection.ts';
 import type {EditUiProjection, EditUiTimeline, EditUiVersion} from './projection.ts';
+import {sequenceSyncIntent} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceEditEnvelope, SequenceEditReceipt} from '../../../../packages/contracts/src/sequence-edit.ts';
 
@@ -145,6 +146,18 @@ export function format5InspectorSequence(timeline: AppTimeline | null, shots: re
     ...callbacks};
 }
 
+function commitOutcome(value: unknown): SequenceOutcome {
+  if (value !== null && typeof value === 'object') {
+    const row = value as Record<string, any>;
+    if (row.ok === false) return {ok: false, code: String(row.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'), ids: row.ids ?? []};
+    if (row.receipt) return {ok: true, actionId: String(row.actionId ?? row.receipt.actionId), operation: String(row.operation ?? row.receipt.operation), patch: row.patch, receipt: row.receipt};
+    if (row.status === 'applied' || row.status === 'not_applied') {
+      return {ok: true, actionId: String(row.actionId), operation: String(row.operation), patch: undefined, receipt: row as unknown as SequenceEditReceipt};
+    }
+  }
+  return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+}
+
 /** One preview/confirm session. `preview` may run twice for a copy decision; the
  * second envelope is the one the confirmation and commit must reuse. */
 export class Format5EditSession {
@@ -168,7 +181,8 @@ export class Format5EditSession {
     if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
     const requestId = format5RequestId('preview');
     try {
-      const response = await this.endpoint('sequence.preview')({projectId, requestId, command}) as SequencePreviewResponse | SequenceFailure;
+      const response = await this.endpoint('sequence.preview')({projectId, requestId,
+        intents: [sequenceSyncIntent(command)]}) as SequencePreviewResponse | SequenceFailure;
       if ((response as SequenceFailure).ok === false) return response as SequenceFailure;
       const preview = response as SequencePreviewResponse;
       if (typeof preview.planDigest !== 'string' || !preview.envelope) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
@@ -182,8 +196,8 @@ export class Format5EditSession {
     const pending = this.pending;
     if (!pending || !this.projectId()) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     try {
-      const result = await this.endpoint('sequence.commit')({projectId: this.projectId(), envelope: pending.envelope,
-        expectedPlanDigest: pending.planDigest}) as SequenceOutcome;
+      const result = commitOutcome(await this.endpoint('sequence.commit')({projectId: this.projectId(), envelope: pending.envelope,
+        expectedPlanDigest: pending.planDigest}));
       this.pending = null;
       return result;
     } catch (error) {
@@ -243,16 +257,16 @@ export class Format5EditSession {
     const projectId = this.projectId();
     if (!projectId || !view.undo) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
-      return await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('undo'),
-        actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}) as SequenceOutcome;
+      return commitOutcome(await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('undo'),
+        actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}));
     } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
   }
   async redo(view: SequenceHistoryView): Promise<SequenceOutcome> {
     const projectId = this.projectId();
     if (!projectId || !view.redo) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
-      return await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('redo'),
-        actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}) as SequenceOutcome;
+      return commitOutcome(await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('redo'),
+        actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}));
     } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
   }
 }

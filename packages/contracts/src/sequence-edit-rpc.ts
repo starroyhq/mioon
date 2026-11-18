@@ -1,60 +1,61 @@
-/** UI-B/UI-E/MT <-> project RPC boundary for the shared format-5 edit contract.
+/** The single public RPC entry for format-5 sequence editing.
  *
- * Requests stay bounded and name one project. The envelope, receipt and patch
- * bodies are the shared `sequence-edit.ts` shapes; this file only adds the
- * transport envelopes for preview, commit, unified history and undo/redo.
+ * UI-B2, UI-E2 and MT all use the same five operations. `sequence.preview` takes
+ * any intent (board, timeline or subject binding) and returns the exact shared
+ * envelope plus its plan digest; `sequence.commit` accepts only that envelope
+ * with the digest it was previewed with. History/undo/redo are the one
+ * implementation in `format5-editor-history.ts` (through the CS coordinator),
+ * including oldest-entry eviction and `atEarliest`.
  */
 import {z} from 'zod';
-import {sequenceEditEnvelopeSchema} from './sequence-edit.ts';
+import {sequenceEditEnvelopeSchema, sequenceEditSubjectIntentSchema} from './sequence-edit.ts';
+import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
+import {sequenceEditingSchemas} from './sequence-editing.ts';
+import type {SequenceEditIntent} from './sequence-edit.ts';
 
-const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-const frame = z.number().int().min(0).max(2_000_000);
+const uuid = z.string().uuid();
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
-const requestId = z.string().min(8).max(200);
-const addClip = z.object({
-  id: uuid, nodeId: uuid, segmentGroupId: uuid, startFrame: frame, durationFrames: frame,
-  sourceInFrame: frame, versionId: uuid.nullable().optional(), locked: z.boolean().optional(),
+const allocationSchema = z.object({
+  clips: z.array(z.object({nodeId: uuid, clipId: uuid}).strict()).max(500).optional(),
+  nodes: z.array(z.object({fromNodeId: uuid, nodeId: uuid}).strict()).max(500).optional(),
+  splitClips: z.array(z.object({clipId: uuid, rightClipId: uuid}).strict()).max(500).optional(),
+  edges: z.array(z.object({id: uuid, fromId: uuid, toId: uuid}).strict()).max(2000).optional(),
 }).strict();
-export const sequenceSyncCommandSchema = z.discriminatedUnion('kind', [
-  z.object({kind: z.literal('sync-board'), newClipIds: z.record(uuid).optional()}).strict(),
-  z.object({kind: z.literal('board-version'), nodeId: uuid, versionId: uuid.nullable()}).strict(),
-  z.object({kind: z.literal('clip-version'), clipId: uuid, versionId: uuid.nullable(), mode: z.enum(['follow', 'locked'])}).strict(),
-  z.object({kind: z.literal('clip-remove'), clipId: uuid}).strict(),
-  z.object({kind: z.literal('clip-add'), clip: addClip, beforeClipId: uuid.nullable(), nodeKind: z.enum(['shot', 'video', 'image']).optional()}).strict(),
-  z.object({kind: z.literal('clip-split'), clipId: uuid, offsetFrames: frame, rightClipId: uuid, rightSourceInFrame: frame.optional()}).strict(),
-  z.object({kind: z.literal('clip-trim'), clipId: uuid, durationFrames: frame, sourceInFrame: frame.optional()}).strict(),
-  z.object({kind: z.literal('clip-move'), clipId: uuid, beforeClipId: uuid.nullable(), copyNodeId: uuid.optional()}).strict(),
-  z.object({kind: z.literal('clip-move-off-track'), clipId: uuid, trackId: uuid, startFrame: frame, copyNodeId: uuid.optional()}).strict(),
-]);
-export const sequenceEditPreviewRequestSchema = z.object({
-  projectId: uuid, requestId, actionId: uuid.optional(), command: sequenceSyncCommandSchema,
+export const sequencePreviewRequestSchema = z.object({
+  projectId: uuid,
+  requestId: z.string().min(8).max(200),
+  actionId: uuid.optional(),
+  originSide: z.enum(['board', 'timeline']).optional(),
+  intents: z.array(sequenceEditIntentPayloadSchema).min(1).max(64).optional(),
+  subjectIntent: sequenceEditSubjectIntentSchema.optional(),
+  allocation: allocationSchema.optional(),
+}).strict().superRefine((value, context) => {
+  const hasIntents = value.intents !== undefined;
+  const hasSubject = value.subjectIntent !== undefined;
+  if (hasIntents === hasSubject) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
+    message: 'Provide exactly one of intents and subjectIntent.'});
+});
+export const sequenceCommitRequestSchema = z.object({
+  projectId: uuid,
+  envelope: sequenceEditEnvelopeSchema,
+  expectedPlanDigest: digest,
 }).strict();
-export const sequenceEditCommitRequestSchema = z.object({
-  projectId: uuid, envelope: sequenceEditEnvelopeSchema, expectedPlanDigest: digest,
-}).strict();
-export const sequenceHistoryGetRequestSchema = z.object({projectId: uuid}).strict();
-const cursor = z.object({position: frame, revision: z.number().int().positive()}).strict();
-export const sequenceHistoryCommandRequestSchema = z.object({
-  projectId: uuid, requestId, actionId: uuid, expected: cursor,
-}).strict();
-export const sequenceEditPreviewResponseSchema = z.object({
-  envelope: sequenceEditEnvelopeSchema, planDigest: digest,
+export const sequenceHistoryGetRequestSchema = sequenceEditingSchemas['sequence.history.get'];
+export const sequenceHistoryCommandRequestSchema = sequenceEditingSchemas['sequence.undo'];
+export const sequencePreviewResponseSchema = z.object({
+  envelope: sequenceEditEnvelopeSchema,
+  planDigest: digest,
   warnings: z.array(z.object({code: z.string().min(1).max(80)}).passthrough()).max(500),
 }).strict();
-const historyAction = z.object({actionId: uuid, operation: z.string().min(1).max(80), affected: z.number().int().min(0)}).strict();
-export const sequenceHistoryResponseSchema = z.object({
-  epoch: uuid, position: frame, revision: z.number().int().positive(),
-  undo: historyAction.nullable(), redo: historyAction.nullable(),
-}).strict();
-export const sequenceEditCommitResponseSchema = z.object({
-  ok: z.boolean(), actionId: uuid.optional(), operation: z.string().optional(),
-  code: z.string().optional(), ids: z.array(uuid).max(500).optional(),
-  receipt: z.object({status: z.enum(['applied', 'not_applied']), history: sequenceHistoryResponseSchema}).passthrough().optional(),
-}).strict();
 export const sequenceEditRpcSchemas = Object.freeze({
-  'sequence.preview': sequenceEditPreviewRequestSchema,
-  'sequence.commit': sequenceEditCommitRequestSchema,
-  'sequence.history.get': sequenceHistoryGetRequestSchema,
-  'sequence.undo': sequenceHistoryCommandRequestSchema,
-  'sequence.redo': sequenceHistoryCommandRequestSchema,
+  'sequence.preview': sequencePreviewRequestSchema,
+  'sequence.commit': sequenceCommitRequestSchema,
+  'sequence.history.get': sequenceEditingSchemas['sequence.history.get'],
+  'sequence.undo': sequenceEditingSchemas['sequence.undo'],
+  'sequence.redo': sequenceEditingSchemas['sequence.redo'],
 });
+export type SequencePreviewRequest = z.infer<typeof sequencePreviewRequestSchema>;
+export type SequenceCommitRequest = z.infer<typeof sequenceCommitRequestSchema>;
+export {sequenceEditingSchemas, sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
+export type SequenceRpcIntent = SequenceEditIntent;
+export type {SequenceEditIntent};

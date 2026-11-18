@@ -9,9 +9,10 @@ import {createFormat5SequenceEditService} from '../packages/business/src/format5
 import {createFormat5ExportTicket} from '../packages/business/src/format5-timeline-export.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
 import {
-  sequenceEditCommitRequestSchema, sequenceEditPreviewRequestSchema, sequenceHistoryCommandRequestSchema,
-  sequenceHistoryGetRequestSchema, sequenceSyncCommandSchema,
+  sequenceCommitRequestSchema, sequencePreviewRequestSchema, sequenceHistoryGetRequestSchema,
+  sequenceEditingSchemas, sequenceEditIntentPayloadSchema,
 } from '../packages/contracts/src/sequence-edit-rpc.ts';
+import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `50000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -93,14 +94,14 @@ const service = (store: ProjectStore) => createFormat5SequenceEditService(store)
 const projectId = (store: ProjectStore): string => store.projectId;
 
 test('sequence RPC schemas accept one bounded command and reject extra fields', () => {
-  const split = {kind: 'clip-split', clipId: clipA, offsetFrames: 24, rightClipId: id(91)};
-  assert.equal(sequenceSyncCommandSchema.safeParse(split).success, true);
-  assert.equal(sequenceSyncCommandSchema.safeParse({...split, extra: true}).success, false);
-  const preview = {projectId: id(1), requestId: 'preview-request-1', command: split};
-  assert.equal(sequenceEditPreviewRequestSchema.safeParse(preview).success, true);
-  assert.equal(sequenceEditPreviewRequestSchema.safeParse({...preview, extra: 1}).success, false);
+  const split = sequenceSyncIntent({kind: 'clip-split', clipId: clipA, offsetFrames: 24, rightClipId: id(91)});
+  assert.equal(sequenceEditIntentPayloadSchema.safeParse(split).success, true);
+  assert.equal(sequenceEditIntentPayloadSchema.safeParse({...split, extra: true}).success, false);
+  const preview = {projectId: id(1), requestId: 'preview-request-1', intents: [split]};
+  assert.equal(sequencePreviewRequestSchema.safeParse(preview).success, true);
+  assert.equal(sequencePreviewRequestSchema.safeParse({...preview, extra: 1}).success, false);
   assert.equal(sequenceHistoryGetRequestSchema.safeParse({projectId: id(1)}).success, true);
-  assert.equal(sequenceHistoryCommandRequestSchema.safeParse({projectId: id(1), requestId: 'undo-request-1',
+  assert.equal(sequenceEditingSchemas['sequence.undo'].safeParse({projectId: id(1), requestId: 'undo-request-1',
     actionId: id(20), expected: {position: 1, revision: 2}}).success, true);
   for (const operation of ['sequence.preview', 'sequence.commit', 'sequence.history.get', 'sequence.undo', 'sequence.redo']) {
     assert.ok(operation in schemas, `${operation} missing from RPC schemas`);
@@ -112,28 +113,28 @@ test('preview, commit, history and undo/redo share the same receipt and history 
   const store = fixture(t);
   const edit = service(store);
   const command = {kind: 'clip-split', clipId: clipA, offsetFrames: 24, rightClipId: id(91)} as const;
-  const preview = edit.preview({projectId: projectId(store), requestId: 'ui-preview-1', command: command as never}) as any;
+  const preview = edit.preview({projectId: projectId(store), requestId: 'ui-preview-1',
+    intents: [sequenceSyncIntent(command)]}) as any;
   assert.ok(preview.envelope);
   assert.equal(typeof preview.planDigest, 'string');
-  assert.equal(sequenceEditCommitRequestSchema.safeParse({projectId: projectId(store), envelope: preview.envelope,
+  assert.equal(sequenceCommitRequestSchema.safeParse({projectId: projectId(store), envelope: preview.envelope,
     expectedPlanDigest: preview.planDigest}).success, true);
   const committed = edit.commit({projectId: projectId(store), envelope: preview.envelope,
     expectedPlanDigest: preview.planDigest}) as any;
-  assert.equal(committed.ok, true);
-  assert.equal(committed.receipt.status, 'applied');
-  const history = edit.history({projectId: projectId(store)});
+  assert.equal(committed.status, 'applied');
+  const history = edit.history({projectId: projectId(store)}) as any;
   assert.equal(history.position, 1);
   assert.equal(history.undo?.actionId, committed.actionId);
   assert.equal(history.redo, null);
   const undone = edit.undo({projectId: projectId(store), requestId: 'ui-undo-1', actionId: committed.actionId,
     expected: {position: history.position, revision: history.revision}}) as any;
-  assert.equal(undone.ok, true);
-  const afterUndo = edit.history({projectId: projectId(store)});
+  assert.equal(undone.status, 'applied');
+  const afterUndo = edit.history({projectId: projectId(store)}) as any;
   assert.equal(afterUndo.position, 0);
   assert.equal(afterUndo.redo?.actionId, committed.actionId);
   const redone = edit.redo({projectId: projectId(store), requestId: 'ui-redo-1', actionId: committed.actionId,
     expected: {position: afterUndo.position, revision: afterUndo.revision}}) as any;
-  assert.equal(redone.ok, true);
+  assert.equal(redone.status, 'applied');
 });
 
 test('format-5 export ticket reports a placeholder in the selected range', t => {

@@ -61,8 +61,8 @@ test('copy-and-move re-previews with a copy identity and commits only after conf
   const rpc: SequenceRpc = async (operation, input: any) => {
     calls.push({operation, input});
     if (operation === 'sequence.preview') {
-      const command = input.command as {copyNodeId?: string};
-      if (!command.copyNodeId) return {ok: false, code: 'COPY_NODE_REQUIRED'};
+      const operation = (input.intents?.[0]?.operation ?? {}) as {edit?: {copyNodeId?: string}};
+      if (!operation.edit?.copyNodeId) return {ok: false, code: 'COPY_NODE_REQUIRED'};
       return {envelope: copyEnvelope, planDigest: 'b'.repeat(64), warnings: []};
     }
     if (operation === 'sequence.commit') return success;
@@ -74,7 +74,7 @@ test('copy-and-move re-previews with a copy identity and commits only after conf
   const outcome = await session.requestMove(format5MoveCommand('clip-1', null), request as never);
   assert.deepEqual(outcome, {needsCopy: true});
   assert.equal(calls.filter(call => call.operation === 'sequence.commit').length, 0);
-  assert.equal(calls[1]!.input.command.copyNodeId.length, 36);
+  assert.equal(calls[1]!.input.intents[0].operation.edit.copyNodeId.length, 36);
   assert.equal(session.copyRequest?.clipId, 'clip-1');
   const confirmed = await session.confirmCopy();
   assert.equal(confirmed.ok, true);
@@ -87,7 +87,7 @@ test('cancelling the copy confirmation writes nothing and drops the preview', as
   let commits = 0;
   const rpc: SequenceRpc = async (operation, input: any) => {
     if (operation === 'sequence.preview') {
-      return (input.command as {copyNodeId?: string}).copyNodeId
+      return (input.intents?.[0]?.operation?.edit as {copyNodeId?: string} | undefined)?.copyNodeId
         ? {envelope: envelope('copy-2'), planDigest: 'c'.repeat(64), warnings: []}
         : {ok: false, code: 'COPY_NODE_REQUIRED'};
     }

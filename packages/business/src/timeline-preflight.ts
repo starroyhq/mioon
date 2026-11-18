@@ -17,6 +17,7 @@ import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
 import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelinePreflightSnapshot,TimelinePreflightSnapshotAsset} from './timeline-sources.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -110,6 +111,23 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const report: TimelinePreflightReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
+  // Format 5 placeholders and pending too-short follow versions block the exact
+  // export range before any media hashing or probe work.
+  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const format5Timeline=readFormat5TimelineRecord(store.db,'project');
+   if(format5Timeline){
+    report.timelineId=format5Timeline.id;report.timelineRevision=format5Timeline.revision;
+    if(format5Timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
+    const requestedRange=object(input.exportRange)?{startFrame:Number(input.exportRange.startFrame),endFrame:Number(input.exportRange.endFrame)}:null;
+    const blockers=format5ExportBlockersFromTimeline(store.db,format5Timeline,requestedRange);
+    if(blockers.length){
+     report.status='blocked';
+     report.issues=blockers.slice(0,EXPORT_PREFLIGHT_LIMITS.issues).map(blocker=>({code:blocker.code,severity:'error',
+       message:messages[blocker.code],clipId:blocker.clipId}));
+     return report;
+    }
+   }
+  }
   let initial,referencePreparedBytes=0;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
   catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
@@ -137,19 +155,6 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
   report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot!);report.checks.totalAssets=initial.snapshot!.assets.length;
-  // Format 5 placeholders and pending too-short follow versions block the exact
-  // export range before any media work; the async admission and render boundary
-  // re-check the same two blockers from the frozen ticket.
-  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
-   const requestedRange=object(input.exportRange)?{startFrame:Number(input.exportRange.startFrame),endFrame:Number(input.exportRange.endFrame)}:null;
-   const blockers=format5ExportBlockersFromTimeline(store.db,initial.timeline as never,requestedRange);
-   if(blockers.length){
-    report.status='blocked';
-    report.issues=blockers.slice(0,EXPORT_PREFLIGHT_LIMITS.issues).map(blocker=>({code:blocker.code,severity:'error',
-      message:messages[blocker.code],clipId:blocker.clipId}));
-    return report;
-   }
-  }
   const rangeIssue=timelineExportRangeBoundsIssue(input,initial.timeline.durationFrames);
   if(rangeIssue){report.snapshotHash=null;report.summary=null;}
   if(initial.timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}

@@ -1,0 +1,13 @@
+html, body, #root {height: 100%; margin: 0;}
+.wire-shell {height: 100%; display: flex; flex-direction: column; background: #0B0C0E; color: #ECEDEF; font-family: 'PingFang SC', sans-serif; font-size: 12px;}
+.wire-toolbar {height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid #2E3138; flex: 0 0 auto;}
+.wire-toolbar button {height: 26px; padding: 0 9px; border-radius: 6px; border: 1px solid #2E3138; background: #1B1D21; color: #ECEDEF; font-size: 11px;}
+.wire-state {margin-left: auto; font: 11px monospace; color: #A3A7AF;}
+.wire-main {flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 260px;}
+.wire-canvas {min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; overflow: hidden;}
+.wire-canvas .timeline-panel {position: relative; height: 330px; border: 1px solid #2E3138; border-radius: 10px; overflow: hidden;}
+.wire-inspector {border-left: 1px solid #2E3138; padding: 12px; overflow: auto; background: #141518;}
+.wire-inspector-state {white-space: pre-wrap; color: #A3A7AF; font: 11px monospace;}
+.wire-export-issues {margin-top: 12px; display: grid; gap: 8px;}
+.wire-export-issue {display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border: 1px solid rgba(242,169,59,.3); border-radius: 8px; background: rgba(242,169,59,.10); color: #F2A93B;}
+.wire-export-issue button {height: 24px; border: 1px solid #2E3138; background: #1B1D21; color: #ECEDEF; border-radius: 6px; font-size: 11px;}
