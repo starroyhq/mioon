@@ -80,7 +80,7 @@ const sameJson = (left: unknown, right: unknown): boolean => stableJson(left) ==
 // Projection
 // ---------------------------------------------------------------------------
 
-interface SyncContext {
+export interface SequenceSyncContext {
   readonly projectId: string;
   readonly timeline: Format5Timeline;
   readonly timelineState: ReturnType<typeof readFormat5TimelineState>;
@@ -99,19 +99,30 @@ interface SyncContext {
   readonly media: readonly ChainSyncMedia[];
   readonly clips: readonly ChainSyncClip[];
   readonly anchored: readonly TrackAnchoredItem[];
+  /** Full archived row JSON with its archive columns, for restore actions. */
+  readonly archivedShots: ReadonlyMap<string, Row>;
+  readonly archivedNodes: ReadonlyMap<string, Row>;
+  readonly archivedEdges: ReadonlyMap<string, Row>;
 }
 
-interface JsonRow {readonly id: string; readonly data: Row; readonly archived: boolean}
+interface JsonRow {
+  readonly id: string; readonly data: Row; readonly archived: boolean;
+  readonly archivedAt?: string; readonly archiveBatchId?: string; readonly archiveReason?: string;
+}
 
 function readJsonRows(db: any, table: 'shots' | 'nodes' | 'edges' | 'assets' | 'versions'): JsonRow[] {
   const hasArchive = table === 'shots' || table === 'nodes' || table === 'edges';
-  const rows = db.prepare(`SELECT id,data${hasArchive ? ',archivedAt' : ''} FROM project.${table} ORDER BY id`).all() as Row[];
+  const rows = db.prepare(`SELECT id,data${hasArchive ? ',archivedAt,archiveBatchId,archiveReason' : ''} FROM project.${table} ORDER BY id`).all() as Row[];
   return rows.map(row => {
     if (typeof row.id !== 'string' || typeof row.data !== 'string') throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
     let data: unknown;
     try { data = JSON.parse(row.data); } catch { throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'}); }
     if (!object(data) || data.id !== row.id) throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
-    return {id: row.id, data, archived: hasArchive && row.archivedAt !== null && row.archivedAt !== undefined};
+    const archived = hasArchive && row.archivedAt !== null && row.archivedAt !== undefined;
+    return {id: row.id, data, archived,
+      ...(archived ? {archivedAt: String(row.archivedAt),
+        ...(typeof row.archiveBatchId === 'string' ? {archiveBatchId: row.archiveBatchId} : {}),
+        ...(typeof row.archiveReason === 'string' ? {archiveReason: row.archiveReason} : {})} : {})};
   });
 }
 
@@ -149,7 +160,7 @@ function readMediaNode(node: ChainNode, nodeRows: ReadonlyMap<string, Row>, shot
   return null;
 }
 
-function readSyncContext(store: ProjectStore): SyncContext {
+function readSyncContext(store: ProjectStore): SequenceSyncContext {
   const db = store.db;
   const timelineState = readFormat5TimelineState(db, 'project');
   const timeline = assembleFormat5Timeline(timelineState);
@@ -204,20 +215,34 @@ function readSyncContext(store: ProjectStore): SyncContext {
   for (const cue of timeline.subtitles?.cues ?? []) {
     anchored.push(format5AnchoredItem({id: cue.id, startFrame: cue.startFrame, anchor: cue.anchor}));
   }
+  const archivedRow = (row: JsonRow): Row => ({...row.data, ...(row.archivedAt !== undefined ? {
+    archivedAt: row.archivedAt,
+    ...(row.archiveBatchId !== undefined ? {archiveBatchId: row.archiveBatchId} : {}),
+    ...(row.archiveReason !== undefined ? {archiveReason: row.archiveReason} : {}),
+  } : {})});
+  const archivedShots = new Map(shotRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
+  const archivedNodes = new Map(nodeRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
+  const archivedEdges = new Map(edgeRowsList.filter(row => row.archived).map(row => [row.id, archivedRow(row)]));
   return {projectId: store.projectId, timeline, timelineState, rootNodeId: timeline.mainTrack.sequenceNodeId,
     syncRevision: Number(sync.revision), baseline: baselineFromRaw(sync.baseline), board, nodes: board.nodes,
-    nodeRows, shots, versions, assets, adoptions, edges: board.edges, edgeRows, media, clips, anchored};
+    nodeRows, shots, versions, assets, adoptions, edges: board.edges, edgeRows, media, clips, anchored,
+    archivedShots, archivedNodes, archivedEdges};
 }
 
-const saState = (context: SyncContext) => ({board: context.board, filmId: context.rootNodeId,
+/** Read the exact live projection the CS board transaction plans against. */
+export function readSequenceSyncContext(store: ProjectStore): SequenceSyncContext {
+  return readSyncContext(store);
+}
+
+const saState = (context: SequenceSyncContext) => ({board: context.board, filmId: context.rootNodeId,
   media: context.media, clips: context.clips, anchored: context.anchored});
 
-function derivedChain(context: SyncContext): {nodeIds: readonly string[]} {
+function derivedChain(context: SequenceSyncContext): {nodeIds: readonly string[]} {
   const nodeIds: string[] = [];
   for (const clip of context.clips) if (nodeIds.at(-1) !== clip.nodeId) nodeIds.push(clip.nodeId);
   return {nodeIds};
 }
-function derivedFloating(context: SyncContext): string[] {
+function derivedFloating(context: SequenceSyncContext): string[] {
   const live = new Set(context.board.nodes.map(node => node.id));
   for (const nodeId of derivedChain(context).nodeIds) live.delete(nodeId);
   return [...live].sort();
@@ -258,7 +283,7 @@ export function readSequenceSyncProjection(store: ProjectStore): SequenceSyncPro
 // Intent planning
 // ---------------------------------------------------------------------------
 
-function resolveVersion(context: SyncContext, nodeId: string, versionId: string): ChainSyncVersion | SequenceEditTransactionFailure {
+function resolveVersion(context: SequenceSyncContext, nodeId: string, versionId: string): ChainSyncVersion | SequenceEditTransactionFailure {
   if (!isUuid(versionId) || !isUuid(nodeId)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [nodeId]);
   const version = context.versions.get(versionId);
   const shot = context.shots.get(nodeId);
@@ -279,7 +304,7 @@ function allocationClipIds(envelope: SequenceEditEnvelope): Record<string, strin
   return Object.fromEntries(envelope.allocation.clips.map(item => [item.nodeId, item.clipId]));
 }
 
-function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope): SequenceEditPlan | SequenceEditTransactionFailure {
+function planEnvelope(context: SequenceSyncContext, envelope: SequenceEditEnvelope): SequenceEditPlan | SequenceEditTransactionFailure {
   if (envelope.intents.length !== 1) return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
   const operation = envelope.intents[0]!.operation;
   const state = saState(context);
@@ -314,19 +339,19 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope): Seq
 // Format-5 mapping helpers
 // ---------------------------------------------------------------------------
 
-function versionAssetId(context: SyncContext, versionId: string | null): string | null {
+function versionAssetId(context: SequenceSyncContext, versionId: string | null): string | null {
   if (versionId === null) return null;
   const version = context.versions.get(versionId);
   return version && typeof version.assetId === 'string' ? version.assetId : null;
 }
-function nodeName(context: SyncContext, nodeId: string): string {
+function nodeName(context: SequenceSyncContext, nodeId: string): string {
   const shot = context.shots.get(nodeId);
   if (typeof shot?.title === 'string' && shot.title) return shot.title;
   const node = context.nodeRows.get(nodeId);
   if (typeof node?.name === 'string' && node.name) return node.name;
   return 'Clip';
 }
-function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Format5Clip | undefined): Format5Clip {
+function nextMainClip(context: SequenceSyncContext, clip: ChainSyncClip, existing: Format5Clip | undefined): Format5Clip {
   const node = context.board.nodes.find(item => item.id === clip.nodeId)!;
   const base: Format5Clip = existing ?? {
     id: clip.id, trackId: context.timeline.mainTrack.trackId, name: nodeName(context, clip.nodeId),
@@ -367,21 +392,21 @@ function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Forma
 }
 
 function anchorForOwner(item: {startFrame: number; anchorClipId?: string | null},
-  owners: readonly {id: string; startFrame: number; durationFrames: number}[]): {clipId: string; offsetFrames: number} | null {
+  owners: ReadonlyMap<string, {id: string; startFrame: number; durationFrames: number}>): {clipId: string; offsetFrames: number} | null {
   if (item.anchorClipId === null || item.anchorClipId === undefined) return null;
-  const owner = owners.find(clip => clip.id === item.anchorClipId);
+  const owner = owners.get(item.anchorClipId);
   if (!owner) return null;
   const offsetFrames = item.startFrame - owner.startFrame;
   return offsetFrames >= 0 && offsetFrames < owner.durationFrames ? {clipId: item.anchorClipId, offsetFrames} : null;
 }
 
-function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format5Timeline {
+function patchMainTimeline(context: SequenceSyncContext, plan: SequenceEditPlan): Format5Timeline {
   const existing = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
   const mainTrackId = context.timeline.mainTrack.trackId;
   const boardOverlay = {nodes: [...context.board.nodes, ...plan.after.board.nodes.filter(node =>
     !context.board.nodes.some(current => current.id === node.id))], edges: context.board.edges};
   const mainClips = plan.after.clips.map(clip => nextMainClip({...context, board: boardOverlay}, clip, existing.get(clip.id)));
-  const ownerSegments = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
+  const ownerSegments = new Map(mainClips.map(clip => [clip.id, {id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}] as const));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
   const durationFrames = mainClips.reduce((maximum, clip) => Math.max(maximum, clip.startFrame + clip.durationFrames), 0);
   const clips: Format5Clip[] = [...mainClips];
@@ -400,7 +425,7 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
     durationFrames, clips, subtitles: context.timeline.subtitles ? {...context.timeline.subtitles, cues} : undefined};
 }
 
-function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpdates: ReadonlyMap<string, Row>): Format5SyncBaseline {
+function buildBaseline(context: SequenceSyncContext, timeline: Format5Timeline, shotUpdates: ReadonlyMap<string, Row>): Format5SyncBaseline {
   const mainTrackId = timeline.mainTrack.trackId;
   const mainClips = timeline.clips.filter(clip => clip.trackId === mainTrackId);
   const chainNodeIds: string[] = [];
@@ -439,7 +464,7 @@ function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpda
 
 interface ShotChange {readonly before: Row; readonly after: Row}
 
-function shotChanges(context: SyncContext, plan: SequenceEditPlan): ShotChange[] {
+function shotChanges(context: SequenceSyncContext, plan: SequenceEditPlan): ShotChange[] {
   const changes: ShotChange[] = [];
   for (const change of plan.changes.media) {
     const node = context.board.nodes.find(item => item.id === change.after?.nodeId);
@@ -463,7 +488,7 @@ function boardDeltaPair(plan: SequenceEditPlan, changes: readonly ShotChange[]):
     after: {writes: changes.map(change => entity(change.after)), removals: []}};
 }
 
-function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
+function timelineDeltaPair(context: SequenceSyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
   board: {readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta},
   nextBaseline: Format5SyncBaseline): SequenceEditPatch {
   const beforeClips = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
@@ -510,9 +535,10 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
 
 interface TimelineApplyResult {readonly timeline: Format5Timeline; readonly changed: boolean}
 
-function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta): TimelineApplyResult {
-  const state = readFormat5TimelineState(store.db, 'project');
-  const current = assembleFormat5Timeline(state);
+function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
+  providedContext?: SequenceSyncContext): TimelineApplyResult {
+  const state = providedContext?.timelineState ?? readFormat5TimelineState(store.db, 'project');
+  const current = providedContext?.timeline ?? assembleFormat5Timeline(state);
   if (!current) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
   const clips = new Map(current.clips.map(clip => [clip.id, clip]));
   for (const clip of delta.clips) clips.set(clip.id, clip);
@@ -543,7 +569,7 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
 
 interface BaselineApplyResult {readonly revision: number; readonly baseline: Format5SyncBaseline | null; readonly changed: boolean}
 
-function applyBaselineDelta(store: ProjectStore, context: SyncContext, change: SequenceEditBaselineChange): BaselineApplyResult {
+function applyBaselineDelta(store: ProjectStore, context: SequenceSyncContext, change: SequenceEditBaselineChange): BaselineApplyResult {
   const next = applySequenceEditBaselineChange(context.baseline, change);
   if (next === null) {
     const result = store.db.prepare('DELETE FROM project.sequence_sync_state WHERE timelineId=? AND projectId=?')
@@ -562,7 +588,7 @@ function applyBaselineDelta(store: ProjectStore, context: SyncContext, change: S
 // Preview / envelope construction
 // ---------------------------------------------------------------------------
 
-function affectedFromDelta(delta: SequenceEditStateDelta, context: SyncContext, mainTrackId: string): SequenceEditAffectedCounts {
+function affectedFromDelta(delta: SequenceEditStateDelta, context: SequenceSyncContext, mainTrackId: string): SequenceEditAffectedCounts {
   const mainIds = new Set(context.timeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
   const countBoard = (kind: SequenceEditBoardEntity['kind'] | readonly SequenceEditBoardEntity['kind'][]) => {
     const kinds = Array.isArray(kind) ? kind : [kind];
@@ -668,7 +694,7 @@ function replayResult(store: ProjectStore, receipt: SequenceEditReceipt): Sequen
     patch: entry ? patchFromEntry(entry) : emptyPatch(), receipt};
 }
 
-function revisionMatches(store: ProjectStore, envelope: SequenceEditEnvelope, context: SyncContext): SequenceEditTransactionFailure | null {
+function revisionMatches(store: ProjectStore, envelope: SequenceEditEnvelope, context: SequenceSyncContext): SequenceEditTransactionFailure | null {
   const content = readProjectContentStamp(store.db).contentSequence;
   if (envelope.baseline.contentRevision !== content) return failure('SEQUENCE_EDIT_REVISION_CONFLICT');
   if (envelope.baseline.timelineRevision !== context.timeline.revision) return failure('SEQUENCE_EDIT_REVISION_CONFLICT');
@@ -744,7 +770,8 @@ function writeFailure(store: ProjectStore, envelope: SequenceEditEnvelope, code:
 // CS transaction-internal seam
 // ---------------------------------------------------------------------------
 
-export function createMainTrackProjectionPort(store: ProjectStore): MainTrackProjectionPort {
+export function createMainTrackProjectionPort(store: ProjectStore,
+  providedContext?: () => SequenceSyncContext): MainTrackProjectionPort {
   return {
     projectMainTrack(request): SequenceEditTimelineCommit | SequenceEditTransactionFailure {
       const context = readSyncContext(store);
@@ -773,7 +800,7 @@ export function createMainTrackProjectionPort(store: ProjectStore): MainTrackPro
 // Undo / redo
 // ---------------------------------------------------------------------------
 
-function undoApplyPatch(store: ProjectStore, patch: SequenceEditStateDelta, context: SyncContext): {
+function undoApplyPatch(store: ProjectStore, patch: SequenceEditStateDelta, context: SequenceSyncContext): {
   readonly contentRevision: number; readonly timelineRevision: number; readonly syncRevision: number;
 } {
   applyBoardDelta(store, patch.board);
@@ -844,16 +871,16 @@ function writeHistoryFailure(store: ProjectStore, command: SequenceEditHistoryCo
 /** Apply the timeline half of a stored patch while CS undoes or redoes a
  * board-origin action. The shared history module owns the cursor and receipt;
  * this entry only owns the timeline rows, sync baseline and content stamp. */
-export function applySequenceEditTimelineDelta(store: ProjectStore,
-  delta: SequenceEditTimelineDelta): {readonly timelineRevision: number} {
-  const result = applyTimelineDelta(store, delta);
+export function applySequenceEditTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
+  providedContext?: SequenceSyncContext): {readonly timelineRevision: number} {
+  const result = applyTimelineDelta(store, delta, providedContext);
   return {timelineRevision: result.timeline.revision};
 }
 
 /** Apply the three-state baseline half of a stored patch. */
-export function applySequenceEditBaselineDelta(store: ProjectStore,
-  change: SequenceEditBaselineChange): {readonly syncRevision: number} {
-  const context = readSyncContext(store);
+export function applySequenceEditBaselineDelta(store: ProjectStore, change: SequenceEditBaselineChange,
+  providedContext?: SequenceSyncContext): {readonly syncRevision: number} {
+  const context = providedContext ?? readSyncContext(store);
   const result = applyBaselineDelta(store, context, change);
   return {syncRevision: result.revision};
 }

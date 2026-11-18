@@ -24,8 +24,9 @@ import {
 } from '../../contracts/src/sequence-editing.ts';
 import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
 import {
-  applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, createMainTrackProjectionPort,
+  applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, createMainTrackProjectionPort, readSequenceSyncContext,
 } from './format5-sequence-sync.ts';
+import type {SequenceSyncContext} from './format5-sequence-sync.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
   readSequenceEditHistoryEntry, sequenceEditInputDigest, writeSequenceEditAction, writeSequenceEditFailure,
@@ -111,134 +112,27 @@ interface EditContext {
   readonly media: readonly ChainSyncMedia[];
   readonly clips: readonly ChainSyncClip[];
   readonly anchored: readonly TrackAnchoredItem[];
-  readonly adoptions: readonly Row[];
 }
 
-function readRows(db: DatabaseSync, table: CanvasTable): {live: Map<string, Row>; archived: Map<string, Row>} {
-  const all = new Map(readFormat5JsonRows(db, 'project', table, false).map(row => [String(row.id), row] as const));
-  const archived = new Map<string, Row>();
-  for (const row of db.prepare(`SELECT id,archivedAt,archiveBatchId,archiveReason FROM project.${table} WHERE archivedAt IS NOT NULL ORDER BY id`).all() as Row[]) {
-    const value = all.get(String(row.id));
-    if (!value || typeof row.archivedAt !== 'string') invalidContent();
-    archived.set(String(row.id), {...value, archivedAt: row.archivedAt,
-      archiveBatchId: typeof row.archiveBatchId === 'string' ? row.archiveBatchId : undefined,
-      archiveReason: typeof row.archiveReason === 'string' ? row.archiveReason : 'user-delete'});
-  }
-  const live = new Map([...all].filter(([id]) => !archived.has(id)));
-  return {live, archived};
-}
-
-function pickRows(db: DatabaseSync, selected: ReadonlySet<string>): Map<string, Row> {
-  if (!selected.size) return new Map();
-  return new Map(readFormat5JsonRows(db, 'project', 'versions', false, selected).map(row => [String(row.id), row] as const));
-}
-
-function readMedia(node: ChainNode, context: {
-  readonly nodeRows: ReadonlyMap<string, Row>; readonly shots: ReadonlyMap<string, Row>;
-  readonly versions: ReadonlyMap<string, Row>; readonly assets: ReadonlyMap<string, Row>;
-  readonly clipDuration: (nodeId: string) => number | null;
-}): ChainSyncMedia | null {
-  const row = context.nodeRows.get(node.id);
-  const fallback = context.clipDuration(node.id) ?? 120;
-  if (node.kind === 'shot') {
-    const shot = context.shots.get(node.id);
-    const selected = typeof shot?.selectedVersionId === 'string' ? context.versions.get(shot.selectedVersionId) : undefined;
-    const selectedAssetId = selected?.assetId;
-    if (!selected || !isUuid(selected.id) || typeof selectedAssetId !== 'string') {
-      return {nodeId: node.id, selectedVersion: null, durationFrames: fallback};
-    }
-    const frames = sourceFrameCount(context.assets.get(selectedAssetId)?.duration);
-    return {nodeId: node.id, selectedVersion: {id: selected.id, sourceFrames: frames}, durationFrames: frames ?? fallback};
-  }
-  if (!row) return null;
-  if (node.kind === 'image') {
-    const rawAssetId = row.assetId;
-    const assetId = isUuid(rawAssetId) ? rawAssetId : null;
-    return {nodeId: node.id, selectedVersion: assetId === null ? null : {id: assetId, sourceFrames: null}, durationFrames: fallback};
-  }
-  if (node.kind === 'video') {
-    const rawAssetId = row.assetId;
-    const assetId = isUuid(rawAssetId) ? rawAssetId : null;
-    const frames = assetId === null ? null : sourceFrameCount(context.assets.get(assetId)?.duration);
-    return {nodeId: node.id, selectedVersion: assetId !== null && frames !== null ? {id: assetId, sourceFrames: frames} : null,
-      durationFrames: frames ?? fallback};
-  }
-  return null;
-}
-
-function readBaseline(raw: unknown): Format5SyncBaseline {
-  let value: unknown;
-  try { value = JSON.parse(String(raw)); } catch { return invalidContent(); }
-  const parsed = format5SyncBaselineSchema.safeParse(value);
-  if (!parsed.success) return invalidContent();
-  return parsed.data;
-}
-
-export function readSequenceEditContext(store: ProjectStore): EditContext {
-  const db = store.db;
-  const timeline = readFormat5TimelineRecord(db, 'project');
-  if (!timeline || timeline.projectId !== store.projectId) return invalidContent();
-  const sync = db.prepare('SELECT timelineId,projectId,sequenceNodeId,revision,baseline FROM project.sequence_sync_state WHERE timelineId=?')
-    .get(timeline.id) as Row | undefined;
-  if (!sync || sync.projectId !== store.projectId || sync.sequenceNodeId !== timeline.mainTrack.sequenceNodeId ||
-      !Number.isSafeInteger(sync.revision) || Number(sync.revision) < 1) return invalidContent();
-  const shotRows = readRows(db, 'shots'), nodeRows = readRows(db, 'nodes'), edgeRows = readRows(db, 'edges');
-  const hiddenEndpoints = new Set<string>([...shotRows.archived.keys(), ...nodeRows.archived.keys()]);
-  for (const [id, row] of [...edgeRows.live]) {
-    if (hiddenEndpoints.has(String(row.source)) || hiddenEndpoints.has(String(row.target))) edgeRows.live.delete(id);
-  }
-  const nodes: ChainNode[] = [];
-  for (const id of shotRows.live.keys()) nodes.push({id, kind: 'shot'});
-  for (const row of nodeRows.live.values()) {
-    if (typeof row.type !== 'string') return invalidContent();
-    nodes.push({id: String(row.id), kind: format5ChainNodeKind(row.type)});
-  }
-  const edges: SequenceEdge[] = [];
-  for (const row of edgeRows.live.values()) {
-    if (row.kind !== 'sequence') continue;
-    if (!isUuid(row.source) || !isUuid(row.target)) return invalidContent();
-    edges.push({fromId: row.source, toId: row.target});
-  }
-  nodes.sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
-  edges.sort((left, right) => left.fromId < right.fromId ? -1 : left.fromId > right.fromId ? 1 : left.toId < right.toId ? -1 : left.toId > right.toId ? 1 : 0);
-  const board: ChainBoard = {nodes, edges};
-  const clips = format5MainTrackClips(timeline);
-  const mainTrackId = timeline.mainTrack.trackId;
-  const clipDuration = (nodeId: string): number | null => {
-    const group = clips.filter(clip => clip.nodeId === nodeId);
-    return group.length ? group.reduce((sum, clip) => sum + clip.durationFrames, 0) : null;
-  };
-  const versionIds = new Set<string>();
-  for (const shot of shotRows.live.values()) if (typeof shot.selectedVersionId === 'string') versionIds.add(shot.selectedVersionId);
-  const versions = new Map(readFormat5JsonRows(db, 'project', 'versions', false, versionIds).map(row => [String(row.id), row] as const));
-  const assetIds = new Set<string>();
-  for (const version of versions.values()) if (typeof version.assetId === 'string') assetIds.add(version.assetId);
-  for (const row of nodeRows.live.values()) if (typeof row.assetId === 'string') assetIds.add(row.assetId);
-  for (const clip of timeline.clips) if (typeof clip.assetId === 'string') assetIds.add(clip.assetId);
-  const assets = new Map(readFormat5JsonRows(db, 'project', 'assets', false, assetIds).map(row => [String(row.id), row] as const));
-  const mediaContext = {nodeRows: nodeRows.live, shots: shotRows.live, versions, assets, clipDuration};
-  const media: ChainSyncMedia[] = [];
-  for (const node of nodes) {
-    const entry = readMedia(node, mediaContext);
-    if (entry) media.push(entry);
-  }
-  const anchored: TrackAnchoredItem[] = [];
-  for (const clip of timeline.clips) {
-    if (clip.trackId === mainTrackId) continue;
-    anchored.push(format5AnchoredItem({id: clip.id, startFrame: clip.startFrame, anchor: clip.anchor ?? null}));
-  }
-  for (const cue of timeline.subtitles?.cues ?? []) anchored.push(format5AnchoredItem({id: cue.id, startFrame: cue.startFrame, anchor: cue.anchor}));
-  const adoptions = db.prepare('SELECT shotId,versionId FROM project.shot_version_adoptions ORDER BY shotId,versionId').all() as Row[];
+function editContextOf(context: SequenceSyncContext): EditContext {
   return {
-    projectId: store.projectId, timeline, rootNodeId: timeline.mainTrack.sequenceNodeId,
-    syncRevision: Number(sync.revision), baseline: readBaseline(sync.baseline), board, nodes, media, clips, anchored, adoptions,
-    rows: {shots: shotRows.live, nodes: nodeRows.live, edges: edgeRows.live, versions, assets},
-    archived: new Map([
-      ...[...shotRows.archived].map(([id, row]) => [`shot:${id}`, row] as const),
-      ...[...nodeRows.archived].map(([id, row]) => [`node:${id}`, row] as const),
-      ...[...edgeRows.archived].map(([id, row]) => [`edge:${id}`, row] as const),
+    projectId: context.projectId, timeline: context.timeline, rootNodeId: context.rootNodeId,
+    syncRevision: context.syncRevision, baseline: context.baseline, board: context.board, nodes: context.nodes,
+    rows: {shots: context.shots, nodes: context.nodeRows, edges: context.edgeRows,
+      versions: context.versions, assets: context.assets},
+    archived: new Map<string, Row>([
+      ...[...context.archivedShots].map(([id, row]) => [`shot:${id}`, row] as const),
+      ...[...context.archivedNodes].map(([id, row]) => [`node:${id}`, row] as const),
+      ...[...context.archivedEdges].map(([id, row]) => [`edge:${id}`, row] as const),
     ]),
+    media: context.media, clips: context.clips, anchored: context.anchored,
   };
+}
+
+/** One projection read: the shared timeline-sync context drives both the CS
+ * planning state and, below, the TS main-track projection in the same tx. */
+export function readSequenceEditContext(store: ProjectStore): EditContext {
+  return editContextOf(readSequenceSyncContext(store));
 }
 
 function stateOf(context: EditContext, board: ChainBoard = context.board): ChainSyncState {
@@ -677,7 +571,8 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
       }
       return {receipt: replay.receipt};
     }
-    const context = readSequenceEditContext(store);
+    const syncContext = readSequenceSyncContext(store);
+    const context = editContextOf(syncContext);
     const prepared = prepareSequenceEditHistory(store, envelope.epoch);
     assertEnvelope(store, context, envelope, prepared.state);
     const operation = sequenceEditOperationName(envelope.intents);
@@ -746,18 +641,18 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     let appliedTimelineRevision: number | undefined;
     let appliedSyncRevision: number | undefined;
     if (timelineChanged) {
-      const result = createMainTrackProjectionPort(store).projectMainTrack({envelope, state: stateBeforeFinal, plan});
+      const result = createMainTrackProjectionPort(store, () => syncContext).projectMainTrack({envelope, state: stateBeforeFinal, plan});
       if (!result.ok) {
         return {receipt: writeSequenceEditFailure(store, envelope, result.code), failure: {code: result.code, ids: result.ids}};
       }
       syncCommit = result;
       // The projection port plans the timeline half; the coordinator applies it
       // in the same transaction (it never opens its own transaction).
-      appliedTimelineRevision = applySequenceEditTimelineDelta(store, result.delta).timelineRevision;
-      appliedSyncRevision = applySequenceEditBaselineDelta(store, result.delta.baseline).syncRevision;
-    }
-    applyBoardDelta(store, boardDeltas.after, 'forward');
-    const baselineChange = syncCommit?.delta.baseline ?? {kind: 'unchanged' as const};
+            appliedTimelineRevision = applySequenceEditTimelineDelta(store, result.delta, syncContext).timelineRevision;
+                  appliedSyncRevision = applySequenceEditBaselineDelta(store, result.delta.baseline, syncContext).syncRevision;
+          }
+        applyBoardDelta(store, boardDeltas.after, 'forward');
+        const baselineChange = syncCommit?.delta.baseline ?? {kind: 'unchanged' as const};
     const timelinePatch = syncCommit
       ? timelinePatchFromCommit(context.timeline, syncCommit.delta, context.baseline)
       : buildTimelinePatch(context.timeline, readFormat5TimelineRecord(store.db, 'project'), baselineChange, context.baseline);
@@ -775,7 +670,8 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
       affected: affectedFromDeltas(context, boardDeltas, timelinePatch.after),
       contentRevision: contentStamp(store).contentSequence, timelineRevision, syncRevision,
     };
-    return {receipt: writeSequenceEditAction(store, {envelope, patch, receipt: draft})};
+    const stored = writeSequenceEditAction(store, {envelope, patch, receipt: draft});
+    return {receipt: stored};
   });
   if (outcome.failure) fail(outcome.failure.code, '画板顺序链不能按这条命令修改。', outcome.failure.ids, {reason: outcome.failure.code});
   return outcome.receipt;
