@@ -76,10 +76,22 @@ async function applyTheme(window: BrowserWindow, theme: 'light' | 'dark'): Promi
     applied = await write();
   }
   assert.equal(applied, true, 'The screenshot theme preference must save');
-  window.webContents.reload();
-  await launcherReady(window);
-  await waitFor(window, () => evaluate(window, `document.documentElement.dataset.theme === ${JSON.stringify(theme)}`) as Promise<boolean>,
-    30000, 'The screenshot theme did not reach the renderer');
+  // A reload can race the preference write's visibility; retry the whole
+  // navigate-and-apply once and report the renderer's real state if it fails.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    window.webContents.reload();
+    await launcherReady(window);
+    const reached = await waitFor(window, () => evaluate(window, `document.documentElement.dataset.theme === ${JSON.stringify(theme)}`) as Promise<boolean>,
+      20000, '').then(() => true, () => false);
+    if (reached) return;
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  const state = await evaluate(window, `(async () => {
+    const stored = await fetch('/api/ui-preferences', {cache: 'no-store', credentials: 'same-origin'}).then(r => r.json()).catch(() => null);
+    return {page: document.documentElement.dataset.theme || 'none', stored: stored?.data?.preferences?.theme || 'none',
+      ready: document.readyState, root: document.getElementById('root')?.childElementCount ?? -1};
+  })()`) as unknown as {page: string; stored: string; ready: string; root: number};
+  throw new Error(`The screenshot theme did not reach the renderer page=${state.page} stored=${state.stored} ready=${state.ready} root=${state.root}`);
 }
 async function maximize(window: BrowserWindow): Promise<void> {
   if (window.isMaximized()) return;
