@@ -138,7 +138,7 @@ export const previsSchemas = Object.freeze({
     .refine(value => distinct(value.slots), 'Slots must be distinct'),
 });
 // Ordinary clients carry the captured frame. The fixed model catalog keeps
-// its existing diagnostics and does not expose thumbnail operations to Mio.
+// its existing diagnostics and exposes thumbnail operations to Mio through bounded host validation.
 export const previsThumbnailPublicSchemas = Object.freeze({
   'previs.thumbnail.set': previsSchemas['previs.thumbnail.set'].extend(thumbnailFrame),
   'previs.thumbnail.get': previsSchemas['previs.thumbnail.get'].innerType().extend(thumbnailFrame)

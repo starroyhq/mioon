@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import type {FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {FrameTaskView} from '../packages/business/src/frame-ownership.ts';
@@ -296,7 +297,7 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
   }
   await t.test('six strict schema/effect definitions agree', async () => {
     const before = await f.checkpoint(), catalog = (await cli(['schema'], {})).data;
-    assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
+    assert.deepEqual((await mcp.call('mioon_schema')).data, mcpOperationCatalog(catalog));
     const tools = (await mcp.client.listTools()).tools;
     for (const operation of Object.keys(frameSchemas)) {
       const definition = catalog.operations.find((value: { operation: string; }) => value.operation === operation), tool = tools.find(value => value.name === toolName(operation));

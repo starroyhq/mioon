@@ -1,7 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import type {AgentTaskJson} from '../../../contracts/src/agent-tasks-v2.ts';
 import {mioInputManifestSchema} from '../../../contracts/src/mio-records.ts';
-import type {MioInputManifest, MioRequest} from '../../../contracts/src/mio-records.ts';
+import type {MioEntry, MioInputManifest, MioRequest} from '../../../contracts/src/mio-records.ts';
 import type {MioBeginRequest, MioRecords} from './mio-records.ts';
 import type {AgentTaskStepInput} from './task-journal-v2.ts';
 
@@ -316,28 +316,59 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
   const newId = options.newId ?? randomUUID, now = options.now ?? (() => new Date().toISOString());
   const assemblerVersion = options.assemblerVersion ?? MIO_ASSEMBLER_VERSION;
   validVersion(assemblerVersion);
-  function source(id: string, stepCache: Map<string, ReturnType<MioRecords['steps']>>): Source {
-    const entry = records.entry(id), payload = records.payload(entry);
-    const result: Source = {id, kind: entry.kind, payload, sha256: hash(encoded(payload))};
-    if (entry.kind === 'tool_result' || entry.kind === 'answer') {
-      let steps = stepCache.get(entry.runId);
-      if (!steps) { steps = records.steps(entry.runId); stepCache.set(entry.runId, steps); }
-      const owner = steps.find(step => step.resultEntryId === entry.id && step.kind === 'tool');
-      if (owner?.sourceEntryId !== null && owner?.sourceEntryId !== undefined && owner.sourceCallIndex !== null) {
-        result.callId = records.sourceCall(owner.sourceEntryId, owner.sourceCallIndex).id;
-        result.modelSource = owner.sourceEntryId;
+  function sourceReader() {
+    // A batch result needs its source call ID, but sourceCall validates the
+    // entire provider batch. Share that validation only within this synchronous
+    // collection; another public read must observe changed or missing evidence.
+    const entryCache = new Map<string, MioEntry>(), payloadCache = new Map<string, AgentTaskJson>();
+    const stepCache = new Map<string, ReturnType<MioRecords['steps']>>(), callIds = new Map<string, string[]>();
+    const entry = (id: string): MioEntry => {
+      const cached = entryCache.get(id); if (cached !== undefined) return cached;
+      const value = records.entry(id); entryCache.set(id, value); return value;
+    };
+    const payload = (item: MioEntry): AgentTaskJson => {
+      if (payloadCache.has(item.id)) return payloadCache.get(item.id)!;
+      const value = records.payload(item); payloadCache.set(item.id, value); return value;
+    };
+    const callId = (id: string, index: number): string => {
+      let ids = callIds.get(id);
+      if (ids === undefined) {
+        records.sourceCall(id, 0);
+        const saved = payload(entry(id)); if (!object(saved)) return fail();
+        const provider = saved.providerOutput;
+        let calls: AgentTaskJson[];
+        if (saved.protocol === 'responses' && Array.isArray(provider)) calls = provider.filter(item => object(item) && item.type === 'function_call');
+        else if (saved.protocol === 'chat_completions' && object(provider) && Array.isArray(provider.tool_calls)) calls = provider.tool_calls;
+        else if (saved.protocol === 'anthropic_messages' && object(provider) && Array.isArray(provider.content)) calls = provider.content.filter(item => object(item) && item.type === 'tool_use');
+        else return fail();
+        ids = calls.map(item => { if (!object(item)) return fail(); const value = saved.protocol === 'responses' ? item.call_id : item.id; return typeof value === 'string' ? value : fail(); });
+        callIds.set(id, ids);
       }
-    }
-    return result;
+      return ids[index] ?? records.sourceCall(id, index).id;
+    };
+    const source = (id: string): Source => {
+      const item = entry(id), value = payload(item);
+      const result: Source = {id, kind: item.kind, payload: value, sha256: hash(encoded(value))};
+      if (item.kind === 'tool_result' || item.kind === 'answer') {
+        let steps = stepCache.get(item.runId);
+        if (!steps) { steps = records.steps(item.runId); stepCache.set(item.runId, steps); }
+        const owner = steps.find(step => step.resultEntryId === item.id && step.kind === 'tool');
+        if (owner?.sourceEntryId !== null && owner?.sourceEntryId !== undefined && owner.sourceCallIndex !== null) {
+          result.callId = callId(owner.sourceEntryId, owner.sourceCallIndex);
+          result.modelSource = owner.sourceEntryId;
+        }
+      }
+      return result;
+    };
+    return {entry, payload, source};
   }
-  function loadSources(ids: readonly string[]): Source[] {
+  function loadSources(ids: readonly string[], reader = sourceReader()): Source[] {
     if (ids.length > 20000 || new Set(ids).size !== ids.length) return fail();
-    const stepCache = new Map<string, ReturnType<MioRecords['steps']>>();
-    return ids.map(id => source(id, stepCache));
+    return ids.map(reader.source);
   }
-  function contextSources(view: AgentTaskJson): Source[] {
+  function contextSources(view: AgentTaskJson, reader = sourceReader()): Source[] {
     if (!object(view) || view.version !== 1 || !Array.isArray(view.sources) || !own(view, 'context')) return fail();
-    const sources = loadSources(view.sources.map(source => { if (!object(source) || typeof source.id !== 'string' || typeof source.sha256 !== 'string') return fail(); return source.id; }));
+    const sources = loadSources(view.sources.map(source => { if (!object(source) || typeof source.id !== 'string' || typeof source.sha256 !== 'string') return fail(); return source.id; }), reader);
     for (let index = 0; index < sources.length; index++) if ((view.sources[index] as JsonObject).sha256 !== sources[index]!.sha256) return fail();
     return sources;
   }
@@ -368,16 +399,16 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
     if (!object(configuration) || !['chat_completions', 'responses', 'anthropic_messages'].includes(String(configuration.protocol))) return fail();
     const protocol = configuration.protocol as MioRequest['protocol'], historyField = protocol === 'responses' ? 'input' : 'messages';
     if (!Array.isArray(body[historyField]) || body.tools !== undefined && !Array.isArray(body.tools)) return fail();
-    const entries: (Source & {kind: string; runId: string})[] = [], visited = new Set<string>(), boundNotes = new Set(noteIds), stepCache = new Map<string, ReturnType<MioRecords['steps']>>();
+    const entries: (Source & {kind: string; runId: string})[] = [], visited = new Set<string>(), boundNotes = new Set(noteIds), reader = sourceReader();
     const modelSteps = object(input.data) ? input.data.assemblyModelStepIds : undefined, modelOrder: string[] = [], allowedOutputs = new Set<string>();
     if (modelSteps !== undefined) {
       if (!Array.isArray(modelSteps) || !modelSteps.every(id => typeof id === 'string') || new Set(modelSteps).size !== modelSteps.length) return fail();
       for (const id of modelSteps) {
         const step = records.step(String(id)); if (step.runId !== runId || step.kind !== 'model') return fail();
         if (step.resultEntryId !== null) {
-          const output = records.entry(step.resultEntryId); if (output.kind !== 'model_output' || output.runId !== runId) return fail();
+          const output = reader.entry(step.resultEntryId); if (output.kind !== 'model_output' || output.runId !== runId) return fail();
           allowedOutputs.add(output.id);
-          const saved = records.payload(output), provider = object(saved) ? saved.providerOutput : undefined;
+          const saved = reader.payload(output), provider = object(saved) ? saved.providerOutput : undefined;
           const calls = Array.isArray(provider) ? provider.flatMap(modelCallIds) : provider === undefined ? [] : modelCallIds(provider);
           if (calls.length) modelOrder.push(output.id);
         } else if (step.status === 'completed') return fail();
@@ -385,28 +416,28 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
     }
     const runEntries = records.entries(runId);
     for (const entry of runEntries) if (entry.kind === 'host_state') {
-      const saved = records.payload(entry);
+      const saved = reader.payload(entry);
       if (object(saved) && saved.type === 'notes_bound' && Array.isArray(saved.requestIds)) for (const id of saved.requestIds) if (typeof id === 'string') boundNotes.add(id);
     }
     const add = (id: string): void => {
       if (visited.has(id)) return;
       if (visited.size >= 20000) return fail();
-      const entry = records.entry(id); if (entry.conversationId !== run.conversationId) return fail();
+      const entry = reader.entry(id); if (entry.conversationId !== run.conversationId) return fail();
       visited.add(id);
-      const payload = records.payload(entry);
+      const payload = reader.payload(entry);
       // An unbound note is a later user action, even when its text happens to
       // equal an earlier message. It cannot become an input by value matching.
       if (entry.runId === runId && entry.kind === 'note' && (!object(payload) || typeof payload.requestId !== 'string' || !boundNotes.has(payload.requestId))) return;
       if (entry.runId === runId && entry.kind === 'model_output' && modelSteps !== undefined && !allowedOutputs.has(entry.id)) return;
-      entries.push({...source(id, stepCache), kind: entry.kind, runId: entry.runId});
-      if (entry.kind === 'host_hint' && object(payload) && payload.type === 'run_context' && payload.contextView !== undefined) for (const source of contextSources(payload.contextView)) add(source.id);
+      entries.push({...reader.source(id), kind: entry.kind, runId: entry.runId});
+      if (entry.kind === 'host_hint' && object(payload) && payload.type === 'run_context' && payload.contextView !== undefined) for (const source of contextSources(payload.contextView, reader)) add(source.id);
     };
     // Prior action identities precede this run's actions even though the new
     // host observation points backwards to them. Equal message text consumes
     // those identities in model-history order, without coalescing actions.
     for (const entry of runEntries) if (entry.kind === 'host_hint') {
-      const saved = records.payload(entry);
-      if (object(saved) && saved.type === 'run_context' && saved.contextView !== undefined) for (const source of contextSources(saved.contextView)) add(source.id);
+      const saved = reader.payload(entry);
+      if (object(saved) && saved.type === 'run_context' && saved.contextView !== undefined) for (const source of contextSources(saved.contextView, reader)) add(source.id);
     }
     for (const entry of runEntries) if (entry.kind !== 'request_reassembled') add(entry.id);
     const index = sourceIndex(entries, modelOrder, modelSteps !== undefined), fields: JsonObject = {};
@@ -423,7 +454,7 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
     for (const entry of entries) if (entry.runId === runId && (entry.kind === 'user_message' || entry.kind === 'rules_snapshot' || entry.kind === 'host_hint' && object(entry.payload) && entry.payload.type === 'run_context')) selected.add(entry.id);
     const retainContext = (id: string): void => {
       const entry = entries.find(item => item.id === id); if (!entry || entry.kind !== 'host_hint' || !object(entry.payload) || entry.payload.type !== 'run_context' || entry.payload.contextView === undefined) return;
-      for (const source of contextSources(entry.payload.contextView)) if (!selected.has(source.id)) { selected.add(source.id); retainContext(source.id); }
+      for (const source of contextSources(entry.payload.contextView, reader)) if (!selected.has(source.id)) { selected.add(source.id); retainContext(source.id); }
     };
     for (const id of [...selected]) retainContext(id);
     const inputs = entries.filter(entry => selected.has(entry.id));

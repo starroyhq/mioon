@@ -1,3 +1,4 @@
+import {mcpOperationCatalog,isMcpOperationAllowed} from '../apps/mcp/src/tool-policy.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test, {type TestContext} from 'node:test';
 import type {ChildProcess} from 'node:child_process';
@@ -90,7 +91,7 @@ test('actual CLI and official MCP discover the exact strict loudness input and u
   const result=await cli(t,undefined,['schema',operation]).result;assert.equal(result.code,0);assert.deepEqual(result.body,{ok:true,data:definition});
   const mcp=await official(t);assert.deepEqual(await mcp.call('mioon_schema',{operation}),{ok:true,data:definition});
   const tools=(await mcp.client.listTools()).tools;
-  assert.deepEqual(tools.map(value=>value.name).sort(),[...Object.keys(schemas).map(name=>name.replaceAll('.','_')),'mioon_doctor','mioon_capabilities','mioon_schema'].sort());
+  assert.deepEqual(tools.map(value=>value.name).sort(),[...Object.keys(schemas).filter(isMcpOperationAllowed).map(name=>name.replaceAll('.','_')),'mioon_doctor','mioon_capabilities','mioon_schema'].sort());
   const tool=tools.find(value=>value.name==='timeline_export_loudness');assert.ok(tool);
   assert.ok(tool);assert.deepEqual(tool.inputSchema,definition.inputSchema);assert.deepEqual(tool.annotations,effectAnnotations(operationEffect(operation)));
   assert.deepEqual(definition.inputSchema.required,['projectId','exportId','expectedArtifactSha256','measurementProfile']);assert.equal(definition.requiresRequestId,false);
@@ -107,9 +108,9 @@ test('actual CLI and official MCP discover the exact strict loudness input and u
   const {notes,...effects}=definition.effects;
   assert.deepEqual(effects,{readOnly:true,idempotent:true,destructive:false,openWorld:false,databaseWrite:false,fileWrite:false,externalIO:false,localProcess:true,paidGeneration:false});
   assert.ok(notes.includes('arithmetic-only'));
-  const catalog=discoverSchema();
+  const catalog=discoverSchema();assert.ok('operations' in catalog);
   assert.deepEqual((await cli(t,undefined,['schema']).result).body,{ok:true,data:catalog});
-  assert.deepEqual(await mcp.call('mioon_schema',{}),{ok:true,data:catalog});
+  assert.deepEqual(await mcp.call('mioon_schema',{}),{ok:true,data:mcpOperationCatalog(catalog)});
 });
 test('actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry',{timeout:30000},async (t: TestContext)=>{
   const f=await fixture(t),mcp=await official(t,f.url),client=createClient({env:env(f.url)});

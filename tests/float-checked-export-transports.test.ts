@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import {projectApiPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
@@ -96,7 +97,7 @@ const settings = () => ({...structuredClone(SETTINGS), profileId: PROFILE});
 test('float profile has identical complete offline CLI and official MCP discovery with no new Agent tool', {timeout: 45_000}, async t => {
   const catalog = (discoverSchema() as DiscoverySchemaResult), mcp = await officialMcp(t);
   assert.deepEqual((await cli(t, undefined, ['schema'])).data, catalog);
-  assert.deepEqual((await mcp.call('mioon_schema', {})).data, catalog);
+  assert.deepEqual((await mcp.call('mioon_schema', {})).data, mcpOperationCatalog(catalog));
   const tools = ((await mcp.client.listTools() as {tools:TestTool[]})).tools;
   for (const operation of (['timeline.render', 'timeline.export.preflight', 'timeline.export.capabilities'] as const)) {
     const definition = (discoverSchema({operation}) as OperationDefinition), tool = tools.find(value => value.name === operation.replaceAll('.', '_'));

@@ -38,5 +38,8 @@ test('HTTP, CLI and MCP share real registry rename CAS and exact receipts',{time
   const denied=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation:'project.delete',input:{requestId:randomUUID(),projectId:project.id,expectedRevision:renamed.revision,confirmPermanentDeletion:true}})});
   assert.equal(denied.status,400);assert.equal((await denied.json()).error.code,'VALIDATION_ERROR');
   assert.deepEqual(await http('project.list'),listed);
-  const tools=(await client.listTools()).tools;assert.equal(tools.find(value=>value.name==='project_delete')!.annotations!.destructiveHint,true);assert.equal(tools.find(value=>value.name==='project_delete')!.annotations!.idempotentHint,true);
+  const tools=(await client.listTools()).tools;assert.equal(tools.some(value=>value.name==='project_delete'),false);
+  const refused=await client.callTool({name:'project_delete',arguments:{projectId:project.id,requestId:randomUUID(),expectedRevision:renamed.revision,confirmTrash:true}});
+  assert.equal(refused.isError,true);assert.equal((refused.structuredContent as {error:{code:string}}).error.code,'UNKNOWN_OPERATION');
+  assert.deepEqual(await http('project.list'),listed);
 });

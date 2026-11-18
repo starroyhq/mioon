@@ -26,7 +26,7 @@ type FaultMode = {status?: number; body?: unknown; fault?: 'drop' | 'truncate' |
 interface WireRecord {operation?: string; inputHash: string; status?: number; body?: unknown}
 interface CallEnvelope {ok?: boolean; error?: {code?: string; retryable?: boolean; message?: string; details?: Record<string, unknown>}; [key: string]: unknown}
 interface FixtureReport {label: string; cases: Array<Record<string, unknown>>; cleanup: {mcpClosed?: boolean; mcpCloseEvent?: boolean; proxyClosed?: boolean; backendClosed?: boolean; cliChildren?: Array<{pid?: number | null; reaped: boolean}>; allCliReaped?: boolean; ownedWorkspaceRemoved?: boolean}; providerNetworkCalls?: number}
-interface FixtureCall { (kind: string, operation: string, input: Record<string, unknown>, expectedExit: number): Promise<CallEnvelope> }
+interface FixtureCall { (kind: string, operation: string, input: Record<string, unknown>, expectedExit: number, expectedRequests?: 0 | 1): Promise<CallEnvelope> }
 interface FixtureRaw { (route: string, input?: unknown, method?: string): Promise<Record<string, unknown>> }
 interface Fixture {token: string; requests: unknown[]; wire: WireRecord[]; report: FixtureReport; syntheticSecret: () => string; set: (value: FaultMode) => void; call: FixtureCall; raw: FixtureRaw; rpc: (operation: string, input?: Record<string, unknown>) => Promise<Record<string, unknown>>}
 
@@ -105,7 +105,7 @@ async function fixture(t: TestContext, label: string, {business = false}: {busin
   let mcpStderr = '';
   (transport.stderr as unknown as {setEncoding(encoding: string): {on(event: string, listener: (chunk: string) => void): void}} | null)?.setEncoding('utf8').on('data', (chunk: string) => {mcpStderr += chunk;});
   await mcp.connect(transport);
-  async function call(kind: string, operation: string, input: Record<string, unknown>, expectedExit: number): Promise<CallEnvelope> {
+  async function call(kind: string, operation: string, input: Record<string, unknown>, expectedExit: number, expectedRequests: 0 | 1 = 1): Promise<CallEnvelope> {
     const before = requests.length;
     let envelope: CallEnvelope, output: string, exit: number | null | undefined;
     if (kind === 'CLI') {
@@ -138,7 +138,8 @@ async function fixture(t: TestContext, label: string, {business = false}: {busin
       submissionMayHaveSucceeded: envelope.error?.details?.submissionMayHaveSucceeded, hasMutationProof: Object.hasOwn(envelope.error?.details ?? {}, 'mutationOutcome'),
       hasObservationProof: Object.hasOwn(envelope.error?.details ?? {}, 'observation'), containsFixtureCredential: leaked});
     assert.equal(leaked, false, `${kind} must not expose the generated fixture credential`);
-    assert.deepEqual(requests.slice(before), [{operation, input}], 'exact input, one HTTP call and no automatic retry');
+    assert.deepEqual(requests.slice(before), expectedRequests === 1 ? [{operation, input}] : [],
+      expectedRequests === 1 ? 'exact input, one HTTP call and no automatic retry' : 'user-only MCP entry is refused before any HTTP request');
     if (!envelope.ok) assert.equal(envelope.error?.retryable, false);
     return envelope;
   }
@@ -246,15 +247,15 @@ test('read errors keep exit classifications and sanitization across real CLI and
     const readStatuses: Array<[number, string, number]> = [[500, 'INTERNAL_ERROR', 1], [401, 'UNAUTHORIZED', 4], [503, 'BACKEND_UNAVAILABLE', 4], [409, 'REVISION_CONFLICT', 3]];
     for (const [status, code, exit] of readStatuses) await t.test(`${kind}: read HTTP ${status}`, async () => {
       f.set({status, body: {ok: false, error: {code, message: `Synthetic Bearer ${f.token}; raw ${f.token}`, details: {safe: 'retained', tokenFile: privatePath, connectionFile: privatePath, nested: {secret: f.token, reason: f.token}}}}});
-      const value = await f.call(kind, 'project.list', {}, exit);
+      const value = await f.call(kind, 'provider.list', {}, exit);
       assert.equal(value.error?.code, code);
       assert.equal(value.error?.details?.safe, 'retained');
       assert.equal(Object.hasOwn(value.error?.details ?? {}, 'submissionMayHaveSucceeded'), false);
       assert.equal(Object.hasOwn(value.error?.details ?? {}, 'recovery'), false);
       assert.equal(JSON.stringify(value).includes(privatePath), false);
     });
-    for (const operation of ['project.list', 'image.request.get']) for (const fault of ['drop', 'truncate']) await t.test(`${kind}: ${operation} ${fault}`, async () => {
-      const input = operation === 'project.list' ? {} : {projectId: randomUUID(), requestId: randomUUID()};
+    for (const operation of ['provider.list', 'image.request.get']) for (const fault of ['drop', 'truncate']) await t.test(`${kind}: ${operation} ${fault}`, async () => {
+      const input = operation === 'provider.list' ? {} : {projectId: randomUUID(), requestId: randomUUID()};
       f.set({fault: fault as 'drop' | 'truncate', body: {ok: true, data: null}});
       const value = await f.call(kind, operation, input, 4);
       assert.equal(value.error?.code, fault === 'drop' ? 'BACKEND_UNAVAILABLE' : 'BACKEND_PROTOCOL_ERROR');
@@ -269,8 +270,23 @@ test('backend-controlled error code and detail keys cannot expose the connection
     const error = field === 'code' ? {code: `SYNTHETIC_${f.token}`, message: 'Synthetic failure', details: {}}
       : {code: 'INTERNAL_ERROR', message: 'Synthetic failure', details: {[`diagnostic-${f.token}`]: 'private field', safe: 'retained'}};
     f.set({status: 500, body: {ok: false, error}});
-    const value = await f.call(kind, 'project.list', {}, field === 'code' ? 6 : 1);
+    const value = await f.call(kind, 'provider.list', {}, field === 'code' ? 6 : 1);
     assert.equal(Object.hasOwn(value.error?.details ?? {}, 'submissionMayHaveSucceeded'), false);
     if (field === 'detail-key') assert.equal(value.error?.details?.safe, 'retained');
   });
+});
+
+test('MCP refuses user-only entries before sending any HTTP request', {timeout: 15000}, async (t: TestContext) => {
+  const f = await fixture(t, 'user-only-entry-before-http');
+  f.set({status: 500, body: {ok: false, error: {code: 'INTERNAL_ERROR', message: f.token}}});
+  for (const operation of ['project.create', 'project.list', 'project.get', 'project.summary.list', 'project.delete',
+    'project.backup.restore', 'project.version.restore', 'agent.authorization.list', 'agent.authorization.grant',
+    'agent.authorization.revoke', 'asset.media.outside.confirm', 'asset.media.outside.revoke']) {
+    const value = await f.call('MCP', operation, {}, 0, 0);
+    assert.equal(value.ok, false);
+    assert.equal(value.error?.code, 'UNKNOWN_OPERATION');
+    assert.equal(Object.hasOwn(value.error?.details ?? {}, 'submissionMayHaveSucceeded'), false);
+  }
+  assert.deepEqual(f.requests, []);
+  assert.deepEqual(f.wire, []);
 });

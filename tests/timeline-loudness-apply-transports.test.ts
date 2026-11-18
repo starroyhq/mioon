@@ -1,3 +1,4 @@
+import {mcpOperationCatalog,isMcpOperationAllowed} from '../apps/mcp/src/tool-policy.ts';
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
@@ -205,13 +206,13 @@ async function waitForReceipt(f: Fixture,requestId: string): Promise<ReceiptRow>
 }
 
 test('actual CLI and official MCP discover strict apply intent and local-mutation annotations offline',{timeout:60000},async t=>{
-  const definition=discoverSchema({operation}) as unknown as DiscoveryWire,catalog=discoverSchema(),mcp=await official(t);
+  const definition=discoverSchema({operation}) as unknown as DiscoveryWire,catalog=discoverSchema(),mcp=await official(t);assert.ok('operations' in catalog);
   assert.deepEqual((await cli(t,undefined,['schema',operation]).result).body,{ok:true,data:definition});
   assert.deepEqual(await mcp.call('mioon_schema',{operation}),{ok:true,data:definition});
   assert.deepEqual((await cli(t,undefined,['schema']).result).body,{ok:true,data:catalog});
-  assert.deepEqual(await mcp.call('mioon_schema',{}),{ok:true,data:catalog});
+  assert.deepEqual(await mcp.call('mioon_schema',{}),{ok:true,data:mcpOperationCatalog(catalog)});
   const tools=(await bounded(mcp.client.listTools(),'MCP tool discovery')).tools,tool=tools.find((item: {name: string})=>item.name===toolName);assert.ok(tool);
-  assert.deepEqual(tools.map((item: {name: string})=>item.name).sort(),[...Object.keys(schemas).map((name: string)=>name.replaceAll('.','_')),'mioon_doctor','mioon_capabilities','mioon_schema'].sort());
+  assert.deepEqual(tools.map((item: {name: string})=>item.name).sort(),[...Object.keys(schemas).filter(isMcpOperationAllowed).map((name: string)=>name.replaceAll('.','_')),'mioon_doctor','mioon_capabilities','mioon_schema'].sort());
   assert.deepEqual(Object.keys(tool).sort(),['name','description','inputSchema','annotations'].sort());
   assert.deepEqual(tool.inputSchema,definition.inputSchema);assert.deepEqual(tool.annotations,effectAnnotations(operationEffect(operation)) as never);
   assert.deepEqual(tool.annotations,{readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:false});

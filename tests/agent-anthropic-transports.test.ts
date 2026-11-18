@@ -88,17 +88,17 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
     const fromHttp = agentAuthorizationListSchema.parse(await rpc('agent.authorization.list'));
     const fromCli = await cli('agent.authorization.list'); assert.equal(fromCli.code, 0, JSON.stringify(fromCli.body));
     assert.deepEqual(agentAuthorizationListSchema.parse(data(fromCli.body)), fromHttp);
-    assert.deepEqual(agentAuthorizationListSchema.parse(data(await mcp('agent.authorization.list'))), fromHttp);
+    const refused=await mcp('agent.authorization.list');assert.equal(refused.ok,false);if(refused.ok)assert.fail();assert.equal(refused.error.code,'UNKNOWN_OPERATION');
     return fromHttp;
   }
-  async function grant(via: 'http' | 'cli' | 'mcp', scope: 'typed_chat_only' | 'project_agent') {
+  async function grant(via: 'http' | 'cli', scope: 'typed_chat_only' | 'project_agent') {
     const state = await targets();
     assert.ok(state.currentTarget);
     const input = {requestId: randomUUID(), expectedRevision: state.revision, expectedSettingsRevision: state.currentTarget.settingsRevision,
       destination: state.currentTarget.destination, model: state.currentTarget.model, scope};
     if (via === 'http') return rpc('agent.authorization.grant', input);
     if (via === 'cli') {const result = await cli('agent.authorization.grant', input); assert.equal(result.code, 0); return data(result.body);}
-    return data(await mcp('agent.authorization.grant', input));
+    assert.fail('Only user-facing transports may grant authority');
   }
 
   const native: AgentConfiguration = {protocol: 'anthropic_messages', presetId: 'anthropic', platformId: 'global', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5'};
@@ -115,7 +115,10 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   const tools = (await client.listTools()).tools.map(tool => tool.name);
   for (const name of ['agent_settings_get', 'agent_settings_set', 'agent_settings_secret_set', 'agent_task_send']) assert.equal(tools.includes(name), false);
   const hidden = await mcp('agent.settings.get'); assert.equal(hidden.ok, false); if (hidden.ok) assert.fail(); assert.equal(hidden.error.code, 'UNKNOWN_OPERATION');
-  await grant('mcp', 'typed_chat_only'); await grant('cli', 'project_agent');
+  const deniedGrant=await mcp('agent.authorization.grant',{});assert.equal(deniedGrant.ok,false);if(deniedGrant.ok)assert.fail();assert.equal(deniedGrant.error.code,'UNKNOWN_OPERATION');
+  assert.deepEqual(await targets(),firstTarget);
+  for(const name of ['agent_authorization_list','agent_authorization_grant','agent_authorization_revoke'])assert.equal(tools.includes(name),false);
+  await grant('http','typed_chat_only');await grant('cli','project_agent');
 
   const project = await rpc('project.create', {name: 'Offline native protocol authority'}); assert.ok(object(project) && typeof project.id === 'string');
   const projectId = project.id, prefix = projectApiPath(projectId, 'agent', 'tasks', 'v2');

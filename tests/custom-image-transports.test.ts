@@ -26,6 +26,7 @@ import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../package
 import {DEFAULT_IMAGE_CONFIGURATION,IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../packages/contracts/src/generation-image-settings.ts';
 import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
+import {generationImageServiceListResponseSchema} from '../packages/contracts/src/generation-image-services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import type { PathLike } from 'fs';
 
@@ -351,7 +352,10 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     const catalog = await cli(['schema'], f.env);
     assert.ok(catalog.operations.some((value: { operation: string; }) => value.operation === 'image.review.prepare'));
     assert.ok(!catalog.operations.some((value: { operation: string; }) => /image\.(?:review\.(?:approve|reject)|(?:custom)?settings\.)/i.test(value.operation)));
-    assert.ok(!catalog.operations.some((value:{operation:string})=>value.operation.startsWith('image.service.')));
+    assert.deepEqual(catalog.operations.filter((value:{operation:string})=>value.operation.startsWith('image.service.')).map((value:{operation:string})=>value.operation),['image.service.list']);
+    const services=generationImageServiceListResponseSchema.parse(await cli(['image','service','list','--input',JSON.stringify({projectId:project.id})],f.env));
+    assert.equal(services.projectId,project.id);assert.deepEqual(services.items.map(value=>value.connectionId),[customConnectionId]);
+    assert.deepEqual(services.items[0]!.configuration,customConfiguration);assert.deepEqual(services.items[0]!.secret,{configured:true,storage:'persistent'});publicOnly(services,f.root);
     for (const verb of ['approve', 'reject']) await cli(['image', 'review', verb, '--input', JSON.stringify(approvalFor(customReview))], f.env, 'UNKNOWN_OPERATION');
     const client = new Client({name: 'synthetic-custom-images-acceptance', version: '1.0.0'}, {capabilities: {}});
     const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
@@ -361,7 +365,9 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
       const tools = (await client.listTools()).tools;
       assert.ok(tools.some(value => value.name === 'image_review_prepare'));
       assert.ok(!tools.some(value => /image_(?:review_(?:approve|reject)|(?:custom_?)?settings_)/i.test(value.name)));
-      assert.ok(!tools.some(value=>value.name.startsWith('image_service_')));
+      assert.deepEqual(tools.filter(value=>value.name.startsWith('image_service_')).map(value=>value.name),['image_service_list']);
+      const serviceList=await client.callTool({name:'image_service_list',arguments:{projectId:project.id}});
+      assert.equal(serviceList.isError,false);assert.deepEqual(serviceList.structuredContent,{ok:true,data:services});publicOnly(serviceList,f.root);
       for (const [name, args] of [['image_review_prepare', {input: customInput, settingsRevision: 1}],
         ['image_review_get', {projectId: project.id, reviewId: customReview.id}]] as const) {
         const result = (await client.callTool({name, arguments: args}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);
@@ -369,7 +375,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
       }
       const listed = (await client.callTool({name: 'image_review_list', arguments: {projectId: project.id}}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);
       assert.equal(listed.isError, false); assert.ok((listed.structuredContent!.data as {items:FixtureImageReview[]}).items.some((value: { id: unknown; }) => value.id === customReview.id)); publicOnly(listed, f.root);
-      for (const name of ['image_review_approve', 'image_review_reject', 'image_custom_settings_put']) {
+      for (const name of ['image_review_approve', 'image_review_reject', 'image_custom_settings_put','image_service_review_prepare']) {
         const denied = (await client.callTool({name, arguments: approvalFor(customReview)}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);
         assert.equal(denied.isError, true); assert.equal((denied.structuredContent!.error as {code:string}).code, 'UNKNOWN_OPERATION'); publicOnly(denied, f.root);
       }

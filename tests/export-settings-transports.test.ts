@@ -1,3 +1,4 @@
+import {mcpOperationCatalog} from '../apps/mcp/src/tool-policy.ts';
 import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
 import {readProjectState} from './helpers/project-state.ts';
@@ -172,7 +173,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
 test('export settings offline CLI and official MCP expose identical strict schemas and truthful effects',{timeout:45000},async t=>{
  const catalog=schemaCatalog(discoverSchema());assert.deepEqual((await cli(undefined,['schema'])).data,catalog);
  const official=await officialMcp(t,'http://127.0.0.1:1'),tools=(await official.mcp.listTools({})).tools;
- assert.deepEqual((await official.call('mioon_schema',{})).data,catalog);
+ assert.deepEqual((await official.call('mioon_schema',{})).data,mcpOperationCatalog(catalog));
  for(const op of [operation,'timeline.render','timeline.export.preflight']){
   const definition=catalog.operations.find(item=>item.operation===op),tool=tools.find(item=>item.name===op.replaceAll('.','_'));
   assert.ok(definition&&tool);assert.deepEqual(tool.inputSchema,definition.inputSchema);assert.deepEqual(tool.annotations,effectAnnotations(definition.effects as never));

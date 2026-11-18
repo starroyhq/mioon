@@ -112,7 +112,8 @@ test('aborting preview interrupts its hash before assets, grants or preview publ
  const f=await fixture(t),{asset,file}=await f.imported(),moved=path.join(f.external,'relocated.png');renameSync(file,moved);const candidate=await f.pick(asset,moved),sequence=f.sequence(),abort=new AbortController();let checks=0;
  await assert.rejects(f.native.preview({projectId:f.projectId,ownerToken:f.ownerToken,candidateToken:candidate.candidateToken,allowOutside:true},{signal:abort.signal,beforeEffect:()=>{if(++checks===8)abort.abort();}}));
  assert.ok(abort.signal.aborted);assert.equal(f.sequence(),sequence);assert.deepEqual(f.app.outsidePaths.list(f.projectId),[]);
- assert.deepEqual(readdirSync(path.join(f.store.tempDir,'asset-media','native-relink')),[]);
+ const evidenceDirectory=path.join(f.store.tempDir,'asset-media','native-relink');
+ assert.deepEqual(existsSync(evidenceDirectory)?readdirSync(evidenceDirectory):[],[]);
 });
 
 test('apply failure after explicit final consent reports its grant; retry never regrants after revocation',async t=>{

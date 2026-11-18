@@ -40,8 +40,11 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
   requestLocks.set(store, locks);
   if(nativeRelinkOwner&&!nativeRelinkStorage)throw new TypeError('Native relink evidence requires bounded storage');
   const directory = nativeRelinkStorage?.directory??path.join(store.tempDir, 'asset-media');
-  ensurePrivateDirectory(directory, {create: true});
-  const writeEvidence=(file:string,bytes:string)=>nativeRelinkStorage?nativeRelinkStorage.write(path.basename(file),bytes):writePrivateFileAtomic(file,bytes,{root:directory,maxBytes:8*1024*1024});
+  const writeEvidence=(file:string,bytes:string)=>{
+    if(nativeRelinkStorage)return nativeRelinkStorage.write(path.basename(file),bytes);
+    ensurePrivateDirectory(directory,{create:true});
+    return writePrivateFileAtomic(file,bytes,{root:directory,maxBytes:8*1024*1024});
+  };
   const fence = (): void => {checkpoint(signal); beforeEffect?.(); if (!isProjectStore(store)) throw new AppError('PROJECT_UNAVAILABLE', '项目已关闭', 409);};
   const access = () => ({projectDir: store.projectDir, projectFile: store.projectFile,
     mayReadOutside: (file: string) => outsidePaths.list(store.projectId).some(grant => isFileInDirectory(grant.directory, file)),
@@ -305,7 +308,18 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       if (!isAssetMediaOperation(operation)) throw new AppError('NOT_FOUND', '找不到素材操作', 404);
       const parsed = assetMediaPublicSchemas[operation].safeParse(input);
       if (!parsed.success) throw new AppError('VALIDATION_ERROR', '素材操作参数无效');
-      try {return await invoke(operation, parsed.data);}
+      try {
+        if(operation==='asset.media.location.list'){
+          fence();if(parsed.data.projectId!==store.projectId)throw new AppError('NOT_FOUND','找不到项目',404);
+          const selected=page(parsed.data),assets=[];
+          for(const asset of selected.rows){
+            const location=await references.location(String(asset.id),{signal,beforeEffect:fence});fence();
+            assets.push({assetId:location.assetId,pathForm:location.pathForm,outside:location.outside});
+          }
+          return{assets,nextCursor:selected.nextCursor};
+        }
+        return await invoke(operation, parsed.data);
+      }
       catch (error) {
         if (!object(error) || !error.terminationUnconfirmed) checkpoint(signal);
         if (error instanceof AppError && Object.hasOwn(mediaUnavailableErrorDetailsSchemas, error.code)) {

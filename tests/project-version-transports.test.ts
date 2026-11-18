@@ -116,7 +116,7 @@ test('client binds version replies and retains save identity after an uncertain 
   assert.equal(sends, 2);
 });
 
-test('HTTP CLI and official MCP agree on local version save/list/preview/restore and daily capture', {timeout: 120_000}, async t => {
+test('HTTP and CLI restore versions; official MCP shares save/list/preview without restore authority', {timeout: 120_000}, async t => {
   const {startServer} = await import('./helpers/test-server.ts');
   const root = await mkdtemp(path.join(tmpdir(), 'project-version-wire-'));
   let inspect!: InspectProject;
@@ -210,7 +210,8 @@ test('HTTP CLI and official MCP agree on local version save/list/preview/restore
   await reopened.connect(new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo,
     env: {...env, MIOON_BASE_URL: server.url}, stderr: 'ignore'}));
   const retry = await reopened.callTool({name: 'project_version_restore', arguments: restoring}) as CallToolResult;
-  assert.equal(retry.isError, false); assert.deepEqual(retry.structuredContent, {ok: true, data: restored});
+  assert.equal(retry.isError,true);assert.equal((retry.structuredContent?.error as {code:string}).code,'UNKNOWN_OPERATION');
+  assert.equal((await reopened.listTools()).tools.some(tool=>tool.name==='project_version_restore'),false);
   assert.deepEqual(inspect(id, db => ({state: readProjectState(db), marks: changeMarks(db)})), after);
   const stale = await raw('project.version.restore', {...restoring, requestId: randomUUID()}, id);
   assert.equal(stale.response.status, 409); assert.equal(stale.body.error.code, 'PROJECT_VERSION_BASELINE_CHANGED');
