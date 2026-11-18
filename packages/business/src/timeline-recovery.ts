@@ -179,6 +179,9 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
  function sources(timeline: TimelineRecord): Map<string, TimelineAssetRecord>{
   const assets=new Map<string, TimelineAssetRecord>(),seen=new Set<string>();
   for(const clip of timeline.clips){
+   // Format 5 placeholders carry no asset: they represent a shot whose version
+   // is not ready yet, so there is no media source to resolve or retain.
+   if(clip.assetId===null||clip.assetId===undefined||(clip as {sourceState?:unknown}).sourceState==='placeholder')continue;
    const key=JSON.stringify([clip.assetId,...['versionId','shotId','jobId'].map(field=>[Object.hasOwn(clip,field),(clip as unknown as Record<string, unknown>)[field]])]);
    if(seen.has(key))continue;
    assets.set(clip.assetId,clipSource(clip));seen.add(key);

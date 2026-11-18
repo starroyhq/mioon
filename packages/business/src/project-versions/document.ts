@@ -4,7 +4,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
 import {CANVAS_ARCHIVE_COLUMNS, CANVAS_ARCHIVE_TABLES} from '../project-file/schema/domains/canvas.ts';
 import {isTimelineGeometryProfileAllowed} from '../project-file/schema/format4-geometry.ts';
@@ -18,6 +18,16 @@ export const PROJECT_SNAPSHOT_TABLES = Object.freeze([
   'timelines', 'subjects', 'subject_versions', 'subject_bindings', 'image_groups', 'image_versions', 'scene_results', 'project_lut_resources',
 ] as const);
 export type ProjectSnapshotTable = typeof PROJECT_SNAPSHOT_TABLES[number];
+/** Format 5 stores timeline children as native rows; they are captured only
+ * with the format that owns them so released format 3/4 documents stay
+ * byte-identical. */
+export const FORMAT5_TIMELINE_TABLES = Object.freeze(['timeline_clips', 'timeline_cues'] as const);
+export type TimelineEntityTable = typeof FORMAT5_TIMELINE_TABLES[number];
+export const FORMAT5_SNAPSHOT_TABLES = Object.freeze([...PROJECT_SNAPSHOT_TABLES,
+  'shot_version_adoptions', 'sequence_sync_state', ...FORMAT5_TIMELINE_TABLES] as const);
+export type SnapshotTable = typeof FORMAT5_SNAPSHOT_TABLES[number];
+export const snapshotTablesFor = (format: ProjectFileFormat | 1 | 2): readonly SnapshotTable[] =>
+  format === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_SNAPSHOT_TABLES : PROJECT_SNAPSHOT_TABLES;
 export const PROJECT_SNAPSHOT_EXCLUSIONS = Object.freeze({
   schema_version: 'Kernel format evidence; never restore an old format number.',
   project_file: 'Project identity and current content stamp; never rewind them.',
@@ -32,7 +42,8 @@ export interface ProjectDocument<Format extends DocumentFormat = ProjectFileForm
   readonly projectId: string;
   readonly projectFormatVersion: Format;
   readonly evidence: {readonly contentSequence: number; readonly targetRevisions: readonly SnapshotRow[]};
-  readonly tables: Readonly<Record<ProjectSnapshotTable, readonly SnapshotRow[]>>;
+  readonly tables: Readonly<Record<ProjectSnapshotTable, readonly SnapshotRow[]>>
+    & Readonly<Partial<Record<TimelineEntityTable, readonly SnapshotRow[]>>>;
 }
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
@@ -58,14 +69,15 @@ export function canonicalJson(value: unknown): string {
 
 interface Column {readonly name: string; readonly type: string; readonly notnull: number; readonly pk: number}
 interface Shape {readonly columns: readonly Column[]; readonly primaryKeys: readonly string[]}
-const tableNames = [...PROJECT_SNAPSHOT_TABLES, 'agent_task_target_revisions_v2'] as const;
+const tableNamesFor = (format: ProjectFileFormat | 1 | 2): readonly (SnapshotTable | 'agent_task_target_revisions_v2')[] =>
+  [...snapshotTablesFor(format), 'agent_task_target_revisions_v2'];
 const validatedDocuments = new WeakSet<object>();
 const profiles = new Map<DocumentFormat, {statements: readonly string[]; shapes: ReadonlyMap<string, Shape>}>();
-function createTableShapes(statements: readonly string[]): ReadonlyMap<string, Shape> {
+function createTableShapes(statements: readonly string[], names: readonly string[]): ReadonlyMap<string, Shape> {
   const db = new DatabaseSync(':memory:');
   try {
     for (const sql of statements) db.exec(sql);
-    return new Map(tableNames.map(table => {
+    return new Map(names.map(table => {
       const columns = db.prepare(`PRAGMA table_info(${quote(table)})`).all().map(row => ({name: String(row.name), type: String(row.type), notnull: Number(row.notnull), pk: Number(row.pk)}));
       if (!columns.length) throw snapshotInvalid('unclassified-table-shape');
       return [table, {columns, primaryKeys: columns.filter(column => column.pk).sort((a, b) => a.pk - b.pk).map(column => column.name)}];
@@ -77,27 +89,28 @@ function profile(format: DocumentFormat) {
   if (existing) return existing;
   const statements = format === 1 ? FORMAT_1_COPY_TABLE_SQL : format === 2 ? FORMAT_2_SNAPSHOT_TABLE_SQL
     : schemaStatements('project', undefined, format).filter(sql => sql.startsWith('CREATE TABLE '));
-  const value = {statements, shapes: createTableShapes(statements)};
+  const value = {statements, shapes: createTableShapes(statements, tableNamesFor(format))};
   profiles.set(format, value);
   return value;
 }
-const isProjectFormat = (version: unknown): version is ProjectFileFormat => version === 3 || version === FORMAT4_PROJECT_SCHEMA_VERSION;
+const isProjectFormat = (version: unknown): version is ProjectFileFormat =>
+  version === 3 || version === FORMAT4_PROJECT_SCHEMA_VERSION || version === FORMAT5_PROJECT_SCHEMA_VERSION;
 export function readSnapshotProjectFormat(db: DatabaseSync): ProjectFileFormat {
   const rows = db.prepare('SELECT version FROM project.schema_version').all();
   if (rows.length !== 1 || !isProjectFormat(rows[0].version)) throw snapshotInvalid('project-format');
   return rows[0].version;
 }
-export function tableColumns(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): readonly string[] {
+export function tableColumns(table: SnapshotTable | 'agent_task_target_revisions_v2', format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): readonly string[] {
   const shape = profile(format).shapes.get(table);
   if (!shape) throw snapshotInvalid('table');
   return shape.columns.map(column => column.name);
 }
-export function primaryKeys(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): readonly string[] {
+export function primaryKeys(table: SnapshotTable | 'agent_task_target_revisions_v2', format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): readonly string[] {
   const keys = profile(format).shapes.get(table)?.primaryKeys;
   if (!keys?.length) throw snapshotInvalid('primary-key');
   return keys;
 }
-export function rowKey(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', row: SnapshotRow, format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): string {
+export function rowKey(table: SnapshotTable | 'agent_task_target_revisions_v2', row: SnapshotRow, format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): string {
   return canonicalJson(primaryKeys(table, format).map(key => row[key]));
 }
 
@@ -121,7 +134,7 @@ export function snapshotCellValue(value: SnapshotCell): SQLInputValue {
   return value.type === 'blob' ? Buffer.from(value.base64, 'base64') : BigInt(value.decimal);
 }
 
-function readRows(store: ProjectStore, table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', budget: {bytes: number}, format: ProjectFileFormat): SnapshotRow[] {
+function readRows(store: ProjectStore, table: SnapshotTable | 'agent_task_target_revisions_v2', budget: {bytes: number}, format: ProjectFileFormat): SnapshotRow[] {
   const rowBytes = tableColumns(table, format).map(column => `COALESCE(length(CAST(${quote(column)} AS BLOB)),0)`).join('+');
   if (store.db.prepare(`SELECT 1 FROM project.${quote(table)} WHERE (${rowBytes})>? LIMIT 1`).get(PROJECT_SNAPSHOT_MAX_RAW_BYTES)) {
     // Bound an individual SQL cell before transferring it into JavaScript.
@@ -150,8 +163,8 @@ function readRows(store: ProjectStore, table: ProjectSnapshotTable | 'agent_task
   return rows.sort((a, b) => compare(rowKey(table, a, format), rowKey(table, b, format)));
 }
 
-export function assertProjectSnapshotTableLedger(names: readonly string[]): void {
-  const classified = [...PROJECT_SNAPSHOT_TABLES, ...Object.keys(PROJECT_SNAPSHOT_EXCLUSIONS)].sort(compare);
+export function assertProjectSnapshotTableLedger(names: readonly string[], format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): void {
+  const classified = [...snapshotTablesFor(format), ...Object.keys(PROJECT_SNAPSHOT_EXCLUSIONS)].sort(compare);
   if (canonicalJson([...names].sort(compare)) !== canonicalJson(classified)) throw snapshotInvalid('unclassified-project-table');
 }
 
@@ -161,8 +174,8 @@ export function captureProjectDocumentInside(store: ProjectStore): ProjectDocume
   if (!isProjectStore(store) || !store.db.isTransaction) throw new TypeError('Snapshot capture requires the exact live store inside a transaction');
   const format = readSnapshotProjectFormat(store.db);
   const names = store.db.prepare("SELECT name FROM project.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(row => String(row.name));
-  assertProjectSnapshotTableLedger(names);
-  for (const table of tableNames) {
+  assertProjectSnapshotTableLedger(names, format);
+  for (const table of tableNamesFor(format)) {
     const actual = store.db.prepare(`PRAGMA project.table_info(${quote(table)})`).all().map(row => String(row.name));
     if (canonicalJson(actual) !== canonicalJson(tableColumns(table, format))) throw snapshotInvalid('table-columns');
   }
@@ -172,7 +185,7 @@ export function captureProjectDocumentInside(store: ProjectStore): ProjectDocume
   const document: ProjectDocument = {
     snapshotProfileVersion: 1, projectId: store.projectId, projectFormatVersion: format,
     evidence: {contentSequence: Number(metadata[0].contentSequence), targetRevisions: readRows(store, 'agent_task_target_revisions_v2', budget, format)},
-    tables: Object.fromEntries(PROJECT_SNAPSHOT_TABLES.map(table => [table, readRows(store, table, budget, format)])) as Record<ProjectSnapshotTable, SnapshotRow[]>,
+    tables: Object.fromEntries(snapshotTablesFor(format).map(table => [table, readRows(store, table, budget, format)])) as unknown as ProjectDocument['tables'],
   };
   return validateProjectDocument(document);
 }
@@ -190,7 +203,8 @@ function validateCell(value: unknown, column: Column): value is SnapshotCell {
   if (column.type === 'REAL') return typeof value === 'number' && Number.isFinite(value);
   return false;
 }
-function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', rows: unknown, projectId: string, definitions: ReadonlyMap<string, Shape>, format: DocumentFormat): asserts rows is readonly SnapshotRow[] {
+const isTimelineEntityTable = (table: string): table is TimelineEntityTable => table === 'timeline_clips' || table === 'timeline_cues';
+function validateRows(table: SnapshotTable | 'agent_task_target_revisions_v2', rows: unknown, projectId: string, definitions: ReadonlyMap<string, Shape>, format: DocumentFormat): asserts rows is readonly SnapshotRow[] {
   if (!Array.isArray(rows)) throw snapshotInvalid('rows');
   const shape = definitions.get(table)!;
   let previous: string | undefined;
@@ -203,7 +217,8 @@ function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions
         let parsed: unknown;
         try {
           parsed = JSON.parse(value);
-          if (canonicalJson(parsed) !== value || column.name === 'data' && (!object(parsed) || (table !== 'projects' && parsed.projectId !== projectId)
+          if (canonicalJson(parsed) !== value || column.name === 'data' && (!object(parsed)
+            || (table !== 'projects' && !isTimelineEntityTable(table) && parsed.projectId !== projectId)
             || Object.hasOwn(row, 'id') && object(parsed) && parsed.id !== row.id)) throw snapshotInvalid('json-owner');
         } catch {throw snapshotInvalid('json-column');}
         if (table === 'timelines' && column.name === 'data' && format === FORMAT4_PROJECT_SCHEMA_VERSION && !isTimelineGeometryProfileAllowed(parsed, format)) {
@@ -225,15 +240,15 @@ function validateDocument<Format extends DocumentFormat>(input: unknown, format:
     || input.snapshotProfileVersion !== PROJECT_SNAPSHOT_PROFILE || input.projectFormatVersion !== format || !isProjectId(input.projectId)
     || !object(input.evidence) || !exact(input.evidence, ['contentSequence', 'targetRevisions']) || typeof input.evidence.contentSequence !== 'number'
     || !Number.isSafeInteger(input.evidence.contentSequence) || input.evidence.contentSequence < 0 || !object(input.tables)
-    || !exact(input.tables, PROJECT_SNAPSHOT_TABLES)) throw snapshotInvalid('document');
+    || !exact(input.tables, snapshotTablesFor(format))) throw snapshotInvalid('document');
   const {statements, shapes: definitions} = profile(format);
-  for (const table of PROJECT_SNAPSHOT_TABLES) validateRows(table, input.tables[table], input.projectId, definitions, format);
+  for (const table of snapshotTablesFor(format)) validateRows(table, input.tables[table], input.projectId, definitions, format);
   validateRows('agent_task_target_revisions_v2', input.evidence.targetRevisions, input.projectId, definitions, format);
   if ((input.tables.projects as readonly unknown[]).length !== 1) throw snapshotInvalid('project-row');
   const db = new DatabaseSync(':memory:', {enableForeignKeyConstraints: false, enableDoubleQuotedStringLiterals: false});
   try {
     for (const sql of statements) db.exec(sql);
-    for (const table of tableNames) {
+    for (const table of tableNamesFor(format)) {
       const columns = definitions.get(table)!.columns.map(column => column.name);
       const insert = db.prepare(`INSERT INTO ${quote(table)}(${columns.map(quote).join(',')}) VALUES(${columns.map(() => '?').join(',')})`);
       const rows = table === 'agent_task_target_revisions_v2' ? input.evidence.targetRevisions : input.tables[table];
@@ -277,6 +292,12 @@ export function decodeSupportedProjectDocument(input: unknown, target?: ProjectF
   const source = object(input) && input.projectFormatVersion === 2 ? validateDocument(input, 2) : validateProjectDocument(input);
   const format = target ?? (source.projectFormatVersion === 2 ? 3 : source.projectFormatVersion);
   if (source.projectFormatVersion === format) return source as ProjectDocument;
+  if (source.projectFormatVersion === FORMAT5_PROJECT_SCHEMA_VERSION || format === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    // Format 5 snapshots require the same format on both sides; adapting an
+    // older payload is a conversion decision, not a version-restore decision.
+    throw new AppError('PROJECT_VERSION_SNAPSHOT_UNSUPPORTED', '当前项目格式无法恢复此版本。', 422,
+      {projectFormatVersion: source.projectFormatVersion, snapshotProfileVersion: source.snapshotProfileVersion});
+  }
   if (source.projectFormatVersion === FORMAT4_PROJECT_SCHEMA_VERSION) {
     throw new AppError('PROJECT_VERSION_SNAPSHOT_UNSUPPORTED', '当前项目格式无法恢复此版本。', 422,
       {projectFormatVersion: source.projectFormatVersion, snapshotProfileVersion: source.snapshotProfileVersion});

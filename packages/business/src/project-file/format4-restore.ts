@@ -46,7 +46,7 @@ interface Intent {
 interface Result {
   readonly projectId: string;
   readonly backupId: string;
-  readonly projectVersion: typeof PROJECT_FILE_SCHEMA_VERSION;
+  readonly projectVersion: typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION;
   readonly historyVersion: number | null;
 }
 
@@ -66,9 +66,11 @@ function parseIntent(value: unknown): Intent {
     projectBefore: value.projectBefore, historyBefore: value.historyBefore, projectAfter: value.projectAfter, historyAfter: value.historyAfter,
     previousProject: value.previousProject, previousHistory: value.previousHistory};
 }
+const isSourceProjectVersion = (value: unknown): value is Result['projectVersion'] =>
+  value === PROJECT_FILE_SCHEMA_VERSION || value === FORMAT4_PROJECT_SCHEMA_VERSION;
 function parseReceipt(value: unknown): Result {
   if (!object(value) || Object.keys(value).length !== 4 || !isProjectId(value.projectId) || !isProjectId(value.backupId) ||
-    value.projectVersion !== PROJECT_FILE_SCHEMA_VERSION ||
+    !isSourceProjectVersion(value.projectVersion) ||
     value.historyVersion !== null && (typeof value.historyVersion !== 'number' || !Number.isSafeInteger(value.historyVersion) || value.historyVersion < 1)) throw failure();
   return {projectId: value.projectId, backupId: value.backupId, projectVersion: value.projectVersion, historyVersion: value.historyVersion};
 }
@@ -223,7 +225,7 @@ export function restoreFormat4Backup(options: RestoreFormat4BackupOptions): Resu
     }
     checkCurrent(history, intent.historyAfter);
     checkCurrent(projectFile, intent.projectAfter);
-    const result: Result = {projectId, backupId, projectVersion: PROJECT_FILE_SCHEMA_VERSION, historyVersion: manifest.historyVersion};
+    const result: Result = {projectId, backupId, projectVersion: manifest.projectVersion as Result['projectVersion'], historyVersion: manifest.historyVersion};
     writePrivateFileAtomic(receiptFile, JSON.stringify(result));
     syncCopiedDirectory(localDir);
     removePrivateFile(marker);
@@ -261,7 +263,10 @@ export function restoreFormat4Backup(options: RestoreFormat4BackupOptions): Resu
     const current = inspectLockedFormat4RestoreSource(files.get(projectFile)!.db, 'project', projectId)!;
     if (!sameContentStamp(current, expected)) throw failure();
     if (historyInfo) inspectLockedFormat4RestoreSource(files.get(history)!.db, 'history', projectId);
-    if (current.formatVersion !== FORMAT4_PROJECT_SCHEMA_VERSION &&
+    // A legacy-source project must still carry the confirmed stamp. A project
+    // already upgraded (4 or 5) has advanced content, so the rollback backup is
+    // identified by the caller's confirmed `expected` stamp above instead.
+    if (current.formatVersion === PROJECT_FILE_SCHEMA_VERSION &&
       (!historyInfo || !sameContentStamp(current, manifest))) throw failure();
     checkCurrent(history, historyInfo ? generation(historyInfo) : null);
     const attempt = path.basename(stage.recordsStage).slice('format4-restore-'.length);

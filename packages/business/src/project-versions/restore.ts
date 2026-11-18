@@ -4,22 +4,25 @@ import {withProjectRestoreScopeInside} from '../project-file/restore-scope.ts';
 import type {RestoreAdmissionRow} from '../project-file/restore-scope.ts';
 import {restoreProjectTimelineInside} from '../timeline.ts';
 import type {TimelineRecord} from '../timeline-inputs.ts';
-import {canonicalJson, primaryKeys, rowKey, snapshotCellValue, tableColumns} from './document.ts';
-import type {ProjectSnapshotTable, SnapshotRow} from './document.ts';
+import {canonicalJson, FORMAT5_TIMELINE_TABLES, primaryKeys, rowKey, snapshotCellValue, snapshotTablesFor, tableColumns} from './document.ts';
+import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow, SnapshotTable} from './document.ts';
 import {restorePlanCurrent,planSubjectRestoreRevisions,PROJECT_VERSION_RESTORE_MAX_SUBJECT_STEPS} from './preview.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import type {RestorePlan,SubjectRestoreRevision} from './preview.ts';
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 const completed = new WeakSet<RestorePlan>();
-const targetKinds: Record<ProjectSnapshotTable,string> = {projects:'project',assets:'asset',shots:'shot',nodes:'node',edges:'edge',versions:'version',timelines:'timeline',asset_annotations:'asset_annotation',asset_dispositions:'asset_disposition',asset_ranges:'asset_range',subjects:'subject',subject_versions:'subject_version',subject_bindings:'subject_binding',image_groups:'image_group',image_versions:'image_version',scene_results:'scene_result',project_lut_resources:'lut'};
-const insertOrder: readonly ProjectSnapshotTable[] = ['projects','assets','shots','nodes','subjects','image_groups','versions','subject_versions','image_versions','project_lut_resources','scene_results','asset_annotations','asset_dispositions','asset_ranges','subject_bindings','edges'];
+const targetKinds: Record<SnapshotTable,string> = {projects:'project',assets:'asset',shots:'shot',nodes:'node',edges:'edge',versions:'version',timelines:'timeline',shot_version_adoptions:'shot_version_adoption',sequence_sync_state:'sequence_sync',asset_annotations:'asset_annotation',asset_dispositions:'asset_disposition',asset_ranges:'asset_range',subjects:'subject',subject_versions:'subject_version',subject_bindings:'subject_binding',image_groups:'image_group',image_versions:'image_version',scene_results:'scene_result',project_lut_resources:'lut',timeline_clips:'timeline_clip',timeline_cues:'timeline_subtitle'};
+const insertOrder: readonly SnapshotTable[] = ['projects','assets','shots','nodes','subjects','image_groups','versions','shot_version_adoptions','subject_versions','image_versions','project_lut_resources','scene_results','asset_annotations','asset_dispositions','asset_ranges','subject_bindings','edges'];
+const documentRows = (document: ProjectDocument, table: SnapshotTable): readonly SnapshotRow[] =>
+  (document.tables as Readonly<Record<string, readonly SnapshotRow[] | undefined>>)[table] ?? [];
 const nextRevision = (value: unknown): number => {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER) throw new AppError('PROJECT_VERSION_REVISION_LIMIT', '恢复目标修订已达到安全上限。', 409);
   return value + 1;
 };
-function forwardRow(table: ProjectSnapshotTable, saved: SnapshotRow, before: SnapshotRow | undefined, now: string, missingLedger = 0): SnapshotRow {
+function forwardRow(table: SnapshotTable, saved: SnapshotRow, before: SnapshotRow | undefined, now: string, missingLedger = 0): SnapshotRow {
   const result = {...saved};
-  if (['versions','subject_versions','image_versions','scene_results','project_lut_resources'].includes(table)) return result;
+  if (['versions','subject_versions','image_versions','scene_results','project_lut_resources','shot_version_adoptions'].includes(table)) return result;
   if (Object.hasOwn(saved, 'revision')) result.revision = nextRevision(before?.revision ?? Math.max(Number(saved.revision),missingLedger));
   if (Object.hasOwn(saved, 'updatedAt')) result.updatedAt = now;
   if (before && Object.hasOwn(before, 'createdAt')) result.createdAt = before.createdAt;
@@ -40,6 +43,48 @@ function updateSubjectInside(store:ProjectStore,id:SnapshotRow[string],steps:rea
   for(const step of steps)store.db.prepare('UPDATE project.subjects SET headVersionId=?,revision=?,updatedAt=? WHERE id=?').run(snapshotCellValue(step.headVersionId),step.revision,now,String(id));
 }
 
+function desiredTimeline(document: ProjectDocument, format: ProjectDocument['projectFormatVersion']): TimelineRecord | null {
+  const header = document.tables.timelines?.[0];
+  if (!header) return null;
+  if (format !== FORMAT5_PROJECT_SCHEMA_VERSION) return JSON.parse(String(header.data)) as TimelineRecord;
+  const {clips: _clips, subtitles: _cues, ...rest} = JSON.parse(String(header.data)) as Record<string, unknown>;
+  const decode = (table: 'timeline_clips' | 'timeline_cues') =>
+    (document.tables[table] ?? []).map(row => JSON.parse(String(row.data)) as unknown);
+  const clips = decode('timeline_clips'), cues = decode('timeline_cues');
+  const value: Record<string, unknown> = {...rest, clips};
+  if (Object.hasOwn(rest, 'subtitles')) value.subtitles = {...(rest.subtitles as Record<string, unknown>), cues};
+  return value as unknown as TimelineRecord;
+}
+
+/** Format 5 keeps one sync-state row per stored timeline and clip/cue rows as
+ * children; they are written together in the same aggregate restore so the
+ * commit fence never sees a half-restored timeline. */
+function restoreTimelineDomain(store: ProjectStore, document: ProjectDocument, format: ProjectDocument['projectFormatVersion'],
+  current: ProjectDocument, options: {requestId: string; now: string}): void {
+  const desired = desiredTimeline(document, format);
+  if (format !== FORMAT5_PROJECT_SCHEMA_VERSION) {
+    restoreProjectTimelineInside(store, desired, options);
+    return;
+  }
+  const savedSync = documentRows(document, 'sequence_sync_state')[0];
+  const currentSync = documentRows(current, 'sequence_sync_state')[0];
+  if (!desired) {
+    if (currentSync) store.db.prepare('DELETE FROM project.sequence_sync_state WHERE timelineId=?').run(String(currentSync.timelineId));
+    restoreProjectTimelineInside(store, null, options);
+    return;
+  }
+  restoreProjectTimelineInside(store, desired, options);
+  if (!savedSync) return;
+  const baseline = String(savedSync.baseline), sequenceNodeId = String(savedSync.sequenceNodeId), timelineId = String(savedSync.timelineId);
+  if (currentSync) {
+    store.db.prepare('UPDATE project.sequence_sync_state SET sequenceNodeId=?,revision=?,baseline=? WHERE timelineId=?')
+      .run(sequenceNodeId, Number(currentSync.revision) + 1, baseline, String(currentSync.timelineId));
+  } else {
+    store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
+      .run(timelineId, store.projectId, sequenceNodeId, Number(savedSync.revision), baseline);
+  }
+}
+
 /** Applies the reviewed plan on its original synchronous transaction. The
  * caller owns CAS, the before-version, original receipt and final commit. */
 export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {requestId, now = new Date().toISOString()}: {requestId: string; now?: string}): void {
@@ -47,9 +92,10 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
   const format = current.projectFormatVersion;
   if (completed.has(plan)) throw new TypeError('A restore plan can only be applied once');
   if (new Date(now).toISOString() !== now) throw new TypeError('A restore timestamp must be an ISO instant');
-  const indexes = new Map(insertOrder.concat('timelines').map(table => [table, {
-    current: new Map(current.tables[table].map(row => [rowKey(table,row,format),row])),
-    desired: new Map(plan.document.tables[table].map(row => [rowKey(table,row,format),row])),
+  const timelineDomain: readonly SnapshotTable[] = ['timelines', 'sequence_sync_state', ...FORMAT5_TIMELINE_TABLES];
+  const indexes = new Map([...insertOrder, ...timelineDomain].map(table => [table, {
+    current: new Map(documentRows(current, table).map(row => [rowKey(table,row,format),row])),
+    desired: new Map(documentRows(plan.document, table).map(row => [rowKey(table,row,format),row])),
     changes: plan.changes.filter(change => change.table === table && change.action !== 'keep-current'),
   }]));
   const admissions: RestoreAdmissionRow[] = [];
@@ -89,10 +135,10 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
           const row=forwardRow(table,saved,old,now);update.run(...columns.map(column=>snapshotCellValue(row[column])),...keys.map(key=>snapshotCellValue(old[key])));
         }
       }
-      const timelines=indexes.get('timelines')!;
-      if(timelines.changes.length){
-        const row=plan.document.tables.timelines[0];
-        restoreProjectTimelineInside(store,row?JSON.parse(String(row.data)) as TimelineRecord:null,{requestId,now});
+      // Format 5 keeps the header and its native clip/cue rows in one
+      // aggregate; a change to either side restores them together.
+      if(timelineDomain.some(table=>indexes.get(table)!.changes.length)){
+        restoreTimelineDomain(store,plan.document,format,current,{requestId,now});
       }
       // Mutable references have now moved. Reverse dependencies can be removed
       // without deleting any retained result, owner or tombstone.

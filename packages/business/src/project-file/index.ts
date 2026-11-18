@@ -6,6 +6,8 @@ export {commitProjectAssetHash, createProjectStore, isProjectStore, openProjectS
 export type {CommitProjectAssetHashOptions, ProjectStore} from './store.ts';
 export {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, openStagedProjectConnection, inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectProjectFormatReadOnly, PROJECT_JOURNAL_SIZE_LIMIT, projectFileRecoveryForHeld, recoverProjectFile} from './connection.ts';
 export {restoreFormat4Backup} from './format4-restore.ts';
+export {previewFormat5Upgrade, upgradeProjectFormatTo5} from './format5-upgrade.ts';
+export type {Format5UpgradeBoundary, Format5UpgradeObservation, Format5UpgradeOptions, Format5UpgradeResult} from './format5-upgrade.ts';
 export type {Format4RestoreBoundary, RestoreFormat4BackupOptions} from './format4-restore.ts';
 export type {
   CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectFileRecovery, ProjectLocation, ProjectIdentity, ProjectFormatIdentity, StagedProjectConnectionOptions,

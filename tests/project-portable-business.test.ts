@@ -58,7 +58,7 @@ test('historical notes bytes survive reopening but current DTOs and package docu
   assert.deepEqual(reopened.get('projects', projectId), project);
 });
 
-test('the legacy package cannot collect or import a live format 4 project',t=>{
+test('the legacy package collects live format 4 content but cannot import onto project databases',t=>{
  const root=scratch(t),released=openStore(path.join(root,'released'));
  t.after(()=>released.close());
  ensureProjectRow(released,{name:'Released source'});
@@ -74,8 +74,10 @@ test('the legacy package cannot collect or import a live format 4 project',t=>{
  store.put('nodes',{id,projectId:store.projectId,type:'text',label:'Archived'});
  store.db.prepare("UPDATE project.nodes SET archivedAt='2026-11-12T00:00:00.000Z',archiveBatchId=?,archiveReason='user-delete' WHERE id=?").run(batch,id);
  const before=store.db.prepare('SELECT total_changes() n').get()?.n;
- assert.throws(()=>collectProject(store,store.projectId,options),{code:'PROJECT_PACKAGE_NEWER_FORMAT',
-  details:{projectFormatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedProjectFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
+ // Format 4/5 collection uses the same assembled projections as the released
+ // paths; the portable document keeps its format-1 shape.
+ const collected=collectProject(store,store.projectId,options);
+ assert.equal(collected.document.formatVersion,1);
  assert.throws(()=>createProjectFromDocument(store,{document:old,files:new Map(),name:'Refused legacy import',move:false}),
   {name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
  assert.equal(store.db.prepare('SELECT total_changes() n').get()?.n,before);

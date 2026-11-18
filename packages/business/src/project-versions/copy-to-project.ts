@@ -4,8 +4,8 @@ import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {isNormalizedAbsolutePath} from '../../../contracts/src/media-reference.ts';
 import {historyTablesForVersion} from '../project-file/schema/tables.ts';
 import {rewriteProjectCopyRow, relocateProjectCopyReference} from '../project-file/copy-values.ts';
-import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, readSnapshotProjectFormat, validateProjectDocument} from './document.ts';
-import type {ProjectDocument, SnapshotRow} from './document.ts';
+import {canonicalJson, primaryKeys, readSnapshotProjectFormat, snapshotTablesFor, validateProjectDocument} from './document.ts';
+import type {ProjectDocument, SnapshotRow, SnapshotTable} from './document.ts';
 import {decodeProjectDocument, encodeProjectDocument} from './codec.ts';
 import type {EncodedProjectDocument} from './codec.ts';
 import {PROJECT_SNAPSHOT_MAX_COMPRESSED_BYTES, PROJECT_SNAPSHOT_MAX_RAW_BYTES} from './limits.ts';
@@ -36,12 +36,13 @@ function rebindDocument(document: ProjectDocument, options: CopyProjectVersionsT
     }
     return result;
   };
-  const ordered = (table: typeof PROJECT_SNAPSHOT_TABLES[number] | 'agent_task_target_revisions_v2', rows: readonly SnapshotRow[]) => {
+  const ordered = (table: SnapshotTable | 'agent_task_target_revisions_v2', rows: readonly SnapshotRow[]) => {
     const keys = primaryKeys(table, document.projectFormatVersion), key = (row: Record<string, unknown>) => canonicalJson(keys.map(column => row[column]));
     return rows.map(row => rewrite(table, row)).sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
   };
   return validateProjectDocument({...document, projectId: options.projectId,
-    tables: Object.fromEntries(PROJECT_SNAPSHOT_TABLES.map(table => [table, ordered(table, document.tables[table])])),
+    tables: Object.fromEntries(snapshotTablesFor(document.projectFormatVersion).map(table =>
+      [table, ordered(table, (document.tables as Readonly<Record<string, readonly SnapshotRow[] | undefined>>)[table] ?? [])])),
     evidence: {...document.evidence, targetRevisions: ordered('agent_task_target_revisions_v2', document.evidence.targetRevisions.filter(row => !processKinds.has(String(row.kind))))}});
 }
 

@@ -14,11 +14,11 @@ import {
 } from './backup.ts';
 import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {upgradeProject3To4Inside} from './schema/format4-upgrade.ts';
-import {CONTENT_TABLES} from './schema/tables.ts';
+import {contentTablesForVersion} from './schema/tables.ts';
 import {isProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
 
@@ -49,6 +49,8 @@ export interface CopyProjectOptions {
 export interface ProjectCopyResult extends ProjectBackupIdentity {readonly projectFile: string}
 type Row = Record<string, SQLInputValue>;
 const failed = (reason: string): AppError => new AppError('PROJECT_BACKUP_COPY_FAILED', '无法安全地复制项目内容', 409, {reason});
+const writableFormat = (value: unknown): value is ProjectFileFormat =>
+  value === PROJECT_FILE_SCHEMA_VERSION || value === FORMAT4_PROJECT_SCHEMA_VERSION || value === FORMAT5_PROJECT_SCHEMA_VERSION;
 
 /** Creates the immutable owner-change copy in isolation. Existing target
  * content is never rewritten and source triggers/metadata are never changed.
@@ -67,8 +69,8 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   if (lstatSync(target, {throwIfNoEntry: false})) throw projectFileError('PROJECT_FILE_EXISTS', {database: 'project', reason: 'exists'});
   const targetFormat = options.targetFormat ?? PROJECT_FILE_SCHEMA_VERSION;
   const sourceFormat = live ? source.db.prepare('PRAGMA project.user_version').get()?.user_version : source.identity.formatVersion;
-  if ((targetFormat !== PROJECT_FILE_SCHEMA_VERSION && targetFormat !== FORMAT4_PROJECT_SCHEMA_VERSION)
-    || (sourceFormat !== PROJECT_FILE_SCHEMA_VERSION && sourceFormat !== FORMAT4_PROJECT_SCHEMA_VERSION)) throw failed('format');
+  if (!writableFormat(targetFormat) || !writableFormat(sourceFormat)
+    || (sourceFormat === FORMAT5_PROJECT_SCHEMA_VERSION) !== (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION)) throw failed('format');
   if (targetFormat < sourceFormat) {
     throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer',
       formatVersion: sourceFormat, supportedFormatVersion: targetFormat});
@@ -91,7 +93,8 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
       if(actual.projectId!==oldId || actual.contentToken===contentToken)throw failed('metadata');
       if(options.expectedSource && (actual.projectId!==options.expectedSource.projectId || actual.contentSequence!==options.expectedSource.contentSequence || actual.contentToken!==options.expectedSource.contentToken))throw failed('source-changed');
       const triggers = db.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY rowid").all();
-      const rows = new Map(CONTENT_TABLES.map(table => [table, db.prepare(`SELECT * FROM "${table}"`).all() as Row[]]));
+      const tables = contentTablesForVersion(actual.formatVersion);
+      const rows = new Map(tables.map(table => [table, db.prepare(`SELECT * FROM "${table}"`).all() as Row[]]));
       let sequence = db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence;
       if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence)) throw failed('metadata');
       if(options.clearProcessRevisions){
@@ -106,9 +109,9 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
       db.exec('PRAGMA foreign_keys=OFF; BEGIN');
       try {
         for (const trigger of triggers) db.exec(`DROP TRIGGER "${String(trigger.name).replaceAll('"', '""')}"`);
-        for (const table of [...CONTENT_TABLES].reverse()) db.exec(`DELETE FROM "${table}"`);
+        for (const table of [...tables].reverse()) db.exec(`DELETE FROM "${table}"`);
         db.prepare('UPDATE project_file SET projectId=?,contentSequence=?,contentToken=?').run(projectId, sequence,contentToken);
-        for (const table of CONTENT_TABLES) {
+        for (const table of tables) {
           for (const original of rows.get(table) ?? []) {
             const row = rewriteProjectCopyRow(table, original, oldId, projectId) as Row;
             if (table === 'projects' && typeof row.data === 'string' && (options.projectName !== undefined || options.templatePresentation)) {
