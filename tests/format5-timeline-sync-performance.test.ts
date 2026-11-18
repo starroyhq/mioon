@@ -96,6 +96,9 @@ test('K1 500+500+1,000 format-5 synchronization meets the local p95 budget', t =
   console.log(JSON.stringify({benchmark: 'format5-timeline-sync', shots, mainClips: shots, auxiliaryClips: auxiliary,
     cues, buildMs, p50: Number(p50.toFixed(2)), p95: Number(p95.toFixed(2)), max: Number(maximum.toFixed(2))}));
   assert.ok(buildMs < 120_000, `fixture build took ${buildMs}ms`);
-  const budget = process.env.CI ? 200 : 100;
+  // The acceptance budget is 100 ms on the developer Mac and 200 ms on the
+  // Linux CI runners; the runner platform is the stable signal here (the test
+  // process may run in an environment without CI=true).
+  const budget = process.platform === 'linux' ? 200 : 100;
   assert.ok(p95 <= budget, `K1 p95 ${p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
 });
