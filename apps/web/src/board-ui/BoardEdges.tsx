@@ -7,8 +7,9 @@ import {useI18n} from '../i18n/I18nProvider.tsx';
 import './edges.css';
 
 export type BoardSequenceEdge = Edge<{reduceMotion?: boolean; selected?: boolean}, 'sequence'>;
-export type BoardReferenceEdge = Edge<{role: ChainReferenceRole; reduceMotion?: boolean; selected?: boolean}, 'reference'> & {
-  data: {role: ChainReferenceRole; reduceMotion?: boolean; selected?: boolean};
+export type BoardReferenceEdge = Edge<{role: ChainReferenceRole; reduceMotion?: boolean; selected?: boolean;
+  unsupported?: boolean}, 'reference'> & {
+  data: {role: ChainReferenceRole; reduceMotion?: boolean; selected?: boolean; unsupported?: boolean};
 };
 
 const roleKeys = {
@@ -65,12 +66,16 @@ export const SequenceEdgeView = memo(function SequenceEdgeView(props: EdgeProps<
 export const ReferenceEdgeView = memo(function ReferenceEdgeView(props: EdgeProps<BoardReferenceEdge>) {
   const {t} = useI18n();
   const [path, labelX, labelY] = getBoardReferencePath(props);
-  return <g className={`board-reference-edge${props.data?.selected ? ' is-selected' : ''}`} data-board-edge-kind="reference" data-edge-id={props.id}
+  const unsupported = props.data?.unsupported === true;
+  return <g className={`board-reference-edge${props.data?.selected ? ' is-selected' : ''}${unsupported ? ' is-unsupported' : ''}`}
+    data-board-edge-kind="reference" data-edge-id={props.id} data-unsupported={unsupported ? 'true' : undefined}
     data-testid={`board-reference-edge-${props.id}`} data-reduce-motion={props.data?.reduceMotion ? 'true' : undefined}>
     <BaseEdge id={props.id} path={path} interactionWidth={props.interactionWidth}
       className="board-reference-line" style={{...props.style, strokeDasharray: '7 6'}} />
     <foreignObject className="board-reference-label-box" x={labelX - 90} y={labelY - 14} width={180} height={28}>
-      <div className="board-reference-label">{t(roleKeys[props.data.role])}</div>
+      <div className="board-reference-label">{t(roleKeys[props.data.role])}
+        {unsupported && <span className="board-reference-unsupported"> · {t('boardUi.inputs.unsupported')}</span>}
+      </div>
     </foreignObject>
   </g>;
 });
