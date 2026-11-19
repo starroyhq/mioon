@@ -70,7 +70,8 @@ const BoardCardView = memo(function BoardCardView({data, selected}: NodeProps<Ca
     {data.floating && <BoardFloatingLabel/>}
     {film ? <div className="board-film-root"><span aria-hidden="true">▱</span><div><strong>{film.name}</strong><span>{t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'), duration})}</span></div></div>
       : <><header>{data.order !== undefined && <span className="board-card-order">{formatNumber(data.order, {minimumIntegerDigits: 2})}</span>}<strong title={model.name}>{model.name}</strong>
-        {model.kind === 'shot' && <span className={`board-card-status status-${model.status ?? 'pending'}`}>{t(statusKey)}</span>}</header>
+        {model.kind === 'shot' && <span className={`board-card-status status-${model.status ?? 'pending'}`}>{t(statusKey)}</span>}
+        {model.kind === 'subject' && model.subjectKind && <span className="board-card-subject-kind">{t(`boardUi.kind.${model.subjectKind}`)}</span>}</header>
         {model.kind === 'text' ? <p className="board-text-content">{model.name}</p> : <div className="board-card-picture">{model.thumbnailUrl ? <img src={model.thumbnailUrl} alt="" draggable={false}/> : <span aria-hidden="true">▱</span>}</div>}
         {(model.kind === 'shot' || (model.kind === 'video' || model.kind === 'image') && (model.aspectRatio || frames !== null)) && <footer>
           <span>{model.aspectRatio ? t('boardUi.aspectDuration', {aspect: model.aspectRatio, duration}) : duration}</span>

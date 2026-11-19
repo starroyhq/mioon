@@ -113,3 +113,5 @@
 .board-confirm-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
 .board-confirm-actions button {min-height:28px;padding:4px 12px;border:1px solid var(--wb-line);border-radius:5px;background:transparent;color:var(--wb-text);font-size:11px;}
 .board-confirm-actions button:last-child {border-color:var(--wb-danger,#d9534f);}
+
+.board-card-subject-kind {margin-left:auto;color:var(--board-soft);font-size:9px;letter-spacing:.4px;}
