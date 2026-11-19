@@ -39,7 +39,8 @@ export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-dev
  'launcher-ui-ready','renderer-sandbox-and-origin','secure-memory-cookie','loopback-rpc-and-anonymous-denial',
  'renderer-network-window-permission-fences','private-discovery-acl','configured-windows-media-tools',
  'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','project-location-facts','project-location-paths',
- 'project-location-network','native-project-core-flows','project-core-create','project-core-export','project-core-open','project-core-reopen','write-report'] as const);
+ 'project-location-network','native-project-core-flows','project-core-create','project-core-created','project-core-renamed',
+ 'project-core-imported','project-core-export','project-core-open','project-core-reopen','write-report'] as const);
 
 interface CoreFlowOptions {app:App;ready:BackendReady|null;smokeRoot:string;
  mark:(next:typeof WINDOWS_SMOKE_PHASES[number])=>Promise<void>}
@@ -81,13 +82,16 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  assert.ok(/^[0-9a-f-]{36}$/u.test(projectId));assert.equal(path.basename(projectFile),'W2 Smoke.mioon');assert.equal(path.dirname(projectFile),path.join(smokeRoot,'W2 Smoke'));
  assert.equal(record(record(await request(projectAddress(projectId),'project.get',{projectId})).project).name,'W2 Smoke');
  await access(projectFile);
+ await mark('project-core-created');
  const renamed=record(await request('/api/rpc','project.rename',{requestId:randomUUID(),projectId,
   expectedRevision:Number(record(record(await request(projectAddress(projectId),'project.get',{projectId})).project).revision),name:'W2 Smoke Renamed'}));
  assert.equal(renamed.name,'W2 Smoke Renamed');
+ await mark('project-core-renamed');
  const example=path.join(process.resourcesPath,'examples','timeline-basics','media','overlay-star.png');
  const image=await readFile(example);
  const asset=record(await request(projectAddress(projectId),'asset.import',{projectId,name:'smoke-import.png',mimeType:'image/png',dataBase64:image.toString('base64')}));
  assert.equal(asset.name,'smoke-import.png');assert.equal(asset.mimeType,'image/png');
+ await mark('project-core-imported');
  const bridgeOpen=async():Promise<BrowserWindow>=>{
   const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
   const result=record(await launcher.webContents.executeJavaScript(`(async()=>{const recent=await window.__mioonProjectEntries.listRecent();
