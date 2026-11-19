@@ -123,6 +123,12 @@ test('side follows the SA operation kind and every kind maps to one stable name'
   assert.equal(sequenceEditIntentSide({kind: 'board.root.create'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.shot.append'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.layout.move'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.node.create'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.shot.update'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.node.update'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.restore'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.paste'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.duplicate'}), 'board');
   const samples: Array<[ChainSyncOperation | import('../packages/contracts/src/sequence-edit.ts').BoardIntentOperation, string]> = [
     [{kind: 'board', edit: {kind: 'connect', fromId: shotA, toId: shotB}}, 'board.connect'],
     [{kind: 'board', edit: {kind: 'disconnect', fromId: shotA, toId: shotB}}, 'board.disconnect'],
@@ -133,6 +139,14 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'board.root.create', nodeId: nodeA, name: 'Film', position: {x: 0, y: 0}}, 'board.root.create'],
     [{kind: 'board.shot.append', nodeId: nodeA, name: 'Shot'}, 'board.shot.append'],
     [{kind: 'board.layout.move', moves: [{nodeId: nodeA, x: 10, y: 20}]}, 'board.layout.move'],
+    [{kind: 'board.node.create', nodeId: nodeA, nodeType: 'text', name: 'Note', position: {x: 0, y: 0},
+      text: 'hello'}, 'board.node.create'],
+    [{kind: 'board.shot.update', shotId: shotA, expectedRevision: 1, patch: {title: 'Renamed'}}, 'board.shot.update'],
+    [{kind: 'board.node.update', nodeId: nodeA, expectedRevision: 1, patch: {name: 'Renamed'}}, 'board.node.update'],
+    [{kind: 'board.restore', items: [{kind: 'node', id: nodeA}]}, 'board.restore'],
+    [{kind: 'board.paste', documentId: uuid('95'), snapshotId: uuid('96'),
+      viewport: {x: 0, y: 0, width: 100, height: 100}}, 'board.paste'],
+    [{kind: 'board.duplicate', items: [{kind: 'shot', id: shotA}]}, 'board.duplicate'],
     [{kind: 'track', edit: {kind: 'move', clipId: clipA, beforeClipId: null}}, 'timeline.clip.move'],
     [{kind: 'track', edit: {kind: 'move-off-track', clipId: clipA, trackId: uuid('50'), startFrame: 0}}, 'timeline.clip.move-off-track'],
     [{kind: 'track', edit: {kind: 'remove', clipId: clipA}}, 'timeline.clip.remove'],

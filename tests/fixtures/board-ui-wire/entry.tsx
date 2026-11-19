@@ -11,7 +11,7 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
-import {projectLiveBoard, boardConnectIntent, boardDeleteIntent, boardVersionIntent,
+import {projectLiveBoard, boardDeleteIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
@@ -213,7 +213,8 @@ function Harness(): React.ReactElement {
     if (!projection) return;
     const chain = projection.projection.films.find(film => film.id === activeFilmId) ?? projection.projection.films[0];
     const tail = chain?.items.at(-1)?.nodeId ?? activeFilmId;
-    if (tail) await run(boardConnectIntent(tail, archivedId), t('boardUi.notice.restored', {name}));
+    const kind = mount?.archived.find(item => item.id === archivedId)?.kind ?? 'node';
+    if (tail || kind === 'node') await run(boardRestoreIntent([{kind, id: archivedId}]), t('boardUi.notice.restored', {name}));
   }, [projection, activeFilmId, run, t]);
   useEffect(() => {
     stateRef.current = {ready: Boolean(data), data, history, mount, selectedNodeId, notice, busy, reduced, openedNode,
@@ -241,13 +242,15 @@ function Harness(): React.ReactElement {
     </main>
     <aside className="board-fixture-inspector">
       <BoardInspector board={projection} activeFilmId={activeFilmId} mount={mount} selectedNodeId={selectedNodeId}
-        versions={data?.versions ?? []} shots={data?.shots ?? []} busy={busy}
+        versions={data?.versions ?? []} shots={data?.shots ?? []} nodes={data?.nodes ?? []} busy={busy}
         onSelectVersion={(nodeId, versionId) => {void run(boardVersionIntent(nodeId, versionId), t('boardUi.notice.version', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''}));}}
         onDelete={nodeId => {void run(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''})); setSelectedNodeId(null);}}
         onOpenInEditing={nodeId => setOpenedNode(nodeId)}
         onRestore={(archivedId, name) => {void restore(archivedId, name);}}
         onSetBindingMode={setBindingMode} onDetachBinding={detachBinding} onRestoreBinding={restoreBinding}
-        onDeleteSubjectCard={deleteCard} providers={providers} generationOptions={generationOptions[selectedNodeId!]}
+        onDeleteSubjectCard={deleteCard}
+        onUpdateNode={(nodeId, patch, expectedRevision) => {void run(boardNodeUpdateIntent(nodeId, expectedRevision, patch), t('projects.nodeSaved'));}}
+        providers={providers} generationOptions={generationOptions[selectedNodeId!]}
         inputs={inputs} onGenerationOptionsChange={updateGenerationOptions} onInputRoleChange={changeInputRole as never}
         onInputDetach={detachInput} onInputPrimary={setPrimaryInput}/>
       <section className="board-fixture-subjects" data-testid="board-fixture-subjects">

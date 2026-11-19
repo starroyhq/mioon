@@ -588,7 +588,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  });
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
- const sequenceEdit=createFormat5SequenceEditService(store);
+ const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths});
  const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
