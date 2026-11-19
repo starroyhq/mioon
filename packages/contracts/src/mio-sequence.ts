@@ -57,6 +57,11 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   // service, and a linked cue text edit goes through `update` + the shot line.
   z.object({kind: z.literal('dialogue'), shotId: uuid,
     edits: z.array(dialogueEdit).min(1).max(MIO_SEQUENCE_ACTION_LIMITS.maxDialogueEdits)}).strict(),
+  z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
+  z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
+    name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),
+    orderIndex: z.number().int().min(0).max(11).optional()}).strict()
+    .refine(value => Object.keys(value).length > 0, 'At least one track field is required')}).strict(),
 ]).superRefine((value, context) => {
   if (value.kind !== 'dialogue') return;
   const updated = new Set<string>(), removed = new Set<string>();
@@ -75,8 +80,7 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
     }
   }
   for (const lineId of updated) if (removed.has(lineId)) context.addIssue({code: z.ZodIssueCode.custom, message: 'A line cannot update and remove'});
-});
-export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
+});export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
 export const mioSequenceEditSchemas = Object.freeze({
   'sequence.tool.edit': mioSequenceActionSchema,
   'sequence.tool.undo': z.object({actionId: uuid.optional()}).strict(),

@@ -12,7 +12,7 @@ import {projectEditUi} from './projection.ts';
 import type {EditUiProjection, EditUiTimeline, EditUiVersion} from './projection.ts';
 import {sequenceSyncIntent} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../../../../packages/contracts/src/sequence-sync.ts';
-import type {SequenceEditEnvelope, SequenceEditReceipt} from '../../../../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditEnvelope, SequenceEditReceipt, SequenceEditTrackIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
 
 export interface SequencePreviewResponse {
   readonly envelope: SequenceEditEnvelope;
@@ -112,6 +112,7 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
     case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
     case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
+    case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
     default: return 'editUi.error.GENERIC';
   }
@@ -251,6 +252,24 @@ export class Format5EditSession {
   }
   /** Preview then commit; one click while a request is in flight never queues a
    * second write. */
+  /** FR-D: one track add/update through the same preview/commit handshake. */
+  async runTrack(trackIntent: SequenceEditTrackIntent): Promise<SequenceOutcome> {
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('track-preview'),
+          trackIntent}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      this.pending = {envelope: (preview as SequencePreviewResponse).envelope,
+        planDigest: (preview as SequencePreviewResponse).planDigest, requestId: format5RequestId('track')};
+      return await this.commitInternal();
+    } finally {this.inFlight = false;}
+  }
   async run(command: SequenceSyncCommand): Promise<SequenceOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;

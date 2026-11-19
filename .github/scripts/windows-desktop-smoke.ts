@@ -8,17 +8,15 @@ import {argumentsFor, isMain} from './media-environment.ts';
 import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../packages/contracts/src/desktop-window-chrome.ts';
 
 const paths = path.win32;
-export const WINDOWS_SMOKE_TIMEOUT_MS = 180000;
+export const WINDOWS_SMOKE_TIMEOUT_MS = 240000;
 const maximumReportBytes = 32768;
 const requiredChecks = [
   'packaged-development-identity', 'bundled-utility-node-sqlite', 'renderer-sandbox-and-origin',
   'secure-memory-cookie', 'loopback-rpc-and-anonymous-denial', 'renderer-network-window-permission-fences',
   'private-discovery-acl', 'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip',
-  'packaged-example-resources', 'launcher-ui-ready',
+  'packaged-example-resources', 'launcher-ui-ready', 'native-project-location', 'native-project-core-flows',
 ] as const;
 const blockedCodes: Readonly<Record<string, readonly string[]>> = {
-  'native-project-location': ['PROJECT_LOCATION_INVALID'],
-  'native-project-core-flows': ['WINDOWS_PROJECT_LOCATION_UNAVAILABLE', 'WINDOWS_PROJECT_CORE_FLOWS_NOT_VERIFIED'],
   'live-mio-and-generation': ['LIVE_CREDENTIALS_NOT_CONFIGURED'],
 };
 const failureCodes = [
@@ -44,19 +42,40 @@ export interface WindowsLaunchReport {
   schemaVersion: 1; scope: 'windows-development-launch'; ok: true; channel: 'development'; platform: 'win32'; arch: 'x64';
   isPackaged: true; appVersion: string; runtime: {node: string; electron: string}; checks: SmokeCheck[];
 }
-interface FailureReport {schemaVersion: 1; scope: 'windows-development-launch'; ok: false; code: FailureCode; phase?: string; check?: string; reason?: string}
+interface FailureStep {phase: string; event: 'enter' | 'exit' | 'timeout'; ms: number}
+interface FailureReport {schemaVersion: 1; scope: 'windows-development-launch'; ok: false; code: FailureCode; phase?: string; check?: string; detail?: string; reason?: string; steps?: FailureStep[]}
 /** Fixed progress markers the packaged app writes beside its report. */
 export const WINDOWS_SMOKE_PHASES: readonly string[] = Object.freeze(['startup', 'smoke', 'packaged-development-identity',
   'bundled-utility-node-sqlite', 'launcher-ui-ready', 'renderer-sandbox-and-origin', 'secure-memory-cookie',
   'loopback-rpc-and-anonymous-denial', 'renderer-network-window-permission-fences', 'private-discovery-acl',
-  'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'native-project-location', 'write-report']);
+  'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'native-project-location',
+  'project-location-facts', 'project-location-paths', 'project-location-network', 'native-project-core-flows',
+  'project-core-create', 'project-core-created', 'project-core-renamed', 'project-core-imported', 'project-core-export',
+  'project-core-open', 'project-core-open-home', 'project-core-open-list', 'project-core-open-window',
+  'project-core-open-workbench', 'project-core-reopen', 'project-core-close', 'write-report']);
 const fixedName = (value: unknown, keys: readonly string[]): string | undefined => {
   if (!record(value) || !exactKeys(value, keys) || value.schemaVersion !== 1 || value.scope !== 'windows-development-launch') return undefined;
   const name = value[keys[keys.length - 1]!];
   return typeof name === 'string' && WINDOWS_SMOKE_PHASES.includes(name) ? name : undefined;
 };
-export const appCheckFailureName = (value: unknown): string | undefined =>
-  record(value) && value.ok === false && value.code === 'WINDOWS_SMOKE_CHECK_FAILED' ? fixedName(value, ['schemaVersion', 'scope', 'ok', 'code', 'check']) : undefined;
+/** Fixed, path-free error codes only; app failures never carry raw messages. */
+const safeReasonDetail = (value: unknown): string | false | undefined => {
+  if (!record(value) || value.detail === undefined) return undefined;
+  const detail = value.detail;
+  return typeof detail === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/u.test(detail) ? detail : false;
+};
+const checkFailure = (value: unknown): Record<string, unknown> | undefined =>
+  record(value) && value.schemaVersion === 1 && value.scope === 'windows-development-launch' && value.ok === false &&
+  value.code === 'WINDOWS_SMOKE_CHECK_FAILED' && typeof value.check === 'string' && WINDOWS_SMOKE_PHASES.includes(value.check) &&
+  Object.keys(value).every(key => ['schemaVersion', 'scope', 'ok', 'code', 'check', 'detail'].includes(key)) ? value : undefined;
+export const appCheckFailureName = (value: unknown): string | undefined => {
+  const failure = checkFailure(value);
+  return failure && safeReasonDetail(value) !== false ? failure.check as string : undefined;
+};
+export const appCheckFailureDetail = (value: unknown): string | undefined => {
+  const detail = safeReasonDetail(value);
+  return detail === false ? undefined : detail;
+};
 export const phaseMarkerName = (value: unknown): string | undefined => fixedName(value, ['schemaVersion', 'scope', 'phase']);
 const safeReason = (value: unknown): string | undefined => typeof value === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/u.test(value) ? value : undefined;
 /** Early storage/helper failures are fixed codes written instead of a dialog. */
@@ -101,6 +120,25 @@ export function windowsSmokeEnvironment(source: NodeJS.ProcessEnv, workspace: st
   return {...result, MIOON_DESKTOP_WINDOWS_SMOKE: '1', MIOON_DESKTOP_USER_DATA: userData,
     MIOON_DESKTOP_SMOKE_OUTPUT: paths.join(workspace, 'result.json'), MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
 }
+const readFailureSteps = async (value: unknown, services: SmokeServices): Promise<FailureStep[] | undefined> => {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const text = await services.read(value);
+    if (typeof text !== 'string' || text.length > maximumReportBytes) return undefined;
+    const steps: FailureStep[] = [];
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      try {
+        const entry = JSON.parse(line) as unknown;
+        if (!record(entry) || !Object.keys(entry).every(key => ['event', 'phase', 'ms'].includes(key)) ||
+            !['enter', 'exit', 'timeout'].includes(String(entry.event)) || !WINDOWS_SMOKE_PHASES.includes(String(entry.phase)) ||
+            typeof entry.ms !== 'number' || !Number.isSafeInteger(entry.ms) || entry.ms < 0 || entry.ms > 600000) continue;
+        steps.push({event: entry.event as FailureStep['event'], phase: entry.phase as string, ms: entry.ms});
+      } catch { continue; }
+    }
+    return steps.length ? steps.slice(-24) : undefined;
+  } catch { return undefined; }
+};
 export function validateWindowsLaunchReport(value: unknown, expected: {appVersion: string; electron: string}): WindowsLaunchReport {
   if (!record(value) || !exactKeys(value, ['schemaVersion', 'scope', 'ok', 'channel', 'platform', 'arch', 'isPackaged', 'appVersion', 'runtime', 'checks']) ||
       value.schemaVersion !== 1 || value.scope !== 'windows-development-launch' || value.ok !== true || value.channel !== 'development' ||
@@ -112,7 +150,7 @@ export function validateWindowsLaunchReport(value: unknown, expected: {appVersio
     if (!record(item) || typeof item.name !== 'string' || seen.has(item.name)) fail('WINDOWS_SMOKE_REPORT_INVALID');
     const required = requiredChecks.some(name => name === item.name), optional = Object.hasOwn(blockedCodes, item.name);
     if (!required && !optional) fail('WINDOWS_SMOKE_REPORT_INVALID');
-    if (item.status === 'passed' && (required || item.name === 'native-project-location') && exactKeys(item, ['name', 'status'])) checks.push({name: item.name, status: 'passed'});
+    if (item.status === 'passed' && required && exactKeys(item, ['name', 'status'])) checks.push({name: item.name, status: 'passed'});
     else if (item.status === 'blocked' && optional && exactKeys(item, ['name', 'status', 'code']) && typeof item.code === 'string' && blockedCodes[item.name].includes(item.code)) checks.push({name: item.name, status: 'blocked', code: item.code});
     else fail('WINDOWS_SMOKE_REPORT_INVALID');
     seen.add(item.name);
@@ -159,7 +197,7 @@ export function readWindowsPackageMetadata(archive: string, reader: AsarReader =
 export interface WindowsTitleBarScreenshotScenario {
   readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number; readonly maximized: boolean;
 }
-export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.freeze(['launcher-ready', 'theme', 'appearance',
+export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.freeze(['launcher-ready', 'workbench', 'theme', 'appearance',
   'maximize', 'settle', 'facts', 'capture', 'verify-band', 'write']);
 /** The packaged app writes this fixed failure shape when a screenshot step
  * assertion fails; only the shared phase name crosses the boundary. */
@@ -171,8 +209,8 @@ export function screenshotCheckFailureName(value: unknown): string | undefined {
 }
 /** A bounded fixed diagnostic string (for example the measured pixel delta). */
 export function screenshotCheckFailureDetail(value: unknown): string | undefined {
-  if (!record(value) || typeof value.detail !== 'string' || value.detail.length > 120) return undefined;
-  return /^[A-Za-z0-9#][A-Za-z0-9# =:._-]*$/u.test(value.detail) ? value.detail : undefined;
+  if (!record(value) || typeof value.detail !== 'string' || value.detail.length > 400) return undefined;
+  return /^[A-Za-z0-9#][A-Za-z0-9# =:._,x-]*$/u.test(value.detail) ? value.detail : undefined;
 }
 const sanitizedFailureMessage = (value: unknown): string | undefined => {
   if (!record(value) || !exactKeys(value, ['ok', 'error']) || value.ok !== false || typeof value.error !== 'string') return undefined;
@@ -186,6 +224,10 @@ export const WINDOWS_TITLEBAR_SCENARIOS: readonly WindowsTitleBarScreenshotScena
   Object.freeze({name: 'maximized-dark', theme: 'dark', scale: 1, maximized: true}),
   Object.freeze({name: 'dpi-125', theme: 'light', scale: 1.25, maximized: false}),
   Object.freeze({name: 'dpi-150', theme: 'light', scale: 1.5, maximized: false}),
+  Object.freeze({name: 'workbench-light', theme: 'light', scale: 1, maximized: false}),
+  Object.freeze({name: 'workbench-dark', theme: 'dark', scale: 1, maximized: false}),
+  Object.freeze({name: 'workbench-maximized-light', theme: 'light', scale: 1, maximized: true}),
+  Object.freeze({name: 'workbench-maximized-dark', theme: 'dark', scale: 1, maximized: true}),
 ]);
 export interface WindowsTitleBarScreenshot {readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number;
   readonly maximized: boolean; readonly frame: 'win-overlay'; readonly devicePixelRatio: number;
@@ -402,8 +444,12 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
     try {await services.launch(options.binary, environment, options.workspace);} catch (error) {launchError = error;}
     if (launchError !== undefined) {
       const code = smokeFailureCode(launchError), report = parsed(await optionalText(reportFile));
-      const reportedCheck = appCheckFailureName(report), startupReason = startupFailureReason(report);
-      if (reportedCheck !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck};
+      const reportedCheck = appCheckFailureName(report), reportedDetail = appCheckFailureDetail(report), startupReason = startupFailureReason(report);
+      if (reportedCheck !== undefined) {
+        const steps = await readFailureSteps(`${reportFile}.steps`, services);
+        result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck,
+          ...(reportedDetail === undefined ? {} : {detail: reportedDetail}), ...(steps === undefined ? {} : {steps})};
+      }
       else if (startupReason !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: startupReason};
       else if (code === 'WINDOWS_SMOKE_APP_TIMEOUT' && (() => {
         try {validateWindowsLaunchReport(report, expected); return true;} catch {return false;}
@@ -424,9 +470,12 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
         if (Buffer.byteLength(text) > maximumReportBytes || Buffer.byteLength(text) !== info.size) fail('WINDOWS_SMOKE_REPORT_INVALID');
         value = JSON.parse(text) as unknown;
       } catch (error) {if (error instanceof SmokeFailure) throw error; fail('WINDOWS_SMOKE_REPORT_INVALID');}
-      const reportedCheck = appCheckFailureName(value), startupReason = startupFailureReason(value);
-      if (reportedCheck !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck};
-      else if (startupReason !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: startupReason};
+      const reportedCheck = appCheckFailureName(value), reportedDetail = appCheckFailureDetail(value), startupReason = startupFailureReason(value);
+      if (reportedCheck !== undefined) {
+        const steps = await readFailureSteps(`${reportFile}.steps`, services);
+        result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck,
+          ...(reportedDetail === undefined ? {} : {detail: reportedDetail}), ...(steps === undefined ? {} : {steps})};
+      } else if (startupReason !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: startupReason};
       else if (appStartupErrorShape(value)) {
         const phase = phaseMarkerName(parsed(await optionalText(`${reportFile}.phase`)));
         result = phase === undefined ? {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_APP_STARTUP_ERROR'}

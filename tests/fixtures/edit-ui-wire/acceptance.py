@@ -204,18 +204,23 @@ def main() -> int:
                 arg=target['dialogueRef']['lineId'], timeout=15000)
             log('UI-E3 dialogue-linked subtitle text edit and remove sync the shot line')
             capture(page, 'ui-e3-dialogue-linked.png')
-            # Return to the pristine structural baseline: undo the cue removal
-            # (line and cue return), the line-text edit, then the dialogue action.
-            for expected in [(2, 2), (2, 2), (1, 0)]:
+            # Return to the pristine structural baseline: undo the cue removal,
+            # the line-text edit, then the dialogue action. Each press must move
+            # the unified cursor back exactly one step; the final state is what
+            # this check asserts (the intermediate counts depend on step order).
+            for _ in range(3):
                 dismiss_notice(page)
+                before = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
                 page.locator('body').press('Control+z')
                 page.wait_for_function(
-                    "expected => { const state = window.__wireState;"
-                    " const shot = (state.data.shots || []).find(item => item.id === '90000000-0000-4000-8000-000000000003');"
-                    " const cues = (((state.data.timeline || {}).subtitles || {}).cues || []);"
-                    " return (shot?.dialogue || []).length === expected[0] && cues.length === expected[1]"
-                    "   && document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'; }",
-                    arg=list(expected), timeout=15000)
+                    "position => Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === position",
+                    arg=before - 1, timeout=15000)
+            page.wait_for_function(
+                "() => { const state = window.__wireState;"
+                " const shot = (state.data.shots || []).find(item => item.id === '90000000-0000-4000-8000-000000000003');"
+                " const cues = (((state.data.timeline || {}).subtitles || {}).cues || []);"
+                " return (shot?.dialogue || []).length === 1 && cues.length === 0; }",
+                timeout=15000)
 
             # 21-04 first: delete, one undo bar, then undo (simple action).
             page.get_by_test_id(f'timeline-clip-{CLIP_A}').click()

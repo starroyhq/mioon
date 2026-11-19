@@ -245,3 +245,25 @@ test('Mio dialogue schema is bounded and refuses generated envelope fields', () 
   assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'update',lineId:projectId}]}),false);
   assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[]}),false);
 });
+
+test('FR-D track add/update are Mio sequence actions with one-step undo', t => {
+  const store = fixture(t);
+  const add = previewMioSequenceAction(store, projectId, req(9), {kind: 'track-add', trackKind: 'audio', name: 'Mio 轨'});
+  assert.equal(add.envelope.origin, 'mio');
+  assert.equal(add.envelope.originSide, 'timeline');
+  assert.ok((add.envelope as any).trackIntent);
+  assert.ok(add.summary.affected.length >= 1);
+  const receipt = commitMioSequenceAction(store, add);
+  assert.equal(receipt.operation, 'timeline.track.add');
+  const timeline = store.get('timelines', timelineId) as any;
+  assert.equal(timeline.tracks.some((track: any) => track.name === 'Mio 轨' && track.kind === 'audio'), true);
+  assert.equal(readSequenceEditHistory(store, 'mio').undo?.actionId, receipt.actionId);
+  const undo = prepareMioSequenceUndo(store, projectId, req(10), receipt.actionId);
+  assert.equal(applyMioSequenceUndo(store, undo).status, 'applied');
+  assert.equal((store.get('timelines', timelineId) as any).tracks.some((track: any) => track.name === 'Mio 轨'), false);
+
+  const update = previewMioSequenceAction(store, projectId, req(11), {kind: 'track-update', trackId: audio,
+    patch: {muted: true}});
+  assert.equal(commitMioSequenceAction(store, update).operation, 'timeline.track.update');
+  assert.equal((store.get('timelines', timelineId) as any).tracks.find((track: any) => track.id === audio).muted, true);
+});
