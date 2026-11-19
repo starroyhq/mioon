@@ -156,6 +156,7 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
     [{kind: 'track', edit: {kind: 'split-at-scenes', assetId: shotA, resultId: nodeA}}, 'timeline.clip.splitAtScenes'],
+    [{kind: 'track', edit: {kind: 'paste-clip', clipId: clipA, startFrame: 0}}, 'timeline.clip.paste'],
   ];
   const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
