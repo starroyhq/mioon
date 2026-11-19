@@ -3,6 +3,7 @@ import './edit-ui.css';
 import {Button} from '@mioon/ui/components/button';
 import Icon from '../icons.tsx';
 import {useI18n} from '../i18n/I18nProvider.tsx';
+import type {LostResponseView} from './lost-response.ts';
 
 /** One undoable main-track operation. `id` identifies the action so a late
  * dismissal cannot close a newer notice. */
@@ -42,5 +43,27 @@ export default function EditUiNoticeBar({notice, onUndo, onDismiss}: {
       onClick={() => onUndo?.(notice)}>{t('editUi.notice.undo')}</Button>
     <Button type="button" variant="ghost" size="icon-sm" className="edit-ui-notice-dismiss" data-testid="edit-ui-notice-dismiss"
       aria-label={t('editUi.notice.dismiss')} onClick={() => onDismiss?.(notice)}><Icon name="close" size={12} /></Button>
+  </div>;
+}
+
+/** The one unconfirmed edit whose commit response was lost. It has no dismiss
+ * control: the user must either retry the same request or abandon it. Status,
+ * one bare reason and the two actions only — no explanatory copy. */
+export function EditUiUnknownBar({view, onRetry, onAbandon}: {
+  readonly view: LostResponseView | null;
+  readonly onRetry: () => unknown;
+  readonly onAbandon: () => unknown;
+}): React.ReactElement | null {
+  const {t} = useI18n();
+  if (!view) return null;
+  return <div className="edit-ui-notice edit-ui-notice-unknown" role="status" data-testid="edit-ui-unconfirmed-bar"
+    data-request-id={view.requestId}>
+    <Icon name="warning" size={14} />
+    <span className="edit-ui-notice-message" data-testid="edit-ui-unconfirmed-status">{t('editUi.unconfirmed.status')}</span>
+    <span className="edit-ui-notice-message edit-ui-notice-reason" data-testid="edit-ui-unconfirmed-reason">{t('editUi.unconfirmed.reason')}</span>
+    <Button type="button" variant="ghost" size="sm" className="edit-ui-notice-undo" data-testid="edit-ui-unconfirmed-retry"
+      onClick={() => onRetry()}>{t('editUi.unconfirmed.retry')}</Button>
+    <Button type="button" variant="ghost" size="sm" data-testid="edit-ui-unconfirmed-abandon"
+      onClick={() => onAbandon()}>{t('editUi.unconfirmed.abandon')}</Button>
   </div>;
 }

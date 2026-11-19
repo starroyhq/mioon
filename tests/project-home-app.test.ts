@@ -99,6 +99,7 @@ function environment(options:HomeOptions = {}) {
     // re-read orchestration has its own unit tests; here the exact trigger is
     // recorded so project-open behavior still proves it runs once per open.
     autoReread: async (projectId: string) => { calls.push(['autoReread', projectId]); },
+    format5LostRef: {current: {clear: () => {calls.push(['format5LostClear']);}}},
     tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async (projectId: unknown) => calls.push(['tasks.load', projectId]) } },
     rpc: async (operation: string, input: { projectId: string; }) => {
       calls.push(['rpc', operation, input]);

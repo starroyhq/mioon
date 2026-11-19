@@ -1,14 +1,27 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
+import {sequenceEditReceiptSchema} from '@mioon/contracts/sequence-edit';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts';
 
 /** Read-only union of the immutable request receipts a lost response can leave
  * behind. A receipt inside this project proves that the named request was
  * accepted and applied; a missing receipt proves nothing, so callers must keep
- * their retained request unless a receipt is found. */
-export interface RequestOutcome {readonly applied: boolean; readonly operation: string | null}
+ * their retained request unless a receipt is found.
+ *
+ * Format 3/4 outcomes stay the original two fields. A format-5 `sequence.commit`
+ * receipt can additionally prove that the write was applied or explicitly
+ * not applied; only then do `status`/`code` appear. */
+export interface RequestOutcome {
+  readonly applied: boolean;
+  readonly operation: string | null;
+  /** Present only when a format-5 editor receipt was found. */
+  readonly status?: 'applied' | 'not_applied';
+  /** With `status`: null for an applied receipt, the receipt error code for an
+   * explicit not-applied receipt. */
+  readonly code?: string | null;
+}
 
-export const REQUEST_OUTCOME_LIMITS = Object.freeze({requestIdChars: 200, requestIdBytes: 800, operationChars: 80, urlBytes: 2048, referenceResponseBytes: 128 * 1024});
+export const REQUEST_OUTCOME_LIMITS = Object.freeze({requestIdChars: 200, requestIdBytes: 800, operationChars: 80, urlBytes: 2048, referenceResponseBytes: 128 * 1024, editorResponseBytes: 64 * 1024});
 
 const PROJECT_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 const REQUEST_ID = /^[\x21-\x7e]{8,200}$/u;
@@ -63,13 +76,42 @@ function readTransaction<T>(db: DatabaseSync,callback: ()=>T): T {
   try { const result = callback(); db.exec('COMMIT'); return result; } catch (error) { try { if (db.isTransaction) db.exec('ROLLBACK'); } catch { /* the original failure is authoritative */ } throw error; }
 }
 
+/** Format-5 `sequence.commit` stores one bounded `SequenceEditReceipt` row per
+ * requestId in the history database. The table only exists for format 5, so a
+ * project without it is skipped (format 3/4 keeps its two-field outcome) and a
+ * present but unreadable row is an unavailable read, never a conclusion. */
+const EDITOR_RECEIPT_TABLE = "SELECT 1 AS present FROM main.sqlite_master WHERE type='table' AND name='editor_requests' LIMIT 1";
+const EDITOR_RECEIPT_QUERY = 'SELECT operation,response FROM main.editor_requests WHERE requestId=? AND projectId=? LIMIT 1';
+
+function readEditorReceipt(db: DatabaseSync,projectId: string,requestId: string): RequestOutcome | null {
+  if (!db.prepare(EDITOR_RECEIPT_TABLE).get()) return null;
+  const row = db.prepare(EDITOR_RECEIPT_QUERY).get(requestId,projectId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const raw = row.response;
+  if (typeof raw !== 'string' || Buffer.byteLength(raw) > REQUEST_OUTCOME_LIMITS.editorResponseBytes) throw unavailable();
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { throw unavailable(); }
+  const parsed = sequenceEditReceiptSchema.safeParse(value);
+  if (!parsed.success) throw unavailable();
+  const receipt = parsed.data;
+  if (receipt.projectId !== projectId || receipt.requestId !== requestId) throw unavailable();
+  const name = operation(receipt.operation) ?? operation(row.operation);
+  return receipt.status === 'applied'
+    ? {applied: true, operation: name, status: 'applied', code: null}
+    : {applied: false, operation: name, status: 'not_applied', code: receipt.code ?? null};
+}
+
 /** Bounded read-only lookup. Any storage failure becomes an opaque retryable
  * error: the caller keeps its retained request and never treats the failure as
- * evidence that the write did not happen. */
+ * evidence that the write did not happen. Format 3/4 projects keep the original
+ * two-field outcome; an explicit `status:'not_applied'` is the only definite
+ * not-applied conclusion. */
 export function readRequestOutcome(db: DatabaseSync,projectId: string,requestId: string): RequestOutcome {
   if (!PROJECT_ID.test(projectId) || !REQUEST_ID.test(requestId) || Buffer.byteLength(requestId) > REQUEST_OUTCOME_LIMITS.requestIdBytes) throw invalid();
   return readTransaction(db,()=>{
     try {
+      const editor = readEditorReceipt(db,projectId,requestId);
+      if (editor) return editor;
       for (const query of RECEIPT_QUERIES) {
         const row = db.prepare(query.sql).get(...query.parameters(projectId,requestId)) as Record<string, unknown> | undefined;
         if (!row) continue;

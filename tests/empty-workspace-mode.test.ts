@@ -164,7 +164,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     confirm: async () => true, readableError: (e: Error) => e.message, pendingForProject: () => [], URL, URLSearchParams,
     window: { location: { href: 'http://127.0.0.1:4318/', search: '' }, history: { pushState() {}, replaceState() {} } },
-    tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } }, autoReread: async (projectId: unknown) => calls.push(['autoReread', projectId]),
+    tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } }, autoReread: async (projectId: unknown) => calls.push(['autoReread', projectId]), format5LostRef: {current: {clear: () => {calls.push(['format5LostClear']);}}},
     preferencesRef: { current: { update: (...args: unknown[]) => calls.push(['preferences', ...args]), flush: async () => {}, load: async () => defaultWorkspaceState(), getStatus: () => ({ phase: 'saved' }) } },
     projectEntryIdentityRef: {current:identity},readProjectEntryIdentity,projectDirectoryProjects,
     preferenceScope: { current: null }, locatorIdentity: { current: null }, migrateBrowserStorage() {},
