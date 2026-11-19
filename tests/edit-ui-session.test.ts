@@ -206,8 +206,9 @@ function lostHarness(initial: {readonly scenarios: readonly CommitScenario[]; re
     calls.push({operation, input});
     if (operation === 'sequence.preview') {
       previews++;
-      const envelope = {contractVersion: 1, requestId: `${input.trackIntent ? 'track-preview' : 'preview'}-${previews}`,
-        projectId: input.projectId, ...(input.trackIntent ? {trackIntent: input.trackIntent} : {intents: input.intents ?? []})};
+      const envelope = {contractVersion: 1, requestId: `${input.trackIntent ? 'track-preview' : input.formatIntent ? 'format-preview' : 'preview'}-${previews}`,
+        projectId: input.projectId, ...(input.trackIntent ? {trackIntent: input.trackIntent} : {}),
+        ...(input.formatIntent ? {formatIntent: input.formatIntent} : {}), ...(input.intents ? {intents: input.intents} : {})};
       return {envelope, planDigest: PLAN_DIGEST, warnings: []};
     }
     if (operation === 'sequence.commit') {
@@ -436,4 +437,69 @@ test('a project switch drops a retained edit instead of retrying it in the new p
   assert.equal(next.ok, true);
   assert.equal(session.unconfirmed, null);
   assert.equal(reads.length, 1);
+});
+
+test('a lost output-frame commit is settled by one receipt read and never writes twice', async () => {
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead('timeline.format.set')}});
+  const result = await h.session.format('16:9');
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.resolvedFromReceipt, true);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.deepEqual(h.reads[0], {projectId, requestId: h.commits()[0]!.input.envelope.requestId});
+  assert.equal(h.commits()[0]!.input.envelope.formatIntent.operation.kind, 'timeline-format');
+  assert.equal(h.commits()[0]!.input.envelope.formatIntent.operation.presetId, '16:9');
+  assert.equal(h.session.unconfirmed, null);
+  // The same class runs normally once the lost edit is settled.
+  const again = await h.session.format('16:9');
+  assert.equal(again.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('a lost output-frame commit without a receipt retries the same request id and applies once', async () => {
+  const h = lostHarness({scenarios: ['lost-before-write', 'applied'], read: {kind: 'missing'}});
+  const first = await h.session.format('9:16');
+  assert.equal(first.ok, false);
+  if (!first.ok) assert.equal(first.code, UNCONFIRMED_CODE);
+  assert.equal(h.session.unconfirmed?.requestId, h.commits()[0]!.input.envelope.requestId);
+  assert.equal(h.writes.length, 0);
+  const retried = await h.session.retryUnconfirmed();
+  assert.equal(retried.ok, true);
+  assert.equal(h.writes.length, 1);
+  const commits = h.commits();
+  assert.equal(commits.length, 2);
+  assert.equal(commits[1]!.input.envelope.requestId, commits[0]!.input.envelope.requestId);
+  assert.deepEqual(commits[1]!.input.envelope, commits[0]!.input.envelope);
+  assert.equal(commits[1]!.input.expectedPlanDigest, commits[0]!.input.expectedPlanDigest);
+  assert.equal(h.session.unconfirmed, null);
+});
+
+test('a lost output-frame commit is abandoned without a write and a rejection never enters unconfirmed', async () => {
+  const abandoned = lostHarness({scenarios: ['lost-before-write'], read: {kind: 'missing'}});
+  const first = await abandoned.session.format('4:3');
+  assert.equal(first.ok, false);
+  abandoned.session.abandonUnconfirmed();
+  assert.equal(abandoned.session.unconfirmed, null);
+  assert.equal(abandoned.commits().length, 1);
+  assert.equal(abandoned.writes.length, 0);
+  assert.equal((await abandoned.session.format('4:3')).ok, true);
+  const rejected = lostHarness({scenarios: ['rejected'], read: {kind: 'outcome', outcome: appliedRead()}});
+  const denied = await rejected.session.format('16:9');
+  assert.equal(denied.ok, false);
+  if (!denied.ok) assert.equal(denied.code, 'SEQUENCE_EDIT_REVISION_CONFLICT');
+  assert.equal(rejected.reads.length, 0);
+  assert.equal(rejected.session.unconfirmed, null);
+});
+
+test('a lost scene-split commit is settled by one receipt read without writing twice', async () => {
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead('timeline.clip.splitAtScenes')}});
+  const result = await h.session.splitAtScenes('asset-1', 'scene-result-1');
+  assert.equal(result.ok, true);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  const committed = h.commits()[0]!;
+  assert.equal(committed.input.envelope.intents[0].operation.kind, 'track');
+  assert.equal(committed.input.envelope.intents[0].operation.edit.kind, 'split-at-scenes');
+  assert.equal(committed.input.envelope.intents[0].operation.edit.assetId, 'asset-1');
+  assert.equal(h.session.unconfirmed, null);
 });

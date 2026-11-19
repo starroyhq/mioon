@@ -5,7 +5,7 @@
  * the shared envelope server-side, obtains approval for the stable impact, then
  * commits exactly that envelope + plan digest. */
 import {z} from 'zod';
-import {sequenceEditClipPropertiesIntentSchema} from './sequence-edit.ts';
+import {sequenceEditClipPropertiesIntentSchema, sequenceEditFormatIntentSchema} from './sequence-edit.ts';
 import {FORMAT5_REFERENCE_ROLES} from './project-format5.ts';
 
 const uuid = z.string().uuid();
@@ -14,6 +14,14 @@ export const MIO_SEQUENCE_ACTION_LIMITS = Object.freeze({maxTargets: 50, maxText
 
 const boardEdge = {fromId: uuid, toId: uuid} as const;
 const referenceRole = z.enum(FORMAT5_REFERENCE_ROLES);
+const subtitleCue = z.object({text: z.string().max(256), startFrame: z.number().int().min(0).max(300000),
+  durationFrames: z.number().int().min(1).max(300000), anchor: z.unknown().optional(),
+  dialogueRef: z.unknown().optional()}).strict();
+const subtitleEdit = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('add'), cue: subtitleCue}).strict(),
+  z.object({kind: z.literal('update'), cueId: uuid, patch: z.record(z.unknown())}).strict(),
+  z.object({kind: z.literal('remove'), cueId: uuid}).strict(),
+]);
 const subjectEdit = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('create'), shotId: uuid, subjectId: uuid, role: z.enum(['subject', 'style'])}).strict(),
   z.object({kind: z.literal('set-mode'), bindingId: uuid, bindingMode: z.enum(['follow', 'locked']), subjectVersionId: uuid.nullable()}).strict(),
@@ -57,6 +65,10 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('reference-detach'), edgeId: uuid, shotId: uuid}).strict(),
   z.object({kind: z.literal('clip-properties'),
     edits: sequenceEditClipPropertiesIntentSchema.shape.operation.shape.edits}).strict(),
+  z.object({kind: z.literal('subtitles'), edits: z.array(subtitleEdit).min(1).max(100)}).strict(),
+  z.object({kind: z.literal('format-set'),
+    presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
+  z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),
   z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
   z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
     name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),

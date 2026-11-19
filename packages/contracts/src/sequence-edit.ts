@@ -4,6 +4,7 @@ import {isClipTransition} from './timeline-clip-transition.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
+import {TIMELINE_FORMAT_WRITE_PRESETS} from './timeline-output-geometry.ts';
 import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline, Format5Timeline,
 } from './project-format5.ts';
@@ -98,7 +99,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
-  'timeline.track.add', 'timeline.track.update',
+  'timeline.clip.splitAtScenes', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'subject.card.create', 'subject.card.delete',
   'previs.create', 'previs.scene.set',
@@ -288,6 +289,18 @@ export interface SequenceEditClipPropertiesIntent {
   readonly side: 'timeline';
   readonly operation: SequenceEditClipPropertiesOperation;
 }
+/** FR-B2: one output-preset change. All clips without an explicit layout freeze
+ * their current frame as their layout basis; the header moves to the new preset. */
+export const sequenceEditFormatIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.object({kind: z.literal('timeline-format'),
+    presetId: z.enum(TIMELINE_FORMAT_WRITE_PRESETS.map(item => item.id) as [string, ...string[]])}).strict(),
+}).strict();
+export interface SequenceEditFormatIntent {
+  readonly side: 'timeline';
+  readonly operation: {readonly kind: 'timeline-format';
+    readonly presetId: typeof TIMELINE_FORMAT_WRITE_PRESETS[number]['id']};
+}
 
 /** FR-D track management: add a track or change its name/visibility/mute/order.
  * A track's identity, kind and the main-track association never change here;
@@ -389,6 +402,7 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
     case 'board.duplicate': return 'board.duplicate';
     case 'track':
       switch (operation.edit.kind) {
+        case 'split-at-scenes': return 'timeline.clip.splitAtScenes';
         case 'move': return 'timeline.clip.move';
         case 'move-off-track': return 'timeline.clip.move-off-track';
         case 'remove': return 'timeline.clip.remove';
@@ -413,13 +427,14 @@ export function sequenceEditTrackOperationName(operation: SequenceEditTrackOpera
 }
 
 export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
-  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'previsIntent'>): string {
+  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'previsIntent' | 'formatIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
   if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
   if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
+  if (envelope.formatIntent) return 'timeline.format.set';
   return sequenceEditOperationName(envelope.intents);
 }
 
@@ -553,6 +568,8 @@ export interface SequenceEditEnvelope {
   readonly previsIntent?: SequenceEditPrevisIntent;
   /** FR-B subtitle cue structure; exactly one of the intent families. */
   readonly subtitlesIntent?: SequenceEditSubtitlesIntent;
+  /** FR-B2 output-frame change; one intent family like properties. */
+  readonly formatIntent?: SequenceEditFormatIntent;
   /** FR-D track add/update; exactly one intent family is present. */
   readonly trackIntent?: SequenceEditTrackIntent;
   readonly baseline: SequenceEditBaseline;
@@ -707,6 +724,7 @@ export const sequenceEditTrackIntentSchema = z.object({
 }).strict();
 const trackIntentSchema = sequenceEditTrackIntentSchema;
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
+const formatIntentSchema = sequenceEditFormatIntentSchema;
 const previsLabelSchema = z.string().max(PREVIS_LIMITS.labelLength);
 const previsPointSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
 export const sequenceEditPrevisIntentSchema = z.object({
@@ -754,6 +772,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   previsIntent: previsIntentSchema.optional(),
   subtitlesIntent: subtitlesIntentSchema.optional(),
   trackIntent: trackIntentSchema.optional(),
+  formatIntent: formatIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
@@ -761,8 +780,9 @@ export const sequenceEditEnvelopeSchema = z.object({
   const hasProperties = value.propertiesIntent !== undefined;
   const hasPrevis = value.previsIntent !== undefined;
   const hasSubtitles = value.subtitlesIntent !== undefined;
+  const hasFormat = value.formatIntent !== undefined;
   const hasTrack = value.trackIntent !== undefined;
-  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasTrack, hasPrevis].filter(Boolean).length
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasTrack, hasPrevis, hasFormat].filter(Boolean).length
     + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
   if (hasSubtitles) {
@@ -771,6 +791,11 @@ export const sequenceEditEnvelopeSchema = z.object({
     const impacted = new Set(value.impact.subtitleCueIds);
     if (edited.some(id => !impacted.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
       message: 'Subtitle impact must list every edited cue'});
+    return;
+  }
+  if (hasFormat) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A format action carries no CS/TS intent'});
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A format action is timeline-origin'});
     return;
   }
   if (hasTrack) {
@@ -920,12 +945,16 @@ export interface SequenceEditTimelineDelta {
   readonly cues: readonly Format5Cue[];
   readonly removedClipIds: readonly string[];
   readonly removedCueIds: readonly string[];
-  /** FR-D full header track rows when a track action changed them. Optional so
-   * every pre-FR-D patch and every clip/board action still parses unchanged. */
+  /** Present only when the output frame changes; older patches omit it. */
+  readonly header?: SequenceEditTimelineHeaderChange;
+  /** FR-D full header track rows when a track action changed them. */
   readonly tracks?: ReadonlyArray<Format5Timeline['tracks'][number]>;
   readonly baseline: SequenceEditBaselineChange;
   readonly subtitles?: SequenceEditSubtitleProfileChange;
 }
+export type SequenceEditTimelineHeaderChange =
+  | {readonly kind: 'unchanged'}
+  | {readonly kind: 'set'; readonly value: {readonly fps: 30; readonly width: number; readonly height: number}};
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
  * patch direction. Reading and writing remain owned by CS/TS services. */
@@ -976,11 +1005,17 @@ const baselineChangeSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('set'), value: format5SyncBaselineSchema}).strict(),
   z.object({kind: z.literal('absent')}).strict(),
 ]);
+const timelineHeaderChangeSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('unchanged')}).strict(),
+  z.object({kind: z.literal('set'), value: z.object({fps: z.literal(30), width: z.number().int().min(2).max(100000),
+    height: z.number().int().min(2).max(100000)}).strict()}).strict(),
+]);
 const timelineDeltaSchema = z.object({
   clips: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   cues: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.subtitleCues),
   removedClipIds: idListSchema(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   removedCueIds: idListSchema(FORMAT5_LIMITS.subtitleCues),
+  header: timelineHeaderChangeSchema.optional(),
   tracks: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.tracks).optional(),
   baseline: baselineChangeSchema,
   subtitles: z.union([
@@ -1133,6 +1168,8 @@ export interface SequenceEditReceipt {
   readonly contentRevision: number;
   readonly timelineRevision: number;
   readonly syncRevision: number;
+  /** Present on applied scene-split receipts: changed and skipped clips. */
+  readonly sceneSplit?: SequenceEditSceneSplit;
 }
 export const sequenceEditHistoryActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema,
   origin: z.enum(['user', 'mio']).optional()}).strict();
@@ -1146,6 +1183,21 @@ export const sequenceEditAffectedCountsSchema = z.object({
   otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema, subjectBindings: sequenceSchema.optional(),
   tracks: sequenceSchema.optional(),
 }).strict();
+export const SEQUENCE_EDIT_SCENE_SPLIT_SKIP_REASONS = Object.freeze(['NO_CUT_IN_RANGE', 'FADE_BOUNDS'] as const);
+export type SequenceEditSceneSplitSkipReason = (typeof SEQUENCE_EDIT_SCENE_SPLIT_SKIP_REASONS)[number];
+export interface SequenceEditSceneSplitRow {readonly clipId: string; readonly clipIds: readonly string[];
+  readonly cutFrames: readonly number[]; readonly fadeCutFrames: readonly number[]}
+export interface SequenceEditSceneSplitSkipped {readonly clipId: string;
+  readonly reason: SequenceEditSceneSplitSkipReason; readonly cutFrames?: readonly number[]}
+export interface SequenceEditSceneSplit {readonly split: readonly SequenceEditSceneSplitRow[];
+  readonly skipped: readonly SequenceEditSceneSplitSkipped[]}
+const frameListSchema = (max: number) => z.array(sequenceSchema).max(max);
+const sceneSplitRowSchema = z.object({clipId: uuidSchema, clipIds: idListSchema(1501), cutFrames: frameListSchema(1500),
+  fadeCutFrames: frameListSchema(1500)}).strict();
+const sceneSplitSkippedSchema = z.object({clipId: uuidSchema,
+  reason: z.enum(SEQUENCE_EDIT_SCENE_SPLIT_SKIP_REASONS), cutFrames: frameListSchema(1500).optional()}).strict();
+const sceneSplitSchema = z.object({split: z.array(sceneSplitRowSchema).max(100),
+  skipped: z.array(sceneSplitSkippedSchema).max(100)}).strict();
 export const sequenceEditReceiptSchema = z.object({
   version: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   requestId: z.string().refine(isSequenceEditRequestId, 'Invalid request id'), inputDigest: digestSchema,
@@ -1158,6 +1210,7 @@ export const sequenceEditReceiptSchema = z.object({
   }).strict()).max(FORMAT5_LIMITS.mainTrackClips).optional(),
   affected: sequenceEditAffectedCountsSchema, history: sequenceEditHistoryViewSchema,
   contentRevision: sequenceSchema, timelineRevision: revisionSchema, syncRevision: revisionSchema,
+  sceneSplit: sceneSplitSchema.optional(),
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
   'Only a not-applied receipt carries an error code').refine(value => value.status === 'applied' || value.warnings === undefined,
   'A not-applied receipt carries no warnings');
@@ -1299,9 +1352,9 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID',
-  'SEQUENCE_EDIT_SUBTITLE_INVALID',
-  'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
+  'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE', 'TIMELINE_FORMAT_TIER_MISMATCH',
+  'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

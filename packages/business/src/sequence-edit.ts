@@ -87,13 +87,13 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   'timeline.clip.add': 'sequence.preview/commit', 'timeline.clip.update': 'sequence.preview/commit',
   'timeline.clip.replaceSource': 'sequence.preview/commit', 'timeline.clip.remove': 'sequence.preview/commit',
   'timeline.clip.rippleRemove': 'sequence.preview/commit', 'timeline.clip.split': 'sequence.preview/commit',
-  'timeline.clip.splitAtScenes': 'not_yet_available', 'timeline.clip.crossfade': 'sequence.preview/commit',
+  'timeline.clip.splitAtScenes': 'sequence.preview/commit', 'timeline.clip.crossfade': 'sequence.preview/commit',
   'timeline.clip.setGains': 'sequence.preview/commit', 'timeline.clip.setTransform': 'sequence.preview/commit',
   'timeline.clip.setTransition': 'sequence.preview/commit', 'timeline.loudness.apply': 'sequence.preview/commit',
   'timeline.subtitle.add': 'sequence.preview/commit', 'timeline.subtitle.update': 'sequence.preview/commit',
   'timeline.subtitle.remove': 'sequence.preview/commit', 'timeline.seed': 'not_yet_available',
   'timeline.shots.append': 'not_yet_available', 'timeline.clip.refreshSources': 'not_yet_available',
-  'timeline.format.set': 'not_yet_available',
+  'timeline.format.set': 'sequence.preview/commit',
   'timeline.history.get': 'sequence.history.get', 'timeline.undo': 'sequence.undo', 'timeline.redo': 'sequence.redo',
   'canvas.apply': 'sequence.preview/commit',
   'canvas.history.get': 'sequence.history.get', 'canvas.history.undo': 'sequence.undo', 'canvas.history.redo': 'sequence.redo',
@@ -537,13 +537,23 @@ function boardIntentPreparation(context: EditContext, store: ProjectStore, inten
         const from = mapped.get(String(link.source)), to = mapped.get(String(link.target));
         if (!from || !to) continue;
         if (link.role === 'subject_reference' || link.role === 'style_reference') continue;
-        const id = randomUUID();
+        // Copied reference edges follow the same identity rule as copied nodes:
+        // preview allocates the new edge id by its new endpoints into the
+        // envelope, and commit only reuses that exact id.
+        const pair = allocation.edges.find(edge => edge.fromId === from && edge.toId === to);
+        let id: string;
+        if (pair) id = pair.id;
+        else if (allocateNewIds) {
+          id = randomUUID();
+          allocation.edges.push({id, fromId: from, toId: to});
+        } else {
+          fail('SEQUENCE_EDIT_CONTRACT_INVALID', '复制的引用线 ID 没有随信封分配。', [String(link.source)]);
+        }
         const edge: Row = {id, projectId: context.projectId, kind: 'reference', role: link.role,
           source: from, target: to, createdAt: at,
           ...(typeof link.sourceAssetId === 'string' ? {sourceAssetId: link.sourceAssetId} : {}),
           ...(Number.isSafeInteger(link.orderIndex) ? {orderIndex: link.orderIndex} : {})};
         directChanges.push({kind: 'edge', before: edge, after: edge, newRecord: true});
-        if (!allocation.edges.some(item => item.id === id)) allocation.edges.push({id, fromId: from, toId: to});
       }
       if (skippedSequenceLinks) warnings.push({code: 'SEQUENCE_LINKS_NOT_COPIED'});
       continue;

@@ -260,7 +260,6 @@ export class Format5EditSession {
     this.pending = null; this.copy = null; this.lost.clear();
     return parsedOutcome(parsed);
   }
-
   /** Keep the accepted envelope + digest, read the immutable receipt exactly
    * once, and return the honest conclusion (or stay unconfirmed). */
   private async retainUnconfirmed(pending: PendingEdit): Promise<SequenceOutcome> {
@@ -284,6 +283,7 @@ export class Format5EditSession {
     if (!entry || this.inFlight || this.projectId() !== entry.projectId) {
       return {ok: false, code: UNCONFIRMED_CODE, unconfirmed: true};
     }
+
     this.inFlight = true;
     try {
       const result = await this.commitPending({envelope: entry.envelope, planDigest: entry.planDigest});
@@ -294,6 +294,51 @@ export class Format5EditSession {
 
   /** The bar's abandon: drop the retained envelope without writing or refreshing. */
   abandonUnconfirmed(): void {this.lost.clear()}
+
+  /** FR-B2 output-frame change through the same preview/commit handshake. */
+  async format(presetId: string): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('format'),
+          formatIntent: {side: 'timeline', operation: {kind: 'timeline-format', presetId}}}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      const response = preview as SequencePreviewResponse;
+      if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      const pending = {envelope: response.envelope, planDigest: response.planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
+    } finally {this.inFlight = false;}
+  }
+  /** FR-B2: split one main-track clip at the current scene cuts. */
+  async splitAtScenes(assetId: string, resultId: string): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('split-scenes'),
+          intents: [sequenceSyncIntent({kind: 'clip-split-scenes', assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      const response = preview as SequencePreviewResponse;
+      if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      const pending = {envelope: response.envelope, planDigest: response.planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
+    } finally {this.inFlight = false;}
+  }
 
   async commit(): Promise<SequenceOutcome> {
     const blocked = this.guardUnconfirmed();
