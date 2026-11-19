@@ -13,7 +13,7 @@ import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
-import type {SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+import type {BoardIntentOperation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, any>;
@@ -61,6 +61,12 @@ function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: 
 }
 function boardIntent(action: MioSequenceAction): SequenceEditIntent {
   switch (action.kind) {
+    case 'board-root-create': return {side: 'board', operation: {kind: 'board.root.create',
+      nodeId: randomUUID(), name: action.name, position: action.position}} as SequenceEditIntent;
+    case 'board-shot-append': return {side: 'board', operation: {kind: 'board.shot.append',
+      nodeId: randomUUID(), name: action.name, ...(action.position ? {position: action.position} : {})}} as SequenceEditIntent;
+    case 'board-layout-move': return {side: 'board', operation: {kind: 'board.layout.move',
+      moves: action.moves.map(move => ({nodeId: move.nodeId, x: move.x, y: move.y}))}} as SequenceEditIntent;
     case 'connect': return {side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId: action.fromId, toId: action.toId}}};
     case 'disconnect': return {side: 'board', operation: {kind: 'board', edit: {kind: 'disconnect', fromId: action.fromId, toId: action.toId}}};
     case 'insert': return {side: 'board', operation: {kind: 'board', edit: {kind: 'insert', fromId: action.fromId, toId: action.toId, nodeId: action.nodeId}}};
@@ -100,7 +106,7 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
-  else if (['connect', 'disconnect', 'insert', 'delete-node'].includes(action.kind)) request.intents = [boardIntent(action)];
+  else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
@@ -120,6 +126,7 @@ export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePl
 export interface MioSequenceUndoPlan {
   readonly projectId: string; readonly actionId: string; readonly requestId: string;
   readonly expected: {readonly position: number; readonly revision: number};
+  readonly origin: 'mio';
 }
 /** D5: Mio undo addresses its own action id through the same inverse-patch
  * history transaction. It never runs when the shared cursor moved, so a request
@@ -127,17 +134,22 @@ export interface MioSequenceUndoPlan {
 export function prepareMioSequenceUndo(store: ProjectStore, projectId: string, requestId: string, requestedActionId?: string): MioSequenceUndoPlan {
   requireF5(store);
   projectCheck(store, projectId);
-  const history = readSequenceEditHistory(store);
+  const history = readSequenceEditHistory(store, 'mio');
   const entry = history.undo;
   const actionId = requestedActionId ?? entry?.actionId;
   if (!actionId) throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '还没有可撤销的 Mio 动作。', 409, {});
-  const target = entry ? readSequenceEditHistoryEntry(store, entry.actionId) : null;
-  if (target && target.origin !== 'mio') throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步不是 Mio 动作。', 409, {actionId});
   if (!entry || entry.actionId !== actionId) {
     throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步不是当前可撤销的 Mio 动作。', 409,
-      {actionId, position: history.position, revision: history.revision});
+      {actionId, position: history.position, revision: history.revision, reason: 'STACK_TOP'});
   }
-  return {projectId, actionId, requestId, expected: {position: history.position, revision: history.revision}};
+  if (history.undoBlockedBy !== null) {
+    throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '之后还有用户动作，Mio 不能越过它撤销。', 409,
+      {actionId, reason: 'USER_ACTION_ABOVE', blockedBy: history.undoBlockedBy,
+        position: history.position, revision: history.revision});
+  }
+  const target = readSequenceEditHistoryEntry(store, actionId);
+  if (target?.origin !== 'mio') throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步不是 Mio 动作。', 409, {actionId});
+  return {projectId, actionId, requestId, origin: 'mio', expected: {position: history.position, revision: history.revision}};
 }
 export function applyMioSequenceUndo(store: ProjectStore, plan: MioSequenceUndoPlan): SequenceEditReceipt {
   requireF5(store);
