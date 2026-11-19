@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
+import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5AnchorSchema, format5DialogueRefSchema, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
@@ -97,7 +97,9 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
-  'previs.create', 'previs.scene.set', 'reference.attach', 'reference.role.set', 'reference.detach',
+  'subject.card.create', 'subject.card.delete',
+  'previs.create', 'previs.scene.set',
+  'reference.attach', 'reference.role.set', 'reference.detach',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
@@ -141,11 +143,23 @@ export type SubjectBindingOperation =
   | {readonly kind: 'subject-binding'; readonly edit: {readonly kind: 'restore'; readonly bindingId: string;
     readonly bindingMode: 'follow' | 'locked'; readonly subjectVersionId: string | null}};
 
+/** SB-b subject-card commands. A card stores only `subjectId` and canvas fields;
+ * deleting a card is a board-only action in the same unified history. Subject
+ * and version rows are retained project evidence, so the only supported removal
+ * is the board card (active bindings become detached tombstones and their
+ * reference edges are removed). Deleting a subject from the library needs a
+ * format-6 archived column and is out of scope for 0.3.0. */
+export type SubjectCardOperation =
+  | {readonly kind: 'subject.card.create'; readonly nodeId: string; readonly subjectId: string;
+    readonly position: {readonly x: number; readonly y: number}}
+  | {readonly kind: 'subject.card.delete'; readonly nodeId: string};
+export type SubjectEditOperation = SubjectBindingOperation | SubjectCardOperation;
+
 /** One subject intent: always board side, never combined with a sync-board
  * projection because it writes no timeline row. */
 export interface SequenceEditSubjectIntent {
   readonly side: 'board';
-  readonly operation: SubjectBindingOperation;
+  readonly operation: SubjectEditOperation;
 }
 
 /**
@@ -237,6 +251,36 @@ export interface SequenceEditClipPropertiesIntent {
   readonly operation: SequenceEditClipPropertiesOperation;
 }
 
+/** FR-B subtitle structure: one action may add, update and remove cues; every
+ * resulting cue keeps the format-5 anchor rule (a main-track clip owns it). */
+export interface SequenceEditSubtitleCueInput {
+  readonly id: string;
+  readonly text: string;
+  readonly startFrame: number;
+  readonly durationFrames: number;
+  readonly anchor?: unknown;
+  readonly dialogueRef?: unknown;
+}
+export interface SequenceEditSubtitlePatch {
+  readonly text?: string;
+  readonly startFrame?: number;
+  readonly durationFrames?: number;
+  readonly anchor?: unknown;
+  readonly dialogueRef?: unknown;
+}
+export type SequenceEditSubtitleEdit =
+  | {readonly kind: 'add'; readonly cue: SequenceEditSubtitleCueInput}
+  | {readonly kind: 'update'; readonly cueId: string; readonly patch: SequenceEditSubtitlePatch}
+  | {readonly kind: 'remove'; readonly cueId: string};
+export interface SequenceEditSubtitlesOperation {
+  readonly kind: 'subtitles';
+  readonly edits: readonly SequenceEditSubtitleEdit[];
+}
+export interface SequenceEditSubtitlesIntent {
+  readonly side: 'timeline';
+  readonly operation: SequenceEditSubtitlesOperation;
+}
+
 /** The side a plan operation belongs to. Board edits and projections are CS,
  * track edits are TS. */
 export function sequenceEditIntentSide(operation: {readonly kind: string}): SequenceEditSide {
@@ -244,7 +288,9 @@ export function sequenceEditIntentSide(operation: {readonly kind: string}): Sequ
 }
 
 /** Stable `history13.operation` name of one subject-binding edit. */
-export function sequenceEditSubjectOperationName(operation: SubjectBindingOperation): SequenceEditOperationName {
+export function sequenceEditSubjectOperationName(operation: SubjectEditOperation): SequenceEditOperationName {
+  if (operation.kind === 'subject.card.create') return 'subject.card.create';
+  if (operation.kind === 'subject.card.delete') return 'subject.card.delete';
   switch (operation.edit.kind) {
     case 'create': return 'subject.binding.create';
     case 'set-mode': return 'subject.binding.set-mode';
@@ -295,10 +341,12 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
 
 /** `history13.operation` for the action envelope. One subject action uses its
  * own stable name; every existing action keeps its intent-joined name. */
-export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'referenceIntent' | 'previsIntent'>): string {
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
+  'propertiesIntent' | 'subtitlesIntent' | 'referenceIntent' | 'previsIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
+  if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
   if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
   return sequenceEditOperationName(envelope.intents);
 }
@@ -423,6 +471,8 @@ export interface SequenceEditEnvelope {
   /** Previs node create/save; exactly one intent family per envelope. Optional
    * and additive: earlier envelopes and stored patches stay valid. */
   readonly previsIntent?: SequenceEditPrevisIntent;
+  /** FR-B subtitle cue structure; exactly one of the intent families. */
+  readonly subtitlesIntent?: SequenceEditSubtitlesIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -510,9 +560,18 @@ const subjectBindingEditSchema = z.discriminatedUnion('kind', [
     context.addIssue({code: z.ZodIssueCode.custom, message: 'Only a locked binding stores an applied subject version'});
   }
 });
+const cardPositionSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
+const subjectCardOperationSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('subject.card.create'), nodeId: uuidSchema, subjectId: uuidSchema,
+    position: cardPositionSchema}).strict(),
+  z.object({kind: z.literal('subject.card.delete'), nodeId: uuidSchema}).strict(),
+]);
 export const sequenceEditSubjectIntentSchema = z.object({
   side: z.literal('board'),
-  operation: z.object({kind: z.literal('subject-binding'), edit: subjectBindingEditSchema}).strict(),
+  operation: z.union([
+    z.object({kind: z.literal('subject-binding'), edit: subjectBindingEditSchema}).strict(),
+    subjectCardOperationSchema,
+  ]),
 }).strict();
 const subjectIntentSchema = sequenceEditSubjectIntentSchema;
 const referenceRoleSchema = z.enum(['first_frame', 'last_frame', 'reference_image', 'subject_reference',
@@ -557,6 +616,29 @@ export const sequenceEditPrevisIntentSchema = z.object({
   ]),
 }).strict();
 const previsIntentSchema = sequenceEditPrevisIntentSchema;
+const subtitleCueInputSchema = z.object({
+  id: uuidSchema, text: z.string().max(256), startFrame: z.number().int().safe().min(0).max(FORMAT5_LIMITS.durationFrames),
+  durationFrames: z.number().int().safe().min(1).max(FORMAT5_LIMITS.durationFrames),
+  anchor: format5AnchorSchema.optional(), dialogueRef: format5DialogueRefSchema.optional(),
+}).strict();
+const subtitlePatchSchema = z.object({
+  text: z.string().max(256).optional(),
+  startFrame: z.number().int().safe().min(0).max(FORMAT5_LIMITS.durationFrames).optional(),
+  durationFrames: z.number().int().safe().min(1).max(FORMAT5_LIMITS.durationFrames).optional(),
+  anchor: format5AnchorSchema.optional(), dialogueRef: format5DialogueRefSchema.optional(),
+}).strict().refine(value => Object.keys(value).length > 0, 'At least one subtitle field is required');
+export const sequenceEditSubtitlesIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.object({kind: z.literal('subtitles'),
+    edits: z.array(z.discriminatedUnion('kind', [
+      z.object({kind: z.literal('add'), cue: subtitleCueInputSchema}).strict(),
+      z.object({kind: z.literal('update'), cueId: uuidSchema, patch: subtitlePatchSchema}).strict(),
+      z.object({kind: z.literal('remove'), cueId: uuidSchema}).strict(),
+    ])).min(1).max(100)
+      .refine(list => new Set(list.map(edit => edit.kind === 'add' ? edit.cue.id : edit.cueId)).size === list.length,
+        'Each subtitle cue may appear once')}).strict(),
+}).strict();
+const subtitlesIntentSchema = sequenceEditSubtitlesIntentSchema;
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
@@ -568,14 +650,25 @@ export const sequenceEditEnvelopeSchema = z.object({
   referenceIntent: referenceIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
   previsIntent: previsIntentSchema.optional(),
+  subtitlesIntent: subtitlesIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
   const hasReference = value.referenceIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
   const hasPrevis = value.previsIntent !== undefined;
-  const families = [value.intents.length > 0, hasSubject, hasReference, hasProperties, hasPrevis].filter(Boolean).length;
+  const hasSubtitles = value.subtitlesIntent !== undefined;
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasPrevis].filter(Boolean).length
+    + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
+  if (hasSubtitles) {
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subtitle action is timeline-origin'});
+    const edited = value.subtitlesIntent!.operation.edits.flatMap(edit => edit.kind === 'add' ? [edit.cue.id] : [edit.cueId]);
+    const impacted = new Set(value.impact.subtitleCueIds);
+    if (edited.some(id => !impacted.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Subtitle impact must list every edited cue'});
+    return;
+  }
   if (hasReference) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference action carries no CS/TS intent'});
     if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference action is board-origin'});
@@ -619,7 +712,9 @@ export const sequenceEditEnvelopeSchema = z.object({
   if (hasSubject) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action carries no CS/TS intent'});
     if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action is board-origin'});
-    const edit = value.subjectIntent!.operation.edit;
+    const operation = value.subjectIntent!.operation;
+    if (operation.kind !== 'subject-binding') return;
+    const edit = operation.edit;
     // A create action also writes the reference edge that connects the subject
     // card to the shot. Its id is pre-allocated in `allocation.edges`, matching
     // the envelope's retry identity; a missing allocation is rejected rather
@@ -697,12 +792,21 @@ export function applySequenceEditBaselineChange(
 /** Timeline half of a patch. Entity arrays use the frozen K5a clip/cue shapes;
  * `removed*Ids` are the rows to delete; `baseline` is the three-state delta that
  * the transaction applies to the stored "last synced" row. */
+export type SequenceEditSubtitleProfile = {readonly profileId: string; readonly basisPresetId?: string};
+/** Three-state subtitle header change: edits that only touch cues keep the
+ * profile (`unchanged`), the first cue may create it (`set`), and undo of that
+ * creation removes it (`absent`). Omitted means `unchanged`. */
+export type SequenceEditSubtitleProfileChange =
+  | { readonly kind: 'unchanged' }
+  | { readonly kind: 'set'; readonly value: SequenceEditSubtitleProfile }
+  | { readonly kind: 'absent' };
 export interface SequenceEditTimelineDelta {
   readonly clips: readonly Format5Clip[];
   readonly cues: readonly Format5Cue[];
   readonly removedClipIds: readonly string[];
   readonly removedCueIds: readonly string[];
   readonly baseline: SequenceEditBaselineChange;
+  readonly subtitles?: SequenceEditSubtitleProfileChange;
 }
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
@@ -760,6 +864,12 @@ const timelineDeltaSchema = z.object({
   removedClipIds: idListSchema(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   removedCueIds: idListSchema(FORMAT5_LIMITS.subtitleCues),
   baseline: baselineChangeSchema,
+  subtitles: z.union([
+    z.object({kind: z.literal('unchanged')}).strict(),
+    z.object({kind: z.literal('absent')}).strict(),
+    z.object({kind: z.literal('set'), value: z.object({profileId: z.string().min(1).max(120),
+      basisPresetId: z.string().min(1).max(120).optional()}).strict()}).strict(),
+  ]).optional(),
 }).strict();
 const stateDeltaSchema = z.object({board: boardDeltaSchema, timeline: timelineDeltaSchema}).strict();
 export const sequenceEditHistoryEntrySchema = z.object({
@@ -1052,6 +1162,10 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   exceeds the previs capacity, or a previs save names a missing/foreign/
  *   archived node, a stale scene revision, or an export image that is not an
  *   owned image asset. Nothing is written; the caller re-previews.
+ * - `SEQUENCE_EDIT_SUBTITLE_INVALID`: a subtitle edit names a missing cue or an
+ *   existing cue id again, the text/interval is outside the frozen subtitle
+ *   schema, the anchor clip does not own the cue start, or cues overlap. Nothing
+ *   is written; the caller re-previews.
  * - `SEQUENCE_EDIT_REFERENCE_INVALID`: a material reference action names a
  *   missing/archived/foreign source or shot, a role that the source type cannot
  *   provide, a subject-card connector (which belongs to the SB binding family),
@@ -1064,6 +1178,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID',
+  'SEQUENCE_EDIT_SUBTITLE_INVALID',
   'SEQUENCE_EDIT_REFERENCE_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
