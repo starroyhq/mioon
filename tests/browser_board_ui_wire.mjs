@@ -21,6 +21,7 @@ const scratch = await mkdtemp(join(root, '.board-wire-browser-'));
 const fixture = stress ? await import('./helpers/board-ui-wire-fixture.ts').then(module => module.createBoardUiWireStressFixture())
   : await createBoardUiWireFixture();
 const {store, services, library, projectId} = fixture;
+const settings = fixture.settings;
 const contentTypes = {'.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.png': 'image/png',
   '.svg': 'image/svg+xml', '.webp': 'image/webp', '.woff2': 'font/woff2'};
 const require = createRequire(join(root, 'apps/web/package.json'));
@@ -90,6 +91,7 @@ try {
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await services.drain();
+  if (settings) await settings.close();
   store.close();
   library.close();
   await rm(scratch, {recursive: true, force: true});
