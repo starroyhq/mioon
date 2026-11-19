@@ -410,10 +410,11 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
   const calls: string[] = [], doc = {modal: false}, playbackClock = createTimelinePlaybackClock();
-  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', `${code};return onKeyDown;`)(
+  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', 'dataRef', 'format5CopyTimelineClip', 'format5PasteTimelineClip', `${code};return onKeyDown;`)(
     desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, timelineSplitActionForKey,
     (frame: number) => ({canSplit: frame > 0 && frame < 60}), playbackClock, 30, () => calls.push('split'), timelineHistoryActionForKey,
     {canUndo: true, canRedo: true}, (direction: string) => calls.push(direction),
+    {current: {projectFormatVersion: 4}}, () => calls.push('copy'), () => calls.push('paste'),
   ) as (event: unknown) => void;
   const event = (key: string, patch = {}) => ({key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}, ...patch});
   const desktop = keyboard(true); desktop(event('z')); desktop(event('z', {shiftKey: true})); desktop(event('b')); assert.deepEqual(calls, []);
