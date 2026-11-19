@@ -318,7 +318,7 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 - 预演写入在单个事务内完成；用全新 requestId 时被 `NOT_FOUND`、`PREVIS_NODE_REQUIRED`、`REVISION_CONFLICT`、`PREVIS_REVISION_LIMIT`、`PREVIS_EXPORT_INVALID`、`PREVIS_CAPACITY` 拒绝，会标 `mutationOutcome: "not_applied"`，不进入结果未知。其中 `REVISION_CONFLICT` 按“冲突交回 Mio 重读（X4）”交回 Mio 重读，其余步骤直接失败。结果未知的场景保存按 `previs_requests` 核对。
 - 编辑器打开期间持有节点的编辑保护。Mio 写这个节点的那一步不执行，按 `TARGET_EDITING` 交回当前保存的值（见“冲突交回 Mio 重读（X4）”）。
 - 变化显示为“写入预演场景”，字段是人偶、道具、关键帧的数量（`figureCount`、`propCount`、`keyframeCount`）的前后值；执行前的确认卡片和冲突卡片只显示目标节点，整个场景的数量说明不了计划改什么。画板卡片和其他画板节点一样短暂显示“Mio 修改”。
-- `previs.thumbnail.*` 仍不对 Mio 开放。
+- `previs.thumbnail.get` 只读。`previs.thumbnail.set` 写可重建的缩略图缓存：格式 5 下按节点当前 `sceneRevision` 做 CAS（过期时返回 `REVISION_CONFLICT`），不进统一历史、不产生撤销步；格式 3/4 保持原规则。
 
 ## 交叉淡化与多段增益
 

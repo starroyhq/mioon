@@ -17,6 +17,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 
 import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
@@ -441,4 +442,45 @@ test('S1 thumbnails bind service-derived fingerprints and stop returning bytes a
  await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});
  await assert.rejects(f.call('previs.thumbnail.get',framedRead),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});
  assert.deepEqual(cache(),beforeRefusal);
+});
+
+test('format-5 previs thumbnails are a derived cache written under scene-revision CAS',async t=>{
+ // Format 5 opens the thumbnail writer through the FR-0 gate, but not through
+ // the unified history: the cache write takes the node's scene revision as CAS,
+ // leaves the node and receipts untouched and creates no undo step.
+ const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-previs-format5-'));
+ const projectId=randomUUID();
+ const store=createProjectStore({projectId,projectFile:path.join(root,'project.mioon'),format5:true,
+  locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})});
+ const {openAppLibrary}=await import('../packages/business/src/app-db/index.ts');
+ const {createProjectServiceApplication}=await import('../packages/business/src/project-service-application.ts');
+ const library=openAppLibrary({dataDir:path.join(root,'app')});
+ const services=createServices(store,new Map(),{env:{},application:createProjectServiceApplication(library,undefined,{})});
+ t.after(async()=>{await services.drain?.();store.close();library.close();rmSync(root,{recursive:true,force:true});});
+ const call=<T=Row>(operation: string,input: unknown)=>services.call(operation,input) as Promise<T>;
+ const count=(table: string): number=>Number(store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n);
+ const at='2026-01-01T00:00:00.000Z';
+ const node:PrevisNodeRecord={id:randomUUID(),projectId,type:'previs',label:'机位预演',text:'',position:{x:0,y:0},
+  revision:1,sceneRevision:1,scene:defaultPrevisScene(),createdAt:at};
+ store.tx(()=>{store.put('projects',{id:projectId,name:'格式 5 预演缓存',revision:1,createdAt:at,updatedAt:at});store.put('nodes',node);});
+ const framePresetId='portrait_1080';
+ const input={projectId,nodeId:node.id,slot:'card',sceneRevision:node.sceneRevision,framePresetId,dataBase64:jpeg(216,384).toString('base64')};
+ const response=await call<PrevisThumbnailSetResponse>('previs.thumbnail.set',input);
+ assert.equal(isPrevisThumbnailSetResponse(input,response),true);
+ const readInput={projectId,nodeId:node.id,slots:['card'],framePresetId};
+ const read=await call<PrevisThumbnailGetResponse>('previs.thumbnail.get',readInput);
+ assert.equal(isPrevisThumbnailGetResponse(readInput,read),true);
+ assert.deepEqual(read.items.map(item=>[item.slot,item.sceneRevision,item.width,item.height]),[['card',1,216,384]],'the JPEG is read back at the saved scene revision');
+ assert.equal(count('cache.previs_thumbnails'),1);
+ // Derived cache: no immutable save receipt, no history/version movement.
+ assert.equal(count('main.previs_requests'),0);
+ assert.equal(count('main.editor_history_entries'),0);
+ assert.equal(count('main.editor_history_state'),0);
+ assert.deepEqual(store.get('nodes',node.id),node);
+ // A render of an older scene never replaces the current revision's picture.
+ store.tx(()=>store.put('nodes',{...node,revision:2,sceneRevision:2}));
+ await assert.rejects(call('previs.thumbnail.set',{...input,dataBase64:jpeg(200,300).toString('base64')}),{code:'REVISION_CONFLICT'});
+ assert.deepEqual(store.get('nodes',node.id),{...node,revision:2,sceneRevision:2});
+ assert.equal(count('main.editor_history_entries'),0);
+ assert.equal(count('main.previs_requests'),0);
 });

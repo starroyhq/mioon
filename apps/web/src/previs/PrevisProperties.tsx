@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import type { PrevisCamera, PrevisFigure, PrevisProp, PrevisScene } from '@mioon/contracts';
+import type { PrevisCamera, PrevisFigure, PrevisProp, PrevisScene, PrevisSubjectReference } from '@mioon/contracts';
 import { PREVIS_LIMITS } from '@mioon/contracts';
 import { Camera, ChevronDown, PersonStanding, RotateCcw, Sun, Trash2 } from '@mioon/ui/components/workbench-icons';
 import { WorkbenchSelect } from '../WorkspaceControls.tsx';
@@ -10,6 +10,7 @@ import { PREVIS_POSE_ORDER, cleanPrevisName } from './previs-scene.ts';
 import type { PrevisFigurePatch, PrevisLightPatch, PrevisPropPatch } from './previs-scene.ts';
 import { PrevisNumberField, PrevisRow, PrevisSegments, PrevisSlider } from './PrevisFields.tsx';
 import { PREVIS_PROP_ICONS } from './PrevisOutline.tsx';
+import type { PrevisSubjectChoice } from './previs-subject.ts';
 
 // The properties panel (09-12, right): the selected figure, prop or the
 // camera, and the scene's key light below. Every change is one scene edit;
@@ -25,6 +26,8 @@ export interface PrevisPropertiesProps {
   onCamera: (camera: PrevisCamera, key?: string) => void;
   onHold: (figureId: string, propId: string | null, hand: 'left' | 'right') => void;
   onRemove: (id: string) => void;
+  /** Format 5 only: the project's subjects. Undefined hides the subject rows. */
+  subjects?: readonly PrevisSubjectChoice[];
 }
 function Section({ title, badge, icon, children }: { title: string; badge?: string; icon?: React.ReactNode; children: React.ReactNode }): React.ReactElement {
   const [open, setOpen] = useState(true);
@@ -41,7 +44,7 @@ function NameField({ value, placeholder, disabled, testId, onChange }: { value: 
     onFocus={() => { editing.current = true; }} onChange={event => setDraft(event.target.value)} onBlur={commit}
     onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); else if (event.key === 'Escape') { editing.current = false; setDraft(value); event.currentTarget.blur(); } }} />;
 }
-export default function PrevisProperties({ scene, selection, readOnly, shortcut, onFigure, onProp, onLight, onCamera, onHold, onRemove }: PrevisPropertiesProps): React.ReactElement {
+export default function PrevisProperties({ scene, selection, readOnly, shortcut, onFigure, onProp, onLight, onCamera, onHold, onRemove, subjects }: PrevisPropertiesProps): React.ReactElement {
   const { t } = useI18n(), translate = t as unknown as PrevisTranslate;
   const figure = scene.figures.find(item => item.id === selection), prop = scene.props.find(item => item.id === selection);
   const name = previsElementName(scene, selection, translate);
@@ -62,8 +65,8 @@ export default function PrevisProperties({ scene, selection, readOnly, shortcut,
     <header className="previs-panel-heading previs-properties-heading">{header}
       {(figure || prop) && <button type="button" className="previs-icon-button" data-testid="previs-remove" aria-label={t('previs.panel.delete', { name })} title={t('previs.panel.delete', { name })} disabled={readOnly} onClick={() => onRemove((figure ?? prop)!.id)}><Trash2 size={14} aria-hidden="true" /></button>}</header>
     <div className="previs-properties-scroll">
-      {figure && <FigureSections key={figure.id} figure={figure} scene={scene} readOnly={readOnly} position={position} facing={facing} onFigure={onFigure} onHold={onHold} />}
-      {prop && <PropSections key={prop.id} prop={prop} scene={scene} readOnly={readOnly} position={position} facing={facing} onProp={onProp} />}
+      {figure && <FigureSections key={figure.id} figure={figure} scene={scene} readOnly={readOnly} position={position} facing={facing} onFigure={onFigure} onHold={onHold} subjects={subjects} />}
+      {prop && <PropSections key={prop.id} prop={prop} scene={scene} readOnly={readOnly} position={position} facing={facing} onProp={onProp} subjects={subjects} />}
       {!figure && !prop && selection !== PREVIS_LIGHT_SELECTION && <Section title={t('previs.camera.name')} badge={t('previs.panel.cameraBadge')}>
         <PrevisRow label={t('previs.panel.position')}>{position(scene.camera.position, readOnly, 'previs-camera', next => onCamera({ ...scene.camera, position: next }, 'camera:position'))}</PrevisRow>
         <PrevisRow label={t('previs.panel.cameraPan')}>{facing(scene.camera.yaw, readOnly, 'previs-camera-yaw', (next, key) => onCamera({ ...scene.camera, yaw: next }, key))}</PrevisRow>
@@ -86,7 +89,7 @@ export default function PrevisProperties({ scene, selection, readOnly, shortcut,
 }
 type PositionField = (value: readonly number[], disabled: boolean, prefix: string, change: (next: [number, number, number]) => void) => React.ReactElement;
 type FacingField = (value: number, disabled: boolean, testId: string, change: (next: number, key: string) => void) => React.ReactElement;
-function FigureSections({ figure, scene, readOnly, position, facing, onFigure, onHold }: { figure: PrevisFigure; scene: PrevisScene; readOnly: boolean; position: PositionField; facing: FacingField; onFigure: PrevisPropertiesProps['onFigure']; onHold: PrevisPropertiesProps['onHold'] }): React.ReactElement {
+function FigureSections({ figure, scene, readOnly, position, facing, onFigure, onHold, subjects }: { figure: PrevisFigure; scene: PrevisScene; readOnly: boolean; position: PositionField; facing: FacingField; onFigure: PrevisPropertiesProps['onFigure']; onHold: PrevisPropertiesProps['onHold']; subjects?: readonly PrevisSubjectChoice[] }): React.ReactElement {
   const { t } = useI18n(), translate = t as unknown as PrevisTranslate, holdable = previsHoldableProps(scene, figure.id);
   const hands = (['left', 'right'] as const).map(value => ({ value, label: t(PREVIS_HAND_KEYS[value]) }));
   return <>
@@ -105,13 +108,14 @@ function FigureSections({ figure, scene, readOnly, position, facing, onFigure, o
       <PrevisRow label={t('previs.panel.position')} hint={t('previs.panel.positionHint')}>{position(figure.position, readOnly, 'previs-figure', next => onFigure(figure.id, { position: next }, `figure:${figure.id}:position`))}</PrevisRow>
       <PrevisRow label={t('previs.panel.rotation')}>{facing(figure.rotation, readOnly, 'previs-figure-rotation', (next, key) => onFigure(figure.id, { rotation: next }, `figure:${figure.id}:${key}`))}</PrevisRow>
     </Section>
+    {subjects !== undefined && <SubjectSection prefix="previs-figure" reference={figure.subject} subjects={subjects} readOnly={readOnly} onChange={subject => onFigure(figure.id, { subject })} />}
   </>;
 }
-function PropSections({ prop, scene, readOnly, position, facing, onProp }: { prop: PrevisProp; scene: PrevisScene; readOnly: boolean; position: PositionField; facing: FacingField; onProp: PrevisPropertiesProps['onProp'] }): React.ReactElement {
+function PropSections({ prop, scene, readOnly, position, facing, onProp, subjects }: { prop: PrevisProp; scene: PrevisScene; readOnly: boolean; position: PositionField; facing: FacingField; onProp: PrevisPropertiesProps['onProp']; subjects?: readonly PrevisSubjectChoice[] }): React.ReactElement {
   const { t } = useI18n(), translate = t as unknown as PrevisTranslate;
   const holder = scene.figures.find(item => item.held?.propId === prop.id), held = Boolean(holder);
   const sizes = [t('previs.axis.width'), t('previs.axis.height'), t('previs.axis.depth')];
-  return <Section title={t('previs.panel.transform')}>
+  return <><Section title={t('previs.panel.transform')}>
     <PrevisRow label={t('previs.panel.name')}><NameField value={prop.name} placeholder={previsPropName(scene, { ...prop, name: '' }, translate)} disabled={readOnly} testId="previs-prop-name" onChange={name => onProp(prop.id, { name })} /></PrevisRow>
     {holder && <p className="previs-note" data-testid="previs-held-note">{t('previs.panel.heldNote', { name: previsElementName(scene, holder.id, translate) })}</p>}
     <PrevisRow label={t('previs.panel.position')} hint={held ? undefined : t('previs.panel.positionHint')}>{position(prop.position, readOnly || held, 'previs-prop', next => onProp(prop.id, { position: next }, `prop:${prop.id}:position`))}</PrevisRow>
@@ -119,5 +123,46 @@ function PropSections({ prop, scene, readOnly, position, facing, onProp }: { pro
     <PrevisRow label={t('previs.panel.size')} hint={t('previs.panel.sizeHint')}><div className="previs-vector">{[0, 1, 2].map(index => <PrevisNumberField key={index} label={sizes[index]} ariaLabel={t('previs.field.named', { field: t('previs.panel.size'), axis: sizes[index]! })}
       testId={`previs-prop-size-${index}`} value={prop.size[index]!} min={0.01} max={20} step={0.05} digits={2} disabled={readOnly}
       onChange={next => { const copy = [...prop.size] as [number, number, number]; copy[index] = next; onProp(prop.id, { size: copy }, `prop:${prop.id}:size`); }} />)}</div></PrevisRow>
+  </Section>
+  {subjects !== undefined && <SubjectSection prefix="previs-prop" reference={prop.subject} subjects={subjects} readOnly={readOnly} onChange={subject => onProp(prop.id, { subject })} />}
+  </>;
+}
+
+
+/** Format 5: a figure or prop stands for a project subject. Follow tracks the
+ * subject's current head; lock pins the version shown in the dropdown. */
+function SubjectSection({ prefix, reference, subjects, readOnly, onChange }: {
+  prefix: string; reference: PrevisSubjectReference | undefined; subjects: readonly PrevisSubjectChoice[];
+  readOnly: boolean; onChange: (subject: PrevisSubjectReference | null) => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const head = reference ? subjects.find(item => item.id === reference.subjectId) : undefined;
+  const locked = reference?.subjectVersionId;
+  const versionValue = locked === undefined ? '' : head && locked === head.headVersionId ? head.headVersionId : locked;
+  return <Section title={t('previs.panel.subject')}>
+    <div className="previs-row-stack">
+      <WorkbenchSelect className="previs-select" data-testid={`${prefix}-subject`} aria-label={t('previs.panel.subject')}
+        value={reference?.subjectId ?? ''} disabled={readOnly}
+        onChange={event => {
+          const id = event.target.value;
+          if (!id) { onChange(null); return; }
+          if (subjects.some(item => item.id === id)) onChange({ subjectId: id });
+        }}>
+        <option value="">{t('previs.panel.subjectNone')}</option>
+        {subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        {reference && !head && <option value={reference.subjectId}>{t('previs.panel.subjectUnknown', { id: reference.subjectId.slice(0, 8) })}</option>}
+      </WorkbenchSelect>
+      {reference && <WorkbenchSelect className="previs-select" data-testid={`${prefix}-subject-version`} aria-label={t('previs.panel.subjectVersion')}
+        value={versionValue} disabled={readOnly}
+        onChange={event => {
+          const versionId = event.target.value;
+          if (!versionId) onChange({ subjectId: reference.subjectId });
+          else onChange({ subjectId: reference.subjectId, subjectVersionId: versionId });
+        }}>
+        <option value="">{t('previs.subject.follow')}</option>
+        {head && <option value={head.headVersionId}>{t('previs.subject.locked', { number: head.headVersionNumber })}</option>}
+        {locked !== undefined && locked !== head?.headVersionId && <option value={locked}>{t('previs.subject.lockedUnknown')}</option>}
+      </WorkbenchSelect>}
+    </div>
   </Section>;
 }

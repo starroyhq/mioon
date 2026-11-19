@@ -32,7 +32,7 @@ const EXPECTED: Readonly<Record<string, string>> = Object.freeze({
   'shot.create': 'sequence.preview/commit', 'shot.update': 'sequence.preview/commit',
   'node.create': 'sequence.preview/commit', 'node.update': 'sequence.preview/commit',
   'reference.attach': 'sequence.preview/commit', 'reference.detach': 'sequence.preview/commit',
-  'previs.create': 'sequence.preview/commit', 'previs.scene.set': 'sequence.preview/commit', 'previs.thumbnail.set': 'not_yet_available',
+  'previs.create': 'sequence.preview/commit', 'previs.scene.set': 'sequence.preview/commit',
   'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
   'subject.binding.set': 'sequence.preview/commit',
 });
@@ -60,6 +60,11 @@ test('every FR-0 legacy writer is gated once under format 5 and stays untouched 
       assert.equal(format5LegacyWriteUse(operation), null, operation);
       assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(world.store, operation), operation);
     }
+    // The previs thumbnail is a rebuildable cache, not a user edit: it writes
+    // outside the unified history (scene-revision CAS) and is not gated.
+    assert.equal(format5LegacyWriteUse('previs.thumbnail.set'), null);
+    assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(world.store, 'previs.thumbnail.set'));
+    assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(format4, 'previs.thumbnail.set'));
     // Unlisted legacy writers that are not edits (render is handled by FR-B) stay untouched.
     for (const operation of ['timeline.render', 'project.rename', 'project.version.save', 'export.create']) {
       assert.equal(format5LegacyWriteUse(operation), null, operation);

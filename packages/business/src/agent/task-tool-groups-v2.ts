@@ -52,7 +52,10 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
 
 /** FR-0 gates these legacy write entries for format 5; the directory keeps the
  * names but marks them unavailable with the concrete reason until the matching
- * FR card reopens them through sequence.preview/commit. */
+ * FR card reopens them through sequence.preview/commit. `previs.thumbnail.set`
+ * is deliberately absent: a previs thumbnail is a rebuildable derived cache
+ * written under the node's scene revision, outside the unified history, so
+ * format 5 accepts it (no new tool and no schema change). */
 export const FORMAT5_UNAVAILABLE_OPERATIONS:Readonly<Record<string,string>>=Object.freeze({
  'timeline.seed':'格式 5 的主轨由 sequence.preview/commit 维护，旧 seed 不可用',
  'timeline.shots.append':'格式 5 由明确链命令追加，旧 shots.append 不可用',
@@ -87,7 +90,6 @@ export const FORMAT5_UNAVAILABLE_OPERATIONS:Readonly<Record<string,string>>=Obje
  'reference.detach':'格式 5 引用线请用 mioon_sequence_edit 的 reference-detach 动作',
  'previs.create':'格式 5 预演新建走统一 sequence 入口，旧工具暂不可用',
  'previs.scene.set':'格式 5 预演写入走统一 sequence 入口，旧工具暂不可用',
- 'previs.thumbnail.set':'预演缩略图是可重建缓存，格式 5 暂不可用',
  'subject.create':'主体库归 SB 服务，格式 5 旧入口暂不可用',
  'subject.version.add':'主体库归 SB 服务，格式 5 旧入口暂不可用',
  'subject.binding.set':'格式 5 主体绑定走统一 sequence 入口，旧入口暂不可用',
