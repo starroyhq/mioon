@@ -10,6 +10,8 @@ import type {AgentTaskConnectionTest} from '../../../packages/contracts/src/agen
 import {agentPresetPlatform,resolveAgentPresetBaseUrl,agentCredentialReceiverBinding,isAgentModelIdentifier} from '../../../packages/contracts/src/agent-provider-catalog.ts';
 import type {AgentPresetEntry,AgentPresetPlatform} from '../../../packages/contracts/src/agent-provider-catalog.ts';
 import {unavailableSecretStorage,watchPendingSecretStorage} from './settings-secret-storage.ts';
+import {settingsRecoveryRetryable,settingsRecoveryMessages,settingsRecoveryMessageText} from './settings-recovery.ts';
+import type {SettingsRecoveryVerdict} from './settings-recovery.ts';
 export {AGENT_PROTOCOLS,deriveAgentEndpoint};
 export type {AgentSettingsSnapshot,AgentServiceInput,AgentServiceSnapshot};
 export type AgentSettingsPreset=AgentPresetEntry;
@@ -23,7 +25,8 @@ export type AgentSettingsPhase='loading'|'ready'|'saving'|'reconciling'|'review'
 export interface AgentSettingsState {
  phase:AgentSettingsPhase;snapshot:AgentSettingsSnapshot|null;draft:AgentSettingsDraft|null;
  keychainWaitConfirmed:boolean;
- serviceIntents:Record<string,AgentServiceIntent>;selectedKey:string;message:string;displayMessages:DisplayMessage[];recovery:'conflict'|'unknown'|null;
+ serviceIntents:Record<string,AgentServiceIntent>;selectedKey:string;message:string;displayMessages:DisplayMessage[];
+ recovery:'conflict'|'unknown'|null;recoveryRetryable:boolean;recoverySecret:boolean;
 }
 export interface AgentSettingsClient {read:(signal?:AbortSignal,purpose?:SettingsReadPurpose)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
 export interface AgentSettingsSessionOptions {client?:AgentSettingsClient;onChange?:(state:AgentSettingsState)=>void;newServiceKey?:()=>string}
@@ -83,10 +86,13 @@ export function agentServiceEqual(left:AgentServiceInput,right:AgentServiceInput
 }
 const draftFrom=(snapshot:AgentSettingsSnapshot):AgentSettingsDraft=>({services:snapshot.services.map(agentServiceInput),mioSelection:snapshot.mioSelection?{...snapshot.mioSelection}:null});
 const intentsFrom=(snapshot:AgentSettingsSnapshot):Record<string,AgentServiceIntent>=>Object.fromEntries(snapshot.services.map(service=>[service.serviceKey,{action:'keep' as const}]));
-export const initialAgentSettingsState=():AgentSettingsState=>({phase:'loading',snapshot:null,draft:null,keychainWaitConfirmed:false,serviceIntents:{},selectedKey:'general',message:'',displayMessages:[],recovery:null});
+export const initialAgentSettingsState=():AgentSettingsState=>({phase:'loading',snapshot:null,draft:null,keychainWaitConfirmed:false,serviceIntents:{},selectedKey:'general',message:'',displayMessages:[],recovery:null,recoveryRetryable:false,recoverySecret:false});
 export const agentSettingsBusy=(state:AgentSettingsState|null|undefined):boolean=>Boolean(state&&['loading','saving','reconciling'].includes(state.phase));
 export const agentSettingsEditable=(state:AgentSettingsState|null|undefined):boolean=>Boolean(state?.snapshot)&&!agentSettingsBusy(state);
-export const agentSettingsCanSave=(state:AgentSettingsState|null|undefined):boolean=>agentSettingsEditable(state)&&Boolean(state&&!state.recovery&&state.phase!=='blocked');
+/** A retry after an unknown save is an explicit user action using the freshly
+ * read revision; it is never offered when a replacement secret was consumed. */
+export const agentSettingsCanSave=(state:AgentSettingsState|null|undefined):boolean=>agentSettingsEditable(state)&&
+ Boolean(state&&state.phase!=='blocked'&&(!state.recovery||state.recovery==='unknown'&&state.recoveryRetryable));
 export const agentSettingsDirty=(state:AgentSettingsState|null|undefined):boolean=>Boolean(state?.snapshot&&state.draft&&(
  JSON.stringify(state.snapshot.mioSelection)!==JSON.stringify(state.draft.mioSelection)||state.snapshot.services.length!==state.draft.services.length||
  state.draft.services.some(service=>{const saved=state.snapshot!.services.find(item=>item.serviceKey===service.serviceKey);return !saved||!agentServiceEqual(saved,service,state.snapshot!.presets);})||
@@ -178,7 +184,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
    if(!current(token))return false;const snapshot=safeAgentSettings(value);
    const draft=recover&&state.draft?state.draft:draftFrom(snapshot);
    publish({snapshot,draft,serviceIntents:intentsFrom(snapshot),selectedKey:state.selectedKey==='general'||draft.services.some(item=>item.serviceKey===state.selectedKey)?state.selectedKey:'general',
-    phase:recover?'review':'ready',recovery:recover?state.recovery??'unknown':null,message:'',displayMessages:recover?[message('agent.settings.notice.review')]:snapshot.notices.map(code=>notices[code])});
+    phase:recover?'review':'ready',recovery:recover?state.recovery??'unknown':null,recoveryRetryable:false,recoverySecret:false,message:'',displayMessages:recover?[message('agent.settings.notice.review')]:snapshot.notices.map(code=>notices[code])});
    return true;
   }).catch(error=>{
    if(!current(token))return false;const code=failureCode(error);
@@ -280,12 +286,23 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
    if(code==='UNAUTHORIZED'||code==='AGENT_SETTINGS_VALIDATION'){
     publish({phase:'error',message:'',displayMessages:[errorDescriptor(code),message('agent.settings.notice.keyCleared')]});return false;
    }
-   const recovery=code==='AGENT_SETTINGS_CONFLICT'?'conflict':'unknown';
+   const recovery=code==='AGENT_SETTINGS_CONFLICT'?'conflict':'unknown',secretReplaced=input.secretActions.some(action=>action.action==='replace');
    publish({phase:'reconciling',recovery,message:'',displayMessages:[message(recovery==='conflict'?'agent.settings.notice.conflictReading':'agent.settings.notice.readNoRetry')]});
    return Promise.resolve().then(()=>client.read()).then(value=>{
     if(!current(token))return false;const snapshot=safeAgentSettings(value);
-    publish({snapshot,serviceIntents:intentsFrom(snapshot),phase:'review',message:'',displayMessages:[message(recovery==='conflict'?'agent.settings.notice.conflict':'agent.settings.notice.unknown')]});return false;
-   }).catch(()=>{if(current(token))publish({phase:'blocked',message:'',displayMessages:[message('agent.settings.notice.blocked')]});return false;});
+    const appliedNow=snapshot.revision===saved.revision+1&&snapshot.services.length===metadata.services.length&&JSON.stringify(snapshot.mioSelection)===JSON.stringify(metadata.mioSelection)&&metadata.services.every(entry=>{
+     const actual=snapshot.services.find(item=>item.serviceKey===entry.serviceKey),secret=expectedSecrets.get(entry.serviceKey);
+     return Boolean(actual)&&Boolean(secret)&&agentServiceEqual(actual!,entry,snapshot.presets)&&actual!.secret.configured===secret!.configured&&actual!.secret.storage===secret!.storage;
+    });
+    const verdict:SettingsRecoveryVerdict=recovery==='conflict'?'not_applied':appliedNow?'applied':'unknown';
+    if(verdict==='applied'){
+     publish({snapshot,draft:draftFrom(snapshot),serviceIntents:intentsFrom(snapshot),phase:'saved',recovery:null,recoveryRetryable:false,recoverySecret:false,message:'',displayMessages:[message('agent.settings.x6.saved')]});
+     return true;
+    }
+    publish({snapshot,serviceIntents:intentsFrom(snapshot),phase:'review',recovery,recoveryRetryable:settingsRecoveryRetryable(verdict,secretReplaced),recoverySecret:secretReplaced,
+     message:settingsRecoveryMessageText(verdict,secretReplaced),displayMessages:settingsRecoveryMessages(verdict,secretReplaced)});
+    return false;
+   }).catch(()=>{if(current(token))publish({phase:'blocked',recoveryRetryable:false,recoverySecret:secretReplaced,message:'',displayMessages:[message('agent.settings.notice.blocked')]});return false;});
   });
  }
  return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,addModels,removeModel,selectMio,useLatest,acknowledge,save,

@@ -1887,5 +1887,9 @@ export const connectionMessages = {
   "generation.services.video.deleteConfirm": {"zh-Hans":"删除“{name}”？保存后删除本机地址、模型及全部密钥；已生成媒体保留。已发送任务可能完成，但之后可能无法查询结果。","zh-Hant":"刪除「{name}」？儲存後刪除本機位址、模型及全部金鑰；已生成媒體保留。已送出的任務可能完成，但之後可能無法查詢結果。","en":"Delete “{name}”? Saving removes its local address, models and all keys. Generated media is kept. Sent tasks may finish, but later result queries may be unavailable.","ja":"「{name}」を削除しますか？保存するとローカルのアドレス、モデル、すべてのキーが削除されます。生成済みメディアは残ります。送信済みタスクは完了しても、結果を照会できなくなる場合があります。"},
   "generation.services.video.keyRequired": {"zh-Hans":"本次密码已清除，请重新输入后再保存。","zh-Hant":"本次密碼已清除，請重新輸入後再儲存。","en":"The key input was cleared. Enter it again before saving.","ja":"キー入力を消去しました。保存する前に再入力してください。"},
   "generation.services.video.modelsCount": {"zh-Hans":"模型 · {count}","zh-Hant":"模型 · {count}","en":"Models · {count}","ja":"モデル · {count}"},
+  "connections.recovery.notSavedConflict": {"zh-Hans":"保存未生效：设置已被其他窗口更新。","zh-Hant":"儲存未生效：設定已被其他視窗更新。","en":"The save was not applied: settings changed in another window.","ja":"保存は反映されませんでした。設定が別のウィンドウで更新されています。"},
+  "connections.recovery.notSavedUnknown": {"zh-Hans":"保存未生效：未收到确认。","zh-Hant":"儲存未生效：未收到確認。","en":"The save was not applied: no acknowledgement was received.","ja":"保存は反映されませんでした。確認応答を受け取れていません。"},
+  "connections.recovery.keyRequired": {"zh-Hans":"密钥未保存，请重新输入。","zh-Hant":"金鑰未儲存，請重新輸入。","en":"The key was not saved. Enter it again.","ja":"キーは保存されていません。再入力してください。"},
+  "connections.recovery.retrySave": {"zh-Hans":"重试保存","zh-Hant":"重試儲存","en":"Retry save","ja":"保存を再試行"},
   "image.settings.services.staged": {"zh-Hans":"更改已暂存，点击页面底部的保存后生效。","zh-Hant":"變更已暫存，點選頁面底部的儲存後生效。","en":"Changes are staged. They take effect when you save at the bottom of this page.","ja":"変更を一時保持しています。ページ下部で保存すると反映されます。"}
 } as const satisfies MessageCatalog;

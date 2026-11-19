@@ -28,18 +28,19 @@ function database(): DatabaseSync {
   return db;
 }
 interface HttpResponse {handled: boolean;status?: number;body: Record<string, unknown>;headers: Record<string, unknown>}
+interface MockResponse {headersSent: boolean;destroyed: boolean;writableEnded: boolean;setHeader(name: string,value: unknown): void;writeHead(code: number,values: Record<string, unknown>): void;end(value: string): void;destroy(): void}
 function http(db: DatabaseSync) {
   const handler = createRequestOutcomeHttp({db});
   return async function request(route: string,{method = 'GET',address = {projectId: PROJECT} as {projectId: string}|null}: {method?: string;address?: {projectId: string}|null} = {}): Promise<HttpResponse> {
     const req = Readable.from([]) as unknown as import('node:http').IncomingMessage;
     Object.assign(req,{method,url: route,headers: {}});
     const headers: Record<string, unknown> = {}; let status: number|undefined; let body: Record<string, unknown> = {};
-    const res = {headersSent: false,destroyed: false,writableEnded: false,
-      setHeader(name: string,value: unknown) { headers[name.toLowerCase()] = value; },
-      writeHead(code: number,values: Record<string, unknown>) { status = code; this.headersSent = true; Object.assign(headers,Object.fromEntries(Object.entries(values).map(([key,value])=>[key.toLowerCase(),value]))); },
-      end(value: string) { body = JSON.parse(value) as Record<string, unknown>; this.writableEnded = true; },
-      destroy() { this.destroyed = true; }} as unknown as import('node:http').ServerResponse;
-    const handled = await handler(req,res,new URL(route,'http://127.0.0.1'),address);
+    const res: MockResponse = {headersSent: false,destroyed: false,writableEnded: false,
+      setHeader(name,value) { headers[name.toLowerCase()] = value; },
+      writeHead(code,values) { status = code; this.headersSent = true; Object.assign(headers,Object.fromEntries(Object.entries(values).map(([key,value])=>[key.toLowerCase(),value]))); },
+      end(value) { body = JSON.parse(value) as Record<string, unknown>; this.writableEnded = true; },
+      destroy() { this.destroyed = true; }};
+    const handled = await handler(req,res as unknown as import('node:http').ServerResponse,new URL(route,'http://127.0.0.1'),address ?? undefined);
     return {handled,status,body,headers};
   };
 }

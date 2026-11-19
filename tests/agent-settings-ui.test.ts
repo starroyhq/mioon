@@ -76,9 +76,9 @@ test('validation clears all submitted DOM inputs without dispatch; unavailable p
 
 test('CAS conflict and unknown result perform one readback, preserve drafts, and require review with no key replay',async()=>{
  for(const code of ['AGENT_SETTINGS_CONFLICT','NETWORK']){
-  const f=settingsUiFixture({write:()=>Promise.reject(codeError(code))});await f.session.load();f.session.addModel('openai','draft-model');
+  const f=settingsUiFixture({initial:uiSettings(),beforeWrite:()=>{throw codeError(code);}});await f.session.load();f.session.addModel('openai','draft-model');
   assert.equal(await f.session.save({read:key=>key==='openai'?'synthetic-secret':'',clear:()=>{}}),false);assert.equal(f.calls.length,1);assert.equal(f.reads,2);assert.equal(f.session.getState().phase,'review');assert.equal(logic.agentSettingsCanSave(f.session.getState()),false);assert.ok(f.session.getState().draft?.services.find(item=>item.serviceKey==='openai')?.manualModelIds.includes('draft-model'));assertNoSecrets(f.emitted);
-  f.session.acknowledge();assert.equal(logic.agentSettingsCanSave(f.session.getState()),true);await f.session.save();assert.equal(f.calls.length,2);assert.equal(f.calls[1]!.expectedRevision,1);assert.ok(f.calls[1]!.secretActions.every(action=>action.action!=='replace'),'Explicit retry never reconstructs a password');
+  f.session.acknowledge();assert.equal(logic.agentSettingsCanSave(f.session.getState()),true);await f.session.save();assert.equal(f.calls.length,2);assert.equal(f.calls[1]!.expectedRevision,0);assert.ok(f.calls[1]!.secretActions.every(action=>action.action!=='replace'),'Explicit retry never reconstructs a password');
  }
  const held=deferred(),f=settingsUiFixture({read:count=>count===1?uiSettings():held.promise,write:()=>Promise.reject(codeError('NETWORK'))});await f.session.load();const pending=f.session.save({read:()=>'',clear:()=>{}});await flush();assert.equal(f.session.getState().phase,'reconciling');held.reject(Error('reflected-secret'));await pending;assert.equal(f.session.getState().phase,'blocked');assert.equal(logic.agentSettingsCanSave(f.session.getState()),false);
 });
@@ -614,10 +614,20 @@ test('outstanding write rejects double save and metadata/platform/protocol/key c
  const held=deferred(),f=settingsUiFixture({write:()=>held.promise});await f.session.load();const pending=f.session.save({read:key=>key==='openai'?'synthetic-secret':'',clear:()=>{}});assert.equal(f.session.getState().phase,'saving');assert.equal(await f.session.save(),false);assert.equal(f.session.editService(custom,{name:'late'}),false);assert.equal(f.session.selectPlatform('minimax','international'),false);assert.equal(f.session.selectProtocol(custom,'responses'),false);assert.equal(f.session.removeKey(custom),false);assert.equal(f.session.view('deepseek'),true);assert.equal(f.calls.length,1);held.resolve(f.saved());assert.equal(await pending,true);
 });
 
-test('wrong successful secret/protocol acknowledgements reconcile once without claiming success or retry',async()=>{
+test('a lost response whose write actually landed is concluded saved without replay',async()=>{
+ const f=settingsUiFixture({write:()=>Promise.reject(codeError('NETWORK'))});await f.session.load();f.session.addModel('openai','applied-model');
+ assert.equal(await f.session.save({read:()=>'',clear:()=>{}}),true);
+ assert.equal(f.calls.length,1);assert.equal(f.session.getState().phase,'saved');assert.equal(logic.agentSettingsDirty(f.session.getState()),false);
+ assert.ok(f.session.getState().snapshot?.services.find(item=>item.serviceKey==='openai')?.manualModelIds.includes('applied-model'));
+ assertNoSecrets(f.emitted);
+});
+
+test('wrong successful secret/protocol acknowledgements are concluded from the exact readback',async()=>{
  for(const cause of ['replace','remove','keep','protocol']){
   const initial=uiSettings();if(cause!=='replace'){initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};}
-  const f=settingsUiFixture({initial,write:(_input,saved)=>{const wrong=structuredClone(saved),entry=wrong.services.find(item=>item.serviceKey===custom)!;if(cause==='protocol'){entry.protocol='chat_completions';wrong.execution!.configuration.protocol='chat_completions';}else {entry.secret=cause==='replace'?{configured:false,storage:'none'}:cause==='remove'?{configured:true,storage:'persistent'}:{configured:false,storage:'none'};wrong.execution!.secret=entry.secret;}return wrong;}});await f.session.load();if(cause==='remove')f.session.removeKey(custom);if(cause==='protocol')f.session.selectProtocol(custom,'responses');assert.equal(await f.session.save({read:key=>cause==='replace'&&key===custom?'synthetic-secret':'',clear:()=>{}}),false);assert.equal(f.session.getState().phase,'review');assert.equal(f.reads,2);assert.equal(f.calls.length,1);assert.equal(await f.session.save(),false);assertNoSecrets(f.emitted);
+  const f=settingsUiFixture({initial,write:(_input,saved)=>{const wrong=structuredClone(saved),entry=wrong.services.find(item=>item.serviceKey===custom)!;if(cause==='protocol'){entry.protocol='chat_completions';wrong.execution!.configuration.protocol='chat_completions';}else {entry.secret=cause==='replace'?{configured:false,storage:'none'}:cause==='remove'?{configured:true,storage:'persistent'}:{configured:false,storage:'none'};wrong.execution!.secret=entry.secret;}return wrong;}});await f.session.load();if(cause==='remove')f.session.removeKey(custom);if(cause==='protocol')f.session.selectProtocol(custom,'responses');assert.equal(await f.session.save({read:key=>cause==='replace'&&key===custom?'synthetic-secret':'',clear:()=>{}}),true);
+  assert.equal(f.session.getState().phase,'saved');assert.equal(f.reads,2);assert.equal(f.calls.length,1,'No replay after the exact readback');
+  assertNoSecrets(f.emitted);
  }
 });
 
