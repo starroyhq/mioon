@@ -180,11 +180,12 @@ const cssColorToHex = (color: string | undefined): string => {
   return '#' + parts.slice(0, 3).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('');
 };
 
+const pixelHex = (pixel: readonly number[]): string => '#' + pixel.map(channel => channel.toString(16).padStart(2, '0')).join('');
 /** The caption band is painted by the OS with the color the page reported.
  * Compare both the system band pixel and the page pixel beside it with that
  * exact reported color: this is the feature under test and does not depend on
  * fractional-scale rounding of the band's CSS boundary. */
-function bandColorDelta(png: Buffer, facts: TitleBarFacts, reported: string): number {
+function bandColorDelta(png: Buffer, facts: TitleBarFacts, reported: string): {delta: number; probe: string} {
   const image = nativeImage.createFromBuffer(png);
   const size = image.getSize(), bitmap = image.toBitmap();
   assert.ok(size.width > 0 && size.height > 0 && bitmap.length === size.width * size.height * 4, 'The screenshot bitmap is not RGBA');
@@ -200,11 +201,14 @@ function bandColorDelta(png: Buffer, facts: TitleBarFacts, reported: string): nu
     return [bitmap[offset]!, bitmap[offset + 1]!, bitmap[offset + 2]!];
   };
   const inside = pixel(xInside), outside = pixel(xOutside);
+  const probe = `in=${pixelHex(inside)} out=${pixelHex(outside)} target=${hex}`;
   if (target === null) {
-    return Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!));
+    return {delta: Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!)),
+      probe: `${probe} xy=${xInside},${xOutside},${y} sz=${size.width}x${size.height} iw=${facts.innerWidth} rt=${facts.overlay.right}`};
   }
   const delta = (actual: number[]): number => Math.max(...actual.map((channel, index) => Math.abs(channel - target[index]!)));
-  return Math.max(delta(inside), delta(outside));
+  return {delta: Math.max(delta(inside), delta(outside)),
+    probe: `${probe} xy=${xInside},${xOutside},${y} sz=${size.width}x${size.height} iw=${facts.innerWidth} rt=${facts.overlay.right}`};
 }
 
 async function workbenchReady(window: BrowserWindow): Promise<void> {
@@ -246,10 +250,12 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, 
   let workbench: BrowserWindow | undefined, workbenchRoot: string | undefined;
   let captured: Buffer | undefined;
   let capturedMismatch: number | undefined;
+  let bandProbe = '';
   let diag = '';
   const writeFailure = async (error: unknown): Promise<void> => {
     const message = String((error as Error)?.message ?? error ?? '').replace(/[^A-Za-z0-9# =:._-]/gu, '_').slice(0, 90);
-    const detail = (capturedMismatch === undefined ? `error=${message}` : `bandColorDelta=${capturedMismatch}${diag} error=${message}`).slice(0, 118);
+    const detailProbe = bandProbe === '' ? '' : ` ${bandProbe}`;
+    const detail = (capturedMismatch === undefined ? `error=${message}` : `bandColorDelta=${capturedMismatch}${detailProbe}${diag} error=${message}`).slice(0, 260);
     try {
       if (captured !== undefined) {
         try {await mkdir(path.dirname(screenshot), {recursive: true}); await writeFile(`${screenshot}.failed.png`, captured);}
@@ -330,7 +336,8 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, 
       png = shot.png; source = shot.source;
       captured = png;
       phase = 'verify-band';
-      bandDelta = bandColorDelta(png, facts, pageColor);
+      const measured = bandColorDelta(png, facts, pageColor);
+      bandDelta = measured.delta; bandProbe = measured.probe;
       capturedMismatch = bandDelta;
       if (bandDelta <= WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE) break;
     }
