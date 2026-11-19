@@ -263,6 +263,10 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   await writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:true,channel:'development',platform:'win32',arch:'x64',isPackaged:true,
    appVersion:app.getVersion(),runtime:{node:report.runtime.node,electron:report.runtime.electron},checks},null,2)+'\n');
  }catch(error){
+  // A failed open can leave a loading/dirty project window whose close prompt
+  // would block quitting; destroy non-launcher windows before reporting so the
+  // driver always gets this run's fixed evidence instead of a timeout.
+  try{for(const window of BrowserWindowRuntime.getAllWindows())if(!window.isDestroyed()&&window.webContents.getURL().includes('?project='))window.destroy();}catch{/* Best effort. */}
   // Fixed failure evidence only: a phase marker plus a bounded error code, never
   // assertion messages or paths. The outer driver validates both shape and enum.
   const raw=(error as {code?:unknown}|null)?.code,detail=typeof raw==='string'&&/^[A-Z][A-Z0-9_]{2,64}$/u.test(raw)?raw:'UNKNOWN';

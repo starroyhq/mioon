@@ -15,6 +15,21 @@ export const waitForWindowCondition = async (window: BrowserWindow, check: () =>
   throw Object.assign(new Error(message), {code});
 };
 const evaluate = (window: BrowserWindow, script: string): Promise<unknown> => window.webContents.executeJavaScript(script, true);
+/** A renderer that never finishes loading must not hang the whole check: each
+ * DOM read is bounded and treated as "not ready" so the caller reports its own
+ * fixed timeout code instead of the outer app timeout. */
+const evaluateBounded = async (window: BrowserWindow, script: string, timeoutMs = 5000): Promise<unknown> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      evaluate(window, script),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('Renderer read timed out'), {code: 'PROJECT_OPEN_EVALUATE_TIMEOUT'})), timeoutMs); }),
+    ]);
+  } finally { if (timer !== undefined) clearTimeout(timer); }
+};
+const rendererBoolean = async (window: BrowserWindow, script: string): Promise<boolean> => {
+  try { return Boolean(await evaluateBounded(window, script)); } catch { return false; }
+};
 const record = (value: unknown): Record<string, unknown> => (value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
 const openButton = (projectId: string): string => {
   const id = projectId.replace(/[^0-9a-f-]/gu, '');
@@ -29,21 +44,21 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
   assert.match(backendUrl, /^https?:\/\/127\.0\.0\.1:\d+$/u);
   try { launcher.show(); launcher.focus(); } catch { /* Best effort in CI sessions. */ }
   const button = openButton(projectId);
-  await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
-    `Boolean(document.querySelector('[data-testid="project-home"]'))`).catch(() => false)), 60000, 'The launcher home did not become ready', 'PROJECT_OPEN_HOME_TIMEOUT');
+  await waitForWindowCondition(launcher, () => rendererBoolean(launcher,
+    `Boolean(document.querySelector('[data-testid="project-home"]'))`), 60000, 'The launcher home did not become ready', 'PROJECT_OPEN_HOME_TIMEOUT');
   await onStep('home');
   const homeTitle = `[data-testid="project-home"]`;
   const pageLink = (id: string): string => `[data-testid="launcher-nav-${id}"]`;
-  const cardReady = async (): Promise<boolean> => Boolean(await evaluate(launcher, `(() => {
+  const cardReady = async (): Promise<boolean> => rendererBoolean(launcher, `(() => {
     const target = document.querySelector(${JSON.stringify(button)});
     return target instanceof HTMLElement && !target.matches(':disabled');
-  })()`));
+  })()`);
   const reloadLauncher = async (): Promise<void> => {
     const loaded = new Promise<void>(resolve => launcher.webContents.once('did-finish-load', () => resolve()));
     launcher.webContents.reload();
     await Promise.race([loaded, new Promise<void>(resolve => setTimeout(resolve, 30000))]);
-    await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
-      `Boolean(document.querySelector(${JSON.stringify(homeTitle)}))`).catch(() => false)), 60000,
+    await waitForWindowCondition(launcher, () => rendererBoolean(launcher,
+      `Boolean(document.querySelector(${JSON.stringify(homeTitle)}))`), 60000,
       'The launcher home did not reload', 'PROJECT_OPEN_HOME_TIMEOUT');
     await onStep('home');
   };
@@ -54,8 +69,8 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
       // The launcher's own refresh lives on the help page; use that product path
       // after a plain reload has not shown a project created outside the UI.
       await evaluate(launcher, `(() => { const nav = document.querySelector(${JSON.stringify(pageLink('help'))}); if (nav instanceof HTMLElement) nav.click(); return true; })()`);
-      await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
-        `Boolean(document.querySelector('[data-testid="launcher-help"]'))`).catch(() => false)), 20000,
+      await waitForWindowCondition(launcher, () => rendererBoolean(launcher,
+        `Boolean(document.querySelector('[data-testid="launcher-help"]'))`), 20000,
         'The launcher help page did not open', 'PROJECT_OPEN_LIST_TIMEOUT');
       await evaluate(launcher, `(() => { const refresh = document.querySelector('[data-testid="launcher-help-refresh"]'); if (refresh instanceof HTMLElement) refresh.click(); return true; })()`);
       await evaluate(launcher, `(() => { const nav = document.querySelector(${JSON.stringify(pageLink('projects'))}); if (nav instanceof HTMLElement) nav.click(); return true; })()`);
@@ -95,9 +110,24 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
   await onStep('window');
   const editor = BrowserWindowRuntime.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl);
   assert.ok(editor, 'The project window was not found');
-  await waitForWindowCondition(editor, async () => Boolean(await evaluate(editor,
-    `Boolean(document.querySelector('[data-testid="workbench"]'))`).catch(() => false)), 60000,
-    'The project workbench did not become ready', 'PROJECT_OPEN_WORKBENCH_TIMEOUT');
+  try {
+    await waitForWindowCondition(editor, () => rendererBoolean(editor,
+      `Boolean(document.querySelector('[data-testid="workbench"]'))`), 60000,
+      'The project workbench did not become ready', 'PROJECT_OPEN_WORKBENCH_TIMEOUT');
+  } catch (error) {
+    // Bounded DOM evidence only: a fixed surface name, never page text.
+    const surface = String(await evaluateBounded(editor, `(() => {
+      if (document.querySelector('[data-testid="workbench"]')) return 'workbench';
+      if (document.querySelector('[role="alert"]')) return 'alert';
+      if (document.querySelector('[data-testid="project-home"]')) return 'launcher-home';
+      if (document.querySelector('[data-testid="project-home-create-form"]')) return 'create-form';
+      return 'blank:' + document.readyState;
+    })()`, 3000).catch(() => 'unreadable'));
+    const code = surface === 'workbench' ? 'PROJECT_OPEN_WORKBENCH_TIMEOUT'
+      : surface === 'alert' ? 'PROJECT_OPEN_WORKBENCH_ALERT'
+      : surface === 'unreadable' ? 'PROJECT_OPEN_WORKBENCH_UNREADABLE' : 'PROJECT_OPEN_WORKBENCH_BLANK';
+    throw Object.assign(new Error('The project workbench did not become ready'), {code, surface});
+  }
   await onStep('workbench');
   return editor;
 }
