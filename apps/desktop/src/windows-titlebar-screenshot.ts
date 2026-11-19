@@ -239,8 +239,9 @@ async function createWorkbenchScreenshotWindow({app, launcher, backendUrl}: {app
 const closeScreenshotWindow = async (window: BrowserWindow | undefined): Promise<void> => {
   if (!window || window.isDestroyed()) return;
   const closed = new Promise<void>(resolve => {window.once('closed', () => resolve());});
-  try {window.close();} catch {return;}
+  try {window.close();} catch {try {window.destroy();} catch { /* Already gone. */ } return;}
   await Promise.race([closed, new Promise<void>(resolve => setTimeout(resolve, 5000))]);
+  if (!window.isDestroyed()) try {window.destroy();} catch { /* Already gone. */ }
 };
 
 /** Runs one screenshot scenario, writes the fixed PNG and a fixed JSON record,

@@ -209,8 +209,8 @@ export function screenshotCheckFailureName(value: unknown): string | undefined {
 }
 /** A bounded fixed diagnostic string (for example the measured pixel delta). */
 export function screenshotCheckFailureDetail(value: unknown): string | undefined {
-  if (!record(value) || typeof value.detail !== 'string' || value.detail.length > 120) return undefined;
-  return /^[A-Za-z0-9#][A-Za-z0-9# =:._-]*$/u.test(value.detail) ? value.detail : undefined;
+  if (!record(value) || typeof value.detail !== 'string' || value.detail.length > 400) return undefined;
+  return /^[A-Za-z0-9#][A-Za-z0-9# =:._,x-]*$/u.test(value.detail) ? value.detail : undefined;
 }
 const sanitizedFailureMessage = (value: unknown): string | undefined => {
   if (!record(value) || !exactKeys(value, ['ok', 'error']) || value.ok !== false || typeof value.error !== 'string') return undefined;
