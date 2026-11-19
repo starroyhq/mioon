@@ -13,6 +13,7 @@ import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotA
 import { prepareSubmission, prepareRequestReplay, readPending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 import { ApiError } from '../apps/web/src/api.ts';
 import { generationAspectError } from '../apps/web/src/generation-settings.ts';
+import { format5CommandErrorMessageKey } from '../apps/web/src/edit-ui/session.ts';
 import type { GenerationFrame } from '../apps/web/src/generation-settings.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const taskIntentModule = {exports:{} as {captureTaskWorkspaceIntent:typeof CapturedIntent}};
@@ -255,4 +256,89 @@ test('explicit stored replay survives removal of target from current snapshot wi
   h.dataRef.current.shots = []; fail = false;
   await h.run((original)!.key, (original)!.operation, (original)!.input, undefined, { replay: true });
   assert.equal(h.state.calls.length, 2); assert.deepEqual(h.state.calls[0], h.state.calls[1]);
+});
+
+// ---------------------------------------------------------------------------
+// Actual format-5 lost-response entry points: the unconfirmed bar's two actions
+// and the action guard, compiled from the shipped App source.
+// ---------------------------------------------------------------------------
+interface Format5LostCalls {refresh: number; history: number; board: number; retries: number; abandons: number;
+  notices: {message: string; type: string}[]; notice: {id: string; message: string} | null;
+  noticeActionId: string | null | undefined}
+function format5LostHarness(retryResult: unknown) {
+  const calls: Format5LostCalls = {refresh: 0, history: 0, board: 0, retries: 0, abandons: 0, notices: [],
+    notice: null, noticeActionId: undefined};
+  const tracker = {retry: async () => {calls.retries++; return retryResult;},
+    abandon: () => {calls.abandons++;}};
+  const scope = {
+    format5Unresolved: {projectId: 'project-a', requestId: 'preview-1'}, format5LostRef: {current: tracker},
+    currentProject: {current: 'project-a'},
+    setFormat5Notice: (notice: {id: string; message: string} | null) => {calls.notice = notice;},
+    setFormat5NoticeActionId: (id: string | null) => {calls.noticeActionId = id;},
+    refresh: async () => {calls.refresh++; }, format5RefreshHistory: async () => {calls.history++; },
+    format5LoadBoard: async () => {calls.board++; },
+    notify: (message: DisplayMessage | string, type: string) => calls.notices.push({message: renderCoreMessage('zh-Hans', message), type}),
+    format5CommandErrorMessageKey,
+  };
+  return {calls,
+    retry: compile(section('async function format5RetryUnconfirmed(', '/** Drop the retained envelope without writing or refreshing. */'),
+      'format5RetryUnconfirmed', scope),
+    abandon: compile(section('function format5AbandonUnconfirmed(): void', 'async function splitTimelineClip('),
+      'format5AbandonUnconfirmed', scope)};
+}
+
+test('actual format-5 retry entry refreshes the project, history and board exactly once on applied', async () => {
+  const h = format5LostHarness({ok: true, actionId: null});
+  const result = await h.retry();
+  assert.deepEqual(result, {ok: true, actionId: null});
+  assert.equal(h.calls.retries, 1);
+  assert.equal(h.calls.refresh, 1);
+  assert.equal(h.calls.history, 1);
+  assert.equal(h.calls.board, 1);
+  assert.equal(h.calls.notice?.message, '已应用');
+  assert.equal(h.calls.noticeActionId, null);
+  assert.deepEqual(h.calls.notices, []);
+});
+
+test('actual format-5 retry entry reports one reason on a definite rejection and stays silent while unconfirmed', async () => {
+  const rejected = format5LostHarness({ok: false, code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT'});
+  await rejected.retry();
+  assert.equal(rejected.calls.refresh, 0);
+  assert.equal(rejected.calls.notices.length, 1);
+  assert.match(rejected.calls.notices[0]!.message, /副轨或字幕会重叠/u);
+  const unconfirmed = format5LostHarness({ok: false, code: 'EDIT_RESULT_UNCONFIRMED', unconfirmed: true});
+  await unconfirmed.retry();
+  assert.deepEqual(unconfirmed.calls.notices, [], 'still-unknown retry only keeps the bar');
+  assert.equal(unconfirmed.calls.refresh, 0);
+});
+
+test('actual format-5 abandon entry drops the retained edit without any write', async () => {
+  const h = format5LostHarness({ok: true, actionId: null});
+  assert.equal(h.abandon(), undefined);
+  assert.equal(h.calls.abandons, 1);
+  assert.equal(h.calls.retries, 0);
+  assert.equal(h.calls.refresh + h.calls.history + h.calls.board, 0);
+});
+
+test('actual format-5 action entry keeps one unconfirmed state and reports one reason when blocked', async () => {
+  let outcome: unknown = {ok: false, code: 'EDIT_RESULT_UNCONFIRMED', unconfirmed: true};
+  const notices: string[] = [];
+  const scope = {
+    format5SessionBusy: false, setFormat5SessionBusy: () => {},
+    format5Session: () => ({run: async () => outcome}),
+    format5ClipName: () => '片段', format5NoticeMessage: () => null, format5CommandErrorMessageKey,
+    setFormat5Notice: () => {}, setFormat5NoticeActionId: () => {},
+    refresh: async () => {notices.push('refresh');}, format5RefreshHistory: async () => {notices.push('history');},
+    notify: (message: DisplayMessage | string) => notices.push(renderCoreMessage('zh-Hans', message)),
+  };
+  const runPolicy = compile(section('async function format5RunPolicy(', 'async function format5RemoveTimelineClip('),
+    'format5RunPolicy', scope);
+  await runPolicy({kind: 'clip-split', clipId: 'clip-1'});
+  assert.equal(notices.length, 1);
+  assert.match(notices[0]!, /上一次编辑结果未确认/u);
+  notices.length = 0;
+  outcome = {ok: false, code: 'EDIT_RESULT_UNCONFIRMED'};
+  await runPolicy({kind: 'clip-split', clipId: 'clip-1'});
+  assert.equal(notices.length, 1);
+  assert.match(notices[0]!, /上一次编辑结果未确认/u);
 });

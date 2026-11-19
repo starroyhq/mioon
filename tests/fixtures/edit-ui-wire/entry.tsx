@@ -105,7 +105,7 @@ function Harness(): React.ReactElement {
     history: historySource(data, history), busy: busy.current, pending: false, dirty: false, online: true}) : null,
   [data, timeline, history]);
 
-  const applyOutcome = async (command: {kind: string; clipId?: string}, result: {ok: boolean; code?: string; actionId?: string}): Promise<boolean> => {
+  const applyOutcome = async (command: {kind: string; clipId?: string}, result: {ok: boolean; code?: string; actionId?: string | null}): Promise<boolean> => {
     if (!result.ok) {setLastError(result.code ?? 'UNKNOWN'); setLastOperation(command.kind); return false;}
     setLastError(''); setLastOperation(command.kind);
     if (command.kind !== 'clip-version') {
