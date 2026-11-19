@@ -229,7 +229,7 @@ export const EDITOR_HISTORY_SCHEMA = Object.freeze([
  projectId TEXT NOT NULL CHECK(${uuid('projectId')}),epoch TEXT NOT NULL CHECK(${uuid('epoch')}),
  position INTEGER NOT NULL CHECK(${revision('position')}),
  operation TEXT NOT NULL CHECK(typeof(operation)='text' AND length(CAST(operation AS BLOB)) BETWEEN 1 AND 200),
- origin TEXT NOT NULL CHECK(origin='user'),
+ origin TEXT NOT NULL CHECK(origin IN ('user','mio')),
  beforePatch TEXT NOT NULL CHECK(${object('beforePatch', 4194304)}),
  afterPatch TEXT NOT NULL CHECK(${object('afterPatch', 4194304)}),
  createdAt TEXT NOT NULL CHECK(${time('createdAt')}),
