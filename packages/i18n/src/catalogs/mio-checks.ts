@@ -48,7 +48,7 @@ export const mioCheckMessages = {
   'agent.checks.reason.ARTIFACT_UNAVAILABLE': {'zh-Hans':'无法确认导出文件可用','zh-Hant':'無法確認匯出檔案可用',en:'The output file could not be verified as available',ja:'出力ファイルが利用可能か確認できません'},
   'agent.checks.reason.PARAMETERS_MISMATCH': {'zh-Hans':'无法确认参数与预期一致','zh-Hant':'無法確認參數與預期一致',en:'The parameters could not be verified against the expected values',ja:'設定が期待値と一致するか確認できません'},
   'agent.checks.reason.VERSION_UNPUBLISHED': {'zh-Hans':'无法确认版本已发布且可用','zh-Hant':'無法確認版本已發布且可用',en:'A published, available version could not be verified',ja:'バージョンの公開と利用可能性を確認できません'},
-  'agent.checks.reason.COST_UNKNOWN': {'zh-Hans':'费用无法确认，请向服务商核对','zh-Hant':'費用無法確認，請向服務商核對',en:'Charges are unknown. Check with the provider',ja:'料金が不明です。プロバイダーに確認してください'},
+  'agent.checks.reason.COST_UNKNOWN': {'zh-Hans':'费用无法确认','zh-Hant':'費用無法確認',en:'Charges are unconfirmed',ja:'料金は未確認です'},
   'agent.checks.reason.COST_PENDING': {'zh-Hans':'尚无已提交付费请求的记录','zh-Hant':'尚無已提交付費請求的紀錄',en:'No paid submission has been recorded yet',ja:'有料リクエストの送信はまだ記録されていません'},
   'agent.checks.reason.COST_SUBMITTED': {'zh-Hans':'已提交付费请求','zh-Hant':'已提交付費請求',en:'Paid request submitted',ja:'有料リクエストを送信済み'},
   'agent.checks.reason.REFERENCES_UNAVAILABLE': {'zh-Hans':'部分引用无法确认可用','zh-Hant':'部分引用無法確認可用',en:'Some referenced sources could not be verified as available',ja:'一部の参照素材が利用可能か確認できません'},

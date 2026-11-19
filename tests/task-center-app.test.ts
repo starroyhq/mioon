@@ -35,7 +35,7 @@ function harness() {
   readableError:(e: Error)=>e.message,isBusy:()=>false,markBusy:(...args: unknown[])=>state.busy.push(args),pendingForProject:()=>[],
   requestCounter:{current:0},setData:(fn: (arg0: { project: { id: string; }; jobs: { id: string; shotId: string; projectId: string; status: string; }[]; shots: { id: string; projectId: string; }[]; timelineHistory: { revision: number; }; }) => { project: { id: string; }; jobs: { id: string; shotId: string; projectId: string; status: string; }[]; shots: { id: string; projectId: string; }[]; timelineHistory: { revision: number; }; })=>{refs.dataRef.current=fn(refs.dataRef.current);},notify:(...args: unknown[])=>state.notice.push(args),
   refresh:async (id: unknown)=>state.refresh.push(id),setAuth:(value: unknown)=>state.auth.push(value),setSubjectRefresh:()=>{},timelineFormatRef:{current:null},subtitlesRef:{current:null as {controller: DraftOwner} | null},
-  tasksRef:{current:{submit:async()=>{throw Error('Set explicit submit fixture');},acknowledge:async (task: unknown)=>state.ack.push(task),recover:async()=>{throw Error('Set explicit recovery fixture');}} as FakeTaskController}};
+  tasksRef:{current:{submit:async()=>{throw Error('Set explicit submit fixture');},acknowledge:async (task: unknown)=>state.ack.push(task),recover:async()=>{throw Error('Set explicit recovery fixture');}} as FakeTaskController},autoReread:async()=>{}};
  const methods=make(bridge+runBody+recoverBody,deps,['readTaskRevealContext','readTaskViewContext','captureTaskView','openTasks','inspectTaskJob','runDurable','recoverTask']);
  return {state,refs,deps,regeneration,...methods,remake:()=>make(bridge+runBody+recoverBody,deps,['inspectTaskJob'])};
 }

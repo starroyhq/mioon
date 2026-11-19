@@ -432,7 +432,7 @@ export function createImageGenerationSession({ projectId, mockAvailable = false,
         if (review.state === 'rejected' && clearPending(pending)) { emit({ phase: 'ready', message: '原请求已被拒绝，没有重新生成。', displayMessage: localizedMessage('image.state.originalRejected') }); return; }
         if (review.state === 'pending') { emit({ phase: 'unknown', message: '原始描述仍在等待审批。只有明确点击批准才会发送，不会自动继续。', displayMessage: localizedMessage('image.state.waitingForApproval') }); return; }
       }
-      if (pending.sourceIssue === 'IMAGE_SOURCE_INVALID') { emit({ phase: 'unknown', message: '源图核验报告问题。请核对源图是否为完整的 PNG、JPEG 或 WebP，小于 50 MB 且每边不超过 4096 像素（PNG 须不透明、8 位、非交错），并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发。', displayMessage: localizedMessage('image.state.sourceUnknownHeld') }); return; }
+      if (pending.sourceIssue === 'IMAGE_SOURCE_INVALID') { emit({ phase: 'unknown', message: '源图未通过校验；原请求仍未确认。', displayMessage: localizedMessage('image.state.sourceUnknownHeld') }); return; }
       emit({ phase: 'unknown', message: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? '尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求。' : '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。', displayMessage: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? localizedMessage('image.state.comfyPreparationUnknown') : localizedMessage('image.state.paidPreparationUnknown') : localizedMessage('image.state.originalNotFoundUnknown') }); return;
     }
     const response = receipt.response;
@@ -637,11 +637,11 @@ export function createImageGenerationSession({ projectId, mockAvailable = false,
       const next: ImagePending = { ...pending, reviewId: review.id, ...(review.sourceImage ? { sourceImage: copy(review.sourceImage) } : {}) };
       if (!updatePending(pending, next)) return false;
       if (!visible || interactionEpoch !== interaction || !reviewUsable(review)) { emit({ phase: 'unknown', message: '审批内容已保存。页面或配置已变化，请回到原请求并重新明确批准；不会自动发送。', displayMessage: localizedMessage('image.state.preparedScopeChanged') }); return false; }
-      if (input.purpose === 'edit') { emit({ phase: 'unknown', message: '源图已通过后端核验，编辑请求已准备。请核对下方固定源图、完整描述和发送目标，再单独批准；目前未发送。', displayMessage: localizedMessage('image.state.editPrepared') }); return true; }
+      if (input.purpose === 'edit') { emit({ phase: 'unknown', message: '', displayMessage: null }); return true; }
       return await approveSaved(review, next);
     } catch (error) {
       if (disposed || state.pending !== pending) return false;
-      emit({ phase: 'unknown', message: input.purpose === 'edit' && failureCode(error) === 'IMAGE_SOURCE_INVALID' ? '源图未通过后端核验。原始准备请求仍保留，尚未批准或发送。请重新读取；没有已保存审批时，可明确放弃此未批准请求后重新选择源图。' : '审批准备结果待核对。尚未发起付费审批，不会自动重试。', displayMessage: input.purpose === 'edit' && failureCode(error) === 'IMAGE_SOURCE_INVALID' ? localizedMessage('image.state.preparationSourceInvalid') : localizedMessage('image.state.paidPreparationPending') });
+      emit({ phase: 'unknown', message: input.purpose === 'edit' && failureCode(error) === 'IMAGE_SOURCE_INVALID' ? '源图未通过后端核验。原始准备请求仍保留，尚未批准或发送。请重新读取；没有已保存审批时，可明确放弃此未批准请求后重新选择源图。' : '审批准备结果待核对。尚未发起付费审批，不会自动重试。', displayMessage: input.purpose === 'edit' && failureCode(error) === 'IMAGE_SOURCE_INVALID' ? localizedMessage('image.state.preparationSourceInvalid') : localizedMessage('image.state.paidPreparationUnknown') });
       return false;
     }
     finally { if (!disposed && state.phase === 'submitting') emit({ phase: 'unknown' }); if (!disposed && visible && !state.reviewActionId) await load(); }
@@ -662,8 +662,8 @@ export function createImageGenerationSession({ projectId, mockAvailable = false,
       if (!isImageReviewPreparationResponse(prepareInput, prepared) || !isImageReviewResponse(prepared) || !pendingMatchesReview(pending, reviewViewOf(prepared)) || prepared.state !== 'pending') throw problem('INVALID_RESPONSE');
       const review = mergeReview(prepared);
       if (!updatePending(pending, { ...pending, reviewId: review.id, execution: review.execution ? copy(review.execution) : null })) return false;
-      emit({ phase: 'unknown', message: '本地运行请求已准备。请核对下方实际地址、种子和完整冻结工作流，再单独批准；目前未发送生成。', displayMessage: localizedMessage('image.state.comfyPrepared') }); return true;
-    } catch { if (!disposed) emit({ phase: 'unknown', message: '准备结果待核对。尚未批准运行，不会自动重试。请重新读取已保存审批。', displayMessage: localizedMessage('image.state.comfyPreparationPending') }); return false; }
+      emit({ phase: 'unknown', message: '', displayMessage: null }); return true;
+    } catch { if (!disposed) emit({ phase: 'unknown', message: '', displayMessage: localizedMessage('image.state.comfyPreparationUnknown') }); return false; }
     finally { if (!disposed && state.phase === 'submitting') emit({ phase: 'unknown' }); if (!disposed && visible) await load(); }
   }
   async function chooseTarget(groupId: string | null): Promise<boolean> {
@@ -754,7 +754,10 @@ export function createImageGenerationSession({ projectId, mockAvailable = false,
     },
     abandonUnapproved(): boolean {
       const pending = state.pending;
-      if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending || !reviewedProvider(pending.input.providerId) || pending.approvalAttempted || pending.reviewId) return false;
+      // A held invalid-source request has no approval target and can be abandoned
+      // without resending; the exact pending record is still removed by CAS.
+      if (disposed || !visible || state.phase === 'submitting' || state.reviewActionId || !pending ||
+          !reviewedProvider(pending.input.providerId) && pending.sourceIssue !== 'IMAGE_SOURCE_INVALID' || pending.approvalAttempted || pending.reviewId) return false;
       if (clearPending(pending)) { emit({ phase: 'ready', message: '已放弃本页尚未批准的请求。若准备记录随后出现，仍需明确批准或拒绝。', displayMessage: localizedMessage('image.state.unapprovedAbandoned') }); return true; } return false;
     },
     edit(field: string, value: string): boolean { if (!disposed && visible && !state.pending && !state.remotePending && !state.remoteActionTaskId && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { interactionEpoch++; emit({ draft: { ...state.draft, [field]: value } as ImageDraft, targetRequest: null }); return true; } return false; },

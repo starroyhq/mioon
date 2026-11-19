@@ -633,24 +633,14 @@ const shellCoreMessages = {
     "en": "New-project input has not been submitted. Keep it and open the selected project?",
     "ja": "新規プロジェクトの入力はまだ送信されていません。入力を保持して、選択したプロジェクトを開きますか？"
   },
-  "projects.windowOpenFailed": {
-    "zh-Hans": "窗口暂不能打开。原项目与输入已保留，请核对后明确重试",
-    "zh-Hant": "暫時無法開啟視窗。原專案與輸入已保留，請核對後明確重試",
-    "en": "The window cannot open right now. The original project and inputs are retained. Check before explicitly retrying",
-    "ja": "現在ウィンドウを開けません。元のプロジェクトと入力は保持されています。確認後に明示的に再試行してください"
-  },
+  "projects.windowOpenFailed": {"zh-Hans": "窗口暂不能打开，项目与输入已保留", "zh-Hant": "視窗暫時無法開啟，專案與輸入已保留", "en": "The window cannot open right now; the project and input are retained", "ja": "現在ウィンドウを開けません。プロジェクトと入力は保持されています"},
   "projects.targetWindowFailed": {
     "zh-Hans": "目标编辑窗口未能完成读取，请在该窗口核对",
     "zh-Hant": "目標編輯視窗未能完成讀取，請在該視窗核對",
     "en": "The target editor window could not finish loading. Check that window",
     "ja": "対象の編集ウィンドウで読み込みが完了しませんでした。そのウィンドウで確認してください"
   },
-  "projects.openOutcomeUnknown": {
-    "zh-Hans": "打开窗口的结果尚未确认。请核对窗口状态；不会自动重发打开或新建请求",
-    "zh-Hant": "開啟視窗的結果尚未確認。請核對視窗狀態；不會自動重送開啟或新增請求",
-    "en": "The window-opening result is unconfirmed. Check the window status. Open or create requests will not be resent automatically",
-    "ja": "ウィンドウを開く操作の結果が未確認です。ウィンドウの状態を確認してください。「開く」や「作成」のリクエストを自動再送することはありません"
-  },
+  "projects.openOutcomeUnknown": {"zh-Hans": "未收到窗口回执，打开结果未确认", "zh-Hant": "未收到視窗回執，開啟結果未確認", "en": "No window receipt was received; the open result is unconfirmed", "ja": "ウィンドウの受領通知を受け取れず、開いた結果は未確認です"},
   "projects.checkCurrentRequest": {
     "zh-Hans": "请先在此窗口核对当前新建或打开请求。现有输入已保留",
     "zh-Hant": "請先在此視窗核對目前的新增或開啟請求。現有輸入已保留",
@@ -663,36 +653,16 @@ const shellCoreMessages = {
     "en": "New-project input has not been submitted. Keep it and close project selection?",
     "ja": "新規プロジェクトの入力はまだ送信されていません。入力を保持してプロジェクト選択を閉じますか？"
   },
-  "projects.listUnavailable": {
-    "zh-Hans": "暂时无法读取工作区项目。请核对连接后刷新；现有输入会保留",
-    "zh-Hant": "暫時無法讀取工作區專案。請核對連線後重新整理；現有輸入會保留",
-    "en": "Cannot read workspace projects right now. Check the connection and refresh. Existing input will be retained",
-    "ja": "現在ワークスペースのプロジェクトを読み取れません。接続を確認してから更新してください。入力内容は保持されます"
-  },
+  "projects.listUnavailable": {"zh-Hans": "暂时无法读取项目列表", "zh-Hant": "暫時無法讀取專案清單", "en": "The project list cannot be read right now", "ja": "現在プロジェクト一覧を読み取れません"},
   "projects.changedNotCreated": {
     "zh-Hans": "窗口身份或退出状态已变化，未发起新建项目",
     "zh-Hant": "視窗身分或結束狀態已變更，未發起新增專案",
     "en": "Window identity or quit state changed. Project creation was not started",
     "ja": "ウィンドウの識別情報または終了状態が変わったため、プロジェクト作成は開始していません"
   },
-  "projects.unconfirmedNotCreated": {
-    "zh-Hans": "窗口身份尚未确认，未发起新建项目。请核对后明确重试",
-    "zh-Hant": "視窗身分尚未確認，未發起新增專案。請核對後明確重試",
-    "en": "Window identity is unconfirmed. Project creation was not started. Check before explicitly retrying",
-    "ja": "ウィンドウの識別情報が未確認のため、プロジェクト作成は開始していません。確認後に明示的に再試行してください"
-  },
-  "projects.createRejectedRetained": {
-    "zh-Hans": "新建请求未被接受。现有输入已保留，请核对后明确重试",
-    "zh-Hant": "新增請求未被接受。現有輸入已保留，請核對後明確重試",
-    "en": "The create request was not accepted. Existing input is retained. Check before explicitly retrying",
-    "ja": "作成リクエストは受理されませんでした。入力内容は保持されています。確認後に明示的に再試行してください"
-  },
-  "projects.createUnknownRefresh": {
-    "zh-Hans": "新建结果未确认。请保留此窗口并刷新项目列表核对；不要重复创建",
-    "zh-Hant": "新增結果尚未確認。請保留此視窗並重新整理專案清單核對；不要重複建立",
-    "en": "Creation is unconfirmed. Keep this window open and refresh the project list to check. Do not create a duplicate",
-    "ja": "作成結果が未確認です。このウィンドウを開いたままプロジェクト一覧を更新して確認してください。重複作成しないでください"
-  },
+  "projects.unconfirmedNotCreated": {"zh-Hans": "未能确认窗口身份，未创建项目", "zh-Hant": "未能確認視窗身分，未新增專案", "en": "Window identity could not be confirmed; no project was created", "ja": "ウィンドウの識別情報を確認できず、プロジェクトは作成していません"},
+  "projects.createRejectedRetained": {"zh-Hans": "未创建项目，输入已保留", "zh-Hant": "未新增專案，輸入已保留", "en": "No project was created; the input is retained", "ja": "プロジェクトは作成していません。入力は保持されています"},
+  "projects.createUnknownRefresh": {"zh-Hans": "新建结果未确认，输入已保留", "zh-Hant": "新增結果未確認，輸入已保留", "en": "Creation is unconfirmed; the input is retained", "ja": "作成結果は未確認です。入力は保持されています"},
   "projects.created": {
     "zh-Hans": "项目已创建",
     "zh-Hant": "專案已建立",
@@ -927,12 +897,7 @@ const shellCoreMessages = {
     "en": "A previous session has a request awaiting confirmation. Restore the original request or explicitly transfer it in the task center first. Your draft is retained",
     "ja": "以前のセッションに確認待ちのリクエストがあります。まずタスクセンターで元のリクエストを復元するか、明示的に移管してください。下書きは保持されています"
   },
-  "shell.error.notApplied": {
-    "zh-Hans": "服务器已确认此请求未应用。草稿仍保留，请核对最新状态后重新编辑",
-    "zh-Hant": "伺服器已確認此請求尚未套用。草稿仍保留，請核對最新狀態後重新編輯",
-    "en": "The server confirmed this request was not applied. Your draft is retained. Check the latest state before editing again",
-    "ja": "このリクエストが未適用であることをサーバーが確認しました。下書きは保持されています。最新の状態を確認してから再編集してください"
-  },
+  "shell.error.notApplied": {"zh-Hans": "未应用；项目已刷新，草稿仍保留", "zh-Hant": "未套用；專案已重新整理，草稿仍保留", "en": "Not applied. The project was refreshed and your draft is retained", "ja": "適用されていません。プロジェクトは更新され、下書きは保持されています"},
   "shell.requestSaved": {
     "zh-Hans": "原请求已保存到任务中心，请明确恢复后继续编辑",
     "zh-Hant": "原請求已儲存至工作中心，請明確還原後再繼續編輯",

@@ -171,7 +171,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     if (local.pathname === '/api/version-comparison/media' && await comparisons.handle(req, res, local)) return true;
     if (await drafts.handle({req, res, url: local, route, signal})) return true;
     for (const handler of [project.imageHttp, (request: IncomingMessage, response: ServerResponse, target: URL) => project.taskHttpV2!.handle(request, response, target, address),
-      project.editTasksHttp,
+      project.editTasksHttp, project.requestOutcomeHttp,
       project.exportFileRecovery.handle, project.continuousAudioHttp, project.audioPreviewHttp]) {
       if (await handler(req, res, local, address)) return true;
     }

@@ -18,10 +18,14 @@ export function savedUiSettings(before:AgentSettingsSnapshot,raw:unknown):AgentS
  return agentSettingsSnapshotSchema.parse({...before,revision:before.revision+1,services,mioSelection:input.mioSelection,mioSelectionRevision:selectionRevision,
   execution:configuration&&selected?{revision:(before.execution?.revision??0)+1,binding:{serviceKey:selected.serviceKey,entryRevision:selected.revision,selectionRevision},configuration,secret:selected.secret}:null,notices:[]});
 }
-export function settingsUiFixture(options:{initial?:AgentSettingsSnapshot;read?:(count:number,saved:AgentSettingsSnapshot)=>Promise<unknown>|unknown;write?:(input:AgentSettingsUpdate,saved:AgentSettingsSnapshot)=>Promise<unknown>|unknown}={}) {
+export function settingsUiFixture(options:{initial?:AgentSettingsSnapshot;read?:(count:number,saved:AgentSettingsSnapshot)=>Promise<unknown>|unknown;write?:(input:AgentSettingsUpdate,saved:AgentSettingsSnapshot)=>Promise<unknown>|unknown;
+  /** Simulates a server that rejects before applying the write. */
+  beforeWrite?:(input:AgentSettingsUpdate,saved:AgentSettingsSnapshot)=>void}={}) {
  let saved=options.initial??uiSettings(),reads=0;const calls:AgentSettingsUpdate[]=[],emitted:AgentSettingsState[]=[];
  const client:AgentSettingsClient={read:()=>{reads++;return Promise.resolve(options.read?options.read(reads,saved):structuredClone(saved));},write:raw=>{
-  const input=agentSettingsUpdateSchema.parse(raw);calls.push(structuredClone(input));saved=savedUiSettings(saved,input);return Promise.resolve(options.write?options.write(input,saved):structuredClone(saved));
+  const input=agentSettingsUpdateSchema.parse(raw);calls.push(structuredClone(input));
+  if(options.beforeWrite){try{options.beforeWrite(input,structuredClone(saved));}catch(error){return Promise.reject(error);}}
+  saved=savedUiSettings(saved,input);return Promise.resolve(options.write?options.write(input,saved):structuredClone(saved));
  }};
  const session=createAgentSettingsSession({client,onChange:value=>emitted.push(structuredClone(value)),newServiceKey:()=> 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'});
  return {client,calls,emitted,session,get reads(){return reads;},saved:()=>saved};

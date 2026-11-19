@@ -151,14 +151,14 @@
     {
       "file": "apps/web/src/clip-draft-state.ts",
       "category": "cjk-source",
-      "hash": "2e9a39cbf813936bc23225f89ed2d1e2cffaf5c214d1da4c7fe36049ef753736",
+      "hash": "19092f37f4166cabc6a3efa075f4f700b2d124baa020ed214756531919687c2a",
       "owner": "delivery",
       "reason": "Original diagnostic Error.message/state.error retained for compatibility; ClipDraftRecovery renders errorDisplay, created with recovery.clip.timelineChanged. This original string is not rendered as UI copy. Reviewed original literal: \"时间线已有更新；本地草稿仍保留，请核对最新片段。\"."
     },
     {
       "file": "apps/web/src/clip-draft-state.ts",
       "category": "cjk-source",
-      "hash": "cbc256edd56adad68cddc6f0f7c7bc53c4c86ecfb0627fd65be1d0a08dd93f96",
+      "hash": "c61f853e6ae2f3e2449c3693e29cee42ec3ff01f3743a7580daf84601725ce2b",
       "owner": "delivery",
       "reason": "Original diagnostic Error.message/state.error retained for compatibility; ClipDraftRecovery renders errorDisplay, created with recovery.clip.newerInput. This original string is not rendered as UI copy. Reviewed original literal: \"原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段。\"."
     },
@@ -368,14 +368,14 @@
     {
       "file": "apps/web/src/local-delivery-state.ts",
       "category": "cjk-source",
-      "hash": "d363e3c5fc79de2802e4d1be2f978686c53ad08f55f0055b4db4bfb6d6ed2c2f",
+      "hash": "79c944dcd2b130ea117f8bf50c4642d77eb21e6542f71083c1e0c11081c47655",
       "owner": "delivery",
       "reason": "Original draft/intent diagnostic retained without changing recovery state or replay data; DeliveryDraftRecovery renders draftErrorDisplay/intentErrorDisplay from recovery.delivery.notAppliedCode, recovery.notice.pending, never this diagnostic string. Dynamic backend outcome codes remain verbatim protocol evidence. Reviewed original literal: \"）。名称仍保留，请核对后重新检查。\"."
     },
     {
       "file": "apps/web/src/local-delivery-state.ts",
       "category": "cjk-source",
-      "hash": "0ea8a145b2bac39ef3dcc318f2ee38847bb097b75883ce877e4122d174977769",
+      "hash": "84fe47bfe9678f698de3176391f559f3f883e69d7031f1f13658eba80e81bb08",
       "owner": "delivery",
       "reason": "Original draft/intent diagnostic retained without changing recovery state or replay data; DeliveryDraftRecovery renders draftErrorDisplay/intentErrorDisplay from recovery.delivery.notAppliedCode, recovery.notice.pending, never this diagnostic string. Dynamic backend outcome codes remain verbatim protocol evidence. Reviewed original literal: \"原请求结果仍待确认；不会自动重试。\"."
     },

@@ -82,7 +82,13 @@ test('Comfy blocks non-loopback checks and unknown check outputs, never probing 
 
 test('Comfy CAS and unknown saves keep draft, require reconciliation, and never repeat a save/check', async () => {
   for (const code of ['COMFY_SETTINGS_CONFLICT', 'NETWORK']) {
-    const f = settingsFixture({ write: () => { throw fail(code); } }); await f.session.load(); f.session.setEnabled(false); assert.equal(await f.session.save(), false); assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft!.enabled, false); assert.equal(comfyImageSettingsCanSave(f.session.getState()), false); assert.equal(await f.session.save(), false); assert.deepEqual(f.calls.map(c => c[0]), ['availability', 'read', 'write', 'read']); assert.doesNotMatch(JSON.stringify(f.changes), /DO_NOT_REFLECT/); f.session.acknowledge(); assert.equal(comfyImageSettingsCanSave(f.session.getState()), true); f.session.dispose();
+    const f = settingsFixture({ write: () => { throw fail(code); } }); await f.session.load(); f.session.setEnabled(false);
+    assert.equal(await f.session.save(), false); assert.equal(f.session.getState().phase, 'review'); assert.equal(f.session.getState().draft!.enabled, false);
+    const retryable = code !== 'COMFY_SETTINGS_CONFLICT';
+    assert.equal(comfyImageSettingsCanSave(f.session.getState()), retryable);
+    assert.equal(await f.session.save(), false);
+    assert.deepEqual(f.calls.map(c => c[0]), retryable ? ['availability', 'read', 'write', 'read', 'write', 'read'] : ['availability', 'read', 'write', 'read']);
+    assert.doesNotMatch(JSON.stringify(f.changes), /DO_NOT_REFLECT/); f.session.acknowledge(); assert.equal(comfyImageSettingsCanSave(f.session.getState()), true); f.session.dispose();
   }
   const f = settingsFixture({ write: () => { throw fail('COMFY_SETTINGS_VALIDATION'); } }); await f.session.load(); await f.session.save(); assert.equal(f.session.getState().phase, 'error'); assert.equal(f.session.getState().recovery, null); assert.deepEqual(f.calls.map(c => c[0]), ['availability', 'read', 'write']); f.session.dispose();
 });

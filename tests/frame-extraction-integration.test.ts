@@ -163,7 +163,7 @@ test('actual source inspector children slot exposes frame history for video and 
 });
 
 test('actual App reveal only locates the library, keeps source-range draft, and rechecks supplied guard after await', async () => {
-  const app = text('App.tsx'), start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  async function selectProject(', start), source = app.slice(start, end).trim();
+  const app = text('App.tsx'), start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  // One bounded automatic re-read', start), source = app.slice(start, end).trim();
   for (const fail of [null, 'before', 'after', 'project', 'navigation', 'panel', 'missing']) {
     const hold = deferred(), actions: (unknown[])[] = [], draft = { dirty: true, inFrame: 12, outFrame: 88 }, selected = { quickAssetId: sourceId, selectedClipId: null }; let current = fail !== 'before';
     const env = { currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, dataRef: { current: { assets: [] } }, refresh: () => hold.promise,

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -11,6 +11,9 @@ import {createAgentTaskTools, listAgentTaskTools, listAgentTaskToolsForChannel} 
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
+import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
+import {createHash} from 'node:crypto';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (n: number): string => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -20,11 +23,18 @@ const groupA = id(40), groupB = id(41), groupImage = id(42), timelineId = id(50)
 const image2 = id(6), subjectId = id(90), subjectVersion = id(91);
 const sha = (letter: string): string => letter.repeat(64);
 
-function fixture(t: test.TestContext): ProjectStore {
+export function fixture(t: test.TestContext): ProjectStore {
   const rootDir = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mt-read-'));
   const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')})});
   t.after(() => {store.close(); rmSync(rootDir, {recursive: true, force: true});});
+  const mediaBytes = Buffer.from('format5-mio-fixture-media');
+  const mediaSha = createHash('sha256').update(mediaBytes).digest('hex');
+  mkdirSync(path.join(rootDir, 'media'), {recursive: true});
+  writeFileSync(path.join(rootDir, 'media/a.mp4'), mediaBytes);
+  writeFileSync(path.join(rootDir, 'media/i.png'), mediaBytes);
+  const mediaRef = mediaReferenceFixture('media/a.mp4', mediaBytes.length, mediaSha);
+  const imageRef = mediaReferenceFixture('media/i.png', mediaBytes.length, mediaSha);
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
     ({id: nodeId, projectId, type, position: {x: 0, y: 0}, createdAt: at, ...extra});
   const tracks = [{id: video, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false},
@@ -49,10 +59,13 @@ function fixture(t: test.TestContext): ProjectStore {
       {nodeId: image, segmentGroupId: groupImage, clipId: imageClip, kind: 'media', assetId: imageAsset}]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'MT read fixture', createdAt: at, updatedAt: at, revision: 1});
-    store.put('assets', {id: assetA, projectId, name: 'a.mp4', mimeType: 'video/mp4', duration: 2, sha256: sha('a')});
-    store.put('assets', {id: imageAsset, projectId, name: 'i.png', mimeType: 'image/png', duration: null, sha256: sha('b')});
-    store.put('jobs', {id: id(71), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: shotA, createdAt: at, updatedAt: at});
-    store.put('versions', {id: versionA, projectId, jobId: id(71), shotId: shotA, number: 1, assetId: assetA, sha256: sha('a'), createdAt: at});
+    store.put('assets', {id: assetA, projectId, name: 'a.mp4', mimeType: 'video/mp4', duration: 2, sha256: mediaSha,
+      sizeBytes: mediaBytes.length, reference: mediaRef, referenceRevision: 1});
+    store.put('assets', {id: imageAsset, projectId, name: 'i.png', mimeType: 'image/png', duration: null, sha256: mediaSha,
+      sizeBytes: mediaBytes.length, reference: imageRef, referenceRevision: 1});
+    store.put('jobs', {id: id(71), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: shotA,
+      versionId: versionA, createdAt: at, updatedAt: at});
+    store.put('versions', {id: versionA, projectId, jobId: id(71), shotId: shotA, number: 1, assetId: assetA, sha256: mediaSha, createdAt: at});
     store.put('shots', {id: shotA, projectId, title: '镜头 A', orderIndex: 0, selectedVersionId: versionA, duration: 2, revision: 1, createdAt: at, updatedAt: at});
     store.put('shots', {id: shotB, projectId, title: '镜头 B', orderIndex: 1, selectedVersionId: null, duration: 1, revision: 1, createdAt: at, updatedAt: at});
     store.put('nodes', node(root, 'sequence_root', {name: 'Film'}));
@@ -63,7 +76,7 @@ function fixture(t: test.TestContext): ProjectStore {
       VALUES(?,?,?,?,?,?,?,?)`).run(subjectId, projectId, 'character', '阿琦', 1, subjectVersion, at, at);
     store.db.prepare(`INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)`)
       .run(subjectVersion, projectId, subjectId, 1, imageAsset, JSON.stringify({id: subjectVersion, projectId,
-        subjectId, number: 1, assetId: imageAsset, sha256: sha('b'), mimeType: 'image/png', width: 1080,
+        subjectId, number: 1, assetId: imageAsset, sha256: mediaSha, mimeType: 'image/png', width: 1080,
         height: 1920, createdAt: at, provenance: {kind: 'user-import', versionId: null, shotId: null, jobId: null}}));
     store.put('edges', {id: id(80), projectId, kind: 'sequence', source: root, target: shotA, createdAt: at});
     store.put('edges', {id: id(81), projectId, kind: 'sequence', source: shotA, target: shotB, createdAt: at});
@@ -202,6 +215,55 @@ test('MT-4 board actions are bounded server-side previews and commits', t => {
   assert.equal(tools.find(tool=>tool.operation==='sequence.board.get')?.name,'mioon_sequence_board_get');
 });
 
+test('FR-B2 format change freezes layouts, commits one step and undoes the header', t => {
+  const store=fixture(t);
+  store.put('timelines',{...(store.get('timelines',timelineId) as any),subtitles:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,cues:[]}});
+  assert.throws(()=>previewMioSequenceAction(store,projectId,req(39),{kind:'format-set',presetId:'portrait_1080'}),
+    {code:'TIMELINE_FORMAT_TIER_MISMATCH'});
+  const plan=previewMioSequenceAction(store,projectId,req(40),{kind:'format-set',presetId:'landscape_720'});
+  assert.equal(plan.envelope.origin,'mio');
+  assert.equal((plan.envelope as any).formatIntent.operation.presetId,'landscape_720');
+  const before=store.get('timelines',timelineId) as any;
+  assert.equal(before.width,720); assert.equal(before.height,1280);
+  assert.ok(before.clips.every((clip:any)=>clip.layout===undefined));
+  const receipt=commitMioSequenceAction(store,plan);
+  assert.equal(receipt.status,'applied');
+  const replay=commitMioSequenceAction(store,plan);
+  assert.equal(replay.status,'applied');
+  assert.equal(replay.actionId,receipt.actionId);
+  assert.equal((store.get('timelines',timelineId) as any).revision,receipt.timelineRevision);
+  const after=store.get('timelines',timelineId) as any;
+  assert.equal(after.width,1280); assert.equal(after.height,720);
+  assert.equal(after.subtitles.profileId,TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID);
+  assert.equal(after.subtitles.basisPresetId,'portrait_720');
+  assert.ok(after.clips.every((clip:any)=>clip.layout?.basisPresetId==='portrait_720'));
+  // User stack can undo the Mio format action only after it is the top Mio action.
+  const view=readSequenceEditHistory(store,'mio');
+  assert.equal(view.undoBlockedBy,null);
+  assert.equal(applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(41))).status,'applied');
+  const restored=store.get('timelines',timelineId) as any;
+  assert.equal(restored.width,720); assert.equal(restored.height,1280);
+  assert.equal(restored.subtitles.profileId,TIMELINE_SUBTITLE_PROFILE_ID);
+  assert.ok(restored.clips.every((clip:any)=>clip.layout===undefined));
+  assert.throws(()=>previewMioSequenceAction(store,projectId,req(42),{kind:'format-set',presetId:'portrait_720'}),
+    {code:'SEQUENCE_EDIT_NOOP'});
+});
+
+test('MT-5 subtitles preview, commit and one-step undo through the unified entry', t => {
+  const store=fixture(t);
+  const plan=previewMioSequenceAction(store,projectId,req(60),{kind:'subtitles',
+    edits:[{kind:'add',cue:{text:'字幕一',startFrame:0,durationFrames:10}}]});
+  assert.equal(plan.envelope.origin,'mio');
+  const receipt=commitMioSequenceAction(store,plan);
+  assert.equal(receipt.status,'applied');
+  const changed=store.get('timelines',timelineId) as any;
+  assert.equal(changed.subtitles?.cues.length,1);
+  assert.equal(changed.subtitles.cues[0].text,'字幕一');
+  const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(61)));
+  assert.equal(undone.status,'applied');
+  assert.equal((store.get('timelines',timelineId) as any).subtitles?.cues.length ?? 0,0);
+});
+
 test('write actions are bounded and reject generated ids supplied as envelopes', () => {
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root,envelope:{}}).success,false);
@@ -209,6 +271,7 @@ test('write actions are bounded and reject generated ids supplied as envelopes',
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-shot-append',name:'New shot'}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1,y:2}]}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1_000_001,y:2}]}).success,false);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'split-at-scenes',assetId:projectId,resultId:projectId}).success,true);
   const tools=listAgentTaskTools(false,true);
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.edit'&&tool.risk==='local_reversible'));
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.undo'));

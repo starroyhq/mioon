@@ -34,6 +34,7 @@ import {
   buildReferenceEdgeEnvelope, planReferenceEdgeAction,
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
+import {previewTimelineFormat, runTimelineFormatSync} from './format5-format-set.ts';
 import {previewTrack, runTrackSync} from './format5-tracks.ts';
 import {previewPrevisAction} from './format5-previs.ts';
 import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
@@ -88,6 +89,7 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
         durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
         versionId: edit.clip.versionId, locked: edit.clip.versionLocked},
       beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {})};
+    case 'split-at-scenes': return {kind: 'clip-split-scenes', assetId: edit.assetId, resultId: edit.resultId};
     case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
       rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};
     case 'trim': return {kind: 'clip-trim', clipId: edit.clipId, durationFrames: edit.durationFrames,
@@ -237,11 +239,15 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
+    if (input.formatIntent) return previewTimelineFormat(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      formatIntent: input.formatIntent as never});
     if (input.previsIntent) return previewPrevisAction(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       previsIntent: input.previsIntent as never});
     if (input.subtitlesIntent) return previewSubtitleEdits(store, {requestId: input.requestId,
-      ...(input.actionId ? {actionId: input.actionId} : {}), subtitlesIntent: input.subtitlesIntent as never});
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      subtitlesIntent: input.subtitlesIntent as never});
     if (input.trackIntent) return previewTrack(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       trackIntent: input.trackIntent as never});
@@ -271,6 +277,11 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     const actualDigest = sequenceEditInputDigest(envelope);
     if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
     const intents = envelope.intents;
+    if (envelope.formatIntent) {
+      const result = runTimelineFormatSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 画幅没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
     if (envelope.subtitlesIntent) {
       const result = runSubtitleEditsSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 字幕编辑没有完成。', 409, {ids: result.ids});

@@ -135,7 +135,7 @@ function panelHarness(controller: { getSnapshot: () => frame.FrameExtractionStat
   const module = ({ exports: {} } as ElementModule);
   Function('require', 'module', 'exports', code)((id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id.endsWith('packages/i18n/src/index.ts') ? i18n : id === 'react' ? react : id === './frame-extraction.ts' ? frame : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => visible } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const flush = (queue: number[]) => { for (const index of queue) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn!(); } };
-  return { render() { cursor = 0; effects = []; layouts = []; tree = module.exports.default({ controller }); flush(layouts); return tree; }, handlers: () => nodes(tree).filter((node: ElementNode) => node.props?.onClick).map((node: ElementNode) => node.props.onClick), hide() { visible = false; }, unmount() { slots.forEach(slot => slot.cleanup?.()); }, nodes: () => nodes(tree) };
+  return { render() { cursor = 0; effects = []; layouts = []; tree = module.exports.default({ controller }); flush(layouts); flush(effects); return tree; }, handlers: () => nodes(tree).filter((node: ElementNode) => node.props?.onClick).map((node: ElementNode) => node.props.onClick), hide() { visible = false; }, unmount() { slots.forEach(slot => slot.cleanup?.()); }, nodes: () => nodes(tree) };
 }
 
 test('actual Properties result card keeps its readable summary visible and exact audit identities in a closed native disclosure', async () => {
@@ -167,10 +167,10 @@ test('actual Properties result card keeps its readable summary visible and exact
 test('actual Properties component shows bounded provenance/result, and stale hidden/unmounted handlers cannot act', async () => {
   const actions: (unknown[])[] = [], h = setup((operation: string) => operation === 'frame.task.list' ? page([succeeded()]) : succeeded()); await h.controller.refreshTasks();
   const controller = new Proxy(h.controller, { get(target, key) { return ['refreshTasks', 'revealResult', 'loadMoreTasks'].includes(key as string) ? (...args: unknown[]) => actions.push([key, ...args]) : target[key as keyof typeof target]; } });
-  const panel = panelHarness(controller); panel.render(); const old = panel.handlers();
+  const panel = panelHarness(controller); panel.render(); const old = panel.handlers(); actions.length = 0;
   assert.ok(panel.nodes().some((node: ElementNode) => node.props?.['data-testid'] === 'frame-extraction-result')); assert.ok(old.length >= 2);
-  h.configure({ sourceScope: 'source-a:2' }); panel.render(); old.forEach((fn: () => unknown) => fn()); assert.deepEqual((actions as unknown), []);
-  const current = panel.handlers(); panel.hide(); panel.render(); current.forEach((fn: () => unknown) => fn()); assert.deepEqual((actions as unknown), []);
+  h.configure({ sourceScope: 'source-a:2' }); panel.render(); actions.length = 0; old.forEach((fn: () => unknown) => fn()); assert.deepEqual((actions as unknown), []);
+  const current = panel.handlers(); panel.hide(); panel.render(); actions.length = 0; current.forEach((fn: () => unknown) => fn()); assert.deepEqual((actions as unknown), []);
   panel.unmount(); panel.handlers().forEach((fn: () => unknown) => fn()); assert.deepEqual((actions as unknown), []);
 });
 
@@ -296,3 +296,20 @@ test('an unreadable current source never prepares content, including already str
  const h=harness({readable:false});assert.equal(await h.prepare(sampled,'frame'),null);assert.equal(await h.prepare(full,'scene'),null);assert.deepEqual(h.calls,[]);assert.deepEqual(h.refreshes,[]);
 });
 }
+
+test('a retained frame request is re-read once when the panel becomes visible', async () => {
+  const h = setup((operation: string) => operation === 'frame.task.list' ? page() : Promise.reject(new Error('lost acknowledgement')));
+  await h.controller.refreshTasks();
+  await h.controller.capture(intent);
+  assert.ok(h.controller.getState().pending, 'The lost acknowledgement keeps its original request');
+  const reads: string[] = [];
+  const controller = new Proxy(h.controller, { get(target, key) { if (key === 'reconcileUnknown') return async () => { reads.push('reconcileUnknown'); return null; }; return target[key as keyof typeof target]; } });
+  const panel = panelHarness(controller as never); panel.render();
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(reads, ['reconcileUnknown'], 'Opening the recovery panel reads the exact original request once');
+  panel.render(); await Promise.resolve();
+  assert.deepEqual(reads, ['reconcileUnknown'], 'Re-rendering never polls the same retained request');
+  panel.hide(); panel.render(); await Promise.resolve();
+  assert.deepEqual(reads, ['reconcileUnknown']);
+  panel.unmount();
+});
