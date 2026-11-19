@@ -1180,7 +1180,6 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID',
   'SEQUENCE_EDIT_SUBTITLE_INVALID',
   'SEQUENCE_EDIT_REFERENCE_INVALID',
-  'SEQUENCE_EDIT_REFERENCE_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
