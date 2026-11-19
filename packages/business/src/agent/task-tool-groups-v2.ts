@@ -109,6 +109,7 @@ const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROU
 export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4'|'format5';
 const format4GroupedTools=[...groupedTools,...mioCanvasCopyOperations.map(operation=>({group:'canvas' as const,operation,name:`mioon_${operation.replaceAll('.','_')}`})),...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
 const format5GroupedTools=[...groupedTools,{group:'core' as const,operation:'sequence.inspect',name:'mioon_sequence_inspect'},
+ {group:'core' as const,operation:'sequence.board.get',name:'mioon_sequence_board_get'},
  {group:'core' as const,operation:'sequence.tool.edit',name:'mioon_sequence_edit'},
  {group:'core' as const,operation:'sequence.tool.undo',name:'mioon_sequence_undo'}];
 export function agentTaskToolCatalogProfile(definitions:readonly {name:string}[]):AgentTaskToolCatalogProfile{

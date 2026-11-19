@@ -18,6 +18,8 @@ export interface BoardHistoryView extends SequenceHistoryView {
   readonly redoAvailable?: boolean;
   readonly undoConflict?: boolean;
   readonly redoConflict?: boolean;
+  readonly undoBlockedBy?: 'user' | 'mio' | null;
+  readonly redoBlockedBy?: 'user' | 'mio' | null;
 }
 export interface BoardArchivedRow {readonly id: string; readonly kind: 'shot' | 'node'; readonly name: string;
   readonly position: {readonly x: number; readonly y: number} | null}
@@ -85,7 +87,7 @@ export class BoardUiSession {
   async history(): Promise<BoardHistoryView | null> {
     const projectId = this.projectId();
     if (!projectId) return null;
-    try {return await this.endpoint('sequence.history.get')({projectId}) as BoardHistoryView;}
+    try {return await this.endpoint('sequence.history.get')({projectId, origin: 'user'}) as BoardHistoryView;}
     catch {return null;}
   }
   async board(): Promise<BoardMountView | null> {
@@ -99,7 +101,7 @@ export class BoardUiSession {
     if (!projectId || !view.undo || view.undoConflict === true) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
       return receiptOutcome(await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('board-undo'),
-        actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}));
+        origin: 'user', actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}));
     } catch (error) {return {ok: false, code: codeOf(error)};}
   }
   async redo(view: BoardHistoryView): Promise<BoardOutcome> {
@@ -107,7 +109,7 @@ export class BoardUiSession {
     if (!projectId || !view.redo || view.redoConflict === true) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
       return receiptOutcome(await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('board-redo'),
-        actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}));
+        origin: 'user', actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}));
     } catch (error) {return {ok: false, code: codeOf(error)};}
   }
 }

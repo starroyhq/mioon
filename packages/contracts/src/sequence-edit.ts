@@ -871,6 +871,8 @@ export interface SequenceEditHistoryCommand {
   readonly actionId: string;
   readonly direction: 'undo' | 'redo';
   readonly expected: SequenceEditHistoryCursor;
+  /** Which stack this command belongs to; defaults to the user stack. */
+  readonly origin?: 'user' | 'mio';
 }
 export interface SequenceEditCommitResult {
   readonly ok: true;
