@@ -14,6 +14,10 @@ import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subt
 import {inspectSubtitleRenderer} from './subtitle-renderer-capability.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
+import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
+import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelinePreflightSnapshot,TimelinePreflightSnapshotAsset} from './timeline-sources.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -24,7 +28,7 @@ interface PreflightProbeOptions {signal?: AbortSignal;timeout?: number;beforeSpa
 interface PreflightProbeResult {probe: unknown;width: number;height: number;duration: number|null;hasVideo: boolean;hasAudio: boolean;videoStreamIndex: number|string|null;audioStreamIndex: number|string|null}
 type PreflightInput = {[key: string]: unknown;projectId: string;expectedRevision: number;requestId?: string;exportSettings?: unknown;exportRange?: unknown;deliveryName?: string;preflightSnapshotHash?: string};
 interface PreflightChecks {totalAssets: number;checkedAssets: number;bytesHashed: number;fullDecode: boolean;subtitles?: {profileId: string;fontVerified: boolean;inkMeasured: boolean}}
-interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string}
+interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string}
 export interface TimelinePreflightReport {projectId: string;timelineId: string|null;timelineRevision: number|null;expectedRevision: number;snapshotHash: string|null;checkedAt: string;status: string;summary: unknown;checks: PreflightChecks;issues: PreflightIssue[]}
 interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void}
 interface PreflightCallOptions {signal?: AbortSignal}
@@ -48,9 +52,12 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  PREFLIGHT_TIMEOUT:'The bounded media check reached its time limit. Export is still available.',
  PREFLIGHT_BUSY:'Another export check is running. Try this check again when it finishes.',
  PREFLIGHT_STALE:'The saved timeline or its source metadata changed. Run the check again.',
+ PLACEHOLDER_CLIP:'The export range contains a placeholder segment. Generate it or split/remove it before exporting.',
+ VERSION_TOO_SHORT:'A following segment selects a version shorter than its cut. Select or lock a usable version before exporting.',
 });
 const issue=(code: string,severity='error'): PreflightIssue=>({code,severity,message:messages[code]});
 const canonical=(v: unknown): string|undefined=>JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
+const object=(value: unknown): value is Record<string, unknown>=>(value!==null&&typeof value==='object'&&!Array.isArray(value));
 export const timelineSnapshotHash=(snapshot: unknown): string=>createHash('sha256').update(canonical(snapshot) as string).digest('hex');
 function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {hasAudio?: boolean}>|null): Record<string, unknown>|null{
  const t=snapshot.timeline,assets=verified??new Map(snapshot.assets.map(a=>[a.id,a])),tracks=new Map(t.tracks.map(lane=>[lane.id,lane]));
@@ -104,6 +111,23 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const report: TimelinePreflightReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
+  // Format 5 placeholders and pending too-short follow versions block the exact
+  // export range before any media hashing or probe work.
+  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const format5Timeline=readFormat5TimelineRecord(store.db,'project');
+   if(format5Timeline){
+    report.timelineId=format5Timeline.id;report.timelineRevision=format5Timeline.revision;
+    if(format5Timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
+    const requestedRange=object(input.exportRange)?{startFrame:Number(input.exportRange.startFrame),endFrame:Number(input.exportRange.endFrame)}:null;
+    const blockers=format5ExportBlockersFromTimeline(store.db,format5Timeline,requestedRange);
+    if(blockers.length){
+     report.status='blocked';
+     report.issues=blockers.slice(0,EXPORT_PREFLIGHT_LIMITS.issues).map(blocker=>({code:blocker.code,severity:'error',
+       message:messages[blocker.code],clipId:blocker.clipId}));
+     return report;
+    }
+   }
+  }
   let initial,referencePreparedBytes=0;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
   catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}

@@ -2596,6 +2596,18 @@ export const timelineDeliveryMessages = {
     "en": "The saved timeline contains invalid or unsupported settings",
     "ja": "保存済みタイムラインに無効または未対応の設定があります"
   },
+  "export.preflight.issue.PLACEHOLDER_CLIP": {
+    "zh-Hans": "导出范围里有未生成的占位片段。",
+    "zh-Hant": "匯出範圍裡有未生成的佔位片段。",
+    "en": "The export range contains a placeholder segment.",
+    "ja": "書き出し範囲に未生成のプレースホルダーがあります。"
+  },
+  "export.preflight.issue.VERSION_TOO_SHORT": {
+    "zh-Hans": "跟随的版本比这一段的长度短，先选可用版本或锁定。",
+    "zh-Hant": "跟隨的版本比這一段的長度短，先選可用版本或鎖定。",
+    "en": "The followed version is shorter than this cut. Select or lock a usable version first.",
+    "ja": "追従中のバージョンがこの区間より短いです。先に使用できるバージョンを選ぶかロックしてください。"
+  },
   "export.preflight.issue.TIMELINE_SOURCE_UNAVAILABLE": {
     "zh-Hans": "引用的素材缺失，或不属于当前项目",
     "zh-Hant": "引用的素材遺失，或不屬於目前專案",

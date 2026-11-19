@@ -1,7 +1,1440 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="469df5bfa0ba6db6bf730a960e2cc3475f70e8c387fa9e02756e09469d12f94c";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="dca30c4bde1a0cb2349e20a59d5701c66f2e0983136e37f67f77b601a0a69ec0";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
+ "sequence.preview": {
+  "type": "object",
+  "properties": {
+   "actionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "originSide": {
+    "type": "string",
+    "enum": [
+     "board",
+     "timeline"
+    ]
+   },
+   "intents": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "side": {
+       "type": "string",
+       "enum": [
+        "board",
+        "timeline"
+       ]
+      },
+      "operation": {
+       "anyOf": [
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "board"
+          },
+          "edit": {
+           "anyOf": [
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "connect"
+              },
+              "fromId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "toId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "fromId",
+              "toId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "disconnect"
+              },
+              "fromId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "toId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "fromId",
+              "toId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "insert"
+              },
+              "fromId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "toId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "nodeId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "fromId",
+              "toId",
+              "nodeId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "delete"
+              },
+              "nodeId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "nodeId"
+             ],
+             "additionalProperties": false
+            }
+           ]
+          }
+         },
+         "required": [
+          "kind",
+          "edit"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "sync-board"
+          },
+          "newClipIds": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string",
+            "format": "uuid"
+           },
+           "propertyNames": {
+            "format": "uuid"
+           }
+          }
+         },
+         "required": [
+          "kind"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "board-version"
+          },
+          "nodeId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "version": {
+           "anyOf": [
+            {
+             "type": "object",
+             "properties": {
+              "id": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "sourceFrames": {
+               "anyOf": [
+                {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              }
+             },
+             "required": [
+              "id",
+              "sourceFrames"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "null"
+            }
+           ]
+          }
+         },
+         "required": [
+          "kind",
+          "nodeId",
+          "version"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "track"
+          },
+          "edit": {
+           "anyOf": [
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "move"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "beforeClipId": {
+               "anyOf": [
+                {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "copyNodeId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "beforeClipId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "move-off-track"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "trackId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              },
+              "copyNodeId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "trackId",
+              "startFrame"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "remove"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "add"
+              },
+              "clip": {
+               "type": "object",
+               "properties": {
+                "id": {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                "nodeId": {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                "versionId": {
+                 "anyOf": [
+                  {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                },
+                "versionLocked": {
+                 "type": "boolean"
+                },
+                "startFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                },
+                "durationFrames": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991,
+                 "exclusiveMinimum": 0
+                },
+                "sourceInFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                },
+                "splitGroupId": {
+                 "type": "string",
+                 "format": "uuid"
+                }
+               },
+               "required": [
+                "id",
+                "nodeId",
+                "versionId",
+                "versionLocked",
+                "startFrame",
+                "durationFrames",
+                "sourceInFrame"
+               ],
+               "additionalProperties": false
+              },
+              "beforeClipId": {
+               "anyOf": [
+                {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "media": {
+               "type": "object",
+               "properties": {
+                "nodeId": {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                "selectedVersion": {
+                 "anyOf": [
+                  {
+                   "type": "object",
+                   "properties": {
+                    "id": {
+                     "type": "string",
+                     "format": "uuid"
+                    },
+                    "sourceFrames": {
+                     "anyOf": [
+                      {
+                       "type": "integer",
+                       "minimum": 0,
+                       "maximum": 9007199254740991
+                      },
+                      {
+                       "type": "null"
+                      }
+                     ]
+                    }
+                   },
+                   "required": [
+                    "id",
+                    "sourceFrames"
+                   ],
+                   "additionalProperties": false
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                },
+                "durationFrames": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991,
+                 "exclusiveMinimum": 0
+                }
+               },
+               "required": [
+                "nodeId",
+                "selectedVersion",
+                "durationFrames"
+               ],
+               "additionalProperties": false
+              },
+              "nodeKind": {
+               "type": "string",
+               "enum": [
+                "shot",
+                "video",
+                "image"
+               ]
+              }
+             },
+             "required": [
+              "kind",
+              "clip",
+              "beforeClipId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "split"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "offsetFrames": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991,
+               "exclusiveMinimum": 0
+              },
+              "rightClipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "rightSourceInFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "offsetFrames",
+              "rightClipId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "trim"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "durationFrames": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991,
+               "exclusiveMinimum": 0
+              },
+              "sourceInFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "durationFrames"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "version"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "version": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "properties": {
+                  "id": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "sourceFrames": {
+                   "anyOf": [
+                    {
+                     "type": "integer",
+                     "minimum": 0,
+                     "maximum": 9007199254740991
+                    },
+                    {
+                     "type": "null"
+                    }
+                   ]
+                  }
+                 },
+                 "required": [
+                  "id",
+                  "sourceFrames"
+                 ],
+                 "additionalProperties": false
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "locked": {
+               "type": "boolean"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "version",
+              "locked"
+             ],
+             "additionalProperties": false
+            }
+           ]
+          }
+         },
+         "required": [
+          "kind",
+          "edit"
+         ],
+         "additionalProperties": false
+        }
+       ]
+      }
+     },
+     "required": [
+      "side",
+      "operation"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 64
+   },
+   "subjectIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "board"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "subject-binding"
+       },
+       "edit": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "create"
+           },
+           "bindingId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "subjectId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "role": {
+            "type": "string",
+            "enum": [
+             "subject",
+             "style"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "bindingId",
+           "shotId",
+           "subjectId",
+           "role"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "set-mode"
+           },
+           "bindingId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "bindingMode": {
+            "type": "string",
+            "enum": [
+             "follow",
+             "locked"
+            ]
+           },
+           "subjectVersionId": {
+            "anyOf": [
+             {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             {
+              "type": "null"
+             }
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "bindingId",
+           "bindingMode",
+           "subjectVersionId"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "detach"
+           },
+           "bindingId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           }
+          },
+          "required": [
+           "kind",
+           "bindingId"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "restore"
+           },
+           "bindingId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "bindingMode": {
+            "type": "string",
+            "enum": [
+             "follow",
+             "locked"
+            ]
+           },
+           "subjectVersionId": {
+            "anyOf": [
+             {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             {
+              "type": "null"
+             }
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "bindingId",
+           "bindingMode",
+           "subjectVersionId"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "edit"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
+   "allocation": {
+    "type": "object",
+    "properties": {
+     "clips": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "nodeId": {
+         "type": "string",
+         "format": "uuid"
+        },
+        "clipId": {
+         "type": "string",
+         "format": "uuid"
+        }
+       },
+       "required": [
+        "nodeId",
+        "clipId"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 500
+     },
+     "nodes": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "fromNodeId": {
+         "type": "string",
+         "format": "uuid"
+        },
+        "nodeId": {
+         "type": "string",
+         "format": "uuid"
+        }
+       },
+       "required": [
+        "fromNodeId",
+        "nodeId"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 500
+     },
+     "splitClips": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "clipId": {
+         "type": "string",
+         "format": "uuid"
+        },
+        "rightClipId": {
+         "type": "string",
+         "format": "uuid"
+        }
+       },
+       "required": [
+        "clipId",
+        "rightClipId"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 500
+     },
+     "edges": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "format": "uuid"
+        },
+        "fromId": {
+         "type": "string",
+         "format": "uuid"
+        },
+        "toId": {
+         "type": "string",
+         "format": "uuid"
+        }
+       },
+       "required": [
+        "id",
+        "fromId",
+        "toId"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 2000
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.commit": {
+  "type": "object",
+  "properties": {
+   "envelope": {
+    "type": "object",
+    "properties": {
+     "contractVersion": {
+      "type": "number",
+      "const": 1
+     },
+     "epoch": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+     },
+     "actionId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+     },
+     "filmId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+     },
+     "originSide": {
+      "type": "string",
+      "enum": [
+       "board",
+       "timeline"
+      ]
+     },
+     "intents": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "side": {
+         "type": "string",
+         "enum": [
+          "board",
+          "timeline"
+         ]
+        },
+        "operation": {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "enum": [
+            "board",
+            "sync-board",
+            "board-version",
+            "track"
+           ]
+          }
+         },
+         "required": [
+          "kind"
+         ],
+         "additionalProperties": true
+        }
+       },
+       "required": [
+        "side",
+        "operation"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 2
+     },
+     "subjectIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "board"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "subject-binding"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "create"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "subjectId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "subject",
+               "style"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "shotId",
+             "subjectId",
+             "role"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "set-mode"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "detach"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "restore"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "baseline": {
+      "type": "object",
+      "properties": {
+       "contentRevision": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "timelineRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+       },
+       "syncRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+       },
+       "historyPosition": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "historyRevision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+       },
+       "targets": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "enum": [
+            "shot",
+            "node",
+            "edge",
+            "clip",
+            "cue",
+            "subject_binding"
+           ]
+          },
+          "id": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "revision": {
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          }
+         },
+         "required": [
+          "kind",
+          "id",
+          "revision"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       }
+      },
+      "required": [
+       "contentRevision",
+       "timelineRevision",
+       "syncRevision",
+       "historyPosition",
+       "historyRevision",
+       "targets"
+      ],
+      "additionalProperties": false
+     },
+     "impact": {
+      "type": "object",
+      "properties": {
+       "nodeIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "edgeIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "mainTrackClipIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "otherTrackItemIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "subtitleCueIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "subjectBindingIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       }
+      },
+      "required": [
+       "nodeIds",
+       "edgeIds",
+       "mainTrackClipIds",
+       "otherTrackItemIds",
+       "subtitleCueIds"
+      ],
+      "additionalProperties": false
+     },
+     "allocation": {
+      "type": "object",
+      "properties": {
+       "clips": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "nodeId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "clipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "nodeId",
+          "clipId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       },
+       "nodes": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "fromNodeId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "nodeId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "fromNodeId",
+          "nodeId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       },
+       "splitClips": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "clipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "rightClipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "clipId",
+          "rightClipId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       },
+       "edges": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "id": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "fromId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "toId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+         },
+         "required": [
+          "id",
+          "fromId",
+          "toId"
+         ],
+         "additionalProperties": false
+        },
+        "maxItems": 2500
+       }
+      },
+      "required": [
+       "clips",
+       "nodes",
+       "splitClips",
+       "edges"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "contractVersion",
+     "epoch",
+     "actionId",
+     "filmId",
+     "originSide",
+     "intents",
+     "baseline",
+     "impact",
+     "allocation"
+    ],
+    "additionalProperties": false
+   },
+   "expectedPlanDigest": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   }
+  },
+  "required": [
+   "envelope",
+   "expectedPlanDigest"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.history.get": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.undo": {
+  "type": "object",
+  "properties": {
+   "actionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "expected": {
+    "type": "object",
+    "properties": {
+     "position": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+     },
+     "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+     }
+    },
+    "required": [
+     "position",
+     "revision"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "actionId",
+   "expected"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.redo": {
+  "type": "object",
+  "properties": {
+   "actionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "expected": {
+    "type": "object",
+    "properties": {
+     "position": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+     },
+     "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+     }
+    },
+    "required": [
+     "position",
+     "revision"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "actionId",
+   "expected"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
  "export.cancel": {
   "type": "object",
   "properties": {

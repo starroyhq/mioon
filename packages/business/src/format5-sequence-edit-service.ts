@@ -1,0 +1,238 @@
+/** One public RPC seam for format-5 sequence editing.
+ *
+ * UI-B2, UI-E2 and MT all call `sequence.preview` / `sequence.commit`; the
+ * confirmed intent routes to its owning coordinator:
+ * - board intents -> `sequence-edit.ts` (CS),
+ * - timeline intents -> `format5-sequence-sync.ts` (TS),
+ * - subject binding -> the subject planner inside the shared TS transaction.
+ * History, undo and redo have exactly one implementation in the CS
+ * coordinator (`format5-editor-history.ts`), including eviction/atEarliest.
+ */
+import {randomUUID} from 'node:crypto';
+import {AppError} from '../../contracts/src/app-error.ts';
+import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditHistoryCursor, SequenceEditIntent,
+  SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+import {isSequenceEditEnvelope} from '../../contracts/src/sequence-edit.ts';
+import {sequenceEditInputDigest} from './format5-editor-history.ts';
+import type {SequenceSyncCommand} from '../../contracts/src/sequence-sync.ts';
+import {sequenceEditIntentPayloadSchema} from '../../contracts/src/sequence-editing.ts';
+import {assertProjectStore} from './store-runtime.ts';
+import type {ProjectStore} from './project-file/store.ts';
+import {
+  applySequenceEdit, createSequenceEditing, planSequenceEditIntents, readSequenceEditContext,
+} from './sequence-edit.ts';
+import {previewSequenceSync, runSequenceSync} from './format5-sequence-sync.ts';
+import {
+  buildSubjectBindingEnvelope, planSubjectBindingAction,
+} from './format5-subject-binding.ts';
+import {prepareSequenceEditHistory} from './format5-editor-history.ts';
+import {readProjectContentStamp} from './project-file/content-stamp.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+
+type Row = Record<string, any>;
+const uuid = (value: unknown): value is string => typeof value === 'string' &&
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[a-f0-9]{12}$/iu.test(value);
+const format5 = (store: ProjectStore): boolean =>
+  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+const requireFormat5 = (store: ProjectStore): void => {
+  if (!format5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
+};
+const projectCheck = (store: ProjectStore, projectId: string): void => {
+  if (projectId !== store.projectId) throw new AppError('PROJECT_ID_MISMATCH', '项目地址与请求不一致。', 409);
+};
+const failure = (code: string, ids: readonly string[] = []): {ok: false; code: string; ids: readonly string[]} => ({ok: false, code, ids});
+const historyState = (store: ProjectStore) => {
+  const prepared = prepareSequenceEditHistory(store);
+  return {epoch: prepared.state.epoch, position: prepared.state.position, revision: prepared.state.revision};
+};
+function emptyAllocation(): SequenceEditAllocation {
+  return {clips: [], nodes: [], splitClips: [], edges: []};
+}
+function allocationOf(input: {allocation?: Record<string, any>}): SequenceEditAllocation {
+  const value = input.allocation ?? {};
+  const list = (key: string, shape: (item: any) => boolean) => Array.isArray(value[key]) ? value[key].filter(shape) : [];
+  const out = emptyAllocation();
+  const int = (item: any) => item && typeof item === 'object';
+  (out.clips as any[]).push(...list('clips', int));
+  (out.nodes as any[]).push(...list('nodes', int));
+  (out.splitClips as any[]).push(...list('splitClips', int));
+  (out.edges as any[]).push(...list('edges', int));
+  return out;
+}
+
+/** Inverse of `sequenceSyncIntent` for the timeline route. */
+function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | null {
+  const operation = intent.operation;
+  if (operation.kind === 'sync-board') return {kind: 'sync-board', ...(operation.newClipIds ? {newClipIds: operation.newClipIds} : {})};
+  if (operation.kind === 'board-version') return {kind: 'board-version', nodeId: operation.nodeId, versionId: operation.version?.id ?? null};
+  if (operation.kind !== 'track') return null;
+  const edit: any = operation.edit;
+  switch (edit.kind) {
+    case 'add': return {kind: 'clip-add', clip: {id: edit.clip.id, nodeId: edit.clip.nodeId,
+        segmentGroupId: edit.clip.splitGroupId ?? edit.clip.id, startFrame: edit.clip.startFrame,
+        durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
+        versionId: edit.clip.versionId, locked: edit.clip.versionLocked},
+      beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {})};
+    case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
+      rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};
+    case 'trim': return {kind: 'clip-trim', clipId: edit.clipId, durationFrames: edit.durationFrames,
+      ...(edit.sourceInFrame === undefined ? {} : {sourceInFrame: edit.sourceInFrame})};
+    case 'version': return {kind: 'clip-version', clipId: edit.clipId, versionId: edit.version?.id ?? null,
+      mode: edit.locked ? 'locked' : 'follow'};
+    case 'remove': return {kind: 'clip-remove', clipId: edit.clipId};
+    case 'move': return {kind: 'clip-move', clipId: edit.clipId, beforeClipId: edit.beforeClipId,
+      ...(edit.copyNodeId ? {copyNodeId: edit.copyNodeId} : {})};
+    case 'move-off-track': return {kind: 'clip-move-off-track', clipId: edit.clipId, trackId: edit.trackId,
+      startFrame: edit.startFrame, ...(edit.copyNodeId ? {copyNodeId: edit.copyNodeId} : {})};
+    default: return null;
+  }
+}
+const timelineIntent = (intent: SequenceEditIntent): boolean =>
+  intent.operation.kind === 'track' || intent.operation.kind === 'sync-board' || intent.operation.kind === 'board-version';
+const boardIntent = (intent: SequenceEditIntent): boolean => intent.operation.kind === 'board';
+
+function subjectCommand(intent: SequenceEditSubjectIntent): {
+  readonly kind: 'create' | 'set-mode' | 'detach' | 'restore'; readonly bindingId: string;
+  readonly shotId?: string; readonly subjectId?: string; readonly role?: 'subject' | 'style';
+  readonly bindingMode?: 'follow' | 'locked'; readonly subjectVersionId?: string | null;
+} {
+  const edit: any = intent.operation.edit;
+  switch (edit.kind) {
+    case 'create': return {kind: 'create', bindingId: edit.bindingId, shotId: edit.shotId,
+      subjectId: edit.subjectId, role: edit.role};
+    case 'set-mode': return {kind: 'set-mode', bindingId: edit.bindingId, bindingMode: edit.bindingMode,
+      subjectVersionId: edit.subjectVersionId};
+    case 'detach': return {kind: 'detach', bindingId: edit.bindingId};
+    case 'restore': return {kind: 'restore', bindingId: edit.bindingId, bindingMode: edit.bindingMode,
+      subjectVersionId: edit.subjectVersionId};
+    default: throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', '主体绑定动作无效。', 409);
+  }
+}
+
+export function createFormat5SequenceEditService(store: ProjectStore): {
+  preview(input: any): unknown;
+  commit(input: any): unknown;
+  history(input: {projectId: string}): unknown;
+  undo(input: any): unknown;
+  redo(input: any): unknown;
+} {
+  assertProjectStore(store);
+  const coordinator = createSequenceEditing(store);
+
+  function subjectPreview(input: any): unknown {
+    const intent = input.subjectIntent as SequenceEditSubjectIntent;
+    const command = subjectCommand(intent);
+    const state = historyState(store);
+    const edgeId = (input.allocation?.edges ?? []).find((edge: Row) => uuid(edge?.id))?.id as string | undefined
+      ?? randomUUID();
+    const envelope = buildSubjectBindingEnvelope(store as never, command as never, {
+      requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
+      historyPosition: state.position, historyRevision: state.revision, edgeId});
+    try { planSubjectBindingAction(store as never, envelope); }
+    catch (error) {
+      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
+      throw error;
+    }
+    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+  }
+
+  function timelinePreview(input: any, intents: SequenceEditIntent[]): unknown {
+    if (intents.length !== 1) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+    const command = commandFromIntent(intents[0]!);
+    if (!command) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+    const result = previewSequenceSync(store, command, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {})}) as Row;
+    if (result.ok === false) return failure(String(result.code), (result.ids as string[]) ?? []);
+    return result;
+  }
+
+  function boardPreview(input: any, intents: SequenceEditIntent[]): unknown {
+    const context = readSequenceEditContext(store as never);
+    const allocation = allocationOf(input);
+    const state = historyState(store);
+    const content = readProjectContentStamp(store.db).contentSequence;
+    const planned = planSequenceEditIntents({
+      board: context.board, filmId: context.rootNodeId, media: context.media, clips: context.clips,
+      anchored: context.anchored,
+    } as never, intents, allocation as never);
+    if (!('ok' in planned) || planned.ok === false) return failure(String((planned as any).code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID'),
+      ((planned as any).ids as string[]) ?? []);
+    const plan = planned.plan as any;
+    const impact = {
+      nodeIds: [...new Set<any>([...plan.changes.nodes.map((change: any) => change.after?.id ?? change.before?.id),
+        ...plan.changes.media.map((change: any) => change.after?.nodeId ?? change.before?.nodeId)].filter(uuid))],
+      edgeIds: [...new Set<any>(plan.changes.edges.map((change: any) => change.after?.fromId ?? change.before?.fromId).filter(uuid))],
+      mainTrackClipIds: [...new Set<any>(plan.changes.clips.map((change: any) => change.after?.id ?? change.before?.id).filter(uuid))],
+      otherTrackItemIds: [...new Set<any>(plan.changes.anchored.map((change: any) => change.after?.id ?? change.before?.id).filter(uuid))],
+      subtitleCueIds: [],
+    };
+    const originSide = intents[0]!.side;
+    const envelope: SequenceEditEnvelope = {
+      contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
+      actionId: input.actionId ?? randomUUID(), requestId: input.requestId, originSide,
+      filmId: context.rootNodeId, intents,
+      baseline: {contentRevision: content, timelineRevision: context.timeline.revision,
+        syncRevision: context.syncRevision, historyPosition: state.position,
+        historyRevision: state.revision, targets: []},
+      impact, allocation,
+    };
+    if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+  }
+
+  function preview(input: any): unknown {
+    projectCheck(store, input.projectId);
+    requireFormat5(store);
+    // Timeline preview currently owns its own read transaction; subject and
+    // board previews only read, so no outer transaction is needed here.
+    if (input.subjectIntent) return subjectPreview(input);
+    const intents = (input.intents ?? []) as SequenceEditIntent[];
+    if (intents.length === 0) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+    for (const intent of intents) {
+      if (!sequenceEditIntentPayloadSchema.safeParse(intent).success) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+    }
+    if (intents.some(boardIntent)) {
+      if (intents.some(timelineIntent)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+      return boardPreview(input, intents);
+    }
+    if (intents.some(timelineIntent)) return timelinePreview(input, intents);
+    return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+  }
+
+  function commit(input: any): unknown {
+    projectCheck(store, input.projectId);
+    requireFormat5(store);
+    const envelope = input.envelope as SequenceEditEnvelope;
+    if (!isSequenceEditEnvelope(envelope)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '动作 envelope 无效。', 409);
+    const actualDigest = sequenceEditInputDigest(envelope);
+    if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
+    const intents = envelope.intents;
+    if (envelope.subjectIntent || intents.some(timelineIntent)) {
+      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
+    if (intents.some(boardIntent)) {
+      const receipt = applySequenceEdit(store, envelope);
+      return receipt;
+    }
+    throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '没有可执行的 intent。', 409);
+  }
+
+  function history(input: {projectId: string}): unknown {
+    projectCheck(store, input.projectId);
+    requireFormat5(store);
+    return coordinator.call('sequence.history.get', input);
+  }
+  function undo(input: any): unknown { return coordinator.call('sequence.undo', input); }
+  function redo(input: any): unknown { return coordinator.call('sequence.redo', input); }
+  return {preview, commit, history, undo, redo};
+}
+
+/** Read-only projection for UI-B2/UI-E2 mounting. */
+export function readFormat5SequenceProjection(store: ProjectStore): unknown {
+  assertProjectStore(store);
+  requireFormat5(store);
+  return readFormat5TimelineRecord(store.db, 'project');
+}

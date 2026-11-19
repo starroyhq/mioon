@@ -199,6 +199,12 @@ import { useLocalDelivery } from './local-delivery-state.ts';
 import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.tsx';
 import TimelineInspector from './TimelineInspector.tsx';
+import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
+import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
+import EditUiNoticeBar from './edit-ui/EditUiNotice.tsx';
+import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
+import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5VersionCommand} from './edit-ui/session.ts';
+import type {SequenceHistoryView} from './edit-ui/session.ts';
 import { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';
 import SubtitleInspector from './SubtitleInspector.tsx';
 import { useSubtitles } from './use-subtitles.ts';
@@ -328,7 +334,7 @@ export interface AppTimeline {
 }
 export interface AppData {
   project: AppProject | null;
-  projectFormatVersion?: 3 | 4;
+  projectFormatVersion?: 3 | 4 | 5;
   canvasEditBase?: CanvasEditBase;
   assets: AppAsset[];
   shots: AppShot[];
@@ -2240,6 +2246,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function openExportHistory(): void { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(true); setShowDelivery(true); }
   async function createExport(): Promise<void> { const panelChoice = panelIntent.current, projectId = currentProject.current; const result = await run('export', 'export.create', { projectId: data.project!.id, requestId: requestId() }); if (result) { if (panelChoice === panelIntent.current && projectId === currentProject.current) openExportHistory(); notify(msg('shell.storyboardExportCreated')); } }
   const timeline = data.timeline;
+  const format5 = data.projectFormatVersion === 5;
+  const format5SessionRef = useRef<Format5EditSession | null>(null);
+  const [format5History, setFormat5History] = useState<SequenceHistoryView | null>(null);
+  const [format5Notice, setFormat5Notice] = useState<EditUiNotice | null>(null);
+  const [format5CopyRequest, setFormat5CopyRequest] = useState<EditUiCopyMoveRequest | null>(null);
+  const [format5SessionBusy, setFormat5SessionBusy] = useState(false);
+  const [format5NoticeActionId, setFormat5NoticeActionId] = useState<string | null>(null);
+  const format5EditProjection = useMemo(() => format5 ? format5Projection(timeline, data.shots, data.versions) : null,
+    [format5, timeline, data.shots, data.versions]);
   const timelinePending = taskState.phase !== 'ready' || activeTasks.some(task => task.lane === 'timeline:mutation') || activePending.some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render');
   const timelineBusy = Boolean(busy['timeline:mutation'] || timelinePending);
   const assetUsageAttempt = useRef(0), assetUsageAvailability = useRef<{ready: boolean} | null>(null), assetUsageSnapshot = useRef<unknown>(null);
@@ -2659,6 +2674,20 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // Opening is passive. Only the explicit Check action runs capability/media work.
   }
   const historyState = timelineHistoryState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
+  const format5HistorySource = format5 && format5History && timeline ? {
+    projectId: data.project?.id, timelineId: timeline.id, revision: timeline.revision,
+    cursor: format5History.position, length: format5History.position + (format5History.redo ? 1 : 0),
+    canUndo: Boolean(format5History.undo), canRedo: Boolean(format5History.redo),
+    undoEntry: format5History.undo ? {id: format5History.undo.actionId, operation: format5History.undo.operation} : null,
+    redoEntry: format5History.redo ? {id: format5History.redo.actionId, operation: format5History.redo.operation} : null,
+  } : null;
+  const format5HistoryState = format5 ? timelineHistoryState({ projectId: data.project?.id, timeline, history: format5HistorySource,
+    busy: format5SessionBusy, pending: false, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading }) : historyState;
+  const getFormat5SplitStateAt = (frame: number) => timelineSplitState({ projectId: data.project?.id, timeline,
+    history: format5HistorySource, busy: format5SessionBusy, pending: false, dirty: clipDirty || subtitleDirty,
+    online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : selectedClipId,
+    playhead: frame, mode: workspaceMode });
+  const format5SplitState = format5 ? getFormat5SplitStateAt(effectivePlayhead) : null;
   const frameChange = aspectChange && frame && aspectChange.scope === frame.scope && aspectChange.timelineId === frame.timelineId && aspectChange.revision === frame.revision ? aspectChange : null;
   const frameUndoEntry = frameChange && aspectFrameUndoEntry(frameChange, frame, data.timelineHistory);
   const frameSuggestion = aspectSuggestion && frame && aspectSuggestion.scope === frame.scope && aspectSuggestion.ratio !== frame.ratio ? aspectSuggestion : null;
@@ -2682,7 +2711,162 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   } : undefined;
   const getSplitStateAt = (frame: number) => timelineSplitState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : selectedClipId, playhead: frame, mode: workspaceMode });
   const splitState = getSplitStateAt(effectivePlayhead);
+  function format5Session(): Format5EditSession {
+    format5SessionRef.current ??= new Format5EditSession(rpc, () => currentProject.current);
+    return format5SessionRef.current;
+  }
+  async function format5RefreshHistory(): Promise<void> {
+    if (!currentProject.current) return;
+    const view = await format5Session().history();
+    if (currentProject.current && dataRef.current.projectFormatVersion === 5) setFormat5History(view);
+  }
+  useEffect(() => {
+    if (!format5 || !timeline) { setFormat5History(null); return; }
+    let cancelled = false;
+    void (async () => {
+      const view = await format5Session().history();
+      if (!cancelled && currentProject.current) setFormat5History(view);
+    })();
+    return () => { cancelled = true; };
+  }, [format5, timeline?.id, timeline?.revision]);
+  function format5ClipName(clipId: string): string {
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
+    const asset = dataRef.current.assets.find(item => item.id === clip?.assetId);
+    return clip?.name || asset?.name || '';
+  }
+  function format5NoticeMessage(command: {kind: string; clipId?: string; trackId?: string}, clipName: string): EditUiNotice | null {
+    const id = `format5-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    switch (command.kind) {
+      case 'clip-remove': return {id, message: t('editUi.notice.removedFromMainTrack', {name: clipName})};
+      case 'clip-split': return {id, message: t('editUi.notice.split', {name: clipName})};
+      case 'clip-trim': return {id, message: t('editUi.notice.trimmed', {name: clipName})};
+      case 'clip-move': return {id, message: t('editUi.notice.moved', {name: clipName})};
+      case 'clip-move-off-track': {
+        const track = dataRef.current.timeline?.tracks.find(item => item.id === command.trackId);
+        return {id, message: t('editUi.notice.movedOffTrack', {track: track?.name ?? ''})};
+      }
+      default: return null;
+    }
+  }
+  async function format5RunPolicy(command: Parameters<Format5EditSession['run']>[0]): Promise<unknown> {
+    if (format5SessionBusy) return null;
+    setFormat5SessionBusy(true);
+    try {
+      const result = await format5Session().run(command);
+      if (!result.ok) { notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return null; }
+      const clipName = format5ClipName(('clipId' in command ? command.clipId : undefined) ?? '');
+      const notice = format5NoticeMessage(command as never, clipName);
+      if (notice) {setFormat5Notice(notice); setFormat5NoticeActionId(result.actionId);}
+      await refresh(currentProject.current);
+      await format5RefreshHistory();
+      return result;
+    } finally {setFormat5SessionBusy(false);}
+  }
+  async function format5RemoveTimelineClip(clipId: string): Promise<unknown> {
+    if (!format5) return null;
+    const result = await format5RunPolicy({kind: 'clip-remove', clipId} as never);
+    if (result) setSelectedClipId(null);
+    return result;
+  }
+  async function format5SplitTimelineClip(): Promise<unknown> {
+    if (!format5) return null;
+    const latest = timelineSplitState({ projectId: currentProject.current, timeline: dataRef.current.timeline,
+      history: format5HistorySource, busy: format5SessionBusy, pending: false,
+      dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading,
+      selectedClipId: propertiesPage === 'subtitle' ? null : viewRef.current!.editing.selectedClipId,
+      playhead: playbackClock.getSnapshot() ?? timelineAudioPreviewPosition(audioPreview, viewRef.current!.editing.playhead),
+      mode: viewRef.current!.activeMode });
+    if (!latest.canSplit) return null;
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === latest.clipId);
+    if (!clip) return null;
+    audioPreview.controller!.revoke();
+    return format5RunPolicy(format5SplitCommand(clip.id, (latest.atFrame as number) - clip.startFrame) as never);
+  }
+  async function format5MoveTimelineClip(clipId: string, trackId: string, startFrame: number): Promise<unknown> {
+    if (!format5 || format5SessionBusy) return null;
+    const timelineNow = dataRef.current.timeline, clip = timelineNow?.clips.find(item => item.id === clipId);
+    if (!timelineNow || !clip) return null;
+    const mainTrackId = (timelineNow as unknown as {mainTrack?: {trackId?: string}}).mainTrack?.trackId ?? null;
+    const source = (clip as unknown as {sequenceSource?: {nodeId?: string; segmentGroupId?: string}}).sequenceSource;
+    setFormat5SessionBusy(true);
+    try {
+      let command = trackId === mainTrackId && mainTrackId !== null
+        ? format5MoveCommand(clipId, (() => {
+            const sorted = timelineNow.clips.filter(item => item.trackId === mainTrackId && item.id !== clipId)
+              .sort((left, right) => left.startFrame - right.startFrame);
+            return sorted.find(item => item.startFrame > startFrame)?.id ?? null;
+          })())
+        : format5MoveOffTrackCommand(clipId, trackId, startFrame);
+      const request = {clipId, nodeId: source?.nodeId ?? '', segmentGroupId: source?.segmentGroupId ?? '',
+        targetTrackId: trackId, targetStartFrame: startFrame, timelineRevision: timelineNow.revision};
+      const result = await format5Session().requestMove(command as never, request as never);
+      if ('needsCopy' in result) {setFormat5CopyRequest(format5Session().copyRequest); return null;}
+      if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return null;}
+      setFormat5Notice(format5NoticeMessage(command as never, format5ClipName(clipId))); setFormat5NoticeActionId(result.actionId);
+      setSelectedClipId(clipId); setPlayhead(startFrame);
+      await refresh(currentProject.current); await format5RefreshHistory();
+      return result;
+    } finally {setFormat5SessionBusy(false);}
+  }
+  async function format5ConfirmCopy(): Promise<unknown> {
+    if (format5SessionBusy) return null;
+    setFormat5SessionBusy(true);
+    try {
+      const result = await format5Session().confirmCopy();
+      setFormat5CopyRequest(null);
+      if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return null;}
+      setFormat5Notice({id: `format5-${Date.now()}`, message: t('editUi.notice.moved', {name: format5ClipName(format5CopyRequest?.clipId ?? '')})}); setFormat5NoticeActionId(result.actionId);
+      await refresh(currentProject.current); await format5RefreshHistory();
+      return result;
+    } finally {setFormat5SessionBusy(false);}
+  }
+  function format5CancelCopy(): void {format5Session().cancelCopy(); setFormat5CopyRequest(null);}
+  async function format5ChangeHistory(direction: 'undo' | 'redo'): Promise<unknown> {
+    if (!format5) return null;
+    const view = await format5Session().history();
+    if (!view) return null;
+    const result = direction === 'undo' ? await format5Session().undo(view) : await format5Session().redo(view);
+    if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return null;}
+    setFormat5Notice(null); setFormat5NoticeActionId(null);
+    await refresh(currentProject.current); await format5RefreshHistory();
+    return result;
+  }
+  async function format5ChooseVersion(clipId: string, choice: {readonly mode: 'follow' | 'locked'; readonly versionId: string | null}): Promise<unknown> {
+    return format5RunPolicy(format5VersionCommand(clipId, choice) as never);
+  }
+  async function format5SaveInspectorClip(clipId: string, patch: Record<string, unknown>): Promise<unknown> {
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
+    if (!clip) return null;
+    const mainTrackId = (dataRef.current.timeline as unknown as {mainTrack?: {trackId?: string}})?.mainTrack?.trackId ?? null;
+    const command = format5PatchCommand(clip as never, patch, mainTrackId);
+    if ('unsupported' in command) {notify(t('editUi.error.GENERIC'), 'warning'); return null;}
+    return format5RunPolicy(command as never);
+  }
+  async function format5RevealShot(clipId: string): Promise<unknown> {
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
+    const nodeId = (clip as unknown as {sequenceSource?: {nodeId?: string}})?.sequenceSource?.nodeId;
+    if (!nodeId || workspaceMode === 'canvas' && selectedId === nodeId) return null;
+    await changeMode('canvas');
+    await inspect(nodeId, 'settings', null, {reveal: true});
+    const epoch = projectEpoch.current;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (projectEpoch.current === epoch) void flow.fitView({nodes: [{id: nodeId}], padding: flowFitPadding(canvasFitPadding(.25)), duration: 250, minZoom: .65, maxZoom: 1});
+    }));
+    return null;
+  }
+  async function format5UndoNotice(): Promise<unknown> {
+    const view = await format5Session().history();
+    if (!view?.undo || !format5NoticeActionId || view.undo.actionId !== format5NoticeActionId) {
+      setFormat5Notice(null); setFormat5NoticeActionId(null); return null;
+    }
+    const result = await format5Session().undo(view);
+    if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return null;}
+    setFormat5Notice(null);
+    await refresh(currentProject.current); await format5RefreshHistory();
+    return result;
+  }
   async function splitTimelineClip(): Promise<unknown> {
+    if (dataRef.current.projectFormatVersion === 5) return format5SplitTimelineClip();
     if (currentProject.current !== dataRef.current!.project?.id) return null;
     const latest = timelineSplitState({ projectId: currentProject.current, timeline: dataRef.current!.timeline, history: dataRef.current!.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : viewRef.current!.editing.selectedClipId, playhead: playbackClock.getSnapshot() ?? timelineAudioPreviewPosition(audioPreview, viewRef.current!.editing.playhead), mode: viewRef.current!.activeMode });
     if (!latest.canSplit) return null;
@@ -2693,6 +2877,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function changeTimelineHistory(direction: string, expectedRevision?: number, canExecute?: () => boolean): unknown {
     if (workspaceMode !== 'editing' || !['undo', 'redo'].includes(direction) || currentProject.current !== dataRef.current!.project?.id) return null;
+    if (dataRef.current.projectFormatVersion === 5) return format5ChangeHistory(direction as 'undo' | 'redo');
     const latest = timelineHistoryState({ projectId: currentProject.current, timeline: dataRef.current!.timeline, history: dataRef.current!.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
     if (!(direction === 'undo' ? latest.canUndo : latest.canRedo)) return null;
     if (canExecute) return mutateTimeline(`timeline.${direction}`, {}, expectedRevision, {canExecute});
@@ -2718,7 +2903,30 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   });
+  async function mutateFormat5TimelineOperation(operation: string, input: Record<string, unknown>): Promise<unknown> {
+    const clipId = typeof input.clipId === 'string' ? input.clipId : '';
+    switch (operation) {
+      case 'timeline.clip.update':
+        return format5SaveInspectorClip(clipId, (input.patch ?? {}) as Record<string, unknown>);
+      case 'timeline.clip.remove':
+      case 'timeline.clip.rippleRemove':
+        return format5RemoveTimelineClip(clipId);
+      case 'timeline.clip.split':
+        return format5SplitTimelineClip();
+      case 'timeline.undo':
+        return format5ChangeHistory('undo');
+      case 'timeline.redo':
+        return format5ChangeHistory('redo');
+      case 'timeline.seed':
+        notify(t('editUi.error.GENERIC'), 'warning');
+        return null;
+      default:
+        notify(t('editUi.error.GENERIC'), 'warning');
+        return null;
+    }
+  }
   async function mutateTimeline(operation: string, input: Record<string, unknown> = {}, expectedRevision?: number, options?: RunOptions): Promise<unknown> {
+    if (dataRef.current.projectFormatVersion === 5) return mutateFormat5TimelineOperation(operation, input);
     if (clipDraftRef.current?.hasPendingComposition()) return null;
     if (!dataRef.current!.timeline) return null;
     const allowed=(prepared:unknown)=>!touchesLockedTrack(operation,input,dataRef.current!.timeline,new Set(trackLocksRef.current[currentProject.current||'']||[]))&&(options?.canExecute?.(prepared)??true);
@@ -2759,6 +2967,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     updateView('activeMode', 'editing'); setMobilePanel('canvas');
   }
   async function addTimelineAsset(assetId: string, trackId?: string | null, startFrame?: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
+    if (dataRef.current.projectFormatVersion === 5) { notify(t('editUi.error.GENERIC'), 'warning'); return; }
     const panelChoice = panelIntent.current;
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (!await guardNavigation(msg('shell.confirm.addTimeline'))) return;
@@ -2796,6 +3005,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
   }
   async function moveTimelineClip(clipId: string, trackId: string, startFrame: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
+    if (dataRef.current.projectFormatVersion === 5) { await format5MoveTimelineClip(clipId, trackId, startFrame); return; }
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (clipDirty && !await guardNavigation(msg('shell.confirm.moveClip'))) return;
     const clip = dataRef.current!.timeline?.clips.find(c => c.id === clipId);
@@ -2919,6 +3129,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // The timeline's quick add saves the cut's default transition, then selects
   // the incoming clip so its inspector shows the transition to adjust.
   async function addTimelineTransition(clipId: string, transition: ClipTransition): Promise<void> {
+    if (dataRef.current.projectFormatVersion === 5) { notify(t('editUi.error.GENERIC'), 'warning'); return; }
     if (await setTimelineClipTransition(clipId, transition) && viewRef.current!.editing.selectedClipId !== clipId) await selectClip(clipId, false);
   }
   // The cut before the inspector's clip and the longest transition it takes,
@@ -3000,6 +3211,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function renderUncheckedTimeline(intent: unknown): Promise<void> { return renderTimeline('export', null, intent); }
   async function renderTimeline(purpose: string, binding?: unknown, uncheckedIntent?: unknown, sample = false): Promise<void> {
+    if (dataRef.current.projectFormatVersion === 5) { notify(t('editUi.error.GENERIC'), 'warning'); return; }
     if (!dataRef.current!.timeline?.clips.length) return;
     if (sample && (purpose !== 'export' || uncheckedIntent || dirtyRef.current || timelineFormatRef.current?.controller.hasUnsaved() || !isExportPreviewRange(sampleExportContext().exportRange as never, dataRef.current!.timeline.durationFrames))) return;
     let exportInput;
@@ -4042,10 +4254,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     {canvasEditingEnabled && canvasSelectedItems.length > 1 ? <aside className="inspector"><CanvasSelectionInspector items={canvasSelectedItems} />
       <CanvasOverview shots={data.shots} versions={data.versions} jobs={jobs as React.ComponentProps<typeof CanvasOverview>['jobs']} nodes={data.nodes} />
     </aside> : storyboardPanel ?? previsPanel ?? <Inspector protectEditing={(content,onDiscard) => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} onDiscard={onDiscard} disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:chosenShot.revision ?? 0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:chosenNode.revision ?? 0}] : []} canRelease={() => !shotDirty && !shotTextRef.current?.hasUnsaved() && !shotTextRef.current?.getState().pending && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain && !isBusy(`save:${chosenShot?.id || chosenNode?.id}`)}>{content}</AgentEditingBoundary>} onEditImage={openImageEdit} annotations={annotations} annotationAsset={librarySource as never} assetSections={sceneSummary(librarySource as AppAsset | null)} annotationBlocked={annotationBlocked}  onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext } as never} onShotTextController={registerShotText} onShotTextAccepted={((({ response }: {response: {projectId: string}}) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }) as never)} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects as never} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} videoDirectoryUnavailable={videoDirectoryUnavailable} onRetryVideoDirectory={() => { void refresh(); }} showEnvironmentSetup={!nativeWindow} configureGeneration={configureVideoGeneration ? () => openGlobalSettings('models') : undefined} generationFrame={data.timelineFrameTransaction === true ? data.timeline : null} generationOptions={generationOptions[selectedId as string]} onGenerationOptionsChange={updateGenerationOptions as never} tab={tab} setTab={setTab} busy={busy} onSave={saveShot as never} onNodeSave={saveNode as never} onGenerate={generate as never} regenerationJobId={regenerationJobId} onRegenerate={(shot, options, job, stillCurrent) => generate(shot, options, { job, stillCurrent })} onCancelJob={(job, stillCurrent) => { const live = dataRef.current!.jobs.find(item => item.id === job.id); if (!stillCurrent() || live?.projectId !== currentProject.current || live?.status !== job.status || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return; return run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }, undefined, { canExecute: stillCurrent }); }} onRetryJob={retryGeneration} onSelectVersion={selectVersion as never} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots as never[]} nodes={data.nodes as never[]} edges={data.edges as never[]} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={((id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true })) as never} timelineStatus={shotTimelineView(chosenShot?.id)} onViewInEditing={viewShotInEditing} onAddVersion={(assetId: string) => addTimelineAsset(assetId)} />}
-    </div> : quickAssetId && sourceAsset ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={data.project?.id} targets={[{kind:'asset_range',id:sourceAsset.id,revision:0}]} canRelease={() => !sourceDirty} onDiscard={()=>{if(sourceRanges.controller.getState().scope===sourceRanges.state?.scope)sourceRanges.controller.discard();}}><SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller as never} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} sections={sceneSummary(sourceAsset as AppAsset | null)}>{<FrameExtractionPanel controller={frameExtraction.controller as never} revealTask={agentRecovery?.kind === 'frame' ? agentRecovery : null} />}</SourceRangeInspector></AgentEditingBoundary> : displayedClipInspector ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={displayedClipInspector.projectId} targets={[{kind:'timeline_clip',id:displayedClipInspector.clip.id,revision:displayedClipInspector.timeline.revision ?? 0}]} canRelease={() => !clipDraftRef.current?.hasUnsaved() && !clipDraftRef.current?.hasPendingComposition() && !clipDraftRef.current?.getState().candidate && !clipDraftRef.current?.getState().businessPending && !clipDirty} onDiscard={()=>{const controller=clipDraftRef.current;if(!controller)return;const token=controller.capture();if(token.clipId===displayedClipInspector.clip.id)return controller.discard(token);}}><TimelineInspector key={displayedClipInspector.key} crossfadeCandidates={clipInspectorRetained ? undefined : timelineCrossfadeCandidates(displayedClipInspector.timeline.clips, data.assets, displayedClipInspector.clip.id, new Set(trackLocksRef.current[currentProject.current || ''] || []))} onCrossfade={clipInspectorRetained ? undefined : crossfadeTimelineClips} onSetTransform={clipInspectorRetained ? undefined : setTimelineClipTransform} transformFrame={clipTransformFrame(displayedClipInspector.clip, playhead)} transitionContext={clipTransitionContext()} onSetTransition={clipInspectorRetained ? undefined : setTimelineClipTransition} loudnessContext={clipLoudnessContext as never} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={(clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot?.title} · V${clipSource.version.number}` : clipSource?.asset?.name) as string | undefined} replacementContext={clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id) as never} onReplaceSource={replaceTimelineClipSource as never} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ collaboration: displayedClipInspector.collaboration, scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId,   audioRoleEditable, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true,  }} draftConnected={!clipInspectorRetained && online && auth === true && !loading && !nativeLeaseRevoked.current} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={((clipId: string, patch: Record<string, unknown>, revision: number, draftOptions: unknown) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: (draftOptions as {canExecute?: () => boolean} | undefined)?.canExecute })) as never} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onSplit={splitTimelineClip} splitDisabled={!splitState.canSplit || clipInspectorRetained} onShowAsset={() => { if (!clipInspectorRetained && displayedClipInspector.projectId && displayedClipInspector.clip.assetId) void revealImageAsset(displayedClipInspector.clip.assetId, displayedClipInspector.projectId); }} onDirtyChange={setClipDirty} busy={timelineBusy||lockedTrackIds.has(displayedClipInspector.clip.trackId)} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /></AgentEditingBoundary> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={subtitles.state?.projectId} targets={subtitles.state?.cueId ? [{kind:'timeline_subtitle',id:subtitles.state.cueId,revision:subtitles.state.baseRevision ?? 0}] : subtitles.state?.projectId ? [{kind:'timeline',id:subtitles.state.projectId,revision:subtitles.state.baseRevision ?? 0}] : []} canRelease={() => !subtitlesRef.current?.controller.hasUnsaved() && !subtitlesRef.current?.controller.getState().uncertain} onDiscard={()=>subtitles.controller.discardDraft(subtitles.state?.scope)}><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob as never} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane><AgentDockPane id="properties-format-pane" visible={data.projectFormatVersion !== 4 && propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={timelineFormat.state?.projectId} targets={timelineFormat.state?.projectId ? [{kind:'timeline',id:timelineFormat.state.projectId,revision:timelineFormat.state.base?.timelineRevision ?? 0}] : []} canRelease={() => !timelineFormatRef.current?.controller.hasUnsaved() && !timelineFormatRef.current?.controller.getState().uncertain} onDiscard={()=>timelineFormat.controller.discardDraft(timelineFormat.state?.scope)}><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{<AgentWorkspace isAdmissionAllowed={()=>!nativeLeaseRevoked.current && !projectEntryIdentityRef.current!.getState().identityBlocked} onReviewProjectRules={showProjectRules} workspaceScope={editorSession.current||'unverified'} onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} timelineFps={timeline?.fps} targetName={(kind,id) => { if(kind==='shot')return data.shots.find(item=>item.id===id)?.title; if(kind==='node')return data.nodes.find(item=>item.id===id)?.label; if(kind==='asset')return data.assets.find(item=>item.id===id)?.name; if(kind==='timeline_track')return timeline?.tracks.find(item=>item.id===id)?.name; if(kind==='timeline_subtitle')return timeline?.subtitles?.cues.find(item=>item.id===id)?.text; if(kind==='timeline_clip'){const clip=timeline?.clips.find(item=>item.id===id);return data.assets.find(item=>item.id===clip?.assetId)?.name;} return undefined; }} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason as never} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor as never} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={(projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }} onTaskApplied={(projectId, snapshot, landed = []) => { if (currentProject.current === projectId) { const fresh = changeMarks.accept(snapshot, landed); const epoch = projectEpoch.current; void refresh(projectId).then(next => { if (next && currentProject.current === projectId && projectEpoch.current === epoch) changeMarks.show(fresh); }); } }} onTaskOpenRequests={selectedId => openAgentRequests(selectedId)} onTaskLocate={change => { void locateTaskChange(change); }} onMioFollowFocus={receiveMioFollowFocus} onMioFollowLocate={locateMioFollowTarget} mioFollowTargetExists={mioFollowTargetExists} taskReveal={taskReveal} shotNumber={id => { const index = sortedShots.findIndex(shot => shot.id === id); return index < 0 ? undefined : index + 1; }} onTaskReview={(projectId, entries) => { if (currentProject.current === projectId) reviewMarks.show(entries); }} onTaskReviewLocate={entry => { void locateReviewIssue(entry); }} reviewReveal={reviewReveal} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane></CollapsibleContent></Collapsible>
+    </div> : quickAssetId && sourceAsset ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={data.project?.id} targets={[{kind:'asset_range',id:sourceAsset.id,revision:0}]} canRelease={() => !sourceDirty} onDiscard={()=>{if(sourceRanges.controller.getState().scope===sourceRanges.state?.scope)sourceRanges.controller.discard();}}><SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller as never} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} sections={sceneSummary(sourceAsset as AppAsset | null)}>{<FrameExtractionPanel controller={frameExtraction.controller as never} revealTask={agentRecovery?.kind === 'frame' ? agentRecovery : null} />}</SourceRangeInspector></AgentEditingBoundary> : displayedClipInspector ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={displayedClipInspector.projectId} targets={[{kind:'timeline_clip',id:displayedClipInspector.clip.id,revision:displayedClipInspector.timeline.revision ?? 0}]} canRelease={() => !clipDraftRef.current?.hasUnsaved() && !clipDraftRef.current?.hasPendingComposition() && !clipDraftRef.current?.getState().candidate && !clipDraftRef.current?.getState().businessPending && !clipDirty} onDiscard={()=>{const controller=clipDraftRef.current;if(!controller)return;const token=controller.capture();if(token.clipId===displayedClipInspector.clip.id)return controller.discard(token);}}><TimelineInspector key={displayedClipInspector.key} sequence={format5 && displayedClipInspector ? format5InspectorSequence(timeline, data.shots, data.versions, displayedClipInspector.clip.id, {onRevealShot: () => { void format5RevealShot(displayedClipInspector.clip.id); }, onVersionChoice: choice => { void format5ChooseVersion(displayedClipInspector.clip.id, choice); }}) : null} crossfadeCandidates={clipInspectorRetained ? undefined : timelineCrossfadeCandidates(displayedClipInspector.timeline.clips, data.assets, displayedClipInspector.clip.id, new Set(trackLocksRef.current[currentProject.current || ''] || []))} onCrossfade={clipInspectorRetained ? undefined : crossfadeTimelineClips} onSetTransform={clipInspectorRetained ? undefined : setTimelineClipTransform} transformFrame={clipTransformFrame(displayedClipInspector.clip, playhead)} transitionContext={clipTransitionContext()} onSetTransition={clipInspectorRetained ? undefined : setTimelineClipTransition} loudnessContext={clipLoudnessContext as never} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={(clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot?.title} · V${clipSource.version.number}` : clipSource?.asset?.name) as string | undefined} replacementContext={clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id) as never} onReplaceSource={replaceTimelineClipSource as never} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ collaboration: displayedClipInspector.collaboration, scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId,   audioRoleEditable, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true,  }} draftConnected={!clipInspectorRetained && online && auth === true && !loading && !nativeLeaseRevoked.current} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={((clipId: string, patch: Record<string, unknown>, revision: number, draftOptions: unknown) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: (draftOptions as {canExecute?: () => boolean} | undefined)?.canExecute })) as never} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onSplit={splitTimelineClip} splitDisabled={format5 ? !format5SplitState?.canSplit : !splitState.canSplit || clipInspectorRetained} onShowAsset={() => { if (!clipInspectorRetained && displayedClipInspector.projectId && displayedClipInspector.clip.assetId) void revealImageAsset(displayedClipInspector.clip.assetId, displayedClipInspector.projectId); }} onDirtyChange={setClipDirty} busy={timelineBusy||lockedTrackIds.has(displayedClipInspector.clip.trackId)} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /></AgentEditingBoundary> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={subtitles.state?.projectId} targets={subtitles.state?.cueId ? [{kind:'timeline_subtitle',id:subtitles.state.cueId,revision:subtitles.state.baseRevision ?? 0}] : subtitles.state?.projectId ? [{kind:'timeline',id:subtitles.state.projectId,revision:subtitles.state.baseRevision ?? 0}] : []} canRelease={() => !subtitlesRef.current?.controller.hasUnsaved() && !subtitlesRef.current?.controller.getState().uncertain} onDiscard={()=>subtitles.controller.discardDraft(subtitles.state?.scope)}><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob as never} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane><AgentDockPane id="properties-format-pane" visible={data.projectFormatVersion !== 4 && propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={timelineFormat.state?.projectId} targets={timelineFormat.state?.projectId ? [{kind:'timeline',id:timelineFormat.state.projectId,revision:timelineFormat.state.base?.timelineRevision ?? 0}] : []} canRelease={() => !timelineFormatRef.current?.controller.hasUnsaved() && !timelineFormatRef.current?.controller.getState().uncertain} onDiscard={()=>timelineFormat.controller.discardDraft(timelineFormat.state?.scope)}><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{<AgentWorkspace isAdmissionAllowed={()=>!nativeLeaseRevoked.current && !projectEntryIdentityRef.current!.getState().identityBlocked} onReviewProjectRules={showProjectRules} workspaceScope={editorSession.current||'unverified'} onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} timelineFps={timeline?.fps} targetName={(kind,id) => { if(kind==='shot')return data.shots.find(item=>item.id===id)?.title; if(kind==='node')return data.nodes.find(item=>item.id===id)?.label; if(kind==='asset')return data.assets.find(item=>item.id===id)?.name; if(kind==='timeline_track')return timeline?.tracks.find(item=>item.id===id)?.name; if(kind==='timeline_subtitle')return timeline?.subtitles?.cues.find(item=>item.id===id)?.text; if(kind==='timeline_clip'){const clip=timeline?.clips.find(item=>item.id===id);return data.assets.find(item=>item.id===clip?.assetId)?.name;} return undefined; }} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason as never} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor as never} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={(projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }} onTaskApplied={(projectId, snapshot, landed = []) => { if (currentProject.current === projectId) { const fresh = changeMarks.accept(snapshot, landed); const epoch = projectEpoch.current; void refresh(projectId).then(next => { if (next && currentProject.current === projectId && projectEpoch.current === epoch) changeMarks.show(fresh); }); } }} onTaskOpenRequests={selectedId => openAgentRequests(selectedId)} onTaskLocate={change => { void locateTaskChange(change); }} onMioFollowFocus={receiveMioFollowFocus} onMioFollowLocate={locateMioFollowTarget} mioFollowTargetExists={mioFollowTargetExists} taskReveal={taskReveal} shotNumber={id => { const index = sortedShots.findIndex(shot => shot.id === id); return index < 0 ? undefined : index + 1; }} onTaskReview={(projectId, entries) => { if (currentProject.current === projectId) reviewMarks.show(entries); }} onTaskReviewLocate={entry => { void locateReviewIssue(entry); }} reviewReveal={reviewReveal} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane></CollapsibleContent></Collapsible>
     {panelOverlay === 'inspector' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-inspector" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('inspector', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
-    {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={timelineContainerVisible} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline onRegisterMenuRemoval={registerMenuRemoval} onMenuStateChange={refreshMenuState} lockedTrackIds={lockedTrackIds} onToggleTrackLock={id=>{const projectId=currentProject.current;if(!projectId||loading||!timeline?.tracks.some(track=>track.id===id))return;setTrackLocks(previous=>{const ids=new Set(previous[projectId]||[]);if(ids.has(id))ids.delete(id);else ids.add(id);return {...previous,[projectId]:[...ids]};});}} staleClips={staleClips} notice={sourceBanner}  key={data.project.id} viewState={view.editing as never} onViewStateChange={(patch: Record<string, unknown>, options?: unknown) => { if (data.project?.id === currentProject.current && viewRef.current!.activeMode === 'editing') updateView('editing', patch, options as {passive?: boolean}); }} timeline={timeline} historyState={historyState} onHistory={changeTimelineHistory} splitState={splitState} getSplitStateAt={getSplitStateAt} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={(cueId: string) => openSubtitle(cueId)} onAddSubtitle={(frame: number) => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddTransition={addTimelineTransition} transitionAddBlocked={clipDirty || clipCompositionPending ? msg('clip.transition.saveFirst') : null} onAddAsset={addTimelineAsset as never} onAdmitClipDrag={clipId => { if (agentEditingTargetActive(currentProject.current || '', 'timeline_clip', clipId)) return true; void acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return false; }} onMoveClip={moveTimelineClip as never} removalBlocked={clipDirty || subtitleDirty || formatDirty || timelinePending || !online || loading || auth !== true} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onTrackAdd={(kind: string) => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId: string, patch: Record<string, unknown>) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={seekTimelineSound} playhead={effectivePlayhead} playbackClock={playbackClock} presentationVisible={timelineContainerVisible} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={toggleTimelinePanel} busy={timelineBusy} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{timelineCollapsed && geometry.narrow && <PanelRecall name="timeline" label={t('shell.timeline')} icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
+    {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={timelineContainerVisible} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline onRegisterMenuRemoval={registerMenuRemoval} onMenuStateChange={refreshMenuState} lockedTrackIds={lockedTrackIds} onToggleTrackLock={id=>{const projectId=currentProject.current;if(!projectId||loading||!timeline?.tracks.some(track=>track.id===id))return;setTrackLocks(previous=>{const ids=new Set(previous[projectId]||[]);if(ids.has(id))ids.delete(id);else ids.add(id);return {...previous,[projectId]:[...ids]};});}} staleClips={staleClips} notice={sourceBanner} editUiProjection={format5EditProjection}  key={data.project.id} viewState={view.editing as never} onViewStateChange={(patch: Record<string, unknown>, options?: unknown) => { if (data.project?.id === currentProject.current && viewRef.current!.activeMode === 'editing') updateView('editing', patch, options as {passive?: boolean}); }} timeline={timeline} historyState={format5HistoryState} onHistory={changeTimelineHistory} splitState={format5 ? format5SplitState! : splitState} getSplitStateAt={format5 ? getFormat5SplitStateAt : getSplitStateAt} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={(cueId: string) => openSubtitle(cueId)} onAddSubtitle={(frame: number) => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddTransition={addTimelineTransition} transitionAddBlocked={clipDirty || clipCompositionPending ? msg('clip.transition.saveFirst') : null} onAddAsset={addTimelineAsset as never} onAdmitClipDrag={clipId => { if (agentEditingTargetActive(currentProject.current || '', 'timeline_clip', clipId)) return true; void acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return false; }} onMoveClip={moveTimelineClip as never} removalBlocked={clipDirty || subtitleDirty || formatDirty || timelinePending || !online || loading || auth !== true} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onTrackAdd={(kind: string) => mutateTimeline('timeline.track.add', { kind })} onTrackUpdate={(trackId: string, patch: Record<string, unknown>) => mutateTimeline('timeline.track.update', { trackId, patch })} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onSeek={seekTimelineSound} playhead={effectivePlayhead} playbackClock={playbackClock} presentationVisible={timelineContainerVisible} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={toggleTimelinePanel} busy={timelineBusy || format5SessionBusy} canSeed={format5 ? false : Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{format5 && <EditUiNoticeBar notice={format5Notice} onUndo={() => { void format5UndoNotice(); }} onDismiss={() => setFormat5Notice(null)} />}{format5 && <CopyMoveConfirmDialog request={format5CopyRequest} onConfirm={() => { void format5ConfirmCopy(); }} onCancel={format5CancelCopy} />}{timelineCollapsed && geometry.narrow && <PanelRecall name="timeline" label={t('shell.timeline')} icon="layers" onClick={() => setPanelOpen('timeline', true)} />}</>}
     </div>
     <nav className="mobile-nav" aria-label={t('shell.mobileNavigation')}>{[['assets', 'folder', t('assets.assets')], ['canvas', workspaceMode === 'canvas' ? 'grid' : 'play', workspaceMode === 'canvas' ? t('shell.canvas') : t('shell.preview')], ['inspector', rightDockTab === 'agent' ? 'sparkle' : 'settings', rightDockTab === 'agent' ? t('redesign.shell.agent') : t('shell.properties')], ...(workspaceMode === 'editing' ? [['timeline', 'layers', t('shell.timeline')]] : [])].map(([id, icon, label]) => <Button variant="ghost" className={mobilePanel === id ? 'active' : ''} key={id} data-testid={`mobile-panel-${id}`} aria-pressed={mobilePanel === id} onClick={() => mobileNavigate(id)}><Icon name={icon} size={17} />{label}</Button>)}</nav>
 

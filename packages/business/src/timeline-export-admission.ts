@@ -1,6 +1,9 @@
 import {assertProjectStore} from './store-runtime.ts';
 import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
+import {createFormat5ExportTicket,format5ExportBlockersFromTimeline,recheckFormat5ExportTicket} from './format5-timeline-export.ts';
+import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
 import {checkpoint,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {isProjectStore} from './project-file/store.ts';
@@ -36,6 +39,8 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  INVALID_TIMELINE_SNAPSHOT:'The saved timeline contains invalid or unsupported settings.',
  TIMELINE_SOURCE_UNAVAILABLE:'The saved timeline or a referenced source is not available in this project.',
  EXPORT_CAPABILITY_STALE:'The saved timeline or its source metadata changed. Check the current selection again.',
+ PLACEHOLDER_CLIP:'The export range contains a placeholder segment. Generate it or split/remove it before exporting.',
+ VERSION_TOO_SHORT:'A following segment selects a version shorter than its cut. Select or lock a usable version before exporting.',
 });
 const issue=(code: string): {code: string;message: string|undefined}=>({code,message:messages[code]});
 export function timelineExportCapabilityError(code: string): AppError{return new AppError(code,messages[code]??messages.EXPORT_CAPABILITY_FAILED,409);}
@@ -92,6 +97,12 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   if(!initial){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.delivery=initial.delivery;
   if(initial.timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('EXPORT_CAPABILITY_STALE')];return report;}
+  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const exportedRange=input.exportRange!==null&&typeof input.exportRange==='object'&&!Array.isArray(input.exportRange)
+    ?{startFrame:Number((input.exportRange as Record<string,unknown>).startFrame),endFrame:Number((input.exportRange as Record<string,unknown>).endFrame)}:null;
+   const blocker=format5ExportBlockersFromTimeline(store.db,initial.timeline as never,exportedRange)[0];
+   if(blocker){report.status='blocked';report.issues=[issue(blocker.code)];return report;}
+  }
   const result=await inspectOwned(initial.delivery,options) as InspectResult;
   // Re-read ownership and exact geometry/content after the await; a report may
   // never bind a successful check to a replaced owner or a different revision.
@@ -104,8 +115,16 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   // prepare replays immutable historical ACKs before current revision, any
   // local compute, or capability availability can affect their result.
   const before=prepare();if(before.replayed)return before.response;
+  const format5Ticket=timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION
+    ?createFormat5ExportTicket(store as never):null;
   const result=await inspectOwned(before.snapshot!.delivery,options) as InspectResult;
   checkpoint(options?.signal);checkpoint(ownerSignal);
+  const ticketCheck=format5Ticket?recheckFormat5ExportTicket(store as never,format5Ticket):null;
+  const stale=Boolean(format5Ticket&&ticketCheck&&!ticketCheck.ok);
+  if(format5Ticket&&format5Ticket.blockers.length)return accept({timelineId:before.snapshot!.timeline.id,
+    snapshotHash:(hash as (value: unknown)=>string)(before.snapshot),failure:timelineExportCapabilityError(format5Ticket.blockers[0]!.code as string)});
+  if(stale)return accept({timelineId:before.snapshot!.timeline.id,
+    snapshotHash:(hash as (value: unknown)=>string)(before.snapshot),failure:timelineExportCapabilityError('EXPORT_CAPABILITY_STALE')});
   // accept runs a second exact transaction: receipt replay/dedupe, project and
   // source ownership, CAS, unchanged snapshot, then possible pre-write rejection.
   return accept({timelineId:before.snapshot!.timeline.id,snapshotHash:(hash as (value: unknown)=>string)(before.snapshot),failure:result.status==='available'?null:timelineExportCapabilityError(result.code as string)});

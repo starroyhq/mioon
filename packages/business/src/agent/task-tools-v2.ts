@@ -142,6 +142,9 @@ const forbiddenOperations=[
  'job.retry','job.cancel','job.reconcile','frame.task.recoverResult','image.task.recoverResult','image.task.observeRemote','image.review.prepare','timeline.get','timeline.undo','timeline.redo',
  // Starting a new variant batch remains a separate reviewed entry.
  'subject.variants.create',
+ // UI-E2-only sequence-edit entry points. Mio's format-5 tools are a separate
+ // card (MT); keeping these forbidden here means no new Mio tool surface.
+ 'sequence.preview','sequence.commit','sequence.history.get','sequence.undo','sequence.redo',
  // Transforms are user-driven for now; Mio still reads them in the timeline.
  'timeline.clip.setTransform',
  // Transitions likewise: Mio reads them and cannot change them yet.

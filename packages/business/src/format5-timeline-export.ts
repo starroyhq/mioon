@@ -81,6 +81,41 @@ function readSyncRevision(store: ProjectStore): number {
   return Number(row.revision);
 }
 
+/** Blockers of one frozen format-5 projection at an optional export range. The
+ * async admission and preflight reporters consume this exact list. */
+export function format5ExportBlockersFromTimeline(db: ProjectStore['db'], timeline: Format5Timeline,
+  range: Format5ExportRange | null = null): Format5ExportBlocker[] {
+  const blockers: Format5ExportBlocker[] = [];
+  const mainTrackId = timeline.mainTrack.trackId;
+  const shots = new Map((db.prepare('SELECT id,data FROM project.shots').all() as Row[])
+    .map(row => [String(row.id), JSON.parse(String(row.data)) as Row]));
+  const versions = new Map((db.prepare('SELECT id,data FROM project.versions').all() as Row[])
+    .map(row => [String(row.id), JSON.parse(String(row.data)) as Row]));
+  const assets = new Map((db.prepare('SELECT id,data FROM project.assets').all() as Row[])
+    .map(row => [String(row.id), JSON.parse(String(row.data)) as Row]));
+  for (const clip of timeline.clips) {
+    if (clip.trackId !== mainTrackId || !intersects(clip, range)) continue;
+    const source = clip.sequenceSource;
+    if (!source) continue;
+    if (clip.sourceState === 'placeholder') {
+      blockers.push({code: 'PLACEHOLDER_CLIP', clipId: clip.id, nodeId: source.nodeId});
+      continue;
+    }
+    if (source.kind !== 'shot' || source.versionMode !== 'follow') continue;
+    const shot = shots.get(source.nodeId);
+    const selected = typeof shot?.selectedVersionId === 'string' ? shot.selectedVersionId : null;
+    if (selected === null || selected === clip.versionId) continue;
+    const version = versions.get(selected);
+    const asset = version && typeof version.assetId === 'string' ? assets.get(version.assetId) : undefined;
+    const sourceFrames = sourceFrameCount(asset?.duration);
+    const needed = clip.sourceInFrame + clip.durationFrames;
+    if (sourceFrames !== null && sourceFrames < needed) {
+      blockers.push({code: 'VERSION_TOO_SHORT', clipId: clip.id, nodeId: source.nodeId, versionId: selected,
+        shortByFrames: needed - sourceFrames});
+    }
+  }
+  return blockers;
+}
 /** Read the format-5 projection and freeze an export ticket. */
 export function createFormat5ExportTicket(store: ProjectStore, range: Format5ExportRange | null = null): Format5ExportTicket {
   if (!format5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于项目格式 5。', 409, {reason: 'FORMAT_REQUIRED'});
@@ -90,35 +125,7 @@ export function createFormat5ExportTicket(store: ProjectStore, range: Format5Exp
       throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
     }
     const stamp = readProjectContentStamp(store.db);
-    const blockers: Format5ExportBlocker[] = [];
-    const mainTrackId = timeline.mainTrack.trackId;
-    const shots = new Map((store.db.prepare('SELECT id,data FROM project.shots').all() as Row[])
-      .map(row => [String(row.id), JSON.parse(String(row.data)) as Row]));
-    const versions = new Map((store.db.prepare('SELECT id,data FROM project.versions').all() as Row[])
-      .map(row => [String(row.id), JSON.parse(String(row.data)) as Row]));
-    const assets = new Map((store.db.prepare('SELECT id,data FROM project.assets').all() as Row[])
-      .map(row => [String(row.id), JSON.parse(String(row.data)) as Row]));
-    for (const clip of timeline.clips) {
-      if (clip.trackId !== mainTrackId || !intersects(clip, range)) continue;
-      const source = clip.sequenceSource;
-      if (!source) continue;
-      if (clip.sourceState === 'placeholder') {
-        blockers.push({code: 'PLACEHOLDER_CLIP', clipId: clip.id, nodeId: source.nodeId});
-        continue;
-      }
-      if (source.kind !== 'shot' || source.versionMode !== 'follow') continue;
-      const shot = shots.get(source.nodeId);
-      const selected = typeof shot?.selectedVersionId === 'string' ? shot.selectedVersionId : null;
-      if (selected === null || selected === clip.versionId) continue;
-      const version = versions.get(selected);
-      const asset = version && typeof version.assetId === 'string' ? assets.get(version.assetId) : undefined;
-      const sourceFrames = sourceFrameCount(asset?.duration);
-      const needed = clip.sourceInFrame + clip.durationFrames;
-      if (sourceFrames !== null && sourceFrames < needed) {
-        blockers.push({code: 'VERSION_TOO_SHORT', clipId: clip.id, nodeId: source.nodeId, versionId: selected,
-          shortByFrames: needed - sourceFrames});
-      }
-    }
+    const blockers = format5ExportBlockersFromTimeline(store.db, timeline, range);
     const revisions = {contentRevision: stamp.contentSequence, timelineRevision: timeline.revision,
       syncRevision: readSyncRevision(store), range};
     const snapshotHash = sha256({projectId: store.projectId, timelineId: timeline.id, ...revisions,
