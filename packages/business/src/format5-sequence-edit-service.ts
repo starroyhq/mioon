@@ -4,7 +4,8 @@
  * confirmed intent routes to its owning coordinator:
  * - board intents -> `sequence-edit.ts` (CS),
  * - timeline intents -> `format5-sequence-sync.ts` (TS),
- * - subject binding -> the subject planner inside the shared TS transaction.
+ * - subject binding -> the subject planner inside the shared TS transaction,
+ * - previs create/save -> the previs planner and its board-node transaction,
  * History, undo and redo have exactly one implementation in the CS
  * coordinator (`format5-editor-history.ts`), including eviction/atEarliest.
  */
@@ -34,6 +35,7 @@ import {
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
 import {previewTimelineFormat, runTimelineFormatSync} from './format5-format-set.ts';
+import {previewPrevisAction} from './format5-previs.ts';
 import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
@@ -237,6 +239,9 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     if (input.formatIntent) return previewTimelineFormat(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       formatIntent: input.formatIntent as never});
+    if (input.previsIntent) return previewPrevisAction(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      previsIntent: input.previsIntent as never});
     if (input.subtitlesIntent) return previewSubtitleEdits(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       subtitlesIntent: input.subtitlesIntent as never});
@@ -281,7 +286,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
       if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
-    if (envelope.subjectIntent || envelope.referenceIntent || intents.some(timelineIntent)) {
+    if (envelope.subjectIntent || envelope.referenceIntent || envelope.previsIntent || intents.some(timelineIntent)) {
       const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});
       return result.receipt;
