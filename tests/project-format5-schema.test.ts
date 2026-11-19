@@ -39,7 +39,7 @@ test('format 5 declares an independent exact project and history catalog', () =>
   try {
     for (const [schema, expected, digest] of [
       ['project', projectManifestForVersion(FORMAT5_PROJECT_SCHEMA_VERSION), 'e1e8c1981367a2cea4cfcf2d86ee0a1ad0d143274ab32332b8ac9069736d80dd'],
-      ['main', historyManifestForVersion(FORMAT5_HISTORY_SCHEMA_VERSION), '7372a5fff07b2d29a5ca6e913fcc3c75b0c6ab0582f2ac028cb1a3610efff1b5'],
+      ['main', historyManifestForVersion(FORMAT5_HISTORY_SCHEMA_VERSION), '82d648860c3b35d041e0466ceedadeefd91c848fa79deec57355cf9d0c0e4164'],
     ] as const) {
       assert.ok(expected);
       const manifest = readSchemaManifest(db, schema);
@@ -194,7 +194,9 @@ test('unified history and receipts enforce exact bytes, complete entries, immuta
   try {
     addHistory(1, jsonBytes(4 * 1024 * 1024 - 2));
     assert.throws(() => addHistory(2, jsonBytes(4 * 1024 * 1024 - 1)), /constraint/u);
-    assert.throws(() => addHistory(2, '{}', '{}', 'mio'), /constraint/u);
+    assert.throws(() => addHistory(2, '{}', '{}', 'agent'), /constraint/u);
+    addHistory(2, '{}', '{}', 'mio');
+    db.exec('DELETE FROM main.editor_history_entries WHERE position=2');
     assert.throws(() => db.exec("UPDATE main.editor_history_entries SET operation='changed'"), /EDITOR_HISTORY_IMMUTABLE/u);
     db.exec('DELETE FROM main.editor_history_entries');
     for (let number = 1; number <= 200; number++) addHistory(number);
