@@ -13,7 +13,7 @@ import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
-import type {BoardIntentOperation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditReferenceIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+import type {BoardIntentOperation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditReferenceIntent, SequenceEditSubjectIntent, SequenceEditTrackIntent} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, any>;
@@ -109,10 +109,10 @@ export interface MioSequencePlan {
 function summarize(action: MioSequenceAction, envelope: SequenceEditEnvelope, warnings: readonly unknown[]): MioSequencePlan['summary'] {
   const impact = envelope.impact as unknown as Row;
   const affected = [...new Set([...(impact.nodeIds ?? []), ...(impact.edgeIds ?? []), ...(impact.mainTrackClipIds ?? []),
-    ...(impact.otherTrackItemIds ?? []), ...(impact.subtitleCueIds ?? [])].map(String))].slice(0, 50);
+    ...(impact.otherTrackItemIds ?? []), ...(impact.subtitleCueIds ?? []), ...(impact.trackIds ?? [])].map(String))].slice(0, 50);
   return {action: action.kind, affected,
     counts: {nodes: (impact.nodeIds ?? []).length, edges: (impact.edgeIds ?? []).length,
-      clips: (impact.mainTrackClipIds ?? []).length, other: (impact.otherTrackItemIds ?? []).length + (impact.subtitleCueIds ?? []).length},
+      clips: (impact.mainTrackClipIds ?? []).length, other: (impact.otherTrackItemIds ?? []).length + (impact.subtitleCueIds ?? []).length + (impact.trackIds ?? []).length},
     warnings: warnings.length};
 }
 /** Preview one bounded action and return the exact envelope to commit. */
@@ -135,6 +135,11 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
     operation: {kind: 'timeline-format', presetId: action.presetId}};
+  else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',
+    operation: {kind: 'track-structure', edit: {kind: 'add', trackId: randomUUID(), trackKind: action.trackKind,
+      ...(action.name ? {name: action.name} : {})}}} satisfies SequenceEditTrackIntent;
+  else if (action.kind === 'track-update') request.trackIntent = {side: 'timeline',
+    operation: {kind: 'track-structure', edit: {kind: 'update', trackId: action.trackId, patch: action.patch}}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;

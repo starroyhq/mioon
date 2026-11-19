@@ -31,6 +31,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
+import { createWindowsProjectVolumeReaderFromFile } from '../../../packages/node-host/src/windows-project-volume.ts';
 import type {DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
 import desktopIdentity from '../identity.ts';
 import { BackendSupervisor } from './supervisor.ts';
@@ -79,7 +80,9 @@ import { createProjectEntryDesktopHost } from './project-entry-desktop-host.ts';
 import type {ProjectEntryDesktopOwner,ProjectEntryLocationAdmission} from './project-entry-desktop-host.ts';
 import { PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT } from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
-import { probeDesktopProjectLocation } from './project-location-probe.ts';
+import { configureDesktopWindowsProjectVolume, probeDesktopProjectLocation } from './project-location-probe.ts';
+import type { WindowsProjectVolumeReader } from './project-location-probe.ts';
+import { projectLocationDecision } from './project-location-policy.ts';
 import {createProjectLocationHelp} from './project-location-help.ts';
 import {createAssetRelinkHost} from './asset-relink-host.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../../../packages/contracts/src/asset-media-native.ts';
@@ -165,6 +168,7 @@ const systemLanguages = (): readonly string[] => { try { return app.getPreferred
 setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
 let paths!: DesktopPaths;
 let startupStorageError: unknown;
+let windowsProjectVolume: WindowsProjectVolumeReader | null = null;
 if (productionChannelRejected) {
   // The existing fatal startup path shows a dialog in an isolated profile and
   // exits before the single-instance lock, workspace or vault can start.
@@ -181,6 +185,15 @@ if (productionChannelRejected) {
   // Register the shipped Windows ACL helper before any storage access.
   try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
   catch (error) { startupStorageError = error; }
+  // The same shipped helper answers read-only volume facts for project
+  // location admission. A helper without that reviewed entry keeps the probe
+  // closed; the startup storage check above owns a missing helper failure.
+  if (!startupStorageError && process.platform === 'win32') {
+    try {
+      windowsProjectVolume = createWindowsProjectVolumeReaderFromFile(privateStorageHelperFile(app));
+      configureDesktopWindowsProjectVolume(windowsProjectVolume);
+    } catch { /* Project location admission stays unavailable. */ }
+  }
 }
 const appearanceCache = !startupStorageError ? createDesktopAppearanceCache({root:paths.userData,dataRoot:paths.dataDir,appId:identity.appId,channel:identity.channel}) : null;
 // Renderer health evidence for issue #4: bounded local records for unresponsive,
@@ -777,9 +790,10 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     };
     const admit=async(owner:ProjectEntryDesktopOwner<BrowserWindow>,facts:ProjectLocationFacts):Promise<boolean>=>{
       if(!owner.isCurrent())return false;
-      if(!facts.isLocal||facts.volumeReadOnly){await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationRejected'),buttons:[nt('native.acknowledge')]});return false;}
-      if(facts.cloud==='known-icloud'||facts.cloud==='known-file-provider'||!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'){
-        const detail=[facts.cloud==='known-icloud'?nt('native.projectLocationICloud'):facts.cloud==='known-file-provider'?nt('native.projectLocationSync'):null,!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'?nt('native.projectLocationPermissions'):null].filter(Boolean).join('\n\n');
+      const decision=projectLocationDecision(facts);
+      if(decision.kind==='reject'){await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationRejected'),buttons:[nt('native.acknowledge')]});return false;}
+      if(decision.kind==='warning'){
+        const detail=[decision.cloud?(facts.cloud==='known-icloud'?nt('native.projectLocationICloud'):nt('native.projectLocationSync')):null,decision.permissions?nt('native.projectLocationPermissions'):null].filter(Boolean).join('\n\n');
         await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationWarning'),detail,buttons:[nt('native.acknowledge')]});return owner.isCurrent();
       }
       return true;
@@ -1590,7 +1604,7 @@ else {
       const output = smokeOutput;
       if (windowsPackageSmoke && process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT) {
         const { runWindowsTitleBarScreenshot } = await import('./windows-titlebar-screenshot.ts');
-        await runWindowsTitleBarScreenshot({ app, getWindow: () => win, output,
+        await runWindowsTitleBarScreenshot({ app, getWindow: () => win, backendUrl: ready?.url ?? '', output,
           screenshot: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT,
           scenario: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCENARIO ?? '',
           theme: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_THEME === 'light' ? 'light' : 'dark',
@@ -1599,7 +1613,8 @@ else {
           refreshAppearance: () => windowContext?.appearance?.refresh() });
       } else if (windowsPackageSmoke) {
         const { runWindowsSmoke } = await import('./windows-smoke-checks.ts');
-        await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output });
+        await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output,
+          windowsProjectVolume });
       } else {
       const { runSmoke } = await import('./smoke-checks.ts');
       await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,

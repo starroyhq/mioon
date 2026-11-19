@@ -54,6 +54,11 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('format-set'),
     presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
   z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),
+  z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
+  z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
+    name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),
+    orderIndex: z.number().int().min(0).max(11).optional()}).strict()
+    .refine(value => Object.keys(value).length > 0, 'At least one track field is required')}).strict(),
 ]);
 export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
 export const mioSequenceEditSchemas = Object.freeze({

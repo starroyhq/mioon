@@ -1,5 +1,5 @@
 import {PREVIS_HELD_PROP_KINDS,PREVIS_LIMITS,roundPrevisNumber} from '@mioon/contracts';
-import type {PrevisFigure,PrevisProp,PrevisScene} from '@mioon/contracts';
+import type {PrevisFigure,PrevisProp,PrevisScene,PrevisSubjectReference} from '@mioon/contracts';
 
 // Pure scene edits for the previs editor. Every edit returns a new scene that
 // still satisfies the contract: numbers rounded to three decimals and kept in
@@ -72,23 +72,34 @@ export function removePrevisElement(scene: PrevisScene, id: string): PrevisScene
   return {...scene, props: scene.props.filter(item => item.id !== id),
     figures: scene.figures.map(item => item.held?.propId === id ? {...item, held: null} : item)};
 }
-export interface PrevisFigurePatch {name?: string; visible?: boolean; position?: readonly number[]; rotation?: number; pose?: PrevisPose}
-export function updatePrevisFigure(scene: PrevisScene, id: string, patch: PrevisFigurePatch): PrevisScene {
-  return {...scene, figures: scene.figures.map(item => item.id !== id ? item : {...item,
-    ...(patch.name !== undefined ? {name: cleanPrevisName(patch.name)} : {}),
-    ...(patch.visible !== undefined ? {visible: patch.visible} : {}),
-    ...(patch.position ? {position: vector(patch.position)} : {}),
-    ...(patch.rotation !== undefined ? {rotation: angle(patch.rotation)} : {}),
-    ...(patch.pose ? {pose: patch.pose} : {})})};
+/** A figure or prop stands for a subject: follow the head when the version is
+ * omitted, lock that version when it is given. `null` clears the reference. */
+export type PrevisSubjectPatch = PrevisSubjectReference | null;
+function withSubject<T extends {subject?: PrevisSubjectReference}>(item: T, subject: PrevisSubjectPatch | undefined): T {
+  if (subject === undefined) return item;
+  if (subject === null) {
+    const {subject: _cleared, ...rest} = item;
+    return rest as T;
+  }
+  return {...item, subject: {...subject}};
 }
-export interface PrevisPropPatch {name?: string; visible?: boolean; position?: readonly number[]; rotation?: number; size?: readonly number[]}
-export function updatePrevisProp(scene: PrevisScene, id: string, patch: PrevisPropPatch): PrevisScene {
-  return {...scene, props: scene.props.map(item => item.id !== id ? item : {...item,
+export interface PrevisFigurePatch {name?: string; visible?: boolean; position?: readonly number[]; rotation?: number; pose?: PrevisPose; subject?: PrevisSubjectPatch}
+export function updatePrevisFigure(scene: PrevisScene, id: string, patch: PrevisFigurePatch): PrevisScene {
+  return {...scene, figures: scene.figures.map(item => item.id !== id ? item : withSubject({...item,
     ...(patch.name !== undefined ? {name: cleanPrevisName(patch.name)} : {}),
     ...(patch.visible !== undefined ? {visible: patch.visible} : {}),
     ...(patch.position ? {position: vector(patch.position)} : {}),
     ...(patch.rotation !== undefined ? {rotation: angle(patch.rotation)} : {}),
-    ...(patch.size ? {size: [extent(patch.size[0]!), extent(patch.size[1]!), extent(patch.size[2]!)] as Vector} : {})})};
+    ...(patch.pose ? {pose: patch.pose} : {})}, patch.subject))};
+}
+export interface PrevisPropPatch {name?: string; visible?: boolean; position?: readonly number[]; rotation?: number; size?: readonly number[]; subject?: PrevisSubjectPatch}
+export function updatePrevisProp(scene: PrevisScene, id: string, patch: PrevisPropPatch): PrevisScene {
+  return {...scene, props: scene.props.map(item => item.id !== id ? item : withSubject({...item,
+    ...(patch.name !== undefined ? {name: cleanPrevisName(patch.name)} : {}),
+    ...(patch.visible !== undefined ? {visible: patch.visible} : {}),
+    ...(patch.position ? {position: vector(patch.position)} : {}),
+    ...(patch.rotation !== undefined ? {rotation: angle(patch.rotation)} : {}),
+    ...(patch.size ? {size: [extent(patch.size[0]!), extent(patch.size[1]!), extent(patch.size[2]!)] as Vector} : {})}, patch.subject))};
 }
 export interface PrevisLightPatch {visible?: boolean; azimuth?: number; elevation?: number; intensity?: number}
 export function updatePrevisLight(scene: PrevisScene, patch: PrevisLightPatch): PrevisScene {

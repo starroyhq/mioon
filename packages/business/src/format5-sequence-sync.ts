@@ -955,6 +955,7 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const header = delta.header?.kind === 'set' ? delta.header.value : null;
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
     ...(header ? {fps: header.fps, width: header.width, height: header.height} : {}),
+    tracks: delta.tracks ? [...delta.tracks] : current.tracks,
     clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
   // Validate the rows against the frame the patch asks for: an undo restores
   // the old header together with clips that intentionally have no layout.

@@ -10,7 +10,7 @@
 import {z} from 'zod';
 import {sequenceEditClipPropertiesIntentSchema, sequenceEditEnvelopeSchema, sequenceEditFormatIntentSchema,
   sequenceEditPrevisIntentSchema, sequenceEditReferenceIntentSchema, sequenceEditSubjectIntentSchema,
-  sequenceEditSubtitlesIntentSchema} from './sequence-edit.ts';
+  sequenceEditSubtitlesIntentSchema, sequenceEditTrackIntentSchema} from './sequence-edit.ts';
 import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
 import {sequenceEditingSchemas} from './sequence-editing.ts';
 import type {SequenceEditIntent} from './sequence-edit.ts';
@@ -35,14 +35,15 @@ export const sequencePreviewRequestSchema = z.object({
   propertiesIntent: sequenceEditClipPropertiesIntentSchema.optional(),
   previsIntent: sequenceEditPrevisIntentSchema.optional(),
   subtitlesIntent: sequenceEditSubtitlesIntentSchema.optional(),
+  trackIntent: sequenceEditTrackIntentSchema.optional(),
   formatIntent: sequenceEditFormatIntentSchema.optional(),
   allocation: allocationSchema.optional(),
 }).strict().superRefine((value, context) => {
   const families = [value.intents !== undefined, value.subjectIntent !== undefined, value.referenceIntent !== undefined,
-    value.propertiesIntent !== undefined, value.subtitlesIntent !== undefined, value.previsIntent !== undefined,
-    value.formatIntent !== undefined].filter(Boolean).length;
+    value.propertiesIntent !== undefined, value.subtitlesIntent !== undefined, value.trackIntent !== undefined,
+    value.previsIntent !== undefined, value.formatIntent !== undefined].filter(Boolean).length;
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
-    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent, previsIntent and formatIntent.'});
+    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent, trackIntent, previsIntent and formatIntent.'});
 });
 export const sequenceCommitRequestSchema = z.object({
   projectId: uuid,
