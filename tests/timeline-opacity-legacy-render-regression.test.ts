@@ -161,6 +161,15 @@ function fakeRuntime(snapshot:FixtureSnapshot,root:string) {
   return {calls, scriptOptions, rawArgv,
     async run(command:string,args:string[],options:MediaRunOptions) {
       remember('run', command, ((args) as unknown as Parameters<typeof remember>[2]), options);
+      // The renderer probes the premultiplied-overlay graph shape once per tool.
+      // Emulate FFmpeg 7.1.5 here: the alpha-mode filter is unknown, and the
+      // legacy graph renders the reviewed pixel.
+      const probeFilter = args[args.indexOf('-filter_complex') + 1] ?? '';
+      if (args.includes('-c:v') && args[args.indexOf('-c:v') + 1] === 'rawvideo' && String(args.at(-1)).endsWith('.rgb')) {
+        if (probeFilter.includes('setparams=alpha_mode=premultiplied')) throw Object.assign(Error('Local media tool failed.'), {code: 'MEDIA_EXIT_FAILED'});
+        fs.writeFileSync(String(args.at(-1)), Buffer.from(Array.from({length: 4}, () => [89, 83, 172]).flat()));
+        return '';
+      }
       if (args.includes('-h')) {
         assert.equal(command, 'ffmpeg');
         assert.deepEqual(args, ['-hide_banner', '-h', 'filter=drawtext']);
@@ -213,7 +222,7 @@ test('current and cold-reopened graphs and argv match pinned pre-seam renderer e
     t.mock.restoreAll(); mock.restoreAll(); syncBuiltinESMExports(); hooks.deregister(); delete (globalThis as typeof globalThis & {[runtimeKey]?:unknown})[runtimeKey];
     await fsp.rm(root, {recursive: true, force: true});
   });
-  let compared = 0;
+  let compared = 0, premultipliedProbeSeen = false;
   for (const managed of ([false, true] as const)) {
     const source = await fixture(root, managed);
     for (const [version, retained] of retainedSnapshots(source.snapshot, source.assets,root)) {
@@ -227,8 +236,12 @@ test('current and cold-reopened graphs and argv match pinned pre-seam renderer e
         activeRuntime = fakeRuntime(snapshot, root);
         // Keep the historical invocation order for the exact command trace.
         await currentRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}, segmentConcurrency:1});
+        const probeCall = (call: {argv?: string[]}) => (call.argv ?? []).some((arg) => arg.includes('overlay=alpha=premultiplied:format=rgb[out]'));
+        const currentProbes = activeRuntime.calls.filter(probeCall);
+        assert.equal(currentProbes.length, managed && !premultipliedProbeSeen ? 2 : 0, 'one premultiplied-overlay judgment per tool, cached afterwards');
+        if (managed) premultipliedProbeSeen = true;
         assert.deepEqual(activeRuntime.scriptOptions, managed ? ['-/filter:v', '-/filter_complex', '-/filter_complex', '-/filter_complex'] : [], 'current renderer always uses the supported file-option names');
-        assert.deepEqual(activeRuntime.calls, expected, `schema${version} managed=${managed} selected=${Boolean(range)}: equivalent file options; all remaining argv, filter, script and concat bytes exact; raw current argv=${JSON.stringify(activeRuntime.rawArgv)}`);
+        assert.deepEqual(activeRuntime.calls.filter((call) => !probeCall(call)), expected, `schema${version} managed=${managed} selected=${Boolean(range)}: equivalent file options; all remaining argv, filter, script and concat bytes exact; raw current argv=${JSON.stringify(activeRuntime.rawArgv)}`);
         assert.equal(JSON.stringify(snapshot), frozenRaw, 'neither renderer mutates retained raw snapshot');
         const graphs = expected.flatMap((call) => [call.files?.['-filter_complex_script'], call.argv?.[call.argv.indexOf('-filter_complex') + 1]]).filter((value) => typeof value === 'string' && value.includes('[outv]'));
         assert.equal(graphs.length, 3, 'clip edges produce three genuinely compared visual segments');

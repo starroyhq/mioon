@@ -28,3 +28,25 @@ export const MAC_WINDOW_CHROME = macWindowChrome();
 
 export const DESKTOP_FULLSCREEN_EVENT = 'mioon:window-chrome:fullscreen:v1';
 export const DESKTOP_CHROME_SCALE_EVENT = 'mioon:window-chrome:scale:v1';
+
+/** Windows reuses the measured top bar height for the native overlay band. The
+ * window button width is not a local constant: the renderer reserves whatever
+ * the OS overlay reports at runtime. The band background is not a token either:
+ * the page reports the rendered color behind the band. */
+export const WINDOWS_WINDOW_CHROME = Object.freeze({topbarHeight});
+
+/** The page reports the rendered band background; the desktop shell repaints the
+ * system caption band with it. */
+export const DESKTOP_TITLEBAR_COLOR_EVENT = 'mioon:window-chrome:titlebar-color:v1';
+const TITLEBAR_COLOR_MAX_LENGTH = 64;
+const CSS_COLOR_PATTERN = /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*[\d.]+%?(?:\s*[,\s]\s*[\d.]+%?){0,3}(?:\s*\/\s*[\d.]+%?)?\s*\)|hsla?\(\s*[\d.]+(?:deg|rad|turn)?(?:\s*[,\s]\s*[\d.]+%?){0,3}(?:\s*\/\s*[\d.]+%?)?\s*\))$/u;
+
+/** Only a fixed, bounded CSS color may cross from the renderer into the native
+ * caption band. Shared by the preload bridge, the desktop shell and tests. */
+export function isDesktopTitleBarColor(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= TITLEBAR_COLOR_MAX_LENGTH && CSS_COLOR_PATTERN.test(value);
+}
+
+/** Fixed capture tolerance between the painted caption band and the page
+ * background beside it (per color channel, 0-255). */
+export const WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE = 8;

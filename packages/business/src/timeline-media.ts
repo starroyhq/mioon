@@ -28,6 +28,7 @@ import {clipLayoutFitFilter,clipRenderPlacement,clipTransformCropFilter,clipTran
 import {assertTimelineTransformCapability} from './timeline-transform-capability.ts';
 import {segmentTransition,timelineTransitionRegions,transitionFilters,transitionPictureRange,transitionPlanSnapshot,type TransitionLayer} from './timeline-transition-filter.ts';
 import {assertTimelineTransitionCapability} from './timeline-transition-capability.ts';
+import {timelinePremultipliedOverlayInputTag} from './timeline-premultiplied-overlay.ts';
 import type {Stats} from 'node:fs';
 import type {FileHandle} from 'node:fs/promises';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord} from './timeline-inputs.ts';
@@ -155,7 +156,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  const segmentOwner=signal??new AbortController().signal;
  let effect=owned?.effect??beforeEffect;
- let unconfirmed=false,cleanupSignal=signal,audioCheck: Awaited<ReturnType<typeof checkFloatAudio>>|undefined,primaryFailure: unknown,colourStage: Awaited<ReturnType<typeof prepareTimelineColourLuts>>|undefined,imageStage: Awaited<ReturnType<typeof prepareTimelineImageLayers>>|undefined;
+ let unconfirmed=false,cleanupSignal=signal,audioCheck: Awaited<ReturnType<typeof checkFloatAudio>>|undefined,primaryFailure: unknown,colourStage: Awaited<ReturnType<typeof prepareTimelineColourLuts>>|undefined,imageStage: Awaited<ReturnType<typeof prepareTimelineImageLayers>>|undefined,premultipliedOverlayTag='';
  try{
   checkMediaEffect(effect,signal);
   if(colour){
@@ -167,7 +168,11 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
     return {clipId:item.clipId,assetSha256:item.assetSha256,sourcePath:asset?.path,sourceWidth:item.evidence.width as number,sourceHeight:item.evidence.height as number,...(item.sourceProfileId==='jfif-ycbcr8-srgb-v1'?{jpegEvidence:item.evidence}:{}),
      width:placement.width,height:placement.height,...(crop?{crop}:{}),creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
    });
-   if(images.length){imageStage=await prepareTimelineImageLayers(images as never,destination,{signal,beforeEffect:effect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses} as never);effect=imageStage.effect;}
+   if(images.length){imageStage=await prepareTimelineImageLayers(images as never,destination,{signal,beforeEffect:effect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses} as never);effect=imageStage.effect;
+    // Staged layers are premultiplied RGBA8. FFmpeg 8.1+ tags decoded PNGs as
+    // straight alpha and would premultiply them again in `overlay`; declare the
+    // real mode (or keep the legacy shape on tools without alpha-mode support).
+    premultipliedOverlayTag=await timelinePremultipliedOverlayInputTag({signal,beforeEffect:effect});checkMediaEffect(effect,signal);}
    // An actual bounded float/colour conversion and LUT invocation, rather than
    // merely trusting the advertised filter names. No source media is consumed.
    const first=colour.clips[0],look=first?colourStage!.filter(first.clipId):'';
@@ -212,7 +217,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
      const local=begin-clip.startFrame;
      const layerWidth=plan?.layerWidth??width,layerHeight=plan?.layerHeight??height,transformStage=plan?`,${clipTransformLayerFilters(plan,local)}`:'';
      if(image){
-      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
+      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}${premultipliedOverlayTag}[${label}]`);
      }else{
       const colourInput=colour?`${timelineColourInputFilter(planned!.range as never)},${colourStage!.filter(clip.id)}`:'';
       // FFmpeg autorotates before the filters, so v2 fits the oriented DAR.
