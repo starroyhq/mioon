@@ -342,9 +342,10 @@ export function canvasPasteBindingEvidence(store: ProjectStore, targets: readonl
  * reference edges are owned by the chain/RI intents) to create detached copies
  * in its own transaction. */
 export function readCanvasClipboardSnapshot(store: ProjectStore, owner: object,
-  input: Pick<CanvasPasteInput, 'projectId' | 'documentId' | 'snapshotId'>): {readonly cards: Snapshot['cards']} | null {
+  input: Pick<CanvasPasteInput, 'projectId' | 'documentId' | 'snapshotId'>): {readonly cards: Snapshot['cards'];
+    readonly links: Snapshot['links']} | null {
   const entry = snapshots.get(owner)?.get(input.snapshotId);
   if (!entry || entry.expiresAt <= Date.now() || entry.documentId !== input.documentId ||
       entry.projectId !== store.projectId || entry.owner !== projectOwner(store)) return null;
-  return {cards: entry.snapshot.cards};
+  return {cards: entry.snapshot.cards, links: entry.snapshot.links};
 }
