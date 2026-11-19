@@ -277,7 +277,7 @@ function childFixture() {
   let deadline: (() => void) | undefined, cancelled = 0;
   const transport: NonNullable<Parameters<typeof launchWindowsPackage>[3]> = {
     spawn(file, commandArgs, options) {invocations.push({file, args: commandArgs, options}); return child;},
-    schedule(callback, milliseconds) {assert.equal(milliseconds, 180000); deadline = callback; return {} as ReturnType<typeof setTimeout>;},
+    schedule(callback, milliseconds) {assert.equal(milliseconds, 240000); deadline = callback; return {} as ReturnType<typeof setTimeout>;},
     cancel() {cancelled++;}, async terminate(pid) {terminated.push(pid);},
   };
   return {child, emitter, killed, terminated, invocations, transport, expire() {deadline!();}, cancelled: () => cancelled};
@@ -286,7 +286,7 @@ function childFixture() {
 test('packaged launch uses no shell, debug flags or sandbox bypass and requires actual zero exit', async () => {
   const f = childFixture(), environment = {SystemRoot: 'C:\\Windows'};
   const pending = launchWindowsPackage(binary, environment, workspace, f.transport);
-  assert.equal(WINDOWS_SMOKE_TIMEOUT_MS, 180000);
+  assert.equal(WINDOWS_SMOKE_TIMEOUT_MS, 240000);
   assert.deepEqual(f.invocations, [{file: binary, args: [], options: {env: environment, cwd: workspace, shell: false, windowsHide: false, stdio: 'ignore'}}]);
   f.emitter.emit('exit', 0, null); f.emitter.emit('close', 0, null); await pending;
   assert.equal(f.cancelled(), 1); assert.deepEqual(f.terminated, []);

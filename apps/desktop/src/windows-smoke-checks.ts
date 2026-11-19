@@ -144,9 +144,21 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
  const blocked=(name:string,code:string)=>{checks.push({name,status:'blocked',code});};
  const phaseFile=`${output}.phase`;
  let phase='smoke';
+ let watchdog:ReturnType<typeof setTimeout>|undefined;
+ /** Converts a hung step into deterministic fixed evidence instead of a driver
+  * timeout: the report names the last phase and exits the app without dialogs. */
+ const armWatchdog=():void=>{
+  if(watchdog!==undefined)clearTimeout(watchdog);
+  const limit=phase==='project-core-export'?200000:phase.startsWith('project-core-open')?70000:100000;
+  watchdog=setTimeout(()=>{
+   void writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_CHECK_FAILED',check:phase,detail:'SMOKE_STEP_TIMEOUT'})+'\n')
+    .catch(()=>{}).finally(()=>app.exit(1));
+  },limit);watchdog.unref?.();
+ };
  const mark=async(next:typeof WINDOWS_SMOKE_PHASES[number]):Promise<void>=>{
   phase=next;
   await writeFile(phaseFile,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',phase:next})+'\n').catch(()=>{});
+  armWatchdog();
  };
  try{
   await mark('packaged-development-identity');
@@ -258,11 +270,13 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   passed('native-project-core-flows');
   try{await rm(smokeRoot,{recursive:true,force:true});}catch{/* The runner is disposable; cleanup never hides a passing flow. */}
   blocked('live-mio-and-generation','LIVE_CREDENTIALS_NOT_CONFIGURED');
+  if(watchdog!==undefined)clearTimeout(watchdog);
   await mark('write-report');
   await mkdir(path.dirname(output),{recursive:true});
   await writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:true,channel:'development',platform:'win32',arch:'x64',isPackaged:true,
    appVersion:app.getVersion(),runtime:{node:report.runtime.node,electron:report.runtime.electron},checks},null,2)+'\n');
  }catch(error){
+  if(watchdog!==undefined)clearTimeout(watchdog);
   // A failed open can leave a loading/dirty project window whose close prompt
   // would block quitting; destroy non-launcher windows before reporting so the
   // driver always gets this run's fixed evidence instead of a timeout.

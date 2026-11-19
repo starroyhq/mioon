@@ -62,12 +62,15 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
       'The launcher home did not reload', 'PROJECT_OPEN_HOME_TIMEOUT');
     await onStep('home');
   };
+  // A launcher home fetched before this RPC-created project cannot list it;
+  // reload once up front, then fall back to the help-page refresh path.
+  await reloadLauncher();
   let ready = false;
-  for (let attempt = 0; attempt < 4 && !ready; attempt += 1) {
+  for (let attempt = 0; attempt < 3 && !ready; attempt += 1) {
     if (attempt === 1) await reloadLauncher();
-    if (attempt === 3) {
+    if (attempt === 2) {
       // The launcher's own refresh lives on the help page; use that product path
-      // after a plain reload has not shown a project created outside the UI.
+      // after plain reloads have not shown a project created outside the UI.
       await evaluate(launcher, `(() => { const nav = document.querySelector(${JSON.stringify(pageLink('help'))}); if (nav instanceof HTMLElement) nav.click(); return true; })()`);
       await waitForWindowCondition(launcher, () => rendererBoolean(launcher,
         `Boolean(document.querySelector('[data-testid="launcher-help"]'))`), 20000,
@@ -75,8 +78,8 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
       await evaluate(launcher, `(() => { const refresh = document.querySelector('[data-testid="launcher-help-refresh"]'); if (refresh instanceof HTMLElement) refresh.click(); return true; })()`);
       await evaluate(launcher, `(() => { const nav = document.querySelector(${JSON.stringify(pageLink('projects'))}); if (nav instanceof HTMLElement) nav.click(); return true; })()`);
     }
-    try { await waitForWindowCondition(launcher, cardReady, attempt === 1 ? 30000 : 15000, 'The launcher home did not list the new project', 'PROJECT_OPEN_LIST_TIMEOUT'); ready = true; }
-    catch { if (attempt === 3) break; }
+    try { await waitForWindowCondition(launcher, cardReady, 25000, 'The launcher home did not list the new project', 'PROJECT_OPEN_LIST_TIMEOUT'); ready = true; }
+    catch { if (attempt === 2) break; }
   }
   if (!ready) {
     const diagnostic = record(await evaluate(launcher, `(async () => {

@@ -8,7 +8,7 @@ import {argumentsFor, isMain} from './media-environment.ts';
 import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../packages/contracts/src/desktop-window-chrome.ts';
 
 const paths = path.win32;
-export const WINDOWS_SMOKE_TIMEOUT_MS = 180000;
+export const WINDOWS_SMOKE_TIMEOUT_MS = 240000;
 const maximumReportBytes = 32768;
 const requiredChecks = [
   'packaged-development-identity', 'bundled-utility-node-sqlite', 'renderer-sandbox-and-origin',
