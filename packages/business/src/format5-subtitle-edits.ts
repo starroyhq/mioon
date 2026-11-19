@@ -151,7 +151,7 @@ function cueTargetRevision(store: ProjectStore, cueId: string): number {
 }
 
 export function buildSubtitleEnvelope(store: ProjectStore, intent: SequenceEditSubtitlesIntent, options: {
-  readonly requestId: string; readonly actionId: string; readonly epoch: string;
+  readonly requestId: string; readonly actionId: string; readonly epoch: string; readonly origin?: 'user' | 'mio';
   readonly historyPosition: number; readonly historyRevision: number;
 }): SequenceEditEnvelope {
   if (!isFormat5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
@@ -166,7 +166,7 @@ export function buildSubtitleEnvelope(store: ProjectStore, intent: SequenceEditS
   const sync = store.db.prepare('SELECT revision FROM project.sequence_sync_state').get() as Row | undefined;
   return {
     contractVersion: SEQUENCE_EDIT_CONTRACT_VERSION, projectId: store.projectId, epoch: options.epoch,
-    actionId: options.actionId, requestId: options.requestId, originSide: 'timeline',
+    actionId: options.actionId, requestId: options.requestId, originSide: 'timeline', ...(options.origin ? {origin: options.origin} : {}),
     filmId: timeline.mainTrack.sequenceNodeId, intents: [], subtitlesIntent: intent,
     baseline: {contentRevision: content, timelineRevision: timeline.revision, syncRevision: Number(sync?.revision ?? 1),
       historyPosition: options.historyPosition, historyRevision: options.historyRevision, targets},
@@ -179,14 +179,14 @@ function sameTargets(store: ProjectStore, targets: readonly SequenceEditExpected
 }
 
 export function previewSubtitleEdits(store: ProjectStore, input: {
-  readonly requestId: string; readonly actionId?: string; readonly subtitlesIntent: SequenceEditSubtitlesIntent;
+  readonly requestId: string; readonly actionId?: string; readonly origin?: 'user' | 'mio'; readonly subtitlesIntent: SequenceEditSubtitlesIntent;
 }): {envelope: SequenceEditEnvelope; planDigest: string; warnings: readonly {code: string}[]}
   | {ok: false; code: string; ids: readonly string[]} {
   if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   try {
     const state = prepareSequenceEditHistory(store).state;
     const envelope = buildSubtitleEnvelope(store, input.subtitlesIntent, {
-      requestId: input.requestId, actionId: input.actionId ?? crypto.randomUUID(), epoch: state.epoch,
+      requestId: input.requestId, actionId: input.actionId ?? crypto.randomUUID(), epoch: state.epoch, ...(input.origin ? {origin: input.origin} : {}),
       historyPosition: state.position, historyRevision: state.revision});
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {

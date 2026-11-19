@@ -2575,6 +2575,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       pending: !projectId || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
   async function saveTimelineFormat(intent: TimelineFormatIntent, frameOptions?: Pick<RunOptions, 'canExecute' | 'canRevealTasks' | 'errorMessage'>): Promise<{status: string; timeline?: unknown; error?: unknown}> {
+    if (dataRef.current.projectFormatVersion === 5) {
+      const presetId = (intent.input as {presetId?: unknown}).presetId;
+      if (typeof presetId !== 'string') return {status: 'rejected'};
+      const result = await format5Session().format(presetId);
+      if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return {status: 'rejected', error: result};}
+      await refresh(currentProject.current); await format5RefreshHistory();
+      return {status: 'applied', timeline: dataRef.current.timeline};
+    }
     const live = timelineFormatContext();
     if (intent.scope !== live.scope || intent.projectId !== live.projectId || !live.connected || live.pending || !isDurableEditOperation('timeline.format.set')) return { status: 'rejected' };
     let failure: {error?: unknown; dispatched?: boolean; rejected?: boolean} | undefined, acknowledged: unknown;
@@ -3484,6 +3492,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return { hasCut: Boolean(clipTransitionPredecessor(timeline.clips, clip)), maxFrames: clipTransitionRoom(timeline.clips, clip, sources) };
   }
   async function splitTimelineAtScenes(assetId: string, resultId: string): Promise<void> {
+    if (dataRef.current.projectFormatVersion === 5) {
+      const result = await format5Session().splitAtScenes(assetId, resultId);
+      if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return;}
+      const sceneSplit = result.receipt?.sceneSplit;
+      const count = sceneSplit?.split.length ?? 0, skipped = sceneSplit?.skipped.length ?? 0;
+      notify(skipped ? msg('scene.split.doneSkipped', { count, skipped }) : msg('scene.split.done', { count }));
+      await refresh(currentProject.current); await format5RefreshHistory();
+      return;
+    }
     const result = await mutateTimeline('timeline.clip.splitAtScenes', { assetId, resultId }, undefined, { errorMessage: sceneSplitError }) as { split: unknown[]; skipped: unknown[] } | null;
     if (result) notify(result.skipped.length ? msg('scene.split.doneSkipped', { count: result.split.length, skipped: result.skipped.length }) : msg('scene.split.done', { count: result.split.length }));
   }

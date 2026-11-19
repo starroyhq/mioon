@@ -155,6 +155,7 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'split', clipId: clipA, offsetFrames: 10, rightClipId: uuid('51')}}, 'timeline.clip.split'],
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
+    [{kind: 'track', edit: {kind: 'split-at-scenes', assetId: shotA, resultId: nodeA}}, 'timeline.clip.splitAtScenes'],
   ];
   const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
@@ -184,7 +185,8 @@ test('side follows the SA operation kind and every kind maps to one stable name'
   assert.equal(referenceSamples.length, 4);
   assert.equal(trackSamples.length, 2);
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length
-    + trackSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
+    + trackSamples.length + 1, SEQUENCE_EDIT_OPERATIONS.length);
+  assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.format.set'), true);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');
