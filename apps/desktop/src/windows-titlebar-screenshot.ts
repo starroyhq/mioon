@@ -192,8 +192,10 @@ function bandColorDelta(png: Buffer, facts: TitleBarFacts, reported: string): {d
   const hex = cssColorToHex(reported);
   const target = /^#[0-9a-f]{6}$/u.test(hex) ? [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16)) : null;
   const scaleX = size.width / facts.innerWidth, scaleY = size.height / facts.innerHeight;
-  const xInside = Math.round((facts.overlay.right + 8) * scaleX);
-  const xOutside = Math.round((facts.overlay.right - 8) * scaleX);
+  // Sample 16 CSS px away from the reported boundary: at fractional device
+  // scales the 1px page edge/inactive border line rounds onto the old 8px point.
+  const xInside = Math.round((facts.overlay.right + 16) * scaleX);
+  const xOutside = Math.round((facts.overlay.right - 16) * scaleX);
   const y = Math.round((WINDOWS_WINDOW_CHROME.topbarHeight - 6) * scaleY);
   assert.ok(xInside >= 0 && xInside < size.width && xOutside >= 0 && xOutside < size.width && y >= 0 && y < size.height, 'The band comparison point is outside the capture');
   const pixel = (x: number): number[] => {
