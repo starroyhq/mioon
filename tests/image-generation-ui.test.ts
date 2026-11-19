@@ -218,7 +218,7 @@ test('completion is observed before rereading current group and immutable result
 
 test('actual library reveal respects newer project, navigation and panel choices while refresh is pending', async () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  async function selectProject(', start);
+  const start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  // One bounded automatic re-read per project epoch.', start);
   assert.ok(start > 0 && end > start); const source = app.slice(start, end).trim();
   for (const changed of [null, 'projectEpoch', 'navigationEpoch', 'panelIntent', 'currentProject'] as const) {
     const held = deferred(), calls: unknown[] = [];

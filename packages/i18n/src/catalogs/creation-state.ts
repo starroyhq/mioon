@@ -384,18 +384,8 @@ export const creationStateMessages = {
     "en": "The original description is still awaiting approval. It is sent only after explicit approval; it will not continue automatically",
     "ja": "元の説明は承認待ちです。明示的に承認した場合だけ送信し、自動では続行しません"
   },
-  "image.state.sourceUnknownHeld": {
-    "zh-Hans": "源图核验报告问题。请核对源图是否为完整的 PNG、JPEG 或 WebP，小于 50 MB 且每边不超过 4096 像素（PNG 须不透明、8 位、非交错），并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发",
-    "zh-Hant": "來源圖片核驗發現問題。請確認來源圖片為完整的 PNG、JPEG 或 WebP，小於 50 MB 且每邊不超過 4096 像素（PNG 須不透明、8 位元、非交錯），再重新讀取原請求。原請求結果仍未知，原標識已保留；為避免重複工作，此專案目前不能提交新圖像請求，不會自動重送",
-    "en": "Source verification reported a problem. Check that the source is a complete PNG, JPEG or WebP, smaller than 50 MB and at most 4096 pixels per edge (a PNG must be opaque, 8-bit and non-interlaced), then reload the original request. Its outcome remains unknown and its original identity is retained. New image submissions are blocked for this project to avoid duplicates; there is no automatic resend",
-    "ja": "ソース画像の検証で問題が報告されました。ソースが完全な PNG、JPEG、WebP で、50 MB未満、各辺4096ピクセル以下であること（PNG は不透明・8ビット・非インターレース）を確認し、元のリクエストを再読み込みしてください。元の結果は不明のままで、識別情報を保持しています。重複タスクを避けるため、このプロジェクトでは新しい画像リクエストを送信できません。自動再送はしません"
-  },
-  "image.state.comfyPreparationUnknown": {
-    "zh-Hans": "尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求",
-    "zh-Hant": "本機執行的準備結果尚未確認，沒有批准執行。請重新讀取，或明確放棄此未批准請求",
-    "en": "Local run preparation is unconfirmed; running was not approved. Reload or explicitly abandon this unapproved request",
-    "ja": "ローカル実行の準備結果は未確認で、実行は承認していません。再読み込みするか、この未承認リクエストを明示的に破棄してください"
-  },
+  "image.state.sourceUnknownHeld": {"zh-Hans": "源图未通过校验；原请求仍未确认", "zh-Hant": "來源圖片未通過核驗；原請求仍未確認", "en": "The source image failed validation; the original request is still unconfirmed", "ja": "ソース画像が検証を通りませんでした。元のリクエストは未確認のままです"},
+  "image.state.comfyPreparationUnknown": {"zh-Hans": "本地运行准备结果未确认", "zh-Hant": "本機執行準備結果未確認", "en": "Local run preparation is unconfirmed", "ja": "ローカル実行の準備結果は未確認です"},
   "image.state.paidPreparationUnknown": {
     "zh-Hans": "尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求",
     "zh-Hant": "批准準備的結果尚未確認，沒有發起付費批准。請重新讀取，或明確放棄此未批准請求",
@@ -504,12 +494,7 @@ export const creationStateMessages = {
     "en": "Paid approval is unconfirmed. Only the original request is read; it will not be approved again or regenerated automatically",
     "ja": "有料処理の承認結果は未確認です。元のリクエストを読み取るだけで、自動で再承認や再生成は行いません"
   },
-  "image.state.paidAuthorizationChanged": {
-    "zh-Hans": "描述或连接配置已变化。请核对当前完整地址、模型与配置版本后重新点击付费生成",
-    "zh-Hant": "描述或連線設定已變更。請核對目前的完整地址、模型與設定版本，再重新按下付費生成",
-    "en": "The description or connection configuration changed. Review the complete current URL, model, and configuration revision, then choose paid generation again",
-    "ja": "説明または接続設定が変わりました。現在の完全なURL、モデル、設定リビジョンを確認してから、再度有料生成を選択してください"
-  },
+  "image.state.paidAuthorizationChanged": {"zh-Hans": "描述或连接已变化，请重新点击付费生成", "zh-Hant": "描述或連線已變更，請重新點選付費生成", "en": "The description or connection changed; choose paid generation again", "ja": "説明または接続が変わりました。もう一度有料生成を選んでください"},
   "image.state.paidRequestSaveFailed": {
     "zh-Hans": "无法保存原始付费请求，本次尚未发送",
     "zh-Hant": "無法儲存原始付費請求，此次尚未傳送",
@@ -522,41 +507,17 @@ export const creationStateMessages = {
     "en": "Approval content is saved. The page or configuration changed. Return to the original request and explicitly approve again; it will not send automatically",
     "ja": "承認内容を保存しました。ページまたは設定が変わったため、元のリクエストに戻って改めて明示的に承認してください。自動送信はしません"
   },
-  "image.state.editPrepared": {
-    "zh-Hans": "源图已通过后端核验，编辑请求已准备。请核对下方固定源图、完整描述和发送目标，再单独批准；目前未发送",
-    "zh-Hant": "來源圖片已通過後端核驗，編輯請求已準備。請核對下方固定來源圖片、完整描述與傳送目標，再另行批准；目前尚未傳送",
-    "en": "The source image passed backend verification and the edit request is prepared. Review the fixed source, full description, and destination below, then approve separately. Nothing has been sent",
-    "ja": "ソース画像がバックエンド検証を通過し、編集リクエストを準備しました。下の固定ソース画像、説明全文、送信先を確認してから、別途承認してください。まだ送信していません"
-  },
   "image.state.preparationSourceInvalid": {
     "zh-Hans": "源图未通过后端核验。原始准备请求仍保留，尚未批准或发送。请重新读取；没有已保存审批时，可明确放弃此未批准请求后重新选择源图",
     "zh-Hant": "來源圖片未通過後端核驗。原始準備請求仍保留，尚未批准或傳送。請重新讀取；沒有已儲存批准記錄時，可明確放棄此未批准請求後重新選擇來源圖片",
     "en": "The source image failed backend verification. The original preparation request is retained and has not been approved or sent. Reload. If no saved approval exists, explicitly abandon this unapproved request before selecting another source",
     "ja": "ソース画像がバックエンド検証を通過しませんでした。元の準備リクエストは保持し、承認も送信もしていません。再読み込みしてください。保存済みの承認がない場合は、この未承認リクエストを明示的に破棄してからソース画像を選び直せます"
   },
-  "image.state.paidPreparationPending": {
-    "zh-Hans": "审批准备结果待核对。尚未发起付费审批，不会自动重试",
-    "zh-Hant": "批准準備的結果待核對。尚未發起付費批准，不會自動重試",
-    "en": "Approval preparation awaits verification. Paid approval has not started; there is no automatic retry",
-    "ja": "承認準備の結果は確認待ちです。有料処理の承認は開始しておらず、自動再試行はしません"
-  },
   "image.state.comfyReceiptSaveFailed": {
     "zh-Hans": "无法保存本地运行请求凭据，没有准备或发送生成",
     "zh-Hant": "無法儲存本機執行的請求憑據，沒有準備或傳送生成",
     "en": "The local-run request receipt could not be saved. Generation was neither prepared nor sent",
     "ja": "ローカル実行のリクエスト記録を保存できませんでした。生成の準備も送信もしていません"
-  },
-  "image.state.comfyPrepared": {
-    "zh-Hans": "本地运行请求已准备。请核对下方实际地址、种子和完整冻结工作流，再单独批准；目前未发送生成",
-    "zh-Hant": "本機執行請求已準備。請核對下方實際地址、種子及完整固定工作流程，再另行批准；目前尚未傳送生成",
-    "en": "The local run request is prepared. Review the actual URL, seed, and complete frozen workflow below, then approve separately. Generation has not been sent",
-    "ja": "ローカル実行リクエストを準備しました。下の実際のURL、シード、固定ワークフロー全体を確認してから、別途承認してください。生成はまだ送信していません"
-  },
-  "image.state.comfyPreparationPending": {
-    "zh-Hans": "准备结果待核对。尚未批准运行，不会自动重试。请重新读取已保存审批",
-    "zh-Hant": "準備結果待核對。尚未批准執行，不會自動重試。請重新讀取已儲存的批准記錄",
-    "en": "Preparation awaits verification. Running has not been approved; there is no automatic retry. Reload saved approvals",
-    "ja": "準備結果は確認待ちです。実行は承認しておらず、自動再試行はしません。保存済みの承認を再読み込みしてください"
   },
   "image.state.historicalPromptLoaded": {
     "zh-Hans": "已载入历史描述。这是按描述重新生成，不会读取旧图；点击生成才会创建此组的新版本",
@@ -570,12 +531,7 @@ export const creationStateMessages = {
     "en": "The group’s original description could not be read. The draft was not changed",
     "ja": "このグループの元の説明を読み取れませんでした。下書きは変更していません"
   },
-  "image.state.fixedEditLoaded": {
-    "zh-Hans": "已载入这份固定编辑请求。请核对源图、描述与发送目标，再单独批准",
-    "zh-Hant": "已載入此固定編輯請求。請核對來源圖片、描述與傳送目標，再另行批准",
-    "en": "This fixed edit request is loaded. Review the source image, description, and destination, then approve separately",
-    "ja": "この固定編集リクエストを読み込みました。ソース画像、説明、送信先を確認してから、別途承認してください"
-  },
+  "image.state.fixedEditLoaded": {"zh-Hans": "已载入固定编辑请求", "zh-Hant": "已載入固定編輯請求", "en": "The fixed edit request is loaded", "ja": "固定編集リクエストを読み込みました"},
   "image.state.approvalRequestSaveFailed": {
     "zh-Hans": "无法保存原始审批请求，本次未发送",
     "zh-Hant": "無法儲存原始批准請求，此次未傳送",

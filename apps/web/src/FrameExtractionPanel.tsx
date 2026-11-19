@@ -19,6 +19,10 @@ export default function FrameExtractionPanel({ controller, visible = true, revea
   visible = visible && ancestorVisible;
   const [snapshot, setSnapshot] = useState<FrameExtractionState>(() => controller.getSnapshot());
   const live = useRef<FrameLiveToken | null>(null);
+  // One bounded read-only re-check per retained request when this panel mounts
+  // or becomes visible. It only calls frame.request.get; a missing receipt keeps
+  // the original request and every explicit action unchanged.
+  const rereadRequests = useRef(new Set<string>());
   useLayoutEffect(() => {
     const token = { controller, visible, projectId: controller.getSnapshot().projectId, sourceScope: controller.getSnapshot().sourceScope };
     live.current = token;
@@ -28,6 +32,13 @@ export default function FrameExtractionPanel({ controller, visible = true, revea
   }, [controller, visible, snapshot.projectId, snapshot.sourceScope]);
   const state = controller.getSnapshot();
   useEffect(() => { if (visible && state.visible && !state.blocked && state.projectId) void controller.refreshTasks(); }, [controller, visible, state.visible, state.blocked, state.projectId, state.sourceScope]);
+  useEffect(() => {
+    if (!visible || !state.visible || state.blocked || !state.pending || state.phase === 'submitting') return;
+    const requestId = state.pending.input.requestId;
+    if (rereadRequests.current.has(requestId)) return;
+    rereadRequests.current.add(requestId);
+    void controller.reconcileUnknown();
+  }, [controller, visible, state.visible, state.blocked, state.pending, state.phase]);
   useEffect(() => {
     if (!visible || !state.visible || !state.tasks.some(active)) return;
     const timer = setTimeout(() => { if (live.current?.visible) void controller.refreshActive(); }, 2000);

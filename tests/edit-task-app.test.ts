@@ -257,7 +257,7 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
   for (const text of ['submission_unknown', 'providerJobId', 'outputReviewRequired', 'retryGeneration', 'job.cancel']) assert.ok(source.includes(text), text);
   assert.match(rendered('tasks.center.unknownSubmissionWarning'), /服务商可能已接受任务并计费/);
   assert.match(rendered('tasks.pending.mutationStorage'), /恢复记录仅存于当前浏览器会话/); assert.match(pending, /adopt-legacy-task/); assert.match(pending, /legacy-task-duplicate/);
-  assert.match(app, /void tasksRef\.current!?\.load\(id\)/);
+  assert.match(app, /void autoReread\(id\)/);
   assert.match(app, /taskState.phase !== 'ready'/);
 });
 

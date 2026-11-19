@@ -3,7 +3,7 @@ import type { DisplayMessage, Locale } from '../../../packages/i18n/src/index.ts
 import { pendingStorageKey, samePendingIntent, removeExactPending } from './pending-request.ts';
 import { migratePendingStorage } from './storage-migration.ts';
 import { isGenerationAspectResponse } from '../../../packages/contracts/src/generation-aspect.ts';
-import { LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
+import { DURABLE_EDIT_OPERATIONS, LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 // A lost HTTP response is not proof that the server rejected a paid request.
 // Preserve the exact operation and input until a verified response or matching
 // durable job/export establishes the outcome. Never re-key it.
@@ -31,6 +31,15 @@ export interface PendingData {
   readonly exports?: unknown;
   readonly [key: string]: unknown;
 }
+/** Immutable server evidence a lost response may still be matched against.
+ * `editTasks` only carries the project's not-yet-acknowledged edit tasks
+ * (pending-only pages include applied/not_applied tasks); `requestOutcomes` is
+ * keyed by the retained request ID and comes from the read-only receipt route. */
+export interface PendingEvidence {
+  readonly editTasks?: readonly unknown[];
+  readonly requestOutcomes?: ReadonlyMap<string,{readonly applied: boolean;readonly operation: string|null}>;
+}
+export type PendingVerdict = 'applied'|'not_applied'|'unknown';
 export type PendingError=Error&{code?: string; displayMessage?: DisplayMessage};
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
@@ -140,9 +149,39 @@ export function pendingForProject(projectId: string,{ strict = false }: PendingF
   }
   return result;
 }
-export function reconcilePending(projectId: string,data: PendingData): void {
+/** Exact durable-task evidence. A status is only accepted when the task was
+ * prepared from the identical operation and canonical input, so a coincident
+ * request ID cannot answer for a different retained intent. */
+function durableEditVerdict(entry: PendingEntry,tasks: readonly unknown[]): PendingVerdict {
+  if (!includesString(DURABLE_EDIT_OPERATIONS,entry.operation)) return 'unknown';
+  const requestId = entry.input.requestId;
+  if (typeof requestId !== 'string') return 'unknown';
+  const matches = tasks.filter(task => property(task,'projectId') === entry.projectId && property(task,'requestId') === requestId &&
+    property(task,'operation') === entry.operation);
+  if (matches.length !== 1) return 'unknown';
+  const input = property(matches[0],'input');
+  if (!isRecord(input) || canonical(input) !== canonical(entry.input)) return 'unknown';
+  const status = property(matches[0],'status');
+  return status === 'applied' ? 'applied' : status === 'not_applied' ? 'not_applied' : 'unknown';
+}
+function receiptVerdict(entry: PendingEntry,outcome: {readonly applied: boolean;readonly operation: string|null}|undefined): PendingVerdict {
+  if (outcome?.applied !== true) return 'unknown';
+  // An explicit operation from the receipt must name the retained operation;
+  // receipts without an operation column still bind project and request ID.
+  return outcome.operation === null || outcome.operation === entry.operation ? 'applied' : 'unknown';
+}
+/** Verdict from the new immutable evidence only. Existing jobs/exports
+ * evidence keeps its own flow; this helper is for callers that need the
+ * conclusion without clearing anything. */
+export function pendingVerdict(entry: PendingEntry,evidence: PendingEvidence = {}): PendingVerdict {
+  const durable = durableEditVerdict(entry,rows(evidence.editTasks));
+  if (durable !== 'unknown') return durable;
+  return receiptVerdict(entry,evidence.requestOutcomes?.get(String(entry.input.requestId)));
+}
+export function reconcilePending(projectId: string,data: PendingData & PendingEvidence): void {
   const jobIds = new Set(rows(data.jobs).map(record => property(record,'requestId')));
   const exportIds = new Set(rows(data.exports).map(record => property(record,'requestId')));
+  const editTasks = rows(data.editTasks);
   for (const entry of pendingForProject(projectId)) {
     if (isSubjectRetryPending(entry, rows(data.jobs))) {
       const matches = rows(data.jobs).filter(record => property(record,'requestId') === entry.input.requestId);
@@ -174,6 +213,15 @@ export function reconcilePending(projectId: string,data: PendingData): void {
       // replay can establish this render's outcome and release its original key.
       continue;
     }
+    // Durable edit tasks are the immutable acknowledgement of the dispatch:
+    // an exact task prepared from this intent can conclude it, and a task that
+    // reached prepared/dispatching/unknown keeps the original record.
+    const durable = durableEditVerdict(entry,editTasks);
+    if (durable !== 'unknown') { clearPending(projectId, entry.key, entry); continue; }
+    // Older sessions may have no edit task; the immutable receipt still binds
+    // the exact request ID inside this project.
+    const receipt = data.requestOutcomes?.get(String(entry.input.requestId));
+    if (receiptVerdict(entry,receipt) === 'applied') { clearPending(projectId, entry.key, entry); continue; }
     const knownIds: Set<unknown>|null = ['generation.submit', 'job.retry'].includes(entry.operation) ? jobIds : entry.operation === 'export.create' ? exportIds : null;
     if (knownIds?.has(entry.input.requestId)) clearPending(projectId, entry.key, entry);
   }

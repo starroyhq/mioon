@@ -270,6 +270,8 @@ import { isGenerationAspectNotApplied, isGenerationAspectResponse } from '../../
 import type { GenerationAspectSource } from '../../../packages/contracts/src/generation-aspect.ts';
 import { readGenerationProviderDirectory } from './video-provider-directory.ts';
 import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.ts';
+import { createRequestOutcomeClient } from './request-outcome-client.ts';
+import { rereadProjectPending, rereadEvidence } from './pending-reread.ts';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.ts';
 import { createWorkspacePreferences } from './workspace-preferences.ts';
@@ -773,6 +775,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   if (!tasksRef.current) tasksRef.current = createEditTaskController({ onChange: ((projectId: string, snapshot: never) => {
     if (currentProject.current === projectId) setTaskState(snapshot as unknown as TaskState);
   }) as unknown as () => void } as unknown as Parameters<typeof createEditTaskController>[0]);
+  const requestOutcomeClientRef = useRef<ReturnType<typeof createRequestOutcomeClient> | null>(null);
+  if (!requestOutcomeClientRef.current) requestOutcomeClientRef.current = createRequestOutcomeClient();
+  const rereadFlight = useRef<{projectId: string;epoch: number;session: string|null}|null>(null);
   const navigationEpoch = useRef(0);
   const [, setNavigationPresentation] = useState(0);
   const projectEpoch = useRef(0);
@@ -1204,6 +1209,35 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     updateView('shared', { assetSearch: asset.name, assetFilter: 'all' }); setPanelOpen('assets', true); setMobilePanel('assets');
     return true;
   }
+  // One bounded automatic re-read per project epoch. It only loads, reads edit
+  // tasks and receipt outcomes; it never replays, executes or acknowledges a
+  // write. A failed or superseded pass keeps every retained request untouched.
+  const autoReread = useCallback(async (projectId: string,{ load = true }: {load?: boolean} = {}): Promise<void> => {
+    const epoch = projectEpoch.current, session = editorSession.current;
+    const current = () => currentProject.current === projectId && projectEpoch.current === epoch && editorSession.current === session &&
+      importSession.current.active && !importSession.current.leaseRevoked;
+    if (!current() || !tasksRef.current) return;
+    const flying = rereadFlight.current;
+    if (flying?.projectId === projectId && flying.epoch === epoch) return;
+    rereadFlight.current = { projectId, epoch, session };
+    try {
+      const snapshot = load ? await tasksRef.current.reread(projectId) : tasksRef.current.getState(projectId);
+      if (!current()) return;
+      const entries = pendingForProject(projectId, { strict: true });
+      const results = await rereadProjectPending(projectId, { entries, readOutcome: requestOutcomeClientRef.current!.read, current });
+      if (!current()) return;
+      const snapshotData = dataRef.current as unknown as { jobs?: unknown; exports?: unknown };
+      reconcilePending(projectId, { jobs: snapshotData.jobs, exports: snapshotData.exports, editTasks: snapshot.items, ...rereadEvidence(results) });
+      const remaining = pendingForProject(projectId);
+      const remainingKeys = new Set(remaining.map(entry => entry.key));
+      setPending(remaining);
+      const cleared = entries.filter(entry => !remainingKeys.has(entry.key));
+      if (cleared.some(entry => entry.operation === 'asset.annotation.set')) setAnnotationRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 }));
+      if (cleared.some(entry => entry.operation === 'asset.disposition.set')) setDispositionRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 }));
+      if (cleared.some(entry => entry.operation.startsWith('subject.'))) setSubjectRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 }));
+    } catch { /* Retained requests and their original bytes stay; no toast on a failed probe. */ }
+    finally { if (rereadFlight.current?.projectId === projectId && rereadFlight.current?.epoch === epoch) rereadFlight.current = null; }
+  }, []);
   async function selectProject(id: string, initial = false, fromHistory = false, reloadPreferences = false): Promise<boolean> {
     if(importSession.current.leaseRevoked)return false;
     if (nativeWindow && id !== nativeWindow.context.initialProjectId) return nativeProjectEntry?.open(id) ?? false;
@@ -1267,7 +1301,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!projectResponseMatches(next, id) || !canPublishProjectOpen(attempt, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: editorSession.current as string, preferencesReady: viewReady.current, dataProjectId: next?.project?.id || null, loading: false })) throw Object.assign(localizedError(msg('shell.error.selectionNotReady')), { code: 'BACKEND_PROTOCOL_ERROR' });
     openedProject.current = attempt; setProjectOpening({ phase: 'ready', projectId: id, error: '' });
     if (!nativeWindow) void window.__mioonUiPreferences?.markOpened?.(id);
-    void tasksRef.current!.load(id);
+    void autoReread(id);
     if (next && !viewRef.current!.canvas.selectedId) { const first = [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] || next.nodes.find((n: AppNode) => n.type !== 'text') || next.nodes[0]; if (first) updateView('canvas', { selectedId: first.id }, { passive: true }); }
     return true;
     } catch (e) {
@@ -2223,7 +2257,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function captureTaskView(): unknown { return captureTaskWorkspaceIntent(readTaskViewContext); }
   function openTasks(canReveal: () => boolean = () => true, selectedId?: string): boolean {
     if (clipDraftRef.current?.hasPendingComposition() || !canReveal() || !currentProject.current || !viewReady.current) return false;
-    markPanelIntent(); setSelectedTaskId(selectedId); setShowDelivery(false); setShowImage(false); setShowTasks(true); return true;
+    markPanelIntent(); setSelectedTaskId(selectedId); setShowDelivery(false); setShowImage(false); setShowTasks(true);
+    // Opening the task center is one of the two bounded automatic re-read
+    // triggers; it runs with the same project epoch guard and never blocks.
+    void autoReread(currentProject.current);
+    return true;
   }
   async function openAgentRequests(selectedId?: string): Promise<boolean> {
     const location = parseAgentTaskRecoveryLocation(selectedId);
@@ -4596,7 +4634,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onCheck={() => { sampleExportPreflight.controller!.setContext(sampleExportContext()); sampleExportPreflight.controller!.check(); }}
       onSelect={selectSampleExportRange} onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
-    />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
+    />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
     <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}

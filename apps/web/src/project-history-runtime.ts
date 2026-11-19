@@ -6,6 +6,8 @@ import type {ProjectVersionSummary} from '../../../packages/contracts/src/projec
 import type {ProjectVersionDifference, ProjectVersionPreviewResponse, ProjectVersionRestoreInput, ProjectVersionRestoreResponse, ProjectVersionSaveInput} from '../../../packages/contracts/src/project-version-operations.ts';
 import {projectBackupSchemas} from '../../../packages/contracts/src/project-backups.ts';
 import type {ProjectBackupSummary, ProjectBackupInspection, ProjectBackupStatus, ProjectBackupRestoreInput, ProjectBackupRestoreResponse} from '../../../packages/contracts/src/project-backups.ts';
+import {createRequestOutcomeClient} from './request-outcome-client.ts';
+import type {RequestOutcome,RequestOutcomeReadInput} from './request-outcome-client.ts';
 
 export type HistoryView<T> = {kind: 'loading'} | {kind: 'error'; code: string; retryable: boolean} | {kind: 'ready'; value: T};
 export interface HistoryPreview extends Omit<ProjectVersionPreviewResponse, 'changes'> {changes: ProjectVersionDifference[]}
@@ -22,7 +24,9 @@ export interface ProjectHistoryState {
 }
 const failure = (error: unknown): {code: string; retryable: boolean} => ({code: error instanceof ProjectHistoryError ? error.code : 'BACKEND_UNAVAILABLE',
   retryable: !(error instanceof ProjectHistoryError && error.definitive)});
-export interface ProjectHistoryOptions {readonly backupsOnly?:boolean}
+export interface ProjectHistoryOptions {readonly backupsOnly?:boolean;
+  /** Test seam for the bounded, read-only receipt lookup. */
+  readonly readOutcome?: (input: RequestOutcomeReadInput, options?: {signal?: AbortSignal}) => Promise<RequestOutcome>;}
 export function createProjectHistoryRuntime(projectId: string, client: ProjectHistoryClient = createProjectHistoryClient(), newId = () => crypto.randomUUID(), admission?: ProjectFeatureAdmission, options: ProjectHistoryOptions = {}) {
   const backupsOnly = options.backupsOnly === true;
   let state: ProjectHistoryState = {tab: backupsOnly ? 'backups' : 'versions', versions: {kind: 'loading'}, versionCursor: null, selected: 'current', preview: {kind: 'loading'},
@@ -92,8 +96,30 @@ export function createProjectHistoryRuntime(projectId: string, client: ProjectHi
       if (active && attempt.kind !== 'backup') {publish({selected: 'current'}); void loadVersions();}
     } catch (error) {if (state.attempt === pending) publish({attempt: {...attempt, phase: featureAdmissionAllowed(writeAdmission, admissionKey) && error instanceof ProjectHistoryError && error.definitive ? 'rejected' : 'unknown', code: failure(error).code}});}
   }
-  return Object.freeze({projectId, canInteract: allowed, setAdmission(next?:ProjectFeatureAdmission) {if (next?.key === admissionKey) admission = next;}, snapshot: () => state, subscribe(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};},
+  // A retained save/version write may have landed without its response. One
+  // bounded read-only receipt lookup can conclude it; a missing receipt leaves
+  // the attempt unknown and every action as it was. Backup restores have no
+  // receipt table and are never invented here.
+  async function probeAttempt(): Promise<boolean> {
+    const attempt = state.attempt;
+    if (!active || !allowed() || attempt?.phase !== 'unknown' || attempt.kind === 'backup') return false;
+    const requestId = (attempt.input as {requestId?: unknown}).requestId;
+    if (typeof requestId !== 'string' || requestId.length < 8) return false;
+    const owner = epoch, readOutcome = options.readOutcome ?? createRequestOutcomeClient().read;
+    try {
+      const outcome = await readOutcome({projectId, requestId});
+      if (!current(owner) || state.attempt !== attempt || outcome.applied !== true) return false;
+      publish({attempt: {...attempt, phase: 'complete'}});
+      void loadVersions();
+      return true;
+    } catch { return false; }
+  }
+  return Object.freeze({projectId, canInteract: allowed, setAdmission(next?:ProjectFeatureAdmission) {if (next?.key === admissionKey) admission = next;},
+    probeAttempt, snapshot: () => state, subscribe(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};},
     open(tab: ProjectHistoryState['tab'] = state.tab) {if (backupsOnly) tab = 'backups'; active = true; epoch++; publish({tab, paging: false});
+      // Read the retained attempt's exact receipt before showing a verification
+      // prompt or offering a replay.
+      void probeAttempt();
       if (tab === 'versions') {void loadVersions(); if (!locked() && state.selected !== 'current') void select(state.selected);} else void loadBackups();},
     close() {active = false; epoch++; selection++; clearTimeout(poll);
       const pending = state.attempt?.phase === 'working' || state.attempt?.phase === 'unknown' ? state.attempt : null;
