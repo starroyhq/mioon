@@ -157,6 +157,24 @@ export const boardRootCreateIntent = (nodeId: string, name: string, position: {x
 export const boardShotAppendIntent = (nodeId: string, name: string, position?: {x: number; y: number}): SequenceEditIntent =>
   ({side: 'board', operation: {kind: 'board.shot.append', nodeId, name,
     ...(position ? {position: {x: position.x, y: position.y}} : {})}});
+export const boardRestoreIntent = (items: readonly {readonly kind: 'shot' | 'node'; readonly id: string}[]): SequenceEditIntent =>
+  ({side: 'board', operation: {kind: 'board.restore', items: items.map(item => ({kind: item.kind, id: item.id}))}});
+export const boardDuplicateIntent = (items: readonly {readonly kind: 'shot' | 'node'; readonly id: string}[],
+  viewport: {x: number; y: number; width: number; height: number}): SequenceEditIntent =>
+  ({side: 'board', operation: {kind: 'board.duplicate', items: items.map(item => ({kind: item.kind, id: item.id})),
+    viewport: {...viewport}}});
+export const boardNodeCreateIntent = (nodeId: string, type: 'image' | 'video' | 'audio' | 'text', name: string,
+  position: {x: number; y: number}, fields: {assetId?: string; text?: string} = {}): SequenceEditIntent =>
+  ({side: 'board', operation: {kind: 'board.node.create', nodeId, nodeType: type, name, position: {...position},
+    ...(fields.assetId === undefined ? {} : {assetId: fields.assetId}),
+    ...(fields.text === undefined ? {} : {text: fields.text})}});
+export const boardShotUpdateIntent = (shotId: string, expectedRevision: number,
+  patch: {title?: string; prompt?: string; duration?: number; aspectRatio?: string;
+    position?: {x: number; y: number}}): SequenceEditIntent =>
+  ({side: 'board', operation: {kind: 'board.shot.update', shotId, expectedRevision, patch: {...patch}}});
+export const boardNodeUpdateIntent = (nodeId: string, expectedRevision: number,
+  patch: {name?: string; text?: string; position?: {x: number; y: number}}): SequenceEditIntent =>
+  ({side: 'board', operation: {kind: 'board.node.update', nodeId, expectedRevision, patch: {...patch}}});
 export const boardNodeKey = (id: string): string => id;
 
 

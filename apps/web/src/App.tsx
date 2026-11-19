@@ -209,7 +209,7 @@ import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
-import {boardConnectIntent, boardDeleteIntent, boardVersionIntent, projectLiveBoard,
+import {boardDeleteIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent, projectLiveBoard,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardDeleteOperation} from './board-ui/live.ts';
 import type {BoardBinding} from './board-ui/live-session.ts';
@@ -1904,6 +1904,26 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const base = state.shots.length, firstImage = state.assets.find(a => a.mimeType.startsWith('image/'));
     const aspectRatio = (state.timelineFrameTransaction === true ? timelineOutputRatio(state.timeline) : null) ?? '9:16';
     let done = 0;
+    if (state.projectFormatVersion === 5) {
+      try {
+        const titles = [t('projects.default.establish'), t('projects.default.develop'), t('projects.default.resolve')];
+        const ids = titles.map(() => globalThis.crypto.randomUUID());
+        const outcome = await format5BoardSession().runMany(ids.map((nodeId, i) => ({side: 'board' as const,
+          operation: {kind: 'board.shot.append' as const, nodeId,
+            name: `${String(base + i + 1).padStart(2, '0')} · ${titles[i]}`,
+            position: {x: 100 + i * 340, y: 130}}})));
+        if (!outcome.ok) {if (isCurrent(captured)) notify(outcome.code, 'error'); return;}
+        const next = await refresh(projectId) as AppData | null;
+        if (isCurrent(captured) && next) {
+          await inspect(ids[0]!);
+          await format5RefreshHistory();
+          await format5LoadBoard();
+          revealCanvas();
+          notify(msg('projects.structureReady'));
+        }
+      } finally { markBusy(projectId, 'structure', false); }
+      return;
+    }
     try {
       for (const [i, title] of [t('projects.default.establish'), t('projects.default.develop'), t('projects.default.resolve')].entries()) {
         if (!isCurrent(captured)) return;
@@ -1922,7 +1942,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (type !== 'text' && !asset) { asset = state.assets.find(a => a.mimeType.startsWith(`${type}/`)); if (!asset) { notify(msg(type === 'image' ? 'assets.importImageFirst' : type === 'audio' ? 'assets.importAudioFirst' : 'assets.importVideoFirst'), 'warning'); fileInput.current?.click(); return; } }
     const saved = viewRef.current!.canvas.viewport;
     const location = dropPosition || (workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 });
-    const node = await run('node-create', 'node.create', { projectId: state.project!.id, type, label: type === 'text' ? t('projects.default.note') : asset!.name, ...(type === 'text' ? { text: '' } : { assetId: asset!.id }), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) });
+    const position = chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location);
+    const node = await run('node-create', 'node.create', { projectId: state.project!.id, type, label: type === 'text' ? t('projects.default.note') : asset!.name, ...(type === 'text' ? { text: '' } : { assetId: asset!.id }), position });
     if (node && await inspect((node as {id: string}).id)) revealCanvas((node as {id: string}).id);
   }
   // Previs nodes have their own exact-replay create: one stable requestId,
@@ -2132,7 +2153,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (referenceWorkBlocked()) return null;
     return run(`save:${shotId}`, 'shot.update', { shotId, expectedRevision, patch }, msg('projects.shotSaved'), { returnAfterNavigation: true });
   }
-  async function saveNode(nodeId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> { return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, msg('projects.nodeSaved'), { returnAfterNavigation: true }); }
+  async function saveNode(nodeId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> {
+    return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, msg('projects.nodeSaved'), { returnAfterNavigation: true });
+  }
   async function savePosition(_: React.MouseEvent, node: FlowNode): Promise<void> {
     const snapshot = dataRef.current;
     const record = snapshot.shots.find(s => s.id === node.id) || snapshot.nodes.find(n => n.id === node.id);
@@ -2455,11 +2478,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     await format5BoardRun(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name}));
   }
   async function format5BoardRestore(archivedId: string, name: string): Promise<void> {
-    const chain = format5BoardProjection?.projection.films.find(film => film.id === format5ActiveFilmId)
-      ?? format5BoardProjection?.projection.films[0];
-    const tail = chain?.items.at(-1)?.nodeId ?? format5ActiveFilmId;
-    if (!tail || tail === archivedId) return;
-    await format5BoardRun(boardConnectIntent(tail, archivedId), t('boardUi.notice.restored', {name}));
+    const kind = format5BoardMount?.archived.find(item => item.id === archivedId)?.kind ?? 'node';
+    await format5BoardRun(boardRestoreIntent([{kind, id: archivedId}]), t('boardUi.notice.restored', {name}));
+  }
+  async function format5BoardUpdateNode(nodeId: string, patch: {name?: string; text?: string},
+    expectedRevision: number): Promise<void> {
+    await format5BoardRun(boardNodeUpdateIntent(nodeId, expectedRevision, patch), t('projects.nodeSaved'));
   }
   async function format5OpenShotInTimeline(nodeId: string): Promise<void> {
     const snapshot = dataRef.current;
@@ -4533,7 +4557,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <PanelBoundary name="inspector" className={panelOverlay === 'inspector' ? 'panel-overlay' : ''} visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><WorkbenchPanelHeader collapseLabel={t('shell.collapseInspector')} collapseTestId="toggle-inspector"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={false} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} /></WorkbenchPanelHeader><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy={workspaceMode === "canvas" && tab === "versions" ? "right-dock-versions-tab" : "right-dock-properties-tab"} visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{subjectPanel ? <div className="inspector-container">{subjectPanel}</div> : workspaceMode === 'canvas' ? <div className="inspector-container">
     {format5 && format5BoardProjection ? <BoardInspector board={format5BoardProjection} activeFilmId={format5ActiveFilmId} mount={format5BoardMount}
-      selectedNodeId={selectedId || null} versions={data.versions} shots={data.shots} busy={format5BoardBusy}
+      selectedNodeId={selectedId || null} versions={data.versions} shots={data.shots} nodes={data.nodes} busy={format5BoardBusy}
       providers={providers} generationOptions={generationOptions[selectedId as string]} inputs={format5Inputs}
       onGenerationOptionsChange={(shotId, options) => updateGenerationOptions(shotId, options as GenerationOptionState)}
       onInputRoleChange={format5InputRoleChange}
@@ -4544,7 +4568,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onOpenInEditing={nodeId => { void format5OpenShotInTimeline(nodeId); }}
       onRestore={(archivedId, name) => { void format5BoardRestore(archivedId, name); }}
       onSetBindingMode={format5SetBindingMode} onDetachBinding={format5DetachBinding}
-      onRestoreBinding={format5RestoreBinding} onDeleteSubjectCard={format5DeleteSubjectCard} /> :
+      onRestoreBinding={format5RestoreBinding} onDeleteSubjectCard={format5DeleteSubjectCard} onUpdateNode={format5BoardUpdateNode} /> :
     canvasEditingEnabled && canvasSelectedItems.length > 1 ? <aside className="inspector"><CanvasSelectionInspector items={canvasSelectedItems} />
       <CanvasOverview shots={data.shots} versions={data.versions} jobs={jobs as React.ComponentProps<typeof CanvasOverview>['jobs']} nodes={data.nodes} />
     </aside> : storyboardPanel ?? previsPanel ?? <Inspector protectEditing={(content,onDiscard) => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} onDiscard={onDiscard} disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:chosenShot.revision ?? 0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:chosenNode.revision ?? 0}] : []} canRelease={() => !shotDirty && !shotTextRef.current?.hasUnsaved() && !shotTextRef.current?.getState().pending && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain && !isBusy(`save:${chosenShot?.id || chosenNode?.id}`)}>{content}</AgentEditingBoundary>} onEditImage={openImageEdit} annotations={annotations} annotationAsset={librarySource as never} assetSections={sceneSummary(librarySource as AppAsset | null)} annotationBlocked={annotationBlocked}  onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext } as never} onShotTextController={registerShotText} onShotTextAccepted={((({ response }: {response: {projectId: string}}) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }) as never)} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects as never} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} videoDirectoryUnavailable={videoDirectoryUnavailable} onRetryVideoDirectory={() => { void refresh(); }} showEnvironmentSetup={!nativeWindow} configureGeneration={configureVideoGeneration ? () => openGlobalSettings('models') : undefined} generationFrame={data.timelineFrameTransaction === true ? data.timeline : null} generationOptions={generationOptions[selectedId as string]} onGenerationOptionsChange={updateGenerationOptions as never} tab={tab} setTab={setTab} busy={busy} onSave={saveShot as never} onNodeSave={saveNode as never} onGenerate={generate as never} regenerationJobId={regenerationJobId} onRegenerate={(shot, options, job, stillCurrent) => generate(shot, options, { job, stillCurrent })} onCancelJob={(job, stillCurrent) => { const live = dataRef.current!.jobs.find(item => item.id === job.id); if (!stillCurrent() || live?.projectId !== currentProject.current || live?.status !== job.status || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return; return run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }, undefined, { canExecute: stillCurrent }); }} onRetryJob={retryGeneration} onSelectVersion={selectVersion as never} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots as never[]} nodes={data.nodes as never[]} edges={data.edges as never[]} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={((id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true })) as never} timelineStatus={shotTimelineView(chosenShot?.id)} onViewInEditing={viewShotInEditing} onAddVersion={(assetId: string) => addTimelineAsset(assetId)} />}
