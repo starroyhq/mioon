@@ -2392,6 +2392,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       pending: !projectId || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
   async function saveTimelineFormat(intent: TimelineFormatIntent, frameOptions?: Pick<RunOptions, 'canExecute' | 'canRevealTasks' | 'errorMessage'>): Promise<{status: string; timeline?: unknown; error?: unknown}> {
+    if (dataRef.current.projectFormatVersion === 5) {
+      const presetId = (intent.input as {presetId?: unknown}).presetId;
+      if (typeof presetId !== 'string') return {status: 'rejected'};
+      const result = await format5Session().format(presetId);
+      if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return {status: 'rejected', error: result};}
+      await refresh(currentProject.current); await format5RefreshHistory();
+      return {status: 'applied', timeline: dataRef.current.timeline};
+    }
     const live = timelineFormatContext();
     if (intent.scope !== live.scope || intent.projectId !== live.projectId || !live.connected || live.pending || !isDurableEditOperation('timeline.format.set')) return { status: 'rejected' };
     let failure: {error?: unknown; dispatched?: boolean; rejected?: boolean} | undefined, acknowledged: unknown;
@@ -3265,6 +3273,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return { hasCut: Boolean(clipTransitionPredecessor(timeline.clips, clip)), maxFrames: clipTransitionRoom(timeline.clips, clip, sources) };
   }
   async function splitTimelineAtScenes(assetId: string, resultId: string): Promise<void> {
+    if (dataRef.current.projectFormatVersion === 5) {
+      const timeline = dataRef.current.timeline;
+      const mainTrackId = (timeline as unknown as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+      const clip = timeline?.clips?.find(item => item.assetId === assetId && item.trackId === mainTrackId);
+      if (!clip) {notify(msg('scene.split.noClip'), 'warning'); return;}
+      const result = await format5Session().splitAtScenes(clip.id, assetId, resultId);
+      if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return;}
+      notify(msg('scene.split.done', {count: 1}));
+      await refresh(currentProject.current); await format5RefreshHistory();
+      return;
+    }
     const result = await mutateTimeline('timeline.clip.splitAtScenes', { assetId, resultId }, undefined, { errorMessage: sceneSplitError }) as { split: unknown[]; skipped: unknown[] } | null;
     if (result) notify(result.skipped.length ? msg('scene.split.doneSkipped', { count: result.split.length, skipped: result.skipped.length }) : msg('scene.split.done', { count: result.split.length }));
   }

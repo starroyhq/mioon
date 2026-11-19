@@ -30,7 +30,7 @@ import {planSubjectBindingAction, readSubjectBinding} from './format5-subject-bi
 import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
-import type {ChainSyncOperation, ChainSyncPlan, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainSyncChange, ChainSyncChanges, ChainSyncOperation, ChainSyncPlan, ChainSyncWarning, TrackSyncEdit} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncVersion} from '../../contracts/src/chain-main-track.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
@@ -42,6 +42,7 @@ import {
   planFormat5TimelineEntityUpdate, readFormat5TimelineState,
 } from './project-file/format5-timeline.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
+import {readSceneSplitCuts} from './scene-history.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, patchFromEntry, prepareSequenceEditHistory,
@@ -293,9 +294,55 @@ function allocationClipIds(envelope: SequenceEditEnvelope): Record<string, strin
   return Object.fromEntries(envelope.allocation.clips.map(item => [item.nodeId, item.clipId]));
 }
 
-function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope): SequenceEditPlan | SequenceEditTransactionFailure {
+function mergeChanges(target: ChainSyncChanges, source: ChainSyncChanges): void {
+  for (const key of ['nodes', 'edges', 'media', 'clips', 'anchored'] as const) {
+    (target[key] as ChainSyncChange<unknown>[]).push(...(source[key] as ChainSyncChange<unknown>[]));
+  }
+}
+function sceneAllowedCuts(clip: {sourceInFrame: number; durationFrames: number; fadeInFrames?: number; fadeOutFrames?: number},
+  cuts: readonly number[]): number[] {
+  const inside = cuts.filter(frame => frame > clip.sourceInFrame && frame < clip.sourceInFrame + clip.durationFrames)
+    .sort((left, right) => left - right);
+  const fadeIn = clip.fadeInFrames ?? 0, fadeOut = clip.fadeOutFrames ?? 0;
+  return inside.filter(frame => frame - clip.sourceInFrame >= fadeIn
+    && frame - clip.sourceInFrame <= clip.durationFrames - fadeOut);
+}
+/** FR-B2: expand one `split-at-scenes` intent into the ordinary sequential
+ * split commands. Left keeps its id, each right takes the id pre-allocated in
+ * the envelope, and anchors/groups move through the same TSb split plan. */
+function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
+  edit: Extract<TrackSyncEdit, {kind: 'split-at-scenes'}>, cuts: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
+  const clip = context.timeline.clips.find(item => item.id === edit.clipId);
+  if (!clip || clip.assetId !== edit.assetId) return failure('CLIP_NOT_FOUND', [edit.clipId]);
+  const allowed = sceneAllowedCuts(clip as unknown as {sourceInFrame: number; durationFrames: number;
+    fadeInFrames?: number; fadeOutFrames?: number}, cuts);
+  if (allowed.length === 0) return failure('SEQUENCE_EDIT_NOOP', [edit.clipId]);
+  const pairs = envelope.allocation.splitClips;
+  if (pairs.length !== allowed.length) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [edit.clipId]);
+  let state = saState(context), current = clip.id, index = 0;
+  const changes: ChainSyncChanges = {nodes: [], edges: [], media: [], clips: [], anchored: []};
+  const warnings: ChainSyncWarning[] = [];
+  for (const cut of allowed) {
+    const pair = pairs[index++]!;
+    if (pair.clipId !== current) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [current]);
+    const currentClip = state.clips.find(item => item.id === current);
+    if (!currentClip) return failure('CLIP_NOT_FOUND', [current]);
+    const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
+      offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}});
+    if (plan.ok === false) return planFailure(plan);
+    mergeChanges(changes, plan.changes);
+    warnings.push(...plan.warnings);
+    state = plan.after;
+    current = pair.rightClipId;
+  }
+  return {ok: true, after: state, changes, warnings, issues: []};
+}
+function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, sceneCuts?: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
   if (envelope.intents.length !== 1) return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
   const operation = envelope.intents[0]!.operation;
+  if (operation.kind === 'track' && operation.edit.kind === 'split-at-scenes') {
+    return planSceneSplit(context, envelope, operation.edit, sceneCuts ?? []);
+  }
   const state = saState(context);
   const checked = (plan: ChainSyncPlan): SequenceEditPlan | SequenceEditTransactionFailure =>
     plan.ok ? plan : planFailure(plan);
@@ -814,9 +861,16 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const durationFrames = [...[...clips.values()].map(clip => clip.startFrame + clip.durationFrames),
     ...[...cues.values()].map(cue => cue.startFrame + cue.durationFrames)]
     .reduce((maximum, value) => Math.max(maximum, value), 0);
+  const header = delta.header?.kind === 'set' ? delta.header.value : null;
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
+    ...(header ? {fps: header.fps, width: header.width, height: header.height} : {}),
     clips: [...clips.values()], subtitles: current.subtitles ? {...current.subtitles, cues: [...cues.values()]} : undefined};
-  const update = planFormat5TimelineEntityUpdate(state, {clips: delta.clips, cues: delta.cues,
+  // Validate the rows against the frame the patch asks for: an undo restores
+  // the old header together with clips that intentionally have no layout.
+  const planState = header && state.header
+    ? {...state, header: {...state.header, raw: JSON.stringify({...JSON.parse(state.header.raw), ...header})}}
+    : state;
+  const update = planFormat5TimelineEntityUpdate(planState, {clips: delta.clips, cues: delta.cues,
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
   const headerChanged = state.header?.raw !== headerRaw;
@@ -897,7 +951,7 @@ export interface SequenceSyncPreview {
   readonly planDigest: string;
 }
 
-function allocationForCommand(context: SyncContext, command: SequenceSyncCommand) {
+function allocationForCommand(context: SyncContext, command: SequenceSyncCommand, cuts: readonly number[] = []) {
   const allocation = {clips: [] as {nodeId: string; clipId: string}[], nodes: [] as {fromNodeId: string; nodeId: string}[],
     splitClips: [] as {clipId: string; rightClipId: string}[], edges: [] as {id: string; fromId: string; toId: string}[]};
   if (command.kind === 'sync-board') {
@@ -906,6 +960,17 @@ function allocationForCommand(context: SyncContext, command: SequenceSyncCommand
     allocation.clips.push({nodeId: command.clip.nodeId, clipId: command.clip.id});
   } else if (command.kind === 'clip-split') {
     allocation.splitClips.push({clipId: command.clipId, rightClipId: command.rightClipId});
+  } else if (command.kind === 'clip-split-scenes') {
+    const clip = context.timeline.clips.find(item => item.id === command.clipId);
+    if (clip && clip.assetId === command.assetId) {
+      let current = clip.id;
+      for (const _cut of sceneAllowedCuts(clip as unknown as {sourceInFrame: number; durationFrames: number;
+        fadeInFrames?: number; fadeOutFrames?: number}, cuts)) {
+        const rightClipId = randomUUID();
+        allocation.splitClips.push({clipId: current, rightClipId});
+        current = rightClipId;
+      }
+    }
   } else if ((command.kind === 'clip-move' || command.kind === 'clip-move-off-track') && command.copyNodeId) {
     const clip = context.clips.find(item => item.id === command.clipId);
     if (clip) allocation.nodes.push({fromNodeId: clip.nodeId, nodeId: command.copyNodeId});
@@ -930,12 +995,24 @@ function allocateEdgeIds(context: SyncContext, plan: SequenceEditPlan,
 /** Read the live state once, plan with SA and build the shared contract envelope
  * a UI-E2/MT caller sends to `runSequenceSync`. The envelope carries the
  * observed revisions, impact ids, new-id allocation and the contract baseline. */
+function sceneCutFailure(error: unknown): SequenceEditTransactionFailure {
+  const code = (error as {code?: unknown})?.code;
+  if (code === 'SCENE_RESULT_CONFLICT') return failure('SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', []);
+  if (code === 'SCENE_RESULT_STALE') return failure('SEQUENCE_EDIT_SCENE_RESULT_STALE', []);
+  if (code === 'SCENE_NOT_FOUND') return failure('SEQUENCE_EDIT_REVISION_CONFLICT', []);
+  return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
+}
 export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCommand,
   options: {readonly requestId: string; readonly actionId?: string; readonly origin?: 'user' | 'mio'}): SequenceSyncPreview | SequenceEditTransactionFailure {
   if (!format5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   return store.tx(() => {
     const context = readSyncContext(store);
     const intent = sequenceSyncIntent(command);
+    let cuts: number[] = [];
+    if (command.kind === 'clip-split-scenes') {
+      try { cuts = readSceneSplitCuts(store.db, store.projectId, command.assetId, command.resultId); }
+      catch (error) { return sceneCutFailure(error); }
+    }
     const {state} = prepareSequenceEditHistory(store);
     const content = readProjectContentStamp(store.db).contentSequence;
     const allocation = allocationForCommand(context, command);
@@ -948,7 +1025,7 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       impact: {nodeIds: [], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},
       allocation,
     };
-    const plan = planEnvelope(context, provisional);
+    const plan = planEnvelope(context, provisional, cuts);
     if ('ok' in plan && plan.ok === false) return plan;
     const successful = plan as SequenceEditPlan;
     const mainTrackId = context.timeline.mainTrack.trackId;
@@ -1045,7 +1122,13 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     if (envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
     const revisionFailure = revisionMatches(store, envelope, context);
     if (revisionFailure) return revisionFailure;
-    const plan = planEnvelope(context, envelope);
+    let sceneCuts: number[] = [];
+    const sceneEdit = envelope.intents[0]?.operation;
+    if (sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'split-at-scenes') {
+      try { sceneCuts = readSceneSplitCuts(store.db, store.projectId, sceneEdit.edit.assetId, sceneEdit.edit.resultId); }
+      catch (error) { const failureResult = sceneCutFailure(error); return writeFailure(store, envelope, failureResult.code); }
+    }
+    const plan = planEnvelope(context, envelope, sceneCuts);
     if ('ok' in plan && plan.ok === false) return writeFailure(store, envelope, plan.code);
     const successful = plan as SequenceEditPlan;
     const nextTimeline = patchMainTimeline(context, successful);

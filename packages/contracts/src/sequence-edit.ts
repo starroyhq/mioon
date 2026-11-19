@@ -4,6 +4,7 @@ import {isClipTransition} from './timeline-clip-transition.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
+import {TIMELINE_FORMAT_WRITE_PRESETS} from './timeline-output-geometry.ts';
 import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline,
 } from './project-format5.ts';
@@ -93,7 +94,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.connect', 'board.disconnect', 'board.insert', 'board.delete', 'board.sync', 'board.version',
   'board.root.create', 'board.shot.append', 'board.layout.move',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
-  'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
+  'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.splitAtScenes', 'timeline.format.set',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
@@ -172,6 +173,18 @@ export interface SequenceEditClipPropertiesIntent {
   readonly side: 'timeline';
   readonly operation: SequenceEditClipPropertiesOperation;
 }
+/** FR-B2: one output-preset change. All clips without an explicit layout freeze
+ * their current frame as their layout basis; the header moves to the new preset. */
+export const sequenceEditFormatIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.object({kind: z.literal('timeline-format'),
+    presetId: z.enum(TIMELINE_FORMAT_WRITE_PRESETS.map(item => item.id) as [string, ...string[]])}).strict(),
+}).strict();
+export interface SequenceEditFormatIntent {
+  readonly side: 'timeline';
+  readonly operation: {readonly kind: 'timeline-format';
+    readonly presetId: typeof TIMELINE_FORMAT_WRITE_PRESETS[number]['id']};
+}
 
 /** The side a plan operation belongs to. Board edits and projections are CS,
  * track edits are TS. */
@@ -207,6 +220,7 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
     case 'board.layout.move': return 'board.layout.move';
     case 'track':
       switch (operation.edit.kind) {
+        case 'split-at-scenes': return 'timeline.clip.splitAtScenes';
         case 'move': return 'timeline.clip.move';
         case 'move-off-track': return 'timeline.clip.move-off-track';
         case 'remove': return 'timeline.clip.remove';
@@ -226,9 +240,10 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
 
 /** `history13.operation` for the action envelope. One subject action uses its
  * own stable name; every existing action keeps its intent-joined name. */
-export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent'>): string {
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'formatIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
+  if (envelope.formatIntent) return 'timeline.format.set';
   return sequenceEditOperationName(envelope.intents);
 }
 
@@ -346,6 +361,8 @@ export interface SequenceEditEnvelope {
   readonly subjectIntent?: SequenceEditSubjectIntent;
   /** FR-A clip property patch; exactly one of intents/subjectIntent/propertiesIntent. */
   readonly propertiesIntent?: SequenceEditClipPropertiesIntent;
+  /** FR-B2 output-frame change; one intent family like properties. */
+  readonly formatIntent?: SequenceEditFormatIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -456,6 +473,7 @@ export const sequenceEditClipPropertiesIntentSchema = z.object({
       .refine(list => new Set(list.map(edit => edit.clipId)).size === list.length, 'Each clip may appear once')}).strict(),
 }).strict();
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
+const formatIntentSchema = sequenceEditFormatIntentSchema;
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
@@ -465,11 +483,18 @@ export const sequenceEditEnvelopeSchema = z.object({
   intents: z.array(intentSchema).max(SEQUENCE_EDIT_LIMITS.intents),
   subjectIntent: subjectIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
+  formatIntent: formatIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
-  if (hasSubject && hasProperties) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
+  const hasFormat = value.formatIntent !== undefined;
+  if ([hasSubject, hasProperties, hasFormat].filter(Boolean).length > 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
+  if (hasFormat) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A format action carries no CS/TS intent'});
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A format action is timeline-origin'});
+    return;
+  }
   if (hasProperties) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A clip property action carries no CS/TS intent'});
     if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A clip property action is timeline-origin'});
@@ -565,8 +590,13 @@ export interface SequenceEditTimelineDelta {
   readonly cues: readonly Format5Cue[];
   readonly removedClipIds: readonly string[];
   readonly removedCueIds: readonly string[];
+  /** Present only when the output frame changes; older patches omit it. */
+  readonly header?: SequenceEditTimelineHeaderChange;
   readonly baseline: SequenceEditBaselineChange;
 }
+export type SequenceEditTimelineHeaderChange =
+  | {readonly kind: 'unchanged'}
+  | {readonly kind: 'set'; readonly value: {readonly fps: 30; readonly width: number; readonly height: number}};
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
  * patch direction. Reading and writing remain owned by CS/TS services. */
@@ -617,11 +647,17 @@ const baselineChangeSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('set'), value: format5SyncBaselineSchema}).strict(),
   z.object({kind: z.literal('absent')}).strict(),
 ]);
+const timelineHeaderChangeSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('unchanged')}).strict(),
+  z.object({kind: z.literal('set'), value: z.object({fps: z.literal(30), width: z.number().int().min(2).max(100000),
+    height: z.number().int().min(2).max(100000)}).strict()}).strict(),
+]);
 const timelineDeltaSchema = z.object({
   clips: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   cues: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.subtitleCues),
   removedClipIds: idListSchema(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   removedCueIds: idListSchema(FORMAT5_LIMITS.subtitleCues),
+  header: timelineHeaderChangeSchema.optional(),
   baseline: baselineChangeSchema,
 }).strict();
 const stateDeltaSchema = z.object({board: boardDeltaSchema, timeline: timelineDeltaSchema}).strict();
@@ -917,7 +953,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

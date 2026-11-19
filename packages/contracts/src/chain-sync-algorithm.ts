@@ -29,7 +29,10 @@ export type TrackSyncEdit =
   | { readonly kind: 'add'; readonly clip: ChainSyncClip; readonly beforeClipId: string | null; readonly media?: ChainSyncMedia; readonly nodeKind?: 'shot' | 'video' | 'image' }
   | { readonly kind: 'split'; readonly clipId: string; readonly offsetFrames: number; readonly rightClipId: string; readonly rightSourceInFrame?: number }
   | { readonly kind: 'trim'; readonly clipId: string; readonly durationFrames: number; readonly sourceInFrame?: number }
-  | { readonly kind: 'version'; readonly clipId: string; readonly version: ChainSyncVersion | null; readonly locked: boolean };
+  | { readonly kind: 'version'; readonly clipId: string; readonly version: ChainSyncVersion | null; readonly locked: boolean }
+  /** FR-B2: one clip split at every scene cut inside its source range. The TS
+   * planner expands this into the ordinary sequential `split` commands. */
+  | { readonly kind: 'split-at-scenes'; readonly clipId: string; readonly assetId: string; readonly resultId: string };
 export type ChainSyncOperation =
   | { readonly kind: 'board'; readonly edit: BoardSequenceEdit; readonly newClipIds?: Readonly<Record<string, string>> }
   | { readonly kind: 'sync-board'; readonly newClipIds?: Readonly<Record<string, string>> }

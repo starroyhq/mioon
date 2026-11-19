@@ -11,6 +11,7 @@ import {listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/busi
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
+import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (n: number): string => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -176,6 +177,30 @@ test('MT-4 board actions are bounded server-side previews and commits', t => {
   assert.equal(tools.find(tool=>tool.operation==='sequence.board.get')?.name,'mioon_sequence_board_get');
 });
 
+test('FR-B2 format change freezes layouts, commits one step and undoes the header', t => {
+  const store=fixture(t);
+  const plan=previewMioSequenceAction(store,projectId,req(40),{kind:'format-set',presetId:'landscape_720'});
+  assert.equal(plan.envelope.origin,'mio');
+  assert.equal((plan.envelope as any).formatIntent.operation.presetId,'landscape_720');
+  const before=store.get('timelines',timelineId) as any;
+  assert.equal(before.width,720); assert.equal(before.height,1280);
+  assert.ok(before.clips.every((clip:any)=>clip.layout===undefined));
+  const receipt=commitMioSequenceAction(store,plan);
+  assert.equal(receipt.status,'applied');
+  const after=store.get('timelines',timelineId) as any;
+  assert.equal(after.width,1280); assert.equal(after.height,720);
+  assert.ok(after.clips.every((clip:any)=>clip.layout?.basisPresetId==='portrait_720'));
+  // User stack can undo the Mio format action only after it is the top Mio action.
+  const view=readSequenceEditHistory(store,'mio');
+  assert.equal(view.undoBlockedBy,null);
+  assert.equal(applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(41))).status,'applied');
+  const restored=store.get('timelines',timelineId) as any;
+  assert.equal(restored.width,720); assert.equal(restored.height,1280);
+  assert.ok(restored.clips.every((clip:any)=>clip.layout===undefined));
+  assert.throws(()=>previewMioSequenceAction(store,projectId,req(42),{kind:'format-set',presetId:'portrait_720'}),
+    {code:'SEQUENCE_EDIT_NOOP'});
+});
+
 test('write actions are bounded and reject generated ids supplied as envelopes', () => {
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root,envelope:{}}).success,false);
@@ -183,6 +208,7 @@ test('write actions are bounded and reject generated ids supplied as envelopes',
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-shot-append',name:'New shot'}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1,y:2}]}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1_000_001,y:2}]}).success,false);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'split-at-scenes',clipId:projectId,assetId:projectId,resultId:projectId}).success,true);
   const tools=listAgentTaskTools(false,true);
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.edit'&&tool.risk==='local_reversible'));
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.undo'));

@@ -5,7 +5,7 @@
  * the shared envelope server-side, obtains approval for the stable impact, then
  * commits exactly that envelope + plan digest. */
 import {z} from 'zod';
-import {sequenceEditClipPropertiesIntentSchema} from './sequence-edit.ts';
+import {sequenceEditClipPropertiesIntentSchema, sequenceEditFormatIntentSchema} from './sequence-edit.ts';
 
 const uuid = z.string().uuid();
 const offset = z.number().int().min(0).max(9007199254740991);
@@ -37,6 +37,9 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('subject-binding'), edit: subjectEdit}).strict(),
   z.object({kind: z.literal('clip-properties'),
     edits: sequenceEditClipPropertiesIntentSchema.shape.operation.shape.edits}).strict(),
+  z.object({kind: z.literal('format-set'),
+    presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
+  z.object({kind: z.literal('split-at-scenes'), clipId: uuid, assetId: uuid, resultId: uuid}).strict(),
 ]);
 export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
 export const mioSequenceEditSchemas = Object.freeze({

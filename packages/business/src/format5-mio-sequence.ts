@@ -42,6 +42,8 @@ const versionOf = (store: ProjectStore, nodeId: string): string | null => {
 };
 function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: {mainTrack?: {trackId?: string}}): ReturnType<typeof sequenceSyncIntent> {
   switch (action.kind) {
+    case 'split-at-scenes': return sequenceSyncIntent({kind: 'clip-split-scenes', clipId: action.clipId,
+      assetId: action.assetId, resultId: action.resultId});
     case 'reorder': return sequenceSyncIntent({kind: 'clip-move', clipId: action.clipId, beforeClipId: action.beforeClipId});
     case 'remove': return sequenceSyncIntent({kind: 'clip-remove', clipId: action.clipId});
     case 'split': return sequenceSyncIntent({kind: 'clip-split', clipId: action.clipId,
@@ -106,8 +108,10 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
+  else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
+    operation: {kind: 'timeline-format', presetId: action.presetId}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move'].includes(action.kind)) request.intents = [boardIntent(action)];
-  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
+  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
     const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');

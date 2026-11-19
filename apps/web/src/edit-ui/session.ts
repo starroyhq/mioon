@@ -220,6 +220,41 @@ export class Format5EditSession {
       return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};
     }
   }
+  /** FR-B2 output-frame change through the same preview/commit handshake. */
+  async format(presetId: string): Promise<SequenceOutcome> {
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      try {
+        const response = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('format'),
+          formatIntent: {side: 'timeline', operation: {kind: 'timeline-format', presetId}}}) as SequencePreviewResponse | SequenceFailure;
+        if ((response as SequenceFailure).ok === false) return response as SequenceFailure;
+        const preview = response as SequencePreviewResponse;
+        if (!preview.envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+        this.pending = {envelope: preview.envelope, planDigest: preview.planDigest, requestId: preview.envelope.requestId};
+        return await this.commitInternal();
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+    } finally {this.inFlight = false;}
+  }
+  /** FR-B2: split one main-track clip at the current scene cuts. */
+  async splitAtScenes(clipId: string, assetId: string, resultId: string): Promise<SequenceOutcome> {
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      try {
+        const response = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('split-scenes'),
+          intents: [sequenceSyncIntent({kind: 'clip-split-scenes', clipId, assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
+        if ((response as SequenceFailure).ok === false) return response as SequenceFailure;
+        const preview = response as SequencePreviewResponse;
+        this.pending = {envelope: preview.envelope, planDigest: preview.planDigest, requestId: preview.envelope.requestId};
+        return await this.commitInternal();
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+    } finally {this.inFlight = false;}
+  }
   async commit(): Promise<SequenceOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
