@@ -356,7 +356,7 @@ function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
   const targets = sceneSplitTargets(context.timeline, cuts, edit.assetId);
   if (!targets.targets.length) return failure('NOTHING_TO_SPLIT', []);
   const {byTarget} = scenePairs(envelope, targets.targets);
-  if (!byTarget.length) { if(process.env.FS_SCENE_DEBUG) console.error('SCENE PAIRS FAIL', targets.targets.map(t=>({id:t.clip.id,allowed:t.allowed})), envelope.allocation.splitClips); return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []); }
+  if (!byTarget.length) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
   let state = saState(context), targetIndex = 0;
   const changes: ChainSyncChanges = {nodes: [], edges: [], media: [], clips: [], anchored: []};
   const warnings: ChainSyncWarning[] = [];
@@ -371,7 +371,7 @@ function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
       if (!currentClip) return failure('CLIP_NOT_FOUND', [current]);
       const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
         offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}});
-      if (plan.ok === false) { if(process.env.FS_SCENE_DEBUG) console.error('SCENE SPLIT PLAN FAIL', plan); return planFailure(plan); }
+      if (plan.ok === false) return planFailure(plan);
       mergeChanges(changes, plan.changes);
       warnings.push(...plan.warnings);
       state = plan.after;
@@ -403,15 +403,24 @@ function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncCont
     let pairCursor = 0;
     for (const cut of target.allowed) {
       const leftDuration = cut - piece.sourceInFrame;
+      const rightStart = piece.startFrame + leftDuration;
+      const owner = clips.find(clip => clip.trackId === timeline.mainTrack.trackId
+        && clip.startFrame <= rightStart && rightStart < clip.startFrame + clip.durationFrames);
+      const rightDuration = piece.durationFrames - leftDuration;
       const right = {...piece, id: own[pairCursor++]!.rightClipId,
-        startFrame: piece.startFrame + leftDuration, durationFrames: piece.durationFrames - leftDuration,
-        sourceInFrame: cut} as Format5Clip;
+        startFrame: rightStart, durationFrames: rightDuration, sourceInFrame: cut,
+        ...(Object.hasOwn(piece, 'fadeInFrames') ? {fadeInFrames: 0} : {}),
+        ...(Object.hasOwn(piece, 'fadeOutFrames')
+          ? {fadeOutFrames: Math.min(Number(piece.fadeOutFrames), rightDuration)} : {}),
+        ...(owner ? {anchor: {clipId: owner.id, offsetFrames: rightStart - owner.startFrame}} : {})} as Format5Clip;
       clips.splice(index, 1, {...piece, durationFrames: leftDuration} as Format5Clip, right);
       piece = right;
       index += 1;
     }
   }
-  return {timeline: {...timeline, clips}, split, skipped: targetSet.skipped};
+  const skipped = [...targetSet.skipped, ...targetSet.targets.filter(target => target.fadeCutFrames.length)
+    .map(target => ({clipId: target.clip.id, reason: 'FADE_BOUNDS' as const, cutFrames: [...target.fadeCutFrames]}))];
+  return {timeline: {...timeline, clips}, split, skipped};
 }
 function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, sceneCuts?: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
   if (envelope.intents.length !== 1) return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
@@ -1091,7 +1100,7 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     let cuts: number[] = [];
     if (command.kind === 'clip-split-scenes') {
       try { cuts = readSceneSplitCuts(store.db, store.projectId, command.assetId, command.resultId); }
-      catch (error) { if(process.env.FS_SCENE_DEBUG) console.error('SCENE CUTS FAIL', error); return sceneCutFailure(error); }
+      catch (error) { return sceneCutFailure(error); }
     }
     const {state} = prepareSequenceEditHistory(store);
     const content = readProjectContentStamp(store.db).contentSequence;
@@ -1106,7 +1115,7 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       allocation,
     };
     const plan = planEnvelope(context, provisional, cuts);
-    if ('ok' in plan && plan.ok === false) { if(process.env.FS_SCENE_DEBUG) console.error('PREVIEW PLAN FAIL', plan); return plan; }
+    if ('ok' in plan && plan.ok === false) return plan;
     const successful = plan as SequenceEditPlan;
     const mainTrackId = context.timeline.mainTrack.trackId;
     let nextTimeline = patchMainTimeline(context, successful);
