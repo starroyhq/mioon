@@ -24,6 +24,7 @@ import { PREVIS_PLAYBACK_HOLD_MS, canPlayPrevisKeyframes, previsPlaybackCamera, 
 import type { NativeCloseRegistry } from '../native-close-state.ts';
 import PrevisOutline from './PrevisOutline.tsx';
 import PrevisProperties from './PrevisProperties.tsx';
+import type { PrevisSubjectChoice } from './previs-subject.ts';
 import './previs.css';
 
 // The camera previs editor (09-12). It opens over the whole window, edits one
@@ -51,6 +52,8 @@ export interface PrevisEditorProps {
   onUndoFrame: (undo: PrevisFrameUndo, scene: PrevisScene) => Promise<PrevisUndoOutcome>;
   /** Closing the window asks first while a save is waiting, running or refused. */
   closeRegistry?: NativeCloseRegistry;
+  /** Format 5 only: the project subjects a mannequin or prop may reference. */
+  subjects?: readonly PrevisSubjectChoice[];
 }
 const THUMBNAIL_DELAY_MS = 1200, LEAVE_WAIT_MS = 8000, KEYFRAME_THUMB_DELAY_MS = 450, IMPORT_LIMIT_BYTES = 30 * 1024 * 1024;
 /** A set frame that can be undone, with the shot number it was set on. */
@@ -79,7 +82,7 @@ const same = (a: unknown, b: unknown): boolean => canonicalPrevisValue(a) === ca
 const typing = (target: EventTarget | null): boolean => target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"]'));
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform || navigator.userAgent);
 
-export default function PrevisEditor({ node, projectName, frame, framePresetId, readOnly, thumbnailRevision, rpc, requestId, onThumbnail, onClose, closeRegistry, shots, edges, onImport, onSetFrame, onUndoFrame }: PrevisEditorProps): React.ReactElement {
+export default function PrevisEditor({ node, projectName, frame, framePresetId, readOnly, thumbnailRevision, rpc, requestId, onThumbnail, onClose, closeRegistry, shots, edges, onImport, onSetFrame, onUndoFrame, subjects }: PrevisEditorProps): React.ReactElement {
   const { t, formatNumber } = useI18n(), translate = t as unknown as PrevisTranslate, confirm = useConfirmation();
   const [model, setModel] = useState<PrevisEditorModel>(() => createPrevisEditorModel(node.scene));
   const [mode, setMode] = useState<PrevisViewMode>('orbit');
@@ -499,7 +502,7 @@ export default function PrevisEditor({ node, projectName, frame, framePresetId, 
           playing={playing} playIssue={webgl !== 'ready' ? t('previs.keyframes.playUnavailable') : canPlayPrevisKeyframes(scene.keyframes) ? null : t('previs.keyframes.playNeedsTwo')}
           onPlay={() => { if (playback.current) stopPlayback(); else startPlayback(); }} />
       </div>
-      <PrevisProperties scene={scene} selection={model.selection} readOnly={readOnly} shortcut={shortcut} onFigure={figure} onProp={prop} onLight={light} onCamera={setCamera} onHold={hold} onRemove={remove} />
+      <PrevisProperties scene={scene} selection={model.selection} readOnly={readOnly} shortcut={shortcut} onFigure={figure} onProp={prop} onLight={light} onCamera={setCamera} onHold={hold} onRemove={remove} subjects={subjects} />
     </div>
   </div>;
 }

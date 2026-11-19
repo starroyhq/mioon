@@ -257,6 +257,8 @@ import { previsThumbnailOutdated } from './previs/previs-thumbnails.ts';
 import { previsEdgeLabel, previsFrameIssue, publishedPrevisFrameRatio, previsKeyframeOfAsset } from './previs/previs-output.ts';
 import type { PrevisFrameOutcome, PrevisFrameRequest, PrevisFrameUndo, PrevisImportOutcome, PrevisImportRequest, PrevisUndoOutcome } from './previs/previs-output.ts';
 import { createPrevisNode } from './previs/previs-create.ts';
+import { createPrevisEditorRpc } from './previs/previs-format5-rpc.ts';
+import { previsSubjectChoices } from './previs/previs-subject.ts';
 import { publishPrevisOutput } from './previs/previs-publication.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
@@ -1935,7 +1937,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     try {
       const saved = viewRef.current!.canvas.viewport;
       const location = workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 };
-      const outcome = await createPrevisNode({ projectId, label: t('previs.node.defaultLabel'), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) }, { rpc: (operation, input) => rpc(operation, input), requestId });
+      // Format 5 writes the node through the unified sequence entry; formats 3/4
+      // keep the legacy RPC unchanged (the adapter is a pass-through there).
+      const previsRpc = createPrevisEditorRpc({ rpc: (operation, input) => rpc(operation, input),
+        format5: state.projectFormatVersion === 5, projectId: () => projectId, requestId });
+      const outcome = await createPrevisNode({ projectId, label: t('previs.node.defaultLabel'), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) }, { rpc: previsRpc, requestId });
       if (currentProject.current === projectId) await refresh(projectId);
       if (!isCurrent(captured)) return;
       if (outcome.status === 'created') { if (await inspect(outcome.node.id)) revealCanvas(outcome.node.id); }
@@ -3809,8 +3815,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   useEffect(() => previsProtected ? holdAgentEditingTarget(previsProtected.projectId, { kind: 'node', id: previsProtected.nodeId, revision: 0 }) : undefined,
     [previsProtected?.projectId, previsProtected?.nodeId]);
   const previsRecord = previsOpen && previsOpen.projectId === data.project?.id ? data.nodes.find(node => node.id === previsOpen.nodeId) : undefined;
+  // Format 5 saves the previs scene through the unified sequence entry; the
+  // editor and its autosave keep their existing RPC shape.
+  const previsEditorRpc = createPrevisEditorRpc({ rpc: (operation, input) => rpc(operation, input), format5,
+    projectId: () => currentProject.current, requestId });
+  const previsSubjects = format5 ? previsSubjectChoices(subjects.state?.subjects) : undefined;
   const previsEditor = previsOpen && data.project && isPrevisNodeRecord(previsRecord) ? createPortal(<PrevisEditorHost key={`${previsOpen.projectId}:${previsOpen.nodeId}`} node={previsRecord} projectName={data.project.name} frame={previsFrameInfo} framePresetId={previsFramePresetId}
-    readOnly={false} thumbnailRevision={previsThumbs.thumbnails[previsRecord.id]?.sceneRevision ?? 0} rpc={(operation, input) => rpc(operation, input)} requestId={requestId}
+    readOnly={false} thumbnailRevision={previsThumbs.thumbnails[previsRecord.id]?.sceneRevision ?? 0} rpc={previsEditorRpc} requestId={requestId} subjects={previsSubjects}
     onThumbnail={(nodeId, framePresetId, sceneRevision, dataBase64) => previsThumbs.put(previsOpen.projectId, framePresetId, nodeId, sceneRevision, dataBase64)}
     onClose={() => closePrevis(previsOpen.projectId)} closeRegistry={nativeCloseRegistry.current!}
     shots={data.shots} edges={data.edges} onImport={importPrevisImage} onSetFrame={setPrevisFrame} onUndoFrame={undoPrevisFrame} />, document.body) : null;
