@@ -56,7 +56,7 @@ test('legacy shot order and version selection handlers refuse to bypass the chai
   const world = chain(t);
   const mutations = createLocalMutationServices(world.store, {
     check: () => {}, canonical: JSON.stringify, now: () => '2026-01-01T00:00:00.000Z',
-    references: {guardManualUpdate: () => {}},
+    references: {guardManualUpdate: () => {}}, format5: true,
   });
   assert.throws(() => mutations.handlers['shot.reorder']!({projectId: world.projectId, expectedRevision: 1,
     shotIds: [shotA, shotB]} as never), (error: {code?: string}) => error.code === 'UNSUPPORTED_OPERATION');
