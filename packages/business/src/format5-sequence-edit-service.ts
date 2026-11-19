@@ -190,7 +190,9 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
         ...(edit.role ? {role: edit.role} : {})}
       : edit.kind === 'set-role'
         ? {kind: 'set-role' as const, edgeId, shotId: edit.shotId, role: edit.role}
-        : {kind: 'detach' as const, edgeId, shotId: edit.shotId};
+        : edit.kind === 'reorder'
+          ? {kind: 'reorder' as const, shotId: edit.shotId, edgeIds: edit.edgeIds}
+          : {kind: 'detach' as const, edgeId, shotId: edit.shotId};
     const envelope: SequenceEditEnvelope = {...buildReferenceEdgeEnvelope(store, command, {
       requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
       historyPosition: state.position, historyRevision: state.revision}), ...(input.origin ? {origin: input.origin} : {})};

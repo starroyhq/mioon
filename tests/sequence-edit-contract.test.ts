@@ -160,10 +160,11 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'reference-edge', edit: {kind: 'set-role', edgeId: uuid('94'), shotId: shotA,
       role: 'reference_image'}}, 'reference.role.set'],
     [{kind: 'reference-edge', edit: {kind: 'detach', edgeId: uuid('94'), shotId: shotA}}, 'reference.detach'],
+    [{kind: 'reference-edge', edit: {kind: 'reorder', shotId: shotA, edgeIds: [uuid('94'), uuid('95')]}}, 'reference.reorder'],
   ];
   assert.equal(subjectSamples.length, 6);
   assert.equal(previsSamples.length, 2);
-  assert.equal(referenceSamples.length, 3);
+  assert.equal(referenceSamples.length, 4);
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length + 1,
     SEQUENCE_EDIT_OPERATIONS.length);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.format.set'), true);
@@ -367,6 +368,7 @@ test('reference edge intents stay board-only and require the pre-allocated mater
   for (const operation of [
     {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: referenceEdgeId, shotId: shotA, role: 'reference_image'}},
     {kind: 'reference-edge', edit: {kind: 'detach', edgeId: referenceEdgeId, shotId: shotA}},
+    {kind: 'reference-edge', edit: {kind: 'reorder', shotId: shotA, edgeIds: [referenceEdgeId]}},
   ] as ReferenceEdgeOperation[]) {
     assert.equal(sequenceEditReferenceIntentSchema.safeParse(referenceIntent(operation)).success, true);
     assert.equal(isSequenceEditEnvelope(referenceEnvelope({referenceIntent: referenceIntent(operation),
@@ -389,6 +391,14 @@ test('reference edge intents stay board-only and require the pre-allocated mater
     // A malformed role never enters the contract.
     referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'set-role',
       edgeId: referenceEdgeId, shotId: shotA, role: 'not_a_role' as never}})}),
+    // Reorder needs every reordered edge listed in the impact.
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'reorder',
+      shotId: shotA, edgeIds: [referenceEdgeId, uuid('95')]}})}),
+    // Reorder rejects duplicate and empty edge lists.
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'reorder',
+      shotId: shotA, edgeIds: [referenceEdgeId, referenceEdgeId]}})}),
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'reorder',
+      shotId: shotA, edgeIds: []}})}),
   ];
   for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
     JSON.stringify(candidate).slice(0, 160));

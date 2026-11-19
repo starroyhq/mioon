@@ -120,6 +120,15 @@ function attach(f:Fixture,shotId:string,sourceNodeId:string,role?:string):string
   return Array.isArray(result.patch?.after?.board?.writes)?String(result.patch.after.board.writes.find((entry:Record<string,unknown>)=>entry.kind==='edge').id):'';
 }
 
+function reorder(f:Fixture,shotId:string,edgeIds:readonly string[]):void{
+  const store=f.store,state=prepareSequenceEditHistory(store);
+  const envelope=buildReferenceEdgeEnvelope(store,{kind:'reorder',shotId,edgeIds} as never,
+    {epoch:state.state.epoch,historyPosition:state.state.position,historyRevision:state.state.revision,
+     requestId:`f5-reference-reorder-${randomUUID()}`,actionId:randomUUID()});
+  const result=runSequenceSync(store,envelope) as Record<string,any>;
+  assert.equal(result.ok,true,JSON.stringify(result));
+}
+
 const body=(call:{init:RequestInit})=>JSON.parse(String(call.init.body)) as Record<string,any>;
 
 test('format 5 generation reads reference lines and submits one frozen multi-reference request',async t=>{
@@ -129,6 +138,8 @@ test('format 5 generation reads reference lines and submits one frozen multi-ref
     const imageB=attach(f,seeded.shotId,seeded.imageB,'reference_image');
     const audioId=attach(f,seeded.shotId,seeded.audio);
     assert.ok(imageA&&imageB&&audioId);
+    // RI-b primary selection: the reordered first image is the provider's image 1.
+    reorder(f,seeded.shotId,[imageB,imageA,audioId]);
     const model=f.configuration.models[0]!;
     const input={shotId:seeded.shotId,expectedRevision:Number(seeded.shot.revision),requestId:randomUUID(),
       providerId:'ark',model:model.modelId,connectionId:f.configuration.id,configurationRevision:1,
@@ -142,6 +153,10 @@ test('format 5 generation reads reference lines and submits one frozen multi-ref
     assert.ok(freeze,JSON.stringify(job.snapshot));
     assert.equal(freeze.mode,'references');
     assert.equal(freeze.entries.filter(entry=>entry.status==='used').length,3);
+    assert.equal(freeze.primaryReferenceId,imageB);
+    const primaryEntry=freeze.entries.find(entry=>entry.edgeId===imageB)!;
+    const secondaryEntry=freeze.entries.find(entry=>entry.edgeId===imageA)!;
+    assert.deepEqual(freeze.actual.images.map(image=>image.assetId),[primaryEntry.assetId,secondaryEntry.assetId]);
     assert.equal(freeze.entries.find(entry=>entry.role==='first_frame'),undefined);
     assert.equal(freeze.actual.images.length,2);
     assert.equal(freeze.actual.audios.length,1);
