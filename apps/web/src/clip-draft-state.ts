@@ -382,7 +382,7 @@ export function createClipDraftController({ context: initial, client, validateTi
             sameClipDraftValue(context.saved, savedRaw);
           emit({ submitting: false, businessPending: false, conflict: true, canRebase,
             rebaseSaved: canRebase ? copy(savedRaw) : null,
-            error: canRebase ? '时间线已在保存后更新；本地草稿仍保留。' : sourceUnchanged ? '片段已在其他位置被修改；本地草稿仍保留。' : '片段来源已变化；本地草稿仍保留。',
+            error: sourceUnchanged ? '时间线已在保存后更新；本地草稿仍保留。' : '片段来源已变化；本地草稿仍保留。',
             errorDisplay: displayMessage('recovery.clip.timelineChanged') });
           return result;
         }
