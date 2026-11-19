@@ -15,6 +15,7 @@ export const waitForWindowCondition = async (window: BrowserWindow, check: () =>
   throw Object.assign(new Error(message), {code});
 };
 const evaluate = (window: BrowserWindow, script: string): Promise<unknown> => window.webContents.executeJavaScript(script, true);
+const record = (value: unknown): Record<string, unknown> => (value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
 const openButton = (projectId: string): string => `[data-testid="project-home-open-${projectId.replace(/[^0-9a-f-]/gu, '')}"]`;
 /** Refreshes the launcher home and clicks the project's real open button. */
 export async function openRegisteredProject(launcher: BrowserWindow, backendUrl: string, projectId: string,
@@ -26,27 +27,55 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
   await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
     `Boolean(document.querySelector('[data-testid="project-home"]'))`).catch(() => false)), 60000, 'The launcher home did not become ready', 'PROJECT_OPEN_HOME_TIMEOUT');
   await onStep('home');
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await evaluate(launcher, `(() => {
-      const refresh = document.querySelector('[data-testid="launcher-help-refresh"],[data-testid="project-home-refresh"]');
-      if (refresh instanceof HTMLElement) refresh.click();
-      return true;
-    })()`);
-    try {
+  const homeTitle = `[data-testid="project-home"]`;
+  const pageLink = (id: string): string => `[data-testid="launcher-nav-${id}"]`;
+  const cardReady = async (): Promise<boolean> => Boolean(await evaluate(launcher, `(() => {
+    const target = document.querySelector(${JSON.stringify(button)});
+    return target instanceof HTMLElement && !target.matches(':disabled');
+  })()`));
+  const reloadLauncher = async (): Promise<void> => {
+    const loaded = new Promise<void>(resolve => launcher.webContents.once('did-finish-load', () => resolve()));
+    launcher.webContents.reload();
+    await Promise.race([loaded, new Promise<void>(resolve => setTimeout(resolve, 30000))]);
+    await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
+      `Boolean(document.querySelector(${JSON.stringify(homeTitle)}))`).catch(() => false)), 60000,
+      'The launcher home did not reload', 'PROJECT_OPEN_HOME_TIMEOUT');
+    await onStep('home');
+  };
+  let ready = false;
+  for (let attempt = 0; attempt < 4 && !ready; attempt += 1) {
+    if (attempt === 1) await reloadLauncher();
+    if (attempt === 3) {
+      // The launcher's own refresh lives on the help page; use that product path
+      // after a plain reload has not shown a project created outside the UI.
+      await evaluate(launcher, `(() => { const nav = document.querySelector(${JSON.stringify(pageLink('help'))}); if (nav instanceof HTMLElement) nav.click(); return true; })()`);
       await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
-        `(() => { const button = document.querySelector(${JSON.stringify(button)}); return button instanceof HTMLElement && !button.matches(':disabled'); })()`)),
-        20000, 'The launcher home did not list the new project', 'PROJECT_OPEN_LIST_TIMEOUT');
-      await onStep('list');
-      break;
-    } catch (error) {
-      if (attempt === 2) throw error;
-      // A home list created before this project cannot know it yet; reload the
-      // real launcher page and retry against its own catalog fetch.
-      launcher.webContents.reload();
-      await waitForWindowCondition(launcher, async () => Boolean(await evaluate(launcher,
-        `Boolean(document.querySelector('[data-testid="project-home"]'))`).catch(() => false)), 60000, 'The launcher home did not reload', 'PROJECT_OPEN_HOME_TIMEOUT');
+        `Boolean(document.querySelector('[data-testid="launcher-help"]'))`).catch(() => false)), 20000,
+        'The launcher help page did not open', 'PROJECT_OPEN_LIST_TIMEOUT');
+      await evaluate(launcher, `(() => { const refresh = document.querySelector('[data-testid="launcher-help-refresh"]'); if (refresh instanceof HTMLElement) refresh.click(); return true; })()`);
+      await evaluate(launcher, `(() => { const nav = document.querySelector(${JSON.stringify(pageLink('projects'))}); if (nav instanceof HTMLElement) nav.click(); return true; })()`);
     }
+    try { await waitForWindowCondition(launcher, cardReady, attempt === 1 ? 30000 : 15000, 'The launcher home did not list the new project', 'PROJECT_OPEN_LIST_TIMEOUT'); ready = true; }
+    catch { if (attempt === 3) break; }
   }
+  if (!ready) {
+    const diagnostic = record(await evaluate(launcher, `(async () => {
+      const cards = document.querySelectorAll('[data-testid^="project-home-open-"]');
+      const target = document.querySelector(${JSON.stringify(button)});
+      let bridge = null;
+      try { const recent = await window.__mioonProjectEntries.listRecent();
+        bridge = {count: recent.registered.length, has: recent.registered.some(value => value.project.projectId === ${JSON.stringify(projectId)})}; }
+      catch { bridge = {count: -1, has: false}; }
+      return {home: Boolean(document.querySelector('[data-testid="project-home"]')), cards: cards.length,
+        has: Boolean(target), disabled: target instanceof HTMLElement ? target.matches(':disabled') : null, bridge};
+    })()`) as unknown);
+    const bridge = record(record(diagnostic).bridge);
+    const has = record(diagnostic).has === true, bridgeHas = bridge.has === true, count = Number(bridge.count);
+    throw Object.assign(new Error('The launcher home did not list the new project'), {
+      code: has ? 'PROJECT_OPEN_LIST_DISABLED' : bridgeHas ? 'PROJECT_OPEN_LIST_STALE' : count === 0 ? 'PROJECT_OPEN_LIST_EMPTY' : 'PROJECT_OPEN_LIST_MISSING',
+    });
+  }
+  await onStep('list');
   const clicked = await evaluate(launcher, `(() => {
     const button = document.querySelector(${JSON.stringify(button)});
     if (!(button instanceof HTMLElement)) return false;
@@ -62,7 +91,8 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
   const editor = BrowserWindowRuntime.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl);
   assert.ok(editor, 'The project window was not found');
   await waitForWindowCondition(editor, async () => Boolean(await evaluate(editor,
-    `Boolean(document.querySelector('[data-testid="workbench"]'))`).catch(() => false)), 60000, 'The project workbench did not become ready', 'PROJECT_OPEN_WORKBENCH_TIMEOUT');
+    `Boolean(document.querySelector('[data-testid="workbench"]'))`).catch(() => false)), 60000,
+    'The project workbench did not become ready', 'PROJECT_OPEN_WORKBENCH_TIMEOUT');
   await onStep('workbench');
   return editor;
 }
