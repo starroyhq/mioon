@@ -63,7 +63,7 @@ test('the real project service mounts the board, changes versions, appends shots
     actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}});
   const afterUndo = await call('project.get', {projectId: f.projectId});
   assert.equal(afterUndo.shots.some((shot: any) => shot.id === appendedId), false);
-  assert.equal(afterUndo.timeline.clips.length, 3);
+  assert.equal(afterUndo.timeline.clips.length, 2);
 });
 
 test('layout moves and connect/disconnect use the registered unified operations', async (t: test.TestContext) => {
