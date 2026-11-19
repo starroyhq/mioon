@@ -162,7 +162,7 @@ function Harness(): React.ReactElement {
   const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
     void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
   }, [runReference, t]);
-  const detachInput = useCallback((entry: {source: 'edge' | 'subject'; edgeId?: string; bindingId?: string}, shotId: string): void => {
+  const detachInput = useCallback((entry: {source: 'edge' | 'subject' | 'previs'; edgeId?: string; bindingId?: string}, shotId: string): void => {
     if (entry.source === 'subject' && entry.bindingId) {
       void runSubject(subjectBindingDetachOperation(entry.bindingId), undefined, t('boardUi.notice.subjectDetached'));
       return;

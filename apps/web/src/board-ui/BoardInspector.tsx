@@ -123,7 +123,9 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
               data-testid={`board-input-primary-${entry.edgeId}`}
               onClick={() => props.onInputPrimary?.(entry.edgeId!, selected!.id)}>
               {t('boardUi.inputs.setPrimary')}</button>}
-        {props.onInputDetach && <button type="button" className="board-input-action" disabled={props.busy}
+        {/* A previs scene owns its figure/prop subjects in the previs editor;
+            the generation-input row is evidence only, so it carries no action. */}
+        {props.onInputDetach && entry.source !== 'previs' && <button type="button" className="board-input-action" disabled={props.busy}
           data-testid={`board-input-detach-${key}`} onClick={() => props.onInputDetach?.(entry, selected!.id)}>
           {t('boardUi.inputs.detach')}</button>}
       </span>
