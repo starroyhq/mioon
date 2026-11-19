@@ -229,7 +229,7 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
    await mark('project-location-paths');
    // Windows path details are rejected by the same probe before any file work.
    for(const [file,reason] of [[path.join(smokeRoot,'CON'),'reserved-name'],[path.join(smokeRoot,'trailing.'),'trailing-dot-or-space'],
-    [path.join(smokeRoot,'bad<name'),'invalid-character'],['\\.\pipe\mioon','device-path']] as const){
+    [path.join(smokeRoot,'bad<name'),'invalid-character'],['\\\\.\\pipe\\mioon','device-path']] as const){
     await probeDesktopProjectLocation({path:file,purpose:'create',isDirectory:false}).then(()=>assert.fail('malformed project path was accepted'),
      error=>{const value=record(error);assert.equal(value.code,'PROJECT_LOCATION_INVALID');assert.equal(record(value.details).reason,reason);});
    }
