@@ -1,0 +1,3 @@
+.previs-fixture {position: absolute; inset: 0; background: var(--wb-canvas-bg, #101014)}
+.previs-fixture-loading {display: flex; align-items: center; justify-content: center; height: 100vh; color: #d8d8de; font: 13px system-ui}
+.previs-fixture-closed {position: fixed; left: 12px; bottom: 12px; color: #d8d8de}

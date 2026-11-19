@@ -56,7 +56,8 @@ test('Windows package smoke starts the delivered x64 executable in a new isolate
 
 test('Windows title bar screenshots are fixed scenarios captured by the packaged app only', async () => {
   const driver = await read('.github/scripts/windows-desktop-smoke.ts');
-  const scenarios = ['normal-light', 'normal-dark', 'maximized-light', 'maximized-dark', 'dpi-125', 'dpi-150'];
+  const scenarios = ['normal-light', 'normal-dark', 'maximized-light', 'maximized-dark', 'dpi-125', 'dpi-150',
+    'workbench-light', 'workbench-dark', 'workbench-maximized-light', 'workbench-maximized-dark'];
   for (const name of scenarios) assert.ok(driver.includes(`name: '${name}'`), name);
   assert.match(driver, /theme: 'light'/);
   assert.match(driver, /theme: 'dark'/);
@@ -73,8 +74,14 @@ test('Windows title bar screenshots are fixed scenarios captured by the packaged
   assert.match(screenshot, /desktopCapturer/);
   assert.match(screenshot, /WINDOWS_WINDOW_CHROME\.topbarHeight/);
   assert.doesNotMatch(screenshot, /exec\(|spawn\(|child_process/u);
+  assert.match(screenshot, /openRegisteredProject/);
+  assert.match(screenshot, /project\.template\.instantiate/);
+  const projectOpen = await read('apps/desktop/src/windows-project-open.ts');
+  assert.match(projectOpen, /project-home-open-/);
+  assert.match(projectOpen, /launcher-help-refresh/);
   const main = await read('apps/desktop/src/main.ts');
   assert.match(main, /process\.env\.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT/);
+  assert.match(main, /backendUrl: ready\?\.url/);
   assert.match(main, /force-device-scale-factor/);
   assert.doesNotMatch(main, /nativeTheme\.themeSource\s*=/);
 });

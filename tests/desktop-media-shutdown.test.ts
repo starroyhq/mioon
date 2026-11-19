@@ -28,6 +28,7 @@ import { APP_LANGUAGE_CHANNEL } from '../packages/i18n/src/preference.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../packages/contracts/src/clip-lut-recovery.ts';
 import { WORKSPACE_TOOLS_CHANNEL } from '../packages/contracts/src/workspace-info.ts';
 import test from 'node:test';
+import {projectLocationDecision} from '../apps/desktop/src/project-location-policy.ts';
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import { spawn } from 'node:child_process';
@@ -491,7 +492,7 @@ async function mainStartupHarness({ validate, settings }: {validate?(tools: unkn
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
     whenReady: () => new Promise(() => {}), quit: () => { counts.quits++; }, exit: (code: number) => counts.exits.push(code) });
-  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), desktopAppDirectories, app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
+  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), projectLocationDecision, desktopAppDirectories, app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
     Menu: {buildFromTemplate: desktopMenuHarness, setApplicationMenu() {}},
     createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'linux', env: {}, on() {} }, path,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },

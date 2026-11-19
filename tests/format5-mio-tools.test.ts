@@ -83,7 +83,14 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   // mannequin/prop subject references; formats 3/4 keep the frozen shape.
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /previs-scene-set/);
   assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.create'] !== undefined, true);
-  assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.thumbnail.set'] !== undefined, true);
+  // The previs thumbnail is a rebuildable cache written outside the unified
+  // history (scene-revision CAS), so its existing tool stays available.
+  assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.thumbnail.set'], undefined);
+  // The existing tool (no new tool, no schema change) stays in the format-5
+  // catalog and is callable there; only unavailable tools carry a reason.
+  assert.equal(format5Tools.some(item => item.operation === 'previs.thumbnail.set'), true);
+  assert.equal(format5Tools.some(item => item.operation === 'previs.thumbnail.set' && item.unavailableReason !== undefined), false);
+  assert.equal(format5Tools.some(item => item.operation === 'previs.thumbnail.get' && item.unavailableReason !== undefined), false);
   const previsParameters = (tools: readonly {operation: string; parameters: unknown}[], subject: boolean): void => {
     const parameters = tools.find(item => item.operation === 'previs.scene.set')!.parameters as {
       properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}},

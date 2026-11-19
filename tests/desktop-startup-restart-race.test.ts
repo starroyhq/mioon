@@ -29,6 +29,7 @@ import { createDesktopLutRecoveryHost } from '../apps/desktop/src/lut-recovery-h
 import { WORKSPACE_TOOLS_CHANNEL } from '../packages/contracts/src/workspace-info.ts';
 import { createWorkspaceToolsHost } from '../apps/desktop/src/workspace-tools-host.ts';
 import test from 'node:test';
+import {projectLocationDecision} from '../apps/desktop/src/project-location-policy.ts';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
@@ -189,7 +190,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
