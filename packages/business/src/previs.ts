@@ -20,7 +20,9 @@ import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from '../../contrac
 // revision CAS with an exact stable-key receipt. Autosave writes often, so only
 // the newest four scene saves of a node keep receipts: a retry of an older save
 // finds no receipt and fails the CAS, and is never applied twice. Thumbnails
-// are a disposable cache: overwritten per slot, evicted oldest first.
+// are a disposable cache: overwritten per slot, evicted oldest first. Format 5
+// does not route that cache through the unified history; its scene revision is
+// the write CAS instead, so a stale render never replaces a newer picture.
 type Row=Record<string, unknown>;
 export interface PrevisStore {
  readonly root?: string;
@@ -318,8 +320,16 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
    const fingerprinted=fingerprintedThumbnails(db);
    const dependencies=(node: PrevisNodeRecord): string=>{
     const currentFramePresetId=thumbnailFrame(db,input.projectId);
-    if(input.sceneRevision!==node.sceneRevision||
-      (input.framePresetId===undefined?format4(db):input.framePresetId!==currentFramePresetId))
+    if(input.sceneRevision!==node.sceneRevision){
+     // Format 5 opens this cache writer without moving it into the unified
+     // history: a thumbnail is derived data, not a user edit. The node's scene
+     // revision is its CAS, answered like every other format-5 conflict;
+     // formats 3/4 keep the frozen `PREVIS_THUMBNAIL_STALE` answer.
+     if(format5(db))throw failure('REVISION_CONFLICT',409,{entityId:node.id,
+      expectedSceneRevision:input.sceneRevision,currentSceneRevision:node.sceneRevision});
+     throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:node.sceneRevision,currentFramePresetId});
+    }
+    if(input.framePresetId===undefined?format4(db):input.framePresetId!==currentFramePresetId)
      throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:node.sceneRevision,currentFramePresetId});
     return thumbnailDigest(thumbnailDependencies(db,node,fingerprinted,store.root),input.framePresetId);
    };

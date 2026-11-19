@@ -57,6 +57,11 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   // service, and a linked cue text edit goes through `update` + the shot line.
   z.object({kind: z.literal('dialogue'), shotId: uuid,
     edits: z.array(dialogueEdit).min(1).max(MIO_SEQUENCE_ACTION_LIMITS.maxDialogueEdits)}).strict(),
+  z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
+  z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
+    name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),
+    orderIndex: z.number().int().min(0).max(11).optional()}).strict()
+    .refine(value => Object.keys(value).length > 0, 'At least one track field is required')}).strict(),
 ]).superRefine((value, context) => {
   if (value.kind !== 'dialogue') return;
   const updated = new Set<string>(), removed = new Set<string>();

@@ -225,8 +225,10 @@ of schema 62 backups have no previs storage.
 ## Mio
 
 Mio's previs tools are in the `canvas` tool group (see
-[AGENT-TASKS-V2.md](AGENT-TASKS-V2.md)). Mio never renders and never touches
-thumbnails; `previs.thumbnail.*` stay unavailable to it.
+[AGENT-TASKS-V2.md](AGENT-TASKS-V2.md)). Mio never renders; thumbnails are a
+derived cache the editor writes, and Mio may store one bounded JPEG through the
+existing `previs.thumbnail.set` (format 5 answers a stale scene revision with
+`REVISION_CONFLICT`; nothing enters the unified history or its undo steps).
 
 - `mioon_previs_inspect {nodeId}` (read-only, host tool) returns the node's
   label, `revision`, `sceneRevision`, the project frame, the scene in the shape

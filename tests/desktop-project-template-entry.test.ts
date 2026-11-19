@@ -29,6 +29,7 @@ import type {ProjectEntryConsumption} from '../apps/web/src/project-entry-state.
 import {createProjectEntryIdentityOwner, readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
 import {createLauncherClient} from '../apps/web/src/launcher-state.ts';
 import {evaluateSource, extractBetween} from './helpers/eval-source.ts';
+import {projectLocationDecision} from '../apps/desktop/src/project-location-policy.ts';
 
 const resourceRoot=fileURLToPath(new URL('../examples/project-file-v1/',import.meta.url));
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
@@ -171,6 +172,7 @@ async function mainTemplatePanelFixture(t:TestContext,role:'launcher'|'editor'){
    assert.equal(windowHost.canHideToTray(),true);assert.deepEqual(input,{path:documents,purpose:'template',isDirectory:true});order.push('probe');return {...facts,cloud:'known-icloud'};
   },
   locationHelp:{openPrivacySettings:()=>assert.fail('No privacy navigation'),revealVerifiedPath:()=>assert.fail('No Finder reveal')},
+  projectLocationDecision,
  };
  const code=extractBetween(main,'function finishNativePresentation(','async function chooseOwnedBackupFile(')
   +extractBetween(main,'function ownsWindowContext(','async function openWindow(')

@@ -34,6 +34,7 @@ import {
   buildReferenceEdgeEnvelope, planReferenceEdgeAction,
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
+import {previewTrack, runTrackSync} from './format5-tracks.ts';
 import {previewPrevisAction} from './format5-previs.ts';
 import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
 import {previewDialogueAction, runDialogueAction} from './format5-dialogue.ts';
@@ -245,6 +246,9 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     if (input.dialogueIntent) return previewDialogueAction(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       dialogueIntent: input.dialogueIntent as never});
+    if (input.trackIntent) return previewTrack(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      trackIntent: input.trackIntent as never});
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});
@@ -279,6 +283,11 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     if (envelope.dialogueIntent) {
       const result = runDialogueAction(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 台词没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
+    if (envelope.trackIntent) {
+      const result = runTrackSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 轨道编辑没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
     if (envelope.propertiesIntent) {

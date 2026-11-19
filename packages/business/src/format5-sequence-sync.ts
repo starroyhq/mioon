@@ -916,6 +916,7 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const subtitleChange = delta.subtitles ?? {kind: 'unchanged' as const};
   const subtitleProfile = subtitleProfileOf(current, subtitleChange);
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
+    tracks: delta.tracks ? [...delta.tracks] : current.tracks,
     clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
   // Entity rows validate against the header that will be stored in the same
