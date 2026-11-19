@@ -172,5 +172,7 @@ test('user Ctrl+Z protection detects a Mio action at the history top', () => {
   assert.equal(format5UserUndoBlocked(view), true);
   assert.equal(format5UserUndoBlocked({...view, undo: {...view.undo, origin: 'user' as const}}), false);
   assert.equal(format5UserUndoBlocked({...view, undo: {...view.undo, origin: undefined}}), false);
+  assert.equal(format5UserUndoBlocked({...view, undo: {actionId: 'user-action', operation: 'timeline.clip.set-properties', affected: 1},
+    undoBlockedBy: 'mio'}), true);
   assert.equal(format5UserUndoBlocked(null), false);
 });
