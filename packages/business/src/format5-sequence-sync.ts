@@ -824,6 +824,7 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
       ...(current.subtitles.basisPresetId !== undefined ? {basisPresetId: current.subtitles.basisPresetId} : {})} : null)
     : subtitleChange.kind === 'absent' ? null : subtitleChange.value;
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
+    tracks: delta.tracks ? [...delta.tracks] : current.tracks,
     clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
   const update = planFormat5TimelineEntityUpdate(state, {clips: delta.clips, cues: delta.cues,
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});

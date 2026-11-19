@@ -64,7 +64,7 @@ import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
-import {format5GenerationSource,planFormat5GenerationInputs} from './format5-reference-inputs.ts';
+import {format5GenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
@@ -736,6 +736,23 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
+  'sequence.generation-inputs.get':(input: ServiceRow)=>{
+   if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
+   const projectId=stringValue(input.projectId);
+   if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
+   const shotId=stringValue(input.shotId) as string;
+   required('shots',shotId);
+   const connectionId=stringValue(input.connectionId);
+   const configurationRevision=typeof input.configurationRevision==='number'?input.configurationRevision:undefined;
+   const modelEntryId=stringValue(input.modelEntryId);
+   if(connectionId===undefined&&configurationRevision===undefined&&modelEntryId===undefined)
+     return readFormat5GenerationInputView(store,shotId);
+   if(!connectionId||configurationRevision===undefined||!modelEntryId)
+     throw new AppError('VALIDATION_ERROR','生成服务选择不完整。',400);
+   const binding=videoSettings?.select(connectionId,configurationRevision,modelEntryId);
+   if(!binding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
+   return readFormat5GenerationInputView(store,shotId,{binding});
+  },
   ...references.handlers,
   ...localMutations.handlers,
   ...projectHome.handlers,

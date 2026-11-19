@@ -15,6 +15,11 @@ import {projectLiveBoard, boardDeleteIntent, boardNodeUpdateIntent, boardRestore
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
+import {readGenerationProviderDirectory} from '../../../apps/web/src/video-provider-directory.ts';
+import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
+import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
+import {referenceAttachRequest, referenceDetachRequest, referenceReorderRequest, referenceRoleRequest} from '../../../apps/web/src/board-ui/inputs.ts';
+import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
 import {BoardUiSession} from '../../../apps/web/src/board-ui/live-session.ts';
 import type {BoardBinding, BoardMountView, BoardOutcome} from '../../../apps/web/src/board-ui/live-session.ts';
 import type {EditUiNotice} from '../../../apps/web/src/edit-ui/EditUiNotice.tsx';
@@ -49,6 +54,9 @@ function Harness(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [reduced, setReduced] = useState(false);
   const [openedNode, setOpenedNode] = useState<string | null>(null);
+  const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
+  const [generationOptions, setGenerationOptions] = useState<Record<string, Record<string, unknown>>>({});
+  const [inputs, setInputs] = useState<SequenceGenerationInputView | null>(null);
   const stateRef = useRef<Row>({});
   const session = useRef(new BoardUiSession(rpc, () => projectId));
   const refresh = useCallback(async (): Promise<void> => {
@@ -57,7 +65,8 @@ function Harness(): React.ReactElement {
       next.projectFormatVersion = 5;
       const nextHistory = await rpc('sequence.history.get', {projectId});
       const nextMount = await rpc('sequence.board.get', {projectId});
-      setData(next); setHistory(nextHistory); setMount(nextMount);
+      const directory = await readGenerationProviderDirectory(operation => rpc(operation, {}));
+      setData(next); setHistory(nextHistory); setMount(nextMount); setProviders(directory.providers);
     } catch (error) {
       console.error('board fixture refresh failed', error);
       (window as any).__boardWireError = String((error as Error)?.message ?? error);
@@ -65,6 +74,19 @@ function Harness(): React.ReactElement {
     }
   }, []);
   useEffect(() => {void refresh();}, [refresh]);
+  useEffect(() => {
+    const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
+    if (!shot) {setInputs(null); return;}
+    const selection = generationSelection(providers, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
+    const provider = selection.provider;
+    const request = {projectId, shotId: shot.id, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision)
+      && selection.modelEntryId ? {connectionId: provider.connectionId,
+        configurationRevision: Number(provider.configurationRevision), modelEntryId: selection.modelEntryId} : {})};
+    let cancelled = false;
+    void rpc('sequence.generation-inputs.get', request).then(value => {if (!cancelled) setInputs(value as SequenceGenerationInputView);})
+      .catch(() => {if (!cancelled) setInputs(null);});
+    return () => {cancelled = true;};
+  }, [data, providers, generationOptions, selectedNodeId]);
   useEffect(() => {
     const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     const update = (): void => setReduced(query?.matches === true);
@@ -123,6 +145,48 @@ function Harness(): React.ReactElement {
     void runSubject(subjectCardDeleteOperation(nodeId), undefined,
       t('boardUi.notice.subjectCardDeleted', {name: subjectName(subjectId)}));
   }, [runSubject, mount, t]);
+  const runReference = useCallback(async (request: BoardEditRequest, message: string): Promise<BoardOutcome> => {
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(request);
+      if (outcome.ok && outcome.status === 'applied') {
+        setNotice({id: outcome.actionId, message});
+        await refresh();
+      }
+      return outcome;
+    } finally {setBusy(false);}
+  }, [refresh]);
+  const updateGenerationOptions = useCallback((shotId: string, options: Record<string, unknown>): void => {
+    setGenerationOptions(current => ({...current, [shotId]: {...current[shotId], ...options}}));
+  }, []);
+  const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
+    void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
+  }, [runReference, t]);
+  const detachInput = useCallback((entry: {source: 'edge' | 'subject'; edgeId?: string; bindingId?: string}, shotId: string): void => {
+    if (entry.source === 'subject' && entry.bindingId) {
+      void runSubject(subjectBindingDetachOperation(entry.bindingId), undefined, t('boardUi.notice.subjectDetached'));
+      return;
+    }
+    if (entry.edgeId) void runReference(referenceDetachRequest(entry.edgeId, shotId), t('boardUi.notice.referenceDetached', {name: ''}));
+  }, [runReference, runSubject, t]);
+  const setPrimaryInput = useCallback((edgeId: string, shotId: string): void => {
+    const ordered = (inputs?.entries ?? []).flatMap(entry => entry.source === 'edge' && entry.edgeId ? [entry.edgeId] : []);
+    const unique = [...new Set(ordered)];
+    if (!unique.includes(edgeId)) return;
+    void runReference(referenceReorderRequest(shotId, [edgeId, ...unique.filter(id => id !== edgeId)]),
+      t('boardUi.notice.primaryChanged'));
+  }, [inputs, runReference, t]);
+  useEffect(() => {
+    // Headless acceptance hook for the native custom-select steps, which the
+    // keyboard-only Playwright flow cannot drive reliably. Every call goes
+    // through the same handlers/components the buttons use.
+    (window as any).__boardWireActions = {
+      setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
+      changeRole: (edgeId: string, shotId: string, role: string) => {
+        void runReference(referenceRoleRequest(edgeId, shotId, role as never), t('boardUi.notice.roleChanged'));
+      },
+    };
+  }, [updateGenerationOptions, runReference, t]);
   const undoNotice = useCallback(async (actionId: string): Promise<boolean> => {
     const view = await session.current.history();
     if (!view?.undo || view.undo.actionId !== actionId) {setNotice(null); return false;}
@@ -158,16 +222,21 @@ function Harness(): React.ReactElement {
       films: projection?.projection.films.map(film => ({id: film.id, items: film.items.map(item => item.nodeId)})) ?? [],
       floating: projection?.projection.floatingNodeIds ?? [], positions: projection?.positions ?? {},
       timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync,
-      subjects: mount?.subjects ?? [], bindings: mount?.bindings ?? []};
+      subjects: mount?.subjects ?? [], bindings: mount?.bindings ?? [],
+      inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+        entries: inputs.entries.map(entry => ({status: entry.status, role: entry.role, edgeId: entry.edgeId,
+          reason: entry.reason ?? null, primary: entry.primary === true}))} : null,
+      providers: providers.map(provider => ({id: provider.id, connectionId: provider.connectionId ?? null}))};
     (window as any).__boardWireState = stateRef.current;
-  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection]);
+  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers]);
   if (!projection) return <div className="board-fixture-loading">Loading…</div>;
   return <div className="board-fixture">
     <header className="board-fixture-head"><strong>Mioon · 画板</strong><span data-testid="fixture-format">格式 5</span>
       <span data-testid="fixture-sync" data-synced={mount?.inSync ? 'true' : 'false'}>{t(mount?.inSync ? 'boardUi.synced' : 'boardUi.outOfSync')}</span></header>
     <main className="board-fixture-board" data-testid="board-fixture-board">
       <BoardUiLive board={projection} activeFilmId={activeFilmId} history={history} mount={mount}
-        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} runSubject={runSubject}
+        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} runReference={runReference}
+        runSubject={runSubject} inputs={inputs}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
         notice={notice} reduceMotion={reduced} busy={busy}/>
     </main>
@@ -180,7 +249,10 @@ function Harness(): React.ReactElement {
         onRestore={(archivedId, name) => {void restore(archivedId, name);}}
         onSetBindingMode={setBindingMode} onDetachBinding={detachBinding} onRestoreBinding={restoreBinding}
         onDeleteSubjectCard={deleteCard}
-        onUpdateNode={(nodeId, patch, expectedRevision) => {void run(boardNodeUpdateIntent(nodeId, expectedRevision, patch), t('projects.nodeSaved'));}}/>
+        onUpdateNode={(nodeId, patch, expectedRevision) => {void run(boardNodeUpdateIntent(nodeId, expectedRevision, patch), t('projects.nodeSaved'));}}
+        providers={providers} generationOptions={generationOptions[selectedNodeId!]}
+        inputs={inputs} onGenerationOptionsChange={updateGenerationOptions} onInputRoleChange={changeInputRole as never}
+        onInputDetach={detachInput} onInputPrimary={setPrimaryInput}/>
       <section className="board-fixture-subjects" data-testid="board-fixture-subjects">
         <h4>{t('boardUi.inspector.subjects')}</h4>
         {(mount?.subjects ?? []).map(subject => <div key={subject.id} className="board-fixture-subject"

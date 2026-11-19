@@ -239,7 +239,8 @@ export function writeSequenceEditAction(store: ProjectStore, input: {
 }
 
 function affectedTotal(affected: SequenceEditReceipt['affected']): number {
-  return affected.nodes + affected.edges + affected.mainTrackClips + affected.otherTrackItems + affected.subtitleCues;
+  return affected.nodes + affected.edges + affected.mainTrackClips + affected.otherTrackItems + affected.subtitleCues
+    + (affected.tracks ?? 0);
 }
 
 function evidence(entry: SequenceEditHistoryEntry, receipt: SequenceEditReceiptDraft): Row {

@@ -204,6 +204,10 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Verify Windows project volume facts
+        shell: pwsh
+        run: node --test tests/windows-project-volume-facts.test.ts
+
       - name: Launch actual packaged Windows application
         timeout-minutes: 8
         run: |

@@ -123,6 +123,8 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
     if (edge.kind === 'sequence') edges.push({id, kind: 'sequence', sourceId, targetId});
     else if (edge.kind === 'reference') edges.push({id, kind: 'reference', sourceId, targetId,
       ...(text(edge.role) ? {role: String(edge.role) as ChainReferenceRole} : {}),
+      ...(text(edge.sourceAssetId) ? {sourceAssetId: String(edge.sourceAssetId)} : {}),
+      ...(text(edge.subjectBindingId) ? {subjectBindingId: String(edge.subjectBindingId)} : {}),
       ...(text(edge.sourceHandle) ? {sourcePort: String(edge.sourceHandle) as BoardPortId} : {}),
       ...(text(edge.targetHandle) ? {targetPort: String(edge.targetHandle) as BoardPortId} : {})});
   }

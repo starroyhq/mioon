@@ -7,6 +7,8 @@
 import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt,
   SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {format5RequestId} from '../edit-ui/session.ts';
+import type {BoardEditRequest} from './inputs.ts';
+import {isBoardEditRequest} from './inputs.ts';
 import type {SequenceHistoryView} from '../edit-ui/session.ts';
 
 type Row = Record<string, any>;
@@ -80,12 +82,14 @@ export class BoardUiSession {
    * the preview/commit envelope keeps them in one history step. */
   async runMany(intents: readonly SequenceEditIntent[]): Promise<BoardOutcome> {
     if (!intents.length) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
-    return this.runIntents([...intents]);
+    return this.runPayload({intents: [...intents]});
   }
-  async run(intent: SequenceEditIntent): Promise<BoardOutcome> {
-    return this.runIntents([intent]);
+  /** Preview exactly one action family: a CS/TS intent, or an RI reference-line
+   * request. Subject binding actions keep their separate `runSubject` path. */
+  async run(request: SequenceEditIntent | BoardEditRequest): Promise<BoardOutcome> {
+    return this.runPayload(isBoardEditRequest(request) ? request : {intents: [request]});
   }
-  private async runIntents(intents: readonly SequenceEditIntent[]): Promise<BoardOutcome> {
+  private async runPayload(payload: {intents: readonly SequenceEditIntent[]} | BoardEditRequest): Promise<BoardOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
@@ -94,7 +98,7 @@ export class BoardUiSession {
       let preview: Row | null;
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
-          intents: [...intents]}));
+          ...payload}));
       } catch (error) {return {ok: false, code: codeOf(error)};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),

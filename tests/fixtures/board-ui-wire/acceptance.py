@@ -16,6 +16,9 @@ TEXT = '70000000-0000-4000-8000-000000000006'
 ROOT = '70000000-0000-4000-8000-000000000002'
 VERSION_A = '70000000-0000-4000-8000-000000000020'
 VERSION_A2 = '70000000-0000-4000-8000-000000000022'
+IMAGE2 = '70000000-0000-4000-8000-000000000007'
+AUDIO = '70000000-0000-4000-8000-000000000008'
+SUBJECT_CHARACTER = '70000000-0000-4000-8000-000000000090'
 EDGE_AB = '70000000-0000-4000-8000-000000000081'
 
 
@@ -65,6 +68,7 @@ def main() -> int:
                 run_acceptance(page, result, log, capture, state, wait_position)
                 run_board_management_acceptance(page, result, log, capture, state, wait_position)
                 run_subject_acceptance(page, log, capture, state, wait_position)
+                run_ri_b_acceptance(page, log, capture, state, wait_position)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -244,6 +248,127 @@ def run_board_management_acceptance(page, result, log, capture, state, wait_posi
     assert state(page)['mount']['inSync'] is True
     log('deleted-list restore reattaches a shot through board.restore in one action')
     capture(page, '21-05-board-restore.png')
+
+def run_ri_b_acceptance(page, log, capture, state, wait_position) -> None:
+    """RI-b: reference lines and the live generation-inputs panel (21-06)."""
+    def footer():
+        return page.get_by_test_id('board-input-footer').inner_text()
+    def wait_service_selected() -> None:
+        page.wait_for_function(
+            "() => document.querySelector('[data-testid=board-input-footer]')?.dataset.service === 'selected'",
+            timeout=15000)
+    def connect_reference(source: str, target: str) -> None:
+        page.get_by_test_id(f'board-port-{source}-reference-out-bottom').focus()
+        page.keyboard.press('Enter')
+        page.get_by_test_id(f'board-port-{target}-reference-in-top').focus()
+        page.keyboard.press('Enter')
+
+    # A board shot without references: empty state and the missing-service state.
+    empty_shot = next(card['id'] for card in state(page)['cards'] if card['kind'] == 'shot'
+                      and card['id'] not in (SHOT_A, SHOT_B))
+    page.get_by_test_id(f'board-card-{empty_shot}').click()
+    expect(page.get_by_test_id('board-inspector-generation-inputs')).to_be_visible()
+    expect(page.get_by_test_id('board-input-empty')).to_have_text('未连接参考')
+    expect(page.get_by_test_id('board-input-footer')).to_have_text('未选择生成服务')
+    expect(page.locator('[data-unsupported="true"]')).to_have_count(0)
+    log('RI-b empty/no-service panel shows only the footer state')
+    capture(page, '21-06-inputs-empty-no-service.png')
+
+    # Drag one material reference line onto the shot through the real ports.
+    position = int(state(page)['history']['position'])
+    connect_reference(IMAGE2, empty_shot)
+    wait_position(page, position + 1)
+    assert state(page)['history']['undo']['operation'] == 'reference.attach'
+    page.get_by_test_id(f'board-card-{empty_shot}').click()
+    assert len(state(page)['inputs']['entries']) == 1
+    log('RI-b drags a material reference line through preview/commit', position=position + 1)
+    capture(page, '21-06-inputs-attached-no-service.png')
+
+    # Pick the supported multi-reference service: Ark Seedance 2.5. The service
+    # picker is the native custom select; the fixture hook writes the same
+    # per-shot generation selection the picker writes.
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot,"
+                  " {connectionId:'70000000-0000-4000-8000-000000000100', configurationRevision:1,"
+                  "  model:'doubao-seedance-2-5-260628'})", [empty_shot])
+    wait_service_selected()
+    page.wait_for_function("() => document.querySelector('[data-testid=board-input-footer]')?.textContent?.includes('火山方舟')", timeout=15000)
+    assert '首尾帧' in footer(), footer()
+    assert '用到 1 项' in footer(), footer()
+    log('RI-b footer names the service and its derived frames mode', footer=footer())
+    capture(page, '21-06-inputs-service-frames.png')
+
+    # Role change to a reference image turns the mode into multi-reference.
+    position = int(state(page)['history']['position'])
+    edge_id = state(page)['inputs']['entries'][0]['edgeId']
+    page.evaluate("([edge, shot, role]) => window.__boardWireActions.changeRole(edge, shot, role)",
+                  [edge_id, empty_shot, 'reference_image'])
+    wait_position(page, position + 1)
+    assert state(page)['history']['undo']['operation'] == 'reference.role.set'
+    page.wait_for_function("() => document.querySelector('[data-testid=board-input-footer]')?.textContent?.includes('多参考')", timeout=15000)
+    log('RI-b changes a reference role and the footer mode follows', footer=footer())
+    capture(page, '21-06-inputs-role.png')
+
+    # A second image, then make it the primary image (first provider image).
+    position = int(state(page)['history']['position'])
+    connect_reference(IMAGE, empty_shot)
+    wait_position(page, position + 1)
+    page.get_by_test_id(f'board-card-{empty_shot}').click()
+    edge_id = next(entry['edgeId'] for entry in state(page)['inputs']['entries'] if entry['role'] == 'first_frame')
+    page.evaluate("([edge, shot, role]) => window.__boardWireActions.changeRole(edge, shot, role)",
+                  [edge_id, empty_shot, 'reference_image'])
+    wait_position(page, position + 2)
+    page.wait_for_function("() => document.querySelector('[data-testid^=board-input-primary-]')", timeout=15000)
+    page.locator('[data-testid^="board-input-primary-"]').first.click()
+    wait_position(page, position + 3)
+    assert state(page)['history']['undo']['operation'] == 'reference.reorder'
+    assert any(entry['primary'] for entry in state(page)['inputs']['entries'])
+    log('RI-b sets the primary image through the ordered reference action')
+    capture(page, '21-06-inputs-primary.png')
+
+    # Reference audio is a first-class input for the supported service.
+    position = int(state(page)['history']['position'])
+    connect_reference(AUDIO, empty_shot)
+    wait_position(page, position + 1)
+    page.get_by_test_id(f'board-card-{empty_shot}').click()
+    page.wait_for_function("() => document.querySelectorAll('.board-input-row').length >= 3", timeout=15000)
+    log('RI-b keeps reference audio in the input list', footer=footer())
+    capture(page, '21-06-inputs-audio.png')
+
+    # Wan 3.0 does not take reference audio: the row and the connector say so.
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot,"
+                  " {connectionId:'70000000-0000-4000-8000-000000000101', configurationRevision:1,"
+                  "  model:'wan3.0-video'})", [empty_shot])
+    wait_service_selected()
+    page.wait_for_selector('.board-input-row.is-unsupported', timeout=15000)
+    assert '当前服务不支持' in page.get_by_test_id('board-inspector-generation-inputs').inner_text()
+    page.wait_for_function("() => document.querySelectorAll('[data-unsupported=true]').length > 0", timeout=15000)
+    log('RI-b marks an unsupported reference audio on the row and connector', footer=footer())
+    capture(page, '21-06-inputs-unsupported-audio.png')
+
+    # The marker follows the selected shot only (the service is chosen per shot).
+    page.get_by_test_id(f'board-card-{SHOT_A}').click()
+    page.wait_for_function("() => document.querySelectorAll('[data-unsupported=true]').length === 0", timeout=15000)
+    page.get_by_test_id(f'board-card-{empty_shot}').click()
+    page.wait_for_function("() => document.querySelectorAll('[data-unsupported=true]').length > 0", timeout=15000)
+    log('RI-b unsupported markers stay on the selected shot only')
+
+    # Detach one material line; it is one unified-history step.
+    position = int(state(page)['history']['position'])
+    audio_row = page.locator('.board-input-row').filter(has_text='参考音频').first
+    audio_row.locator('[data-testid^="board-input-detach-"]').first.click()
+    wait_position(page, position + 1)
+    assert state(page)['history']['undo']['operation'] == 'reference.detach'
+    log('RI-b detaches a reference line in one undo step')
+    capture(page, '21-06-inputs-detach.png')
+
+    # SB-b's bound subject is listed with its name and version inside the same panel.
+    page.get_by_test_id(f'board-card-{SHOT_A}').click()
+    page.wait_for_function("() => document.querySelector('[data-testid=board-inspector-generation-inputs]')?.textContent?.includes('阿琦')", timeout=15000)
+    panel = page.get_by_test_id('board-inspector-generation-inputs').inner_text()
+    assert 'V1' in panel, panel
+    assert '主体' in panel, panel
+    log('RI-b lists the bound subject with its version', footer=footer())
+    capture(page, '21-06-inputs-subject.png')
 
 
 def run_stress(page, result, log, capture, state) -> None:

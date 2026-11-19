@@ -17,6 +17,8 @@ import type {BoardHistoryView, BoardMountView, BoardOutcome} from './live-sessio
 import type {SequenceEditAllocation, SequenceEditIntent, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {subjectBindingCreateOperation, subjectBindingDetachOperation, subjectBindingRestoreOperation,
   subjectCardCreateOperation} from './live.ts';
+import type {BoardEditRequest, SequenceGenerationInputView} from './inputs.ts';
+import {referenceAttachRequest, referenceDetachRequest, unsupportedReferenceEdgeIds} from './inputs.ts';
 
 type Row = Record<string, any>;
 const uuid = (): string => globalThis.crypto?.randomUUID?.() ??
@@ -33,8 +35,14 @@ export interface BoardUiLiveProps {
   readonly selectedNodeId: string | null;
   readonly onSelectNode: (nodeId: string | null) => void;
   readonly run: (intent: SequenceEditIntent, noticeMessage: string) => Promise<BoardOutcome>;
+  /** RI-b reference-line actions (attach/role/reorder/detach). Subject-card
+   * lines keep their SB-b `runSubject` path. */
+  readonly runReference: (request: BoardEditRequest, noticeMessage: string) => Promise<BoardOutcome>;
   readonly runSubject: (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string) => Promise<BoardOutcome>;
+  /** RI-b live generation inputs of the selected service for the selected shot;
+   * unsupported reference lines get the connector marker from this projection. */
+  readonly inputs?: SequenceGenerationInputView | null;
   readonly onUndoNotice: (actionId: string) => Promise<boolean> | boolean | void;
   readonly onDismissNotice: (notice: EditUiNotice) => void;
   readonly notice: EditUiNotice | null;
@@ -75,15 +83,30 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   }, [props.runSubject]);
   const editSubject = (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string): void => { if (!busy) void subjectOp(operation, allocation, noticeMessage); };
+  const referenceOp = useCallback(async (request: BoardEditRequest, noticeMessage: string): Promise<void> => {
+    setErrorCode(null);
+    const outcome = await props.runReference(request, noticeMessage);
+    if (!outcome.ok) setErrorCode(outcome.code);
+    else if (outcome.status === 'not_applied') setErrorCode('SEQUENCE_EDIT_NOOP');
+  }, [props.runReference]);
+  const editReference = (request: BoardEditRequest, noticeMessage: string): void => {
+    if (!busy) void referenceOp(request, noticeMessage);
+  };
   const connectSequence = (connection: BoardPortConnection): void => {
     if (busy) return;
     if (connection.kind === 'sequence') {
       edit(boardConnectIntent(connection.sourceId, connection.targetId), t('boardUi.notice.inserted', {name: nameOf(connection.sourceId)}));
       return;
     }
-    // SB-b: a subject card's reference line to a shot is one subject binding.
     const source = props.board.nodes.find(node => node.id === connection.sourceId);
     const target = props.board.nodes.find(node => node.id === connection.targetId);
+    // RI-b: a material card (image/video/audio/previs) becomes a reference line.
+    if (source && source.kind !== 'subject' && target?.kind === 'shot') {
+      editReference(referenceAttachRequest(source.id, target.id, connection.role),
+        t('boardUi.notice.referenceAttached', {name: target.name}));
+      return;
+    }
+    // SB-b: a subject card's reference line to a shot is one subject binding.
     if (source?.kind !== 'subject' || !source.subjectId || target?.kind !== 'shot') {
       setErrorCode('REFERENCE_READONLY');
       return;
@@ -104,11 +127,18 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
       t('boardUi.notice.subjectLinked', {name: source.name}));
   };
   const detachReference = (): void => {
-    if (!selectedEdge || selectedEdge.kind !== 'reference' || selectedEdge.role !== 'subject_reference'
-      && selectedEdge.role !== 'style_reference') return;
-    const binding = props.mount?.bindings.find(item => item.edgeId === selectedEdge.id);
-    if (!binding) {setErrorCode('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'); return;}
-    editSubject(subjectBindingDetachOperation(binding.id), undefined, t('boardUi.notice.subjectDetached'));
+    if (!selectedEdge || selectedEdge.kind !== 'reference') return;
+    if (selectedEdge.role === 'subject_reference' || selectedEdge.role === 'style_reference') {
+      const binding = props.mount?.bindings.find(item => item.edgeId === selectedEdge.id);
+      if (!binding) {setErrorCode('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'); return;}
+      editSubject(subjectBindingDetachOperation(binding.id), undefined, t('boardUi.notice.subjectDetached'));
+      setSelectedEdgeId(null);
+      return;
+    }
+    if (selectedEdge.sourceAssetId === undefined) {setErrorCode('REFERENCE_READONLY'); return;}
+    const target = props.board.nodes.find(node => node.id === selectedEdge.targetId);
+    editReference(referenceDetachRequest(selectedEdge.id, selectedEdge.targetId),
+      t('boardUi.notice.referenceDetached', {name: target?.name ?? ''}));
     setSelectedEdgeId(null);
   };
   const addSubject = (subjectId: string, subjectName: string): void => {
@@ -191,6 +221,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     return () => document.removeEventListener('keydown', keydown);
   }, [copied, props.selectedNodeId, props.board.nodes]);
   const archived = props.mount?.archived ?? [];
+  const unsupportedEdges = unsupportedReferenceEdgeIds(props.inputs, props.board.edges);
   const error = errorCode === 'REFERENCE_READONLY' ? t('boardUi.referenceReadonly')
     : errorCode ? messageOf(t, errorCode) : null;
   const contextMenu = (event: React.MouseEvent<HTMLDivElement>): void => {
@@ -208,7 +239,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
       onSelectNode={props.onSelectNode} onConnect={connectSequence} onAddShot={addShot}
       showInspector={false} selectedEdgeId={selectedEdgeId} onSelectEdge={setSelectedEdgeId}
       onNodesMoved={moveNodes} filmSynced={props.mount?.inSync ?? true} virtualize={props.board.nodes.length > 200}
-      onSubjectDrop={dropSubject}/>
+      onSubjectDrop={dropSubject} unsupportedEdgeIds={unsupportedEdges}/>
     <div className="board-ui-live-toolbar" role="toolbar" aria-label={t('boardUi.board')}>
       <button type="button" data-testid="board-ui-add-shot" disabled={busy} onClick={addShot}>{t('boardUi.addShot')}</button>
       <button type="button" data-testid="board-ui-add-root" disabled={busy} onClick={addRoot}>{t('boardUi.addRoot')}</button>
@@ -243,8 +274,9 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
         <button type="button" data-testid="board-ui-insert" disabled={busy} onClick={insert}>{t('boardUi.insertHere')}</button>}
       {selectedEdge.kind === 'sequence' && <button type="button" data-testid="board-ui-disconnect" disabled={busy}
         onClick={disconnect}>{t('boardUi.disconnectEdge')}</button>}
-      {selectedEdge.kind === 'reference' && (selectedEdge.role === 'subject_reference' || selectedEdge.role === 'style_reference')
-        && <button type="button" data-testid="board-ui-subject-detach" disabled={busy}
+      {(selectedEdge.kind === 'reference' && (selectedEdge.role === 'subject_reference' || selectedEdge.role === 'style_reference')
+        || selectedEdge.kind === 'reference' && selectedEdge.sourceAssetId !== undefined)
+        && <button type="button" data-testid="board-ui-reference-detach" disabled={busy}
           onClick={detachReference}>{t('boardUi.disconnectEdge')}</button>}
     </div>}
     {archiveOpen && <div className="board-ui-live-archive" data-testid="board-ui-archive-popover" role="dialog"

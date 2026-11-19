@@ -11,6 +11,10 @@ import type {ProjectStore} from '../../packages/business/src/project-file/store.
 import {createServices} from '../../packages/business/src/services.ts';
 import {openAppLibrary} from '../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../packages/business/src/project-service-application.ts';
+import {createVideoSettings} from '../../packages/business/src/video/settings.ts';
+import {defaultVideoModels} from '../../packages/contracts/src/video-providers.ts';
+import type {VideoConnectionConfiguration} from '../../packages/contracts/src/video-providers.ts';
+import {createTestSecretCodec, testSecretStorage} from './secret-codec.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `70000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -20,10 +24,14 @@ export const BOARD_IDS = {
   jobA: id(70), jobB: id(71), jobV2: id(72), clipA: id(30), clipB: id(31), imageClip: id(32), groupA: id(40), groupB: id(41),
   groupImage: id(42), timeline: id(50), edge1: id(80), edge2: id(81), edge3: id(82), referenceEdge: id(83),
   subjectCharacter: id(90), subjectLook: id(91), subjectCharacterVersion: id(92), subjectLookVersion: id(93),
+  arkConnection: id(100), wanConnection: id(101),
+  imageNode2: id(7), audioNode: id(8), subjectCard: id(9),
+  imageAsset2: id(14), audioAsset: id(15), subjectBinding: id(94), subjectEdge: id(84),
 } as const;
 const sha = (letter: string): string => letter.repeat(64);
 export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
-  library: ReturnType<typeof openAppLibrary>; projectId: string; root: string}> {
+  library: ReturnType<typeof openAppLibrary>; settings: Awaited<ReturnType<typeof createVideoSettings>>;
+  projectId: string; root: string}> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-board-ui-wire-'));
   const store = createProjectStore({projectId: BOARD_IDS.project, projectFile: path.join(root, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
@@ -59,8 +67,10 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('assets', {id: BOARD_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 4, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetV2, projectId, name: '镜头A v2.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('d'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10});
-    const subjectVersionData = (versionId: string, subjectId: string): string => JSON.stringify({id: versionId,
-      projectId, subjectId, number: 1, assetId: BOARD_IDS.imageAsset, sha256: 'c'.repeat(64), mimeType: 'image/png',
+    store.put('assets', {id: BOARD_IDS.imageAsset2, projectId, name: '参考图 B.png', mimeType: 'image/png', duration: null, sha256: sha('e'), sizeBytes: 10});
+    store.put('assets', {id: BOARD_IDS.audioAsset, projectId, name: '对白.wav', mimeType: 'audio/wav', duration: 5, sha256: sha('f'), sizeBytes: 10});
+    const subjectVersionData = (versionId: string, subjectId: string, assetId: string = BOARD_IDS.imageAsset): string => JSON.stringify({id: versionId,
+      projectId, subjectId, number: 1, assetId, sha256: 'c'.repeat(64), mimeType: 'image/png',
       width: 1080, height: 1920, createdAt: at,
       provenance: {kind: 'user-import', versionId: null, shotId: null, jobId: null}});
     store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
@@ -91,19 +101,47 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('nodes', node(BOARD_IDS.root, 'sequence_root', {name: '成片', position: {x: -230, y: 40}}));
     store.put('nodes', node(BOARD_IDS.imageNode, 'image', {assetId: BOARD_IDS.imageAsset, label: '参考图 · 街景',
       position: {x: 90, y: 330}}));
+    store.put('nodes', node(BOARD_IDS.imageNode2, 'image', {assetId: BOARD_IDS.imageAsset2, label: '参考图 B',
+      position: {x: 300, y: 330}}));
+    store.put('nodes', node(BOARD_IDS.audioNode, 'audio', {assetId: BOARD_IDS.audioAsset, label: '对白.wav',
+      position: {x: 510, y: 330}}));
+
     store.put('nodes', node(BOARD_IDS.textNode, 'text', {label: '文字', text: '第二幕：由街景过渡到霓虹特写，节奏放慢。',
       position: {x: 40, y: 580}}));
     store.put('edges', {id: BOARD_IDS.edge1, projectId, kind: 'sequence', source: BOARD_IDS.root, target: BOARD_IDS.shotA, createdAt: at});
     store.put('edges', {id: BOARD_IDS.edge2, projectId, kind: 'sequence', source: BOARD_IDS.shotA, target: BOARD_IDS.shotB, createdAt: at});
     store.put('edges', {id: BOARD_IDS.referenceEdge, projectId, kind: 'reference', role: 'first_frame',
       source: BOARD_IDS.imageNode, target: BOARD_IDS.shotA, sourceAssetId: BOARD_IDS.imageAsset, createdAt: at});
+    // RI-b source cards stay reference-connected so the UI-B2 floating-label
+    // baseline (only the text card is detached) does not change.
+    store.put('edges', {id: id(85), projectId, kind: 'reference', role: 'reference_image',
+      source: BOARD_IDS.imageNode2, target: BOARD_IDS.shotB, sourceAssetId: BOARD_IDS.imageAsset2, orderIndex: 0, createdAt: at});
+    store.put('edges', {id: id(86), projectId, kind: 'reference', role: 'reference_audio',
+      source: BOARD_IDS.audioNode, target: BOARD_IDS.shotB, sourceAssetId: BOARD_IDS.audioAsset, orderIndex: 1, createdAt: at});
+
     store.put('timelines', timeline);
     store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
       .run(BOARD_IDS.timeline, projectId, BOARD_IDS.root, 1, JSON.stringify(baseline));
   });
   const library = openAppLibrary({dataDir: path.join(root, 'app')});
-  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {})});
-  return {store, services, library, projectId, root};
+  // RI-b: two real configured video connections so the property panel can show
+  // a supported multi-reference service (Ark Seedance 2.5) and one that refuses
+  // reference audio (Wan 3.0). Credentials are synthetic test values.
+  const settings = await createVideoSettings({directory: path.join(root, 'video-settings'), privateRoot: root,
+    secretCodec: createTestSecretCodec(), storage: testSecretStorage});
+  const ark: VideoConnectionConfiguration = {id: BOARD_IDS.arkConnection, providerId: 'ark', name: '火山方舟',
+    region: 'cn-beijing', workspaceId: '', enabled: true, archived: false, outputHosts: ['output.example'],
+    models: defaultVideoModels('ark')};
+  const wan: VideoConnectionConfiguration = {id: BOARD_IDS.wanConnection, providerId: 'wan', name: '通义万相',
+    region: 'cn-beijing', workspaceId: '', enabled: true, archived: false, outputHosts: ['output.example'],
+    models: defaultVideoModels('wan')};
+  await settings.put({action: 'save', expectedRevision: 0, configuration: ark,
+    secret: {action: 'replace', value: 'synthetic-ark-key', storage: 'persistent'}});
+  await settings.put({action: 'save', expectedRevision: 1, configuration: wan,
+    secret: {action: 'replace', value: 'synthetic-wan-key', storage: 'persistent'}});
+  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),
+    videoSettings: settings});
+  return {store, services, library, settings, projectId, root};
 }
 
 /** 500-shot stress project for the UI-B2 board frame-rate measurement. */
