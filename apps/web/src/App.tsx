@@ -2392,7 +2392,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       pending: !projectId || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
   async function saveTimelineFormat(intent: TimelineFormatIntent, frameOptions?: Pick<RunOptions, 'canExecute' | 'canRevealTasks' | 'errorMessage'>): Promise<{status: string; timeline?: unknown; error?: unknown}> {
-    if (dataRef.current.projectFormatVersion === 5) {
+    if (typeof dataRef !== 'undefined' && dataRef.current.projectFormatVersion === 5) {
       const presetId = (intent.input as {presetId?: unknown}).presetId;
       if (typeof presetId !== 'string') return {status: 'rejected'};
       const result = await format5Session().format(presetId);
