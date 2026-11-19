@@ -26,7 +26,8 @@ import {
 } from '../../contracts/src/sequence-editing.ts';
 import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
 import {
-  applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, createMainTrackProjectionPort, readSequenceSyncContext,
+  applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, applySubjectBindingWrite,
+  createMainTrackProjectionPort, readSequenceSyncContext,
 } from './format5-sequence-sync.ts';
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
 import {
@@ -38,7 +39,7 @@ import type {SequenceEditHistoryState, SequenceEditReceiptDraft} from './format5
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5JsonRows} from './project-file/format5-content.ts';
-import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {bumpFormat5ContentStampInside, readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
@@ -85,13 +86,13 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   'timeline.clip.add': 'sequence.preview/commit', 'timeline.clip.update': 'sequence.preview/commit',
   'timeline.clip.replaceSource': 'sequence.preview/commit', 'timeline.clip.remove': 'sequence.preview/commit',
   'timeline.clip.rippleRemove': 'sequence.preview/commit', 'timeline.clip.split': 'sequence.preview/commit',
-  'timeline.clip.splitAtScenes': 'sequence.preview/commit', 'timeline.clip.crossfade': 'sequence.preview/commit',
+  'timeline.clip.splitAtScenes': 'not_yet_available', 'timeline.clip.crossfade': 'sequence.preview/commit',
   'timeline.clip.setGains': 'sequence.preview/commit', 'timeline.clip.setTransform': 'sequence.preview/commit',
   'timeline.clip.setTransition': 'sequence.preview/commit', 'timeline.loudness.apply': 'sequence.preview/commit',
   'timeline.subtitle.add': 'sequence.preview/commit', 'timeline.subtitle.update': 'sequence.preview/commit',
-  'timeline.subtitle.remove': 'sequence.preview/commit', 'timeline.seed': 'sequence.preview/commit',
-  'timeline.shots.append': 'sequence.preview/commit', 'timeline.clip.refreshSources': 'sequence.preview/commit',
-  'timeline.format.set': 'sequence.preview/commit',
+  'timeline.subtitle.remove': 'sequence.preview/commit', 'timeline.seed': 'not_yet_available',
+  'timeline.shots.append': 'not_yet_available', 'timeline.clip.refreshSources': 'not_yet_available',
+  'timeline.format.set': 'not_yet_available',
   'timeline.history.get': 'sequence.history.get', 'timeline.undo': 'sequence.undo', 'timeline.redo': 'sequence.redo',
   'canvas.apply': 'sequence.preview/commit',
   'canvas.history.get': 'sequence.history.get', 'canvas.history.undo': 'sequence.undo', 'canvas.history.redo': 'sequence.redo',
@@ -100,7 +101,11 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   'shot.create': 'sequence.preview/commit', 'shot.update': 'sequence.preview/commit',
   'node.create': 'sequence.preview/commit', 'node.update': 'sequence.preview/commit',
   'reference.attach': 'sequence.preview/commit', 'reference.detach': 'sequence.preview/commit',
-  'previs.create': 'not_yet_available', 'previs.scene.set': 'not_yet_available', 'previs.thumbnail.set': 'not_yet_available',
+  // Previs scene writes are board actions, so they own a `previsIntent` in the
+  // unified entry (G line); thumbnails stay a disposable cache keyed to a scene
+  // revision and are not a history action.
+  'previs.create': 'sequence.preview/commit', 'previs.scene.set': 'sequence.preview/commit',
+  'previs.thumbnail.set': 'not_yet_available',
   'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
   'subject.binding.set': 'sequence.preview/commit',
 });
@@ -635,15 +640,21 @@ function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, f
 }
 
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mode: 'forward' | 'restore'): void {
-  if ([...delta.writes, ...delta.removals].some(entity => entity.kind === 'subject_binding')) {
-    fail('SEQUENCE_EDIT_CONTRACT_INVALID', '主体绑定行由 SB 卡接线后恢复。', [], {reason: 'SUBJECT_SEAM'});
-  }
+  let subjectTouched = false;
   for (const entity of delta.removals) {
+    if (entity.kind === 'subject_binding') {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '主体绑定是墓碑，不能删除。', [entity.id]);
+    }
     const table = tableOf(entity.kind);
     const removed = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
     if (mode === 'restore' && Number(removed.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
   }
   for (const entity of delta.writes) {
+    if (entity.kind === 'subject_binding') {
+      applySubjectBindingWrite(store, entity.data as Row);
+      subjectTouched = true;
+      continue;
+    }
     const table = tableOf(entity.kind);
     const mark = archiveMark(entity.data);
     const clean = cleanRow(entity.data);
@@ -663,16 +674,27 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mod
       if (Number(insert.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
     }
   }
+  if (subjectTouched) bumpFormat5ContentStampInside(store.db, 'project');
 }
 
 function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): boolean {
   for (const entity of delta.writes) {
+    if (entity.kind === 'subject_binding') {
+      const data = entity.data as Row;
+      const current = store.db.prepare(`SELECT bindingMode,subjectVersionId,shotId,subjectId,role
+        FROM project.subject_bindings WHERE id=? AND projectId=?`).get(entity.id, store.projectId) as Row | undefined;
+      if (!current) return false;
+      if (current.bindingMode !== data.bindingMode || (current.subjectVersionId ?? null) !== (data.subjectVersionId ?? null)
+        || current.shotId !== data.shotId || current.subjectId !== data.subjectId || current.role !== data.role) return false;
+      continue;
+    }
     const current = store.db.prepare(`SELECT data FROM project.${tableOf(entity.kind)} WHERE id=? AND projectId=?`)
       .get(entity.id, store.projectId) as Row | undefined;
     if (!current || typeof current.data !== 'string') return false;
     try { if (stable(JSON.parse(current.data)) !== stable(cleanRow(entity.data))) return false; } catch { return false; }
   }
   for (const entity of delta.removals) {
+    if (entity.kind === 'subject_binding') return false;
     if (store.db.prepare(`SELECT 1 FROM project.${tableOf(entity.kind)} WHERE id=? AND projectId=?`)
       .get(entity.id, store.projectId) !== undefined) return false;
   }
@@ -1008,7 +1030,7 @@ export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' 
     const draft: SequenceEditReceiptDraft = {
       version: 1, requestId: request.requestId, inputDigest, projectId: store.projectId,
       actionId: request.actionId, operation: `${direction}:${entry.operation}`,
-      originSide: entry.operation.startsWith('board.') ? 'board' : 'timeline', status: 'applied',
+      originSide: entry.operation.startsWith('timeline.') ? 'timeline' : 'board', status: 'applied',
       affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
       contentRevision: contentStamp(store).contentSequence,
       timelineRevision: timelineResult.timelineRevision, syncRevision: baselineResult.syncRevision,

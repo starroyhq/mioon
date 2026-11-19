@@ -4,7 +4,8 @@
  * confirmed intent routes to its owning coordinator:
  * - board intents -> `sequence-edit.ts` (CS),
  * - timeline intents -> `format5-sequence-sync.ts` (TS),
- * - subject binding -> the subject planner inside the shared TS transaction.
+ * - subject binding -> the subject planner inside the shared TS transaction,
+ * - previs create/save -> the previs planner and its board-node transaction,
  * History, undo and redo have exactly one implementation in the CS
  * coordinator (`format5-editor-history.ts`), including eviction/atEarliest.
  */
@@ -26,9 +27,15 @@ import {
   buildSubjectBindingEnvelope, planSubjectBindingAction,
 } from './format5-subject-binding.ts';
 import {
+  buildSubjectCardEnvelope, planSubjectEditAction, readSubjectCardProjection,
+} from './format5-subject-card.ts';
+import type {SubjectCardCommand} from './format5-subject-card.ts';
+import {
   buildReferenceEdgeEnvelope, planReferenceEdgeAction,
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
+import {previewPrevisAction} from './format5-previs.ts';
+import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
@@ -104,6 +111,7 @@ function subjectCommand(intent: SequenceEditSubjectIntent): {
   readonly shotId?: string; readonly subjectId?: string; readonly role?: 'subject' | 'style';
   readonly bindingMode?: 'follow' | 'locked'; readonly subjectVersionId?: string | null;
 } {
+  if (intent.operation.kind !== 'subject-binding') throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '主体绑定动作无效。', 409);
   const edit: any = intent.operation.edit;
   switch (edit.kind) {
     case 'create': return {kind: 'create', bindingId: edit.bindingId, shotId: edit.shotId,
@@ -114,6 +122,14 @@ function subjectCommand(intent: SequenceEditSubjectIntent): {
     case 'restore': return {kind: 'restore', bindingId: edit.bindingId, bindingMode: edit.bindingMode,
       subjectVersionId: edit.subjectVersionId};
     default: throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID', '主体绑定动作无效。', 409);
+  }
+}
+
+function subjectCardCommand(operation: import('../../contracts/src/sequence-edit.ts').SubjectCardOperation): SubjectCardCommand {
+  switch (operation.kind) {
+    case 'subject.card.create': return {kind: 'card-create', nodeId: operation.nodeId,
+      subjectId: operation.subjectId, position: operation.position};
+    case 'subject.card.delete': return {kind: 'card-delete', nodeId: operation.nodeId};
   }
 }
 
@@ -130,8 +146,20 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
 
   function subjectPreview(input: any): unknown {
     const intent = input.subjectIntent as SequenceEditSubjectIntent;
-    const command = subjectCommand(intent);
     const state = historyState(store);
+    if (intent.operation.kind !== 'subject-binding') {
+      const envelope = {...buildSubjectCardEnvelope(store, subjectCardCommand(intent.operation), {
+        requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
+        historyPosition: state.position, historyRevision: state.revision,
+        ...(input.origin ? {origin: input.origin} : {})}), ...(input.origin ? {origin: input.origin} : {})};
+      try { planSubjectEditAction(store, envelope); }
+      catch (error) {
+        if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
+        throw error;
+      }
+      return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+    }
+    const command = subjectCommand(intent);
     const edgeId = (input.allocation?.edges ?? []).find((edge: Row) => uuid(edge?.id))?.id as string | undefined
       ?? randomUUID();
     const envelope: SequenceEditEnvelope = {...buildSubjectBindingEnvelope(store as never, command as never, {
@@ -206,6 +234,11 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
+    if (input.previsIntent) return previewPrevisAction(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      previsIntent: input.previsIntent as never});
+    if (input.subtitlesIntent) return previewSubtitleEdits(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), subtitlesIntent: input.subtitlesIntent as never});
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});
@@ -232,12 +265,17 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const actualDigest = sequenceEditInputDigest(envelope);
     if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
     const intents = envelope.intents;
+    if (envelope.subtitlesIntent) {
+      const result = runSubtitleEditsSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 字幕编辑没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
     if (envelope.propertiesIntent) {
       const result = runClipPropertiesSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
-    if (envelope.subjectIntent || envelope.referenceIntent || intents.some(timelineIntent)) {
+    if (envelope.subjectIntent || envelope.referenceIntent || envelope.previsIntent || intents.some(timelineIntent)) {
       const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});
       return result.receipt;
@@ -280,10 +318,11 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
       ...[...context.archivedShots].map(([id, row]) => ({id, kind: 'shot' as const, name: nameOf(row, 'shot'), position: positionOf(row)})),
       ...[...context.archivedNodes].map(([id, row]) => ({id, kind: 'node' as const, name: nameOf(row, 'node'), position: positionOf(row)})),
     ].sort((left, right) => left.id.localeCompare(right.id));
+    const subjectBoard = readSubjectCardProjection(store);
     return {projectId: store.projectId, timelineRevision: context.timeline.revision,
       syncRevision: context.syncRevision,
       inSync: chainNodeIds.length === trackNodeIds.length && chainNodeIds.every((id, index) => id === trackNodeIds[index]),
-      archived};
+      archived, subjects: subjectBoard.subjects, bindings: subjectBoard.bindings};
   }
   function undo(input: any): unknown { return coordinator.call('sequence.undo', input); }
   function redo(input: any): unknown { return coordinator.call('sequence.redo', input); }

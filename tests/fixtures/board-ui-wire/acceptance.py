@@ -63,6 +63,7 @@ def main() -> int:
                 run_stress(page, result, log, capture, state)
             else:
                 run_acceptance(page, result, log, capture, state, wait_position)
+                run_subject_acceptance(page, log, capture, state, wait_position)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -231,6 +232,89 @@ def run_stress(page, result, log, capture, state) -> None:
     log('500-shot board pan frame pacing measured', **result['performance'])
     assert p95 <= 34, result['performance']
     capture(page, '21-01-board-500-shots.png')
+
+
+
+
+def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
+    """SB-b: subject card creation, binding lifecycle, subject-input editing and
+    the two destructive commands over the same real RPC/history."""
+    subject_id = '70000000-0000-4000-8000-000000000090'
+    subject_version = '70000000-0000-4000-8000-000000000092'
+    look_id = '70000000-0000-4000-8000-000000000091'
+    shot_a, shot_b = '70000000-0000-4000-8000-000000000003', '70000000-0000-4000-8000-000000000004'
+    start = int(state(page)['history']['position'])
+    expect(page.get_by_test_id('board-fixture-subjects')).to_be_visible()
+
+    # 1. Create a subject card from the subject library (drag payload), then
+    # link it to two shots through the keyboard reference ports.
+    palette = page.get_by_test_id(f'fixture-subject-{subject_id}')
+    board_canvas = page.get_by_test_id('board-ui-canvas')
+    palette.drag_to(board_canvas, target_position={'x': 260, 'y': 260})
+    wait_position(page, start + 1)
+    cards = state(page)['cards']
+    card = next(item for item in cards if item['kind'] == 'subject' and item['subjectId'] == subject_id)
+    assert state(page)['history']['undo']['operation'] == 'subject.card.create', state(page)['history']
+    log('dragging a subject from the library creates one subject card', card=card['id'])
+    capture(page, '21-01-subject-card.png')
+
+    for count, shot_id in enumerate((shot_a, shot_b), start=1):
+        page.wait_for_function("(count) => window.__boardWireState.bindings.length === count - 1",
+                               arg=count, timeout=15000)
+        page.get_by_test_id(f'board-port-{card["id"]}-reference-out-top').focus()
+        page.keyboard.press('Enter')
+        page.get_by_test_id(f'board-port-{shot_id}-reference-in-top').focus()
+        page.keyboard.press('Enter')
+        page.wait_for_function("(count) => window.__boardWireState.bindings.length === count",
+                               arg=count, timeout=15000)
+    bindings = state(page)['bindings']
+    assert len(bindings) == 2 and all(binding['bindingMode'] == 'follow' for binding in bindings), bindings
+    assert {binding['shotId'] for binding in bindings} == {shot_a, shot_b}
+    log('one subject card binds to multiple shots through the reference ports')
+    capture(page, '21-01-subject-bindings.png')
+
+    # 2. Shot generation inputs: follow by default, lock a concrete version,
+    # switch back to follow, detach and restore.
+    page.get_by_test_id(f'board-card-{shot_a}').click()
+    expect(page.get_by_test_id('board-inspector-inputs')).to_be_visible()
+    first = next(binding for binding in bindings if binding['shotId'] == shot_a)
+    page.get_by_test_id(f'board-binding-lock-{first["id"]}-{subject_version}').click()
+    page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'locked'",
+                           arg=first['id'], timeout=15000)
+    log('locking V1 from the shot generation inputs writes one unified action')
+    page.get_by_test_id(f'board-binding-follow-{first["id"]}').click()
+    page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'follow'",
+                           arg=first['id'], timeout=15000)
+    page.get_by_test_id(f'board-binding-detach-{first["id"]}').click()
+    page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'detached'",
+                           arg=first['id'], timeout=15000)
+    expect(page.get_by_test_id(f'board-binding-detached-{first["id"]}')).to_be_visible()
+    page.get_by_test_id(f'board-binding-restore-{first["id"]}').click()
+    page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'follow'",
+                           arg=first['id'], timeout=15000)
+    log('follow/lock/detach/restore traverse the same unified history')
+    capture(page, '21-06-subject-inputs.png')
+
+    # 3. Subject card selection lists linked shots and confirms both delete scopes.
+    page.get_by_test_id(f'board-card-{card["id"]}').click()
+    expect(page.get_by_test_id('board-inspector-linked-shots')).to_be_visible()
+    assert page.get_by_test_id('board-inspector-linked-shots').locator('li').count() == 2
+    log('the subject card lists every linked shot')
+    capture(page, '21-01-subject-linked-shots.png')
+
+    page.get_by_test_id('board-inspector-delete-card').click()
+    expect(page.get_by_test_id('board-delete-confirm')).to_be_visible()
+    expect(page.get_by_test_id('board-delete-impact')).to_contain_text('2')
+    capture(page, '21-01-subject-delete-card-confirm.png')
+    page.get_by_test_id('board-delete-confirm-button').click()
+    page.wait_for_function("(cardId) => !window.__boardWireState.cards.some(item => item.id === cardId)",
+                           arg=card['id'], timeout=15000)
+    assert state(page)['history']['undo']['operation'] == 'subject.card.delete'
+    page.locator('body').press('Control+z')
+    page.wait_for_function("(cardId) => window.__boardWireState.cards.some(item => item.id === cardId)",
+                           arg=card['id'], timeout=15000)
+    log('deleting a subject card confirms its impact and undoes as one step')
+    capture(page, '21-01-subject-delete-card-undone.png')
 
 
 if __name__ == '__main__':

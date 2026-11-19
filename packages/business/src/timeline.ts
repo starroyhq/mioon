@@ -12,6 +12,7 @@ import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts
 import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace,usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
+import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
@@ -206,6 +207,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  // The trusted host opens the actual project format. No RPC input can opt a
  // format-3 project into writing the new geometry.
  const format4=()=>usesTimelineFrameTransaction(db);
+ const format5Store=()=>isProjectStore(store)&&timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION;
  function find(projectId: string): TimelineRecord|null{
   const snapshot=readTimelineStorage(db,projectId);
   if(!snapshot)return null;
@@ -387,6 +389,17 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   },boundary);
  }
  function renderSnapshot(input: TimelineMutationInput,boundary: TimelineRecoveryBoundary,write: ()=>void,expectedTimelineId?: string): unknown{
+  // Format 5 stores native clip/cue rows; project them into the renderer's frozen
+  // legacy snapshot through the TSb export ticket rules instead of the legacy
+  // aggregate reader.
+  if(isProjectStore(store)&&timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const frozen=freezeFormat5RenderSnapshot(store,input);
+   if(expectedTimelineId!==undefined&&(frozen as {timeline:{id:string}}).timeline.id!==expectedTimelineId)
+    throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
+   if(input.preflightSnapshotHash!==undefined&&hash(frozen)!==input.preflightSnapshotHash)
+    throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
+   return frozen;
+  }
   // Explicit settings/ranges cannot initialize a timeline. The omitted path retains
   // exactly its historical lazy-initialization and frozen projection behavior.
   const timeline=input.exportSettings===undefined&&!hasSelectedTimelineExportRange(input)?currentOrEnsure(input,boundary,write,{sourceSemantics:false}):boundary.read({legacyMissingProject:true,sourceSemantics:false});
@@ -408,6 +421,31 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
   }
   return frozen;
+ }
+ function renderFormat5(input: TimelineMutationInput,outputLocale?: unknown): unknown{
+  // The legacy receipt verifier reconstructs/validates the released aggregate;
+  // format 5 has its own projected snapshot, so keep the same immutable request
+  // receipt shape but verify replay by the stored request hash instead.
+  return tx(()=>{
+   const requestHash=hash({operation:'timeline.render',input});
+   const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?')
+     .get(input.requestId as string) as {requestHash?:string;response?:string}|undefined;
+   if(previous){
+    if(previous.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
+    return JSON.parse(String(previous.response));
+   }
+   const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   const createdAt=now();
+   const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
+     timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',
+     assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
+   put('exports',result);
+   recordOutputLocale(db,result.id,requestHash,outputLocale);
+   bindAgentTaskJobInside(db,'export',result.id);
+   db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)')
+     .run(input.requestId as string,requestHash,JSON.stringify(result));
+   return result;
+  });
  }
  function render(input: TimelineMutationInput,admission?: RenderAdmission,outputLocale?: unknown): unknown{
   return transaction('timeline.render',input,({boundary,requestHash,write})=>{
@@ -563,6 +601,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   'timeline.render':(input: TimelineMutationInput,options: unknown={})=>{
    assertProjectStore(store);
    const outputLocale = (options as {outputLocale?: unknown} | null)?.outputLocale;
+   if(format5Store())return renderFormat5(input,outputLocale);
    const invoke=()=>{assertProjectStore(store);beforeEffect?.();return input.exportSettings===undefined?render(input,undefined,outputLocale):exportAdmission.render(input,options,{
    prepare:()=>{
     const result=transaction<{snapshot: unknown;mode?: string;replayed?: boolean;response?: unknown}>('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));
