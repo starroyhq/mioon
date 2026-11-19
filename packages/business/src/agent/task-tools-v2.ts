@@ -599,11 +599,11 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
   for(const tool of definitions){const reason=FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation];if(reason!==undefined)tool.unavailableReason=reason;}
  }
- if(frameTransaction)for(const operation of mioCanvasCopyOperations){
+ if(frameTransaction&&!format5)for(const operation of mioCanvasCopyOperations){
   definitions.push({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='canvas.copy.snapshot'?'复制当前画板的明确选区，返回本窗口内可粘贴的快照句柄。':operation==='canvas.paste'?'把本窗口复制快照粘贴到指定视口内，可以整体撤销。':'为当前明确选区创建副本，可以整体撤销。',
    parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk:operation==='canvas.copy.snapshot'?'read_only':'local_reversible',receipt:'atomic canvas step',recovery:'inspect retained completion; never repeat unknown paste',undo:operation==='canvas.copy.snapshot'?'unavailable':'single canvas compensation'});
  }
- if(frameTransaction)for(const operation of mioCanvasOperations){
+ if(frameTransaction&&!format5)for(const operation of mioCanvasOperations){
   definitions.push({name:mioCanvasToolName(operation),operation,description:canvasToolDescriptions[operation],parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk:'local_reversible',receipt:'atomic task step and canvas change',recovery:'inspect the original task step; never repeat unknown execution',undo:'reverse only this canvas edit'});
  }
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
@@ -647,7 +647,10 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const catalogProfile=format5?'format5':frameProject?'format4':'native';
  const {generationAvailability}=services;
  const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject,format5});
- const diagnosticList=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
+ const diagnosticList=()=>{const base=listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
+  if(!format5)return base;
+  const sequenceOnly=listAgentTaskTools(false,true).filter(tool=>['sequence.tool.edit','sequence.tool.undo','sequence.inspect'].includes(tool.operation));
+  return [...base,...sequenceOnly];};
  function generationServiceIssue({operation,input}:PreparedAgentTaskTool):typeof GENERATION_SERVICE_UNAVAILABLE|'IMAGE_SETTINGS_SELECTION_REQUIRED'|undefined{
   if(operation!=='generation.submit'&&operation!=='image.generate')return;
   if(input.providerId==='mock')return generationAvailability.mockAllowed?undefined:GENERATION_SERVICE_UNAVAILABLE;
@@ -794,14 +797,14 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
-  if(!parsed.success)fail('VALIDATION_ERROR','序列撤销参数无效：只需要一个 actionId');
+  if(!parsed.success)fail('VALIDATION_ERROR','序列撤销参数无效：actionId 可选；省略时撤销栈顶 Mio 动作');
   const plan=prepareMioSequenceUndo(store,projectId,randomUUID(),parsed.data.actionId);
   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,sequence:{plan,action:'undo'}};
  }
 function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester}):PreparedAgentTaskTool{
+  operation=taskToolOperation(operation);
  if(operation==='sequence.tool.edit'||operation==='sequence.tool.undo')return prepareMioSequence(operation,projectId,input);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
-  operation=taskToolOperation(operation);
   if(operation==='asset.import'){
    const parsed=mioAssetImportInputSchema.safeParse(input);
    if(!parsed.success)fail('VALIDATION_ERROR','请指定项目相对文件或用户已选择的句柄');
@@ -1017,7 +1020,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
      ? applyMioSequenceUndo(store,prepared.sequence.plan as MioSequenceUndoPlan)
      : commitMioSequenceAction(store,prepared.sequence.plan as MioSequencePlan);
    const impact=receipt.affected;
-   const result=json({action:prepared.sequence.action,status:receipt.status,actionId:receipt.actionId,
+   const result=json({action:prepared.sequence.action,status:receipt.status,
      affected:impact,history:{position:receipt.history.position,revision:receipt.history.revision},
      ...(prepared.sequence.summary?{planned:prepared.sequence.summary.counts}:{})});
    return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:false};

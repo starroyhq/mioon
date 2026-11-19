@@ -124,11 +124,13 @@ export interface MioSequenceUndoPlan {
 /** D5: Mio undo addresses its own action id through the same inverse-patch
  * history transaction. It never runs when the shared cursor moved, so a request
  * that already compensated cannot compensate again. */
-export function prepareMioSequenceUndo(store: ProjectStore, projectId: string, requestId: string, actionId: string): MioSequenceUndoPlan {
+export function prepareMioSequenceUndo(store: ProjectStore, projectId: string, requestId: string, requestedActionId?: string): MioSequenceUndoPlan {
   requireF5(store);
   projectCheck(store, projectId);
   const history = readSequenceEditHistory(store);
   const entry = history.undo;
+  const actionId = requestedActionId ?? entry?.actionId;
+  if (!actionId) throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '还没有可撤销的 Mio 动作。', 409, {});
   const target = entry ? readSequenceEditHistoryEntry(store, entry.actionId) : null;
   if (target && target.origin !== 'mio') throw new AppError('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步不是 Mio 动作。', 409, {actionId});
   if (!entry || entry.actionId !== actionId) {
