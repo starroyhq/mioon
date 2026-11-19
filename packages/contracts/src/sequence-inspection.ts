@@ -2,6 +2,7 @@
  * A page is bound to one frozen snapshot id; continuing with a cursor from a
  * different snapshot is rejected so the model never stitches mismatched reads. */
 import {z} from 'zod';
+import type {ChainReferenceRole} from './board-sequence.ts';
 
 const uuid = z.string().uuid();
 export const SEQUENCE_INSPECTION_LIMITS = Object.freeze({maxLimit: 50, maxCursorBytes: 512});
@@ -59,4 +60,64 @@ export interface SequenceInspectionPage {
   readonly differences: readonly SequenceInspectionDiff[];
   readonly freeNodeIds: readonly string[];
   readonly nextCursor: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Live generation-input projection (RI-b property panel)
+// ---------------------------------------------------------------------------
+
+export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({entries: 64});
+export const sequenceGenerationInputSchemas = Object.freeze({
+  'sequence.generation-inputs.get': z.object({
+    projectId: uuid, shotId: uuid,
+    connectionId: uuid.optional(), configurationRevision: z.number().int().positive().optional(),
+    modelEntryId: uuid.optional(),
+  }).strict().superRefine((value, context) => {
+    const triple = [value.connectionId, value.configurationRevision, value.modelEntryId];
+    const supplied = triple.filter(item => item !== undefined).length;
+    if (supplied !== 0 && supplied !== 3) {
+      context.addIssue({code: z.ZodIssueCode.custom, path: ['connectionId'],
+        message: 'A video connection needs connectionId, configurationRevision and modelEntryId together.'});
+    }
+  }),
+});
+export type SequenceGenerationInputRequest = z.infer<(typeof sequenceGenerationInputSchemas)['sequence.generation-inputs.get']>;
+
+export type SequenceGenerationInputMode = 'text' | 'frames' | 'references';
+export type SequenceGenerationInputStatus = 'used' | 'unsupported';
+/** One connected input as the property panel shows it. `label` is already
+ * resolved (node/asset/subject name plus version) and `reason` is a stable code
+ * the browser localizes; unknown roles never disappear from the list. */
+export interface SequenceGenerationInputEntryView {
+  readonly source: 'edge' | 'subject';
+  readonly edgeId?: string;
+  readonly bindingId?: string;
+  readonly sourceNodeId?: string;
+  readonly sourceKind: 'image' | 'video' | 'audio' | 'previs' | 'subject';
+  readonly role: ChainReferenceRole;
+  readonly appliedRole?: 'first_frame' | 'last_frame' | 'reference_image' | 'reference_audio';
+  readonly status: SequenceGenerationInputStatus;
+  readonly reason?: string;
+  readonly label: string;
+  readonly subjectVersionNumber?: number;
+  readonly orderIndex: number;
+  readonly primary?: boolean;
+}
+export interface SequenceGenerationInputServiceView {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly modelName: string;
+  readonly profileId: string;
+  readonly profileVersion: string;
+}
+export interface SequenceGenerationInputView {
+  readonly projectId: string;
+  readonly shotId: string;
+  readonly shotRevision: number;
+  readonly mode: SequenceGenerationInputMode;
+  readonly service: SequenceGenerationInputServiceView | null;
+  readonly entries: readonly SequenceGenerationInputEntryView[];
+  readonly usedCount: number;
+  readonly unsupportedCount: number;
+  readonly primaryEdgeId: string | null;
 }

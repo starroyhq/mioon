@@ -27,7 +27,10 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {Format5Edge} from '../../contracts/src/project-format5.ts';
 import {format5EdgeSchema} from '../../contracts/src/project-format5.ts';
-import type {ChainReferenceRole} from '../../contracts/src/board-sequence.ts';
+import type {ChainReferenceRole, ReferenceSourceKind} from '../../contracts/src/board-sequence.ts';
+import {FRAME_REFERENCE_ROLES, REFERENCE_SOURCE_ROLES, defaultReferenceRole, referenceRoleAllowed} from '../../contracts/src/board-sequence.ts';
+import type {SequenceGenerationInputEntryView, SequenceGenerationInputMode, SequenceGenerationInputStatus,
+  SequenceGenerationInputView} from '../../contracts/src/sequence-inspection.ts';
 import type {
   ReferenceEdgeOperation, SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope,
   SequenceEditExpectedTarget, SequenceEditImpact, SequenceEditStateDelta, SequenceEditTimelineDelta,
@@ -86,40 +89,18 @@ function filmRoot(store: ProjectStore): string {
 // Source nodes, default roles and the persisted reference edge
 // ---------------------------------------------------------------------------
 
-export type ReferenceSourceKind = 'image' | 'video' | 'audio' | 'previs';
-
-/** Roles each source type can actually carry. Values are the stored connector
- * roles, independent of the role a provider adapter maps them to. */
-export const REFERENCE_ROLES_BY_SOURCE: Readonly<Record<ReferenceSourceKind, readonly ChainReferenceRole[]>> = Object.freeze({
-  image: Object.freeze(['first_frame', 'last_frame', 'reference_image', 'composition'] as const),
-  video: Object.freeze(['reference_video'] as const),
-  audio: Object.freeze(['reference_audio'] as const),
-  previs: Object.freeze(['composition', 'first_frame', 'reference_image'] as const),
-});
-
-const DEFAULT_REFERENCE_ROLE: Readonly<Record<ReferenceSourceKind, ChainReferenceRole>> = Object.freeze({
-  image: 'first_frame', video: 'reference_video', audio: 'reference_audio', previs: 'composition',
-});
-
-const allRoles = new Set<string>(Object.values(REFERENCE_ROLES_BY_SOURCE).flat());
-
-export function isChainReferenceRole(value: unknown): value is ChainReferenceRole {
-  return typeof value === 'string' && allRoles.has(value);
-}
-
-export function defaultReferenceRole(kind: ReferenceSourceKind): ChainReferenceRole {
-  return DEFAULT_REFERENCE_ROLE[kind];
-}
-
-export function referenceRoleAllowed(kind: ReferenceSourceKind, role: ChainReferenceRole): boolean {
-  return REFERENCE_ROLES_BY_SOURCE[kind].includes(role);
-}
+/** The role table is shared with the browser (`board-sequence.ts`) so the role
+ * menu, defaults and the generation plan can never disagree. Re-exported here to
+ * keep this module's existing service imports stable. */
+export type {ReferenceSourceKind} from '../../contracts/src/board-sequence.ts';
+export const REFERENCE_ROLES_BY_SOURCE = REFERENCE_SOURCE_ROLES;
 
 /** The frozen asset evidence one reference edge (or subject version) carries. */
 export interface ReferenceSourceAsset {
   readonly assetId: string;
   readonly sha256: string;
   readonly mimeType: string;
+  readonly assetName?: string;
   readonly sizeBytes?: number;
   readonly width?: number;
   readonly height?: number;
@@ -129,6 +110,9 @@ export interface ReferenceSourceAsset {
 export interface ResolvedReferenceSource extends ReferenceSourceAsset {
   readonly nodeId: string;
   readonly kind: ReferenceSourceKind;
+  /** Already-resolved card/asset name for the property panel; the service plan
+   * never asks the browser to look up owners again. */
+  readonly label: string;
 }
 
 function sourceKindOf(value: unknown): ReferenceSourceKind | 'subject_card' | null {
@@ -169,6 +153,7 @@ function assetMetadata(store: ProjectStore, assetId: string, expectedPrefix: str
   if (typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(asset.sha256)) referenceInvalid('参考素材缺少可信指纹', {assetId});
   const duration = Number(asset.durationSeconds ?? asset.duration);
   return {assetId, sha256: asset.sha256, mimeType,
+    ...(typeof asset.name === 'string' && asset.name ? {assetName: asset.name} : {}),
     ...(Number.isSafeInteger(asset.sizeBytes) && asset.sizeBytes > 0 ? {sizeBytes: Number(asset.sizeBytes)} : {}),
     ...(Number.isInteger(asset.width) && Number.isInteger(asset.height) ? {width: Number(asset.width), height: Number(asset.height)} : {}),
     ...(Number.isFinite(duration) && duration > 0 ? {durationSeconds: duration} : {})};
@@ -202,9 +187,12 @@ export function resolveReferenceSource(store: ProjectStore, nodeId: string): Res
   if (kind === 'subject_card') {
     referenceInvalid('主体卡连线走主体绑定（subject.binding）动作，不重复建引用边', {nodeId, reason: 'SUBJECT_BINDING_FAMILY'});
   }
-  if (kind === 'previs') return {nodeId, kind, ...resolvePrevisOutputAsset(store, nodeId)};
+  const nodeLabel = typeof node.label === 'string' && node.label ? node.label
+    : typeof node.name === 'string' && node.name ? node.name : '';
+  if (kind === 'previs') return {nodeId, kind, label: nodeLabel || nodeId, ...resolvePrevisOutputAsset(store, nodeId)};
   if (!isUuid(node.assetId)) referenceInvalid('素材节点还没有可用的托管素材', {nodeId});
-  return {nodeId, kind, ...assetMetadata(store, node.assetId, `${kind}/`)};
+  const asset = assetMetadata(store, node.assetId, `${kind}/`);
+  return {nodeId, kind, label: nodeLabel || asset.assetName || nodeId, ...asset};
 }
 
 function referenceEdgeOf(store: ProjectStore, edgeId: string): {row: Row; edge: ReferenceEdge} | null {
@@ -245,7 +233,7 @@ function compareReferenceEdges(left: ReferenceEdge, right: ReferenceEdge): numbe
 }
 
 const REFERENCE_EDGE_LIMIT = 48;
-const FRAME_ROLES = new Set<ChainReferenceRole>(['first_frame', 'last_frame']);
+const FRAME_ROLES = new Set<ChainReferenceRole>(FRAME_REFERENCE_ROLES);
 
 function assertRoleCardinality(store: ProjectStore, shotId: string, role: ChainReferenceRole,
   options: {readonly exceptEdgeId?: string} = {}): void {
@@ -311,7 +299,9 @@ function shotProjection(store: ProjectStore, shotId: string, pending: {
 export type ReferenceEdgeCommand =
   | {readonly kind: 'attach'; readonly edgeId: string; readonly shotId: string; readonly sourceNodeId: string; readonly role?: ChainReferenceRole}
   | {readonly kind: 'set-role'; readonly edgeId: string; readonly shotId: string; readonly role: ChainReferenceRole}
-  | {readonly kind: 'detach'; readonly edgeId: string; readonly shotId: string};
+  | {readonly kind: 'detach'; readonly edgeId: string; readonly shotId: string}
+  /** RI-b primary-image selection: complete order of one shot's material lines. */
+  | {readonly kind: 'reorder'; readonly shotId: string; readonly edgeIds: readonly string[]};
 
 function operationOf(command: ReferenceEdgeCommand): ReferenceEdgeOperation {
   switch (command.kind) {
@@ -320,6 +310,7 @@ function operationOf(command: ReferenceEdgeCommand): ReferenceEdgeOperation {
     case 'set-role': return {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: command.edgeId,
       shotId: command.shotId, role: command.role}};
     case 'detach': return {kind: 'reference-edge', edit: {kind: 'detach', edgeId: command.edgeId, shotId: command.shotId}};
+    case 'reorder': return {kind: 'reference-edge', edit: {kind: 'reorder', shotId: command.shotId, edgeIds: command.edgeIds}};
   }
 }
 
@@ -337,15 +328,20 @@ export function buildReferenceEdgeEnvelope(store: ProjectStore, command: Referen
   const sync = row(store, 'SELECT revision FROM project.sequence_sync_state');
   const targets: SequenceEditExpectedTarget[] = [{kind: 'shot', id: command.shotId,
     revision: targetRevision(store, 'shot', command.shotId)}];
-  const existing = command.kind === 'attach' ? null : referenceEdgeOf(store, command.edgeId);
-  if (command.kind !== 'attach' && !existing) referenceInvalid('引用线不存在', {edgeId: command.edgeId});
-  if (existing) {
+  const existing = command.kind === 'set-role' || command.kind === 'detach' ? referenceEdgeOf(store, command.edgeId) : null;
+  if ((command.kind === 'set-role' || command.kind === 'detach') && !existing) referenceInvalid('引用线不存在', {edgeId: command.edgeId});
+  if (existing && (command.kind === 'set-role' || command.kind === 'detach')) {
     if (existing.edge.target !== command.shotId) referenceInvalid('引用线不属于这个镜头', {edgeId: command.edgeId, shotId: command.shotId});
     if ('subjectBindingId' in existing.edge) referenceInvalid('主体引用边走主体绑定动作', {edgeId: command.edgeId, reason: 'SUBJECT_BINDING_FAMILY'});
-    if ('sourceAssetId' in existing.edge) { /* material reference identity is present */ }
+    if (!('sourceAssetId' in existing.edge)) referenceInvalid('引用线缺少素材身份', {edgeId: command.edgeId});
     targets.push({kind: 'edge', id: command.edgeId, revision: targetRevision(store, 'edge', command.edgeId)});
   }
-  const impact: SequenceEditImpact = {nodeIds: [command.shotId], edgeIds: [command.edgeId],
+  if (command.kind === 'reorder') for (const edgeId of command.edgeIds) {
+    targets.push({kind: 'edge', id: edgeId, revision: targetRevision(store, 'edge', edgeId)});
+  }
+  const impactedEdgeIds = command.kind === 'reorder' ? [...command.edgeIds]
+    : command.kind === 'attach' || command.kind === 'set-role' || command.kind === 'detach' ? [command.edgeId] : [];
+  const impact: SequenceEditImpact = {nodeIds: [command.shotId], edgeIds: impactedEdgeIds,
     mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []};
   const edges = command.kind === 'attach' ? [{id: command.edgeId, fromId: command.sourceNodeId, toId: command.shotId}] : [];
   return {
@@ -416,6 +412,32 @@ export function planReferenceEdgeAction(store: ProjectStore, envelope: SequenceE
       after: stateDelta({writes: [referenceEntity(edge), ...(projected.shot ? [shotEntity(projected.shot)] : [])], removals: []}),
     };
   }
+  if (edit.kind === 'reorder') {
+    liveShot(store, edit.shotId);
+    if (edit.edgeIds.length === 0 || new Set(edit.edgeIds).size !== edit.edgeIds.length) {
+      referenceInvalid('引用线顺序清单无效', {shotId: edit.shotId, reason: 'ORDER_SET_MISMATCH'});
+    }
+    const edges = readShotReferenceEdges(store, edit.shotId);
+    const byId = new Map(edges.map(edge => [edge.id, edge] as const));
+    if (edit.edgeIds.length !== edges.length || edit.edgeIds.some(edgeId => !byId.has(edgeId))) {
+      referenceInvalid('引用线顺序清单与当前连线不一致，请重新读取', {shotId: edit.shotId, reason: 'ORDER_SET_MISMATCH'});
+    }
+    const next: MaterialReferenceEdge[] = edit.edgeIds.map((edgeId, index) => {
+      const current = byId.get(edgeId)!;
+      const updated = {...current, orderIndex: index} as MaterialReferenceEdge;
+      const parsed = format5EdgeSchema.safeParse(updated);
+      if (!parsed.success || parsed.data.kind !== 'reference' || !('sourceAssetId' in parsed.data)) {
+        referenceInvalid('引用线内容无效', {edgeId});
+      }
+      return parsed.data;
+    });
+    const changed = next.some(edge => byId.get(edge.id)?.orderIndex !== edge.orderIndex);
+    if (!changed) return {before: stateDelta(EMPTY_BOARD()), after: stateDelta(EMPTY_BOARD())};
+    return {
+      before: stateDelta({writes: edit.edgeIds.map(edgeId => referenceEntity(byId.get(edgeId)!)), removals: []}),
+      after: stateDelta({writes: next.map(referenceEntity), removals: []}),
+    };
+  }
   const existing = referenceEdgeOf(store, edit.edgeId);
   if (!existing) referenceInvalid('引用线不存在', {edgeId: edit.edgeId});
   if (existing.edge.target !== edit.shotId) referenceInvalid('引用线不属于这个镜头', {edgeId: edit.edgeId, shotId: edit.shotId});
@@ -484,6 +506,8 @@ export interface Format5ReferenceCandidate {
   readonly height?: number;
   readonly durationSeconds?: number;
   readonly orderIndex: number;
+  readonly label: string;
+  readonly subjectVersionNumber?: number;
   readonly subjectId?: string;
   readonly subjectVersionId?: string;
   readonly bindingMode?: 'follow' | 'locked';
@@ -512,21 +536,27 @@ export function readFormat5ShotReferenceCandidates(store: ProjectStore,
       const resolved = kind === 'previs'
         ? resolvePrevisOutputAsset(store, nodeId)
         : assetMetadata(store, edge.sourceAssetId, `${kind}/`);
+      const nodeLabel = typeof node.label === 'string' && node.label ? node.label
+        : typeof node.name === 'string' && node.name ? node.name : '';
       candidates.push({source: 'edge', edgeId: edge.id, sourceNodeId: nodeId, role: edge.role, sourceKind: kind,
-        orderIndex: edge.orderIndex ?? Number.MAX_SAFE_INTEGER,
+        orderIndex: edge.orderIndex ?? Number.MAX_SAFE_INTEGER, label: nodeLabel || resolved.assetName || nodeId,
         assetId: resolved.assetId, sha256: resolved.sha256, mimeType: resolved.mimeType,
         ...(resolved.sizeBytes !== undefined ? {sizeBytes: resolved.sizeBytes} : {}),
         ...(resolved.width !== undefined ? {width: resolved.width, height: resolved.height} : {}),
         ...(resolved.durationSeconds !== undefined ? {durationSeconds: resolved.durationSeconds} : {})});
     }
     for (const binding of resolveGenerationSubjectInputs(store, [shotId])) {
-      const version = (store.db.prepare('SELECT assetId FROM project.subject_versions WHERE id=? AND projectId=?')
+      const version = (store.db.prepare('SELECT assetId,number FROM project.subject_versions WHERE id=? AND projectId=?')
         .get(binding.subjectVersionId, store.projectId) as Row | undefined);
       if (!version || !isUuid(version.assetId)) referenceInvalid('主体版本缺少素材', {bindingId: binding.bindingId});
+      const subject = store.db.prepare('SELECT name FROM project.subjects WHERE id=? AND projectId=?')
+        .get(binding.subjectId, store.projectId) as Row | undefined;
+      const subjectName = typeof subject?.name === 'string' && subject.name ? subject.name : binding.subjectId;
       const asset = assetMetadata(store, String(version.assetId), 'image/');
       candidates.push({source: 'subject', bindingId: binding.bindingId, role: binding.role === 'style' ? 'style_reference' : 'subject_reference',
         sourceKind: 'subject', subjectId: binding.subjectId, subjectVersionId: binding.subjectVersionId,
         bindingMode: binding.mode, orderIndex: Number.MAX_SAFE_INTEGER,
+        label: subjectName, ...(Number.isSafeInteger(version.number) ? {subjectVersionNumber: Number(version.number)} : {}),
         assetId: asset.assetId, sha256: asset.sha256, mimeType: asset.mimeType,
         ...(asset.sizeBytes !== undefined ? {sizeBytes: asset.sizeBytes} : {}),
         ...(asset.width !== undefined ? {width: asset.width, height: asset.height} : {}),
@@ -803,4 +833,57 @@ export function readFrozenFormat5GenerationInputs(snapshot: unknown): Format5Ref
 /** True when the snapshot belongs to the format-5 board-input path. */
 export function hasFrozenFormat5GenerationInputs(snapshot: unknown): boolean {
   return readFrozenFormat5GenerationInputs(snapshot) !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Property-panel projection (RI-b)
+// ---------------------------------------------------------------------------
+
+export interface ReadFormat5GenerationInputOptions {
+  /** Exact selected video connection/model; omitted while no service is chosen,
+   * which reports every input as unsupported with SERVICE_NOT_SELECTED. */
+  readonly binding?: VideoExecutionBinding;
+  /** Explicit primary image chosen in the panel (edge or binding id). */
+  readonly primaryReferenceId?: string;
+}
+
+/** Live generation-input projection shared by the board property panel and the
+ * read-only RPC. Labels are resolved here so the browser never invents owners or
+ * subject versions; hashes stay in the frozen job snapshot, not in this view. */
+export function readFormat5GenerationInputView(store: ProjectStore, shotId: string,
+  options: ReadFormat5GenerationInputOptions = {}): SequenceGenerationInputView {
+  const plan = planFormat5GenerationInputs(store, shotId, {
+    ...(options.binding ? {binding: options.binding} : {}),
+    ...(options.primaryReferenceId ? {primaryReferenceId: options.primaryReferenceId} : {}),
+  });
+  const profile = options.binding ? videoInputProfile(options.binding) : null;
+  const primaryEdgeId = plan.images.find(image => image.role === 'reference_image')?.edgeId ?? null;
+  const entries: SequenceGenerationInputEntryView[] = plan.entries.map(entry => ({
+    source: entry.source,
+    ...(entry.edgeId ? {edgeId: entry.edgeId} : {}),
+    ...(entry.bindingId ? {bindingId: entry.bindingId} : {}),
+    ...(entry.sourceNodeId ? {sourceNodeId: entry.sourceNodeId} : {}),
+    sourceKind: entry.sourceKind,
+    role: entry.role,
+    ...(entry.appliedRole ? {appliedRole: entry.appliedRole} : {}),
+    status: entry.status,
+    ...(entry.reason ? {reason: entry.reason} : {}),
+    label: entry.label,
+    ...(entry.subjectVersionNumber !== undefined ? {subjectVersionNumber: entry.subjectVersionNumber} : {}),
+    orderIndex: entry.orderIndex,
+    ...(primaryEdgeId !== null && entry.edgeId === primaryEdgeId ? {primary: true} : {}),
+  }));
+  return {
+    projectId: store.projectId,
+    shotId,
+    shotRevision: plan.shotRevision,
+    mode: plan.mode,
+    service: options.binding && profile ? {providerId: options.binding.providerId,
+      modelId: options.binding.model.modelId, modelName: options.binding.model.name ?? options.binding.model.modelId,
+      profileId: profile.profileId, profileVersion: profile.profileVersion} : null,
+    entries,
+    usedCount: plan.entries.filter(entry => entry.status === 'used').length,
+    unsupportedCount: plan.unsupported,
+    primaryEdgeId,
+  };
 }

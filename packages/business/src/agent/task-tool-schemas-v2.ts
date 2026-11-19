@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="374e8cea8c8bd98ea417e1c5003c96a154b9b2c01d81e2ee89f74a61980a4868";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="d6f2031106fe5128d480669a36538831bffb9d6f5994aebaa14610de6feaf1bb";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1066,6 +1066,34 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "kind",
            "edgeId",
            "shotId"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "reorder"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "edgeIds": {
+            "type": "array",
+            "items": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 48
+           }
+          },
+          "required": [
+           "kind",
+           "shotId",
+           "edgeIds"
           ],
           "additionalProperties": false
          }
@@ -2535,6 +2563,34 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "shotId"
             ],
             "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "reorder"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "edgeIds": {
+              "type": "array",
+              "items": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "minItems": 1,
+              "maxItems": 48
+             }
+            },
+            "required": [
+             "kind",
+             "shotId",
+             "edgeIds"
+            ],
+            "additionalProperties": false
            }
           ]
          }
@@ -3877,6 +3933,32 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    }
   },
   "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.generation-inputs.get": {
+  "type": "object",
+  "properties": {
+   "shotId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "connectionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "configurationRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "modelEntryId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "shotId"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
