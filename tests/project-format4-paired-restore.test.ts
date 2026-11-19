@@ -134,7 +134,8 @@ for (const [label, backupHistory, currentHistory] of [
     const f = fixture(t, backupHistory), before = f.backupBytes();
     if (!currentHistory) rmSync(f.historyFile);
     const displaced = f.liveBytes();
-    assert.throws(() => openProjectStore(f.openOptions), {code: 'PROJECT_FORMAT_NEWER'});
+    // The current default profile accepts the released format-4 pair; the
+    // paired restore itself remains the only writer.
     const result = restoreFormat4Backup(f.restoreOptions);
     assertResult(f, backupHistory, result);
     assertRestored(f, backupHistory);
