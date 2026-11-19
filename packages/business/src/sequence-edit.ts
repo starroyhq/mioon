@@ -811,7 +811,8 @@ export function readSequenceEditHistory(store: ProjectStore): SequenceEditHistor
   const undoConflict = stale(undoEntry, undoEntry?.afterPatch ?? null);
   const redoConflict = stale(redoEntry, redoEntry?.beforePatch ?? null);
   const action = (entry: SequenceEditHistoryEntry | null) => entry
-    ? {actionId: entry.actionId, operation: entry.operation, affected: entryAffected(entry)} : null;
+    ? {actionId: entry.actionId, operation: entry.operation, affected: entryAffected(entry),
+      ...(entry.origin === 'mio' ? {origin: 'mio' as const} : {})} : null;
   const atEarliest = floor === null || prepared.state.position < floor;
   return {...prepared.view, projectId: store.projectId, undo: action(undoEntry), redo: action(redoEntry),
     conflict: undoConflict || redoConflict, undoConflict, redoConflict,

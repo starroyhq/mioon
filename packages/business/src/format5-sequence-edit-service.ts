@@ -126,9 +126,9 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const state = historyState(store);
     const edgeId = (input.allocation?.edges ?? []).find((edge: Row) => uuid(edge?.id))?.id as string | undefined
       ?? randomUUID();
-    const envelope = buildSubjectBindingEnvelope(store as never, command as never, {
+    const envelope: SequenceEditEnvelope = {...buildSubjectBindingEnvelope(store as never, command as never, {
       requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
-      historyPosition: state.position, historyRevision: state.revision, edgeId});
+      historyPosition: state.position, historyRevision: state.revision, edgeId}), ...(input.origin ? {origin: input.origin} : {})};
     try { planSubjectBindingAction(store as never, envelope); }
     catch (error) {
       if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
@@ -142,7 +142,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const command = commandFromIntent(intents[0]!);
     if (!command) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
     const result = previewSequenceSync(store, command, {requestId: input.requestId,
-      ...(input.actionId ? {actionId: input.actionId} : {})}) as Row;
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {})}) as Row;
     if (result.ok === false) return failure(String(result.code), (result.ids as string[]) ?? []);
     return result;
   }
@@ -171,7 +171,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const envelope: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
       actionId: input.actionId ?? randomUUID(), requestId: input.requestId, originSide,
-      filmId: context.rootNodeId, intents,
+      filmId: context.rootNodeId, intents, ...(input.origin ? {origin: input.origin} : {}),
       baseline: {contentRevision: content, timelineRevision: context.timeline.revision,
         syncRevision: context.syncRevision, historyPosition: state.position,
         historyRevision: state.revision, targets: []},

@@ -277,6 +277,8 @@ export interface SequenceEditEnvelope {
   readonly requestId: string;
   /** The surface the user acted in. The first intent belongs to this side. */
   readonly originSide: SequenceEditSide;
+  /** Who performed the action: user editing or the Mio task runtime (D5). */
+  readonly origin?: 'user' | 'mio';
   /** Active `sequence_root` node; 0.3.0 actions target one film root. */
   readonly filmId: string;
   readonly intents: readonly SequenceEditIntent[];
@@ -381,6 +383,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
   requestId: z.string().refine(isSequenceEditRequestId, 'Invalid request id'),
   originSide: z.enum(SEQUENCE_EDIT_SIDES),
+  origin: z.enum(['user', 'mio']).optional(),
   intents: z.array(intentSchema).max(SEQUENCE_EDIT_LIMITS.intents),
   subjectIntent: subjectIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
@@ -501,7 +504,7 @@ export interface SequenceEditHistoryEntry {
   readonly epoch: string;
   readonly position: number;
   readonly operation: string;
-  readonly origin: 'user';
+  readonly origin: 'user' | 'mio';
   readonly beforePatch: SequenceEditStateDelta;
   readonly afterPatch: SequenceEditStateDelta;
   readonly createdAt: string;
@@ -535,7 +538,7 @@ const stateDeltaSchema = z.object({board: boardDeltaSchema, timeline: timelineDe
 export const sequenceEditHistoryEntrySchema = z.object({
   actionId: uuidSchema, projectId: uuidSchema, epoch: uuidSchema, position: revisionSchema,
   operation: z.string().refine(value => sequenceEditUtf8Bytes(value) >= 1 && sequenceEditUtf8Bytes(value) <= SEQUENCE_EDIT_LIMITS.operationBytes),
-  origin: z.literal('user'),
+  origin: z.enum(['user', 'mio']),
   beforePatch: stateDeltaSchema, afterPatch: stateDeltaSchema,
   createdAt: z.string().regex(ISO_PATTERN),
 }).strict().refine(value => sequenceEditUtf8Bytes(JSON.stringify(value.beforePatch)) + sequenceEditUtf8Bytes(JSON.stringify(value.afterPatch)) <= SEQUENCE_EDIT_LIMITS.patchBytes,
@@ -632,6 +635,8 @@ export interface SequenceEditHistoryAction {
   readonly actionId: string;
   readonly operation: string;
   readonly affected: number;
+  /** Present only for Mio-origin actions (D5); user actions stay byte-identical. */
+  readonly origin?: 'user' | 'mio';
 }
 export interface SequenceEditHistoryView {
   readonly epoch: string;
@@ -671,7 +676,8 @@ export interface SequenceEditReceipt {
   readonly timelineRevision: number;
   readonly syncRevision: number;
 }
-export const sequenceEditHistoryActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema}).strict();
+export const sequenceEditHistoryActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema,
+  origin: z.enum(['user', 'mio']).optional()}).strict();
 const historyActionSchema = sequenceEditHistoryActionSchema;
 export const sequenceEditHistoryViewSchema = z.object({
   epoch: uuidSchema, position: sequenceSchema, revision: revisionSchema,

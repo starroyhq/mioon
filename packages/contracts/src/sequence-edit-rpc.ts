@@ -26,6 +26,7 @@ export const sequencePreviewRequestSchema = z.object({
   requestId: z.string().min(8).max(200),
   actionId: uuid.optional(),
   originSide: z.enum(['board', 'timeline']).optional(),
+  origin: z.enum(['user', 'mio']).optional(),
   intents: z.array(sequenceEditIntentPayloadSchema).min(1).max(64).optional(),
   subjectIntent: sequenceEditSubjectIntentSchema.optional(),
   allocation: allocationSchema.optional(),
