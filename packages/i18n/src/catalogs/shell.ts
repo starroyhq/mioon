@@ -699,12 +699,6 @@ const shellCoreMessages = {
     "en": "Project created",
     "ja": "プロジェクトを作成しました"
   },
-  "projects.createRejected": {
-    "zh-Hans": "新建请求未被接受，请核对输入后明确重试",
-    "zh-Hant": "新增請求未被接受，請核對輸入後明確重試",
-    "en": "The create request was not accepted. Check the input before explicitly retrying",
-    "ja": "作成リクエストは受理されませんでした。入力を確認してから明示的に再試行してください"
-  },
   "projects.createUnconfirmedKeep": {
     "zh-Hans": "新建结果尚未确认，请保留原窗口核对",
     "zh-Hant": "新增結果尚未確認，請保留原視窗核對",

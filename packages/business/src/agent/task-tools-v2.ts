@@ -71,7 +71,7 @@ import {canvasActiveCondition,canvasActiveEdgeCondition,hasCanvasArchives,isCanv
 import {hasRetainedCanvasDependency} from '../canvas-retained.ts';
 import type {CanvasTarget} from '../../../contracts/src/canvas-editing.ts';
 import {usesPrevisSchema,usesTimelineFrameTransaction} from '../store-capabilities.ts';
-import {AGENT_TASK_PREVIS_DESCRIPTIONS,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_PREVIS_INSPECT_PARAMETERS,AGENT_TASK_PREVIS_INSPECT_TOOL,AGENT_TASK_PREVIS_SCENE_PARAMETERS,agentTaskPrevisSceneFeedback,previsRequestedKeyframe,previsSceneCandidate,previsSceneForNode,previsTaskView} from './task-previs-v2.ts';
+import {AGENT_TASK_FORMAT5_PREVIS_SCENE_PARAMETERS,AGENT_TASK_PREVIS_DESCRIPTIONS,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_PREVIS_INSPECT_PARAMETERS,AGENT_TASK_PREVIS_INSPECT_TOOL,AGENT_TASK_PREVIS_SCENE_PARAMETERS,agentTaskPrevisSceneFeedback,previsRequestedKeyframe,previsSceneCandidate,previsSceneForNode,previsTaskView} from './task-previs-v2.ts';
 import type {TimelineRecord,TimelineClipRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from '../timeline-inputs.ts';
 import type {AgentTaskEffectOrigin,TaskChangeInput} from './task-effects-v2.ts';
 
@@ -582,6 +582,9 @@ import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.
 export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
   if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
+  // The scene may name a subject per mannequin/prop only in a format-5
+  // project; formats 3/4 keep the frozen reviewed tool shape (and fingerprints).
+  if(format5&&tool.operation==='previs.scene.set')return {...tool,parameters:AGENT_TASK_FORMAT5_PREVIS_SCENE_PARAMETERS};
   if(frameTransaction&&tool.operation.startsWith('previs.thumbnail.'))return {...tool,parameters:AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS[tool.operation]};
   if(frameTransaction&&tool.operation===FRAME_SET){
    const parameters=tool.parameters as {properties:Value};
