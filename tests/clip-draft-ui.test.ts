@@ -584,11 +584,13 @@ test('false navigation fence cannot clear an ordinary local form', async t => {
   assert.equal(await h.controller.discard(h.controller.capture(), () => false), false); assert.equal(h.controller.getState().raw.name, 'Keep local input'); assert.deepEqual(h.calls, []);
 });
 
-test('a save acknowledged after the timeline advanced keeps the draft and rebases onto the new base', async t => {
+test('a save acknowledged after only other clips changed keeps the draft and rebases onto the new base', async t => {
   const gate = deferred<ReturnType<typeof timeline>>(), h = harness(t); await h.controller.load(); h.controller.edit('name', 'Draft kept');
   let submitted!: Record<string, unknown>;
   const saving = h.controller.save(async (_id, patch) => { submitted = patch; return gate.promise; }); await tick();
-  h.controller.setContext({ ...h.ctx, timelineRevision: 9, saved: { ...raw, name: 'Someone else' } });
+  // Revision 9 only changed other clips: this clip's latest saved value still
+  // equals what the acknowledged save wrote.
+  h.controller.setContext({ ...h.ctx, timelineRevision: 9, saved: { ...raw, name: 'Draft kept' } });
   gate.resolve(timeline(submitted, 8)); await saving;
   assert.equal(h.controller.getState().conflict, true); assert.equal(h.controller.getState().canRebase, true);
   assert.equal(h.controller.getState().raw.name, 'Draft kept'); assert.equal(h.controller.getState().baseRevision, 7);
@@ -596,6 +598,34 @@ test('a save acknowledged after the timeline advanced keeps the draft and rebase
   assert.equal(h.controller.getState().conflict, false); assert.equal(h.controller.getState().baseRevision, 9);
   const result = await h.controller.save(async (_id, patch, base) => { assert.equal(base, 9); return timeline(patch, 10); });
   assert.equal((result as ReturnType<typeof timeline>).revision, 10);
+});
+
+test('a same-clip change after the acknowledged save refuses the rebase and is never overwritten', async t => {
+  const gate = deferred<ReturnType<typeof timeline>>(), h = harness(t); await h.controller.load(); h.controller.edit('name', 'Draft kept');
+  let submitted!: Record<string, unknown>;
+  const saving = h.controller.save(async (_id, patch) => { submitted = patch; return gate.promise; }); await tick();
+  // Revision 9 changed the same clip's gain elsewhere.
+  h.controller.setContext({ ...h.ctx, timelineRevision: 9, saved: { ...raw, name: 'Draft kept', gain: 0.5 } });
+  gate.resolve(timeline(submitted, 8)); await saving;
+  assert.equal(h.controller.getState().conflict, true); assert.equal(h.controller.getState().canRebase, false);
+  assert.equal(h.controller.rebaseDraft(), false);
+  let executed = false;
+  const result = await h.controller.save(async () => { executed = true; return timeline({}, 10); });
+  assert.equal(result, null); assert.equal(executed, false, 'no whole-clip save may overwrite the other writer gain');
+  assert.equal(h.controller.getState().conflict, true); assert.equal(h.controller.getState().raw.gain, 1);
+});
+
+test('a same-clip change after the rebase was offered invalidates it before the user can confirm', async t => {
+  const gate = deferred<ReturnType<typeof timeline>>(), h = harness(t); await h.controller.load(); h.controller.edit('name', 'Draft kept');
+  let submitted!: Record<string, unknown>;
+  const saving = h.controller.save(async (_id, patch) => { submitted = patch; return gate.promise; }); await tick();
+  h.controller.setContext({ ...h.ctx, timelineRevision: 9, saved: { ...raw, name: 'Draft kept' } });
+  gate.resolve(timeline(submitted, 8)); await saving;
+  assert.equal(h.controller.getState().canRebase, true);
+  h.controller.setContext({ ...h.ctx, timelineRevision: 10, saved: { ...raw, name: 'Draft kept', gain: 0.5 } });
+  assert.equal(h.controller.getState().conflict, true); assert.equal(h.controller.getState().canRebase, false);
+  assert.equal(h.controller.rebaseDraft(), false);
+  assert.equal(h.controller.getState().conflict, true);
 });
 
 test('a changed source cannot be rebased and keeps the conflict', async t => {
