@@ -72,7 +72,8 @@ export async function createEditUiWireFixture(): Promise<{store: ProjectStore; s
     store.put('versions', {id: WIRE_IDS.versionB, projectId, jobId: id(72), shotId: WIRE_IDS.shotB, number: 2,
       assetId: WIRE_IDS.assetB, sha256: sha('b'), createdAt: at});
     const shots = [
-      {id: WIRE_IDS.shotA, projectId, title: '窗口剪影', orderIndex: 0, selectedVersionId: WIRE_IDS.versionA, duration: 2, createdAt: at, updatedAt: at},
+      {id: WIRE_IDS.shotA, projectId, title: '窗口剪影', orderIndex: 0, selectedVersionId: WIRE_IDS.versionA, duration: 2, createdAt: at, updatedAt: at,
+        dialogue: [{id: id(91), text: '我们回不去了。'}]},
       {id: WIRE_IDS.shotB, projectId, title: '占位镜头', orderIndex: 1, selectedVersionId: null, duration: 1, createdAt: at, updatedAt: at},
     ];
     for (const shot of shots) store.put('shots', shot);

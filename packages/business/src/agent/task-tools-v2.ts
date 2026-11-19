@@ -785,6 +785,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if('fromId' in action){add('node',action.fromId);add('node',action.toId);}
    if('nodeId' in action)add('node',action.nodeId);
    if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
+   if(action.kind==='dialogue')add('shot',action.shotId);
    if(action.kind==='subject-binding'){
     if(action.edit.kind==='create'){add('shot',action.edit.shotId);add('subject',action.edit.subjectId);}
     else add('subject_binding',action.edit.bindingId);
@@ -792,7 +793,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
-   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties'].includes(action.kind);
+   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue'].includes(action.kind);
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,
      ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }

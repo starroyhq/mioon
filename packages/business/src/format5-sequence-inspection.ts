@@ -104,9 +104,15 @@ export function createSequenceInspectionService(store: ProjectStore): {handlers:
           ...(version ? {} : {})};
       });
       const inSync = !differences.some(diff => diff.id === nodeId || clips.some(clip => diff.id === clip.id));
+      const dialogue = Array.isArray(shot?.dialogue) && shot.dialogue.length > 0
+        ? (shot.dialogue as Row[]).filter(line => typeof line.id === 'string' && typeof line.text === 'string')
+          .map(line => ({id: String(line.id), text: String(line.text),
+            ...(typeof line.speakerSubjectId === 'string' ? {speakerSubjectId: line.speakerSubjectId} : {})}))
+        : undefined;
       segments.push({nodeId, kind, order: index, groupIds: [...new Set(group.map(clip => String((clip as Row).sequenceSource?.segmentGroupId)))],
         clipIds: group.map(clip => clip.id), startFrame: first.startFrame,
-        durationFrames: group.reduce((sum, clip) => sum + clip.durationFrames, 0), clips, inSync});
+        durationFrames: group.reduce((sum, clip) => sum + clip.durationFrames, 0), clips, inSync,
+        ...(dialogue && dialogue.length ? {dialogue} : {})});
     });
     const filtered = segments.filter(segment => segment.order >= after);
     const items = filtered.slice(0, limit);

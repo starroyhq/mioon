@@ -13,6 +13,7 @@ import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
+import type {SequenceEditDialogueEdit, SequenceEditDialogueIntent} from '../../contracts/src/sequence-edit.ts';
 import type {SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
@@ -68,6 +69,25 @@ function boardIntent(action: MioSequenceAction): SequenceEditIntent {
     default: throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '不是画板动作。', 409);
   }
 }
+/** DL-a: one shot's dialogue lines as the shared contract intent. The model
+ * names text/lines from `sequence.inspect`; line ids for new lines are generated
+ * here so a model never supplies row identities. */
+function dialogueIntent(action: Extract<MioSequenceAction, {kind: 'dialogue'}>): SequenceEditDialogueIntent {
+  const edits: SequenceEditDialogueEdit[] = action.edits.map(edit => {
+    switch (edit.kind) {
+      case 'add': return {kind: 'add' as const, shotId: action.shotId,
+        line: {id: randomUUID(), text: edit.text,
+          ...(edit.speakerSubjectId !== undefined && edit.speakerSubjectId !== null ? {speakerSubjectId: edit.speakerSubjectId} : {})},
+        ...(edit.beforeLineId === undefined ? {} : {beforeLineId: edit.beforeLineId})};
+      case 'update': return {kind: 'update' as const, shotId: action.shotId, lineId: edit.lineId,
+        ...(edit.text === undefined ? {} : {text: edit.text}),
+        ...(edit.speakerSubjectId === undefined ? {} : {speakerSubjectId: edit.speakerSubjectId})};
+      case 'remove': return {kind: 'remove' as const, shotId: action.shotId, lineId: edit.lineId};
+      case 'reorder': return {kind: 'reorder' as const, shotId: action.shotId, lineIds: edit.lineIds};
+    }
+  });
+  return {side: 'board', operation: {kind: 'dialogue', edits}};
+}
 function subjectIntent(action: Extract<MioSequenceAction, {kind: 'subject-binding'}>): SequenceEditSubjectIntent {
   const edit = action.edit.kind === 'create' ? {...action.edit, bindingId: randomUUID()} : action.edit;
   return {side: 'board', operation: {kind: 'subject-binding', edit} as SequenceEditSubjectIntent['operation']};
@@ -98,6 +118,7 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
   const request: Row = {projectId, requestId, origin: 'mio'};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
+  else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (['connect', 'disconnect', 'insert', 'delete-node'].includes(action.kind)) request.intents = [boardIntent(action)];
