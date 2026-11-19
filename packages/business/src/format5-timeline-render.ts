@@ -1,0 +1,106 @@
+/** FR-B: render/export projection for a format-5 project.
+ *
+ * The renderer consumes the legacy frozen snapshot shape while format 5 stores
+ * native clip/cue rows. This projects the assembled row timeline into that
+ * shape, strips the format-5-only fields the frozen schema does not allow, and
+ * refuses placeholders / pending too-short versions through the TSb export
+ * ticket rules before any media metadata is frozen.
+ */
+import {AppError} from '../../contracts/src/app-error.ts';
+import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
+import type {TimelineRecord, TimelineClipRecord, TimelineSubtitleCueRecord} from './timeline-inputs.ts';
+import {freezeTimelineSnapshot} from './timeline-inputs.ts';
+import type {ManagedAssetRecord} from './timeline-inputs.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
+import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
+import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
+import type {ProjectStore} from './project-file/store.ts';
+
+type Row = Record<string, unknown>;
+const sha256 = (value: unknown): boolean => typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
+const mediaMime = (value: unknown): boolean => typeof value === 'string' &&
+  ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4'].includes(value);
+/** Format-5 assets are native project rows, so render reads that same owned
+ * row instead of the legacy inspection graph (which is scoped to released
+ * formats). The locator still has to be one the project file already admits. */
+function readFormat5Asset(store: ProjectStore, assetId: string): ManagedAssetRecord | null {
+  const row = store.db.prepare('SELECT data FROM project.assets WHERE id=?').get(assetId) as {data?: unknown} | undefined;
+  if (typeof row?.data !== 'string') return null;
+  let value: Row;
+  try {value = JSON.parse(row.data) as Row;} catch {return null;}
+  if (value.projectId !== store.projectId || value.id !== assetId || !sha256(value.sha256) || !mediaMime(value.mimeType)) return null;
+  if (value.duration !== undefined && value.duration !== null && (typeof value.duration !== 'number' || !Number.isFinite(value.duration))) return null;
+  const reference = value.reference === undefined ? null : value.reference;
+  if (reference !== null) {
+    const parsed = mediaReferenceSchema.safeParse(reference);
+    if (!parsed.success || parsed.data.fullSha256 !== value.sha256 || parsed.data.sizeBytes !== value.sizeBytes) return null;
+  } else if (typeof value.relativePath !== 'string' || !value.relativePath.startsWith('media/')) return null;
+  return {...value, id: assetId} as unknown as ManagedAssetRecord;
+}
+export interface Format5RenderProjection {
+  readonly format5: Format5Timeline;
+  readonly legacy: TimelineRecord;
+  readonly assets: ReadonlyMap<string, ManagedAssetRecord>;
+}
+function stripClip(clip: Format5Timeline['clips'][number]): TimelineClipRecord {
+  const {sourceState: _state, sequenceSource: _sequence, anchor: _anchor, ...legacy} = clip as TimelineClipRecord & Row;
+  return legacy as TimelineClipRecord;
+}
+function stripCue(cue: Format5Cue): TimelineSubtitleCueRecord {
+  const {anchor: _anchor, dialogueRef: _dialogue, ...legacy} = cue as unknown as TimelineSubtitleCueRecord & Row;
+  return legacy as TimelineSubtitleCueRecord;
+}
+function exportRange(input: {exportRange?: unknown}): {startFrame: number; endFrame: number} | null {
+  if (input.exportRange === undefined) return null;
+  return input.exportRange as {startFrame: number; endFrame: number};
+}
+
+/** Pure projection read; no file/probe work and no write. */
+export function readFormat5RenderProjection(store: ProjectStore): Format5RenderProjection | null {
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  if (!timeline) return null;
+  const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
+  const legacyClips = clips.map(stripClip);
+  const cues = subtitles?.cues.map(stripCue) ?? [];
+  const legacy: TimelineRecord = {...header, clips: legacyClips,
+    ...(subtitles && cues.length ? {subtitles: {profileId: subtitles.profileId,
+      ...(subtitles.basisPresetId !== undefined ? {basisPresetId: subtitles.basisPresetId} : {}), cues}} : {})} as TimelineRecord;
+  const assets = new Map<string, ManagedAssetRecord>();
+  for (const clip of legacyClips) {
+    if (typeof clip.assetId !== 'string') throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线还有未生成片段，不能导出。', 409, {clipId: clip.id});
+    if (!assets.has(clip.assetId)) {
+      const asset = readFormat5Asset(store, clip.assetId);
+      if (!asset) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用。', 409, {clipId: clip.id});
+      assets.set(clip.assetId, asset as unknown as ManagedAssetRecord);
+    }
+  }
+  return {format5: timeline, legacy, assets};
+}
+
+/** Freeze the legacy render snapshot, refusing blocked exports first. */
+export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
+  readonly expectedRevision?: number;
+  readonly exportSettings?: unknown;
+  readonly exportRange?: unknown;
+  readonly deliveryName?: string;
+  readonly preflightSnapshotHash?: string;
+} = {}): unknown {
+  const projection = readFormat5RenderProjection(store);
+  if (!projection) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
+  const timeline = projection.format5;
+  if (input.expectedRevision !== undefined && input.expectedRevision !== timeline.revision) {
+    throw new AppError('REVISION_CONFLICT', '时间线已有新版本，请重新读取后再修改', 409,
+      {expectedRevision: input.expectedRevision, currentRevision: timeline.revision});
+  }
+  const rangeIssue = timelineExportRangeBoundsIssue(input, timeline.durationFrames);
+  if (rangeIssue) throw new AppError(rangeIssue.code, rangeIssue.message, rangeIssue.status);
+  const range = exportRange(input);
+  const blockers = format5ExportBlockersFromTimeline(store.db, timeline, range);
+  if (blockers.length) {
+    throw new AppError('EXPORT_BLOCKED', '时间线还有未生成片段或待选版本的片段，不能导出。', 409, {blockers});
+  }
+  if (!projection.legacy.clips.length) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
+  const frozen = freezeTimelineSnapshot(projection.legacy, projection.assets, input.exportSettings, input) as Row;
+  return frozen;
+}
