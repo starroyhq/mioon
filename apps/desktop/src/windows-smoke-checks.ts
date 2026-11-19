@@ -39,7 +39,7 @@ export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-dev
  'launcher-ui-ready','renderer-sandbox-and-origin','secure-memory-cookie','loopback-rpc-and-anonymous-denial',
  'renderer-network-window-permission-fences','private-discovery-acl','configured-windows-media-tools',
  'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','project-location-facts','project-location-paths',
- 'project-location-network','native-project-core-flows','project-core-create','project-core-export','project-core-open','write-report'] as const);
+ 'project-location-network','native-project-core-flows','project-core-create','project-core-export','project-core-open','project-core-reopen','write-report'] as const);
 
 interface CoreFlowOptions {app:App;session:Session|null;ready:BackendReady|null;smokeRoot:string;
  mark:(next:typeof WINDOWS_SMOKE_PHASES[number])=>Promise<void>}
@@ -75,6 +75,24 @@ async function runProjectCoreFlows({app,session,ready,smokeRoot,mark}:CoreFlowOp
  const image=await readFile(example);
  const asset=record(await request(projectAddress(projectId),'asset.import',{projectId,name:'smoke-import.png',mimeType:'image/png',dataBase64:image.toString('base64')}));
  assert.equal(asset.name,'smoke-import.png');assert.equal(asset.mimeType,'image/png');
+ const bridgeOpen=async():Promise<BrowserWindow>=>{
+  const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
+  const result=record(await launcher.webContents.executeJavaScript(`(async()=>{const recent=await window.__mioonProjectEntries.listRecent();
+   const entry=recent.registered.find(value=>value.project.projectId===${JSON.stringify(projectId)});if(!entry)return {status:'missing'};
+   const opened=await window.__mioonProjectEntries.openRecent({projectId:${JSON.stringify(projectId)},remember:false,entryToken:crypto.randomUUID()});
+   return {status:opened.status,projectId:opened.projectId??null};})()`,true));
+  assert.equal(result.status,'opened');assert.equal(result.projectId,projectId);
+  const expectedUrl=new URL(`/?project=${projectId}`,ready.url).href;
+  await waitUntil(async()=>BrowserWindowRuntime.getAllWindows().some(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl),30000,'The project window did not open');
+  const editor=BrowserWindowRuntime.getAllWindows().find(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl)!;
+  await waitUntil(async()=>Boolean(await editor.webContents.executeJavaScript(`Boolean(document.querySelector('[data-testid="workbench"]'))`,true).catch(()=>false)),60000,'The project workbench did not become ready');
+  return editor;
+ };
+ const closeEditor=async(editor:BrowserWindow):Promise<void>=>{const closed=new Promise<void>(resolve=>{if(editor.isDestroyed())return resolve();editor.once('closed',()=>resolve());});editor.close();await closed;};
+ // The export worker lives in the open project host: queue the render while the
+ // real editor window holds its lease, exactly as the UI does, then close.
+ await mark('project-core-open');
+ let editor=await bridgeOpen();
  await mark('project-core-export');
  const state=record(await request(projectAddress(projectId),'project.get',{projectId}));
  const timeline=record(state.timeline),exportIdValue=record(await request(projectAddress(projectId),'timeline.render',{projectId,
@@ -94,23 +112,8 @@ async function runProjectCoreFlows({app,session,ready,smokeRoot,mark}:CoreFlowOp
  const outputFile=String(output.fileLocation),outputSize=Number(output.sizeBytes);
  assert.ok(path.isAbsolute(outputFile));assert.ok(Number.isSafeInteger(outputSize)&&outputSize>1024);
  assert.equal((await stat(outputFile)).size,outputSize);assert.match(String(output.sha256),/^[0-9a-f]{64}$/u);
- await mark('project-core-open');
- const bridgeOpen=async():Promise<BrowserWindow>=>{
-  const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
-  const result=record(await launcher.webContents.executeJavaScript(`(async()=>{const recent=await window.__mioonProjectEntries.listRecent();
-   const entry=recent.registered.find(value=>value.project.projectId===${JSON.stringify(projectId)});if(!entry)return {status:'missing'};
-   const opened=await window.__mioonProjectEntries.openRecent({projectId:${JSON.stringify(projectId)},remember:false,entryToken:crypto.randomUUID()});
-   return {status:opened.status,projectId:opened.projectId??null};})()`,true));
-  assert.equal(result.status,'opened');assert.equal(result.projectId,projectId);
-  const expectedUrl=new URL(`/?project=${projectId}`,ready.url).href;
-  await waitUntil(async()=>BrowserWindowRuntime.getAllWindows().some(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl),30000,'The project window did not open');
-  const editor=BrowserWindowRuntime.getAllWindows().find(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl)!;
-  await waitUntil(async()=>Boolean(await editor.webContents.executeJavaScript(`Boolean(document.querySelector('[data-testid="workbench"]'))`,true).catch(()=>false)),60000,'The project workbench did not become ready');
-  return editor;
- };
- const closeEditor=async(editor:BrowserWindow):Promise<void>=>{const closed=new Promise<void>(resolve=>{if(editor.isDestroyed())return resolve();editor.once('closed',()=>resolve());});editor.close();await closed;};
- let editor=await bridgeOpen();
  await closeEditor(editor);
+ await mark('project-core-reopen');
  editor=await bridgeOpen();
  await closeEditor(editor);
  clearSmokeWorkspace(projectFile);
