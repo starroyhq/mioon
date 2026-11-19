@@ -64,6 +64,7 @@ import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
+import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
@@ -569,6 +570,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  });
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
  const sequenceEdit=createFormat5SequenceEditService(store);
+ const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
@@ -711,6 +713,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...previs.handlers,
   ...inspection.handlers,
   ...timeline.handlers,
+  ...sequenceInspection.handlers,
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   ...references.handlers,

@@ -8,7 +8,9 @@ import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {readTimelineStorage} from './project-file/timeline-storage.ts';
+import {readTimelineStorage,timelineStorageFormat} from './project-file/timeline-storage.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.ts';
@@ -132,6 +134,31 @@ function excerpt(value: unknown): {prompt: string;promptTruncated: boolean} {
   return {prompt: bytes.subarray(0, end).toString('utf8'), promptTruncated: true};
 }
 
+/** Format-5 chain/group evidence attached to the existing bounded inspect
+ * DTOs. Released 3/4 formats keep their exact DTO. */
+function format5SequenceEvidence(db: DatabaseSync,projectId: string): Record<string,unknown>|null {
+ if(timelineStorageFormat(db,'project')!==FORMAT5_PROJECT_SCHEMA_VERSION)return null;
+ const timeline=readFormat5TimelineRecord(db,'project');
+ if(!timeline||timeline.projectId!==projectId)return null;
+ const sync=db.prepare('SELECT revision FROM project.sequence_sync_state').get() as {revision?:unknown}|undefined;
+ const main=timeline.mainTrack.trackId;
+ const groups=new Map<string,string[]>();
+ for(const clip of timeline.clips.filter(value=>value.trackId===main).sort((a,b)=>a.startFrame-b.startFrame||(a.id<b.id?-1:1))){
+  const key=String((clip as unknown as Record<string,any>).sequenceSource?.segmentGroupId??'');
+  if(!key)continue;groups.set(key,[...(groups.get(key)??[]),clip.id]);
+ }
+ const chain=[...groups.entries()].map(([segmentGroupId,clipIds],order)=>({order,segmentGroupId,clipIds,nodeId:String((timeline.clips.find(clip=>clip.id===clipIds[0]) as unknown as Record<string,any>)?.sequenceSource?.nodeId??'')}));
+ const chainNodes=new Set(chain.map(item=>item.nodeId));
+ const rows=db.prepare('SELECT id,data FROM project.nodes').all() as {id:unknown;data?:unknown}[];
+ const nodeIds=rows.map(row=>String(row.id));
+ const freeNodeIds=nodeIds.filter(nodeId=>nodeId!==timeline.mainTrack.sequenceNodeId&&!chainNodes.has(nodeId)).sort().slice(0,100);
+ const anchors=timeline.clips.filter(clip=>clip.trackId!==main&&(clip as unknown as Record<string,any>).anchor)
+  .map(clip=>({clipId:clip.id,anchor:(clip as unknown as Record<string,any>).anchor})).slice(0,200);
+ return {mainTrack:timeline.mainTrack,syncRevision:Number(sync?.revision??1),chain,freeNodeIds,anchors,
+  clips:timeline.clips.filter(clip=>clip.trackId===main).map(clip=>({id:clip.id,startFrame:clip.startFrame,durationFrames:clip.durationFrames,
+    sourceState:(clip as unknown as Record<string,any>).sourceState??null,versionId:clip.versionId??null,
+    versionMode:(clip as unknown as Record<string,any>).sequenceSource?.versionMode??null}))};
+}
 function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decodeCursor,timelineGeometry='frame'}: InspectionReaderOptions={}): InspectionReader {
     const cache = new Map<string, InspectionRecord>(), validatedVersions = new Set<string>(), validatedAssets = new Set<string>(), assetVersions = new Map<string, InspectionRecord>(), imageSources = new Map<string, unknown>(), frameSources = new Map<string, unknown>(), sceneSources = new Map<string, unknown>(), frameTasks = new Set<string>(), pendingFrameTasks = new Set<string>();
     const pendingAssets=new Set<string>(),imageTasks=new Set<string>(),pendingImageTasks=new Set<string>();
@@ -448,11 +475,14 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
           ...(displayTransform ? {transform: {keyframes: displayTransform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: displayTransform.rotation, crop: {...displayTransform.crop}}} : {}),
           ...(transition ? {transitionIn: {kind: transition.kind, durationFrames: transition.durationFrames}} : {})};
       });
+      const sequence=format5SequenceEvidence(db,projectId);
       return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,
-        durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips};
+        durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips, ...(sequence?{sequence}:{})};
     }
     const project = get('projects', projectId);
+    const projectSequence=format5SequenceEvidence(db,projectId);
     return {project: () => ({id: project.id, name: string(project.name, 150, 1), description: string(project.description, 2000), revision: number(project.revision, 1, Number.MAX_SAFE_INTEGER, true),
+      ...(projectSequence?{sequence:projectSequence}:{}) ,
       counts: Object.fromEntries(countTables.map(table => {
         const active = table === 'edges' ? canvasActiveEdgeCondition(db,'record') : table === 'shots' || table === 'nodes' ? canvasActiveCondition(db,'record') : '1';
         const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} record WHERE projectId=? AND ${active}`).get(projectId);
