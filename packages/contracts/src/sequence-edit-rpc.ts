@@ -8,7 +8,7 @@
  * including oldest-entry eviction and `atEarliest`.
  */
 import {z} from 'zod';
-import {sequenceEditClipPropertiesIntentSchema, sequenceEditEnvelopeSchema, sequenceEditSubjectIntentSchema} from './sequence-edit.ts';
+import {sequenceEditClipPropertiesIntentSchema, sequenceEditDialogueIntentSchema, sequenceEditEnvelopeSchema, sequenceEditSubjectIntentSchema} from './sequence-edit.ts';
 import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
 import {sequenceEditingSchemas} from './sequence-editing.ts';
 import type {SequenceEditIntent} from './sequence-edit.ts';
@@ -30,12 +30,13 @@ export const sequencePreviewRequestSchema = z.object({
   intents: z.array(sequenceEditIntentPayloadSchema).min(1).max(64).optional(),
   subjectIntent: sequenceEditSubjectIntentSchema.optional(),
   propertiesIntent: sequenceEditClipPropertiesIntentSchema.optional(),
+  dialogueIntent: sequenceEditDialogueIntentSchema.optional(),
   allocation: allocationSchema.optional(),
 }).strict().superRefine((value, context) => {
-  const families = [value.intents !== undefined, value.subjectIntent !== undefined, value.propertiesIntent !== undefined]
-    .filter(Boolean).length;
+  const families = [value.intents !== undefined, value.subjectIntent !== undefined, value.propertiesIntent !== undefined,
+    value.dialogueIntent !== undefined].filter(Boolean).length;
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
-    message: 'Provide exactly one of intents, subjectIntent and propertiesIntent.'});
+    message: 'Provide exactly one of intents, subjectIntent, propertiesIntent and dialogueIntent.'});
 });
 export const sequenceCommitRequestSchema = z.object({
   projectId: uuid,

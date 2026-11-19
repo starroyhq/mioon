@@ -22,8 +22,8 @@ import type {
   SequenceEditAffectedCounts, SequenceEditBaselineChange, SequenceEditBoardDelta, SequenceEditBoardEntity,
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditHistoryAction,
   SequenceEditHistoryCommand, SequenceEditHistoryView, SequenceEditImpact, SequenceEditPatch, SequenceEditPlan,
-  SequenceEditReceipt, SequenceEditStateDelta, SequenceEditTimelineCommit, SequenceEditTimelineDelta,
-  SequenceEditTransactionFailure, MainTrackProjectionPort,
+  SequenceEditReceipt, SequenceEditStateDelta, SequenceEditSubtitleProfileChange, SequenceEditTimelineCommit,
+  SequenceEditTimelineDelta, SequenceEditTransactionFailure, MainTrackProjectionPort,
 } from '@mioon/contracts/sequence-edit';
 import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
 import {planSubjectBindingAction, readSubjectBinding} from './format5-subject-binding.ts';
@@ -35,6 +35,8 @@ import type {ChainSyncClip, ChainSyncMedia, ChainSyncVersion} from '../../contra
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
 import {format5SyncBaselineSchema, format5TimelineHeader} from '../../contracts/src/project-format5.ts';
+import {copyFormat5ShotDialogue, format5ShotDialogue, projectFormat5DialogueCues} from './format5-dialogue-projection.ts';
+import type {Format5DialogueProjectedShot, Format5DialogueProjectionResult} from './format5-dialogue-projection.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
 import {
@@ -405,7 +407,39 @@ function anchorForOwner(item: {startFrame: number; anchorClipId?: string | null}
   return offsetFrames >= 0 && offsetFrames < owner.durationFrames ? {clipId: item.anchorClipId, offsetFrames} : null;
 }
 
-function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format5Timeline {
+/** Result of projecting one SA plan onto the timeline half. `changedCueIds`
+ * and `removedCueIds` are exactly the cue rows the history patch must carry;
+ * `subtitles` is the three-state profile change (a first projected dialogue cue
+ * creates the subtitle layout). */
+export interface MainTrackProjection {
+  readonly timeline: Format5Timeline;
+  readonly changedCueIds: readonly string[];
+  readonly removedCueIds: readonly string[];
+  readonly subtitles: SequenceEditSubtitleProfileChange;
+}
+export type MainTrackProjectionOutcome =
+  | {readonly ok: true; readonly projection: MainTrackProjection}
+  | SequenceEditTransactionFailure;
+
+function subtitleProfileOf(timeline: Format5Timeline,
+  change: SequenceEditSubtitleProfileChange): {profileId: string; basisPresetId?: string} | null {
+  if (change.kind === 'unchanged') {
+    return timeline.subtitles ? {profileId: timeline.subtitles.profileId,
+      ...(timeline.subtitles.basisPresetId === undefined ? {} : {basisPresetId: timeline.subtitles.basisPresetId})} : null;
+  }
+  return change.kind === 'set' ? change.value as {profileId: string; basisPresetId?: string} : null;
+}
+
+/**
+ * Patch the main track from one SA plan and, in the same read, project every
+ * main-track shot's dialogue lines to real cues (DL-a). `extraShots` carries the
+ * rows this action is about to create (copied / restored / created shots) so the
+ * projection sees the dialogue they will have. Anchors that lose their owner
+ * detach in place (`anchor: null`) instead of silently re-anchoring elsewhere
+ * (plan §2.3); a cue whose shot leaves the main track keeps its absolute frame.
+ */
+function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
+  extraShots: ReadonlyMap<string, Row> = new Map()): MainTrackProjectionOutcome {
   const existing = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
   const mainTrackId = context.timeline.mainTrack.trackId;
   const planNodes = new Map(plan.after.board.nodes.map(node => [node.id, node]));
@@ -432,23 +466,71 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
     clips.push({...otherTrack, trackId: plan.transfer.trackId, startFrame: plan.transfer.clip.startFrame,
       anchor: item ? anchorForOwner(item, ownerSegments) : null});
   }
-  const ownerAt = (frame: number) => ownerList
-    .find(owner => owner.startFrame <= frame && frame < owner.startFrame + owner.durationFrames) ?? null;
-  const cues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
+  // Anchors that no longer resolve detach in place; the absolute frame is kept.
+  const movedCues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
     const item = anchored.get(cue.id);
-    const startFrame = item?.startFrame ?? cue.startFrame;
-    const anchor = item ? anchorForOwner(item, ownerSegments) : null;
-    if (anchor) return {...cue, startFrame, anchor};
-    // A cue cannot be detached (format-5 cues always carry an anchor): when the
-    // owner disappears, re-anchor at the same frame if a main segment covers it.
-    const owner = ownerAt(startFrame);
-    return owner === null ? {...cue, startFrame, anchor: cue.anchor}
-      : {...cue, startFrame, anchor: {clipId: owner.id, offsetFrames: startFrame - owner.startFrame}};
+    if (!item) return cue;
+    const startFrame = item.startFrame;
+    const anchor = anchorForOwner(item, ownerSegments);
+    if (anchor !== null && startFrame === cue.startFrame && sameJson(anchor, cue.anchor ?? null)) return cue;
+    return {...cue, startFrame, anchor};
   });
-  const ends = [...clips.map(clip => clip.startFrame + clip.durationFrames), ...cues.map(cue => cue.startFrame + cue.durationFrames)];
-  const durationFrames = ends.reduce((maximum, value) => Math.max(maximum, value), 0);
-  return {...context.timeline, revision: context.timeline.revision + 1, updatedAt: now(),
-    durationFrames, clips, subtitles: context.timeline.subtitles ? {...context.timeline.subtitles, cues} : undefined};
+  // Dialogue projection: the rows this action creates are visible to it.
+  const mergedShots = extraShots.size === 0 ? context.shots : new Map([...context.shots, ...extraShots]);
+  const segmentsByShot = new Map<string, {clipId: string; startFrame: number; durationFrames: number}[]>();
+  for (const clip of mainClips) {
+    const source = clip.sequenceSource;
+    if (source?.kind !== 'shot') continue;
+    const segments = segmentsByShot.get(source.nodeId) ?? [];
+    segments.push({clipId: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames});
+    segmentsByShot.set(source.nodeId, segments);
+  }
+  const previousMainShotIds = new Set<string>();
+  for (const clip of context.timeline.clips) {
+    if (clip.trackId !== mainTrackId || clip.sequenceSource?.kind !== 'shot') continue;
+    previousMainShotIds.add(clip.sequenceSource.nodeId);
+  }
+  const projectedShots: Format5DialogueProjectedShot[] = [];
+  for (const shotId of [...segmentsByShot.keys()].sort()) {
+    const shotRow = mergedShots.get(shotId);
+    if (!shotRow) throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
+    const dialogue = format5ShotDialogue(shotRow);
+    if (dialogue.length === 0) continue;
+    projectedShots.push({shotId, lines: dialogue.map(line => ({id: line.id, text: line.text})),
+      segments: segmentsByShot.get(shotId)!.sort((left, right) => left.startFrame - right.startFrame || left.clipId.localeCompare(right.clipId))});
+  }
+  const hasDialogueCues = movedCues.some(cue => cue.dialogueRef !== undefined);
+  let cues = movedCues;
+  let projection: Format5DialogueProjectionResult | null = null;
+  if (projectedShots.length > 0 || hasDialogueCues) {
+    projection = projectFormat5DialogueCues({
+      timelineId: context.timeline.id, cues: movedCues,
+      subtitleProfilePresent: context.timeline.subtitles !== undefined,
+      shots: projectedShots, previousMainShotIds,
+      previousCues: new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const)),
+      liveShotIds: new Set(plan.after.board.nodes.map(node => node.id).filter(nodeId => mergedShots.has(nodeId))),
+    });
+    if (projection.ok === false) return {ok: false, code: projection.code as SequenceEditErrorCode, ids: projection.ids};
+    cues = projection.cues as Format5Cue[];
+  }
+  const clipEnds = clips.map(clip => clip.startFrame + clip.durationFrames);
+  const durationFrames = clipEnds.reduce((maximum, value) => Math.max(maximum, value), 0);
+  const subtitleChange: SequenceEditSubtitleProfileChange = projection?.subtitles ?? {kind: 'unchanged'};
+  const profile = subtitleProfileOf(context.timeline, subtitleChange);
+  const beforeCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
+  const afterCues = new Map(cues.map(cue => [cue.id, cue] as const));
+  const changedCueIds = new Set<string>(projection?.changedCueIds ?? []);
+  for (const change of plan.changes.anchored) {
+    const cueId = change.after?.id ?? change.before?.id;
+    if (typeof cueId !== 'string' || (!beforeCues.has(cueId) && !afterCues.has(cueId))) continue;
+    if (!sameJson(beforeCues.get(cueId), afterCues.get(cueId))) changedCueIds.add(cueId);
+  }
+  const nextTimeline: Format5Timeline = {...context.timeline, revision: context.timeline.revision + 1, updatedAt: now(),
+    durationFrames, clips, subtitles: profile ? {...profile, cues} : undefined};
+  return {ok: true, projection: {timeline: nextTimeline,
+    changedCueIds: [...changedCueIds].filter(id => afterCues.has(id)).sort(),
+    removedCueIds: [...(projection?.removedCueIds ?? [])].sort(),
+    subtitles: subtitleChange}};
 }
 
 function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpdates: ReadonlyMap<string, Row>,
@@ -557,8 +639,10 @@ function boardPlanEntities(context: SyncContext, plan: SequenceEditPlan, envelop
     if (sourceNode.kind === 'shot') {
       const sourceShot = context.shots.get(fromNodeId);
       if (!sourceShot) return failure('INVALID_MEDIA', [fromNodeId]);
-      const shot: Row = {...sourceShot, id: toNodeId, selectedVersionId: copiedClip.versionId ?? null,
-        createdAt: now(), updatedAt: now()};
+      // Copying a shot generates fresh dialogue line ids (plan §2.4) so the copy
+      // never shares a line identity with its source.
+      const shot: Row = copyFormat5ShotDialogue({...sourceShot, id: toNodeId,
+        selectedVersionId: copiedClip.versionId ?? null, createdAt: now(), updatedAt: now()}, toNodeId);
       extraShots.set(toNodeId, shot);
       writesAfter.push({kind: 'shot', id: toNodeId, data: shot});
       removalsBefore.push({kind: 'shot', id: toNodeId, data: shot});
@@ -641,14 +725,17 @@ function validateAnchoredTimeline(timeline: Format5Timeline): AnchorIssue | null
   }
   const cues = [...(timeline.subtitles?.cues ?? [])].sort((left, right) => left.startFrame - right.startFrame || (left.id < right.id ? -1 : 1));
   for (const cue of cues) {
-    if (cue.anchor === null || cue.anchor === undefined) {
+    // A cue may be unattached (`anchor: null`): a floating shot keeps its
+    // subtitles in place until it re-enters the main track (plan §2.3/§2.4).
+    if (cue.startFrame < 0 || cue.startFrame + cue.durationFrames > timeline.durationFrames) {
       problems.add(cue.id);
       continue;
     }
-    const owner = owners.get(cue.anchor.clipId);
-    if (!owner || cue.anchor.offsetFrames < 0 || cue.anchor.offsetFrames >= owner.durationFrames
-      || cue.startFrame !== owner.startFrame + cue.anchor.offsetFrames
-      || cue.startFrame + cue.durationFrames > timeline.durationFrames) problems.add(cue.id);
+    const anchor = cue.anchor ?? null;
+    if (anchor === null) continue;
+    const owner = owners.get(anchor.clipId);
+    if (!owner || anchor.offsetFrames < 0 || anchor.offsetFrames >= owner.durationFrames
+      || cue.startFrame !== owner.startFrame + anchor.offsetFrames) problems.add(cue.id);
   }
   for (let index = 1; index < cues.length; index++) {
     const previous = cues[index - 1]!, current = cues[index]!;
@@ -680,42 +767,51 @@ function shotChanges(context: SyncContext, plan: SequenceEditPlan): ShotChange[]
 
 function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
   board: {readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta},
-  nextBaseline: Format5SyncBaseline): SequenceEditPatch {
+  nextBaseline: Format5SyncBaseline, projection: MainTrackProjection): SequenceEditPatch {
   const beforeClips = new Map(context.timeline.clips.map(clip => [clip.id, clip] as const));
   const afterClips = new Map(nextTimeline.clips.map(clip => [clip.id, clip] as const));
   const beforeCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
   const afterCues = new Map((nextTimeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
-  // SA already reports every changed clip/anchored item; restricting the patch to
-  // those ids keeps a 500-segment edit from re-serializing the whole projection.
-  const changedIds = new Set<string>();
-  for (const item of [...plan.changes.clips.map(change => change.after?.id ?? change.before?.id),
-    ...plan.changes.anchored.map(change => change.after?.id ?? change.before?.id)]) if (item) changedIds.add(item);
-  // SA reports an anchored item only when its start frame changes; an owner
-  // detach/re-anchor can keep the same frame, so compare the anchor identity too.
+  // SA already reports every changed clip and anchored item; restricting the
+  // patch to those ids keeps a 500-segment edit from re-serializing the whole
+  // projection. Cue rows also come from the dialogue projection's touched set.
+  const changedClipIds = new Set<string>();
+  for (const item of plan.changes.clips.map(change => change.after?.id ?? change.before?.id)) if (item) changedClipIds.add(item);
+  const cueIds = new Set<string>([...projection.changedCueIds, ...projection.removedCueIds]);
   for (const item of context.anchored) {
     const beforeRow = beforeClips.get(item.id) ?? beforeCues.get(item.id);
     const afterRow = afterClips.get(item.id) ?? afterCues.get(item.id);
-    if (!sameJson(beforeRow, afterRow)) changedIds.add(item.id);
+    if (sameJson(beforeRow, afterRow)) continue;
+    if (beforeClips.has(item.id) || afterClips.has(item.id)) changedClipIds.add(item.id);
+    if (beforeCues.has(item.id) || afterCues.has(item.id)) cueIds.add(item.id);
   }
-  for (const item of plan.after.anchored) if (!beforeClips.has(item.id) && !beforeCues.has(item.id)) changedIds.add(item.id);
-  const clipIds = [...changedIds].filter(id => beforeClips.has(id) || afterClips.has(id));
-  const cueIds = [...changedIds].filter(id => beforeCues.has(id) || afterCues.has(id));
+  for (const item of plan.after.anchored) {
+    if (beforeClips.has(item.id) || beforeCues.has(item.id)) continue;
+    if (afterClips.has(item.id)) changedClipIds.add(item.id);
+    if (afterCues.has(item.id)) cueIds.add(item.id);
+  }
+  const clipIds = [...changedClipIds].filter(id => beforeClips.has(id) || afterClips.has(id));
   const baselineChanged = !sameJson(context.baseline, nextBaseline);
   const baselineAfter: SequenceEditBaselineChange = baselineChanged ? {kind: 'set', value: nextBaseline} : {kind: 'unchanged'};
   const baselineBefore: SequenceEditBaselineChange = baselineChanged ? {kind: 'set', value: context.baseline} : {kind: 'unchanged'};
+  const subtitlesAfter: SequenceEditSubtitleProfileChange = projection.subtitles;
+  const subtitlesBefore: SequenceEditSubtitleProfileChange = subtitlesAfter.kind === 'set'
+    ? (context.timeline.subtitles ? {kind: 'unchanged'} : {kind: 'absent'}) : {kind: 'unchanged'};
   return {
     version: 1,
     before: {board: board.before, timeline: {
       clips: clipIds.filter(id => beforeClips.has(id)).map(id => beforeClips.get(id)!) as unknown as Format5Clip[],
-      cues: cueIds.filter(id => beforeCues.has(id)).map(id => beforeCues.get(id)!) as unknown as Format5Cue[],
-      removedClipIds: clipIds.filter(id => !beforeClips.has(id)), removedCueIds: cueIds.filter(id => !beforeCues.has(id)),
-      baseline: baselineBefore,
+      cues: [...cueIds].filter(id => beforeCues.has(id)).sort().map(id => beforeCues.get(id)!) as unknown as Format5Cue[],
+      removedClipIds: clipIds.filter(id => !beforeClips.has(id)),
+      removedCueIds: [...cueIds].filter(id => !beforeCues.has(id)).sort(),
+      baseline: baselineBefore, subtitles: subtitlesBefore,
     }},
     after: {board: board.after, timeline: {
       clips: clipIds.filter(id => afterClips.has(id)).map(id => afterClips.get(id)!) as unknown as Format5Clip[],
-      cues: cueIds.filter(id => afterCues.has(id)).map(id => afterCues.get(id)!) as unknown as Format5Cue[],
-      removedClipIds: clipIds.filter(id => !afterClips.has(id)), removedCueIds: cueIds.filter(id => !afterCues.has(id)),
-      baseline: baselineAfter,
+      cues: [...cueIds].filter(id => afterCues.has(id)).sort().map(id => afterCues.get(id)!) as unknown as Format5Cue[],
+      removedClipIds: clipIds.filter(id => !afterClips.has(id)),
+      removedCueIds: [...cueIds].filter(id => !afterCues.has(id)).sort(),
+      baseline: baselineAfter, subtitles: subtitlesAfter,
     }},
   };
 }
@@ -811,14 +907,20 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const cues = new Map((current.subtitles?.cues ?? []).map(cue => [cue.id, cue]));
   for (const cue of delta.cues) cues.set(cue.id, cue);
   for (const id of delta.removedCueIds) cues.delete(id);
-  const durationFrames = [...[...clips.values()].map(clip => clip.startFrame + clip.durationFrames),
-    ...[...cues.values()].map(cue => cue.startFrame + cue.durationFrames)]
+  const durationFrames = [...clips.values()].map(clip => clip.startFrame + clip.durationFrames)
     .reduce((maximum, value) => Math.max(maximum, value), 0);
+  const subtitleChange = delta.subtitles ?? {kind: 'unchanged' as const};
+  const subtitleProfile = subtitleProfileOf(current, subtitleChange);
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
-    clips: [...clips.values()], subtitles: current.subtitles ? {...current.subtitles, cues: [...cues.values()]} : undefined};
-  const update = planFormat5TimelineEntityUpdate(state, {clips: delta.clips, cues: delta.cues,
-    removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
+    clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
+  // Entity rows validate against the header that will be stored in the same
+  // transaction: a clip that extends the timeline legitimately places a cue past
+  // the old duration, and a removed tail may shrink it.
+  const validationState = state.header && state.header.raw !== headerRaw
+    ? {...state, header: {...state.header, raw: headerRaw}} : state;
+  const update = planFormat5TimelineEntityUpdate(validationState, {clips: delta.clips, cues: delta.cues,
+    removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
   const headerChanged = state.header?.raw !== headerRaw;
   const rowChanges = update.changed || update.clipDeletes.length > 0 || update.cueDeletes.length > 0;
   const changed = rowChanges || headerChanged;
@@ -952,10 +1054,19 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     if ('ok' in plan && plan.ok === false) return plan;
     const successful = plan as SequenceEditPlan;
     const mainTrackId = context.timeline.mainTrack.trackId;
-    const nextTimeline = patchMainTimeline(context, successful);
+    // New sequence-edge identities must be in the envelope before the board half
+    // reads the allocation; the timeline projection then sees the shot rows
+    // (copied/restored) this action creates.
+    allocateEdgeIds(context, successful, allocation);
+    const boardPlan = boardPlanEntities(context, successful, provisional);
+    if ('ok' in boardPlan && boardPlan.ok === false) return boardPlan;
+    const boardEntities = boardPlan as BoardPlanEntities;
+    const projected = patchMainTimeline(context, successful, boardEntities.extraShots);
+    if (projected.ok === false) return projected;
+    const projection = projected.projection;
+    const nextTimeline = projection.timeline;
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
-    allocateEdgeIds(context, successful, allocation);
     const mainTrackClipSet = new Set(context.timeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
     const mainClipIds = successful.changes.clips.map(change => change.after?.id ?? change.before?.id)
       .filter((clipId): clipId is string => !!clipId && mainTrackClipSet.has(clipId));
@@ -972,7 +1083,7 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       edgeIds: [...new Set([...changedEdgeIds, ...provisional.allocation.edges.map(item => item.id)])],
       mainTrackClipIds: mainClipIds.filter(id => successful.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)),
       otherTrackItemIds: otherItemIds.filter(id => context.timeline.clips.some(clip => clip.id === id && clip.trackId !== mainTrackId)),
-      subtitleCueIds: otherItemIds.filter(id => (context.timeline.subtitles?.cues ?? []).some(cue => cue.id === id)),
+      subtitleCueIds: [...new Set([...projection.changedCueIds, ...projection.removedCueIds])].sort(),
     };
     const kindName = (kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue'): string =>
       kind === 'clip' ? 'timeline_clip' : kind === 'cue' ? 'timeline_cue' : kind;
@@ -985,6 +1096,18 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
     return {envelope, warnings: planWarnings(successful), planDigest: sequenceEditInputDigest(envelope)};
   });
+}
+
+// ---------------------------------------------------------------------------
+// Preview-only projection helper (CS board preview)
+// ---------------------------------------------------------------------------
+
+/** Read once and project a CS plan onto the timeline half, for
+ * `sequence.preview` impact and for rejecting dialogue/anchor conflicts before
+ * the user confirms. Never writes. */
+export function previewMainTrackProjection(store: ProjectStore, plan: SequenceEditPlan,
+  extraShots: ReadonlyMap<string, Row> = new Map()): MainTrackProjectionOutcome {
+  return patchMainTimeline(readSyncContext(store), plan, extraShots);
 }
 
 // ---------------------------------------------------------------------------
@@ -1048,22 +1171,25 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     const plan = planEnvelope(context, envelope);
     if ('ok' in plan && plan.ok === false) return writeFailure(store, envelope, plan.code);
     const successful = plan as SequenceEditPlan;
-    const nextTimeline = patchMainTimeline(context, successful);
-    const anchorIssue = validateAnchoredTimeline(nextTimeline);
-    if (anchorIssue) return writeFailure(store, envelope, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
     const board = boardPlanEntities(context, successful, envelope);
     if ('ok' in board && board.ok === false) return writeFailure(store, envelope, board.code);
     const boardEntities = board as BoardPlanEntities;
+    const projected = patchMainTimeline(context, successful, boardEntities.extraShots);
+    if (projected.ok === false) return writeFailure(store, envelope, projected.code);
+    const projection = projected.projection;
+    const nextTimeline = projection.timeline;
+    const anchorIssue = validateAnchoredTimeline(nextTimeline);
+    if (anchorIssue) return writeFailure(store, envelope, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
     const changedShots = shotChanges(context, successful);
     const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
     const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
       boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
-    const patch = timelineDeltaPair(context, nextTimeline, successful, boardEntities, nextBaseline);
+    const patch = timelineDeltaPair(context, nextTimeline, successful, boardEntities, nextBaseline, projection);
     const baselineChanged = !sameJson(context.baseline, nextBaseline);
     const noop = patch.after.board.writes.length === 0 && patch.after.board.removals.length === 0
       && patch.after.timeline.clips.length === 0 && patch.after.timeline.cues.length === 0
       && patch.after.timeline.removedClipIds.length === 0 && patch.after.timeline.removedCueIds.length === 0
-      && !baselineChanged;
+      && (patch.after.timeline.subtitles ?? {kind: 'unchanged'}).kind === 'unchanged' && !baselineChanged;
     if (noop) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
     applyBoardDelta(store, boardEntities.after);
     const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
@@ -1134,7 +1260,18 @@ export function createMainTrackProjectionPort(store: ProjectStore,
     projectMainTrack(request): SequenceEditTimelineCommit | SequenceEditTransactionFailure {
       const context = providedContext?.() ?? readSyncContext(store);
       if (request.envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
-      const nextTimeline = patchMainTimeline(context, request.plan);
+      // Shot rows the CS transaction is about to create (copies) or restore are
+      // supplied through the cached context so the projection sees their lines.
+      const extraShots = new Map<string, Row>();
+      for (const node of request.plan.after.board.nodes) {
+        if (node.kind !== 'shot' || context.shots.has(node.id)) continue;
+        const row = context.archivedShots.get(node.id);
+        if (row) extraShots.set(node.id, row);
+      }
+      const projected = patchMainTimeline(context, request.plan, extraShots);
+      if (projected.ok === false) return projected;
+      const projection = projected.projection;
+      const nextTimeline = projection.timeline;
       const anchorIssue = validateAnchoredTimeline(nextTimeline);
       if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
       const changedShots = shotChanges(context, request.plan);
@@ -1144,28 +1281,29 @@ export function createMainTrackProjectionPort(store: ProjectStore,
       // baseline projection stays complete.
       const extraNodeKinds = new Map<string, ChainNode['kind']>();
       const extraNodeRows = new Map<string, Row>();
-      const extraShots = new Map<string, Row>();
+      const baselineExtraShots = new Map<string, Row>(extraShots);
       for (const node of request.plan.after.board.nodes) {
         if (context.board.nodes.some(current => current.id === node.id)) continue;
         extraNodeKinds.set(node.id, node.kind);
         if (node.kind === 'shot') {
           const row = context.archivedShots.get(node.id);
-          if (row) extraShots.set(node.id, row);
+          if (row) baselineExtraShots.set(node.id, row);
         } else {
           const row = context.archivedNodes.get(node.id);
           if (row) extraNodeRows.set(node.id, row);
         }
       }
-      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, extraShots,
+      const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, baselineExtraShots,
         extraNodeKinds, extraNodeRows);
       // The CS caller owns the board half; this port only projects the timeline
       // half, so the full board plan is deliberately skipped here.
       const emptyBoard = {before: {writes: [], removals: []}, after: {writes: [], removals: []}};
-      const patch = timelineDeltaPair(context, nextTimeline, request.plan, emptyBoard, nextBaseline);
+      const patch = timelineDeltaPair(context, nextTimeline, request.plan, emptyBoard, nextBaseline, projection);
       const baselineChanged = !sameJson(context.baseline, nextBaseline);
       return {ok: true, delta: patch.after.timeline, warnings: planWarnings(request.plan),
         timelineRevision: patch.after.timeline.clips.length || patch.after.timeline.cues.length
           || patch.after.timeline.removedClipIds.length || patch.after.timeline.removedCueIds.length
+          || (patch.after.timeline.subtitles ?? {kind: 'unchanged'}).kind !== 'unchanged'
           ? context.timeline.revision + 1 : context.timeline.revision,
         syncRevision: baselineChanged ? context.syncRevision + 1 : context.syncRevision};
     },
