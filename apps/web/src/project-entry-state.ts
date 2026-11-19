@@ -151,9 +151,13 @@ export function createProjectEntryController({ client, bridge, context: initialC
       // preceded host work. The same code after consumption remains unknown.
       if (desktopClient && preHostRefusal) return settle(attempt, {ok: false, reason: error.code === 'PROJECT_ENTRY_BUSY' ? 'busy' : 'unavailable',
         targetWindowId: null, targetPhase: null}, false);
-      emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown') });
+      // Re-read the authoritative context before prompting: a matching entry
+      // receipt settles the attempt without asking the user to check anything.
       await reconcileOpen();
-      return attempt.result?.ok === true;
+      if (!alive(attempt.owner)) return false;
+      if (attempt.result) return attempt.result.ok;
+      emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown') });
+      return false;
     }
   }
   async function open(projectId: string, remember = true): Promise<boolean> {
@@ -254,16 +258,20 @@ export function createProjectEntryController({ client, bridge, context: initialC
     interact(); const owner = lifetime;
     emit({ creating: true, notice: '', error: '' });
     const observedContext = contextVersion;
-    try {
-      const fresh = await bridge.context();
-      if (!alive(owner)) return false;
-      if (fresh.contextId !== context.contextId || fresh.backendId !== context.backendId || fresh.windowId !== context.windowId ||
-          fresh.role !== context.role || fresh.quitting || context.quitting) {
-        emit({ creating: false, notice: msg('projects.changedNotCreated') }); return false;
-      }
-      // An older describe reply cannot erase a newer synchronous host event.
-      if (observedContext === contextVersion) updateContext(fresh);
-    } catch { if (alive(owner)) emit({ creating: false, notice: msg('projects.unconfirmedNotCreated') }); return false; }
+    // One read-only window identity re-read before deciding the window is
+    // unavailable; a transient failure does not imply the create was rejected.
+    let fresh: ProjectWindowContext | null = null;
+    for (let attempt = 0; attempt < 2 && alive(owner); attempt++) {
+      try { fresh = await bridge.context(); break; } catch { fresh = null; }
+    }
+    if (!alive(owner)) return false;
+    if (!fresh) { emit({ creating: false, notice: msg('projects.unconfirmedNotCreated') }); return false; }
+    if (fresh.contextId !== context.contextId || fresh.backendId !== context.backendId || fresh.windowId !== context.windowId ||
+        fresh.role !== context.role || fresh.quitting || context.quitting) {
+      emit({ creating: false, notice: msg('projects.changedNotCreated') }); return false;
+    }
+    // An older describe reply cannot erase a newer synchronous host event.
+    if (observedContext === contextVersion) updateContext(fresh);
     if (!ownerCurrent() || !visible || context.role === 'launcher' && context.editorCount > 0) { emit({ creating: false }); return false; }
     let created;
     try { created = await client.create(name, description, timelinePresetId); identity?.assertIdentity(); }

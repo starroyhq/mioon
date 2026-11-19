@@ -920,18 +920,8 @@ export const connectionMessages = {
     "en": "Reading server state again. The request will not be resubmitted",
     "ja": "サーバーの状態を再読み込み中です。再送信は行いません"
   },
-  "agent.settings.notice.review": {
-    "zh-Hans": "已重新读取当前状态。草稿仍保留；请核对后继续，替换密钥需要重新输入",
-    "zh-Hant": "已重新讀取目前狀態。草稿仍保留；請核對後繼續，更換密鑰須重新輸入",
-    "en": "Current state has been read again. Your draft remains. Review it before continuing; enter the key again to replace it",
-    "ja": "現在の状態を再読み込みしました。下書きは保持されています。確認してから続けてください。キーを置き換える場合は再入力が必要です"
-  },
-  "agent.settings.notice.blocked": {
-    "zh-Hans": "暂时无法核实保存结果。草稿已保留，请重新读取状态后再保存",
-    "zh-Hant": "暫時無法核實儲存結果。草稿已保留，請重新讀取狀態後再儲存",
-    "en": "The save result cannot currently be verified. Your draft remains. Read the state again before saving",
-    "ja": "保存結果を現在確認できません。下書きは保持されています。状態を再読み込みしてから保存してください"
-  },
+  "agent.settings.notice.review": {"zh-Hans": "已重新读取当前设置，草稿仍保留", "zh-Hant": "已重新讀取目前設定，草稿仍保留", "en": "Current settings were read again; the draft is retained", "ja": "現在の設定を再読み込みしました。下書きは保持されています"},
+  "agent.settings.notice.blocked": {"zh-Hans": "暂时无法核实保存结果，草稿已保留", "zh-Hant": "暫時無法核實儲存結果，草稿已保留", "en": "The save result cannot be verified right now; the draft is retained", "ja": "保存結果を現在確認できません。下書きは保持されています"},
   "agent.settings.notice.loadError": {
     "zh-Hans": "暂时无法读取 Mio 设置，请检查工作台连接后重试",
     "zh-Hant": "暫時無法讀取 Mio 設定，請檢查工作台連線後重試",
@@ -968,30 +958,8 @@ export const connectionMessages = {
     "en": "The newly entered key was cleared. Enter it again if you want to replace the saved key",
     "ja": "新しく入力したキーを消去しました。保存済みのキーを置き換える場合は再入力してください"
   },
-  "agent.settings.notice.conflictReading": {
-    "zh-Hans": "设置已在其他窗口更新，正在读取最新状态",
-    "zh-Hant": "設定已在其他視窗更新，正在讀取最新狀態",
-    "en": "Settings were updated in another window. Reading the latest state",
-    "ja": "別のウィンドウで設定が更新されました。最新の状態を読み込み中です"
-  },
-  "agent.settings.notice.readNoRetry": {
-    "zh-Hans": "正在读取当前状态，不会自动重试",
-    "zh-Hant": "正在讀取目前狀態，不會自動重試",
-    "en": "Reading current state. It will not be retried automatically",
-    "ja": "現在の状態を読み込み中です。自動で再試行することはありません"
-  },
-  "agent.settings.notice.conflict": {
-    "zh-Hans": "保存冲突：已读取其他窗口的最新设置。你的连接草稿仍保留；请核对后继续，替换密钥需要重新输入",
-    "zh-Hant": "儲存衝突：已讀取其他視窗的最新設定。你的連線草稿仍保留；請核對後繼續，更換密鑰須重新輸入",
-    "en": "Save conflict: the latest settings from another window have been read. Your connection draft remains. Review before continuing; enter the key again to replace it",
-    "ja": "保存が競合したため、別のウィンドウの最新設定を読み込みました。接続の下書きは保持されています。確認してから続けてください。キーを置き換える場合は再入力が必要です"
-  },
-  "agent.settings.notice.unknown": {
-    "zh-Hans": "未收到保存确认。已读取当前服务器状态，未自动重试；请核对后继续，替换密钥需要重新输入",
-    "zh-Hant": "未收到儲存確認。已讀取目前伺服器狀態，未自動重試；請核對後繼續，更換密鑰須重新輸入",
-    "en": "No save acknowledgement was received. Current server state was read without an automatic retry. Review before continuing; enter the key again to replace it",
-    "ja": "保存の確認応答を受信できませんでした。自動再試行をせず、現在のサーバー状態を読み込みました。確認してから続けてください。キーを置き換える場合は再入力が必要です"
-  },
+  "agent.settings.notice.conflictReading": {"zh-Hans": "设置已在其他窗口更新，正在读取最新状态", "zh-Hant": "設定已在其他視窗更新，正在讀取最新狀態", "en": "Settings changed in another window; reading the latest state", "ja": "別のウィンドウで設定が更新されました。最新の状態を読み込み中です"},
+  "agent.settings.notice.readNoRetry": {"zh-Hans": "保存未确认，正在读取当前状态", "zh-Hant": "儲存未確認，正在讀取目前狀態", "en": "The save is unconfirmed; reading current state", "ja": "保存が未確認のため、現在の状態を読み込み中です"},
   "image.settings.issue.key": {
     "zh-Hans": "密钥只能包含非空白 ASCII 字符，最多 {bytes} 字节",
     "zh-Hant": "密鑰只能包含非空白 ASCII 字元，最多 {bytes} 位元組",
@@ -1016,12 +984,7 @@ export const connectionMessages = {
     "en": "The settings service is closed. Reopen the app",
     "ja": "設定サービスは終了しています。アプリを開き直してください"
   },
-  "image.settings.notice.review": {
-    "zh-Hans": "已读取当前设置，草稿保留。请核对后继续；替换密钥需重新输入",
-    "zh-Hant": "已讀取目前設定，草稿保留。請核對後繼續；更換密鑰須重新輸入",
-    "en": "Current settings have been read and your draft remains. Review before continuing; enter the key again to replace it",
-    "ja": "現在の設定を読み込み、下書きを保持しました。確認してから続けてください。キーを置き換える場合は再入力が必要です"
-  },
+  "image.settings.notice.review": {"zh-Hans": "已读取当前设置，草稿仍保留", "zh-Hant": "已讀取目前設定，草稿仍保留", "en": "Current settings were read; the draft is retained", "ja": "現在の設定を読み込みました。下書きは保持されています"},
   "image.settings.notice.readBlocked": {
     "zh-Hans": "暂时无法核实保存结果。请重新读取，暂不能保存",
     "zh-Hant": "暫時無法核實儲存結果。請重新讀取，目前不能儲存",
@@ -1064,30 +1027,8 @@ export const connectionMessages = {
     "en": "The newly entered key was cleared",
     "ja": "新しく入力したキーを消去しました"
   },
-  "image.settings.notice.rereading": {
-    "zh-Hans": "正在读取当前状态，不会自动重新保存",
-    "zh-Hant": "正在讀取目前狀態，不會自動重新儲存",
-    "en": "Reading current state. It will not save again automatically",
-    "ja": "現在の状態を読み込み中です。自動で再保存することはありません"
-  },
-  "image.settings.notice.conflict": {
-    "zh-Hans": "设置已在其他窗口变化。你的草稿保留，请核对后继续；替换密钥需重新输入",
-    "zh-Hant": "設定已在其他視窗變更。你的草稿保留，請核對後繼續；更換密鑰須重新輸入",
-    "en": "Settings changed in another window. Your draft remains. Review before continuing; enter the key again to replace it",
-    "ja": "別のウィンドウで設定が変更されました。下書きは保持されています。確認してから続けてください。キーを置き換える場合は再入力が必要です"
-  },
-  "image.settings.notice.unknown": {
-    "zh-Hans": "已读取当前状态，未自动重试。请核对后继续；替换密钥需重新输入",
-    "zh-Hant": "已讀取目前狀態，未自動重試。請核對後繼續；更換密鑰須重新輸入",
-    "en": "Current state was read without an automatic retry. Review before continuing; enter the key again to replace it",
-    "ja": "自動で再試行せず、現在の状態を読み込みました。確認してから続けてください。キーを置き換える場合は再入力が必要です"
-  },
-  "connections.notice.blocked": {
-    "zh-Hans": "暂时无法核实保存结果。草稿保留，请重新读取后再保存",
-    "zh-Hant": "暫時無法核實儲存結果。草稿保留，請重新讀取後再儲存",
-    "en": "The save result cannot currently be verified. Your draft remains. Read it again before saving",
-    "ja": "保存結果を現在確認できません。下書きは保持されています。再読み込みしてから保存してください"
-  },
+  "image.settings.notice.rereading": {"zh-Hans": "正在读取当前设置", "zh-Hant": "正在讀取目前設定", "en": "Reading current settings", "ja": "現在の設定を読み込み中です"},
+  "connections.notice.blocked": {"zh-Hans": "暂时无法核实保存结果，草稿已保留", "zh-Hant": "暫時無法核實儲存結果，草稿已保留", "en": "The save result cannot be verified right now; the draft is retained", "ja": "保存結果を現在確認できません。下書きは保持されています"},
   "image.settings.notice.keepDraft": {
     "zh-Hans": "已保留草稿，请重新确认密钥操作后保存",
     "zh-Hant": "已保留草稿，請重新確認密鑰操作後儲存",
@@ -1136,12 +1077,7 @@ export const connectionMessages = {
     "en": "No selectable checkpoints were found. Prepare a compatible model yourself, then explicitly check again. Nothing will be downloaded or installed automatically",
     "ja": "選択可能な checkpoint が見つかりませんでした。互換モデルをご自身で用意し、明示的に再確認してください。自動ダウンロードやインストールは行いません"
   },
-  "connections.comfy.notice.review": {
-    "zh-Hans": "已读取当前保存状态。草稿保留，请核对后继续；没有检查服务或重试保存",
-    "zh-Hant": "已讀取目前儲存狀態。草稿保留，請核對後繼續；未檢查服務，也未重試儲存",
-    "en": "Current saved state was read. Your draft remains; review before continuing. The service was not checked and saving was not retried",
-    "ja": "現在の保存状態を読み込みました。下書きは保持されています。確認してから続けてください。サービスの確認や保存の再試行は行っていません"
-  },
+  "connections.comfy.notice.review": {"zh-Hans": "已读取当前设置，草稿仍保留", "zh-Hant": "已讀取目前設定，草稿仍保留", "en": "Current settings were read; the draft is retained", "ja": "現在の設定を読み込みました。下書きは保持されています"},
   "connections.comfy.notice.loadError": {
     "zh-Hans": "暂时无法读取本地连接设置。不会覆盖已有设置，请重新读取",
     "zh-Hant": "暫時無法讀取本機連線設定。不會覆寫現有設定，請重新讀取",
@@ -1166,36 +1102,14 @@ export const connectionMessages = {
     "en": "These settings were not accepted. Check the local endpoint, port, and checkpoint. Sign in again if necessary",
     "ja": "今回の設定は受け付けられませんでした。ローカル接続先、ポート、checkpoint を確認し、必要に応じて再ログインしてください"
   },
-  "connections.comfy.notice.rereading": {
-    "zh-Hans": "正在读取当前保存状态，不会重试保存或检查服务",
-    "zh-Hant": "正在讀取目前儲存狀態，不會重試儲存或檢查服務",
-    "en": "Reading current saved state. Saving will not be retried and the service will not be checked",
-    "ja": "現在の保存状態を読み込み中です。保存の再試行やサービスの確認は行いません"
-  },
-  "connections.comfy.notice.conflict": {
-    "zh-Hans": "设置已在其他窗口变化。草稿保留，请核对后继续",
-    "zh-Hant": "設定已在其他視窗變更。草稿保留，請核對後繼續",
-    "en": "Settings changed in another window. Your draft remains; review before continuing",
-    "ja": "別のウィンドウで設定が変更されました。下書きは保持されています。確認してから続けてください"
-  },
-  "connections.comfy.notice.unknown": {
-    "zh-Hans": "保存结果尚未确认。已读取当前设置，请核对；不会自动重试",
-    "zh-Hant": "儲存結果尚未確認。已讀取目前設定，請核對；不會自動重試",
-    "en": "The save result is unconfirmed. Current settings have been read for you to review. It will not be retried automatically",
-    "ja": "保存結果は未確認です。現在の設定を読み込みましたので、確認してください。自動で再試行することはありません"
-  },
+  "connections.comfy.notice.rereading": {"zh-Hans": "正在读取当前设置", "zh-Hant": "正在讀取目前設定", "en": "Reading current settings", "ja": "現在の設定を読み込み中です"},
   "connections.comfy.issue.endpoint": {
     "zh-Hans": "请填写 HTTP 127.0.0.1 或 [::1] 与明确端口。没有发起检查",
     "zh-Hant": "請填寫 HTTP 127.0.0.1 或 [::1] 與明確連接埠。尚未發起檢查",
     "en": "Enter HTTP 127.0.0.1 or [::1] with an explicit port. No check was started",
     "ja": "HTTP の 127.0.0.1 または [::1] とポート番号を明示してください。確認は開始していません"
   },
-  "connections.comfy.notice.checkedConflict": {
-    "zh-Hans": "检查完成，但保存设置已在其他窗口变化。草稿保留，请核对后继续",
-    "zh-Hant": "檢查完成，但儲存設定已在其他視窗變更。草稿保留，請核對後繼續",
-    "en": "The check finished, but saved settings changed in another window. Your draft remains; review before continuing",
-    "ja": "確認は完了しましたが、別のウィンドウで保存設定が変更されています。下書きは保持されています。確認してから続けてください"
-  },
+  "connections.comfy.notice.checkedConflict": {"zh-Hans": "设置已更新", "zh-Hant": "設定已更新", "en": "Settings were updated", "ja": "設定が更新されました"},
   "connections.comfy.notice.checked": {
     "zh-Hans": "检查完成；没有保存设置或生成图像",
     "zh-Hant": "檢查完成；未儲存設定或生成圖像",
@@ -1831,8 +1745,8 @@ export const connectionMessages = {
   "agent.settings.x6.saved": {"zh-Hans": "服务连接和 Mio 选择已保存；尚未验证连通性。", "zh-Hant": "服務連線與 Mio 選擇已儲存；尚未驗證連線狀態。", "en": "Service connections and the Mio selection are saved; connectivity is not yet verified.", "ja": "サービス接続と Mio の選択を保存しました。接続性は未検証です。"},
   "agent.settings.x6.legacyKeysCleared": {"zh-Hans": "旧版密钥已清除，请为需要的服务重新输入。", "zh-Hant": "舊版金鑰已清除，請為需要的服務重新輸入。", "en": "Legacy keys were cleared. Enter keys again for the services you need.", "ja": "旧形式のキーを消去しました。必要なサービスのキーを再入力してください。"},
   "agent.settings.x6.legacySettingsReset": {"zh-Hans": "旧版设置无法安全保留，已恢复为未配置状态。", "zh-Hant": "舊版設定無法安全保留，已還原為未設定狀態。", "en": "Legacy settings could not be safely retained and were reset to unconfigured.", "ja": "旧形式の設定を安全に保持できなかったため、未設定に戻しました。"},
-  "agent.settings.x6.legacyEndpointReset": {"zh-Hans": "旧版可编辑地址已恢复为官方平台地址；请核对后重新输入密钥。", "zh-Hant": "舊版可編輯位址已還原為官方平台位址；請核對後重新輸入金鑰。", "en": "A legacy editable address was reset to the official platform address. Review it and enter the key again.", "ja": "旧形式の編集可能アドレスを公式のアドレスに戻しました。確認してキーを再入力してください。"},
-  "agent.settings.x6.partial": {"zh-Hans": "部分设置已保存，请核对未保存或结果未知的部分。", "zh-Hant": "部分設定已儲存，請核對未儲存或結果未知的部分。", "en": "Some settings were saved. Review any unsaved or uncertain parts.", "ja": "一部の設定を保存しました。未保存または結果が不明な部分を確認してください。"},
+  "agent.settings.x6.legacyEndpointReset": {"zh-Hans": "旧版设置已迁移到官方地址，请重新输入密钥", "zh-Hant": "舊版設定已移轉到官方位址，請重新輸入金鑰", "en": "Legacy settings were migrated to the official address; enter the key again", "ja": "旧形式の設定を公式アドレスに移行しました。キーを再入力してください"},
+  "agent.settings.x6.partial": {"zh-Hans": "部分设置已保存", "zh-Hant": "部分設定已儲存", "en": "Some settings were saved", "ja": "一部の設定を保存しました"},
   "agent.settings.x6.historical": {"zh-Hans": "历史诊断；不代表当前设置已通过测试。", "zh-Hant": "歷史診斷；不代表目前設定已通過測試。", "en": "Historical diagnostic; it does not verify the current settings.", "ja": "過去の診断です。現在の設定の検証結果ではありません。"},
   "agent.settings.x6.currentPassed": {"zh-Hans": "当前连接已通过测试", "zh-Hant": "目前連線已通過測試", "en": "Current connection passed the test", "ja": "現在の接続はテスト済みです"},
   "agent.settings.x6.currentUntested": {"zh-Hans": "当前连接尚未通过测试", "zh-Hant": "目前連線尚未通過測試", "en": "Current connection has not passed a test", "ja": "現在の接続は未検証です"},
@@ -1887,5 +1801,9 @@ export const connectionMessages = {
   "generation.services.video.deleteConfirm": {"zh-Hans":"删除“{name}”？保存后删除本机地址、模型及全部密钥；已生成媒体保留。已发送任务可能完成，但之后可能无法查询结果。","zh-Hant":"刪除「{name}」？儲存後刪除本機位址、模型及全部金鑰；已生成媒體保留。已送出的任務可能完成，但之後可能無法查詢結果。","en":"Delete “{name}”? Saving removes its local address, models and all keys. Generated media is kept. Sent tasks may finish, but later result queries may be unavailable.","ja":"「{name}」を削除しますか？保存するとローカルのアドレス、モデル、すべてのキーが削除されます。生成済みメディアは残ります。送信済みタスクは完了しても、結果を照会できなくなる場合があります。"},
   "generation.services.video.keyRequired": {"zh-Hans":"本次密码已清除，请重新输入后再保存。","zh-Hant":"本次密碼已清除，請重新輸入後再儲存。","en":"The key input was cleared. Enter it again before saving.","ja":"キー入力を消去しました。保存する前に再入力してください。"},
   "generation.services.video.modelsCount": {"zh-Hans":"模型 · {count}","zh-Hant":"模型 · {count}","en":"Models · {count}","ja":"モデル · {count}"},
+  "connections.recovery.notSavedConflict": {"zh-Hans":"保存未生效：设置已被其他窗口更新。","zh-Hant":"儲存未生效：設定已被其他視窗更新。","en":"The save was not applied: settings changed in another window.","ja":"保存は反映されませんでした。設定が別のウィンドウで更新されています。"},
+  "connections.recovery.notSavedUnknown": {"zh-Hans":"保存未生效：未收到确认。","zh-Hant":"儲存未生效：未收到確認。","en":"The save was not applied: no acknowledgement was received.","ja":"保存は反映されませんでした。確認応答を受け取れていません。"},
+  "connections.recovery.keyRequired": {"zh-Hans":"密钥未保存，请重新输入。","zh-Hant":"金鑰未儲存，請重新輸入。","en":"The key was not saved. Enter it again.","ja":"キーは保存されていません。再入力してください。"},
+  "connections.recovery.retrySave": {"zh-Hans":"重试保存","zh-Hant":"重試儲存","en":"Retry save","ja":"保存を再試行"},
   "image.settings.services.staged": {"zh-Hans":"更改已暂存，点击页面底部的保存后生效。","zh-Hant":"變更已暫存，點選頁面底部的儲存後生效。","en":"Changes are staged. They take effect when you save at the bottom of this page.","ja":"変更を一時保持しています。ページ下部で保存すると反映されます。"}
 } as const satisfies MessageCatalog;

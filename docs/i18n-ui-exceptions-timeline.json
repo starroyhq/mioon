@@ -595,6 +595,13 @@
       "hash": "b38fb3f76e4e15f9326ec20a07315e9c7c7f9ad0fed9af2ca8c7e523743d53f1",
       "owner": "timeline",
       "reason": "Invariant editing-frame unit suffix on the numeric snap target. Target meaning is localized via preview.snap.labelMessage; placement math and the original frame number remain unchanged. Reviewed literal template fragment: 'f'."
+    },
+    {
+      "file": "apps/web/src/clip-draft-state.ts",
+      "category": "cjk-source",
+      "hash": "9ecc99e2c6731c2ca6516b55cca463e446e4ae8ab243283ed068ba386685f1cb",
+      "owner": "creation",
+      "reason": "Original diagnostic retained for existing controller/error compatibility and is not a display lookup key or persisted translation. This exact notice is rendered through its four-locale counterpart while the raw diagnostic remains protocol evidence. Reviewed original literal: \"片段来源已变化；本地草稿仍保留。\"."
     }
   ]
 }

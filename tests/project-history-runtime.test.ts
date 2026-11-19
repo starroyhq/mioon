@@ -156,3 +156,36 @@ test('retained unknown history for the same UUID is isolated by application scop
   const id=randomUUID(),a=projectHistoryRuntime(id,{scope:'a'.repeat(64),key:'scope-A:instance-A',isCurrent:()=>true});a.open();await settle();await a.save('original');const pending=a.snapshot().attempt;assert.equal(pending?.phase,'unknown');a.close();
   const b=projectHistoryRuntime(id,{scope:'a'.repeat(64),key:'scope-B:instance-B',isCurrent:()=>true});assert.notEqual(a,b);assert.equal(b.snapshot().attempt,null);assert.equal(projectHistoryRuntime(id,{scope:'a'.repeat(64),key:'scope-A:instance-A',isCurrent:()=>true}),a);assert.deepEqual(a.snapshot().attempt?.input,pending?.input);b.close();
 });
+
+test('a retained unknown save is concluded from its exact receipt without replaying the write', async () => {
+  let saves = 0, reads = 0; const readInputs: {projectId: string; requestId: string}[] = [];
+  const client = fake({save: async () => { saves++; throw new Error('lost acknowledgement'); }});
+  const runtime = createProjectHistoryRuntime(projectId, client, undefined, undefined,
+    {readOutcome: async input => { reads++; readInputs.push({projectId: input.projectId, requestId: input.requestId}); return {applied: true, operation: 'project.version.save'}; }});
+  runtime.open(); await settle();
+  await runtime.save('Retained save'); await settle();
+  const attempt = runtime.snapshot().attempt;
+  assert.equal(attempt?.phase, 'unknown'); assert.equal(saves, 1);
+  assert.equal(await runtime.probeAttempt(), true);
+  assert.equal(runtime.snapshot().attempt?.phase, 'complete');
+  assert.equal(reads, 1); assert.equal(saves, 1, 'The receipt lookup never replays the write');
+  assert.deepEqual(readInputs, [{projectId, requestId: (attempt as {input: {requestId: string}}).input.requestId}]);
+  runtime.close();
+});
+
+test('a missing receipt or a backup restore keeps the unknown attempt untouched', async () => {
+  const client = fake({save: async () => { throw new Error('lost acknowledgement'); }});
+  const runtime = createProjectHistoryRuntime(projectId, client, undefined, undefined, {readOutcome: async () => ({applied: false, operation: null})});
+  runtime.open(); await settle(); await runtime.save('Retained save'); await settle();
+  assert.equal(await runtime.probeAttempt(), false);
+  assert.equal(runtime.snapshot().attempt?.phase, 'unknown');
+  runtime.close();
+  const backupRuntime = createProjectHistoryRuntime(projectId, fake({restoreBackup: async () => { throw new Error('lost acknowledgement'); }}), undefined, undefined,
+    {readOutcome: async () => { throw new Error('must not be read for backups'); }});
+  backupRuntime.open('backups'); await settle(); await backupRuntime.inspect(backupId); await settle();
+  await backupRuntime.chooseBackup(async ({projectId: owner, backupId: chosen, requestId}) => ({projectId: owner, backupId: chosen, requestId, projectFile: '/projects/restored.mioon'} as never));
+  assert.equal(backupRuntime.snapshot().attempt?.phase, 'unknown');
+  assert.equal(await backupRuntime.probeAttempt(), false);
+  assert.equal(backupRuntime.snapshot().attempt?.phase, 'unknown');
+  backupRuntime.close();
+});

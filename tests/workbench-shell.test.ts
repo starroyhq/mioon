@@ -13,16 +13,18 @@ test('task reveal uses a separate overlay and keeps project, view and compositio
   const calls: unknown[] = [];
   let composition = false;
   const currentProject = { current: 'project-a' }, viewReady = { current: true };
-  const open = Function('clipDraftRef', 'currentProject', 'viewReady', 'markPanelIntent', 'setShowDelivery', 'setShowImage', 'setShowTasks', 'setSelectedTaskId', `${body}; return openTasks;`)(
+  const open = Function('clipDraftRef', 'currentProject', 'viewReady', 'markPanelIntent', 'setShowDelivery', 'setShowImage', 'setShowTasks', 'setSelectedTaskId', 'autoReread', `${body}; return openTasks;`)(
     { current: { hasPendingComposition: () => composition } }, currentProject, viewReady,
     () => calls.push('intent'), (value: unknown) => calls.push(['delivery', value]), (value: unknown) => calls.push(['image', value]), (value: unknown) => calls.push(['tasks', value]), (value: unknown) => calls.push(['selection',value]),
+    (projectId: unknown) => calls.push(['reread', projectId]),
   ) as (isCurrent?: () => boolean) => boolean;
   assert.equal(open(() => false), false); assert.deepEqual((calls as unknown), []);
   composition = true; assert.equal(open(), false); assert.deepEqual((calls as unknown), []);
   composition = false; viewReady.current = false; assert.equal(open(), false); assert.deepEqual((calls as unknown), []);
   viewReady.current = true; currentProject.current = ''; assert.equal(open(), false); assert.deepEqual((calls as unknown), []);
   currentProject.current = 'project-b'; assert.equal(open(), true);
-  assert.deepEqual(calls, ['intent', ['selection',undefined], ['delivery', false], ['image', false], ['tasks', true]]);
+  assert.deepEqual(calls, ['intent', ['selection',undefined], ['delivery', false], ['image', false], ['tasks', true], ['reread', 'project-b']]);
+  calls.length = 0; assert.equal(open(), true); assert.deepEqual(calls, ['intent', ['selection',undefined], ['delivery', false], ['image', false], ['tasks', true], ['reread', 'project-b']], 'Every admitted task-center opening triggers one bounded re-read');
   assert.doesNotMatch(body, /setRightDockTab|setPanelOpen/);
 });
 

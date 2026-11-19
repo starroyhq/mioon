@@ -2,6 +2,7 @@ import { message, translate } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_ENDPOINT_LIMIT, imageSettingsResultSchema, customImageSettingsResultSchema, customImageConfigurationSchema, normalizeCustomImageBaseUrl, getCustomImageDestination, canonicalImageInput } from '@mioon/contracts';
 import { unavailableSecretStorage, watchPendingSecretStorage } from './settings-secret-storage.ts';
+import { settingsRecoveryVerdict, settingsRecoveryRetryable, settingsRecoveryMessages, settingsRecoveryMessageText } from './settings-recovery.ts';
 
 export { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_ENDPOINT_LIMIT };
 export type ImageSettingsResult=ReturnType<typeof imageSettingsResultSchema.parse>;
@@ -25,6 +26,8 @@ export interface ImageSettingsState {
   draft: ImageConfiguration|CustomImageConfiguration|null;
   secretAction: ImageSecretAction;
   recovery: ImageRecovery;
+  recoveryRetryable: boolean;
+  recoverySecret: boolean;
   message: string;
   displayMessages: DisplayMessage[];
 }
@@ -80,10 +83,13 @@ export function createImageSettingsClient({ fetchImpl = (...args: Parameters<typ
   }
   return { read: (signal?: AbortSignal) => request('GET', undefined, signal), write: (input: {expectedRevision: number; configuration: ImageConfiguration|CustomImageConfiguration; secret: Record<string, unknown>}) => request('PUT', JSON.stringify(input)) };
 }
-export const initialImageSettingsState=(): ImageSettingsState => ({ phase: 'loading', snapshot: null, keychainWaitConfirmed: false, draft: null, secretAction: 'keep', recovery: null, message: '', displayMessages: [] });
+export const initialImageSettingsState=(): ImageSettingsState => ({ phase: 'loading', snapshot: null, keychainWaitConfirmed: false, draft: null, secretAction: 'keep', recovery: null, recoveryRetryable: false, recoverySecret: false, message: '', displayMessages: [] });
 export const imageSettingsBusy=(state: ImageSettingsState): boolean=>['loading', 'saving', 'reconciling'].includes(state.phase);
 export const imageSettingsEditable=(state: ImageSettingsState): boolean=>Boolean(state.snapshot) && !imageSettingsBusy(state);
-export const imageSettingsCanSave=(state: ImageSettingsState): boolean=>imageSettingsEditable(state) && !state.recovery && state.phase !== 'blocked';
+// A retry after an unknown save is an explicit user action with the freshly
+// read revision; it is offered only when no replacement secret was consumed.
+export const imageSettingsCanSave=(state: ImageSettingsState): boolean=>imageSettingsEditable(state) && state.phase !== 'blocked' &&
+  (!state.recovery || state.recovery === 'unknown' && state.recoveryRetryable);
 export const imageSettingsDirty=(state: ImageSettingsState): boolean=>Boolean(state.snapshot && (canonicalImageInput(state.draft) !== canonicalImageInput(state.snapshot.configuration) || state.secretAction === 'remove'));
 export function customImageDraftConfiguration(draft: ImageConfiguration): CustomImageConfiguration {
   return { ...draft, providerId: 'openai-compatible', baseUrl: draft.baseUrl === '' ? '' : normalizeCustomImageBaseUrl(draft.baseUrl) };
@@ -165,20 +171,29 @@ export function createImageSettingsSession({ slot = 'official', client = createI
       onSnapshot(copy(safe));
       const configuredNow=property(safe.secret,'configured')===true;
       const savedMessage = configuredNow ? 'image.settings.notice.savedPersistent' : 'image.settings.notice.savedNone';
-      publish({snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, message: translate('zh-Hans', savedMessage), displayMessages: [message(savedMessage)]}); return true;
+      publish({snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, recoveryRetryable: false, recoverySecret: false, message: translate('zh-Hans', savedMessage), displayMessages: [message(savedMessage)]}); return true;
     }).catch((error: unknown) => {
       if (!current(token)) return false;
       const code=errorCode(error);
       if (code === 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE') {const unavailable = {...snapshot, storage: unavailableSecretStorage}; onSnapshot(copy(unavailable)); publish({snapshot: unavailable, phase: 'error', message: '', displayMessages: []}); return false;}
       if (code!==undefined&&['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION'].includes(code)) { publish({ phase: 'error', message: `${errorText(code)}新输入的密钥已清空。`, displayMessages: [errorDescriptor(code), message('image.settings.notice.keyCleared')] }); return false; }
       const recovery: ImageRecovery = code === 'IMAGE_SETTINGS_CONFLICT' ? 'conflict' : 'unknown';
-      publish({ phase: 'reconciling', recovery, message: '正在读取当前状态，不会自动重新保存。', displayMessages: [message('image.settings.notice.rereading')] });
+      const secretReplaced = secret.action === 'replace';
+      publish({ phase: 'reconciling', recovery, message: '正在读取当前状态。', displayMessages: [message('image.settings.notice.rereading')] });
       return Promise.resolve().then(() => client.read()).then(snapshotValue => {
         if (!current(token)) return false;
         const safe = receive(snapshotValue);
-        publish({ snapshot: safe, phase: 'review',
-          message: recovery === 'conflict' ? '设置已在其他窗口变化。你的草稿保留，请核对后继续；替换密钥需重新输入。' : `${errorText(code ?? '')}已读取当前状态，未自动重试。请核对后继续；替换密钥需重新输入。`, displayMessages: (recovery === 'conflict' ? [message('image.settings.notice.conflict')] : [errorDescriptor(code ?? ''), message('image.settings.notice.unknown')]) }); return false;
-      }).catch(() => { if (current(token)) publish({ phase: 'blocked', message: '暂时无法核实保存结果。草稿保留，请重新读取后再保存。', displayMessages: [message('connections.notice.blocked')] }); return false; });
+        const verdict = settingsRecoveryVerdict({ revision: safe.revision, fingerprint: canonicalImageInput(safe.configuration), secret: { configured: property(safe.secret,'configured') === true, storage: String(property(safe.secret,'storage') ?? '') } },
+          { revision, fingerprint: canonicalImageInput(configuration), secret: { configured: expectedSecret.configured, storage: expectedSecret.storage }, secretReplaced, conflict: recovery === 'conflict' });
+        if (verdict === 'applied') {
+          const configuredNow = property(safe.secret,'configured') === true, savedMessage = configuredNow ? 'image.settings.notice.savedPersistent' : 'image.settings.notice.savedNone';
+          publish({ snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, recoveryRetryable: false, recoverySecret: false, message: translate('zh-Hans', savedMessage), displayMessages: [message(savedMessage)] });
+          return true;
+        }
+        publish({ snapshot: safe, phase: 'review', recovery, recoveryRetryable: settingsRecoveryRetryable(verdict, secretReplaced), recoverySecret: secretReplaced,
+          message: settingsRecoveryMessageText(verdict, secretReplaced), displayMessages: settingsRecoveryMessages(verdict, secretReplaced) });
+        return false;
+      }).catch(() => { if (current(token)) publish({ phase: 'blocked', recoveryRetryable: true, recoverySecret: secretReplaced, message: '暂时无法核实保存结果。草稿保留，请重新读取后再保存。', displayMessages: [message('connections.notice.blocked')] }); return false; });
     });
   }
   return { getState: () => copy(state), load: () => read(), reload: () => read({ recover: Boolean(state.snapshot) }), save,

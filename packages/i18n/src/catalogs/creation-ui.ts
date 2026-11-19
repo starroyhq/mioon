@@ -1270,12 +1270,7 @@ export const creationUiMessages = {
     "en": "Original request awaiting confirmation",
     "ja": "元のリクエストの確認待ち"
   },
-  "image.studio.sourceNotSent": {
-    "zh-Hans": "尚未发送源图。请核对下方固定请求后，明确批准或拒绝",
-    "zh-Hant": "尚未傳送來源圖像。請核對下方固定請求後，明確批准或拒絕",
-    "en": "The source image has not been sent. Review the fixed request below, then explicitly approve or reject it",
-    "ja": "元画像はまだ送信していません。以下の固定リクエストを確認し、明示的に承認または拒否してください"
-  },
+  "image.studio.sourceNotSent": {"zh-Hans": "尚未发送源图，等待批准", "zh-Hant": "尚未傳送來源圖片，等待批准", "en": "The source image has not been sent; awaiting approval", "ja": "ソース画像は未送信です。承認待ちです"},
   "image.studio.reconcileOnly": {
     "zh-Hans": "只核对已保存的请求，不会自动重新生成。切换页签或重开面板也不会重发",
     "zh-Hant": "僅核對已儲存的請求，不會自動重新生成。切換分頁或重新開啟面板也不會重新傳送",

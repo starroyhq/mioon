@@ -186,7 +186,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       await onAccepted?.({ response: result.response, intent: copy(settled.intent), capture: token, nameCapture, recovered });
       return result.response;
     }
-    emit({ intentError: settled.intent.outcome.status === 'not_applied' ? `服务器已确认原请求未应用（${settled.intent.outcome.code}）。名称仍保留，请核对后重新检查。` : '原请求结果仍待确认；不会自动重试。', intentErrorDisplay: settled.intent.outcome.status === 'not_applied' ? displayMessage('recovery.delivery.notAppliedCode', { code: settled.intent.outcome.code }) : displayMessage('recovery.notice.pending') });
+    emit({ intentError: settled.intent.outcome.status === 'not_applied' ? `服务器已确认原请求未应用（${settled.intent.outcome.code}），名称仍保留。` : '原请求结果仍待确认。', intentErrorDisplay: settled.intent.outcome.status === 'not_applied' ? displayMessage('recovery.delivery.notAppliedCode', { code: settled.intent.outcome.code }) : displayMessage('recovery.notice.pending') });
     return null;
   }
   const controller = {

@@ -99,11 +99,17 @@ export function jobStatusDescriptor(job: JobDisplay | null | undefined): Display
 export const outputReviewDescriptor = message('tasks.outputReviewDisclosure');
 export const workspaceHeldDescriptor = message('tasks.heldReason');
 export function taskErrorDescriptor(error: unknown): DisplayMessage {
-  const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : null;
+  const code = safeTaskErrorCode(error);
   switch (code) {
     case 'NETWORK': case 'NETWORK_ERROR': case 'TIMEOUT': case 'PROVIDER_TIMEOUT': return message('tasks.error.network');
     case 'UNAUTHORIZED': case 'FORBIDDEN': case 'PROVIDER_AUTH_FAILED': return message('tasks.error.authorization');
-    default: return message('tasks.error.safeSummary');
+    case 'SUBMISSION_UNKNOWN': case 'PROVIDER_SUBMISSION_UNKNOWN': return message('tasks.error.submissionUnknown');
+    case 'PROVIDER_GENERATION_FAILED': case 'GENERATION_FAILED': case 'PROVIDER_FAILED': case 'PROVIDER_ERROR': return message('tasks.error.providerFailed');
+    case 'OUTPUT_WRITE_FAILED': case 'OUTPUT_VERIFY_FAILED': case 'OUTPUT_UNAVAILABLE': case 'OUTPUT_INVALID': return message('tasks.error.outputFailed');
+    case 'EXPORT_CANCELLED': return message('tasks.error.exportCancelled');
+    // The specific raw code stays available through the diagnostic row; the
+    // sentence never asks the user to judge the saved state themselves.
+    default: return code ? message('tasks.error.unknown') : message('tasks.error.safeSummary');
   }
 }
 export function safeTaskErrorCode(error: unknown): string | null {

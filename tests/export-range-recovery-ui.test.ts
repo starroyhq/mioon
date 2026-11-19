@@ -40,3 +40,19 @@ test('legacy original range omission stays whole-original without borrowing curr
   const terminal = View({ state: { phase: 'ready', busy: false, intent: prior, intentPhase: 'accepted' }, controller: {} });
   assert.match(textOf(nodes(terminal).find(node => node.props['data-testid'] === 'delivery-original-range')), /第 0 帧.*第 30 帧/);
 });
+
+test('not-applied delivery conclusion offers the normal re-export entry and never creates a request', () => {
+  const View = component('DeliveryDraftRecovery.tsx').default;
+  const calls: string[] = [];
+  const notApplied = { ...prior, outcome: { status: 'not_applied', code: 'REVISION_CONFLICT' } };
+  const state = { phase: 'ready', busy: false, intent: notApplied, retainedPreparation: null, intentUncertain: false, intentPhase: 'idle', pending: false };
+  const tree = View({ state, controller: new Proxy({}, { get: () => () => assert.fail('Passive recovery view invoked a controller') }), onReexport: () => calls.push('reexport') });
+  const button = nodes(tree).find(node => node.props['data-testid'] === 'reexport-not-applied-delivery');
+  assert.ok(button, 'The re-export entry must be visible for a confirmed not-applied delivery');
+  assert.match(textOf(nodes(tree).find(node => node.props['data-testid'] === 'delivery-original-intent') ?? tree), /原导出请求已确认未应用/);
+  assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'recover-original-delivery'), false);
+  (button!.props.onClick as ()=>void)();
+  assert.deepEqual(calls, ['reexport']);
+  const absent = View({ state, controller: {} });
+  assert.equal(nodes(absent).some(node => node.props['data-testid'] === 'reexport-not-applied-delivery'), false);
+});

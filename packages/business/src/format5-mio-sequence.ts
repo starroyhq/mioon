@@ -44,6 +44,8 @@ const versionOf = (store: ProjectStore, nodeId: string): string | null => {
 };
 function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: {mainTrack?: {trackId?: string}}): ReturnType<typeof sequenceSyncIntent> {
   switch (action.kind) {
+    case 'split-at-scenes': return sequenceSyncIntent({kind: 'clip-split-scenes',
+      assetId: action.assetId, resultId: action.resultId});
     case 'reorder': return sequenceSyncIntent({kind: 'clip-move', clipId: action.clipId, beforeClipId: action.beforeClipId});
     case 'remove': return sequenceSyncIntent({kind: 'clip-remove', clipId: action.clipId});
     case 'split': return sequenceSyncIntent({kind: 'clip-split', clipId: action.clipId,
@@ -159,17 +161,21 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     request.referenceIntent = reference.referenceIntent;
     request.allocation = reference.allocation;
   }
-  else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
-  else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
+  else if (action.kind === 'subtitles') request.subtitlesIntent = {side: 'timeline', operation: {kind: 'subtitles',
+    edits: action.edits.map(edit => edit.kind === 'add' ? {kind: 'add' as const, cue: {...edit.cue, id: randomUUID()}}
+      : edit)}};
+  else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);  else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
+  else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
+    operation: {kind: 'timeline-format', presetId: action.presetId}};
   else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',
     operation: {kind: 'track-structure', edit: {kind: 'add', trackId: randomUUID(), trackKind: action.trackKind,
       ...(action.name ? {name: action.name} : {})}}} satisfies SequenceEditTrackIntent;
   else if (action.kind === 'track-update') request.trackIntent = {side: 'timeline',
     operation: {kind: 'track-structure', edit: {kind: 'update', trackId: action.trackId, patch: action.patch}}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
-  'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
-  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
+    'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
+  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
     const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');

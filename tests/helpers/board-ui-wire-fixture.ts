@@ -66,7 +66,9 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('assets', {id: BOARD_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, sha256: sha('a'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 4, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetV2, projectId, name: '镜头A v2.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('d'), sizeBytes: 10});
-    store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10});
+    store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10,
+      referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/ref.png', volume: null, sizeBytes: 10,
+        mtimeMs: 0, sampledSha256: sha('c'), fullSha256: sha('c')}});
     store.put('assets', {id: BOARD_IDS.imageAsset2, projectId, name: '参考图 B.png', mimeType: 'image/png', duration: null, sha256: sha('e'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.audioAsset, projectId, name: '对白.wav', mimeType: 'audio/wav', duration: 5, sha256: sha('f'), sizeBytes: 10});
     const subjectVersionData = (versionId: string, subjectId: string, assetId: string = BOARD_IDS.imageAsset): string => JSON.stringify({id: versionId,

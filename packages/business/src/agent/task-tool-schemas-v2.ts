@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="9616a0d940c556dd7343ba636739bbb72ce85147daed4528eb7231a956234504";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="a9f10257558dd5d1debd06bb203ee4e1df1b3ac1d6b385407b2cbe14a2efe551";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1039,6 +1039,29 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "clipId",
               "version",
               "locked"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "split-at-scenes"
+              },
+              "assetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "resultId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "assetId",
+              "resultId"
              ],
              "additionalProperties": false
             }
@@ -2566,6 +2589,45 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "required": [
        "kind",
        "edit"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
+   "formatIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "timeline-format"
+       },
+       "presetId": {
+        "type": "string",
+        "enum": [
+         "portrait_1080",
+         "landscape_1080",
+         "square_1080",
+         "portrait_720",
+         "landscape_720",
+         "square_720"
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "presetId"
       ],
       "additionalProperties": false
      }
@@ -4267,6 +4329,45 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "required": [
          "kind",
          "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "formatIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "timeline-format"
+         },
+         "presetId": {
+          "type": "string",
+          "enum": [
+           "portrait_1080",
+           "landscape_1080",
+           "square_1080",
+           "portrait_720",
+           "landscape_720",
+           "square_720"
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "presetId"
         ],
         "additionalProperties": false
        }
@@ -12674,6 +12775,159 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "kind",
      "shotId",
      "edits"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "subtitles"
+     },
+     "edits": {
+      "type": "array",
+      "items": {
+       "anyOf": [
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "add"
+          },
+          "cue": {
+           "type": "object",
+           "properties": {
+            "text": {
+             "type": "string",
+             "maxLength": 256
+            },
+            "startFrame": {
+             "type": "integer",
+             "minimum": 0,
+             "maximum": 300000
+            },
+            "durationFrames": {
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 300000
+            },
+            "anchor": {},
+            "dialogueRef": {}
+           },
+           "required": [
+            "text",
+            "startFrame",
+            "durationFrames"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "required": [
+          "kind",
+          "cue"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "update"
+          },
+          "cueId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "patch": {
+           "type": "object",
+           "additionalProperties": {}
+          }
+         },
+         "required": [
+          "kind",
+          "cueId",
+          "patch"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "remove"
+          },
+          "cueId": {
+           "type": "string",
+           "format": "uuid"
+          }
+         },
+         "required": [
+          "kind",
+          "cueId"
+         ],
+         "additionalProperties": false
+        }
+       ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+     }
+    },
+    "required": [
+     "kind",
+     "edits"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "format-set"
+     },
+     "presetId": {
+      "type": "string",
+      "enum": [
+       "portrait_1080",
+       "landscape_1080",
+       "square_1080",
+       "portrait_720",
+       "landscape_720",
+       "square_720"
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "presetId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "split-at-scenes"
+     },
+     "assetId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "resultId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "assetId",
+     "resultId"
     ],
     "additionalProperties": false
    },
