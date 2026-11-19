@@ -3063,11 +3063,12 @@ const timelineCoreMessages = {
     "en": "Subtitle text (saved exactly as entered)",
     "ja": "字幕テキスト（入力どおりに保存）"
   },
+  "subtitles.ui.discardReload": {"zh-Hans": "放弃草稿并载入最新字幕", "zh-Hant": "捨棄草稿並載入最新字幕", "en": "Discard draft and load latest subtitles", "ja": "下書きを破棄して最新の字幕を読み込む"},
   "subtitles.ui.conflict": {
-    "zh-Hans": "时间线已变化，草稿仍保留。放弃修改并载入已保存内容后，才可继续保存",
-    "zh-Hant": "時間軸已變更，草稿仍保留。請捨棄修改並載入已儲存內容後，再繼續儲存",
-    "en": "The timeline changed; your draft is retained. Discard changes and load saved content before saving again",
-    "ja": "タイムラインが変わりましたが、下書きは保持されています。変更を破棄して保存済み内容を読み込んでから、再度保存してください"
+    "zh-Hans": "时间线已更新，草稿仍保留",
+    "zh-Hant": "時間軸已更新，草稿仍保留",
+    "en": "The timeline was updated; the draft is retained",
+    "ja": "タイムラインが更新されました。下書きは保持されています"
   },
   "subtitles.ui.tasks": {
     "zh-Hans": "打开任务中心",
@@ -3219,12 +3220,7 @@ const timelineCoreMessages = {
     "en": "Place the playhead on an integer frame within the existing media duration",
     "ja": "再生ヘッドを既存メディアの長さの範囲内の整数フレームに置いてください"
   },
-  "subtitles.error.newer": {
-    "zh-Hans": "时间线已有更新版本；请核对后放弃草稿并载入最新字幕",
-    "zh-Hant": "時間軸已有更新版本；請核對後捨棄草稿並載入最新字幕",
-    "en": "A newer timeline revision is available. Review it, then discard the draft and load the latest subtitle",
-    "ja": "タイムラインに新しいリビジョンがあります。確認後、下書きを破棄して最新の字幕を読み込んでください"
-  },
+  "subtitles.error.newer": {"zh-Hans": "时间线已更新", "zh-Hant": "時間軸已更新", "en": "The timeline was updated", "ja": "タイムラインが更新されました"},
   "subtitles.error.unknown": {
     "zh-Hans": "结果待确认。草稿仍保留，请到任务中心恢复同一请求；不要重新提交",
     "zh-Hant": "結果待確認。草稿仍保留，請至工作中心還原同一請求；不要重新提交",
@@ -3957,12 +3953,7 @@ const timelineCoreMessages = {
     "en": "The last completed snapshot is still shown below",
     "ja": "以下には前回完了したスナップショットを表示しています"
   },
-  "timeline.preview.failed": {
-    "zh-Hans": "合成失败。请核对任务状态后重新渲染",
-    "zh-Hant": "合成失敗。請核對工作狀態後重新算繪",
-    "en": "Compositing failed. Check the task state before rendering again",
-    "ja": "合成に失敗しました。タスクの状態を確認してから再レンダリングしてください"
-  },
+  "timeline.preview.failed": {"zh-Hans": "预览渲染失败", "zh-Hant": "預覽算繪失敗", "en": "Preview rendering failed", "ja": "プレビューのレンダリングに失敗しました"},
   "timeline.preview.rerender": {
     "zh-Hans": "重新渲染",
     "zh-Hant": "重新算繪",

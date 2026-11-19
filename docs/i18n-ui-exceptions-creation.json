@@ -1124,7 +1124,7 @@
     {
       "file": "apps/web/src/image-generation.ts",
       "category": "cjk-source",
-      "hash": "54570dfc9f19b93944283d1ac82bed7edabccf901286faf7ae64115742f8af0a",
+      "hash": "8fb33f7ff1a579cd88df70492d0eac564e94078b07733d81836c362642121bdf",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.sourceUnknownHeld."
     },
@@ -1278,13 +1278,6 @@
     {
       "file": "apps/web/src/image-generation.ts",
       "category": "cjk-source",
-      "hash": "87ce88df10f2fabc0bc94a3ca1a5cfc9d3f4f4f10136972cb868e43b8485bbea",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.editPrepared."
-    },
-    {
-      "file": "apps/web/src/image-generation.ts",
-      "category": "cjk-source",
       "hash": "14f4afd636fee45045f6b4a3c3a9d8f607d821cda101dc10763ac971c2cdb339",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.preparationSourceInvalid."
@@ -1302,20 +1295,6 @@
       "hash": "7bf969f6ffffa6b746e29bfd1a42e0d3908acc76585b085e4e2d12f175a1d8ac",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.comfyReceiptSaveFailed."
-    },
-    {
-      "file": "apps/web/src/image-generation.ts",
-      "category": "cjk-source",
-      "hash": "0435e75f6b7bf6b12cda55620541e494d4646a5f78e3ae449e0e60f9c0935e4d",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.comfyPrepared."
-    },
-    {
-      "file": "apps/web/src/image-generation.ts",
-      "category": "cjk-source",
-      "hash": "eb8af1bcdf522ef5a8fb63fa4751962cdf79837e71ea7367a0067024c73908dc",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.comfyPreparationPending."
     },
     {
       "file": "apps/web/src/image-generation.ts",

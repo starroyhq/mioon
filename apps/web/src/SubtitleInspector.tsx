@@ -33,7 +33,7 @@ export default function SubtitleInspector({ state, controller, renderJob, onBack
         <p className="input-hint">{t('subtitles.ui.bounds', { frames: state.timeline?.durationFrames || 0 })}</p>
         <p id="subtitle-validation" data-testid="subtitle-validation" className={issue ? 'notice warning' : 'input-hint'} role={issue ? 'alert' : undefined}>{issue || t('subtitles.ui.characters', { counts: draft.text.split('\n').map((line: string) => [...line].length).join(' / ') })}</p>
       </>}
-      {state?.conflict && <p className="notice warning" role="alert">{t('subtitles.ui.conflict')}</p>}
+      {state?.conflict && <div className="notice warning" role="alert">{t('subtitles.ui.conflict')}<Button type="button" variant="outline" data-testid="subtitle-discard-reload" disabled={state.submitting} onClick={() => admit(() => controller.discardDraft(state.scope))}>{t('subtitles.ui.discardReload')}</Button></div>}
       {state?.error && <p className="notice warning" role="alert">{renderMessage(state.errorMessage || message('subtitles.error.unknown'))}</p>}
       {(state?.pending || state?.uncertain) && <Button type="button" variant="outline" size="sm" data-testid="subtitle-open-tasks" onClick={() => admit(onOpenTasks)}>{t('subtitles.ui.tasks')}</Button>}
       <details className="input-hint"><summary>{t('subtitles.ui.punctuation')}</summary><p>，。！？；：、（）【】《》〈〉“”‘’—…·￥％～</p><p>{t('subtitles.ui.characterSupport')}</p></details>

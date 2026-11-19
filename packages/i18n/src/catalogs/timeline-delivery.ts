@@ -2068,12 +2068,7 @@ export const timelineDeliveryMessages = {
     "en": "Draft {draft} · {time}",
     "ja": "下書き {draft} · {time}"
   },
-  "recovery.text.baseline": {
-    "zh-Hans": "文字来自 修订版 {revision}，当前镜头已变化。原版本仍保留，请核对当前保存内容后再继续",
-    "zh-Hant": "文字來自 修訂版 {revision}，目前鏡頭已變更。原版本仍保留，請核對目前儲存內容後再繼續",
-    "en": "This text comes from revision {revision}; the current shot has changed. The original revision is retained. Review the currently saved content before continuing",
-    "ja": "テキストは リビジョン {revision} に由来し、現在のショットは変更されています。元のバージョンは保持します。続行前に現在の保存内容を確認してください"
-  },
+  "recovery.text.baseline": {"zh-Hans": "文字基于修订版 {revision}，当前镜头已更新", "zh-Hant": "文字基於修訂版 {revision}，目前鏡頭已更新", "en": "This text is based on revision {revision}; the current shot has changed", "ja": "テキストはリビジョン {revision} に基づいており、現在のショットは更新されています"},
   "recovery.text.originalDetails": {
     "zh-Hans": "查看原请求与精确文字 · 修订版 {revision}",
     "zh-Hant": "查看原請求與精確文字 · 修訂版 {revision}",
