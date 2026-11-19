@@ -86,7 +86,7 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
         durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
         versionId: edit.clip.versionId, locked: edit.clip.versionLocked},
       beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {})};
-    case 'split-at-scenes': return {kind: 'clip-split-scenes', clipId: edit.clipId, assetId: edit.assetId, resultId: edit.resultId};
+    case 'split-at-scenes': return {kind: 'clip-split-scenes', assetId: edit.assetId, resultId: edit.resultId};
     case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
       rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};
     case 'trim': return {kind: 'clip-trim', clipId: edit.clipId, durationFrames: edit.durationFrames,
@@ -238,7 +238,8 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       formatIntent: input.formatIntent as never});
     if (input.subtitlesIntent) return previewSubtitleEdits(store, {requestId: input.requestId,
-      ...(input.actionId ? {actionId: input.actionId} : {}), subtitlesIntent: input.subtitlesIntent as never});
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      subtitlesIntent: input.subtitlesIntent as never});
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});

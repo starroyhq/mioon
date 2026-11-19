@@ -8,7 +8,8 @@
 import {AppError} from '../../contracts/src/app-error.ts';
 import {CLIP_LAYOUT_PROFILE} from '../../contracts/src/timeline-clip-layout.ts';
 import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
-import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitle-profile.ts';
+import {FORMAT5_LIMITS, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {findSequenceEditReceipt, prepareSequenceEditHistory, sequenceEditInputDigest,
@@ -18,7 +19,7 @@ import {applySequenceEditTimelineDelta} from './format5-sequence-sync.ts';
 import {sequenceEditEnvelopeOperationName, SEQUENCE_EDIT_CONTRACT_VERSION} from '../../contracts/src/sequence-edit.ts';
 import type {
   SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditExpectedTarget, SequenceEditFormatIntent,
-  SequenceEditStateDelta, SequenceEditTimelineDelta,
+  SequenceEditStateDelta, SequenceEditSubtitleProfileChange, SequenceEditTimelineDelta,
 } from '../../contracts/src/sequence-edit.ts';
 import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -37,13 +38,13 @@ const failure = (code: SequenceEditErrorCode, ids: readonly string[] = []): {ok:
 const unchangedTimeline = (): Omit<SequenceEditTimelineDelta, 'clips' | 'header'> => ({
   cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged'},
 });
-const apply = (timeline: Format5Timeline): Format5Timeline => {
+const apply = (timeline: Format5Timeline, subtitles: Format5Timeline['subtitles']): Format5Timeline => {
   const clips = timeline.clips.map(clip => {
     const candidate = clip as Format5Clip & {layout?: unknown};
     if (Object.hasOwn(candidate, 'layout')) return candidate;
     return {...candidate, layout: {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: timelineOutputPreset(timeline)?.id ?? ''}} as Format5Clip;
   });
-  return {...timeline, clips};
+  return {...timeline, clips, ...(subtitles ? {subtitles} : {})};
 };
 
 export interface TimelineFormatPlan {
@@ -59,11 +60,19 @@ export function planTimelineFormat(store: ProjectStore, timeline: Format5Timelin
   const next = timelineOutputPreset(intent.operation.presetId);
   if (!current || !next) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '画幅预设无效。', 409, {});
   if (current.id === next.id) throw new AppError('SEQUENCE_EDIT_NOOP', '时间线已使用此输出规格。', 409, {});
-  const nextTimeline = apply(timeline);
+  if (Math.min(current.width, current.height) !== Math.min(next.width, next.height)) {
+    throw new AppError('TIMELINE_FORMAT_TIER_MISMATCH', '修改比例时必须保留当前画框的短边档位。', 409, {});
+  }
+  const nextSubtitles = timeline.subtitles?.profileId === TIMELINE_SUBTITLE_PROFILE_ID
+    ? {profileId: TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, basisPresetId: current.id, cues: timeline.subtitles.cues}
+    : timeline.subtitles;
+  const nextTimeline = apply(timeline, nextSubtitles);
   const issue = getFormat5TimelineIssue(nextTimeline, {projectId: store.projectId});
   if (issue) {
-    if (process.env.FS_DEBUG) console.error('FORMAT ISSUE', issue, JSON.stringify(nextTimeline.clips));
     throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '切换画幅后片段布局无效。', 409, {issue: issue.code, ids: issue.ids});
+  }
+  if (Buffer.byteLength(JSON.stringify(nextTimeline)) > FORMAT5_LIMITS.timelineBytes) {
+    throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '切换画幅会超过时间线保存上限。', 409, {});
   }
   const before = new Map(timeline.clips.map(clip => [clip.id, clip] as const));
   const after = new Map(nextTimeline.clips.map(clip => [clip.id, clip] as const));
@@ -72,11 +81,15 @@ export function planTimelineFormat(store: ProjectStore, timeline: Format5Timelin
     value: {fps: current.fps, width: current.width, height: current.height}};
   const headerChange: NonNullable<SequenceEditTimelineDelta['header']> = {kind: 'set',
     value: {fps: next.fps, width: next.width, height: next.height}};
-  const deltas = (clips: readonly Format5Clip[], header: NonNullable<SequenceEditTimelineDelta['header']>): SequenceEditStateDelta => ({
-    board: {writes: [], removals: []}, timeline: {...unchangedTimeline(), clips, header},
+  const profile = (value: Format5Timeline['subtitles']): SequenceEditSubtitleProfileChange => value
+    ? {kind: 'set', value: {profileId: value.profileId, ...(value.basisPresetId !== undefined ? {basisPresetId: value.basisPresetId} : {})}}
+    : {kind: 'absent'};
+  const deltas = (clips: readonly Format5Clip[], header: NonNullable<SequenceEditTimelineDelta['header']>,
+    subtitles: SequenceEditSubtitleProfileChange): SequenceEditStateDelta => ({
+    board: {writes: [], removals: []}, timeline: {...unchangedTimeline(), clips, header, subtitles},
   });
-  return {before: deltas(changedClipIds.map(id => before.get(id)!), beforeHeader),
-    after: deltas(changedClipIds.map(id => after.get(id)!), headerChange),
+  return {before: deltas(changedClipIds.map(id => before.get(id)!), beforeHeader, profile(timeline.subtitles)),
+    after: deltas(changedClipIds.map(id => after.get(id)!), headerChange, profile(nextTimeline.subtitles)),
     changedClipIds, header: headerChange};
 }
 

@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="d222284bc80314efe9ae1302e148abd971326fa1d5a8a7d9a1f53c704f29fae2";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="cc5daa0997c8588eef9ddacaf7d2bfbb18d360e38435ccc30b9d42c929d30dbe";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -710,10 +710,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "string",
                "const": "split-at-scenes"
               },
-              "clipId": {
-               "type": "string",
-               "format": "uuid"
-              },
               "assetId": {
                "type": "string",
                "format": "uuid"
@@ -725,7 +721,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              },
              "required": [
               "kind",
-              "clipId",
               "assetId",
               "resultId"
              ],
@@ -10405,10 +10400,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "string",
       "const": "split-at-scenes"
      },
-     "clipId": {
-      "type": "string",
-      "format": "uuid"
-     },
      "assetId": {
       "type": "string",
       "format": "uuid"
@@ -10420,7 +10411,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     },
     "required": [
      "kind",
-     "clipId",
      "assetId",
      "resultId"
     ],

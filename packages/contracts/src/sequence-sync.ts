@@ -54,7 +54,7 @@ export type SequenceSyncCommand =
   | {readonly kind: 'clip-move-off-track'; readonly clipId: string; readonly trackId: string;
     readonly startFrame: number; readonly copyNodeId?: string}
   /** FR-B2: split one clip at every current scene cut inside its source range. */
-  | {readonly kind: 'clip-split-scenes'; readonly clipId: string; readonly assetId: string; readonly resultId: string};
+  | {readonly kind: 'clip-split-scenes'; readonly assetId: string; readonly resultId: string};
 
 /** Convert a TS command payload into the SA operation carried by the shared
  * envelope intent. Ownership/hash validation still happens inside the service
@@ -80,8 +80,7 @@ export function sequenceSyncOperation(command: SequenceSyncCommand): ChainSyncOp
         durationFrames: command.clip.durationFrames, sourceInFrame: command.clip.sourceInFrame,
       }, beforeClipId: command.beforeClipId, ...(command.nodeKind ? {nodeKind: command.nodeKind} : {})}};
     case 'clip-split-scenes':
-      return {kind: 'track', edit: {kind: 'split-at-scenes', clipId: command.clipId,
-        assetId: command.assetId, resultId: command.resultId}};
+      return {kind: 'track', edit: {kind: 'split-at-scenes', assetId: command.assetId, resultId: command.resultId}};
     case 'clip-split':
       return {kind: 'track', edit: {kind: 'split', clipId: command.clipId, offsetFrames: command.offsetFrames,
         rightClipId: command.rightClipId, ...(command.rightSourceInFrame !== undefined ? {rightSourceInFrame: command.rightSourceInFrame} : {})}};

@@ -990,6 +990,8 @@ export interface SequenceEditReceipt {
   readonly contentRevision: number;
   readonly timelineRevision: number;
   readonly syncRevision: number;
+  /** Present on applied scene-split receipts: changed and skipped clips. */
+  readonly sceneSplit?: SequenceEditSceneSplit;
 }
 export const sequenceEditHistoryActionSchema = z.object({actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes), affected: sequenceSchema,
   origin: z.enum(['user', 'mio']).optional()}).strict();
@@ -1002,6 +1004,21 @@ export const sequenceEditAffectedCountsSchema = z.object({
   nodes: sequenceSchema, edges: sequenceSchema, mainTrackClips: sequenceSchema,
   otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema, subjectBindings: sequenceSchema.optional(),
 }).strict();
+export const SEQUENCE_EDIT_SCENE_SPLIT_SKIP_REASONS = Object.freeze(['NO_CUT_IN_RANGE', 'FADE_BOUNDS'] as const);
+export type SequenceEditSceneSplitSkipReason = (typeof SEQUENCE_EDIT_SCENE_SPLIT_SKIP_REASONS)[number];
+export interface SequenceEditSceneSplitRow {readonly clipId: string; readonly clipIds: readonly string[];
+  readonly cutFrames: readonly number[]; readonly fadeCutFrames: readonly number[]}
+export interface SequenceEditSceneSplitSkipped {readonly clipId: string;
+  readonly reason: SequenceEditSceneSplitSkipReason; readonly cutFrames?: readonly number[]}
+export interface SequenceEditSceneSplit {readonly split: readonly SequenceEditSceneSplitRow[];
+  readonly skipped: readonly SequenceEditSceneSplitSkipped[]}
+const frameListSchema = (max: number) => z.array(sequenceSchema).max(max);
+const sceneSplitRowSchema = z.object({clipId: uuidSchema, clipIds: idListSchema(1501), cutFrames: frameListSchema(1500),
+  fadeCutFrames: frameListSchema(1500)}).strict();
+const sceneSplitSkippedSchema = z.object({clipId: uuidSchema,
+  reason: z.enum(SEQUENCE_EDIT_SCENE_SPLIT_SKIP_REASONS), cutFrames: frameListSchema(1500).optional()}).strict();
+const sceneSplitSchema = z.object({split: z.array(sceneSplitRowSchema).max(100),
+  skipped: z.array(sceneSplitSkippedSchema).max(100)}).strict();
 export const sequenceEditReceiptSchema = z.object({
   version: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   requestId: z.string().refine(isSequenceEditRequestId, 'Invalid request id'), inputDigest: digestSchema,
@@ -1014,6 +1031,7 @@ export const sequenceEditReceiptSchema = z.object({
   }).strict()).max(FORMAT5_LIMITS.mainTrackClips).optional(),
   affected: sequenceEditAffectedCountsSchema, history: sequenceEditHistoryViewSchema,
   contentRevision: sequenceSchema, timelineRevision: revisionSchema, syncRevision: revisionSchema,
+  sceneSplit: sceneSplitSchema.optional(),
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
   'Only a not-applied receipt carries an error code').refine(value => value.status === 'applied' || value.warnings === undefined,
   'A not-applied receipt carries no warnings');
@@ -1152,7 +1170,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT',
-  'SEQUENCE_EDIT_SCENE_RESULT_STALE',
+  'SEQUENCE_EDIT_SCENE_RESULT_STALE', 'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT',
   'SEQUENCE_EDIT_REFERENCE_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];

@@ -239,7 +239,7 @@ export class Format5EditSession {
     } finally {this.inFlight = false;}
   }
   /** FR-B2: split one main-track clip at the current scene cuts. */
-  async splitAtScenes(clipId: string, assetId: string, resultId: string): Promise<SequenceOutcome> {
+  async splitAtScenes(assetId: string, resultId: string): Promise<SequenceOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
@@ -247,7 +247,7 @@ export class Format5EditSession {
       if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
       try {
         const response = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('split-scenes'),
-          intents: [sequenceSyncIntent({kind: 'clip-split-scenes', clipId, assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
+          intents: [sequenceSyncIntent({kind: 'clip-split-scenes', assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
         if ((response as SequenceFailure).ok === false) return response as SequenceFailure;
         const preview = response as SequencePreviewResponse;
         this.pending = {envelope: preview.envelope, planDigest: preview.planDigest, requestId: preview.envelope.requestId};

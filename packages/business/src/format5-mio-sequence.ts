@@ -42,7 +42,7 @@ const versionOf = (store: ProjectStore, nodeId: string): string | null => {
 };
 function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: {mainTrack?: {trackId?: string}}): ReturnType<typeof sequenceSyncIntent> {
   switch (action.kind) {
-    case 'split-at-scenes': return sequenceSyncIntent({kind: 'clip-split-scenes', clipId: action.clipId,
+    case 'split-at-scenes': return sequenceSyncIntent({kind: 'clip-split-scenes',
       assetId: action.assetId, resultId: action.resultId});
     case 'reorder': return sequenceSyncIntent({kind: 'clip-move', clipId: action.clipId, beforeClipId: action.beforeClipId});
     case 'remove': return sequenceSyncIntent({kind: 'clip-remove', clipId: action.clipId});

@@ -53,7 +53,7 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('subtitles'), edits: z.array(subtitleEdit).min(1).max(100)}).strict(),
   z.object({kind: z.literal('format-set'),
     presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
-  z.object({kind: z.literal('split-at-scenes'), clipId: uuid, assetId: uuid, resultId: uuid}).strict(),
+  z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),
 ]);
 export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
 export const mioSequenceEditSchemas = Object.freeze({

@@ -2440,7 +2440,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       pending: !projectId || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
   async function saveTimelineFormat(intent: TimelineFormatIntent, frameOptions?: Pick<RunOptions, 'canExecute' | 'canRevealTasks' | 'errorMessage'>): Promise<{status: string; timeline?: unknown; error?: unknown}> {
-    if (typeof dataRef !== 'undefined' && dataRef.current.projectFormatVersion === 5) {
+    if (dataRef.current.projectFormatVersion === 5) {
       const presetId = (intent.input as {presetId?: unknown}).presetId;
       if (typeof presetId !== 'string') return {status: 'rejected'};
       const result = await format5Session().format(presetId);
@@ -3322,13 +3322,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   async function splitTimelineAtScenes(assetId: string, resultId: string): Promise<void> {
     if (dataRef.current.projectFormatVersion === 5) {
-      const timeline = dataRef.current.timeline;
-      const mainTrackId = (timeline as unknown as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
-      const clip = timeline?.clips?.find(item => item.assetId === assetId && item.trackId === mainTrackId);
-      if (!clip) {notify(msg('scene.split.noClip'), 'warning'); return;}
-      const result = await format5Session().splitAtScenes(clip.id, assetId, resultId);
+      const result = await format5Session().splitAtScenes(assetId, resultId);
       if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return;}
-      notify(msg('scene.split.done', {count: 1}));
+      const sceneSplit = result.receipt?.sceneSplit;
+      const count = sceneSplit?.split.length ?? 0, skipped = sceneSplit?.skipped.length ?? 0;
+      notify(skipped ? msg('scene.split.doneSkipped', { count, skipped }) : msg('scene.split.done', { count }));
       await refresh(currentProject.current); await format5RefreshHistory();
       return;
     }

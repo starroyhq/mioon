@@ -305,39 +305,111 @@ function sceneAllowedCuts(clip: {sourceInFrame: number; durationFrames: number; 
   cuts: readonly number[]): number[] {
   const inside = cuts.filter(frame => frame > clip.sourceInFrame && frame < clip.sourceInFrame + clip.durationFrames)
     .sort((left, right) => left - right);
-  const fadeIn = clip.fadeInFrames ?? 0, fadeOut = clip.fadeOutFrames ?? 0;
+  const fadeIn = Number(clip.fadeInFrames ?? 0), fadeOut = Number(clip.fadeOutFrames ?? 0);
   return inside.filter(frame => frame - clip.sourceInFrame >= fadeIn
     && frame - clip.sourceInFrame <= clip.durationFrames - fadeOut);
 }
-/** FR-B2: expand one `split-at-scenes` intent into the ordinary sequential
- * split commands. Left keeps its id, each right takes the id pre-allocated in
- * the envelope, and anchors/groups move through the same TSb split plan. */
+interface SceneSplitTarget {readonly clip: Format5Clip; readonly allowed: readonly number[];
+  readonly fadeCutFrames: readonly number[]}
+interface SceneTargetSet {readonly targets: readonly SceneSplitTarget[];
+  readonly skipped: readonly {clipId: string; reason: 'NO_CUT_IN_RANGE' | 'FADE_BOUNDS'; cutFrames?: readonly number[]}[]}
+/** Every timeline clip of one asset (all tracks), with the usable cuts in its
+ * own source range. Cuts inside an audio fade are returned separately as skips. */
+function sceneSplitTargets(timeline: Format5Timeline, cuts: readonly number[], assetId: string): SceneTargetSet {
+  const targets: SceneSplitTarget[] = [], skipped: {clipId: string; reason: 'NO_CUT_IN_RANGE' | 'FADE_BOUNDS';
+    cutFrames?: readonly number[]}[] = [];
+  for (const clip of timeline.clips.filter(item => item.assetId === assetId)) {
+    const inside = cuts.filter(frame => frame > clip.sourceInFrame && frame < clip.sourceInFrame + clip.durationFrames)
+      .sort((left, right) => left - right);
+    if (!inside.length) { skipped.push({clipId: clip.id, reason: 'NO_CUT_IN_RANGE'}); continue; }
+    const fadeIn = Number(clip.fadeInFrames ?? 0), fadeOut = Number(clip.fadeOutFrames ?? 0);
+    const allowed = inside.filter(frame => frame - clip.sourceInFrame >= fadeIn
+      && frame - clip.sourceInFrame <= clip.durationFrames - fadeOut);
+    const fadeCutFrames = inside.filter(frame => !allowed.includes(frame));
+    if (!allowed.length) { skipped.push({clipId: clip.id, reason: 'FADE_BOUNDS', cutFrames: fadeCutFrames}); continue; }
+    targets.push({clip, allowed, fadeCutFrames});
+  }
+  return {targets, skipped};
+}
+/** Pairs in the same order the envelope allocation was built: all targets in
+ * timeline order, each target's cuts left-to-right. Main-track targets skip
+ * ahead here because the chain planner consumes their pairs in the loop below. */
+function scenePairs(envelope: SequenceEditEnvelope, targets: readonly SceneSplitTarget[]): {
+  readonly pairs: readonly {clipId: string; rightClipId: string}[]; readonly byTarget: readonly (readonly {clipId: string; rightClipId: string}[])[] } {
+  const pairs = envelope.allocation.splitClips, byTarget: {clipId: string; rightClipId: string}[][] = [];
+  let index = 0;
+  for (const target of targets) {
+    const own = pairs.slice(index, index + target.allowed.length);
+    if (own.length !== target.allowed.length) return {pairs: [], byTarget: []};
+    byTarget.push(own);
+    index += target.allowed.length;
+  }
+  return index === pairs.length ? {pairs, byTarget} : {pairs: [], byTarget: []};
+}
+/** FR-B2: expand the scene intent into ordinary sequential split commands for
+ * every main-track target. Other-track clips are split in the timeline patch
+ * after this plan; the allocation is still checked in full here. */
 function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
   edit: Extract<TrackSyncEdit, {kind: 'split-at-scenes'}>, cuts: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
-  const clip = context.timeline.clips.find(item => item.id === edit.clipId);
-  if (!clip || clip.assetId !== edit.assetId) return failure('CLIP_NOT_FOUND', [edit.clipId]);
-  const allowed = sceneAllowedCuts(clip as unknown as {sourceInFrame: number; durationFrames: number;
-    fadeInFrames?: number; fadeOutFrames?: number}, cuts);
-  if (allowed.length === 0) return failure('SEQUENCE_EDIT_NOOP', [edit.clipId]);
-  const pairs = envelope.allocation.splitClips;
-  if (pairs.length !== allowed.length) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [edit.clipId]);
-  let state = saState(context), current = clip.id, index = 0;
+  const targets = sceneSplitTargets(context.timeline, cuts, edit.assetId);
+  if (!targets.targets.length) return failure('NOTHING_TO_SPLIT', []);
+  const {byTarget} = scenePairs(envelope, targets.targets);
+  if (!byTarget.length) { if(process.env.FS_SCENE_DEBUG) console.error('SCENE PAIRS FAIL', targets.targets.map(t=>({id:t.clip.id,allowed:t.allowed})), envelope.allocation.splitClips); return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []); }
+  let state = saState(context), targetIndex = 0;
   const changes: ChainSyncChanges = {nodes: [], edges: [], media: [], clips: [], anchored: []};
   const warnings: ChainSyncWarning[] = [];
-  for (const cut of allowed) {
-    const pair = pairs[index++]!;
-    if (pair.clipId !== current) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [current]);
-    const currentClip = state.clips.find(item => item.id === current);
-    if (!currentClip) return failure('CLIP_NOT_FOUND', [current]);
-    const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
-      offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}});
-    if (plan.ok === false) return planFailure(plan);
-    mergeChanges(changes, plan.changes);
-    warnings.push(...plan.warnings);
-    state = plan.after;
-    current = pair.rightClipId;
+  for (const target of targets.targets) {
+    const own = byTarget[targetIndex++]!;
+    if (target.clip.trackId !== context.timeline.mainTrack.trackId) continue;
+    let current = target.clip.id, index = 0;
+    for (const cut of target.allowed) {
+      const pair = own[index++]!;
+      if (pair.clipId !== current) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [current]);
+      const currentClip = state.clips.find(item => item.id === current);
+      if (!currentClip) return failure('CLIP_NOT_FOUND', [current]);
+      const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
+        offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}});
+      if (plan.ok === false) { if(process.env.FS_SCENE_DEBUG) console.error('SCENE SPLIT PLAN FAIL', plan); return planFailure(plan); }
+      mergeChanges(changes, plan.changes);
+      warnings.push(...plan.warnings);
+      state = plan.after;
+      current = pair.rightClipId;
+    }
   }
   return {ok: true, after: state, changes, warnings, issues: []};
+}
+/** Split every other-track clip in the already main-track-patched timeline. */
+function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncContext, envelope: SequenceEditEnvelope,
+  cuts: readonly number[]): {timeline: Format5Timeline; split: readonly {clipId: string; clipIds: readonly string[];
+    cutFrames: readonly number[]; fadeCutFrames: readonly number[]}[]; skipped: readonly {clipId: string;
+    reason: 'NO_CUT_IN_RANGE' | 'FADE_BOUNDS'; cutFrames?: readonly number[]}[]} {
+  const targetSet = sceneSplitTargets(context.timeline, cuts, envelope.intents[0]!.operation.kind === 'track'
+    && envelope.intents[0]!.operation.edit && 'assetId' in envelope.intents[0]!.operation.edit
+    ? String(envelope.intents[0]!.operation.edit.assetId) : '');
+  const {byTarget} = scenePairs(envelope, targetSet.targets);
+  const clips = [...timeline.clips];
+  const split = targetSet.targets.map((target, index) => ({clipId: target.clip.id,
+    clipIds: [target.clip.id, ...byTarget[index]!.map(pair => pair.rightClipId)],
+    cutFrames: [...target.allowed], fadeCutFrames: [...target.fadeCutFrames]}));
+  let pairIndex = 0;
+  for (const target of targetSet.targets) {
+    const own = byTarget[pairIndex++]!;
+    if (target.clip.trackId === timeline.mainTrack.trackId) continue;
+    let index = clips.findIndex(clip => clip.id === target.clip.id);
+    if (index < 0) continue;
+    let piece = clips[index]!;
+    let pairCursor = 0;
+    for (const cut of target.allowed) {
+      const leftDuration = cut - piece.sourceInFrame;
+      const right = {...piece, id: own[pairCursor++]!.rightClipId,
+        startFrame: piece.startFrame + leftDuration, durationFrames: piece.durationFrames - leftDuration,
+        sourceInFrame: cut} as Format5Clip;
+      clips.splice(index, 1, {...piece, durationFrames: leftDuration} as Format5Clip, right);
+      piece = right;
+      index += 1;
+    }
+  }
+  return {timeline: {...timeline, clips}, split, skipped: targetSet.skipped};
 }
 function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, sceneCuts?: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
   if (envelope.intents.length !== 1) return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
@@ -729,7 +801,7 @@ function shotChanges(context: SyncContext, plan: SequenceEditPlan): ShotChange[]
 
 function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
   board: {readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta},
-  nextBaseline: Format5SyncBaseline): SequenceEditPatch {
+  nextBaseline: Format5SyncBaseline, additionalChangedClipIds: readonly string[] = []): SequenceEditPatch {
   const beforeClips = new Map(context.timeline.clips.map(clip => [clip.id, clip] as const));
   const afterClips = new Map(nextTimeline.clips.map(clip => [clip.id, clip] as const));
   const beforeCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
@@ -738,7 +810,8 @@ function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, 
   // those ids keeps a 500-segment edit from re-serializing the whole projection.
   const changedIds = new Set<string>();
   for (const item of [...plan.changes.clips.map(change => change.after?.id ?? change.before?.id),
-    ...plan.changes.anchored.map(change => change.after?.id ?? change.before?.id)]) if (item) changedIds.add(item);
+    ...plan.changes.anchored.map(change => change.after?.id ?? change.before?.id),
+    ...additionalChangedClipIds]) if (item) changedIds.add(item);
   // SA reports an anchored item only when its start frame changes; an owner
   // detach/re-anchor can keep the same frame, so compare the anchor identity too.
   for (const item of context.anchored) {
@@ -968,11 +1041,9 @@ function allocationForCommand(context: SyncContext, command: SequenceSyncCommand
   } else if (command.kind === 'clip-split') {
     allocation.splitClips.push({clipId: command.clipId, rightClipId: command.rightClipId});
   } else if (command.kind === 'clip-split-scenes') {
-    const clip = context.timeline.clips.find(item => item.id === command.clipId);
-    if (clip && clip.assetId === command.assetId) {
-      let current = clip.id;
-      for (const _cut of sceneAllowedCuts(clip as unknown as {sourceInFrame: number; durationFrames: number;
-        fadeInFrames?: number; fadeOutFrames?: number}, cuts)) {
+    for (const target of sceneSplitTargets(context.timeline, cuts, command.assetId).targets) {
+      let current = target.clip.id;
+      for (const _cut of target.allowed) {
         const rightClipId = randomUUID();
         allocation.splitClips.push({clipId: current, rightClipId});
         current = rightClipId;
@@ -1018,11 +1089,11 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     let cuts: number[] = [];
     if (command.kind === 'clip-split-scenes') {
       try { cuts = readSceneSplitCuts(store.db, store.projectId, command.assetId, command.resultId); }
-      catch (error) { return sceneCutFailure(error); }
+      catch (error) { if(process.env.FS_SCENE_DEBUG) console.error('SCENE CUTS FAIL', error); return sceneCutFailure(error); }
     }
     const {state} = prepareSequenceEditHistory(store);
     const content = readProjectContentStamp(store.db).contentSequence;
-    const allocation = allocationForCommand(context, command);
+    const allocation = allocationForCommand(context, command, cuts);
     const provisional: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
       actionId: options.actionId ?? randomUUID(), requestId: options.requestId,
@@ -1033,10 +1104,13 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       allocation,
     };
     const plan = planEnvelope(context, provisional, cuts);
-    if ('ok' in plan && plan.ok === false) return plan;
+    if ('ok' in plan && plan.ok === false) { if(process.env.FS_SCENE_DEBUG) console.error('PREVIEW PLAN FAIL', plan); return plan; }
     const successful = plan as SequenceEditPlan;
     const mainTrackId = context.timeline.mainTrack.trackId;
-    const nextTimeline = patchMainTimeline(context, successful);
+    let nextTimeline = patchMainTimeline(context, successful);
+    const sceneData = command.kind === 'clip-split-scenes'
+      ? applyOtherTrackSceneSplits(nextTimeline, context, provisional, cuts) : null;
+    if (sceneData) nextTimeline = sceneData.timeline;
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
     allocateEdgeIds(context, successful, allocation);
@@ -1051,11 +1125,16 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       for (const row of existing) if (row.kind === 'sequence' && `${row.source}>${row.target}` === key) changedEdgeIds.push(String(row.id));
     }
     const copiedNodeIds = successful.changes.nodes.flatMap(change => change.after ? [change.after.id] : []);
+    const extraOtherTrackIds = sceneData
+      ? [...new Set(sceneData.split.filter(row => context.timeline.clips.some(clip => clip.id === row.clipId && clip.trackId !== mainTrackId))
+        .flatMap(row => row.clipIds.slice(1)))]
+      : [];
     const impact: SequenceEditImpact = {
       nodeIds: copiedNodeIds,
       edgeIds: [...new Set([...changedEdgeIds, ...provisional.allocation.edges.map(item => item.id)])],
       mainTrackClipIds: mainClipIds.filter(id => successful.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)),
-      otherTrackItemIds: otherItemIds.filter(id => context.timeline.clips.some(clip => clip.id === id && clip.trackId !== mainTrackId)),
+      otherTrackItemIds: [...otherItemIds.filter(id => context.timeline.clips.some(clip => clip.id === id && clip.trackId !== mainTrackId)),
+        ...extraOtherTrackIds],
       subtitleCueIds: otherItemIds.filter(id => (context.timeline.subtitles?.cues ?? []).some(cue => cue.id === id)),
     };
     const kindName = (kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue'): string =>
@@ -1139,7 +1218,10 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     const plan = planEnvelope(context, envelope, sceneCuts);
     if ('ok' in plan && plan.ok === false) return writeFailure(store, envelope, plan.code);
     const successful = plan as SequenceEditPlan;
-    const nextTimeline = patchMainTimeline(context, successful);
+    let nextTimeline = patchMainTimeline(context, successful);
+    const sceneData = sceneCuts.length && sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'split-at-scenes'
+      ? applyOtherTrackSceneSplits(nextTimeline, context, envelope, sceneCuts) : null;
+    if (sceneData) nextTimeline = sceneData.timeline;
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return writeFailure(store, envelope, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
     const board = boardPlanEntities(context, successful, envelope);
@@ -1149,7 +1231,11 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
     const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
       boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
-    const patch = timelineDeltaPair(context, nextTimeline, successful, boardEntities, nextBaseline);
+    const extraClipIds = sceneData
+      ? sceneData.split.filter(row => context.timeline.clips.some(clip => clip.id === row.clipId
+        && clip.trackId !== context.timeline.mainTrack.trackId)).flatMap(row => row.clipIds.slice(1))
+      : [];
+    const patch = timelineDeltaPair(context, nextTimeline, successful, boardEntities, nextBaseline, extraClipIds);
     const baselineChanged = !sameJson(context.baseline, nextBaseline);
     const noop = patch.after.board.writes.length === 0 && patch.after.board.removals.length === 0
       && patch.after.timeline.clips.length === 0 && patch.after.timeline.cues.length === 0
@@ -1160,11 +1246,11 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
     const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
-    const receipt = receiptDraft(envelope, inputDigest, {
+    const receipt = {...receiptDraft(envelope, inputDigest, {
       affected: affectedFromDelta(patch.after, context, context.timeline.mainTrack.trackId),
       warnings: planWarnings(successful), contentRevision,
       timelineRevision: timelineApply.timeline.revision, syncRevision: baselineApply.revision,
-    });
+    }), ...(sceneData ? {sceneSplit: {split: sceneData.split, skipped: sceneData.skipped}} : {})};
     const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
     return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
   });

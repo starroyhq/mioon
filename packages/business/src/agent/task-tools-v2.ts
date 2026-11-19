@@ -799,7 +799,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if('nodeId' in action)add('node',action.nodeId);
    if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
    if(action.kind==='board-layout-move')for(const move of action.moves)add(before[key('shot',move.nodeId)]?'shot':'node',move.nodeId);
-   if(action.kind==='split-at-scenes')add('timeline_clip',action.clipId);
    if(action.kind==='subtitles')for(const edit of action.edits)if(edit.kind!=='add')add('timeline_subtitle',edit.cueId);
    if(action.kind==='subject-binding'){
     if(action.edit.kind==='create'){add('shot',action.edit.shotId);add('subject',action.edit.subjectId);}

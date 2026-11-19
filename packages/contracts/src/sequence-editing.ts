@@ -109,8 +109,7 @@ const trackEditSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('trim'), clipId: operationUuid, durationFrames: operationFrame.positive(),
     sourceInFrame: operationFrame.optional()}).strict(),
   z.object({kind: z.literal('version'), clipId: operationUuid, version: operationVersion.nullable(), locked: z.boolean()}).strict(),
-  z.object({kind: z.literal('split-at-scenes'), clipId: operationUuid, assetId: operationUuid,
-    resultId: operationUuid}).strict(),
+  z.object({kind: z.literal('split-at-scenes'), assetId: operationUuid, resultId: operationUuid}).strict(),
 ]);
 const boardPositionSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
 export const sequenceEditOperationSchema = z.discriminatedUnion('kind', [
