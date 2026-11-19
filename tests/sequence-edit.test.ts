@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createSequenceEditing, planSequenceEditIntents, readSequenceEditContext} from '../packages/business/src/sequence-edit.ts';
+import {planFormat5GenerationInputs, readFormat5ShotReferenceCandidates} from '../packages/business/src/format5-reference-inputs.ts';
 import {prepareSequenceEditHistory, readSequenceEditHistoryEntry} from '../packages/business/src/format5-editor-history.ts';
 import {sequenceEditOperationName} from '../packages/contracts/src/sequence-edit.ts';
 import type {
@@ -139,6 +140,11 @@ test('the sequence service only exists for explicit format-5 projects', t => {
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z'});
   const editing = createSequenceEditing(format4);
   assert.equal(failureCode(() => editing.call('sequence.history.get', {projectId: format4.projectId})), 'UNKNOWN_OPERATION');
+  // The format-5 generation-input path is closed for earlier formats by the same
+  // module admission gate, so formats 3/4 keep their legacy generation inputs.
+  const shotId = randomUUID();
+  assert.throws(() => readFormat5ShotReferenceCandidates(format4, [shotId]), TypeError);
+  assert.throws(() => planFormat5GenerationInputs(format4, shotId), TypeError);
 });
 
 test('a stale baseline is refused with the shared revision code', t => {
