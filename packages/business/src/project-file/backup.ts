@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {chmodSync, closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readSync, renameSync, rmSync} from 'node:fs';
+import {chmodSync, closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {backup, DatabaseSync} from 'node:sqlite';
@@ -150,6 +150,16 @@ export function inspectCopiedProjectFile(file: string): ProjectBackupIdentity {
   try { return reader.identity; } finally { reader.close(); }
 }
 
+/** Publishes a prepared project-copy staging directory. POSIX rename replaces an
+ * existing empty directory, while Windows returns EPERM for any existing target;
+ * the caller has already proven the placeholder is empty, so remove it first. */
+export function publishProjectCopyDirectory(staging: string, target: string, platform = process.platform): void {
+  if (platform === 'win32') {
+    if (readdirSync(target).length !== 0) throw new TypeError('The project copy target directory is not empty');
+    rmdirSync(target);
+  }
+  renameSync(staging, target);
+}
 export function syncCopiedFile(file: string): void {
   // FlushFileBuffers needs a writable handle: a read-only handle fails with
   // EPERM on Windows while the POSIX fsync-on-read path is valid. Copied files
