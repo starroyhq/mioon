@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../../contracts/src/app-error.ts';
+import {readCanvasClipboardSnapshot} from './canvas-clipboard.ts';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
@@ -284,8 +285,14 @@ export interface BoardActionPreparation {
   readonly created: BoardCreationRows;
   readonly layoutMoves: readonly BoardLayoutMove[];
   readonly planIntents: readonly SequenceEditIntent[];
+  /** Row updates/archives/restores that do not pass through the SA chain plan
+   * (record patches and detached-node archive). */
+  readonly directChanges: readonly {readonly kind: 'shot' | 'node' | 'edge'; readonly before: Row;
+    readonly after: Row; readonly newRecord?: boolean}[];
+  readonly deleted: ReadonlySet<string>;
   /** Allocation including ids this preview had to allocate for new rows. */
   readonly allocation: SequenceEditAllocation;
+  readonly warnings: readonly {readonly code: string}[];
 }
 type MutableAllocation = {clips: {nodeId: string; clipId: string}[]; nodes: {fromNodeId: string; nodeId: string}[];
   splitClips: {clipId: string; rightClipId: string}[]; edges: {id: string; fromId: string; toId: string}[]};
@@ -302,8 +309,9 @@ function activeFilmTail(board: ChainBoard, filmId: string): string {
   const nodes = chain?.nodeIds ?? [];
   return nodes.length ? nodes[nodes.length - 1]! : filmId;
 }
-function boardIntentPreparation(context: EditContext, intents: readonly SequenceEditIntent[],
-  allocationInput: SequenceEditAllocation): BoardActionPreparation {
+function boardIntentPreparation(context: EditContext, store: ProjectStore, intents: readonly SequenceEditIntent[],
+  allocationInput: SequenceEditAllocation, clipboardOwner: object | undefined,
+  allocateNewIds = true): BoardActionPreparation {
   const allocation = cloneAllocation(allocationInput);
   const createdShots = new Map<string, Row>();
   const createdNodes = new Map<string, Row>();
@@ -311,12 +319,33 @@ function boardIntentPreparation(context: EditContext, intents: readonly Sequence
   const createdChainNodes: ChainNode[] = [];
   const layoutMoves: BoardLayoutMove[] = [];
   const planIntents: SequenceEditIntent[] = [];
+  const directChanges: {kind: 'shot' | 'node' | 'edge'; before: Row; after: Row; newRecord?: boolean}[] = [];
+  const deleted = new Set<string>();
+  const restoredRows = new Map<string, Row>();
+  const warnings: {code: string}[] = [];
   const at = now();
   const liveIds = new Set([...context.rows.shots.keys(), ...context.rows.nodes.keys(),
     ...[...context.archived.keys()].map(key => key.slice(key.indexOf(':') + 1))]);
   for (const intent of intents) {
     const operation = intent.operation;
-    if (!isBoardIntentOperation(operation)) {planIntents.push(intent); continue;}
+    if (!isBoardIntentOperation(operation)) {
+      if (operation.kind === 'board' && operation.edit.kind === 'delete') {
+        const target = context.rows.shots.get(operation.edit.nodeId) ?? context.rows.nodes.get(operation.edit.nodeId);
+        if (target?.type === 'subject_card') fail('SEQUENCE_EDIT_CONTRACT_INVALID',
+          '主体卡只能通过主体绑定删除，普通删除已拒绝。', [operation.edit.nodeId], {reason: 'SUBJECT_CARD_DELETE_REQUIRED'});
+        const chain = deriveFilmChains(context.board).chains.find(item => item.filmId === context.rootNodeId)?.nodeIds ?? [];
+        const index = chain.indexOf(operation.edit.nodeId);
+        if (index >= 0 && index < chain.length - 1) {
+          const fromId = index === 0 ? context.rootNodeId : chain[index - 1]!;
+          const toId = chain[index + 1]!;
+          if (!allocation.edges.some(edge => edge.fromId === fromId && edge.toId === toId)) {
+            if (!allocateNewIds) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '删除接链所需的顺序边 ID 没有随信封分配。', [operation.edit.nodeId]);
+            allocation.edges.push({id: randomUUID(), fromId, toId});
+          }
+        }
+      }
+      planIntents.push(intent); continue;
+    }
     if (operation.kind === 'board.root.create') {
       if (liveIds.has(operation.nodeId)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '新成片根的 ID 已被占用。', [operation.nodeId]);
       liveIds.add(operation.nodeId);
@@ -351,24 +380,189 @@ function boardIntentPreparation(context: EditContext, intents: readonly Sequence
       planIntents.push({side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId: tail, toId: operation.nodeId}}});
       continue;
     }
-    for (const move of operation.moves) {
-      if (!context.rows.shots.has(move.nodeId) && !context.rows.nodes.has(move.nodeId)) {
-        fail('SEQUENCE_EDIT_CONTRACT_INVALID', '布局移动的目标不在画板中。', [move.nodeId]);
+    if (operation.kind === 'board.layout.move') {
+      for (const move of operation.moves) {
+        if (!context.rows.shots.has(move.nodeId) && !context.rows.nodes.has(move.nodeId)) {
+          fail('SEQUENCE_EDIT_CONTRACT_INVALID', '布局移动的目标不在画板中。', [move.nodeId]);
+        }
+        const previous = layoutMoves.findIndex(item => item.nodeId === move.nodeId);
+        const normalized: BoardLayoutMove = {nodeId: move.nodeId, position: {x: move.x, y: move.y}};
+        if (previous >= 0) (layoutMoves as BoardLayoutMove[])[previous] = normalized; else layoutMoves.push(normalized);
       }
-      const previous = layoutMoves.findIndex(item => item.nodeId === move.nodeId);
-      const normalized: BoardLayoutMove = {nodeId: move.nodeId, position: {x: move.x, y: move.y}};
-      if (previous >= 0) (layoutMoves as BoardLayoutMove[])[previous] = normalized; else layoutMoves.push(normalized);
+      continue;
     }
+    if (operation.kind === 'board.node.create') {
+      if (liveIds.has(operation.nodeId)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '新节点 ID 已被占用。', [operation.nodeId]);
+      liveIds.add(operation.nodeId);
+      const node: Row = {id: operation.nodeId, projectId: context.projectId, type: operation.nodeType,
+        name: operation.name, label: operation.name, position: {x: operation.position.x, y: operation.position.y},
+        revision: 1, createdAt: at, updatedAt: at};
+      if (operation.nodeType === 'text') node.text = operation.text ?? '';
+      else {
+        if (operation.assetId === undefined) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '图片/视频/音频节点必须引用已导入素材。', [operation.nodeId]);
+        const asset = context.rows.assets.get(operation.assetId);
+        if (!asset || asset.projectId !== context.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '节点素材不属于本项目。', [operation.nodeId]);
+        if (typeof asset.mimeType !== 'string' || !asset.mimeType.startsWith(`${operation.nodeType}/`)) {
+          fail('SEQUENCE_EDIT_CONTRACT_INVALID', '素材类型与节点类型不一致。', [operation.nodeId]);
+        }
+        node.assetId = operation.assetId;
+      }
+      createdNodes.set(operation.nodeId, node);
+      continue;
+    }
+    if (operation.kind === 'board.shot.update' || operation.kind === 'board.node.update') {
+      const targetId = operation.kind === 'board.shot.update' ? operation.shotId : operation.nodeId;
+      const shot = context.rows.shots.get(targetId), node = context.rows.nodes.get(targetId);
+      const before = shot ?? node;
+      if (!before || (operation.kind === 'board.shot.update' ? !shot : !node)) {
+        fail('SEQUENCE_EDIT_CONTRACT_INVALID', '要更新的画板对象不存在。', [targetId]);
+      }
+      const patch = operation.patch as Row;
+      if (before.revision !== operation.expectedRevision) {
+        fail('REVISION_CONFLICT', '画板对象已被其他编辑更新，请重新读取后再保存。', [targetId]);
+      }
+      const position = patch.position as {x?: unknown; y?: unknown} | undefined;
+      const next: Row = {...before, ...patch,
+        ...(position === undefined ? {} : {position: {x: Number(position.x), y: Number(position.y)}}),
+        revision: Number.isSafeInteger(before.revision) ? Number(before.revision) + 1 : 1,
+        updatedAt: at};
+      if (operation.kind === 'board.shot.update' && patch.title !== undefined) next.title = String(patch.title);
+      if (operation.kind === 'board.node.update' && patch.name !== undefined) {next.name = String(patch.name); next.label = String(patch.name);}
+      directChanges.push({kind: shot ? 'shot' : 'node', before, after: next});
+      continue;
+    }
+    if (operation.kind === 'board.restore') {
+      const chain = deriveFilmChains(context.board).chains.find(item => item.filmId === context.rootNodeId)?.nodeIds ?? [];
+      let tail = chain.at(-1) ?? context.rootNodeId;
+      for (const item of operation.items) {
+        const archived = context.archived.get(`${item.kind}:${item.id}`);
+        if (!archived) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '要恢复的画板对象没有归档记录。', [item.id]);
+        if (archived.type === 'subject_card') fail('SEQUENCE_EDIT_CONTRACT_INVALID',
+          '主体卡由主体绑定恢复，不能走普通恢复。', [item.id], {reason: 'SUBJECT_CARD_RESTORE_REQUIRED'});
+        restoredRows.set(item.id, archived);
+        if (item.kind === 'shot') {
+          // UI-B2 semantics: a restored shot re-enters at the active chain tail;
+          // other node types return as detached rows.
+          planIntents.push({side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId: tail, toId: item.id}}});
+          if (!allocation.edges.some(edge => edge.fromId === tail && edge.toId === item.id)) {
+            if (!allocateNewIds) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '恢复接链所需的顺序边 ID 没有随信封分配。', [item.id]);
+            allocation.edges.push({id: randomUUID(), fromId: tail, toId: item.id});
+          }
+          const selectedId = typeof archived.selectedVersionId === 'string' ? archived.selectedVersionId : null;
+          const version = selectedId === null ? undefined : context.rows.versions.get(selectedId);
+          const asset = version && typeof version.assetId === 'string' ? context.rows.assets.get(version.assetId) : undefined;
+          createdMedia.push({nodeId: item.id, selectedVersion: version ? {id: String(version.id),
+            sourceFrames: Number.isFinite(asset?.duration) ? Math.round(Number(asset!.duration) * 30) : null} : null,
+            durationFrames: Number.isFinite(archived.duration) ? Math.max(1, Math.round(Number(archived.duration) * 30)) : 120});
+          if (!allocation.clips.some(pair => pair.nodeId === item.id)) allocation.clips.push({nodeId: item.id, clipId: randomUUID()});
+          tail = item.id;
+        }
+      }
+      continue;
+    }
+    const viewport = operation.kind === 'board.paste' || operation.kind === 'board.duplicate'
+      ? operation.viewport ?? {x: 100, y: 100, width: 0, height: 0} : null;
+    if (operation.kind === 'board.paste' || operation.kind === 'board.duplicate') {
+      interface CardSource {readonly kind: 'shot' | 'node'; readonly id: string; readonly fields: Row}
+      const cards: CardSource[] = [];
+      let links: readonly Row[] = [];
+      if (operation.kind === 'board.paste') {
+        const snapshot = clipboardOwner === undefined ? null : readCanvasClipboardSnapshot(
+          store, clipboardOwner, {projectId: context.projectId, documentId: operation.documentId,
+            snapshotId: operation.snapshotId});
+        if (!snapshot) fail('CANVAS_CLIPBOARD_UNAVAILABLE', '只能粘贴在此画板复制且未过期的元素。', []);
+        for (const card of snapshot.cards) cards.push({kind: card.kind, id: card.id, fields: card.fields as Row});
+        links = (snapshot as {links?: readonly Row[]}).links ?? [];
+      } else {
+        for (const item of operation.items) {
+          const fields = item.kind === 'shot' ? context.rows.shots.get(item.id) : context.rows.nodes.get(item.id);
+          if (!fields) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '要复制的画板对象不存在。', [item.id]);
+          cards.push({kind: item.kind, id: item.id, fields});
+        }
+      }
+      // A copied subject card would create a second card for the same subject;
+      // the board only permits one, so skip it (and its subject links).
+      const skippedSubjects = cards.filter(card => card.kind === 'node' && card.fields.type === 'subject_card');
+      const copyable = cards.filter(card => !(card.kind === 'node' && card.fields.type === 'subject_card'));
+      if (skippedSubjects.length) warnings.push({code: 'SUBJECT_CARD_SKIPPED'});
+      if (!copyable.length) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '没有可复制的画板元素。', [], {reason: 'SUBJECT_CARD_ONLY'});
+      // New ids are allocated by the preview and travel in allocation.nodes; the
+      // commit only uses those exact identities.
+      const pairFor = (sourceId: string): string => {
+        const existing = allocation.nodes.find(pair => pair.fromNodeId === sourceId);
+        if (existing) return existing.nodeId;
+        if (!allocateNewIds) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '复制/粘贴的新 ID 没有随信封分配。', [sourceId]);
+        const nodeId = randomUUID();
+        allocation.nodes.push({fromNodeId: sourceId, nodeId});
+        return nodeId;
+      };
+      const mapped = new Map<string, string>();
+      for (const card of copyable) mapped.set(card.id, pairFor(card.id));
+      const points = copyable.map(card => rowPosition(card.fields));
+      const anchor = {x: Math.min(...points.map(point => point.x)), y: Math.min(...points.map(point => point.y))};
+      const offset = {x: viewport!.x + 40 - anchor.x, y: viewport!.y + 40 - anchor.y};
+      let order = [...context.rows.shots.values()].reduce((maximum, row) =>
+        Math.max(maximum, Number.isSafeInteger(row.orderIndex) ? Number(row.orderIndex) : -1), -1);
+      for (const card of copyable) {
+        const point = rowPosition(card.fields);
+        const id = mapped.get(card.id)!;
+        const copy: Row = {...card.fields, id, projectId: context.projectId,
+          position: {x: point.x + offset.x, y: point.y + offset.y}, revision: 1, createdAt: at, updatedAt: at};
+        if (card.kind === 'shot') {
+          order += 1;
+          Object.assign(copy, {orderIndex: order, selectedVersionId: null, referenceAssetIds: []});
+          delete copy.lastFrameAssetId;
+          createdShots.set(String(copy.id), copy);
+          createdChainNodes.push({id: String(copy.id), kind: 'shot'});
+          createdMedia.push({nodeId: String(copy.id), selectedVersion: null, durationFrames: 120});
+        } else {
+          if (copy.type === 'previs') {
+            copy.sceneRevision = 1;
+            const scene = copy.scene as Row | undefined;
+            if (scene !== null && typeof scene === 'object' && Array.isArray(scene.keyframes)) {
+              copy.scene = {...scene, keyframes: (scene.keyframes as Row[]).map(frame => ({...frame, exports: []}))};
+            }
+          }
+          createdNodes.set(String(copy.id), copy);
+        }
+      }
+      // Internal material reference lines are copied with the same role, source
+      // asset and order. Sequence links are not copied: the format-5 main chain
+      // only accepts links maintained by sync-board, so a detached pasted chain
+      // segment would be rejected by the graph fence. Subject links are skipped
+      // because the subject card itself is skipped.
+      let skippedSequenceLinks = 0;
+      for (const link of links) {
+        if (link.kind !== 'reference') {skippedSequenceLinks++; continue;}
+        const from = mapped.get(String(link.source)), to = mapped.get(String(link.target));
+        if (!from || !to) continue;
+        if (link.role === 'subject_reference' || link.role === 'style_reference') continue;
+        const id = randomUUID();
+        const edge: Row = {id, projectId: context.projectId, kind: 'reference', role: link.role,
+          source: from, target: to, createdAt: at,
+          ...(typeof link.sourceAssetId === 'string' ? {sourceAssetId: link.sourceAssetId} : {}),
+          ...(Number.isSafeInteger(link.orderIndex) ? {orderIndex: link.orderIndex} : {})};
+        directChanges.push({kind: 'edge', before: edge, after: edge, newRecord: true});
+        if (!allocation.edges.some(item => item.id === id)) allocation.edges.push({id, fromId: from, toId: to});
+      }
+      if (skippedSequenceLinks) warnings.push({code: 'SEQUENCE_LINKS_NOT_COPIED'});
+      continue;
+    }
+    fail('SEQUENCE_EDIT_CONTRACT_INVALID', '无法识别的画板动作。', []);
   }
-  const restored = new Map<string, Row>();
-  const restoredChain: ChainNode[] = [];
+  const restored = new Map<string, Row>([...restoredRows]);
+  const restoredChain: ChainNode[] = [...restoredRows].map(([id, row]) => ({id,
+    kind: context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(row.type))}));
   for (const id of referencedNodeIds({intents})) {
     const archived = context.archived.get(`shot:${id}`) ?? context.archived.get(`node:${id}`);
     if (!archived) continue;
-    restored.set(id, archived);
-    const kind = context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(archived.type));
-    restoredChain.push({id, kind});
-    if ((kind === 'shot' || kind === 'image' || kind === 'video')
+    if (!restored.has(id)) {
+      restored.set(id, archived);
+      const kind = context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(archived.type));
+      restoredChain.push({id, kind});
+    }
+    const restoredKind = context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(archived.type));
+    if ((restoredKind === 'shot' || restoredKind === 'image' || restoredKind === 'video')
       && !context.media.some(item => item.nodeId === id) && !createdMedia.some(item => item.nodeId === id)) {
       createdMedia.push({nodeId: id, selectedVersion: null, durationFrames: 120});
     }
@@ -410,20 +604,20 @@ function boardIntentPreparation(context: EditContext, intents: readonly Sequence
     allocation.clips.push({nodeId, clipId: randomUUID()});
   }
   return {restored, created: {shots: createdShots, nodes: createdNodes, media: createdMedia, chainNodes: [...restoredChain, ...createdChainNodes]},
-    layoutMoves, planIntents, allocation};
+    layoutMoves, planIntents, directChanges, deleted, warnings, allocation};
 }
 
 /** One read-only preview of board intents for `sequence.preview`. The shared
  * transaction later re-reads and re-plans the same envelope. */
 export function previewSequenceBoardAction(store: ProjectStore, intents: readonly SequenceEditIntent[],
-  allocationInput: SequenceEditAllocation): {readonly ok: true; readonly allocation: SequenceEditAllocation;
+  allocationInput: SequenceEditAllocation, clipboardOwner?: object): {readonly ok: true; readonly allocation: SequenceEditAllocation;
     readonly impact: {readonly nodeIds: readonly string[]; readonly edgeIds: readonly string[];
       readonly mainTrackClipIds: readonly string[]; readonly otherTrackItemIds: readonly string[];
       readonly subtitleCueIds: readonly string[]}; readonly warnings: readonly ChainSyncWarning[]}
   | {readonly ok: false; readonly code: string; readonly ids: readonly string[]} {
   const context = readSequenceEditContext(store);
   let preparation: BoardActionPreparation;
-  try {preparation = boardIntentPreparation(context, intents, allocationInput);}
+  try {preparation = boardIntentPreparation(context, store, intents, allocationInput, clipboardOwner);}
   catch (error) {
     if (error instanceof AppError) return {ok: false, code: error.code, ids: ((error.details as Row | undefined)?.ids as string[] | undefined) ?? []};
     throw error;
@@ -443,9 +637,9 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
     plan = planned.plan;
     warnings.push(...plan.warnings);
   }
-  const deleted = new Set<string>();
   const boardDeltas = planBoardDeltas(context, {intents, allocation: preparation.allocation} as SequenceEditEnvelope,
-    state.board, state.media, preparation.restored, deleted, new Map(), preparation.created, preparation.layoutMoves);
+    state.board, state.media, preparation.restored, preparation.deleted, new Map(), preparation.created,
+    preparation.layoutMoves, preparation.directChanges);
   const nodeIds = new Set<string>();
   for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind !== 'edge') nodeIds.add(entity.id);
   const edgeIds = new Set<string>();
@@ -458,7 +652,7 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
     for (const change of delta) if (change.after) mainTrackClipIds.add(change.after.id);
     for (const change of plan.changes.anchored) if (change.after) otherTrackItemIds.add(change.after.id);
   }
-  return {ok: true, allocation: preparation.allocation, warnings,
+  return {ok: true, allocation: preparation.allocation, warnings: [...preparation.warnings, ...warnings] as unknown as readonly ChainSyncWarning[],
     impact: {nodeIds: [...nodeIds], edgeIds: [...edgeIds], mainTrackClipIds: [...mainTrackClipIds],
       otherTrackItemIds: [...otherTrackItemIds], subtitleCueIds: []}};
 }
@@ -522,7 +716,9 @@ function archiveMark(row: Row): ArchiveMark {
 function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, finalBoard: ChainBoard,
   finalMedia: readonly ChainSyncMedia[], restored: ReadonlyMap<string, Row>, deleted: ReadonlySet<string>,
   copied: ReadonlyMap<string, CopyNode>, created: BoardCreationRows = {shots: new Map(), nodes: new Map(), media: [], chainNodes: []},
-  layoutMoves: readonly BoardLayoutMove[] = []): BoardDeltas {
+  layoutMoves: readonly BoardLayoutMove[] = [],
+  directChanges: readonly {readonly kind: 'shot' | 'node' | 'edge'; readonly before: Row;
+    readonly after: Row; readonly newRecord?: boolean}[] = []): BoardDeltas {
   const at = now();
   const archiveBatchId = randomUUID();
   const beforeRows = new Map([...context.rows.shots, ...context.rows.nodes, ...context.rows.edges]);
@@ -537,6 +733,11 @@ function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, f
     const live = restoreRow(archivedRow);
     addChange(kind, id, archivedRow, live);
     afterRows.set(id, live);
+  }
+  for (const item of directChanges) {
+    change.set(`${item.kind}:${String(item.after.id)}`,
+      {kind: item.kind, before: item.before, after: item.after, ...(item.newRecord ? {newRecord: true} as Row : {})});
+    afterRows.set(String(item.after.id), item.after);
   }
   const liveNodeIds = new Set(context.board.nodes.map(node => node.id));
   const finalNodeIds = new Set(finalBoard.nodes.map(node => node.id));
@@ -849,7 +1050,7 @@ function timelineDeltaMatches(store: ProjectStore, delta: SequenceEditTimelineDe
 type ApplyOutcome = {readonly receipt: SequenceEditReceipt; readonly failure?: {readonly code: string; readonly ids: readonly string[]}};
 
 export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnvelope,
-  authorize: () => void = () => {}): SequenceEditReceipt {
+  authorize: () => void = () => {}, clipboardOwner?: object): SequenceEditReceipt {
   assertFormat5(store);
   const inputDigest = sequenceEditInputDigest(envelope);
   const outcome = store.tx((): ApplyOutcome => {
@@ -873,7 +1074,7 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     // UI-B2 board-only intents (root create / chain-tail shot append / layout
     // move) are normalized into graph rows and the same SA plan pipeline before
     // the shared board delta is written.
-    const preparation = boardIntentPreparation(context, envelope.intents, envelope.allocation);
+    const preparation = boardIntentPreparation(context, store, envelope.intents, envelope.allocation, clipboardOwner, false);
     const planEnvelope: SequenceEditEnvelope = {...envelope, allocation: preparation.allocation};
     const restored = new Map(preparation.restored);
     const creation = preparation.created;
@@ -915,12 +1116,12 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
           failure: {code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: [item.fromNodeId]}};
       }
     }
-    const deleted = new Set<string>();
+    const deleted = new Set(preparation.deleted);
     for (const intent of envelope.intents) {
       if (intent.operation.kind === 'board' && intent.operation.edit.kind === 'delete') deleted.add(intent.operation.edit.nodeId);
     }
     const boardDeltas = planBoardDeltas(context, planEnvelope, state.board, state.media, restored, deleted, copiedNodes,
-      creation, layoutMoves);
+      creation, layoutMoves, preparation.directChanges);
     const changed = boardDeltas.nodes + boardDeltas.edges > 0 || timelineChanged || restored.size > 0 || copiedNodes.size > 0
       || creation.shots.size > 0 || creation.nodes.size > 0 || layoutMoves.length > 0;
     if (!changed) {

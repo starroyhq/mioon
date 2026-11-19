@@ -336,3 +336,15 @@ export function canvasPasteBindingEvidence(store: ProjectStore, targets: readonl
   if (rows.length > CANVAS_EDIT_LIMITS.effects) return canvasLimit();
   return rows;
 }
+
+/** Read-only resolver for a same-owner, unexpired canvas copy. The unified
+ * format-5 board paste uses the captured cards (never links: sequence and
+ * reference edges are owned by the chain/RI intents) to create detached copies
+ * in its own transaction. */
+export function readCanvasClipboardSnapshot(store: ProjectStore, owner: object,
+  input: Pick<CanvasPasteInput, 'projectId' | 'documentId' | 'snapshotId'>): {readonly cards: Snapshot['cards']} | null {
+  const entry = snapshots.get(owner)?.get(input.snapshotId);
+  if (!entry || entry.expiresAt <= Date.now() || entry.documentId !== input.documentId ||
+      entry.projectId !== store.projectId || entry.owner !== projectOwner(store)) return null;
+  return {cards: entry.snapshot.cards};
+}

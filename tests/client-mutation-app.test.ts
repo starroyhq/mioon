@@ -30,7 +30,7 @@ function storage(t: { after: (arg0: () => boolean|typeof globalThis) => void; })
   t.after(() => previous ? Object.defineProperty(globalThis, 'sessionStorage', previous) : delete (globalThis as {sessionStorage?: unknown}).sessionStorage);
 }
 interface HarnessState {epoch:number;calls:{operation:string;input:Record<string,unknown>;outputLocale?:string}[];notices:{message:string;type:string}[];refreshes:string[];pending:PendingEntry[];jobs:boolean;auth:boolean}
-interface HarnessData {project:{id:string};shots:{id:string;projectId:string}[];nodes:{id:string;projectId:string}[]}
+interface HarnessData {project:{id:string};projectFormatVersion?:number;shots:{id:string;projectId:string}[];nodes:{id:string;projectId:string}[]}
 function harness(t:test.TestContext,dispatch:(operation:string,input:Record<string,unknown>,state:HarnessState)=>unknown) {
   storage(t);
   const state:HarnessState = {epoch: 0, calls: [], notices: [], refreshes: [], pending: [], jobs: false, auth: true };
@@ -46,9 +46,10 @@ function harness(t:test.TestContext,dispatch:(operation:string,input:Record<stri
     rpc: async (operation:string,input:Record<string,unknown>,options?:{outputLocale?:string}) => { state.calls.push({ operation, input: structuredClone(input), ...(options?.outputLocale?{outputLocale:options.outputLocale}:{}) }); return dispatch(operation, input, state); },
     refresh: async (id:string) => { state.refreshes.push(id); }, notify: (message:DisplayMessage|string,type:string) => state.notices.push({ message: renderCoreMessage('zh-Hans', message), type }),
     openTasks: (canReveal: () => unknown = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: (value: boolean) => { state.auth = value; }, readableError: (error:Error) => error.message,
-    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, dataRef: {current: {project:{id:'project-a'},shots:[{id:'shot-a',projectId:'project-a'}],nodes:[]} as HarnessData}, setData: () => {},
+    requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, dataRef: {current: {project:{id:'project-a'},projectFormatVersion:3,shots:[{id:'shot-a',projectId:'project-a'}],nodes:[]} as HarnessData}, setData: () => {},
   };
-  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify((captured as typeof captured & {workspace?:unknown}).workspace || 'test-workspace') }; } });
+  Object.assign(scope, { format5BoardSession: () => ({run: async () => ({ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'})}),
+    captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify((captured as typeof captured & {workspace?:unknown}).workspace || 'test-workspace') }; } });
   return { state, currentProject, busy, dataRef: scope.dataRef, run: compile(runSource, 'run', scope) };
 }
 const input = { shotId: 'shot-a', expectedRevision: 3, patch: { prompt: 'Original draft' } };
@@ -175,16 +176,17 @@ test('late project A success cannot refresh or navigate project B and mutation l
   assert.equal(h.busy.size, 0); assert.equal(readPending('project-a', 'save:shot-a'), null);
 });
 
-interface StructureState {project:{id:string};shots:{id:string}[];nodes:{id:string}[];assets:unknown[];timeline?:GenerationFrame;timelineFrameTransaction?:boolean}
+interface StructureState {project:{id:string};projectFormatVersion?:number;shots:{id:string}[];nodes:{id:string}[];assets:unknown[];timeline?:GenerationFrame;timelineFrameTransaction?:boolean}
 interface StructureOptions {results?:({id:string}|null)[];timeline?:GenerationFrame;timelineFrameTransaction?:boolean;afterGuard?:(state:StructureState,project:{current:string})=>void;afterRun?:(state:StructureState,project:{current:string},count:number)=>void}
 function structureHarness({ results = [{ id: 'first' }, null], timeline, timelineFrameTransaction, afterGuard, afterRun }:StructureOptions = {}) {
-  const state:StructureState = {project:{id:'project-a'},shots:[],nodes:[],assets:[],timeline,timelineFrameTransaction};
+  const state:StructureState = {project:{id:'project-a'},projectFormatVersion:4,shots:[],nodes:[],assets:[],timeline,timelineFrameTransaction};
   const currentProject = { current: 'project-a' }, dataRef = { current: state }, calls:unknown[][] = [], notices:[string,...unknown[]][] = [];
   const scope = { data: state, dataRef, currentProject, timelineOutputRatio, isBusy: () => false, chooseCanvasPosition: () => ({ x: 0, y: 0 }),
     guardNavigation: async () => { afterGuard?.(state, currentProject); return true; },
     context: () => ({ projectId: currentProject.current }), isCurrent: (captured: { projectId: string; }) => captured.projectId === currentProject.current,
     markBusy: () => {}, run: async (...args:unknown[]) => { calls.push(args); const result = results[calls.length - 1]; afterRun?.(state, currentProject, calls.length); return result; },
     notify: (value:DisplayMessage|string,...args:unknown[]) => notices.push([renderCoreMessage('zh-Hans', value), ...args]), refresh: async () => state, inspect: async () => true, revealCanvas: () => {}, readableError: (error:Error) => error.message,
+    format5BoardSession: () => ({run: async () => ({ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'})}),
   };
   return { run: compile(structureSource, 'addStructure', scope), addShot: compile(addShotSource, 'addShot', scope), calls, notices, currentProject, state };
 }
@@ -227,8 +229,12 @@ test('actual structure action rejects stale, now-nonempty and late-navigation co
 
 test('retained old Inspector save and version-selection callbacks cannot write after project switch', async t => {
   const h = harness(t, async () => { throw Error('Stale callbacks must never reach RPC'); });
-  const save = compile(section('async function saveShot(', 'async function saveNode('), 'saveShot', { run: h.run, referenceWorkBlocked: () => false });
-  const nodeSave = compile(section('async function saveNode(', 'async function savePosition('), 'saveNode', { run: h.run });
+  const save = compile(section('async function saveShot(', 'async function saveNode('), 'saveShot', { run: h.run, referenceWorkBlocked: () => false,
+    dataRef: h.dataRef, format5BoardSession: () => ({run: async () => ({ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'})}),
+    refresh: async () => {}, notify: () => {}, currentProject: h.currentProject });
+  const nodeSave = compile(section('async function saveNode(', 'async function savePosition('), 'saveNode', { run: h.run,
+    dataRef: h.dataRef, format5BoardSession: () => ({run: async () => ({ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'})}),
+    refresh: async () => {}, notify: () => {}, currentProject: h.currentProject });
   const select = compile(section('async function selectVersion(', 'async function reorder('), 'selectVersion', { run: h.run });
   h.currentProject.current = 'project-b'; h.state.epoch++;
   h.dataRef.current = { project: { id: 'project-b' }, shots: [{ id: 'shot-b', projectId: 'project-b' }], nodes: [{ id: 'node-b', projectId: 'project-b' }] };

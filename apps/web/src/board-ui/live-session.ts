@@ -78,15 +78,23 @@ export class BoardUiSession {
   private endpoint(operation: string): (input: unknown) => Promise<unknown> {
     return input => this.rpc(operation, input);
   }
+  /** One user action may carry several board intents (e.g. create structure);
+   * the preview/commit envelope keeps them in one history step. */
+  async runMany(intents: readonly SequenceEditIntent[]): Promise<BoardOutcome> {
+    if (!intents.length) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+    return this.runPayload({intents: [...intents]});
+  }
   /** Preview exactly one action family: a CS/TS intent, or an RI reference-line
    * request. Subject binding actions keep their separate `runSubject` path. */
   async run(request: SequenceEditIntent | BoardEditRequest): Promise<BoardOutcome> {
+    return this.runPayload(isBoardEditRequest(request) ? request : {intents: [request]});
+  }
+  private async runPayload(payload: {intents: readonly SequenceEditIntent[]} | BoardEditRequest): Promise<BoardOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
       const projectId = this.projectId();
       if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
-      const payload = isBoardEditRequest(request) ? request : {intents: [request]};
       let preview: Row | null;
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),

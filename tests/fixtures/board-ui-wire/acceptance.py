@@ -66,6 +66,7 @@ def main() -> int:
                 run_stress(page, result, log, capture, state)
             else:
                 run_acceptance(page, result, log, capture, state, wait_position)
+                run_board_management_acceptance(page, result, log, capture, state, wait_position)
                 run_subject_acceptance(page, log, capture, state, wait_position)
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
             assert not errors, errors
@@ -195,6 +196,58 @@ def run_acceptance(page, result, log, capture, state, wait_position) -> None:
     log('reduced motion is forwarded to the board and sequence dots')
     capture(page, '21-01-board-reduced-motion.png')
 
+
+def run_board_management_acceptance(page, result, log, capture, state, wait_position) -> None:
+    """FR-C review: copy/paste/duplicate, node editing and archive restore on the
+    real format-5 board that users actually see (BoardUiLive + BoardInspector)."""
+    page.reload()
+    page.wait_for_function("() => Boolean(window.__boardWireState?.ready)", timeout=30000)
+    expect(page.get_by_test_id('board-ui-live')).to_be_visible()
+    position = int(state(page)['history']['position'])
+
+    # Copy / paste / duplicate through the shared shortcuts.
+    page.get_by_test_id(f'board-card-{SHOT_A}').click()
+    cards_before = page.locator('[data-testid^="board-card-"]').count()
+    page.locator('body').press('Control+c')
+    page.locator('body').press('Control+v')
+    wait_position(page, position + 1)
+    page.wait_for_function("(count) => document.querySelectorAll('[data-testid^=board-card-]').length === count",
+                           arg=cards_before + 1, timeout=15000)
+    assert state(page)['history']['undo']['operation'] == 'board.duplicate'
+    page.locator('body').press('Control+d')
+    wait_position(page, position + 2)
+    page.wait_for_function("(count) => document.querySelectorAll('[data-testid^=board-card-]').length === count",
+                           arg=cards_before + 2, timeout=15000)
+    assert state(page)['history']['undo']['operation'] == 'board.duplicate'
+    log('copy/paste/duplicate create the same unified board action', position=position + 2)
+    capture(page, '21-03-board-copy-paste.png')
+
+    # Text node name and content edit through BoardInspector.
+    page.get_by_test_id(f'board-card-{TEXT}').click()
+    expect(page.get_by_test_id('board-inspector-node-edit')).to_be_visible()
+    page.get_by_test_id('board-node-name').fill('笔记改名')
+    page.get_by_test_id('board-node-text').fill('更新后的文字')
+    page.get_by_test_id('board-node-save').click()
+    wait_position(page, position + 3)
+    assert state(page)['history']['undo']['operation'] == 'board.node.update'
+    page.get_by_test_id(f'board-card-{TEXT}').click()
+    expect(page.get_by_test_id(f'board-card-{TEXT}')).to_contain_text('更新后的文字')
+    log('text node name/content edit commits one board.node.update with its expected revision')
+    capture(page, '21-04-board-node-edit.png')
+
+    # Archive/restore from the real deleted list: a shot returns to the chain tail.
+    page.get_by_test_id(f'board-card-{SHOT_B}').click()
+    page.get_by_test_id('board-inspector-delete').click()
+    wait_position(page, position + 4)
+    page.wait_for_selector(f'[data-testid="board-card-{SHOT_B}"]', state='detached')
+    page.get_by_test_id('board-ui-archive').click()
+    page.get_by_test_id(f'board-ui-restore-{SHOT_B}').click()
+    wait_position(page, position + 5)
+    page.wait_for_selector(f'[data-testid="board-card-{SHOT_B}"]', state='visible')
+    assert state(page)['history']['undo']['operation'] == 'board.restore'
+    assert state(page)['mount']['inSync'] is True
+    log('deleted-list restore reattaches a shot through board.restore in one action')
+    capture(page, '21-05-board-restore.png')
 
 def run_ri_b_acceptance(page, log, capture, state, wait_position) -> None:
     """RI-b: reference lines and the live generation-inputs panel (21-06)."""
