@@ -10,6 +10,8 @@ export interface DeliveryDraftRecoveryProps {
   state: LocalDeliveryState;
   controller: LocalDeliveryController;
   disabled?: boolean;
+  /** Returns to the normal export confirmation flow. Never creates a request. */
+  onReexport?: () => void;
 }
 const title = (value: string, t: ReturnType<typeof useI18n>['t']) => value === '' ? t('recovery.delivery.defaultName') : value;
 function frozenProfile(input: LocalDeliveryRenderInput, t: ReturnType<typeof useI18n>['t']): string {
@@ -22,7 +24,7 @@ function frozenProfile(input: LocalDeliveryRenderInput, t: ReturnType<typeof use
 
 /** Passive right-dock presentation. Every write or execution has a named,
  * explicit control; rendering this panel never restores or submits anything. */
-export default function DeliveryDraftRecovery({ state, controller, disabled = false }: DeliveryDraftRecoveryProps) {
+export default function DeliveryDraftRecovery({ state, controller, disabled = false, onReexport }: DeliveryDraftRecoveryProps) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const blocked = disabled || state.busy;
   const unconfirmedPreparation = Boolean(state.retainedPreparation && state.intent?.intentId !== state.retainedPreparation.intentId);
@@ -84,7 +86,7 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
         <ExportRangeSummary input={originalInput} label={t('recovery.delivery.originalRange')} showWhole testId="delivery-original-range" />
         <details data-testid="delivery-intent-provenance"><summary>{t('recovery.delivery.originalDetails')}</summary><p style={{ overflowWrap: 'anywhere' }}>{t('recovery.delivery.requestDetails', { request: originalInput.requestId, timeline: originalTimelineId ?? '' })}</p><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 'inherit' }}>{JSON.stringify(originalInput, null, 2)}</pre></details>
         {(original?.outcome.status === 'pending' || state.intentUncertain) && <p className="input-hint">{t('recovery.delivery.recoverHelp')}</p>}
-        {original?.outcome.status === 'not_applied' && !state.intentUncertain && <p className="input-hint">{t('recovery.delivery.notAppliedHelp')}</p>}
+        {original?.outcome.status === 'not_applied' && !state.intentUncertain && onReexport && <Button type="button" size="sm" variant="outline" data-testid="reexport-not-applied-delivery" disabled={blocked} onClick={onReexport}>{t('recovery.delivery.reexport')}</Button>}
         {(original?.outcome.status === 'pending' || state.intentUncertain) && <Button type="button" size="sm" variant="outline" data-testid="recover-original-delivery" disabled={blocked} onClick={() => { void controller.recover(); }}>{t('recovery.delivery.recover')}</Button>}
       </details>}
       {state.intentUncertain && !original && <p className="input-hint">{t('recovery.delivery.noAcknowledgement')}</p>}

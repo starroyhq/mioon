@@ -796,12 +796,6 @@ export const timelineDeliveryMessages = {
     "en": "Recovery may submit the original export for the first time",
     "ja": "復元により元の書き出しが初めて送信されることがあります"
   },
-  "recovery.delivery.notAppliedHelp": {
-    "zh-Hans": "原请求未应用",
-    "zh-Hant": "原請求未套用",
-    "en": "Original request not applied",
-    "ja": "元のリクエストは未適用です"
-  },
   "recovery.delivery.recover": {
     "zh-Hans": "确认恢复同一原请求",
     "zh-Hant": "確認還原同一原請求",
@@ -2951,10 +2945,16 @@ export const timelineDeliveryMessages = {
     "ja": "現在の入力を保持し、ローカルには保存しないことを選択しました。移動や終了後に入力が失われる場合があります。元の書き出しリクエストはキャンセルされません"
   },
   "recovery.delivery.notAppliedCode": {
-    "zh-Hans": "服务器已确认原请求未应用（{code}）。名称仍保留，请核对后重新检查",
-    "zh-Hant": "伺服器已確認原請求未套用（{code}）。名稱仍保留，請核對後重新檢查",
-    "en": "The server confirmed the original request was not applied ({code}). The name is retained; review it and check again",
-    "ja": "サーバーが元のリクエストを未適用と確認しました（{code}）。名前は保持します。内容を確認してから再検査してください"
+    "zh-Hans": "服务器已确认原请求未应用（{code}），名称仍保留",
+    "zh-Hant": "伺服器已確認原請求未套用（{code}），名稱仍保留",
+    "en": "The server confirmed the original request was not applied ({code}); the name is retained",
+    "ja": "サーバーが元のリクエストを未適用と確認しました（{code}）。名前は保持しています"
+  },
+  "recovery.delivery.reexport": {
+    "zh-Hans": "重新导出",
+    "zh-Hant": "重新匯出",
+    "en": "Export again",
+    "ja": "もう一度書き出す"
   },
   "recovery.notice.pending": {
     "zh-Hans": "原请求结果仍待确认；不会自动重试",
@@ -3041,16 +3041,16 @@ export const timelineDeliveryMessages = {
     "ja": "ローカル下書きの状態は未確認です。「入力を破棄し、下書き記録を保持」を選ぶと、元の記録を削除やキャンセルせずに移動できます"
   },
   "recovery.clip.timelineChanged": {
-    "zh-Hans": "时间线已有更新；本地草稿仍保留，请核对最新片段",
-    "zh-Hant": "時間軸已有更新；本機草稿仍保留，請核對最新片段",
-    "en": "The timeline has newer changes. The local draft is retained; review the latest clip",
-    "ja": "タイムラインが更新されています。ローカル下書きは保持しています。最新のクリップを確認してください"
+    "zh-Hans": "时间线已在保存后更新，本地草稿仍保留",
+    "zh-Hant": "時間軸已在儲存後更新，本機草稿仍保留",
+    "en": "The timeline changed after the save; the local draft is retained",
+    "ja": "保存後にタイムラインが更新されました。ローカル下書きは保持しています"
   },
   "recovery.clip.newerInput": {
-    "zh-Hans": "原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段",
-    "zh-Hant": "原輸入已儲存至時間軸。之後的新輸入仍保留，請核對更新後的片段",
-    "en": "Original input was saved to the timeline. Subsequent new input is retained; review the updated clip",
-    "ja": "元の入力をタイムラインに保存しました。その後の新しい入力は保持しています。更新されたクリップを確認してください"
+    "zh-Hans": "原输入已保存，当前新输入尚未保存",
+    "zh-Hant": "原輸入已儲存，目前新輸入尚未儲存",
+    "en": "The original input is saved; newer input is not saved yet",
+    "ja": "元の入力は保存済みです。現在の新しい入力は未保存です"
   },
   "recovery.clip.savedUnconfirmed": {
     "zh-Hans": "片段已保存到时间线，但本地草稿状态尚未确认。当前输入仍保留，请重新核对本地记录",

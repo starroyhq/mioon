@@ -1690,16 +1690,22 @@ const timelineCoreMessages = {
     "ja": "映像の矩形は現在のタイムラインの出力サイズ内に収めてください"
   },
   "timeline.inspector.conflict": {
-    "zh-Hans": "草稿的时间线版本或来源已变化。你的输入仍保留，不会自动改用新版本；放弃草稿后可载入最新片段",
-    "zh-Hant": "草稿的時間軸版本或來源已變更。你的輸入仍保留，不會自動改用新版本；捨棄草稿後可載入最新片段",
-    "en": "The draft’s timeline revision or source has changed. Your input is retained and will not switch to the new version automatically. Discard the draft to load the latest clip",
-    "ja": "下書きのタイムラインのリビジョンまたはソースが変わりました。入力は保持され、自動で新しいバージョンには切り替わりません。下書きを破棄すると最新のクリップを読み込めます"
+    "zh-Hans": "草稿基于较早的时间线版本或来源，输入仍保留",
+    "zh-Hant": "草稿基於較早的時間軸版本或來源，輸入仍保留",
+    "en": "The draft is based on an earlier timeline revision or source; the input is retained",
+    "ja": "下書きは以前のタイムラインのリビジョンまたはソースに基づいています。入力は保持されています"
+  },
+  "timeline.inspector.rebase": {
+    "zh-Hans": "保留草稿并更新基线",
+    "zh-Hant": "保留草稿並更新基準",
+    "en": "Keep draft and update base",
+    "ja": "下書きを保持して基準を更新"
   },
   "timeline.inspector.reload": {
-    "zh-Hans": "载入最新片段",
-    "zh-Hant": "載入最新片段",
-    "en": "Load latest clip",
-    "ja": "最新のクリップを読み込む"
+    "zh-Hans": "载入最新片段（丢弃草稿）",
+    "zh-Hant": "載入最新片段（捨棄草稿）",
+    "en": "Load latest clip (discard draft)",
+    "ja": "最新のクリップを読み込む（下書きを破棄）"
   },
   "timeline.inspector.save": {
     "zh-Hans": "保存片段",
