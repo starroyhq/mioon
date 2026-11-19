@@ -24,6 +24,8 @@ export interface VersionFixture {
   readonly assetId: string;
   readonly sha256: string;
   readonly durationSeconds: number;
+  /** Synthetic audio presence for property edits (omitted when unknown). */
+  readonly hasAudio?: boolean;
   /** Owner shot for a version that is not the owner's selected version. */
   readonly shotId?: string;
 }
@@ -45,7 +47,8 @@ export interface ChainWorldSpec {
   readonly versions?: readonly VersionFixture[];
   readonly nodes?: readonly {readonly id: string; readonly type: string; readonly name?: string; readonly assetId?: string | null}[];
   readonly clips: readonly {readonly nodeId: string; readonly clipId: string; readonly startFrame: number;
-    readonly durationFrames: number; readonly versionId?: string | null; readonly locked?: boolean; readonly splitGroupId?: string}[];
+    readonly durationFrames: number; readonly versionId?: string | null; readonly locked?: boolean;
+    readonly splitGroupId?: string; readonly sourceInFrame?: number}[];
   readonly edges: readonly {readonly id: string; readonly fromId: string; readonly toId: string}[];
   readonly archived?: readonly {readonly table: 'shots' | 'nodes'; readonly id: string}[];
   readonly rootId?: string;
@@ -61,7 +64,7 @@ function clipRecord(world: {readonly shots: ReadonlyMap<string, Row>; readonly n
   const segmentGroupId = clip.splitGroupId ?? clip.clipId;
   const base: Format5Clip = {id: clip.clipId, trackId: mainTrackId,
     name: typeof shot?.title === 'string' ? shot.title : 'Clip',
-    startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame: 0,
+    startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame ?? 0,
     rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: null, versionId: null, jobId: null,
     sourceState: 'placeholder',
     sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId, versionMode: 'follow'}};
@@ -122,7 +125,7 @@ export function createChainWorld(t: test.TestContext, spec: ChainWorldSpec): Cha
   const shots = new Map<string, Row>(), nodes = new Map<string, Row>(), versions = new Map<string, Row>(), assets = new Map<string, Row>();
   for (const fixture of spec.versions ?? []) {
     assets.set(fixture.assetId, {id: fixture.assetId, projectId, mimeType: 'video/mp4', duration: fixture.durationSeconds,
-      sha256: fixture.sha256, name: 'source.mp4'});
+      sha256: fixture.sha256, name: 'source.mp4', ...(fixture.hasAudio !== undefined ? {hasAudio: fixture.hasAudio} : {})});
     versions.set(fixture.versionId, {id: fixture.versionId, projectId, shotId: fixture.shotId ?? '', jobId: uuid(),
       assetId: fixture.assetId, sha256: fixture.sha256, number: 1, createdAt: at});
   }

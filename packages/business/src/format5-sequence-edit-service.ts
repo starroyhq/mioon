@@ -25,6 +25,7 @@ import {previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './f
 import {
   buildSubjectBindingEnvelope, planSubjectBindingAction,
 } from './format5-subject-binding.ts';
+import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
@@ -175,6 +176,8 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
+    if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), propertiesIntent: input.propertiesIntent as never});
     if (input.subjectIntent) return subjectPreview(input);
     const intents = (input.intents ?? []) as SequenceEditIntent[];
     if (intents.length === 0) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
@@ -197,6 +200,11 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const actualDigest = sequenceEditInputDigest(envelope);
     if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
     const intents = envelope.intents;
+    if (envelope.propertiesIntent) {
+      const result = runClipPropertiesSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
     if (envelope.subjectIntent || intents.some(timelineIntent)) {
       const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});

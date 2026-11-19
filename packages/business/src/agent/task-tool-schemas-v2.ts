@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="54400764f46c664083efec4cec17789b05c135f014e0a33b9413f44c9c1061a4";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="7b7cf9b44929f2c5aac84955b0d2b2292d26568e439b22f48185b28d1722d4ac";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -879,6 +879,84 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "propertiesIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "clip-properties"
+       },
+       "edits": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "clipId": {
+           "type": "string",
+           "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "patch": {
+           "type": "object",
+           "properties": {
+            "transform": {},
+            "transition": {},
+            "gain": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 2
+            },
+            "fadeInFrames": {
+             "type": "integer",
+             "minimum": 0,
+             "maximum": 300000
+            },
+            "fadeOutFrames": {
+             "type": "integer",
+             "minimum": 0,
+             "maximum": 300000
+            },
+            "colour": {},
+            "audioRole": {},
+            "volumeEnvelope": {},
+            "name": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 200
+            }
+           },
+           "additionalProperties": false
+          }
+         },
+         "required": [
+          "clipId",
+          "patch"
+         ],
+         "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 100
+       }
+      },
+      "required": [
+       "kind",
+       "edits"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "allocation": {
     "type": "object",
     "properties": {
@@ -1206,6 +1284,84 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "required": [
          "kind",
          "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "propertiesIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "clip-properties"
+         },
+         "edits": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "clipId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "patch": {
+             "type": "object",
+             "properties": {
+              "transform": {},
+              "transition": {},
+              "gain": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 2
+              },
+              "fadeInFrames": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 300000
+              },
+              "fadeOutFrames": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 300000
+              },
+              "colour": {},
+              "audioRole": {},
+              "volumeEnvelope": {},
+              "name": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 200
+              }
+             },
+             "additionalProperties": false
+            }
+           },
+           "required": [
+            "clipId",
+            "patch"
+           ],
+           "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 100
+         }
+        },
+        "required": [
+         "kind",
+         "edits"
         ],
         "additionalProperties": false
        }
