@@ -203,6 +203,12 @@ function taskToolOperation(operation:string):string{
  if(operation===AGENT_TASK_PREVIS_INSPECT_TOOL)return AGENT_TASK_PREVIS_INSPECT_OPERATION;
  if(operation==='mioon_sequence_edit')return 'sequence.tool.edit';
  if(operation==='mioon_sequence_undo')return 'sequence.tool.undo';
+ if(operation==='mioon_sequence_board_edit')return 'sequence.tool.board';
+ if(operation==='mioon_sequence_reference_edit')return 'sequence.tool.reference';
+ if(operation==='mioon_sequence_subject_edit')return 'sequence.tool.subject';
+ if(operation==='mioon_sequence_previs_edit')return 'sequence.tool.previs';
+ if(operation==='mioon_sequence_timeline_edit')return 'sequence.tool.timeline';
+ if(operation==='mioon_sequence_clip_edit')return 'sequence.tool.clip';
  if(operation==='mioon_task_wait')return 'task.wait';
  if(operation===AGENT_TASK_ASK_TOOL)return AGENT_TASK_ASK_OPERATION;
  if(operation===AGENT_TASK_SKILL_READ_TOOL)return AGENT_TASK_SKILL_READ_OPERATION;
@@ -250,6 +256,9 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string;unavailableReason?:string}
 export interface MioSequencePreparation {readonly plan:MioSequencePlan|MioSequenceUndoPlan;readonly action:string;readonly summary?:MioSequencePlan['summary']}
+/** Loadable sequence group operations share the one bounded expansion path. */
+const MIO_SEQUENCE_WRITE_OPERATIONS:ReadonlySet<string>=new Set<string>(MIO_SEQUENCE_GROUP_OPERATIONS);
+const isMioSequenceWriteOperation=(operation:string):boolean=>MIO_SEQUENCE_WRITE_OPERATIONS.has(operation);
 export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation;canvasCopy?:MioCanvasCopyPreparation;sequence?:MioSequencePreparation}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
@@ -574,7 +583,8 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
  * expose AGENTS.md authority only through the host approval protocol. */
 import {AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS,FORMAT5_UNAVAILABLE_OPERATIONS} from './task-tool-groups-v2.ts';
 import {isFormat5Project} from '../sequence-edit.ts';
-import {mioSequenceEditSchemas} from '../../../contracts/src/mio-sequence.ts';
+import {MIO_SEQUENCE_GROUP_OPERATIONS,mioSequenceEditSchemas} from '../../../contracts/src/mio-sequence.ts';
+import type {MioSequenceAction,MioSequenceGroupOperation} from '../../../contracts/src/mio-sequence.ts';
 import {previewMioSequenceAction,commitMioSequenceAction,prepareMioSequenceUndo,applyMioSequenceUndo} from '../format5-mio-sequence.ts';
 import {readFrozenFormat5GenerationInputs} from '../format5-reference-inputs.ts';
 import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.ts';
@@ -599,12 +609,20 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
  if(format5){
-  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'执行一条有界格式5序列动作（连线/剪辑/主体绑定/主体卡/引用线连接改角色断开排序/片段属性/画板创建更新恢复复制/画幅切换/按场景切开/字幕增改删/预演新建保存）。服务器预览 envelope 并展示影响后按审批提交；模型不提供 envelope、ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'执行格式 5 基础序列动作：连接/断开/插入/删除节点、成片内重排/移除/切开/跟随锁定/切开后复制挪动（9 个）。其余动作按需加载：mioon_sequence_board_edit（画板对象）、mioon_sequence_reference_edit（素材引用线）、mioon_sequence_subject_edit（主体绑定与主体卡）、mioon_sequence_previs_edit（预演）、mioon_sequence_timeline_edit（画幅/场景切开/字幕/轨道）、mioon_sequence_clip_edit（片段属性）。服务器预览 envelope 后按审批提交；模型不提供 envelope、ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_board_edit',operation:'sequence.tool.board',description:'按需加载的格式 5 画板动作：画板根/镜头创建、画布节点创建与更新、有界布局移动、归档恢复、复制。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.board'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_subject_edit',operation:'sequence.tool.subject',description:'按需加载的格式 5 主体动作：主体绑定创建/跟随锁定/断开/恢复、主体卡建卡/删卡。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.subject'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_previs_edit',operation:'sequence.tool.previs',description:'按需加载的格式 5 预演动作：预演节点新建、预演场景保存（人偶/道具可带主体）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.previs'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的格式 5 时间线动作：画幅切换、按场景切开、字幕增改删、轨道增改。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_clip_edit',operation:'sequence.tool.clip',description:'按需加载的格式 5 片段属性动作：变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.clip'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_generation_inputs_get',operation:'sequence.generation-inputs.get',description:'只读查看一个镜头在当前生成服务下的实际生成输入：模式、每条引用线的角色/来源/顺序/主体版本、服务不支持的原因、主图和用到几项；最多 64 条。connectionId/configurationRevision/modelEntryId 必须三个一起给，省略表示还没选服务。不写项目、任务、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.generation-inputs.get'],risk:'read_only',receipt:'observation',recovery:'read the projection again after the board or service selection changes',undo:'unavailable'});
-  for(const tool of definitions){const reason=FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation];if(reason!==undefined)tool.unavailableReason=reason;}
+  // C+A: the format-5 directory no longer lists legacy entries that the gate
+  // rejects. The reviewed unavailable table stays for parity and UI reasons.
+  for(let index=definitions.length-1;index>=0;index--)if(FORMAT5_UNAVAILABLE_OPERATIONS[definitions[index]!.operation]!==undefined)definitions.splice(index,1);
  }
  if(frameTransaction&&!format5)for(const operation of mioCanvasCopyOperations){
   definitions.push({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='canvas.copy.snapshot'?'复制当前画板的明确选区，返回本窗口内可粘贴的快照句柄。':operation==='canvas.paste'?'把本窗口复制快照粘贴到指定视口内，可以整体撤销。':'为当前明确选区创建副本，可以整体撤销。',
@@ -656,7 +674,9 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject,format5});
  const diagnosticList=()=>{const base=listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
   if(!format5)return base;
-  const sequenceOnly=listAgentTaskTools(false,true).filter(tool=>['sequence.tool.edit','sequence.tool.undo','sequence.inspect','sequence.board.get','sequence.generation-inputs.get'].includes(tool.operation));
+  const sequenceOnly=listAgentTaskTools(false,true).filter(tool=>['sequence.tool.edit','sequence.tool.undo',
+    ...MIO_SEQUENCE_GROUP_OPERATIONS.filter(operation=>operation!=='sequence.tool.edit'),
+    'sequence.inspect','sequence.board.get','sequence.generation-inputs.get'].includes(tool.operation));
   return [...base,...sequenceOnly];};
  function generationServiceIssue({operation,input}:PreparedAgentTaskTool):typeof GENERATION_SERVICE_UNAVAILABLE|'IMAGE_SETTINGS_SELECTION_REQUIRED'|undefined{
   if(operation!=='generation.submit'&&operation!=='image.generate')return;
@@ -786,17 +806,18 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   }
   return agentTaskParameterFeedback({operation,input,capabilities});
  }
-  function prepareMioSequence(operation:'sequence.tool.edit'|'sequence.tool.undo',projectId:string,input:unknown):PreparedAgentTaskTool{
+  function prepareMioSequence(operation:MioSequenceGroupOperation|'sequence.tool.undo',projectId:string,input:unknown):PreparedAgentTaskTool{
   if(!format5||!isProjectStore(store))fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
   const before=snapshot(store,projectId);
   const targets:AgentTaskTarget[]=[];
   const add=(kind:string,id:unknown)=>{if(typeof id!=='string')return;const found=before[key(kind,id)];
    if(!found)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目或已删除');
    if(!targets.some(target=>target.kind===kind&&target.id===id))targets.push({kind,id,revision:readRevision(store,projectId,kind,id)});};
-  if(operation==='sequence.tool.edit'){
-   const parsed=mioSequenceEditSchemas['sequence.tool.edit'].safeParse(input);
+  if(operation!=='sequence.tool.undo'){
+   const schema=mioSequenceEditSchemas[operation as MioSequenceGroupOperation];
+   const parsed=schema.safeParse(input);
    if(!parsed.success)fail('VALIDATION_ERROR','序列动作参数无效：只接受列出的动作和目标字段');
-   const action=parsed.data;
+   const action=parsed.data as MioSequenceAction;
    if('clipId' in action)add('timeline_clip',action.clipId);
    if('beforeClipId' in action&&!action.beforeClipId){}else if('beforeClipId' in action)add('timeline_clip',action.beforeClipId);
    if('fromId' in action){add('node',action.fromId);add('node',action.toId);}
@@ -836,7 +857,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  }
 function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
- if(operation==='sequence.tool.edit'||operation==='sequence.tool.undo')return prepareMioSequence(operation,projectId,input);
+ if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   if(operation==='asset.import'){
    const parsed=mioAssetImportInputSchema.safeParse(input);

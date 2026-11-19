@@ -40,3 +40,10 @@
 - `mioon_sequence_edit` 新增 `reference-reorder`、`subject-card-create/delete`、`previs-create/previs-scene-set` 五个动作；格式 5 core 新增只读工具 `mioon_sequence_generation_inputs_get`（`sequence.generation-inputs.get`，输出最多 64 条）。详见 `docs/verification/format5-mio-mt5.md`。
 - 格式 5 套件按授权重生成：99 条中 96 条变化，只有 `diagnostic_text` 的 3 条（三协议）逐字节不变。逐条差异在卡笔记目录的 `mt5-fingerprint-differences.md`。
 - 格式 3/4 两套夹具未动，仍逐字节一致。
+
+## MT-6 工具体积（11-20）
+
+- 格式 5 请求改用紧凑 `_mio_step` 声明；`mioon_sequence_edit` 保留 9 个基础动作，其余 23 个动作拆到 6 个按需加载工具；格式 5 目录不再列不可用旧工具。详见 `docs/verification/format5-mio-schema-budget.md`。
+- 格式 5 套件按授权重生成：99 条中 96 条变化，`diagnostic_text` 的 3 条不变；`diagnostic_catalog` 的代表工具改为 `mioon_sequence_undo`。
+- 按同一场景/协议/序号与格式 4 比较，全部请求 ≤ ×110%（最大比值 1.00）；`single_reply/chat` 从 59,518 降到 24,469（格式 4 为 25,148）。逐条对照在卡笔记目录的 `mt6-fingerprint-differences.md`。
+- 格式 3/4 两套夹具未重新生成，仍逐字节一致。

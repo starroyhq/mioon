@@ -93,8 +93,48 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
     .refine(value => Object.keys(value).length > 0, 'At least one track field is required')}).strict(),
 ]);
 export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
+/** Format-5 core keeps only the nine high-frequency timeline/board actions. The
+ * other domains are separate tools loaded through `mioon_tools_load`, so a
+ * normal request does not carry their parameter schemas. The server-side
+ * expansion and approval path is shared with every group. */
+const MIO_SEQUENCE_ACTION_GROUPS = Object.freeze({
+  basics: ['connect', 'disconnect', 'insert', 'delete-node', 'reorder', 'remove', 'split', 'set-mode', 'copy-move'],
+  board: ['board-root-create', 'board-shot-append', 'board-layout-move', 'board-node-create', 'board-shot-update',
+    'board-node-update', 'board-restore', 'board-duplicate'],
+  reference: ['reference-attach', 'reference-set-role', 'reference-detach', 'reference-reorder'],
+  subject: ['subject-binding', 'subject-card-create', 'subject-card-delete'],
+  previs: ['previs-create', 'previs-scene-set'],
+  timeline: ['subtitles', 'format-set', 'split-at-scenes', 'track-add', 'track-update'],
+  clip: ['clip-properties'],
+} as const);
+export type MioSequenceActionGroup = keyof typeof MIO_SEQUENCE_ACTION_GROUPS;
+type ActionBranch = (typeof mioSequenceActionSchema)['options'][number];
+function actionBranches(kinds: readonly MioSequenceAction['kind'][]): [ActionBranch, ...ActionBranch[]] {
+  const branches = mioSequenceActionSchema.options.filter(branch =>
+    kinds.includes((branch as unknown as {shape: {kind: {value: MioSequenceAction['kind']}}}).shape.kind.value));
+  if (branches.length !== kinds.length) throw new Error('Mio sequence action group must name every branch exactly once');
+  return branches as [ActionBranch, ...ActionBranch[]];
+}
+const groupSchema = (group: MioSequenceActionGroup) => z.discriminatedUnion('kind', actionBranches(MIO_SEQUENCE_ACTION_GROUPS[group]));
 export const mioSequenceEditSchemas = Object.freeze({
-  'sequence.tool.edit': mioSequenceActionSchema,
+  'sequence.tool.edit': groupSchema('basics'),
+  'sequence.tool.board': groupSchema('board'),
+  'sequence.tool.reference': groupSchema('reference'),
+  'sequence.tool.subject': groupSchema('subject'),
+  'sequence.tool.previs': groupSchema('previs'),
+  'sequence.tool.timeline': groupSchema('timeline'),
+  'sequence.tool.clip': groupSchema('clip'),
   'sequence.tool.undo': z.object({actionId: uuid.optional()}).strict(),
 });
 export type MioSequenceToolOperation = keyof typeof mioSequenceEditSchemas;
+export type MioSequenceGroupOperation = Exclude<MioSequenceToolOperation, 'sequence.tool.undo'>;
+export const MIO_SEQUENCE_GROUP_OPERATIONS = Object.freeze(Object.keys(mioSequenceEditSchemas)
+  .filter(operation => operation !== 'sequence.tool.undo') as MioSequenceGroupOperation[]);
+const MIO_SEQUENCE_OPERATION_GROUP: Readonly<Record<MioSequenceGroupOperation, MioSequenceActionGroup>> = Object.freeze({
+  'sequence.tool.edit': 'basics', 'sequence.tool.board': 'board', 'sequence.tool.reference': 'reference',
+  'sequence.tool.subject': 'subject', 'sequence.tool.previs': 'previs', 'sequence.tool.timeline': 'timeline',
+  'sequence.tool.clip': 'clip',
+});
+export function mioSequenceActionKindsForOperation(operation: MioSequenceGroupOperation): readonly MioSequenceAction['kind'][] {
+  return MIO_SEQUENCE_ACTION_GROUPS[MIO_SEQUENCE_OPERATION_GROUP[operation]];
+}
