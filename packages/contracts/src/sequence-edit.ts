@@ -8,6 +8,8 @@ import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline,
 } from './project-format5.ts';
 import type {BoardSequenceErrorCode} from './board-sequence.ts';
+import {PREVIS_LIMITS,previsSceneSchema} from './previs.ts';
+import type {PrevisScene} from './previs.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
 import type {
   ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning,
@@ -95,6 +97,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
+  'previs.create', 'previs.scene.set',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
@@ -145,6 +148,28 @@ export interface SequenceEditSubjectIntent {
   readonly operation: SubjectBindingOperation;
 }
 
+/**
+ * Previs scene actions (format 5, FR-0 opened through the unified entry). A
+ * previs node is a board object: the whole node row (label, position, scene,
+ * revision, sceneRevision) travels in `SequenceEditBoardDelta`, so create and
+ * save are one undo step in the same history-13 stack. Operations are board
+ * origin and never combine with a CS/TS intent.
+ *
+ * `create` writes the default scene; `scene-set` replaces the scene under the
+ * observed scene revision and is the only path that may carry mannequin/prop
+ * subject references. The host fills identity fields, so neither operation
+ * carries `projectId` or a request id.
+ */
+export type PrevisIntentOperation =
+  | {readonly kind: 'previs-create'; readonly nodeId: string; readonly label: string;
+    readonly position: {readonly x: number; readonly y: number}}
+  | {readonly kind: 'previs-scene-set'; readonly nodeId: string; readonly expectedSceneRevision: number;
+    readonly scene: PrevisScene};
+export interface SequenceEditPrevisIntent {
+  readonly side: 'board';
+  readonly operation: PrevisIntentOperation;
+}
+
 /** FR-A clip properties: one undo step may change several clips (for example one
  * loudness/gain group), but never timeline structure (frames, anchors, tracks,
  * transitions' neighbours). Each patch carries only the fields the user edited;
@@ -189,6 +214,11 @@ export function sequenceEditSubjectOperationName(operation: SubjectBindingOperat
   }
 }
 
+/** Stable `history13.operation` name of one previs edit. */
+export function sequenceEditPrevisOperationName(operation: PrevisIntentOperation): SequenceEditOperationName {
+  return operation.kind === 'previs-create' ? 'previs.create' : 'previs.scene.set';
+}
+
 export function sequenceEditIntentOperationName(operation: ChainSyncOperation | BoardIntentOperation): SequenceEditOperationName {
   switch (operation.kind) {
     case 'board':
@@ -226,9 +256,10 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
 
 /** `history13.operation` for the action envelope. One subject action uses its
  * own stable name; every existing action keeps its intent-joined name. */
-export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent'>): string {
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'previsIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
+  if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
   return sequenceEditOperationName(envelope.intents);
 }
 
@@ -344,8 +375,11 @@ export interface SequenceEditEnvelope {
    * delta, so one undo step restores both. Optional and additive: existing
    * CS/TS envelopes and receipts are unchanged. */
   readonly subjectIntent?: SequenceEditSubjectIntent;
-  /** FR-A clip property patch; exactly one of intents/subjectIntent/propertiesIntent. */
+  /** FR-A clip property patch; exactly one of intents/subjectIntent/propertiesIntent/previsIntent. */
   readonly propertiesIntent?: SequenceEditClipPropertiesIntent;
+  /** Previs node create/save; exactly one intent family per envelope. Optional
+   * and additive: earlier envelopes and stored patches stay valid. */
+  readonly previsIntent?: SequenceEditPrevisIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -456,6 +490,17 @@ export const sequenceEditClipPropertiesIntentSchema = z.object({
       .refine(list => new Set(list.map(edit => edit.clipId)).size === list.length, 'Each clip may appear once')}).strict(),
 }).strict();
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
+const previsLabelSchema = z.string().max(PREVIS_LIMITS.labelLength);
+const previsPointSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
+export const sequenceEditPrevisIntentSchema = z.object({
+  side: z.literal('board'),
+  operation: z.discriminatedUnion('kind', [
+    z.object({kind: z.literal('previs-create'), nodeId: uuidSchema, label: previsLabelSchema, position: previsPointSchema}).strict(),
+    z.object({kind: z.literal('previs-scene-set'), nodeId: uuidSchema, expectedSceneRevision: revisionSchema,
+      scene: previsSceneSchema}).strict(),
+  ]),
+}).strict();
+const previsIntentSchema = sequenceEditPrevisIntentSchema;
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
@@ -465,11 +510,30 @@ export const sequenceEditEnvelopeSchema = z.object({
   intents: z.array(intentSchema).max(SEQUENCE_EDIT_LIMITS.intents),
   subjectIntent: subjectIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
+  previsIntent: previsIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
-  if (hasSubject && hasProperties) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
+  const hasPrevis = value.previsIntent !== undefined;
+  const families = [value.intents.length > 0, hasSubject, hasProperties, hasPrevis].filter(Boolean).length;
+  if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
+  if (hasPrevis) {
+    if (value.intents.length !== 0 || hasSubject || hasProperties) return;
+    if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs action is board-origin'});
+    const operation = value.previsIntent!.operation;
+    if (operation.kind === 'previs-create') {
+      if (value.impact.nodeIds.length !== 1 || value.impact.nodeIds[0] !== operation.nodeId) {
+        context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs create names exactly its new node'});
+      }
+      if (value.baseline.targets.length !== 0) {
+        context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs create carries no target revision'});
+      }
+    } else if (!value.impact.nodeIds.includes(operation.nodeId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs save names its node in the impact'});
+    }
+    return;
+  }
   if (hasProperties) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A clip property action carries no CS/TS intent'});
     if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A clip property action is timeline-origin'});
@@ -909,13 +973,17 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   missing/wrong-track clip, a value outside the frozen clip schema (transform
  *   keyframes, transition fit, gain/fades/envelope/colour/audio role), or the
  *   same clip twice. Nothing is written; the caller re-previews.
+ * - `SEQUENCE_EDIT_PREVIS_INVALID`: a previs create names an occupied node id or
+ *   exceeds the previs capacity, or a previs save names a missing/foreign/
+ *   archived node, a stale scene revision, or an export image that is not an
+ *   owned image asset. Nothing is written; the caller re-previews.
  */
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
