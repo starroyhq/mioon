@@ -5,7 +5,7 @@ import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import type {
-  Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline,
+  Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline, Format5Timeline,
 } from './project-format5.ts';
 import type {BoardSequenceErrorCode, ChainReferenceRole} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
@@ -94,6 +94,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.root.create', 'board.shot.append', 'board.layout.move',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
+  'timeline.track.add', 'timeline.track.update',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'reference.attach', 'reference.role.set', 'reference.detach',
 ] as const);
@@ -213,6 +214,29 @@ export interface SequenceEditClipPropertiesIntent {
   readonly operation: SequenceEditClipPropertiesOperation;
 }
 
+/** FR-D track management: add a track or change its name/visibility/mute/order.
+ * A track's identity, kind and the main-track association never change here;
+ * deleting a track is not part of the format-5 contract. Locking is a client
+ * view protection, not persisted timeline data. */
+export interface SequenceEditTrackPatch {
+  readonly name?: string;
+  readonly hidden?: boolean;
+  readonly muted?: boolean;
+  readonly orderIndex?: number;
+}
+export type SequenceEditTrackEdit =
+  | {readonly kind: 'add'; readonly trackId: string; readonly trackKind: 'video' | 'audio';
+    readonly name?: string; readonly orderIndex?: number}
+  | {readonly kind: 'update'; readonly trackId: string; readonly patch: SequenceEditTrackPatch};
+export interface SequenceEditTrackOperation {
+  readonly kind: 'track-structure';
+  readonly edit: SequenceEditTrackEdit;
+}
+export interface SequenceEditTrackIntent {
+  readonly side: 'timeline';
+  readonly operation: SequenceEditTrackOperation;
+}
+
 /** The side a plan operation belongs to. Board edits and projections are CS,
  * track edits are TS. */
 export function sequenceEditIntentSide(operation: {readonly kind: string}): SequenceEditSide {
@@ -266,9 +290,14 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
 
 /** `history13.operation` for the action envelope. One subject action uses its
  * own stable name; every existing action keeps its intent-joined name. */
-export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'referenceIntent'>): string {
+export function sequenceEditTrackOperationName(operation: SequenceEditTrackOperation): SequenceEditOperationName {
+  return operation.edit.kind === 'add' ? 'timeline.track.add' : 'timeline.track.update';
+}
+
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'referenceIntent' | 'trackIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
+  if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
   return sequenceEditOperationName(envelope.intents);
 }
@@ -303,7 +332,7 @@ export interface SequenceEditExpectedTarget {
   readonly id: string;
   readonly revision: number;
 }
-export const SEQUENCE_EDIT_TARGET_KINDS = Object.freeze(['shot', 'node', 'edge', 'clip', 'cue', 'subject_binding'] as const);
+export const SEQUENCE_EDIT_TARGET_KINDS = Object.freeze(['shot', 'node', 'edge', 'clip', 'cue', 'subject_binding', 'timeline_track'] as const);
 
 /**
  * The exact revisions one action was planned against (plan §4). A transaction
@@ -339,10 +368,13 @@ export interface SequenceEditImpact {
    * tombstone delete; `detach` keeps the row and only clears the applied
    * version). Optional so every pre-SB envelope and stored patch still parses. */
   readonly subjectBindingIds?: readonly string[];
+  /** FR-D tracks created or changed by the action. Optional for old envelopes. */
+  readonly trackIds?: readonly string[];
 }
 export function sequenceEditImpactCount(impact: SequenceEditImpact): number {
   return impact.nodeIds.length + impact.edgeIds.length + impact.mainTrackClipIds.length
-    + impact.otherTrackItemIds.length + impact.subtitleCueIds.length + (impact.subjectBindingIds?.length ?? 0);
+    + impact.otherTrackItemIds.length + impact.subtitleCueIds.length + (impact.subjectBindingIds?.length ?? 0)
+    + (impact.trackIds?.length ?? 0);
 }
 
 /**
@@ -390,6 +422,8 @@ export interface SequenceEditEnvelope {
   readonly referenceIntent?: SequenceEditReferenceIntent;
   /** FR-A clip property patch; exactly one intent family is present. */
   readonly propertiesIntent?: SequenceEditClipPropertiesIntent;
+  /** FR-D track add/update; exactly one intent family is present. */
+  readonly trackIntent?: SequenceEditTrackIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -427,6 +461,7 @@ const impactSchema = z.object({
   otherTrackItemIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds),
   subtitleCueIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds),
   subjectBindingIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds).optional(),
+  trackIds: idListSchema(SEQUENCE_EDIT_LIMITS.impactIds).optional(),
 }).strict().superRefine((value, context) => {
   if (sequenceEditImpactCount(value) > SEQUENCE_EDIT_LIMITS.impactIds) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'Too many impacted ids'});
@@ -512,6 +547,22 @@ export const sequenceEditClipPropertiesIntentSchema = z.object({
     edits: z.array(z.object({clipId: uuidSchema, patch: clipPropertiesPatchSchema}).strict()).min(1).max(100)
       .refine(list => new Set(list.map(edit => edit.clipId)).size === list.length, 'Each clip may appear once')}).strict(),
 }).strict();
+const trackPatchSchema = z.object({
+  name: z.string().min(1).max(150).optional(),
+  hidden: z.boolean().optional(),
+  muted: z.boolean().optional(),
+  orderIndex: z.number().int().min(0).max(FORMAT5_LIMITS.tracks - 1).optional(),
+}).strict().refine(value => Object.keys(value).length > 0, 'At least one track field is required');
+export const sequenceEditTrackIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.object({kind: z.literal('track-structure'), edit: z.discriminatedUnion('kind', [
+    z.object({kind: z.literal('add'), trackId: uuidSchema, trackKind: z.enum(['video', 'audio']),
+      name: z.string().min(1).max(150).optional(),
+      orderIndex: z.number().int().min(0).max(FORMAT5_LIMITS.tracks - 1).optional()}).strict(),
+    z.object({kind: z.literal('update'), trackId: uuidSchema, patch: trackPatchSchema}).strict(),
+  ])}).strict(),
+}).strict();
+const trackIntentSchema = sequenceEditTrackIntentSchema;
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
@@ -523,12 +574,14 @@ export const sequenceEditEnvelopeSchema = z.object({
   subjectIntent: subjectIntentSchema.optional(),
   referenceIntent: referenceIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
+  trackIntent: trackIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
   const hasReference = value.referenceIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
-  if ([hasSubject, hasReference, hasProperties].filter(Boolean).length > 1) {
+  const hasTrack = value.trackIntent !== undefined;
+  if ([hasSubject, hasReference, hasProperties, hasTrack].filter(Boolean).length > 1) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
   }
   if (hasReference) {
@@ -553,6 +606,14 @@ export const sequenceEditEnvelopeSchema = z.object({
     const impacted = new Set([...value.impact.mainTrackClipIds, ...value.impact.otherTrackItemIds]);
     if (edited.some(id => !impacted.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
       message: 'Clip property impact must list every edited clip'});
+    return;
+  }
+  if (hasTrack) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A track action carries no CS/TS intent'});
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A track action is timeline-origin'});
+    const edit = value.trackIntent!.operation.edit;
+    if (!(value.impact.trackIds ?? []).includes(edit.trackId)) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Track impact must list the added or edited track'});
     return;
   }
   if (hasSubject) {
@@ -641,6 +702,9 @@ export interface SequenceEditTimelineDelta {
   readonly cues: readonly Format5Cue[];
   readonly removedClipIds: readonly string[];
   readonly removedCueIds: readonly string[];
+  /** FR-D full header track rows when a track action changed them. Optional so
+   * every pre-FR-D patch and every clip/board action still parses unchanged. */
+  readonly tracks?: ReadonlyArray<Format5Timeline['tracks'][number]>;
   readonly baseline: SequenceEditBaselineChange;
 }
 
@@ -698,6 +762,7 @@ const timelineDeltaSchema = z.object({
   cues: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.subtitleCues),
   removedClipIds: idListSchema(FORMAT5_LIMITS.mainTrackClips + FORMAT5_LIMITS.otherTrackClips),
   removedCueIds: idListSchema(FORMAT5_LIMITS.subtitleCues),
+  tracks: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.tracks).optional(),
   baseline: baselineChangeSchema,
 }).strict();
 const stateDeltaSchema = z.object({board: boardDeltaSchema, timeline: timelineDeltaSchema}).strict();
@@ -796,6 +861,8 @@ export interface SequenceEditAffectedCounts {
   /** SB subject bindings created/changed/detached by this action. Optional so
    * pre-SB receipts still parse; a subject action always reports it. */
   readonly subjectBindings?: number;
+  /** FR-D header track rows created/changed by the action. */
+  readonly tracks?: number;
 }
 export interface SequenceEditHistoryAction {
   readonly actionId: string;
@@ -852,6 +919,7 @@ export const sequenceEditHistoryViewSchema = z.object({
 export const sequenceEditAffectedCountsSchema = z.object({
   nodes: sequenceSchema, edges: sequenceSchema, mainTrackClips: sequenceSchema,
   otherTrackItems: sequenceSchema, subtitleCues: sequenceSchema, subjectBindings: sequenceSchema.optional(),
+  tracks: sequenceSchema.optional(),
 }).strict();
 export const sequenceEditReceiptSchema = z.object({
   version: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
@@ -998,7 +1066,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_REFERENCE_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

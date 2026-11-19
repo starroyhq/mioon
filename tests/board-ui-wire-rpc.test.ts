@@ -94,3 +94,42 @@ test('the unified RPC registry exposes the board read operation and its effects'
   assert.equal(operationEffect('sequence.board.get').readOnly, true);
   assert.equal(Object.hasOwn(operationEffects, 'sequence.board.get'), true);
 });
+
+test('track add/update ride sequence.preview/commit with one-step undo and main-track identity', async (t: test.TestContext) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  const project = await call('project.get', {projectId: f.projectId});
+  const mainTrack = project.timeline.tracks.find((track: any) => track.id === project.timeline.mainTrack.trackId);
+  assert.ok(mainTrack);
+  const trackId = randomUUID();
+  const addPreview = await call('sequence.preview', {projectId: f.projectId, requestId: `track-add-${randomUUID()}`,
+    trackIntent: {side: 'timeline', operation: {kind: 'track-structure',
+      edit: {kind: 'add', trackId, trackKind: 'video', name: '叠加'}}}});
+  assert.equal(addPreview.ok, undefined, JSON.stringify(addPreview));
+  const addCommit = await call('sequence.commit', {projectId: f.projectId, envelope: addPreview.envelope,
+    expectedPlanDigest: addPreview.planDigest});
+  assert.equal(addCommit.operation, 'timeline.track.add');
+  const added = await call('project.get', {projectId: f.projectId});
+  assert.equal(added.timeline.tracks.some((track: any) => track.id === trackId), true);
+  assert.equal(added.timeline.mainTrack.trackId, project.timeline.mainTrack.trackId);
+
+  const updatePreview = await call('sequence.preview', {projectId: f.projectId, requestId: `track-update-${randomUUID()}`,
+    trackIntent: {side: 'timeline', operation: {kind: 'track-structure',
+      edit: {kind: 'update', trackId: mainTrack.id, patch: {muted: true, name: '主画面'}}}}});
+  const updateCommit = await call('sequence.commit', {projectId: f.projectId, envelope: updatePreview.envelope,
+    expectedPlanDigest: updatePreview.planDigest});
+  assert.equal(updateCommit.operation, 'timeline.track.update');
+  const updated = await call('project.get', {projectId: f.projectId});
+  assert.equal(updated.timeline.tracks.find((track: any) => track.id === mainTrack.id).name, '主画面');
+  assert.equal(updated.timeline.tracks.find((track: any) => track.id === mainTrack.id).muted, true);
+  assert.equal(updated.timeline.mainTrack.trackId, mainTrack.id);
+
+  const history = await call('sequence.history.get', {projectId: f.projectId});
+  await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${randomUUID()}`,
+    actionId: history.undo.actionId, expected: {position: history.position, revision: history.revision}});
+  const undone = await call('project.get', {projectId: f.projectId});
+  assert.equal(undone.timeline.tracks.find((track: any) => track.id === mainTrack.id).muted, mainTrack.muted);
+
+  await assert.rejects(() => call('sequence.commit', {projectId: f.projectId, envelope: updatePreview.envelope,
+    expectedPlanDigest: '0'.repeat(64)}), {code: 'SEQUENCE_EDIT_PATCH_INVALID'});
+});

@@ -56,8 +56,8 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
 export const FORMAT5_UNAVAILABLE_OPERATIONS:Readonly<Record<string,string>>=Object.freeze({
  'timeline.seed':'格式 5 的主轨由 sequence.preview/commit 维护，旧 seed 不可用',
  'timeline.shots.append':'格式 5 由明确链命令追加，旧 shots.append 不可用',
- 'timeline.track.add':'轨道管理归 FR-D，格式 5 暂不可用',
- 'timeline.track.update':'轨道管理归 FR-D，格式 5 暂不可用',
+ 'timeline.track.add':'格式 5 旧轨道入口不可用，请用 mioon_sequence_edit 的 track-add 动作',
+ 'timeline.track.update':'格式 5 旧轨道入口不可用，请用 mioon_sequence_edit 的 track-update 动作',
  'timeline.clip.add':'片段属性/结构编辑归 FR-A/FR-B，格式 5 暂不可用',
  'timeline.clip.update':'片段属性编辑归 FR-A，格式 5 暂不可用',
  'timeline.clip.replaceSource':'片段属性编辑归 FR-A，格式 5 暂不可用',

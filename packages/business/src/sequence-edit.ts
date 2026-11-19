@@ -812,6 +812,7 @@ function timelineDeltaMatches(store: ProjectStore, delta: SequenceEditTimelineDe
   for (const cue of delta.cues) if (!sameRow(cues.get(cue.id), cue)) return false;
   for (const id of delta.removedClipIds) if (clips.has(id)) return false;
   for (const id of delta.removedCueIds) if (cues.has(id)) return false;
+  if (delta.tracks !== undefined && stable(timeline.tracks) !== stable(delta.tracks)) return false;
   if (delta.baseline.kind === 'unchanged') return true;
   const context = readSequenceEditContext(store);
   if (delta.baseline.kind === 'set') return sameRow(context.baseline, delta.baseline.value);

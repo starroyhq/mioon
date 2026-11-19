@@ -14,13 +14,13 @@ import {
   sequenceEditEnvelopeOperationName, sequenceEditEnvelopeSchema, sequenceEditHistoryEntrySchema,
   sequenceEditImpactCount, sequenceEditIntentOperationName, sequenceEditIntentSide, sequenceEditOperationName,
   sequenceEditReceiptSchema, sequenceEditReferenceIntentSchema, sequenceEditReferenceOperationName,
-  sequenceEditSubjectIntentSchema, sequenceEditSubjectOperationName, sequenceEditUtf8Bytes,
+  sequenceEditSubjectIntentSchema, sequenceEditSubjectOperationName, sequenceEditTrackOperationName, sequenceEditUtf8Bytes,
 } from '../packages/contracts/src/sequence-edit.ts';
 import type {
   BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditBaselineChange, SequenceEditEnvelope,
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
-  ReferenceEdgeOperation, SequenceEditReferenceIntent, SubjectBindingOperation,
+  ReferenceEdgeOperation, SequenceEditReferenceIntent, SequenceEditTrackOperation, SubjectBindingOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -141,12 +141,28 @@ test('side follows the SA operation kind and every kind maps to one stable name'
       role: 'reference_image'}}, 'reference.role.set'],
     [{kind: 'reference-edge', edit: {kind: 'detach', edgeId: uuid('94'), shotId: shotA}}, 'reference.detach'],
   ];
+  const trackSamples: Array<[SequenceEditTrackOperation, string]> = [
+    [{kind: 'track-structure', edit: {kind: 'add', trackId: uuid('95'), trackKind: 'video'}}, 'timeline.track.add'],
+    [{kind: 'track-structure', edit: {kind: 'update', trackId: uuid('95'), patch: {muted: true}}}, 'timeline.track.update'],
+  ];
   assert.equal(subjectSamples.length, 4);
   assert.equal(referenceSamples.length, 3);
-  assert.equal(samples.length + subjectSamples.length + referenceSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
+  assert.equal(trackSamples.length, 2);
+  assert.equal(samples.length + subjectSamples.length + referenceSamples.length + trackSamples.length,
+    SEQUENCE_EDIT_OPERATIONS.length);
+  for (const [operation, name] of trackSamples) {
+    assert.equal(sequenceEditTrackOperationName(operation), name);
+    assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
+    assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
+  }
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');
+    assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
+    assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
+  }
+  for (const [operation, name] of trackSamples) {
+    assert.equal(sequenceEditTrackOperationName(operation), name);
     assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
     assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
   }
@@ -217,9 +233,10 @@ test('the envelope validator accepts a valid board action and rejects contract v
 
 test('impact counts cover nodes, edges, main-track and other-track items, cues and bindings', () => {
   const impact = {nodeIds: [nodeA, nodeB], edgeIds: [uuid('40')], mainTrackClipIds: [clipA],
-    otherTrackItemIds: [uuid('60')], subtitleCueIds: [uuid('70')], subjectBindingIds: [bindingA]};
-  assert.equal(sequenceEditImpactCount(impact), 7);
-  assert.deepEqual(SEQUENCE_EDIT_TARGET_KINDS, ['shot', 'node', 'edge', 'clip', 'cue', 'subject_binding']);
+    otherTrackItemIds: [uuid('60')], subtitleCueIds: [uuid('70')], subjectBindingIds: [bindingA],
+    trackIds: [uuid('95')]};
+  assert.equal(sequenceEditImpactCount(impact), 8);
+  assert.deepEqual(SEQUENCE_EDIT_TARGET_KINDS, ['shot', 'node', 'edge', 'clip', 'cue', 'subject_binding', 'timeline_track']);
 });
 
 test('subject binding intents validate the mode/version pair and stay board-only', () => {

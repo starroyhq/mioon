@@ -29,6 +29,7 @@ import {
   buildReferenceEdgeEnvelope, planReferenceEdgeAction,
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
+import {previewTrack, runTrackSync} from './format5-tracks.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
@@ -206,6 +207,9 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
+    if (input.trackIntent) return previewTrack(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      trackIntent: input.trackIntent as never});
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});
@@ -232,6 +236,11 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const actualDigest = sequenceEditInputDigest(envelope);
     if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
     const intents = envelope.intents;
+    if (envelope.trackIntent) {
+      const result = runTrackSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 轨道编辑没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
     if (envelope.propertiesIntent) {
       const result = runClipPropertiesSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
