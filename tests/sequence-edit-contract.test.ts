@@ -21,6 +21,7 @@ import type {
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
   ReferenceEdgeOperation, SequenceEditReferenceIntent, SequenceEditTrackOperation, SubjectBindingOperation,
+  SubjectEditOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -128,11 +129,13 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
   ];
-  const subjectSamples: Array<[SubjectBindingOperation, string]> = [
+  const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
     [lockBinding, 'subject.binding.set-mode'],
     [detachBinding, 'subject.binding.detach'],
     [restoreBinding, 'subject.binding.restore'],
+    [{kind: 'subject.card.create', nodeId: nodeA, subjectId: uuid('60'), position: {x: 0, y: 0}}, 'subject.card.create'],
+    [{kind: 'subject.card.delete', nodeId: nodeA}, 'subject.card.delete'],
   ];
   const referenceSamples: Array<[ReferenceEdgeOperation, string]> = [
     [{kind: 'reference-edge', edit: {kind: 'attach', edgeId: uuid('94'), shotId: shotA,
@@ -145,7 +148,7 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track-structure', edit: {kind: 'add', trackId: uuid('95'), trackKind: 'video'}}, 'timeline.track.add'],
     [{kind: 'track-structure', edit: {kind: 'update', trackId: uuid('95'), patch: {muted: true}}}, 'timeline.track.update'],
   ];
-  assert.equal(subjectSamples.length, 4);
+  assert.equal(subjectSamples.length, 6);
   assert.equal(referenceSamples.length, 3);
   assert.equal(trackSamples.length, 2);
   assert.equal(samples.length + subjectSamples.length + referenceSamples.length + trackSamples.length,
