@@ -7,7 +7,7 @@
 ## 服务端
 
 - `previs.thumbnail.set` 从 FR-0 门禁（`FORMAT5_LEGACY_WRITE_USES`）放行：缩略图是可重建的派生缓存，不进统一历史、不制造撤销步，仍在保存事务外单独写。
-- 格式 5 写入要求节点当前 `sceneRevision`（CAS）：不一致返回 `REVISION_CONFLICT`（带当前节点，供编辑器冲突处理）；帧预设不一致仍是 `PREVIS_THUMBNAIL_STALE`；按 nodeId+slot 覆盖与容量淘汰不变，无回执。格式 3/4 的过期回答保持 `PREVIS_THUMBNAIL_STALE`。
+- 格式 5 写入要求节点当前 `sceneRevision`（CAS）：不一致返回 `REVISION_CONFLICT`（details 为 entityId/expectedSceneRevision/currentSceneRevision）；帧预设不一致仍是 `PREVIS_THUMBNAIL_STALE`；按 nodeId+slot 覆盖与容量淘汰不变，无回执。格式 3/4 的过期回答保持 `PREVIS_THUMBNAIL_STALE`。
 - `previs.thumbnail.get` 只读、格式 5 可读不变。
 - Mio/MCP：不新增工具或 schema；`previs.thumbnail.set` 从 `FORMAT5_UNAVAILABLE_OPERATIONS` 去掉（沿用现有工具，格式 5 可写），`previs.create` / `previs.scene.set` 的不可用说明保留给 MT-5。`docs/PREVIS.md`、`docs/AGENT-TASKS-V2.md` 同步。
 

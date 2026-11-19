@@ -141,9 +141,10 @@ def main() -> int:
                 sceneRevision=node['sceneRevision'], historyPosition=view['position'])
             capture(page, '30-04-previs-scene-saved.png')
 
-            # Thumbnail cache. The production editor renders and uploads the card
-            # through previs.thumbnail.set; a headless browser without WebGL falls
-            # back to the same real RPC with a real 2D-canvas JPEG.
+            # Thumbnail cache. The production editor uploads the card through
+            # previs.thumbnail.set; the headless editor capture did not trigger
+            # that upload (WebGL was available), so the fallback writes through
+            # the same real RPC with a real 2D-canvas JPEG.
             scene_revision = node['sceneRevision']
             webgl_ready = page.locator('[data-testid=previs-webgl]').count() == 0
             frame_preset = page.evaluate('() => window.__previsWireState.framePresetId')
