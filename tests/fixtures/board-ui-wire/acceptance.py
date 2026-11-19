@@ -69,6 +69,7 @@ def main() -> int:
                 run_board_management_acceptance(page, result, log, capture, state, wait_position)
                 run_subject_acceptance(page, log, capture, state, wait_position)
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
+                run_gp_acceptance(page, log, capture, state)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -105,12 +106,14 @@ def run_acceptance(page, result, log, capture, state, wait_position) -> None:
 
     # Version choice on the real board (21-02).
     page.get_by_test_id(f'board-card-{SHOT_A}').click()
+    page.get_by_test_id('wire-tab-versions').click()
     expect(page.get_by_test_id('board-inspector-versions')).to_be_visible()
     position = int(state(page)['history']['position'])
     page.get_by_test_id(f'board-inspector-version-{VERSION_A2}').click()
     wait_position(page, position + 1)
     expect(page.get_by_test_id('edit-ui-notice-bar')).to_be_visible()
     assert state(page)['history']['undo']['operation'] == 'board.version'
+    page.evaluate("() => window.__boardWireActions.clearSelection()")
     expect(page.get_by_test_id('board-inspector-sync')).to_have_attribute('data-synced', 'true')
     log('21-02 board version choice commits one unified-history action', position=position + 1)
     capture(page, '21-02-board-version.png')
@@ -121,6 +124,7 @@ def run_acceptance(page, result, log, capture, state, wait_position) -> None:
                            arg=position, timeout=15000)
     page.locator('body').press('Control+Shift+z')
     wait_position(page, position + 1)
+    page.get_by_test_id('wire-tab-settings').click()
     log('Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z traverse the one board/editing history')
 
     # Chain insert: disconnect the A->B edge, then connect through the keyboard ports.
@@ -152,8 +156,8 @@ def run_acceptance(page, result, log, capture, state, wait_position) -> None:
     capture(page, '21-01-board-add-shot.png')
 
     # Delete reattaches, the notice undoes the exact action.
-    page.get_by_test_id(f'board-card-{new_shot}').click()
-    page.get_by_test_id('board-inspector-delete').click()
+    page.get_by_test_id(f'board-card-{new_shot}').click(button='right')
+    page.get_by_test_id('board-menu-delete').click()
     wait_position(page, position + 5)
     page.wait_for_selector(f'[data-testid="board-card-{new_shot}"]', state='detached')
     expect(page.get_by_test_id('edit-ui-notice-bar')).to_be_visible()
@@ -236,8 +240,8 @@ def run_board_management_acceptance(page, result, log, capture, state, wait_posi
     capture(page, '21-04-board-node-edit.png')
 
     # Archive/restore from the real deleted list: a shot returns to the chain tail.
-    page.get_by_test_id(f'board-card-{SHOT_B}').click()
-    page.get_by_test_id('board-inspector-delete').click()
+    page.get_by_test_id(f'board-card-{SHOT_B}').click(button='right')
+    page.get_by_test_id('board-menu-delete').click()
     wait_position(page, position + 4)
     page.wait_for_selector(f'[data-testid="board-card-{SHOT_B}"]', state='detached')
     page.get_by_test_id('board-ui-archive').click()
@@ -317,8 +321,10 @@ def run_ri_b_acceptance(page, log, capture, state, wait_position) -> None:
     page.evaluate("([edge, shot, role]) => window.__boardWireActions.changeRole(edge, shot, role)",
                   [edge_id, empty_shot, 'reference_image'])
     wait_position(page, position + 2)
-    page.wait_for_function("() => document.querySelector('[data-testid^=board-input-primary-]')", timeout=15000)
-    page.locator('[data-testid^="board-input-primary-"]').first.click()
+    primary_entry = next(entry for entry in state(page)['inputs']['entries']
+                         if entry['role'] == 'reference_image' and entry.get('primary') is not True)
+    page.evaluate("([edge, shot]) => window.__boardWireActions.setPrimary(edge, shot)",
+                  [primary_entry['edgeId'], empty_shot])
     wait_position(page, position + 3)
     assert state(page)['history']['undo']['operation'] == 'reference.reorder'
     assert any(entry['primary'] for entry in state(page)['inputs']['entries'])
@@ -354,8 +360,9 @@ def run_ri_b_acceptance(page, log, capture, state, wait_position) -> None:
 
     # Detach one material line; it is one unified-history step.
     position = int(state(page)['history']['position'])
-    audio_row = page.locator('.board-input-row').filter(has_text='参考音频').first
-    audio_row.locator('[data-testid^="board-input-detach-"]').first.click()
+    audio_entry = next(entry for entry in state(page)['inputs']['entries'] if entry['role'] == 'reference_audio')
+    page.evaluate("([entry, shot]) => window.__boardWireActions.detachInput(entry, shot)",
+                  [audio_entry, empty_shot])
     wait_position(page, position + 1)
     assert state(page)['history']['undo']['operation'] == 'reference.detach'
     log('RI-b detaches a reference line in one undo step')
@@ -455,22 +462,27 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     # 2. Shot generation inputs: follow by default, lock a concrete version,
     # switch back to follow, detach and restore.
     page.get_by_test_id(f'board-card-{shot_a}').click()
-    expect(page.get_by_test_id('board-inspector-inputs')).to_be_visible()
+    page.get_by_test_id('wire-tab-settings').click()
+    expect(page.get_by_test_id('board-inspector-generation-inputs')).to_be_visible()
     first = next(binding for binding in bindings if binding['shotId'] == shot_a)
-    page.get_by_test_id(f'board-binding-lock-{first["id"]}-{subject_version}').click()
+    key = first['id']
+    page.get_by_test_id(f'board-input-{key}').click()
+    page.get_by_test_id(f'board-input-lock-{key}-{subject_version}').click()
     page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'locked'",
-                           arg=first['id'], timeout=15000)
-    log('locking V1 from the shot generation inputs writes one unified action')
-    page.get_by_test_id(f'board-binding-follow-{first["id"]}').click()
+                           arg=key, timeout=15000)
+    log('locking V1 from the 21-10b input row menu writes one unified action')
+    page.get_by_test_id(f'board-input-{key}').click()
+    page.get_by_test_id(f'board-input-follow-{key}').click()
     page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'follow'",
-                           arg=first['id'], timeout=15000)
-    page.get_by_test_id(f'board-binding-detach-{first["id"]}').click()
+                           arg=key, timeout=15000)
+    page.get_by_test_id(f'board-input-{key}').click()
+    page.get_by_test_id(f'board-input-detach-{key}').click()
     page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'detached'",
-                           arg=first['id'], timeout=15000)
-    expect(page.get_by_test_id(f'board-binding-detached-{first["id"]}')).to_be_visible()
-    page.get_by_test_id(f'board-binding-restore-{first["id"]}').click()
+                           arg=key, timeout=15000)
+    expect(page.get_by_test_id(f'board-input-detached-{key}')).to_be_visible()
+    page.get_by_test_id(f'board-input-restore-{key}').click()
     page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'follow'",
-                           arg=first['id'], timeout=15000)
+                           arg=key, timeout=15000)
     log('follow/lock/detach/restore traverse the same unified history')
     capture(page, '21-06-subject-inputs.png')
 
@@ -494,6 +506,60 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
                            arg=card['id'], timeout=15000)
     log('deleting a subject card confirms its impact and undoes as one step')
     capture(page, '21-01-subject-delete-card-undone.png')
+
+
+def run_gp_acceptance(page, log, capture, state) -> None:
+    """GP: 21-10 shot properties, draft save, server-planned generation."""
+    shot_a = '70000000-0000-4000-8000-000000000003'
+    page.get_by_test_id(f'board-card-{shot_a}').click()
+    page.get_by_test_id('wire-tab-settings').click()
+    expect(page.get_by_test_id('board-shot-fields')).to_be_visible()
+    expect(page.get_by_test_id('board-shot-prompt')).to_be_visible()
+    page.get_by_test_id('board-shot-title').fill('窗口剪影 · 改')
+    page.get_by_test_id('board-shot-prompt').fill('雨夜窗口的剪影，人物缓慢回头。')
+    page.get_by_test_id('board-shot-duration').click()
+    page.get_by_role('option').filter(has_text='4').first.click()
+    page.get_by_test_id('board-shot-save').click()
+    page.wait_for_function("() => window.__boardWireState.shots.some(shot => shot.id === '70000000-0000-4000-8000-000000000003' && shot.title === '窗口剪影 · 改' && shot.duration === 4)", timeout=15000)
+    assert state(page)['history']['undo']['operation'] == 'board.shot.update'
+    log('GB board shot title/description/duration save as one unified action')
+    capture(page, '21-10-shot-properties.png')
+
+    # A mock service makes the board generate through the server-planned input path.
+    before_cards = len(state(page)['cards'])
+    page.get_by_test_id('board-ui-add-shot').click()
+    page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=before_cards, timeout=15000)
+    page.wait_for_function("() => window.__boardWireState.history.undo.operation === 'board.shot.append'", timeout=15000)
+    new_shot = next(card['id'] for card in reversed(state(page)['cards']) if card['kind'] == 'shot')
+    page.get_by_test_id(f'board-card-{new_shot}').click()
+    page.get_by_test_id('wire-tab-settings').click()
+    page.get_by_test_id('board-shot-prompt').fill('雨停后路口的俯拍。')
+    page.get_by_test_id('board-shot-duration').click()
+    page.get_by_role('option').filter(has_text='4').first.click()
+    page.get_by_test_id('board-shot-save').click()
+    page.wait_for_function("(shotId) => window.__boardWireState.shots.some(shot => shot.id === shotId && shot.prompt === '雨停后路口的俯拍。' && shot.duration === 4)", arg=new_shot, timeout=15000)
+    page.evaluate("(shotId) => window.__boardWireActions.updateShot(shotId, {aspectRatio:'16:9'}, window.__boardWireState.shots.find(shot => shot.id === shotId).revision)", arg=new_shot)
+    page.wait_for_function("(shotId) => window.__boardWireState.shots.find(shot => shot.id === shotId)?.aspectRatio === '16:9'", arg=new_shot, timeout=15000)
+    page.evaluate("(shotId) => window.__boardWireActions.setGeneration(shotId,"
+                  " {connectionId:'70000000-0000-4000-8000-000000000100', configurationRevision:1,"
+                  "  model:'doubao-seedance-2-5-260628'})", new_shot)
+    page.wait_for_function("() => Boolean(window.__boardWireState.inputs?.service)", timeout=15000)
+    expect(page.get_by_test_id('board-inspector-generate')).to_be_enabled()
+    page.get_by_test_id('board-inspector-generate').click()
+    page.wait_for_function("(shotId) => (window.__boardWireState.jobs ?? []).some(job => job.shotId === shotId)", arg=new_shot, timeout=15000)
+    log('GB board generation submits only the shot and selected service; server plans inputs', jobs=len(state(page)['jobs']))
+    capture(page, '21-10-shot-generate.png')
+
+    # Stale revision surfaces the shared conflict state instead of overwriting.
+    page.get_by_test_id(f'board-card-{new_shot}').click()
+    page.get_by_test_id('wire-tab-settings').click()
+    page.get_by_test_id('board-shot-prompt').fill('本地草稿，未保存。')
+    current_revision = int(state(page)['shots'][0]['revision']) if False else int(next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == new_shot))
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.externalUpdateShot(shotId, {title: '别处改了'}, revision)", [new_shot, current_revision])
+    page.get_by_test_id('board-shot-save').click()
+    expect(page.get_by_test_id('board-shot-error')).to_be_visible()
+    log('GB board shot save surfaces a stale-revision conflict')
+    capture(page, '21-10-shot-conflict.png')
 
 
 if __name__ == '__main__':

@@ -97,18 +97,22 @@ test('the property panel shows the resolved mode, used inputs, primary image and
     assert.ok(html.includes('Kling'), locale);
     assert.equal(html.includes('doubao-seedance-2-5-260628'), false);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.primary')), locale);
-    assert.ok(html.includes(translate(locale, 'boardUi.inputs.setPrimary')), locale);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.reason.exclusiveMode')), locale);
     assert.ok(html.includes('阿璃 · V3'), locale);
-    assert.ok(html.includes(translate(locale, 'boardUi.inputs.changeRole')), locale);
-    assert.ok(html.includes(translate(locale, 'boardUi.inputs.detach')), locale);
+    // 21-10b: a row is one menu trigger; role/primary/detach actions are not
+    // rendered until the row is opened.
+    assert.equal(html.includes(translate(locale, 'boardUi.inputs.setPrimary')), false, locale);
+    assert.equal(html.includes(translate(locale, 'boardUi.inputs.changeRole')), false, locale);
+    assert.equal(html.includes(translate(locale, 'boardUi.inputs.detach')), false, locale);
+    assert.match(html, /class="board-input-button"/);
+    assert.doesNotMatch(html, /board-input-menu-/);
     // One row per connected input, including the unsupported audio line.
     assert.equal((html.match(/class="board-input-row/g) ?? []).length, 5);
     assert.equal((html.match(/data-status="unsupported"/g) ?? []).length, 1);
     assert.equal((html.match(/data-status="used"/g) ?? []).length, 4);
     assert.match(html, /data-mode="references"/);
-    assert.match(html, /data-testid="board-input-primary-60000000-0000-4000-8000-000000000031"/);
-    assert.match(html, /data-testid="board-input-role-60000000-0000-4000-8000-000000000030"/);
+    assert.doesNotMatch(html, /data-testid="board-input-primary-60000000-0000-4000-8000-000000000031"/);
+    assert.doesNotMatch(html, /data-testid="board-input-role-60000000-0000-4000-8000-000000000030"/);
   }
   // User-owned names stay in their own language; the surrounding copy is
   // localized (the catalog integrity test pins the four locales).

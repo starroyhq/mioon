@@ -296,6 +296,8 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /onAddTransition=\{format5 \? undefined : addTimelineTransition\}/);
   assert.equal((app.match(/onRippleRemove=\{format5 \? undefined :/g) ?? []).length, 2, 'timeline menu and inspector hide ripple removal');
   assert.match(app, /onCanvas=\{format5 \? undefined : addNode\} onTimeline=\{format5 \? undefined : addTimelineAsset\}/);
+  assert.match(app, /onUpdateShot=\{format5BoardUpdateShot\} onGenerateShot=\{format5GenerateShot\}/);
+  assert.match(app, /dialogueLines=\{format5DialogueLines\}/);
   assert.doesNotMatch(app, /subjectDragToBoard=\{format5\}/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);
