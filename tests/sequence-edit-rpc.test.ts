@@ -137,6 +137,35 @@ test('preview, commit, history and undo/redo share the same receipt and history 
   assert.equal(redone.status, 'applied');
 });
 
+test('the sequence RPC carries a previs create and save through the shared entry', t => {
+  const store = fixture(t), edit = service(store), nodeId = id(92);
+  const request = (previsIntent: unknown, requestId: string) => ({projectId: projectId(store), requestId, origin: 'user',
+    previsIntent});
+  const createIntent = {side: 'board', operation: {kind: 'previs-create', nodeId, label: '街口',
+    position: {x: 10, y: 20}}};
+  const previewInput = sequencePreviewRequestSchema.parse(request(createIntent, 'rpc-previs-create-0001'));
+  const preview = edit.preview(previewInput) as any;
+  assert.equal(sequencePreviewRequestSchema.safeParse({...previewInput, intents: []}).success, false,
+    'previs and CS/TS intents are separate families');
+  assert.equal(sequencePreviewRequestSchema.safeParse(request(createIntent, 'rpc-previs-create-0002')).success, true);
+  const commitInput = sequenceCommitRequestSchema.parse({projectId: projectId(store), envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest});
+  const committed = edit.commit(commitInput) as any;
+  assert.deepEqual([committed.operation, committed.affected.nodes], ['previs.create', 1]);
+  assert.equal((store.get('nodes', nodeId) as {type: string}).type, 'previs');
+  const history = edit.history({projectId: projectId(store)}) as any;
+  assert.equal(history.undo?.operation, 'previs.create');
+  // A save immediately after reads the node as its own scene revision.
+  const saved = store.get('nodes', nodeId) as {sceneRevision: number; scene: unknown};
+  const saveIntent = {side: 'board', operation: {kind: 'previs-scene-set', nodeId,
+    expectedSceneRevision: saved.sceneRevision, scene: saved.scene}};
+  const savePreview = edit.preview(sequencePreviewRequestSchema.parse(request(saveIntent, 'rpc-previs-save-0001'))) as any;
+  const savedReceipt = edit.commit({projectId: projectId(store), envelope: savePreview.envelope,
+    expectedPlanDigest: savePreview.planDigest}) as any;
+  assert.equal(savedReceipt.operation, 'previs.scene.set');
+  assert.equal((store.get('nodes', nodeId) as {sceneRevision: number}).sceneRevision, saved.sceneRevision + 1);
+});
+
 test('format-5 export ticket reports a placeholder in the selected range', t => {
   const store = fixture(t);
   const ticket = createFormat5ExportTicket(store);

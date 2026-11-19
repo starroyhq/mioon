@@ -30,3 +30,7 @@
 - `tests/mio-runtime-fingerprints.test.ts` 3/3：三格式 `mio_entries` 重建请求后逐字节一致，清理/重开后仍一致；格式 5 99 条也通过。
 - 诊断固定 6 条旧样本未变；格式 5 新诊断请求单独纳入新套件。
 - typecheck、五指守卫、schema/生成器 --check、格式5写/读/属性、合同/写栅栏等测试待回填 CI。
+
+## 预演主体（G 线，11-19）
+
+预演人偶/道具的 `subject` 字段改变了 `mioon_previs_scene_set` 的格式 5 工具参数（格式 3/4 保持冻结形状），但它属于 canvas 工具组，冻结的 16 个场景没有任何一个加载它，所以格式 5 的 99 条请求重生成后逐字节一致（0 条变化）。工具 schema 的差异由 `tests/format5-mio-tools.test.ts` 直接断言，而不是靠请求指纹覆盖。格式 3、格式 4 两套夹具未重新生成，仍由 `tests/agent-task-request-fingerprints-v2.test.ts` 逐字节门禁。

@@ -9,6 +9,8 @@ import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline,
 } from './project-format5.ts';
 import type {BoardSequenceErrorCode, ChainReferenceRole} from './board-sequence.ts';
+import {PREVIS_LIMITS,previsSceneSchema} from './previs.ts';
+import type {PrevisScene} from './previs.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
 import type {
   ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning,
@@ -97,6 +99,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'subject.card.create', 'subject.card.delete',
+  'previs.create', 'previs.scene.set',
   'reference.attach', 'reference.role.set', 'reference.detach',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
@@ -158,6 +161,28 @@ export type SubjectEditOperation = SubjectBindingOperation | SubjectCardOperatio
 export interface SequenceEditSubjectIntent {
   readonly side: 'board';
   readonly operation: SubjectEditOperation;
+}
+
+/**
+ * Previs scene actions (format 5, FR-0 opened through the unified entry). A
+ * previs node is a board object: the whole node row (label, position, scene,
+ * revision, sceneRevision) travels in `SequenceEditBoardDelta`, so create and
+ * save are one undo step in the same history-13 stack. Operations are board
+ * origin and never combine with a CS/TS intent.
+ *
+ * `create` writes the default scene; `scene-set` replaces the scene under the
+ * observed scene revision and is the only path that may carry mannequin/prop
+ * subject references. The host fills identity fields, so neither operation
+ * carries `projectId` or a request id.
+ */
+export type PrevisIntentOperation =
+  | {readonly kind: 'previs-create'; readonly nodeId: string; readonly label: string;
+    readonly position: {readonly x: number; readonly y: number}}
+  | {readonly kind: 'previs-scene-set'; readonly nodeId: string; readonly expectedSceneRevision: number;
+    readonly scene: PrevisScene};
+export interface SequenceEditPrevisIntent {
+  readonly side: 'board';
+  readonly operation: PrevisIntentOperation;
 }
 
 /**
@@ -336,6 +361,11 @@ export function sequenceEditSubjectOperationName(operation: SubjectEditOperation
   }
 }
 
+/** Stable `history13.operation` name of one previs edit. */
+export function sequenceEditPrevisOperationName(operation: PrevisIntentOperation): SequenceEditOperationName {
+  return operation.kind === 'previs-create' ? 'previs.create' : 'previs.scene.set';
+}
+
 export function sequenceEditIntentOperationName(operation: ChainSyncOperation | BoardIntentOperation): SequenceEditOperationName {
   switch (operation.kind) {
     case 'board':
@@ -374,12 +404,13 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
 /** `history13.operation` for the action envelope. One subject action uses its
  * own stable name; every existing action keeps its intent-joined name. */
 export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
-  'propertiesIntent' | 'subtitlesIntent' | 'referenceIntent' | 'dialogueIntent'>): string {
+  'propertiesIntent' | 'subtitlesIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
   if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
   if (envelope.dialogueIntent) return sequenceEditDialogueOperationName(envelope.dialogueIntent.operation);
+  if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
   return sequenceEditOperationName(envelope.intents);
 }
 
@@ -500,6 +531,9 @@ export interface SequenceEditEnvelope {
   readonly referenceIntent?: SequenceEditReferenceIntent;
   /** FR-A clip property patch; exactly one intent family is present. */
   readonly propertiesIntent?: SequenceEditClipPropertiesIntent;
+  /** Previs node create/save; exactly one intent family per envelope. Optional
+   * and additive: earlier envelopes and stored patches stay valid. */
+  readonly previsIntent?: SequenceEditPrevisIntent;
   /** FR-B subtitle cue structure; exactly one of the intent families. */
   readonly subtitlesIntent?: SequenceEditSubtitlesIntent;
   /** DL-a shot dialogue lines / linked cue text; one intent family per action. */
@@ -636,6 +670,17 @@ export const sequenceEditClipPropertiesIntentSchema = z.object({
       .refine(list => new Set(list.map(edit => edit.clipId)).size === list.length, 'Each clip may appear once')}).strict(),
 }).strict();
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
+const previsLabelSchema = z.string().max(PREVIS_LIMITS.labelLength);
+const previsPointSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
+export const sequenceEditPrevisIntentSchema = z.object({
+  side: z.literal('board'),
+  operation: z.discriminatedUnion('kind', [
+    z.object({kind: z.literal('previs-create'), nodeId: uuidSchema, label: previsLabelSchema, position: previsPointSchema}).strict(),
+    z.object({kind: z.literal('previs-scene-set'), nodeId: uuidSchema, expectedSceneRevision: revisionSchema,
+      scene: previsSceneSchema}).strict(),
+  ]),
+}).strict();
+const previsIntentSchema = sequenceEditPrevisIntentSchema;
 const subtitleCueInputSchema = z.object({
   id: uuidSchema, text: z.string().max(256), startFrame: z.number().int().safe().min(0).max(FORMAT5_LIMITS.durationFrames),
   durationFrames: z.number().int().safe().min(1).max(FORMAT5_LIMITS.durationFrames),
@@ -729,6 +774,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   subjectIntent: subjectIntentSchema.optional(),
   referenceIntent: referenceIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
+  previsIntent: previsIntentSchema.optional(),
   subtitlesIntent: subtitlesIntentSchema.optional(),
   dialogueIntent: dialogueIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
@@ -736,9 +782,10 @@ export const sequenceEditEnvelopeSchema = z.object({
   const hasSubject = value.subjectIntent !== undefined;
   const hasReference = value.referenceIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
+  const hasPrevis = value.previsIntent !== undefined;
   const hasSubtitles = value.subtitlesIntent !== undefined;
   const hasDialogue = value.dialogueIntent !== undefined;
-  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue].filter(Boolean).length
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasPrevis].filter(Boolean).length
     + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
   if (hasSubtitles) {
@@ -778,6 +825,22 @@ export const sequenceEditEnvelopeSchema = z.object({
     }
     if (edit.kind !== 'attach' && !value.impact.edgeIds.includes(edit.edgeId)) {
       context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference role change or detach must list its edge impact'});
+    }
+    return;
+  }
+  if (hasPrevis) {
+    if (value.intents.length !== 0 || hasSubject || hasReference || hasProperties) return;
+    if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs action is board-origin'});
+    const operation = value.previsIntent!.operation;
+    if (operation.kind === 'previs-create') {
+      if (value.impact.nodeIds.length !== 1 || value.impact.nodeIds[0] !== operation.nodeId) {
+        context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs create names exactly its new node'});
+      }
+      if (value.baseline.targets.length !== 0) {
+        context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs create carries no target revision'});
+      }
+    } else if (!value.impact.nodeIds.includes(operation.nodeId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A previs save names its node in the impact'});
     }
     return;
   }
@@ -1239,6 +1302,10 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   missing/wrong-track clip, a value outside the frozen clip schema (transform
  *   keyframes, transition fit, gain/fades/envelope/colour/audio role), or the
  *   same clip twice. Nothing is written; the caller re-previews.
+ * - `SEQUENCE_EDIT_PREVIS_INVALID`: a previs create names an occupied node id or
+ *   exceeds the previs capacity, or a previs save names a missing/foreign/
+ *   archived node, a stale scene revision, or an export image that is not an
+ *   owned image asset. Nothing is written; the caller re-previews.
  * - `SEQUENCE_EDIT_SUBTITLE_INVALID`: a subtitle edit names a missing cue or an
  *   existing cue id again, the text/interval is outside the frozen subtitle
  *   schema, the anchor clip does not own the cue start, or cues overlap. Nothing
@@ -1262,7 +1329,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
   'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_DIALOGUE_INVALID', 'SEQUENCE_EDIT_DIALOGUE_CONFLICT',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];

@@ -35,8 +35,8 @@ import {writeProjectPackage,readProjectPackage} from '../packages/business/src/p
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
 import {previsJpegSize} from '../packages/business/src/previs.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
-import {PREVIS_LIMITS,defaultPrevisScene,descriptions,isPrevisMutationResponse,isPrevisThumbnailGetResponse,isPrevisThumbnailSetResponse,
- operationEffect,previsSceneBytes,previsSceneSchema,roundPrevisNumber} from '@mioon/contracts';
+import {PREVIS_LIMITS,defaultPrevisScene,descriptions,isPrevisMutationResponse,isPrevisNodeRecord,isPrevisThumbnailGetResponse,isPrevisThumbnailSetResponse,
+ operationEffect,previsSceneBytes,previsSceneSchema,previsSceneSubjectReferences,roundPrevisNumber} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
 type Row=Record<string, unknown>;
 const sha=(bytes: Buffer): string=>createHash('sha256').update(bytes).digest('hex');
@@ -117,6 +117,18 @@ test('a scene keeps its rules, and one at every item limit still fits 16 KiB',()
  };
  for(const [label,value] of Object.entries(rejected))assert.equal(previsSceneSchema.safeParse(value).success,false,label);
  assert.equal(previsSceneSchema.safeParse({...base,figures:[{...figure,name:'周屿🌂'}],props:[umbrella],keyframes:[keyframe('k1',[exported])],activeKeyframeId:'k1'}).success,true);
+
+ // Format-5 mannequin/prop subject references are additive and optional: the
+ // scene reader tolerates them in every format, and a follow reference omits
+ // the version while a locked one stores it.
+ const subjectId=randomUUID(),versionId=randomUUID();
+ const referencing={...base,figures:[{...figure,subject:{subjectId}},{...figure,id:'f2',subject:{subjectId,subjectVersionId:versionId}}],
+  props:[{...umbrella,subject:{subjectId,subjectVersionId:versionId}}]};
+ assert.equal(previsSceneSchema.safeParse(referencing).success,true);
+ assert.equal(previsSceneSchema.safeParse({...referencing,figures:[{...figure,subject:{subjectId,subjectVersionId:'nope'}}]}).success,false);
+ assert.deepEqual(previsSceneSubjectReferences(referencing).map(item=>[item.elementKind,item.elementId,item.reference.subjectVersionId]),
+  [['figure','f1',undefined],['figure','f2',versionId],['prop','p1',versionId]]);
+ assert.deepEqual(previsSceneSubjectReferences(base),[]);
 });
 
 test('a previs node starts with the default scene and replays its creation exactly',async t=>{
@@ -196,6 +208,21 @@ test('keyframe exports must be image assets of the same project',async t=>{
   await assert.rejects(f.save(node,scene({keyframes:[keyframe('k1',[assetId])]})),{code:'PREVIS_EXPORT_INVALID'},assetId);
  const saved=await f.save(node,scene({keyframes:[keyframe('k1',[image.id])]}));
  assert.deepEqual(saved.scene.keyframes[0]!.exports,[image.id]);
+});
+
+test('mannequin and prop subject references are a format-5 field; format 3/4 saves refuse them',async t=>{
+ const f=await fixture(t),node=await f.create(),subjectId=randomUUID(),versionId=randomUUID();
+ const umbrella={id:'p1',kind:'umbrella' as const,name:'伞',visible:true,position:[0,0,0] as [number,number,number],rotation:0,size:[1,1,1] as [number,number,number]};
+ const referenced={...scene(),figures:[{...defaultPrevisScene().figures[0]!,subject:{subjectId}}],
+  props:[{...umbrella,subject:{subjectId,subjectVersionId:versionId}}]};
+ assert.equal(previsSceneSchema.safeParse(referenced).success,true,'the scene reader tolerates the additive field');
+ await assert.rejects(f.save(node,referenced),{code:'PREVIS_SUBJECT_FORMAT'});
+ assert.equal((f.store.get('nodes',node.id) as PrevisNodeRecord).sceneRevision,node.sceneRevision,'a refused save leaves the node untouched');
+ // A row written by a newer kernel is still read by the old rules.
+ f.store.put('nodes',{...node,scene:referenced,sceneRevision:node.sceneRevision+1,revision:node.revision+1});
+ assert.ok(isPrevisNodeRecord(f.store.get('nodes',node.id)));
+ assert.deepEqual(await f.call('previs.thumbnail.get',{projectId:f.projectId,nodeId:node.id,slots:['card']}),
+  {projectId:f.projectId,nodeId:node.id,items:[]});
 });
 
 test('thumbnails belong to the current scene, stay bounded JPEGs and leave with their keyframe',async t=>{

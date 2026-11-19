@@ -32,39 +32,48 @@ const camera=(description:string)=>({type:'object',description,properties:{
  lookAt:point('可选，代替 yaw 和 pitch：机位看向的点 [x,y,z]，宿主据此算出 yaw 和 pitch'),
  focalLength:measure(10,300,'焦距 mm，按 36 mm 长边：24 全景，35 中景，50 中近景，85 近景'),
 },required:['position','focalLength'],additionalProperties:false});
-const figure={type:'object',properties:{
- id:id('f','人偶 ID，如 f1；新人偶用场景里没有的编号'),name,visible:{type:'boolean'},
- position:point('站位 [x,y,z]，米，脚底所在的点；站在地面上时 y=0'),
- rotation:measure(-180,180,'朝向，度：0 面向 +Z，90 面向 +X，-90 面向 -X，180 面向 -Z'),
- pose:{type:'string',enum:[...PREVIS_POSES],description:'stand 站立，walk 行走，sit 坐，hold 持物，look-back 回头'},
- held:{anyOf:[{type:'object',properties:{propId:id('p','拿着的道具 ID'),hand:{type:'string',enum:[...PREVIS_HANDS]}},required:['propId','hand'],additionalProperties:false},{type:'null'}],
-  description:'手里的道具，只能是伞、手机、包或杯；没有时为 null'},
-},required:['id','name','visible','position','rotation','pose','held'],additionalProperties:false};
-const prop={type:'object',properties:{
- id:id('p','道具 ID，如 p1；新道具用场景里没有的编号'),
- kind:{type:'string',enum:[...PREVIS_PROP_KINDS],description:'box 箱体，cylinder 圆柱，sphere 球，panel 平板（墙、门、招牌），umbrella 伞，phone 手机，bag 包，cup 杯'},
- name,visible:{type:'boolean'},
- position:point('底面中心 [x,y,z]，米；放在地面上时 y=0。被人偶拿着时跟着手走，不看这个位置'),
- rotation:measure(-180,180,'朝向，度，和人偶相同：0 面向 +Z'),
- size:{type:'array',items:measure(0.01,20),minItems:3,maxItems:3,description:'[宽, 高, 深]，米；圆柱和球用宽作直径'},
-},required:['id','kind','name','visible','position','rotation','size'],additionalProperties:false};
 const light={type:'object',description:'主光',properties:{visible:{type:'boolean'},
  azimuth:measure(-180,180,'光从哪边照来，度，和人偶朝向同一套角度：0 从 +Z 照来，90 从 +X'),
  elevation:measure(-90,90,'光的仰角，度'),intensity:measure(0,4,'强度，默认 1')},
  required:['visible','azimuth','elevation','intensity'],additionalProperties:false};
 const keyframe={type:'object',properties:{id:id('k','关键帧 ID，如 k1；新关键帧用场景里没有的编号'),name,camera:camera('这个关键帧的机位')},
  required:['id','name','camera'],additionalProperties:false};
-export const AGENT_TASK_PREVIS_SCENE_PARAMETERS=Object.freeze({type:'object',properties:{
+// Format 5 previs scenes may also name a subject per mannequin/prop. The
+// format 3/4 tool keeps the frozen shape without it, so reviewed old-format
+// requests stay byte-identical; only the format-5 catalog exposes the field.
+const subjectReference={type:'object',description:'可选：指定这个人偶或道具对应的主体；省略 subjectVersionId 跟随主体当前版本，填写则锁定该版本',
+ properties:{subjectId:{type:'string',format:'uuid'},subjectVersionId:{type:'string',format:'uuid'}},required:['subjectId'],additionalProperties:false};
+const figureFor=(format5:boolean)=>({type:'object',properties:{
+ id:id('f','人偶 ID，如 f1；新人偶用场景里没有的编号'),name,visible:{type:'boolean'},
+ position:point('站位 [x,y,z]，米，脚底所在的点；站在地面上时 y=0'),
+ rotation:measure(-180,180,'朝向，度：0 面向 +Z，90 面向 +X，-90 面向 -X，180 面向 -Z'),
+ pose:{type:'string',enum:[...PREVIS_POSES],description:'stand 站立，walk 行走，sit 坐，hold 持物，look-back 回头'},
+ held:{anyOf:[{type:'object',properties:{propId:id('p','拿着的道具 ID'),hand:{type:'string',enum:[...PREVIS_HANDS]}},required:['propId','hand'],additionalProperties:false},{type:'null'}],
+  description:'手里的道具，只能是伞、手机、包或杯；没有时为 null'},
+ ...(format5?{subject:subjectReference}:{}),
+ },required:['id','name','visible','position','rotation','pose','held'],additionalProperties:false});
+const propFor=(format5:boolean)=>({type:'object',properties:{
+ id:id('p','道具 ID，如 p1；新道具用场景里没有的编号'),
+ kind:{type:'string',enum:[...PREVIS_PROP_KINDS],description:'box 箱体，cylinder 圆柱，sphere 球，panel 平板（墙、门、招牌），umbrella 伞，phone 手机，bag 包，cup 杯'},
+ name,visible:{type:'boolean'},
+ position:point('底面中心 [x,y,z]，米；放在地面上时 y=0。被人偶拿着时跟着手走，不看这个位置'),
+ rotation:measure(-180,180,'朝向，度，和人偶相同：0 面向 +Z'),
+ size:{type:'array',items:measure(0.01,20),minItems:3,maxItems:3,description:'[宽, 高, 深]，米；圆柱和球用宽作直径'},
+ ...(format5?{subject:subjectReference}:{}),
+},required:['id','kind','name','visible','position','rotation','size'],additionalProperties:false});
+const previsSceneParameters=(format5:boolean)=>Object.freeze({type:'object',properties:{
  nodeId:{type:'string',format:'uuid'},
  expectedSceneRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER,description:'mioon_previs_inspect 读到的 sceneRevision'},
  scene:{type:'object',properties:{
-  figures:{type:'array',items:figure,maxItems:PREVIS_LIMITS.figures},
-  props:{type:'array',items:prop,maxItems:PREVIS_LIMITS.props},
+  figures:{type:'array',items:figureFor(format5),maxItems:PREVIS_LIMITS.figures},
+  props:{type:'array',items:propFor(format5),maxItems:PREVIS_LIMITS.props},
   light,camera:camera('当前机位'),
   keyframes:{type:'array',items:keyframe,maxItems:PREVIS_LIMITS.keyframes,description:'关键帧，按顺序编号为 K1、K2…'},
   activeKeyframeId:{anyOf:[id('k','关键帧 ID'),{type:'null'}],description:'可省略：编辑器里选中的关键帧'},
  },required:['figures','props','light','camera','keyframes'],additionalProperties:false},
 },required:['nodeId','expectedSceneRevision','scene'],additionalProperties:false});
+export const AGENT_TASK_PREVIS_SCENE_PARAMETERS=previsSceneParameters(false);
+export const AGENT_TASK_FORMAT5_PREVIS_SCENE_PARAMETERS=previsSceneParameters(true);
 export const AGENT_TASK_PREVIS_INSPECT_PARAMETERS=Object.freeze({type:'object',properties:{nodeId:{type:'string',format:'uuid'}},required:['nodeId'],additionalProperties:false});
 export const AGENT_TASK_PREVIS_DESCRIPTIONS=Object.freeze({
  'previs.inspect':'读取当前项目的一个机位预演节点：场景（人偶、道具、主光、当前机位和关键帧）、场景修订号、项目画幅，以及当前机位和每个关键帧在画幅里能拍到哪些人偶和道具（按视锥估算，不渲染）。scene 可以修改后整体交给 mioon_previs_scene_set。只读。',
