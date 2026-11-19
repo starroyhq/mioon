@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="a903684c0935becc92798b12ee39bb3c808410fda09d887da16e92e8983fb50f";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="d6f2031106fe5128d480669a36538831bffb9d6f5994aebaa14610de6feaf1bb";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1928,6 +1928,115 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "trackIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "track-structure"
+       },
+       "edit": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "add"
+           },
+           "trackId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "trackKind": {
+            "type": "string",
+            "enum": [
+             "video",
+             "audio"
+            ]
+           },
+           "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+           },
+           "orderIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 11
+           }
+          },
+          "required": [
+           "kind",
+           "trackId",
+           "trackKind"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "update"
+           },
+           "trackId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "patch": {
+            "type": "object",
+            "properties": {
+             "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150
+             },
+             "hidden": {
+              "type": "boolean"
+             },
+             "muted": {
+              "type": "boolean"
+             },
+             "orderIndex": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+             }
+            },
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "trackId",
+           "patch"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "edit"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "allocation": {
     "type": "object",
     "properties": {
@@ -3314,6 +3423,115 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "trackIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "track-structure"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "add"
+             },
+             "trackId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "trackKind": {
+              "type": "string",
+              "enum": [
+               "video",
+               "audio"
+              ]
+             },
+             "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150
+             },
+             "orderIndex": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+             }
+            },
+            "required": [
+             "kind",
+             "trackId",
+             "trackKind"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "update"
+             },
+             "trackId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "patch": {
+              "type": "object",
+              "properties": {
+               "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 150
+               },
+               "hidden": {
+                "type": "boolean"
+               },
+               "muted": {
+                "type": "boolean"
+               },
+               "orderIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 11
+               }
+              },
+              "additionalProperties": false
+             }
+            },
+            "required": [
+             "kind",
+             "trackId",
+             "patch"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "baseline": {
       "type": "object",
       "properties": {
@@ -3355,7 +3573,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "edge",
             "clip",
             "cue",
-            "subject_binding"
+            "subject_binding",
+            "timeline_track"
            ]
           },
           "id": {
@@ -3432,6 +3651,14 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "maxItems": 2500
        },
        "subjectBindingIds": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "maxItems": 2500
+       },
+       "trackIds": {
         "type": "array",
         "items": {
          "type": "string",
@@ -11269,6 +11496,73 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "edits"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "track-add"
+     },
+     "trackKind": {
+      "type": "string",
+      "enum": [
+       "video",
+       "audio"
+      ]
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 150
+     }
+    },
+    "required": [
+     "kind",
+     "trackKind"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "track-update"
+     },
+     "trackId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "patch": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 150
+       },
+       "hidden": {
+        "type": "boolean"
+       },
+       "muted": {
+        "type": "boolean"
+       },
+       "orderIndex": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 11
+       }
+      },
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "kind",
+     "trackId",
+     "patch"
     ],
     "additionalProperties": false
    }
