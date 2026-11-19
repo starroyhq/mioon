@@ -7,6 +7,7 @@
 import {z} from 'zod';
 import {sequenceEditClipPropertiesIntentSchema, sequenceEditFormatIntentSchema} from './sequence-edit.ts';
 import {FORMAT5_REFERENCE_ROLES} from './project-format5.ts';
+import {PREVIS_LIMITS, previsSceneSchema} from './previs.ts';
 
 const uuid = z.string().uuid();
 const offset = z.number().int().min(0).max(9007199254740991);
@@ -63,6 +64,22 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('reference-attach'), sourceNodeId: uuid, shotId: uuid, role: referenceRole.optional()}).strict(),
   z.object({kind: z.literal('reference-set-role'), edgeId: uuid, shotId: uuid, role: referenceRole}).strict(),
   z.object({kind: z.literal('reference-detach'), edgeId: uuid, shotId: uuid}).strict(),
+  // MT-5: every material reference line of one shot in order; the first
+  // reference image is the primary image. The server checks the list is the
+  // complete current set, so a stale list is rejected rather than reordered.
+  z.object({kind: z.literal('reference-reorder'), shotId: uuid,
+    edgeIds: z.array(uuid).min(1).max(48).refine(ids => new Set(ids).size === ids.length, 'Duplicate edge id')}).strict(),
+  // MT-5: subject cards. The node id is allocated by the server; the model may
+  // suggest a canvas position, otherwise the server places it on free board space.
+  z.object({kind: z.literal('subject-card-create'), subjectId: uuid, position: point.optional()}).strict(),
+  z.object({kind: z.literal('subject-card-delete'), nodeId: uuid}).strict(),
+  // MT-5: format-5 previs writes through the unified entry. `previs-create`
+  // builds the default scene server-side; `previs-scene-set` carries the whole
+  // bounded scene (16 KiB) and the scene revision it was read at.
+  z.object({kind: z.literal('previs-create'), label: z.string().max(PREVIS_LIMITS.labelLength),
+    position: point.optional()}).strict(),
+  z.object({kind: z.literal('previs-scene-set'), nodeId: uuid,
+    expectedSceneRevision: z.number().int().safe().min(1), scene: previsSceneSchema}).strict(),
   z.object({kind: z.literal('clip-properties'),
     edits: sequenceEditClipPropertiesIntentSchema.shape.operation.shape.edits}).strict(),
   z.object({kind: z.literal('subtitles'), edits: z.array(subtitleEdit).min(1).max(100)}).strict(),
