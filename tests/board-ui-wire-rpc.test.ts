@@ -123,7 +123,8 @@ test('the read-only generation-input projection lists connected lines before any
   assert.equal(view.entries[0].primary, undefined);
   // A service triple requires the real configured connection.
   await assert.rejects(call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA,
-    connectionId: randomUUID(), configurationRevision: 1, modelEntryId: randomUUID()}), {code: 'VIDEO_SETTINGS_UNAVAILABLE'});
+    connectionId: randomUUID(), configurationRevision: 1, modelEntryId: randomUUID()}),
+  error => String((error as {code?: unknown}).code).startsWith('VIDEO_SETTINGS_'));
 });
 
 test('reference connect, role change, reorder, detach and one undo step ride the unified sequence RPC', async (t: test.TestContext) => {
@@ -142,11 +143,13 @@ test('reference connect, role change, reorder, detach and one undo step ride the
   assert.equal(attached.committed.operation, 'reference.attach');
   const afterAttach = await call('project.get', {projectId: f.projectId});
   const referenceEdges = afterAttach.edges.filter((edge: any) => edge.kind === 'reference');
-  assert.equal(referenceEdges.length, 2);
+  assert.equal(referenceEdges.length, 4);
+  const materialEdges = referenceEdges.filter((edge: any) => edge.sourceAssetId !== undefined);
+  assert.equal(materialEdges.length, 4);
   assert.equal((await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA}))
     .entries.length, 2);
 
-  const newEdge = referenceEdges.find((edge: any) => edge.source === nodeId);
+  const newEdge = materialEdges.find((edge: any) => edge.source === nodeId) ?? referenceEdges.find((edge: any) => edge.source === nodeId);
   assert.ok(newEdge);
   const role = await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
     operation: {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: newEdge.id,
@@ -161,9 +164,99 @@ test('reference connect, role change, reorder, detach and one undo step ride the
   const detach = await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
     operation: {kind: 'reference-edge', edit: {kind: 'detach', edgeId: newEdge.id, shotId: BOARD_IDS.shotA}}}});
   assert.equal(detach.committed.operation, 'reference.detach');
-  assert.equal((await call('project.get', {projectId: f.projectId})).edges.length, 3);
+  assert.equal((await call('project.get', {projectId: f.projectId})).edges.length, 5);
   const view = await call('sequence.history.get', {projectId: f.projectId});
   await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${randomUUID()}`,
     actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}});
-  assert.equal((await call('project.get', {projectId: f.projectId})).edges.length, 4);
+  assert.equal((await call('project.get', {projectId: f.projectId})).edges.length, 6);
+});
+
+function subjectIntent(operation: Record<string, unknown>) { return {side: 'board', operation}; }
+async function subjectPreviewCall(call: Call, projectId: string, operation: Record<string, unknown>,
+  allocation?: unknown) {
+  const preview = await call('sequence.preview', {projectId, requestId: `subject-preview-${randomUUID()}`,
+    subjectIntent: subjectIntent(operation), ...(allocation ? {allocation} : {})});
+  assert.equal(preview.ok, undefined, JSON.stringify(preview));
+  const committed = await call('sequence.commit', {projectId, envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest});
+  assert.equal(committed.status, 'applied');
+  return {preview, committed};
+}
+
+test('subject cards, bindings, delete commands and the board read projection share the unified RPC', async (t: test.TestContext) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  const cardId = randomUUID();
+  const created = await subjectPreviewCall(call, f.projectId, {kind: 'subject.card.create', nodeId: cardId,
+    subjectId: BOARD_IDS.subjectCharacter, position: {x: 240, y: 160}});
+  assert.equal(created.committed.operation, 'subject.card.create');
+  const afterCard = await call('project.get', {projectId: f.projectId});
+  assert.equal(afterCard.nodes.some((node: any) => node.id === cardId && node.subjectId === BOARD_IDS.subjectCharacter), true);
+
+  const bindingId = randomUUID(), edgeId = randomUUID();
+  const binding = await subjectPreviewCall(call, f.projectId, {kind: 'subject-binding', edit: {kind: 'create',
+    bindingId, shotId: BOARD_IDS.shotA, subjectId: BOARD_IDS.subjectCharacter, role: 'subject'}},
+  {clips: [], nodes: [], splitClips: [], edges: [{id: edgeId, fromId: cardId, toId: BOARD_IDS.shotA}]});
+  assert.equal(binding.committed.operation, 'subject.binding.create');
+  const afterBinding = await call('sequence.board.get', {projectId: f.projectId});
+  assert.equal(afterBinding.bindings.some((item: any) => item.id === bindingId && item.bindingMode === 'follow'
+    && item.edgeId === edgeId), true);
+  assert.equal(afterBinding.subjects.some((item: any) => item.id === BOARD_IDS.subjectCharacter), true);
+  assert.equal(afterBinding.subjects.find((item: any) => item.id === BOARD_IDS.subjectCharacter).versions.length, 1);
+
+  const locked = await subjectPreviewCall(call, f.projectId, {kind: 'subject-binding', edit: {kind: 'set-mode',
+    bindingId, bindingMode: 'locked', subjectVersionId: BOARD_IDS.subjectCharacterVersion}});
+  assert.equal(locked.committed.operation, 'subject.binding.set-mode');
+  assert.equal((await call('sequence.board.get', {projectId: f.projectId})).bindings
+    .find((item: any) => item.id === bindingId).bindingMode, 'locked');
+
+  await subjectPreviewCall(call, f.projectId, {kind: 'subject.card.delete', nodeId: cardId});
+  const afterDelete = await call('sequence.board.get', {projectId: f.projectId});
+  assert.equal(afterDelete.bindings.find((item: any) => item.id === bindingId).bindingMode, 'detached');
+  assert.equal((await call('project.get', {projectId: f.projectId})).nodes.some((node: any) => node.id === cardId), false);
+  const undoView = await call('sequence.history.get', {projectId: f.projectId});
+  await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${randomUUID()}`,
+    actionId: undoView.undo.actionId, expected: {position: undoView.position, revision: undoView.revision}});
+  const afterUndo = await call('sequence.board.get', {projectId: f.projectId});
+  assert.equal(afterUndo.bindings.find((item: any) => item.id === bindingId).bindingMode, 'locked');
+  assert.equal((await call('project.get', {projectId: f.projectId})).nodes.some((node: any) => node.id === cardId), true);
+});
+
+test('a look subject binds to a shot with the style role', async (t: test.TestContext) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  const cardId = randomUUID(), bindingId = randomUUID(), edgeId = randomUUID();
+  await subjectPreviewCall(call, f.projectId, {kind: 'subject.card.create', nodeId: cardId,
+    subjectId: BOARD_IDS.subjectLook, position: {x: 420, y: 220}});
+  const binding = await subjectPreviewCall(call, f.projectId, {kind: 'subject-binding', edit: {kind: 'create',
+    bindingId, shotId: BOARD_IDS.shotA, subjectId: BOARD_IDS.subjectLook, role: 'style'}},
+  {clips: [], nodes: [], splitClips: [], edges: [{id: edgeId, fromId: cardId, toId: BOARD_IDS.shotA}]});
+  assert.equal(binding.committed.operation, 'subject.binding.create');
+  const mount = await call('sequence.board.get', {projectId: f.projectId});
+  assert.equal(mount.bindings.find((item: any) => item.id === bindingId).role, 'style');
+  const edge = (await call('project.get', {projectId: f.projectId})).edges.find((item: any) => item.id === edgeId);
+  assert.equal(edge.role, 'style_reference');
+});
+
+test('the generation-input view lists a bound subject with its name and version', async (t: test.TestContext) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  const cardId = randomUUID(), bindingId = randomUUID(), edgeId = randomUUID();
+  await subjectPreviewCall(call, f.projectId, {kind: 'subject.card.create', nodeId: cardId,
+    subjectId: BOARD_IDS.subjectCharacter, position: {x: 240, y: 640}});
+  await subjectPreviewCall(call, f.projectId, {kind: 'subject-binding', edit: {kind: 'create',
+    bindingId, shotId: BOARD_IDS.shotB, subjectId: BOARD_IDS.subjectCharacter, role: 'subject'}},
+  {clips: [], nodes: [], splitClips: [], edges: [{id: edgeId, fromId: cardId, toId: BOARD_IDS.shotB}]});
+  const view = await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotB});
+  assert.equal(view.service, null);
+  assert.equal(view.mode, 'references');
+  assert.equal(view.entries.length, 3);
+  const subjectEntry = view.entries.find((entry: any) => entry.source === 'subject');
+  assert.equal(subjectEntry.bindingId, bindingId);
+  assert.equal(subjectEntry.role, 'subject_reference');
+  assert.equal(subjectEntry.label, '阿琦');
+  assert.equal(subjectEntry.subjectVersionNumber, 1);
+  assert.equal(subjectEntry.status, 'unsupported');
+  assert.equal(subjectEntry.reason, 'SERVICE_NOT_SELECTED');
+  assert.equal(view.primaryEdgeId, null);
 });

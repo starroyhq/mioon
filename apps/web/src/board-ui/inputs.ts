@@ -130,3 +130,21 @@ export const sourceKindIcons = {
 export function isPrimaryCandidate(entry: SequenceGenerationInputEntryView): boolean {
   return entry.source === 'edge' && entry.edgeId !== undefined && entry.appliedRole === 'reference_image';
 }
+
+/** Reference lines the selected service cannot use, for the connector marker.
+ * An absent service paints no marker at all: "no service selected" is shown
+ * only in the property-panel footer, never as per-line unsupported states. */
+export function unsupportedReferenceEdgeIds(inputs: SequenceGenerationInputView | null | undefined,
+  edges: readonly {readonly id: string; readonly kind: string; readonly subjectBindingId?: string}[]): ReadonlySet<string> {
+  const result = new Set<string>();
+  if (!inputs?.service) return result;
+  for (const entry of inputs.entries) {
+    if (entry.status !== 'unsupported') continue;
+    if (entry.edgeId) {result.add(entry.edgeId); continue;}
+    if (entry.bindingId) {
+      const edge = edges.find(candidate => candidate.kind === 'reference' && candidate.subjectBindingId === entry.bindingId);
+      if (edge) result.add(edge.id);
+    }
+  }
+  return result;
+}

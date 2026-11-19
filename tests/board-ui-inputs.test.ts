@@ -8,7 +8,8 @@ import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 
 interface Render {
-  inspector(locale: Locale, variant: 'full' | 'missing'): string;
+  inspector(locale: Locale, variant: 'full' | 'missing' | 'empty'): string;
+  textOnly(locale: Locale): string;
   loading(locale: Locale): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -45,19 +46,34 @@ const entry = `import React from 'react';
   const missing={...full,service:null,mode:'frames',usedCount:0,unsupportedCount:2,
     entries:full.entries.map(entry=>({...entry,status:'unsupported',reason:'SERVICE_NOT_SELECTED',primary:undefined})),
     primaryEdgeId:null};
-  const props={board,activeFilmId:rootId,mount:null,selectedNodeId:shotId,versions:[],
+  const empty={...full,usedCount:0,unsupportedCount:0,primaryEdgeId:null,entries:[]};
+  const provider={id:'kling',connectionId:'60000000-0000-4000-8000-000000000099',configurationRevision:1,
+    name:'Kling',status:'available',enabled:true,configured:true,mock:false,
+    models:[{id:'kling-3.0',modelId:'kling-3.0',modelEntryId:'60000000-0000-4000-8000-000000000098',
+      name:'kling-3.0',inputModes:['text','image','reference'],aspectRatios:['9:16'],durations:[5]}]};
+  const base={board,activeFilmId:rootId,mount:null,selectedNodeId:shotId,versions:[],
     shots:[{id:shotId,title:'霓虹街头',duration:2}],busy:false,
-    onSelectVersion:()=>{},onDelete:()=>{},onRestore:()=>{},providers:[],
+    onSelectVersion:()=>{},onDelete:()=>{},onRestore:()=>{},onSetBindingMode:()=>{},onDetachBinding:()=>{},
+    onRestoreBinding:()=>{},onDeleteSubjectCard:()=>{},providers:[provider],
+    generationOptions:{connectionId:provider.connectionId,configurationRevision:1,
+      modelEntryId:'60000000-0000-4000-8000-000000000098',model:'kling-3.0'},
     onInputRoleChange:()=>{},onInputDetach:()=>{},onInputPrimary:()=>{}};
   function inspector(locale,variant){
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
-      <BoardInspector {...props} inputs={variant==='missing'?missing:full}/></I18nProvider>);
+      <BoardInspector {...base} inputs={variant==='missing'?missing:variant==='empty'?empty:full}/></I18nProvider>);
+  }
+  function textOnly(locale){
+    const zero={...full,mode:'text',usedCount:0,unsupportedCount:0,primaryEdgeId:null,
+      entries:full.entries.map(entry=>({...entry,status:'unsupported',reason:'EXCLUSIVE_MODE',primary:undefined})),
+      service:{...full.service,modelId:'doubao-seedance-2-5-260628'}};
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={zero}/></I18nProvider>);
   }
   function loading(locale){
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
-      <BoardInspector {...props} inputs={null}/></I18nProvider>);
+      <BoardInspector {...base} inputs={null}/></I18nProvider>);
   }
-  export {inspector, loading};`;
+  export {inspector, textOnly, loading};`;
 
 function renderer(): Promise<Render> {
   return loaded ??= (async () => {
@@ -77,7 +93,9 @@ test('the property panel shows the resolved mode, used inputs, primary image and
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.title')), locale);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.mode.references')), locale);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.used', {count: 3})), locale);
-    assert.ok(html.includes('Seedance 2.5'), locale);
+    assert.match(html, /data-service="selected"/);
+    assert.ok(html.includes('Kling'), locale);
+    assert.equal(html.includes('doubao-seedance-2-5-260628'), false);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.primary')), locale);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.setPrimary')), locale);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.reason.exclusiveMode')), locale);
@@ -100,13 +118,34 @@ test('the property panel shows the resolved mode, used inputs, primary image and
   }
 });
 
-test('the panel distinguishes the missing-service and loading states without explanatory prose', async () => {
+test('no service selected shows only the footer state: no dimming and no per-line reason', async () => {
   const render = await renderer();
   const missing = render.inspector('zh-Hans', 'missing');
   assert.ok(missing.includes(translate('zh-Hans', 'boardUi.inputs.serviceMissing')));
-  assert.ok(missing.includes(translate('zh-Hans', 'boardUi.inputs.reason.serviceNotSelected')));
-  assert.match(missing, /data-mode="frames"/);
+  // The projection still marks every entry unsupported, but with no service the
+  // panel must not dim rows or repeat a reason on each line.
+  assert.doesNotMatch(missing, /board-input-row is-unsupported/u);
+  assert.doesNotMatch(missing, /board-input-unsupported-/u);
+  // The footer's missing-service text and the per-line reason have the same
+  // copy, so assert on the absence of the reason span instead of the string.
+  assert.equal((missing.match(/未选择生成服务/gu) ?? []).length, 1);
+  assert.ok(missing.includes(translate('zh-Hans', 'boardUi.inputs.mode.references')) === false);
+  assert.match(missing, /data-service="missing"/);
   assert.doesNotMatch(missing, /href=|ⓘ/u);
   const loading = render.loading('zh-Hans');
   assert.ok(loading.includes(translate('zh-Hans', 'boardUi.inputs.loading')));
+  const english = render.inspector('en', 'missing');
+  assert.equal(english.includes('生成输入'), false);
+});
+
+test('the panel uses the confirmed copy: 未连接参考, 文生视频 and no count when nothing is used', async () => {
+  const render = await renderer();
+  const empty = render.inspector('zh-Hans', 'empty');
+  assert.ok(empty.includes('未连接参考'));
+  const text = render.textOnly('zh-Hans');
+  assert.ok(text.includes('文生视频'));
+  assert.ok(text.includes('Kling · 文生视频'));
+  assert.equal(text.includes('用到'), false);
+  const emptyEnglish = render.inspector('en', 'empty');
+  assert.ok(emptyEnglish.includes('No reference connected'));
 });
