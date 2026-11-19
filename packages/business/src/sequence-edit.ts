@@ -72,9 +72,50 @@ export type LegacyCanvasWrite = keyof typeof LEGACY_WRITE_MESSAGES;
 /** Old ambiguous writers that would desynchronize the board chain must not run
  * under explicit format-5 admission. The sequence.edit service is the only
  * writer; the selected-version caller passes its user-facing hint. */
+export type Format5LegacyWriteUse = 'sequence.preview/commit' | 'sequence.history.get' | 'sequence.undo'
+  | 'sequence.redo' | 'not_yet_available';
+/** Every legacy writer that would bypass the unified format-5 transaction.
+ * FR-0 gates them all until their own card moves them onto
+ * `sequence.preview/commit` (or the owner card re-opens them). Reads stay out. */
+export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWriteUse>> = Object.freeze({
+  'timeline.get': 'sequence.preview/commit',
+  'timeline.track.add': 'sequence.preview/commit', 'timeline.track.update': 'sequence.preview/commit',
+  'timeline.clip.add': 'sequence.preview/commit', 'timeline.clip.update': 'sequence.preview/commit',
+  'timeline.clip.replaceSource': 'sequence.preview/commit', 'timeline.clip.remove': 'sequence.preview/commit',
+  'timeline.clip.rippleRemove': 'sequence.preview/commit', 'timeline.clip.split': 'sequence.preview/commit',
+  'timeline.clip.splitAtScenes': 'sequence.preview/commit', 'timeline.clip.crossfade': 'sequence.preview/commit',
+  'timeline.clip.setGains': 'sequence.preview/commit', 'timeline.clip.setTransform': 'sequence.preview/commit',
+  'timeline.clip.setTransition': 'sequence.preview/commit', 'timeline.loudness.apply': 'sequence.preview/commit',
+  'timeline.subtitle.add': 'sequence.preview/commit', 'timeline.subtitle.update': 'sequence.preview/commit',
+  'timeline.subtitle.remove': 'sequence.preview/commit', 'timeline.seed': 'sequence.preview/commit',
+  'timeline.shots.append': 'sequence.preview/commit', 'timeline.clip.refreshSources': 'sequence.preview/commit',
+  'timeline.format.set': 'sequence.preview/commit',
+  'timeline.history.get': 'sequence.history.get', 'timeline.undo': 'sequence.undo', 'timeline.redo': 'sequence.redo',
+  'canvas.apply': 'sequence.preview/commit',
+  'canvas.history.get': 'sequence.history.get', 'canvas.history.undo': 'sequence.undo', 'canvas.history.redo': 'sequence.redo',
+  'edge.create': 'sequence.preview/commit', 'edge.delete': 'sequence.preview/commit',
+  'shot.reorder': 'sequence.preview/commit', 'version.select': 'sequence.preview/commit',
+  'shot.create': 'sequence.preview/commit', 'shot.update': 'sequence.preview/commit',
+  'node.create': 'sequence.preview/commit', 'node.update': 'sequence.preview/commit',
+  'reference.attach': 'not_yet_available', 'reference.detach': 'not_yet_available',
+  'previs.create': 'not_yet_available', 'previs.scene.set': 'not_yet_available', 'previs.thumbnail.set': 'not_yet_available',
+  'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
+  'subject.binding.set': 'sequence.preview/commit',
+});
+export function format5LegacyWriteUse(operation: string): Format5LegacyWriteUse | null {
+  return Object.hasOwn(FORMAT5_LEGACY_WRITE_USES, operation) ? FORMAT5_LEGACY_WRITE_USES[operation]! : null;
+}
+/** One-time FR-0 gate: under explicit format-5 admission every legacy writer
+ * that is not yet routed through `sequence.preview/commit` fails before it can
+ * touch the project. Format 3/4 behavior is untouched. */
+export function assertFormat5LegacyWriteAllowed(store: ProjectStore, operation: string): void {
+  const use = format5LegacyWriteUse(operation);
+  if (!use || !isFormat5Project(store)) return;
+  throw new AppError('UNSUPPORTED_OPERATION', '格式 5 的这个编辑入口暂不开放，请使用统一序列入口。', 409, {use});
+}
 export function assertLegacyCanvasWriteAllowed(store: ProjectStore, use: LegacyCanvasWrite): void {
   if (!isFormat5Project(store)) return;
-  throw new AppError('UNSUPPORTED_OPERATION', LEGACY_WRITE_MESSAGES[use], 409, {use: 'sequence.edit'});
+  throw new AppError('UNSUPPORTED_OPERATION', LEGACY_WRITE_MESSAGES[use], 409, {use: 'sequence.preview/commit'});
 }
 function assertFormat5(store: ProjectStore): void {
   if (!isFormat5Project(store)) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);

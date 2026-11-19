@@ -96,7 +96,7 @@ import {createSubjectVariantServices} from './subject-variants.ts';
 import {createPrevisServices} from './previs.ts';
 import {createPrevisPublicationServices} from './previs-publication.ts';
 import {createCanvasEditing, isCanvasEditingWrite} from './canvas-editing.ts';
-import {assertLegacyCanvasWriteAllowed, createSequenceEditing, isFormat5Project} from './sequence-edit.ts';
+import {assertFormat5LegacyWriteAllowed, assertLegacyCanvasWriteAllowed, createSequenceEditing, isFormat5Project} from './sequence-edit.ts';
 import {isSequenceEditingOperation, isSequenceEditingWrite} from '../../contracts/src/sequence-editing.ts';
 import {isCanvasEditingOperation} from '../../contracts/src/canvas-editing.ts';
 import type {CanvasEditBase, CanvasTargetExpectation} from '../../contracts/src/canvas-editing.ts';
@@ -905,6 +905,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
 
  async function call(op: string,input: unknown,context: ServiceHandlerContext={}): Promise<unknown> {
   if(op==='project.notes.set')throw new AppError('UNKNOWN_OPERATION','未知操作',404);
+  // FR-0: one-time gate for every legacy writer that would bypass the unified
+  // format-5 transaction. Reads and format 3/4 projects are untouched.
+  if(isProjectStore(store))assertFormat5LegacyWriteAllowed(store,op);
   if(op==='lut.look.inspect')assertLookPackInspectInput(input);
   const {signal:callSignal}=context;
   const signal: AbortSignal|undefined=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):(ownerSignal||callSignal)??undefined;

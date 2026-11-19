@@ -178,7 +178,7 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
   }),
   'shot.update':(input: ShotUpdateInput)=>updateShot(input),
   'shot.reorder':(input: ShotReorderInput)=>format5
-   ? format5Blocked('sequence.edit','格式 5 的镜头顺序由画板链决定，请使用画板顺序操作。')
+   ? format5Blocked('sequence.preview/commit','格式 5 的镜头顺序由画板链决定，请使用画板顺序操作。')
    : currentProjectRecord(mutate('shot.reorder',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
    // Verify requested owners even on replay. Membership/order validation belongs
@@ -216,7 +216,7 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    replay:(response,context)=>{if((response as MutationRecord).id!==input.nodeId)invalid();replayRecord('nodes',response,context);},
   }),
   'version.select':(input: VersionSelectInput)=>format5
-   ? format5Blocked('sequence.edit','格式 5 的选中版本必须经画板同步操作修改。')
+   ? format5Blocked('sequence.preview/commit','格式 5 的选中版本必须经画板同步操作修改。')
    : mutate('version.select',input,{
    resolve:()=>target('shots',input.shotId),
    validate:({value})=>{shotRelations(value);version(value,input.versionId);},
