@@ -83,10 +83,10 @@ export const FORMAT5_UNAVAILABLE_OPERATIONS:Readonly<Record<string,string>>=Obje
  'node.update':'画板创建/更新归 FR-C，格式 5 暂不可用',
  'edge.create':'画板创建归 FR-C，格式 5 暂不可用',
  'edge.delete':'画板创建归 FR-C，格式 5 暂不可用',
- 'reference.attach':'格式 5 引用线请用 mioon_sequence_edit 的 reference-attach / reference-set-role / reference-detach 动作',
+ 'reference.attach':'格式 5 引用线请用 mioon_sequence_edit 的 reference-attach / reference-set-role / reference-reorder / reference-detach 动作',
  'reference.detach':'格式 5 引用线请用 mioon_sequence_edit 的 reference-detach 动作',
- 'previs.create':'格式 5 预演新建走统一 sequence 入口，旧工具暂不可用',
- 'previs.scene.set':'格式 5 预演写入走统一 sequence 入口，旧工具暂不可用',
+ 'previs.create':'格式 5 预演新建请用 mioon_sequence_edit 的 previs-create 动作；旧工具暂不可用',
+ 'previs.scene.set':'格式 5 预演保存请用 mioon_sequence_edit 的 previs-scene-set 动作；旧工具暂不可用',
  'previs.thumbnail.set':'预演缩略图是可重建缓存，格式 5 暂不可用',
  'subject.create':'主体库归 SB 服务，格式 5 旧入口暂不可用',
  'subject.version.add':'主体库归 SB 服务，格式 5 旧入口暂不可用',
@@ -110,6 +110,7 @@ export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4'|'format5';
 const format4GroupedTools=[...groupedTools,...mioCanvasCopyOperations.map(operation=>({group:'canvas' as const,operation,name:`mioon_${operation.replaceAll('.','_')}`})),...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
 const format5GroupedTools=[...groupedTools,{group:'core' as const,operation:'sequence.inspect',name:'mioon_sequence_inspect'},
  {group:'core' as const,operation:'sequence.board.get',name:'mioon_sequence_board_get'},
+ {group:'core' as const,operation:'sequence.generation-inputs.get',name:'mioon_sequence_generation_inputs_get'},
  {group:'core' as const,operation:'sequence.tool.edit',name:'mioon_sequence_edit'},
  {group:'core' as const,operation:'sequence.tool.undo',name:'mioon_sequence_undo'}];
 export function agentTaskToolCatalogProfile(definitions:readonly {name:string}[]):AgentTaskToolCatalogProfile{
