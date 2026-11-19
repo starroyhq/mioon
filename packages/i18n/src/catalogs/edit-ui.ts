@@ -38,4 +38,10 @@ export const editUiMessages = {
   'editUi.notice.removedFromMainTrack': {'zh-Hans':'已从主轨移除 {name}','zh-Hant':'已從主軌移除 {name}',en:'Removed {name} from the main track',ja:'メイントラックから{name}を削除しました'},
   'editUi.notice.undo': {'zh-Hans':'撤销','zh-Hant':'復原',en:'Undo',ja:'元に戻す'},
   'editUi.notice.dismiss': {'zh-Hans':'关闭','zh-Hant':'關閉',en:'Close',ja:'閉じる'},
+  'editUi.error.EDIT_RESULT_UNCONFIRMED': {'zh-Hans':'上一次编辑结果未确认，先核对或重试。','zh-Hant':'上一次編輯結果未確認，先核對或重試。',en:'The last edit is unconfirmed. Check it or retry.',ja:'前回の編集結果が未確定です。確認するか再試行してください。'},
+  'editUi.unconfirmed.status': {'zh-Hans':'结果未确认','zh-Hant':'結果未確認',en:'Result unconfirmed',ja:'結果未確定'},
+  'editUi.unconfirmed.reason': {'zh-Hans':'提交中断，没有收到结果。','zh-Hant':'提交中斷，沒有收到結果。',en:'The submit was interrupted before a result came back.',ja:'送信が中断され、結果を受け取れませんでした。'},
+  'editUi.unconfirmed.retry': {'zh-Hans':'重试','zh-Hant':'重試',en:'Retry',ja:'再試行'},
+  'editUi.unconfirmed.abandon': {'zh-Hans':'放弃','zh-Hant':'放棄',en:'Abandon',ja:'破棄'},
+  'editUi.notice.resultApplied': {'zh-Hans':'已应用','zh-Hant':'已套用',en:'Applied',ja:'適用しました'},
 } as const satisfies MessageCatalog;

@@ -2,11 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5UserUndoBlocked,
-  format5MoveCommand, format5PatchCommand, format5Projection, format5SplitCommand, format5TrimCommand,
+  format5MoveCommand, format5PatchCommand, format5Projection, format5SplitCommand, format5TrimCommand, format5VersionCommand,
 } from '../apps/web/src/edit-ui/session.ts';
 import type {SequenceRpc} from '../apps/web/src/edit-ui/session.ts';
+import {LostResponseState, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
+import {ApiError} from '../apps/web/src/api.ts';
+import type {RequestOutcome} from '../apps/web/src/request-outcome-client.ts';
 
 const projectId = '70000000-0000-4000-8000-000000000001';
+const OTHER_PROJECT = '70000000-0000-4000-8000-000000000002';
 const envelope = (requestId = 'preview-1') => ({contractVersion: 1, requestId, projectId, actionId: crypto.randomUUID(),
   originSide: 'timeline', filmId: projectId, intents: [], subjectIntent: undefined,
   baseline: {contentRevision: 1, timelineRevision: 1, syncRevision: 1, historyPosition: 0, historyRevision: 1, targets: []},
@@ -175,4 +179,261 @@ test('user Ctrl+Z protection detects a Mio action at the history top', () => {
   assert.equal(format5UserUndoBlocked({...view, undo: {actionId: 'user-action', operation: 'timeline.clip.set-properties', affected: 1},
     undoBlockedBy: 'mio'}), true);
   assert.equal(format5UserUndoBlocked(null), false);
+});
+
+// ---------------------------------------------------------------------------
+// Lost commit response: the accepted envelope is retained, one read-only
+// receipt lookup decides, and retry reuses the exact request id.
+// ---------------------------------------------------------------------------
+type CommitScenario = 'applied' | 'not-applied' | 'lost-after-write' | 'lost-not-applied'
+  | 'lost-before-write' | 'rejected' | 'garbage';
+type ReadScript = {readonly kind: 'outcome'; readonly outcome: RequestOutcome} | {readonly kind: 'missing'}
+  | {readonly kind: 'error'} | {readonly kind: 'timeout'};
+
+const PLAN_DIGEST = 'e'.repeat(64);
+const appliedRead = (operation = 'timeline.clip.split'): RequestOutcome =>
+  ({applied: true, operation, status: 'applied', code: null});
+const missingRead: RequestOutcome = {applied: false, operation: null};
+
+function lostHarness(initial: {readonly scenarios: readonly CommitScenario[]; readonly read: ReadScript;
+  readonly readTimeoutMs?: number}) {
+  const calls: {operation: string; input: any}[] = [];
+  const writes: {requestId: string; status: 'applied' | 'not_applied'}[] = [];
+  const reads: {projectId: string; requestId: string}[] = [];
+  const scenarios = [...initial.scenarios];
+  let previews = 0;
+  const rpc: SequenceRpc = async (operation, input: any) => {
+    calls.push({operation, input});
+    if (operation === 'sequence.preview') {
+      previews++;
+      const envelope = {contractVersion: 1, requestId: `${input.trackIntent ? 'track-preview' : 'preview'}-${previews}`,
+        projectId: input.projectId, ...(input.trackIntent ? {trackIntent: input.trackIntent} : {intents: input.intents ?? []})};
+      return {envelope, planDigest: PLAN_DIGEST, warnings: []};
+    }
+    if (operation === 'sequence.commit') {
+      const scenario = scenarios.shift() ?? 'applied';
+      const requestId = String(input.envelope.requestId);
+      const applied = {status: 'applied', actionId, operation: 'timeline.clip.split'};
+      if (scenario === 'rejected') throw new ApiError('conflict', 'SEQUENCE_EDIT_REVISION_CONFLICT', {}, true, 409);
+      if (scenario === 'lost-before-write') throw new ApiError('lost response', 'NETWORK', undefined, false);
+      if (scenario === 'garbage') return 'garbage';
+      if (scenario === 'lost-after-write') {
+        writes.push({requestId, status: 'applied'});
+        throw new ApiError('lost response', 'NETWORK', undefined, false);
+      }
+      if (scenario === 'lost-not-applied') {
+        writes.push({requestId, status: 'not_applied'});
+        throw new ApiError('lost response', 'NETWORK', undefined, false);
+      }
+      if (scenario === 'not-applied') {
+        writes.push({requestId, status: 'not_applied'});
+        return {status: 'not_applied', actionId, operation: 'timeline.clip.split', code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT'};
+      }
+      writes.push({requestId, status: 'applied'});
+      return applied;
+    }
+    if (operation === 'sequence.history.get') return null;
+    throw Object.assign(new Error(`unexpected ${operation}`), {code: 'GENERIC'});
+  };
+  const readOutcome = async (input: {projectId: string; requestId: string}): Promise<RequestOutcome> => {
+    reads.push({projectId: input.projectId, requestId: input.requestId});
+    if (initial.read.kind === 'timeout') return new Promise<RequestOutcome>(() => {});
+    if (initial.read.kind === 'error') throw new ApiError('unavailable', 'REQUEST_OUTCOME_UNAVAILABLE', {}, false);
+    return initial.read.kind === 'missing' ? missingRead : initial.read.outcome;
+  };
+  const session = new Format5EditSession(rpc, () => projectId,
+    {lost: new LostResponseState({readOutcome, readTimeoutMs: initial.readTimeoutMs ?? 20})});
+  return {session, rpc, readOutcome, calls, writes, reads,
+    commits: (): any[] => calls.filter(call => call.operation === 'sequence.commit')};
+}
+let actionId = crypto.randomUUID();
+
+test('a lost main-track commit is settled by one receipt read and never writes twice', async () => {
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead()}});
+  const result = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  const committed = h.commits();
+  assert.equal(committed.length, 1);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.deepEqual(h.reads[0], {projectId, requestId: committed[0]!.input.envelope.requestId});
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(result.ok, true);
+  if (result.ok) {assert.equal(result.resolvedFromReceipt, true); assert.equal(result.actionId, null);}
+  // A click after the settled edit goes through the normal path again.
+  const again = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(again.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('a lost clip-properties commit is settled by one receipt read and never writes twice', async () => {
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead('timeline.clip.version')}});
+  const result = await h.session.run(format5VersionCommand('clip-1', {mode: 'follow', versionId: 'version-2'}));
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(result.ok, true);
+  const again = await h.session.run(format5VersionCommand('clip-1', {mode: 'follow', versionId: 'version-2'}));
+  assert.equal(again.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('a lost track commit is settled by one receipt read and never writes twice', async () => {
+  const trackIntent = {side: 'timeline' as const, operation: {kind: 'track-structure' as const,
+    edit: {kind: 'add' as const, trackId: crypto.randomUUID(), trackKind: 'video' as const}}};
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead('timeline.track.add')}});
+  const result = await h.session.runTrack(trackIntent);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.equal(h.commits()[0]!.input.envelope.trackIntent.operation.edit.kind, 'add');
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(result.ok, true);
+});
+
+test('a lost main-track commit without a receipt stays unconfirmed and retry reuses the same request id', async () => {
+  const h = lostHarness({scenarios: ['lost-before-write', 'applied'], read: {kind: 'missing'}});
+  const first = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(first.ok, false);
+  if (!first.ok) {assert.equal(first.code, UNCONFIRMED_CODE); assert.equal('unconfirmed' in first, true);}
+  assert.equal(h.session.unconfirmed?.requestId, h.commits()[0]!.input.envelope.requestId);
+  assert.equal(h.writes.length, 0);
+  const retried = await h.session.retryUnconfirmed();
+  assert.equal(retried.ok, true);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.commits().length, 2);
+  assert.equal(h.commits()[1]!.input.envelope.requestId, h.commits()[0]!.input.envelope.requestId);
+  assert.deepEqual(h.commits()[1]!.input.envelope, h.commits()[0]!.input.envelope);
+  assert.equal(h.commits()[1]!.input.expectedPlanDigest, h.commits()[0]!.input.expectedPlanDigest);
+  assert.equal(h.session.unconfirmed, null);
+});
+
+test('a lost track commit without a receipt is abandoned without any write', async () => {
+  const trackIntent = {side: 'timeline' as const, operation: {kind: 'track-structure' as const,
+    edit: {kind: 'add' as const, trackId: crypto.randomUUID(), trackKind: 'video' as const}}};
+  const h = lostHarness({scenarios: ['lost-before-write'], read: {kind: 'missing'}});
+  const first = await h.session.runTrack(trackIntent);
+  assert.equal(first.ok, false);
+  h.session.abandonUnconfirmed();
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(h.commits().length, 1);
+  assert.equal(h.writes.length, 0);
+  const next = await h.session.runTrack(trackIntent);
+  assert.equal(next.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('an unconfirmed edit blocks the next clip-properties action with one reason and no preview', async () => {
+  const h = lostHarness({scenarios: ['lost-before-write', 'applied'], read: {kind: 'missing'}});
+  await h.session.run(format5VersionCommand('clip-1', {mode: 'follow', versionId: 'version-2'}));
+  const callsBefore = h.calls.length;
+  const blocked = await h.session.run(format5VersionCommand('clip-1', {mode: 'follow', versionId: 'version-3'}));
+  assert.equal(blocked.ok, false);
+  if (!blocked.ok) assert.equal(blocked.code, UNCONFIRMED_CODE);
+  assert.equal(h.calls.length, callsBefore, 'the blocked action made no preview or commit call');
+  const retried = await h.session.retryUnconfirmed();
+  assert.equal(retried.ok, true);
+  assert.equal(h.writes.length, 1);
+});
+
+test('a definitive rejection never enters the unconfirmed state and never reads a receipt', async () => {
+  const h = lostHarness({scenarios: ['rejected'], read: {kind: 'outcome', outcome: appliedRead()}});
+  const result = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'SEQUENCE_EDIT_REVISION_CONFLICT');
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(h.reads.length, 0);
+  assert.equal(h.commits().length, 1);
+});
+
+test('an unparsable commit response is unknown and triggers exactly one receipt read', async () => {
+  const h = lostHarness({scenarios: ['garbage'], read: {kind: 'missing'}});
+  const result = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, UNCONFIRMED_CODE);
+  assert.equal(h.reads.length, 1);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.reads.length, 1, 'no polling after the one read');
+  assert.equal(h.commits().length, 1);
+});
+
+test('a failed or timed-out receipt read keeps the edit unconfirmed without another write', async () => {
+  for (const read of [{kind: 'error'} as const, {kind: 'timeout'} as const]) {
+    const h = lostHarness({scenarios: ['lost-after-write'], read});
+    const result = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, UNCONFIRMED_CODE, read.kind);
+    assert.equal(h.session.unconfirmed?.requestId, h.commits()[0]!.input.envelope.requestId);
+    assert.equal(h.reads.length, 1);
+    assert.equal(h.commits().length, 1);
+    assert.equal(h.writes.length, 1);
+  }
+});
+
+test('a not-applied receipt read is the explicit reason code and clears the retained envelope', async () => {
+  const h = lostHarness({scenarios: ['lost-not-applied'], read: {kind: 'outcome', outcome:
+    {applied: false, operation: 'timeline.clip.split', status: 'not_applied', code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT'}}});
+  const result = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(h.reads.length, 1);
+  assert.equal(h.writes[0]!.status, 'not_applied');
+  const next = await h.session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(next.ok, true);
+});
+
+test('a lost copy confirmation retries the same copy envelope without a new preview', async () => {
+  const calls: {operation: string; input: any}[] = [];
+  const copyEnvelope: any = envelope('copy-lost-1');
+  const h = lostHarness({scenarios: ['lost-before-write', 'applied'], read: {kind: 'missing'}});
+  const rpc: SequenceRpc = async (operation, input: any) => {
+    calls.push({operation, input});
+    if (operation === 'sequence.preview') {
+      return (input.intents?.[0]?.operation?.edit as {copyNodeId?: string} | undefined)?.copyNodeId
+        ? {envelope: copyEnvelope, planDigest: 'f'.repeat(64), warnings: []}
+        : {ok: false as const, code: 'COPY_NODE_REQUIRED'};
+    }
+    return h.rpc(operation, input);
+  };
+  const session = new Format5EditSession(rpc, () => projectId,
+    {lost: new LostResponseState({readOutcome: h.readOutcome, readTimeoutMs: 20})});
+  const outcome = await session.requestMove(format5MoveCommand('clip-1', null), {clipId: 'clip-1'} as never);
+  assert.deepEqual(outcome, {needsCopy: true});
+  const first = await session.confirmCopy();
+  assert.equal(first.ok, false);
+  assert.equal(session.unconfirmed?.requestId, copyEnvelope.requestId);
+  const previewsBefore = calls.filter(call => call.operation === 'sequence.preview').length;
+  const retried = await session.retryUnconfirmed();
+  assert.equal(retried.ok, true);
+  const commits = calls.filter(call => call.operation === 'sequence.commit');
+  assert.equal(commits.length, 2);
+  assert.equal(commits[1]!.input.envelope.requestId, copyEnvelope.requestId);
+  assert.equal(commits[1]!.input.expectedPlanDigest, 'f'.repeat(64));
+  assert.equal(calls.filter(call => call.operation === 'sequence.preview').length, previewsBefore,
+    'retry never previews again');
+  assert.equal(session.unconfirmed, null);
+});
+
+test('a project switch drops a retained edit instead of retrying it in the new project', async () => {
+  let current: string | null = projectId;
+  const reads: string[] = [];
+  const rpc: SequenceRpc = async (operation, input: any) => {
+    if (operation === 'sequence.preview') {
+      const base: any = envelope('switch-1');
+      return {envelope: {...base, projectId: input.projectId}, planDigest: PLAN_DIGEST, warnings: []};
+    }
+    if (operation === 'sequence.commit') {
+      if (input.projectId === projectId) throw new ApiError('lost', 'NETWORK', undefined, false);
+      return {status: 'applied', actionId, operation: 'timeline.clip.split'};
+    }
+    throw Object.assign(new Error('unexpected'), {code: 'GENERIC'});
+  };
+  const session = new Format5EditSession(rpc, () => current, {lost: new LostResponseState({
+    readOutcome: async input => {reads.push(input.requestId); return missingRead;}, readTimeoutMs: 20})});
+  await session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(session.unconfirmed?.projectId, projectId);
+  current = OTHER_PROJECT;
+  const next = await session.run(format5SplitCommand('clip-1' as never, 30));
+  assert.equal(next.ok, true);
+  assert.equal(session.unconfirmed, null);
+  assert.equal(reads.length, 1);
 });

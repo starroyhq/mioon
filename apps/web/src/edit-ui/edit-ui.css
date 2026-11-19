@@ -229,6 +229,16 @@
   color: var(--wb-muted) !important;
 }
 
+/* Unconfirmed result: status, one bare reason and the two recovery actions.
+ * Deliberately no dismiss control, so it cannot silently disappear. */
+.edit-ui-notice-unknown > svg {
+  color: var(--wb-warning);
+}
+
+.edit-ui-notice-unknown .edit-ui-notice-reason {
+  color: var(--wb-muted);
+}
+
 /* UI-E2 mounting: the confirmation sits above the timeline, the undo bar just
  * inside its top edge. UI-E1's standalone fixture keeps its viewport-centered
  * rules; the real workbench uses the measured timeline height variable. */
