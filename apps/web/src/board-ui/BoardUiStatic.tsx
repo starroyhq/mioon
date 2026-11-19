@@ -10,6 +10,7 @@ import {resolveBoardPortConnection, boardPorts} from './connection-ports.ts';
 import type {BoardPortConnection, BoardPortEndpoint, BoardPortId} from './connection-ports.ts';
 import type {BoardUiNode, BoardUiProjection} from './projection.ts';
 import {BoardFilmOverview, BoardFilmStrip, BoardFloatingLabel, useBoardDuration} from './BoardFilmComponents.tsx';
+import {SUBJECT_DRAG, droppedSubject} from './subject-drag.ts';
 import '@xyflow/react/dist/style.css';
 import './board-ui.css';
 
@@ -21,6 +22,10 @@ export interface BoardUiEdge {
   readonly role?: ChainReferenceRole;
   readonly sourcePort?: BoardPortId;
   readonly targetPort?: BoardPortId;
+  /** RI-b material-line source asset; present only on reference edges. */
+  readonly sourceAssetId?: string;
+  /** RI-b/SB-b owner binding row; subject lines are edited by the subject card. */
+  readonly subjectBindingId?: string;
 }
 
 export interface BoardUiStaticProps {
@@ -43,6 +48,12 @@ export interface BoardUiStaticProps {
   readonly onNodesMoved?: (moves: readonly {readonly nodeId: string; readonly x: number; readonly y: number}[]) => void;
   /** Virtualize off-screen cards for the 500-shot board measurement. */
   readonly virtualize?: boolean;
+  /** SB-b: drop a subject from the library at the flow position. */
+  readonly onSubjectDrop?: (subjectId: string, position: {readonly x: number; readonly y: number}) => void;
+  /** RI-b: reference lines the selected service cannot use, so the connector
+   * shows the same state as the property panel (empty while no service is
+   * selected). */
+  readonly unsupportedEdgeIds?: ReadonlySet<string>;
 }
 
 type Film = BoardUiProjection['films'][number];
@@ -67,7 +78,8 @@ const BoardCardView = memo(function BoardCardView({data, selected}: NodeProps<Ca
     {data.floating && <BoardFloatingLabel/>}
     {film ? <div className="board-film-root"><span aria-hidden="true">▱</span><div><strong>{film.name}</strong><span>{t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'), duration})}</span></div></div>
       : <><header>{data.order !== undefined && <span className="board-card-order">{formatNumber(data.order, {minimumIntegerDigits: 2})}</span>}<strong title={model.name}>{model.name}</strong>
-        {model.kind === 'shot' && <span className={`board-card-status status-${model.status ?? 'pending'}`}>{t(statusKey)}</span>}</header>
+        {model.kind === 'shot' && <span className={`board-card-status status-${model.status ?? 'pending'}`}>{t(statusKey)}</span>}
+        {model.kind === 'subject' && model.subjectKind && <span className="board-card-subject-kind">{t(`boardUi.kind.${model.subjectKind}`)}</span>}</header>
         {model.kind === 'text' ? <p className="board-text-content">{model.name}</p> : <div className="board-card-picture">{model.thumbnailUrl ? <img src={model.thumbnailUrl} alt="" draggable={false}/> : <span aria-hidden="true">▱</span>}</div>}
         {(model.kind === 'shot' || (model.kind === 'video' || model.kind === 'image') && (model.aspectRatio || frames !== null)) && <footer>
           <span>{model.aspectRatio ? t('boardUi.aspectDuration', {aspect: model.aspectRatio, duration}) : duration}</span>
@@ -137,8 +149,9 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
     if (!connection || connection.kind !== edge.kind) return [];
     const base = {id: edge.id, source: connection.sourceId, target: connection.targetId, sourceHandle: connection.sourcePort, targetHandle: connection.targetPort};
     return connection.kind === 'sequence' ? [{...base, type: 'sequence', data: {reduceMotion, selected: edge.id === props.selectedEdgeId}}]
-      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion, selected: edge.id === props.selectedEdgeId}}];
-  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId]);
+      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion,
+        selected: edge.id === props.selectedEdgeId, unsupported: props.unsupportedEdgeIds?.has(edge.id) === true}}];
+  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId, props.unsupportedEdgeIds]);
   const locate = (id: string) => {
     select(id);
     const node = flow.getNode(id);
@@ -173,7 +186,15 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   const film = projection.films.find(item => item.items.some(node => node.nodeId === selectedId) || item.id === selectedId) ?? projection.films[0];
   const selected = selectedId ? byId.get(selectedId) : null;
   return <div className={`board-ui-static${props.showInspector === false ? ' board-ui-no-inspector' : ''}`} data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') {setDrag(null); props.onSelectEdge?.(null);}}}>
-    <div className="board-ui-canvas" data-testid="board-ui-canvas">
+    <div className="board-ui-canvas" data-testid="board-ui-canvas"
+      onDragOver={event => {if (event.dataTransfer.types.includes(SUBJECT_DRAG)) {event.preventDefault(); event.dataTransfer.dropEffect = 'copy';}}}
+      onDrop={event => {
+        const subjectId = droppedSubject(event.nativeEvent);
+        if (!subjectId || !props.onSubjectDrop) return;
+        event.preventDefault(); event.stopPropagation();
+        const position = flow.screenToFlowPosition({x: event.clientX, y: event.clientY});
+        props.onSubjectDrop(subjectId, position);
+      }}>
       <ReactFlow<CardNode, BoardSequenceEdge | BoardReferenceEdge> nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={boardEdgeTypes}
         proOptions={{hideAttribution: true}}
         fitView fitViewOptions={{padding: .12, maxZoom: .9}} minZoom={.05} maxZoom={2} onlyRenderVisibleElements={props.virtualize ?? false}

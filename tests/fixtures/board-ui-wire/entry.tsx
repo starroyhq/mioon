@@ -11,12 +11,20 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
-import {projectLiveBoard, boardConnectIntent, boardDeleteIntent, boardVersionIntent} from '../../../apps/web/src/board-ui/live.ts';
+import {projectLiveBoard, boardConnectIntent, boardDeleteIntent, boardVersionIntent,
+  subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
+  subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
+import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
+import {readGenerationProviderDirectory} from '../../../apps/web/src/video-provider-directory.ts';
+import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
+import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
+import {referenceAttachRequest, referenceDetachRequest, referenceReorderRequest, referenceRoleRequest} from '../../../apps/web/src/board-ui/inputs.ts';
+import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
 import {BoardUiSession} from '../../../apps/web/src/board-ui/live-session.ts';
-import type {BoardMountView, BoardOutcome} from '../../../apps/web/src/board-ui/live-session.ts';
+import type {BoardBinding, BoardMountView, BoardOutcome} from '../../../apps/web/src/board-ui/live-session.ts';
 import type {EditUiNotice} from '../../../apps/web/src/edit-ui/EditUiNotice.tsx';
 import type {SequenceHistoryView} from '../../../apps/web/src/edit-ui/session.ts';
-import type {SequenceEditIntent} from '../../../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditAllocation, SequenceEditIntent, SubjectEditOperation} from '../../../packages/contracts/src/sequence-edit.ts';
 
 type Row = Record<string, any>;
 const projectId = '70000000-0000-4000-8000-000000000001';
@@ -33,6 +41,8 @@ const syntheticThumb = (assetId: string): string => {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270"><rect width="480" height="270" fill="${color}"/><circle cx="240" cy="122" r="52" fill="#e8e2d2" opacity=".85"/><rect x="20" y="236" width="150" height="8" rx="4" fill="#e8e2d2" opacity=".35"/></svg>`)}`;
 };
 const uuid = (): string => globalThis.crypto.randomUUID();
+const SUBJECT_CHARACTER = '70000000-0000-4000-8000-000000000090';
+const SUBJECT_LOOK = '70000000-0000-4000-8000-000000000091';
 
 function Harness(): React.ReactElement {
   const {t} = useI18n();
@@ -44,6 +54,9 @@ function Harness(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [reduced, setReduced] = useState(false);
   const [openedNode, setOpenedNode] = useState<string | null>(null);
+  const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
+  const [generationOptions, setGenerationOptions] = useState<Record<string, Record<string, unknown>>>({});
+  const [inputs, setInputs] = useState<SequenceGenerationInputView | null>(null);
   const stateRef = useRef<Row>({});
   const session = useRef(new BoardUiSession(rpc, () => projectId));
   const refresh = useCallback(async (): Promise<void> => {
@@ -52,7 +65,8 @@ function Harness(): React.ReactElement {
       next.projectFormatVersion = 5;
       const nextHistory = await rpc('sequence.history.get', {projectId});
       const nextMount = await rpc('sequence.board.get', {projectId});
-      setData(next); setHistory(nextHistory); setMount(nextMount);
+      const directory = await readGenerationProviderDirectory(operation => rpc(operation, {}));
+      setData(next); setHistory(nextHistory); setMount(nextMount); setProviders(directory.providers);
     } catch (error) {
       console.error('board fixture refresh failed', error);
       (window as any).__boardWireError = String((error as Error)?.message ?? error);
@@ -61,14 +75,28 @@ function Harness(): React.ReactElement {
   }, []);
   useEffect(() => {void refresh();}, [refresh]);
   useEffect(() => {
+    const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
+    if (!shot) {setInputs(null); return;}
+    const selection = generationSelection(providers, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
+    const provider = selection.provider;
+    const request = {projectId, shotId: shot.id, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision)
+      && selection.modelEntryId ? {connectionId: provider.connectionId,
+        configurationRevision: Number(provider.configurationRevision), modelEntryId: selection.modelEntryId} : {})};
+    let cancelled = false;
+    void rpc('sequence.generation-inputs.get', request).then(value => {if (!cancelled) setInputs(value as SequenceGenerationInputView);})
+      .catch(() => {if (!cancelled) setInputs(null);});
+    return () => {cancelled = true;};
+  }, [data, providers, generationOptions, selectedNodeId]);
+  useEffect(() => {
     const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     const update = (): void => setReduced(query?.matches === true);
     update(); query?.addEventListener?.('change', update);
     return () => query?.removeEventListener?.('change', update);
   }, []);
   const projection = useMemo(() => data ? projectLiveBoard({shots: data.shots, nodes: data.nodes, edges: data.edges,
-    versions: data.versions, assets: data.assets, jobs: data.jobs, clips: data.timeline?.clips ?? [], frameAspect: '9:16', thumbnailFor: syntheticThumb}) : null,
-  [data]);
+    versions: data.versions, assets: data.assets, jobs: data.jobs, clips: data.timeline?.clips ?? [],
+    subjects: mount?.subjects ?? [], frameAspect: '9:16', thumbnailFor: syntheticThumb}) : null,
+  [data, mount?.subjects]);
   const activeFilmId = data?.timeline?.mainTrack?.sequenceNodeId ?? null;
   const run = useCallback(async (intent: SequenceEditIntent, message: string): Promise<BoardOutcome> => {
     setBusy(true);
@@ -81,6 +109,84 @@ function Harness(): React.ReactElement {
       return outcome;
     } finally {setBusy(false);}
   }, [refresh]);
+  const runSubject = useCallback(async (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
+    message: string): Promise<BoardOutcome> => {
+    setBusy(true);
+    try {
+      const outcome = await session.current.runSubject(operation, allocation);
+      if (outcome.ok && outcome.status === 'applied') {setNotice({id: outcome.actionId, message}); await refresh();}
+      return outcome;
+    } finally {setBusy(false);}
+  }, [refresh]);
+  const subjectName = (subjectId: string): string => mount?.subjects.find(subject => subject.id === subjectId)?.name ?? '';
+  const cardNodeForSubject = (subjectId: string): string | null =>
+    projection?.nodes.find(node => node.kind === 'subject' && node.subjectId === subjectId)?.id ?? null;
+  const addSubjectCard = useCallback((subjectId: string, position: {x: number; y: number}): void => {
+    void runSubject(subjectCardCreateOperation(uuid(), subjectId, position), undefined,
+      t('boardUi.notice.subjectCardAdded', {name: mount?.subjects.find(subject => subject.id === subjectId)?.name ?? ''}));
+  }, [runSubject, mount, t]);
+  const setBindingMode = useCallback((binding: BoardBinding, mode: 'follow' | 'locked', versionId: string | null): void => {
+    void runSubject(subjectBindingModeOperation(binding.id, mode, versionId), undefined,
+      t('boardUi.notice.bindingUpdated', {name: subjectName(binding.subjectId)}));
+  }, [runSubject, mount, t]);
+  const detachBinding = useCallback((binding: BoardBinding): void => {
+    void runSubject(subjectBindingDetachOperation(binding.id), undefined, t('boardUi.notice.subjectDetached'));
+  }, [runSubject, t]);
+  const restoreBinding = useCallback((binding: BoardBinding): void => {
+    const cardNodeId = cardNodeForSubject(binding.subjectId);
+    if (!cardNodeId) return;
+    const edgeId = uuid();
+    void runSubject(subjectBindingRestoreOperation(binding.id, 'follow', null),
+      {clips: [], nodes: [], splitClips: [], edges: [{id: edgeId, fromId: cardNodeId, toId: binding.shotId}]},
+      t('boardUi.notice.subjectLinked', {name: subjectName(binding.subjectId)}));
+  }, [runSubject, projection, mount, t]);
+  const deleteCard = useCallback((nodeId: string, subjectId: string): void => {
+    setSelectedNodeId(null);
+    void runSubject(subjectCardDeleteOperation(nodeId), undefined,
+      t('boardUi.notice.subjectCardDeleted', {name: subjectName(subjectId)}));
+  }, [runSubject, mount, t]);
+  const runReference = useCallback(async (request: BoardEditRequest, message: string): Promise<BoardOutcome> => {
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(request);
+      if (outcome.ok && outcome.status === 'applied') {
+        setNotice({id: outcome.actionId, message});
+        await refresh();
+      }
+      return outcome;
+    } finally {setBusy(false);}
+  }, [refresh]);
+  const updateGenerationOptions = useCallback((shotId: string, options: Record<string, unknown>): void => {
+    setGenerationOptions(current => ({...current, [shotId]: {...current[shotId], ...options}}));
+  }, []);
+  const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
+    void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
+  }, [runReference, t]);
+  const detachInput = useCallback((entry: {source: 'edge' | 'subject'; edgeId?: string; bindingId?: string}, shotId: string): void => {
+    if (entry.source === 'subject' && entry.bindingId) {
+      void runSubject(subjectBindingDetachOperation(entry.bindingId), undefined, t('boardUi.notice.subjectDetached'));
+      return;
+    }
+    if (entry.edgeId) void runReference(referenceDetachRequest(entry.edgeId, shotId), t('boardUi.notice.referenceDetached', {name: ''}));
+  }, [runReference, runSubject, t]);
+  const setPrimaryInput = useCallback((edgeId: string, shotId: string): void => {
+    const ordered = (inputs?.entries ?? []).flatMap(entry => entry.source === 'edge' && entry.edgeId ? [entry.edgeId] : []);
+    const unique = [...new Set(ordered)];
+    if (!unique.includes(edgeId)) return;
+    void runReference(referenceReorderRequest(shotId, [edgeId, ...unique.filter(id => id !== edgeId)]),
+      t('boardUi.notice.primaryChanged'));
+  }, [inputs, runReference, t]);
+  useEffect(() => {
+    // Headless acceptance hook for the native custom-select steps, which the
+    // keyboard-only Playwright flow cannot drive reliably. Every call goes
+    // through the same handlers/components the buttons use.
+    (window as any).__boardWireActions = {
+      setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
+      changeRole: (edgeId: string, shotId: string, role: string) => {
+        void runReference(referenceRoleRequest(edgeId, shotId, role as never), t('boardUi.notice.roleChanged'));
+      },
+    };
+  }, [updateGenerationOptions, runReference, t]);
   const undoNotice = useCallback(async (actionId: string): Promise<boolean> => {
     const view = await session.current.history();
     if (!view?.undo || view.undo.actionId !== actionId) {setNotice(null); return false;}
@@ -111,19 +217,25 @@ function Harness(): React.ReactElement {
   }, [projection, activeFilmId, run, t]);
   useEffect(() => {
     stateRef.current = {ready: Boolean(data), data, history, mount, selectedNodeId, notice, busy, reduced, openedNode,
-      cards: projection?.nodes.map(node => ({id: node.id, kind: node.kind, name: node.name})) ?? [],
+      cards: projection?.nodes.map(node => ({id: node.id, kind: node.kind, name: node.name, subjectId: node.subjectId})) ?? [],
       films: projection?.projection.films.map(film => ({id: film.id, items: film.items.map(item => item.nodeId)})) ?? [],
       floating: projection?.projection.floatingNodeIds ?? [], positions: projection?.positions ?? {},
-      timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync};
+      timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync,
+      subjects: mount?.subjects ?? [], bindings: mount?.bindings ?? [],
+      inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+        entries: inputs.entries.map(entry => ({status: entry.status, role: entry.role, edgeId: entry.edgeId,
+          reason: entry.reason ?? null, primary: entry.primary === true}))} : null,
+      providers: providers.map(provider => ({id: provider.id, connectionId: provider.connectionId ?? null}))};
     (window as any).__boardWireState = stateRef.current;
-  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection]);
+  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers]);
   if (!projection) return <div className="board-fixture-loading">Loading…</div>;
   return <div className="board-fixture">
     <header className="board-fixture-head"><strong>Mioon · 画板</strong><span data-testid="fixture-format">格式 5</span>
       <span data-testid="fixture-sync" data-synced={mount?.inSync ? 'true' : 'false'}>{t(mount?.inSync ? 'boardUi.synced' : 'boardUi.outOfSync')}</span></header>
     <main className="board-fixture-board" data-testid="board-fixture-board">
       <BoardUiLive board={projection} activeFilmId={activeFilmId} history={history} mount={mount}
-        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run}
+        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} runReference={runReference}
+        runSubject={runSubject} inputs={inputs}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
         notice={notice} reduceMotion={reduced} busy={busy}/>
     </main>
@@ -133,7 +245,21 @@ function Harness(): React.ReactElement {
         onSelectVersion={(nodeId, versionId) => {void run(boardVersionIntent(nodeId, versionId), t('boardUi.notice.version', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''}));}}
         onDelete={nodeId => {void run(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''})); setSelectedNodeId(null);}}
         onOpenInEditing={nodeId => setOpenedNode(nodeId)}
-        onRestore={(archivedId, name) => {void restore(archivedId, name);}}/>
+        onRestore={(archivedId, name) => {void restore(archivedId, name);}}
+        onSetBindingMode={setBindingMode} onDetachBinding={detachBinding} onRestoreBinding={restoreBinding}
+        onDeleteSubjectCard={deleteCard} providers={providers} generationOptions={generationOptions[selectedNodeId!]}
+        inputs={inputs} onGenerationOptionsChange={updateGenerationOptions} onInputRoleChange={changeInputRole as never}
+        onInputDetach={detachInput} onInputPrimary={setPrimaryInput}/>
+      <section className="board-fixture-subjects" data-testid="board-fixture-subjects">
+        <h4>{t('boardUi.inspector.subjects')}</h4>
+        {(mount?.subjects ?? []).map(subject => <div key={subject.id} className="board-fixture-subject"
+          data-testid={`fixture-subject-${subject.id}`} draggable
+          onDragStart={event => dragSubject(event.nativeEvent, subject.id)}
+          onClick={() => addSubjectCard(subject.id, {x: 620, y: 260})} role="button" tabIndex={0}
+          onKeyDown={event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); addSubjectCard(subject.id, {x: 620, y: 260});}}}>
+          <span>{subject.name}</span><small>{t(`boardUi.kind.${subject.kind}`)}</small>
+        </div>)}
+      </section>
       <p className="board-fixture-opened" data-testid="board-fixture-opened">{openedNode ?? ''}</p>
     </aside>
     <div className="board-fixture-status" data-testid="board-fixture-status">

@@ -9,6 +9,7 @@
  */
 import {z} from 'zod';
 import {sequenceEditClipPropertiesIntentSchema, sequenceEditDialogueIntentSchema, sequenceEditEnvelopeSchema,
+  sequenceEditPrevisIntentSchema,
   sequenceEditReferenceIntentSchema, sequenceEditSubjectIntentSchema, sequenceEditSubtitlesIntentSchema} from './sequence-edit.ts';
 import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
 import {sequenceEditingSchemas} from './sequence-editing.ts';
@@ -32,15 +33,17 @@ export const sequencePreviewRequestSchema = z.object({
   subjectIntent: sequenceEditSubjectIntentSchema.optional(),
   referenceIntent: sequenceEditReferenceIntentSchema.optional(),
   propertiesIntent: sequenceEditClipPropertiesIntentSchema.optional(),
+  previsIntent: sequenceEditPrevisIntentSchema.optional(),
   subtitlesIntent: sequenceEditSubtitlesIntentSchema.optional(),
   dialogueIntent: sequenceEditDialogueIntentSchema.optional(),
   allocation: allocationSchema.optional(),
 }).strict().superRefine((value, context) => {
   const families = [value.intents !== undefined, value.subjectIntent !== undefined,
     value.referenceIntent !== undefined, value.propertiesIntent !== undefined,
-    value.subtitlesIntent !== undefined, value.dialogueIntent !== undefined].filter(Boolean).length;
+    value.subtitlesIntent !== undefined, value.dialogueIntent !== undefined,
+    value.previsIntent !== undefined].filter(Boolean).length;
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
-    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent and dialogueIntent.'});
+    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent, dialogueIntent and previsIntent.'});
 });
 export const sequenceCommitRequestSchema = z.object({
   projectId: uuid,
@@ -54,6 +57,16 @@ export const sequenceHistoryCommandRequestSchema = sequenceEditingSchemas['seque
  * come from `project.get`; this operation never plans or writes. */
 export const sequenceBoardGetRequestSchema = z.object({projectId: uuid}).strict();
 const boardPoint = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
+const subjectVersionBoard = z.object({id: uuid, number: z.number().int().positive(), assetId: uuid}).strict();
+const subjectBoard = z.object({
+  id: uuid, name: z.string().min(1).max(500), kind: z.enum(['character', 'product', 'location', 'look']),
+  headVersionId: uuid, headNumber: z.number().int().positive(), headAssetId: uuid,
+  versions: z.array(subjectVersionBoard).max(200),
+}).strict();
+const bindingBoard = z.object({
+  id: uuid, shotId: uuid, subjectId: uuid, role: z.enum(['subject', 'style']),
+  bindingMode: z.enum(['follow', 'locked', 'detached']), subjectVersionId: uuid.nullable(), edgeId: uuid.nullable(),
+}).strict();
 export const sequenceBoardGetResponseSchema = z.object({
   projectId: uuid,
   timelineRevision: z.number().int().positive(),
@@ -63,6 +76,8 @@ export const sequenceBoardGetResponseSchema = z.object({
     id: uuid, kind: z.enum(['shot', 'node']), name: z.string().min(1).max(500),
     position: boardPoint.nullable(),
   }).strict()).max(500),
+  subjects: z.array(subjectBoard).max(500),
+  bindings: z.array(bindingBoard).max(500),
 }).strict();
 export type SequenceBoardGetRequest = z.infer<typeof sequenceBoardGetRequestSchema>;
 export type SequenceBoardGetResponse = z.infer<typeof sequenceBoardGetResponseSchema>;

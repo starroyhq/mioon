@@ -72,7 +72,7 @@ test('sequence.board.get exposes revisions, sync state and the archive for the r
   assert.equal(before.syncRevision, readSequenceEditContext(world.store).syncRevision);
   assert.equal(before.inSync, true);
   assert.deepEqual(before.archived, []);
-  assert.deepEqual(Object.keys(before).sort(), ['archived', 'inSync', 'projectId', 'syncRevision', 'timelineRevision'].sort());
+  assert.deepEqual(Object.keys(before).sort(), ['archived', 'bindings', 'inSync', 'projectId', 'subjects', 'syncRevision', 'timelineRevision'].sort());
 });
 
 test('a layout move is one undoable board action and does not change the timeline or sync revision', (t: test.TestContext) => {
@@ -178,8 +178,7 @@ test('preview allocates the new edge identity for connect and insert board actio
     edit: {kind: 'connect', fromId: shotA, toId: shotB}}}]);
   assert.ok(connectPreview.envelope.allocation.edges.some((edge: any) => edge.fromId === shotA && edge.toId === shotB));
   commit(service, world, connectPreview);
-  // The new edge id is allocated randomly, so the stored row order is not stable;
-  // the assertion is the exact edge set, compared in canonical order.
+  // A newly allocated random edge id decides `ORDER BY id`; compare the set, not the row order.
   assert.deepEqual(readSequenceEditContext(world.store).board.edges.map(edge => `${edge.fromId}>${edge.toId}`).sort(),
     [`${rootId}>${shotA}`, `${shotA}>${shotB}`].sort());
   undo(service, world);

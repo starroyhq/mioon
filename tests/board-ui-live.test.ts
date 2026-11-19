@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {projectLiveBoard} from '../apps/web/src/board-ui/live.ts';
+import {projectLiveBoard, subjectBindingCreateOperation, subjectBindingDetachOperation,
+  subjectCardCreateOperation, subjectCardDeleteOperation} from '../apps/web/src/board-ui/live.ts';
 import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
 import {boardConnectIntent, boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent} from '../apps/web/src/board-ui/live.ts';
 
@@ -118,7 +119,7 @@ test('an in-flight board command blocks a second click and preview failures surf
 test('the session binds history and read projections through the same operations', async () => {
   const history = {epoch: projectId, position: 2, revision: 3, undo: {actionId: id(80), operation: 'board.delete', affected: 1},
     redo: null, atEarliest: false};
-  const mount = {projectId, timelineRevision: 4, syncRevision: 2, inSync: true, archived: []};
+  const mount = {projectId, timelineRevision: 4, syncRevision: 2, inSync: true, archived: [], subjects: [], bindings: []};
   const {calls, rpc} = recorder({
     'sequence.history.get': () => history,
     'sequence.board.get': () => mount,
@@ -131,4 +132,104 @@ test('the session binds history and read projections through the same operations
   assert.equal(outcome.ok, true);
   assert.equal(calls.at(-1)!.input.actionId, id(80));
   assert.deepEqual(calls.at(-1)!.input.expected, {position: 2, revision: 3});
+});
+
+test('reference-line commands and the unified session carry the shared reference intent', async () => {
+  const {referenceAttachRequest, subjectBindingCreateRequest, referenceRoleRequest, referenceDetachRequest,
+    subjectBindingDetachRequest, referenceReorderRequest, isBoardEditRequest, unsupportedReasonKey,
+    referenceRoleOptions, unsupportedReferenceEdgeIds} = await import('../apps/web/src/board-ui/inputs.ts');
+  const attach = referenceAttachRequest(image, shotA, 'first_frame') as {referenceIntent: any};
+  assert.equal(attach.referenceIntent.side, 'board');
+  assert.equal(attach.referenceIntent.operation.kind, 'reference-edge');
+  assert.equal(attach.referenceIntent.operation.edit.kind, 'attach');
+  assert.equal(attach.referenceIntent.operation.edit.shotId, shotA);
+  assert.equal(attach.referenceIntent.operation.edit.sourceNodeId, image);
+  assert.equal(attach.referenceIntent.operation.edit.role, 'first_frame');
+  assert.match(attach.referenceIntent.operation.edit.edgeId, /^[0-9a-f-]{36}$/u);
+  const subject = subjectBindingCreateRequest(shotA, id(90), 'style') as {subjectIntent: any};
+  assert.equal(subject.subjectIntent.operation.edit.kind, 'create');
+  assert.equal(subject.subjectIntent.operation.edit.role, 'style');
+  assert.equal(isBoardEditRequest(attach), true);
+  assert.equal(isBoardEditRequest({side: 'board', operation: {kind: 'board'}}), false);
+  assert.equal((referenceRoleRequest(id(91), shotA, 'reference_image') as {referenceIntent: any})
+    .referenceIntent.operation.edit.role, 'reference_image');
+  assert.equal((referenceDetachRequest(id(91), shotA) as {referenceIntent: any})
+    .referenceIntent.operation.edit.kind, 'detach');
+  assert.equal((subjectBindingDetachRequest(id(92)) as {subjectIntent: any})
+    .subjectIntent.operation.edit.kind, 'detach');
+  assert.deepEqual((referenceReorderRequest(shotA, [id(93), id(94)]) as {referenceIntent: any})
+    .referenceIntent.operation.edit.edgeIds, [id(93), id(94)]);
+  assert.deepEqual(referenceRoleOptions('image'), ['first_frame', 'last_frame', 'reference_image', 'composition']);
+  assert.equal(unsupportedReasonKey('EXCLUSIVE_MODE'), 'boardUi.inputs.reason.exclusiveMode');
+  assert.equal(unsupportedReasonKey('SOMETHING_NEW'), 'boardUi.inputs.unsupported');
+  // No service selected changes nothing on the connectors.
+  assert.equal(unsupportedReferenceEdgeIds(null, []).size, 0);
+  assert.equal(unsupportedReferenceEdgeIds({service: null, entries: [{status: 'unsupported',
+    edgeId: id(96), source: 'edge', role: 'reference_audio', sourceKind: 'audio', label: 'x', orderIndex: 0}]} as never,
+  [{id: id(96), kind: 'reference'}]).size, 0);
+  // With a service, material and subject lines both map to their connector.
+  const unsupported = unsupportedReferenceEdgeIds({service: {providerId: 'wan', modelId: 'wan3.0-video',
+    modelName: 'Wan', profileId: 'p', profileVersion: 'v'}, entries: [{status: 'unsupported', edgeId: id(96),
+      source: 'edge', role: 'reference_audio', sourceKind: 'audio', label: 'x', orderIndex: 0},
+    {status: 'unsupported', bindingId: id(97), source: 'subject', role: 'subject_reference',
+      sourceKind: 'subject', label: 'y', orderIndex: 1}]} as never, [{id: id(96), kind: 'reference'},
+    {id: id(98), kind: 'reference', subjectBindingId: id(97)}]);
+  assert.deepEqual([...unsupported].sort(), [id(96), id(98)].sort());
+
+  const {calls, rpc} = recorder({
+    'sequence.preview': (input: any) => ({envelope: {contractVersion: 1, projectId, requestId: input.requestId,
+      referenceIntent: input.referenceIntent}, planDigest: 'c'.repeat(64), warnings: []}),
+    'sequence.commit': () => ({ok: true, actionId: id(95), operation: 'reference.attach',
+      receipt: {status: 'applied', actionId: id(95), operation: 'reference.attach'}}),
+  });
+  const session = new BoardUiSession(rpc, () => projectId);
+  const outcome = await session.run(attach);
+  assert.equal(outcome.ok, true);
+  assert.equal(calls[0]!.input.referenceIntent.operation.edit.kind, 'attach');
+  assert.equal(Object.hasOwn(calls[0]!.input, 'intents'), false);
+  assert.equal(calls[1]!.input.envelope.referenceIntent.operation.edit.kind, 'attach');
+});
+
+test('live projection names subject cards from retained subject rows and never copies works', () => {
+  const input = rows();
+  const cardId = id(70), subjectId = id(71), subjectVersion = id(72), subjectAsset = id(73);
+  const board = projectLiveBoard({...input, nodes: [...input.nodes, {id: cardId, type: 'subject_card',
+    subjectId, position: {x: 20, y: 700}}], subjects: [{id: subjectId, name: '阿琦', kind: 'character',
+    headVersionId: subjectVersion, headAssetId: subjectAsset}], thumbnailFor: asset => asset === subjectAsset ? 'subject-thumb' : null});
+  const card = board.nodes.find(node => node.id === cardId)!;
+  assert.equal(card.kind, 'subject');
+  assert.equal(card.name, '阿琦');
+  assert.equal(card.subjectId, subjectId);
+  assert.equal(card.subjectKind, 'character');
+  assert.equal(card.thumbnailUrl, 'subject-thumb');
+  assert.equal(board.nodes.filter(node => node.kind === 'subject').length, 1);
+});
+
+test('subject command builders and the subject preview/commit handshake keep identities', async () => {
+  assert.deepEqual(subjectCardCreateOperation(id(70), id(71), {x: 1, y: 2}),
+    {kind: 'subject.card.create', nodeId: id(70), subjectId: id(71), position: {x: 1, y: 2}});
+  assert.deepEqual(subjectCardDeleteOperation(id(70)), {kind: 'subject.card.delete', nodeId: id(70)});
+  assert.deepEqual(subjectBindingCreateOperation(id(80), id(3), id(71), 'style'), {kind: 'subject-binding',
+    edit: {kind: 'create', bindingId: id(80), shotId: id(3), subjectId: id(71), role: 'style'}});
+  assert.deepEqual(subjectBindingDetachOperation(id(80)), {kind: 'subject-binding', edit: {kind: 'detach', bindingId: id(80)}});
+  const envelope = {contractVersion: 1, projectId, requestId: 'subject-1', subjectIntent: {side: 'board',
+    operation: subjectCardDeleteOperation(id(70))}};
+  const {calls, rpc} = recorder({
+    'sequence.preview': () => ({envelope, planDigest: 'c'.repeat(64), warnings: []}),
+    'sequence.commit': () => ({ok: true, actionId: id(90), operation: 'subject.card.delete',
+      receipt: {status: 'applied', actionId: id(90), operation: 'subject.card.delete'}}),
+  });
+  const session = new BoardUiSession(rpc, () => projectId);
+  const outcome = await session.runSubject(subjectCardDeleteOperation(id(70)));
+  assert.equal(outcome.ok, true);
+  assert.deepEqual(calls[0]!.input, {projectId, requestId: calls[0]!.input.requestId,
+    subjectIntent: {side: 'board', operation: {kind: 'subject.card.delete', nodeId: id(70)}}});
+  assert.deepEqual(calls[1]!.input.envelope, envelope);
+  assert.equal(calls[1]!.input.expectedPlanDigest, 'c'.repeat(64));
+  const busy = new BoardUiSession(recorder({
+    'sequence.preview': async () => {await new Promise(() => {}); return {envelope, planDigest: 'd'.repeat(64)};},
+  }).rpc, () => projectId);
+  void busy.runSubject(subjectCardDeleteOperation(id(70)));
+  const second = await busy.runSubject(subjectCardDeleteOperation(id(70)));
+  assert.equal(second.ok, false);
 });

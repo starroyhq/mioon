@@ -855,6 +855,12 @@ export const operationMessages = {
     "en": "Read-only board mounting projection for format-5 projects: timeline and sync revisions, whether the active film chain still matches the main track, and archived board rows UI can restore; never plans or writes",
     "ja": "フォーマット5画板のマウント投影を読み取り専用で取得します。タイムラインと同期リビジョン、現在の完成映像チェーンがメイントラックと一致するか、復元可能なアーカイブ済み画板行を返し、計画や書き込みは行いません"
   },
+  "operation.sequence.generation-inputs.get": {
+    "zh-Hans": "只读计算一个镜头的实际生成输入投影：模式、各引用线的角色/来源/顺序、当前服务不支持的原因、主图和实际用到几项；不写项目、任务或回执",
+    "zh-Hant": "唯讀計算一個鏡頭的實際生成輸入投影：模式、各引用線的角色/來源/順序、目前服務不支援的原因、主圖和實際用到幾項；不寫專案、任務或回執",
+    "en": "Read-only projection of one shot's actual generation inputs: mode, each reference line's role/source/order, stable unsupported reasons for the selected service, the primary image and how many inputs are used; writes no project, job or receipt",
+    "ja": "1つのショットの実際の生成入力を読み取り専用で計算します。モード、各参照リンクの役割/参照元/順序、現在のサービスで未対応の理由、メイン画像、実際に使用する件数を返し、プロジェクト、ジョブ、回執は書き込みません"
+  },
   "operation.sequence.undo": {
     "zh-Hans": "按格式5统一历史游标撤销一个已保存动作；仅当动作、位置和修订仍匹配时写回原逆补丁并推进业务修订",
     "zh-Hant": "依格式5統一歷史游標復原一個已儲存動作；僅當動作、位置和修訂仍符合時寫回原逆向補丁並推進業務修訂",

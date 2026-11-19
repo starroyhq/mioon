@@ -4,8 +4,11 @@
  * project service builds the baseline, impact and any new clip/edge allocation.
  * One in-flight command per session prevents double clicks from writing twice.
  */
-import type {SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt} from '../../../../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt,
+  SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {format5RequestId} from '../edit-ui/session.ts';
+import type {BoardEditRequest} from './inputs.ts';
+import {isBoardEditRequest} from './inputs.ts';
 import type {SequenceHistoryView} from '../edit-ui/session.ts';
 
 type Row = Record<string, any>;
@@ -23,12 +26,25 @@ export interface BoardHistoryView extends SequenceHistoryView {
 }
 export interface BoardArchivedRow {readonly id: string; readonly kind: 'shot' | 'node'; readonly name: string;
   readonly position: {readonly x: number; readonly y: number} | null}
+export interface BoardSubjectVersion {readonly id: string; readonly number: number; readonly assetId: string}
+export interface BoardSubject {
+  readonly id: string; readonly name: string; readonly kind: 'character' | 'product' | 'location' | 'look';
+  readonly headVersionId: string; readonly headNumber: number; readonly headAssetId: string;
+  readonly versions: readonly BoardSubjectVersion[];
+}
+export interface BoardBinding {
+  readonly id: string; readonly shotId: string; readonly subjectId: string; readonly role: 'subject' | 'style';
+  readonly bindingMode: 'follow' | 'locked' | 'detached'; readonly subjectVersionId: string | null;
+  readonly edgeId: string | null;
+}
 export interface BoardMountView {
   readonly projectId: string;
   readonly timelineRevision: number;
   readonly syncRevision: number;
   readonly inSync: boolean;
   readonly archived: readonly BoardArchivedRow[];
+  readonly subjects: readonly BoardSubject[];
+  readonly bindings: readonly BoardBinding[];
 }
 export interface BoardSuccess {readonly ok: true; readonly actionId: string; readonly operation: string;
   readonly status: 'applied' | 'not_applied'; readonly receipt: SequenceEditReceipt}
@@ -62,7 +78,32 @@ export class BoardUiSession {
   private endpoint(operation: string): (input: unknown) => Promise<unknown> {
     return input => this.rpc(operation, input);
   }
-  async run(intent: SequenceEditIntent): Promise<BoardOutcome> {
+  /** Preview exactly one action family: a CS/TS intent, or an RI reference-line
+   * request. Subject binding actions keep their separate `runSubject` path. */
+  async run(request: SequenceEditIntent | BoardEditRequest): Promise<BoardOutcome> {
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      const payload = isBoardEditRequest(request) ? request : {intents: [request]};
+      let preview: Row | null;
+      try {
+        preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
+          ...payload}));
+      } catch (error) {return {ok: false, code: codeOf(error)};}
+      if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
+        ids: preview.ids as string[] | undefined};
+      const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
+      if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      try {
+        return receiptOutcome(await this.endpoint('sequence.commit')({projectId,
+          envelope, expectedPlanDigest: preview.planDigest}));
+      } catch (error) {return {ok: false, code: codeOf(error)};}
+    } finally {this.inFlight = false;}
+  }
+  async runSubject(operation: SubjectEditOperation, allocation?: SequenceEditAllocation): Promise<BoardOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
@@ -70,8 +111,8 @@ export class BoardUiSession {
       if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
       let preview: Row | null;
       try {
-        preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
-          intents: [intent]}));
+        preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('subject-preview'),
+          subjectIntent: {side: 'board', operation}, ...(allocation ? {allocation} : {})}));
       } catch (error) {return {ok: false, code: codeOf(error)};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),

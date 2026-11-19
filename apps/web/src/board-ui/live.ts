@@ -6,13 +6,17 @@
  */
 import {deriveFilmChains} from '../../../../packages/contracts/src/board-sequence.ts';
 import type {ChainReferenceRole} from '../../../../packages/contracts/src/board-sequence.ts';
-import type {SequenceEditIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditIntent, SubjectBindingOperation, SubjectCardOperation, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {projectBoardUi} from './projection.ts';
 import type {BoardGenerationStatus, BoardUiNode, BoardUiProjection} from './projection.ts';
 import type {BoardUiEdge} from './BoardUiStatic.tsx';
 import type {BoardPortId} from './connection-ports.ts';
 
 type Row = Record<string, any>;
+export interface BoardLiveSubject {
+  readonly id: string; readonly name: string; readonly kind: 'character' | 'product' | 'location' | 'look';
+  readonly headVersionId: string; readonly headAssetId: string;
+}
 export interface BoardLiveInput {
   readonly shots: readonly Row[];
   readonly nodes: readonly Row[];
@@ -22,6 +26,7 @@ export interface BoardLiveInput {
   readonly jobs?: readonly Row[];
   /** Saved timeline clips; supplies a chain node's length when no applied version explains it. */
   readonly clips?: readonly Row[];
+  readonly subjects?: readonly BoardLiveSubject[];
   /** Project frame ratio, used only for the film-root card. */
   readonly frameAspect?: string | null;
   /** Readable media thumbnail for one asset, or null when the media is absent. */
@@ -66,6 +71,7 @@ export function shotStatus(shot: Row, versions: readonly Row[], jobs: readonly R
 /** Build the same UI-B1 cards/edges the static fixture uses, from persisted rows. */
 export function projectLiveBoard(input: BoardLiveInput): BoardLive {
   const versions = input.versions ?? [], assets = input.assets ?? [], jobs = input.jobs ?? [], clips = input.clips ?? [];
+  const subjectRows = new Map((input.subjects ?? []).map(subject => [subject.id, subject]));
   const clipDuration = (nodeId: string): number | null => {
     let frames = 0;
     for (const clip of clips) {
@@ -96,12 +102,15 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
     const kind = text(node.type) ? NODE_KINDS[String(node.type)] : undefined;
     if (!id || !kind || seen.has(id)) continue;
     seen.add(id);
-    const name = (kind === 'text' ? text(node.text) : null) ?? text(node.name) ?? text(node.label) ?? text(node.text)
+    const subject = kind === 'subject' && text(node.subjectId) ? subjectRows.get(String(node.subjectId)) : undefined;
+    const name = subject?.name ?? (kind === 'text' ? text(node.text) : null) ?? text(node.name) ?? text(node.label) ?? text(node.text)
       ?? (kind === 'subject' ? text(node.subjectId) ?? 'Subject' : id);
     nodes.push({id, kind, name,
       ...(kind === 'film' ? {aspectRatio: input.frameAspect ?? null} : {}),
       ...(kind === 'shot' ? {} : {durationFrames: clipDuration(id)}),
-      thumbnailUrl: kind === 'image' || kind === 'video' || kind === 'previs' ? assetThumb(node.assetId) : null});
+      ...(kind === 'subject' && subject ? {subjectId: subject.id, subjectKind: subject.kind} : {}),
+      thumbnailUrl: kind === 'subject' ? assetThumb(subject?.headAssetId) :
+        kind === 'image' || kind === 'video' || kind === 'previs' ? assetThumb(node.assetId) : null});
     const position = point(node.position);
     if (position) positions[id] = position;
   }
@@ -114,6 +123,8 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
     if (edge.kind === 'sequence') edges.push({id, kind: 'sequence', sourceId, targetId});
     else if (edge.kind === 'reference') edges.push({id, kind: 'reference', sourceId, targetId,
       ...(text(edge.role) ? {role: String(edge.role) as ChainReferenceRole} : {}),
+      ...(text(edge.sourceAssetId) ? {sourceAssetId: String(edge.sourceAssetId)} : {}),
+      ...(text(edge.subjectBindingId) ? {subjectBindingId: String(edge.subjectBindingId)} : {}),
       ...(text(edge.sourceHandle) ? {sourcePort: String(edge.sourceHandle) as BoardPortId} : {}),
       ...(text(edge.targetHandle) ? {targetPort: String(edge.targetHandle) as BoardPortId} : {})});
   }
@@ -147,3 +158,29 @@ export const boardShotAppendIntent = (nodeId: string, name: string, position?: {
   ({side: 'board', operation: {kind: 'board.shot.append', nodeId, name,
     ...(position ? {position: {x: position.x, y: position.y}} : {})}});
 export const boardNodeKey = (id: string): string => id;
+
+
+// ---------------------------------------------------------------------------
+// SB-b subject-card and binding intents
+// ---------------------------------------------------------------------------
+export const subjectCardCreateOperation = (nodeId: string, subjectId: string, position: {x: number; y: number}): SubjectCardOperation =>
+  ({kind: 'subject.card.create', nodeId, subjectId, position: {x: position.x, y: position.y}});
+export const subjectCardDeleteOperation = (nodeId: string): SubjectCardOperation =>
+  ({kind: 'subject.card.delete', nodeId});
+
+export interface SubjectBindable {
+  readonly bindingId: string; readonly shotId: string; readonly subjectId: string; readonly role: 'subject' | 'style';
+  readonly bindingMode: 'follow' | 'locked' | 'detached'; readonly subjectVersionId: string | null;
+}
+export const subjectBindingCreateOperation = (bindingId: string, shotId: string, subjectId: string,
+  role: 'subject' | 'style'): SubjectEditOperation => ({kind: 'subject-binding',
+    edit: {kind: 'create', bindingId, shotId, subjectId, role}});
+export const subjectBindingModeOperation = (bindingId: string, mode: 'follow' | 'locked',
+  subjectVersionId: string | null): SubjectEditOperation => ({kind: 'subject-binding',
+    edit: {kind: 'set-mode', bindingId, bindingMode: mode, subjectVersionId}});
+export const subjectBindingDetachOperation = (bindingId: string): SubjectEditOperation =>
+  ({kind: 'subject-binding', edit: {kind: 'detach', bindingId}});
+export const subjectBindingRestoreOperation = (bindingId: string, mode: 'follow' | 'locked',
+  subjectVersionId: string | null): SubjectEditOperation => ({kind: 'subject-binding',
+    edit: {kind: 'restore', bindingId, bindingMode: mode, subjectVersionId}});
+export type {SubjectBindingOperation, SubjectCardOperation, SubjectEditOperation};

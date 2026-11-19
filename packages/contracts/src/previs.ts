@@ -57,13 +57,19 @@ const name = z.string().max(PREVIS_LIMITS.nameLength).regex(/^[^\u0000-\u001f\u0
 const figureId = z.string().regex(/^f[1-9][0-9]{0,3}$/), propId = z.string().regex(/^p[1-9][0-9]{0,3}$/), keyframeId = z.string().regex(/^k[1-9][0-9]{0,3}$/);
 const coordinate = measure(-100, 100), angle = measure(-180, 180), tilt = measure(-90, 90), extent = measure(0.01, 20);
 const vector = z.tuple([coordinate, coordinate, coordinate]);
+/** An optional subject a mannequin or prop stands for (format 5). The same
+ * follow/locked meaning as subject bindings: no `subjectVersionId` follows the
+ * subject head when the reference is used, a version locks that exact version.
+ * There is no detached state here: removing the field removes the reference. */
+export const previsSubjectReferenceSchema = z.object({subjectId: id, subjectVersionId: id.optional()}).strict();
+export type PrevisSubjectReference = z.infer<typeof previsSubjectReferenceSchema>;
 export const previsCameraSchema = z.object({position: vector, yaw: angle, pitch: tilt, focalLength: measure(10, 300)}).strict();
 export const previsFigureSchema = z.object({id: figureId, name, visible: z.boolean(), position: vector, rotation: angle, pose: z.enum(PREVIS_POSES),
-  held: z.object({propId, hand: z.enum(PREVIS_HANDS)}).strict().nullable()}).strict();
+  held: z.object({propId, hand: z.enum(PREVIS_HANDS)}).strict().nullable(), subject: previsSubjectReferenceSchema.optional()}).strict();
 // Sizes are width, height and depth in metres; a cylinder or sphere uses the
 // width as its diameter.
 export const previsPropSchema = z.object({id: propId, kind: z.enum(PREVIS_PROP_KINDS), name, visible: z.boolean(), position: vector, rotation: angle,
-  size: z.tuple([extent, extent, extent])}).strict();
+  size: z.tuple([extent, extent, extent]), subject: previsSubjectReferenceSchema.optional()}).strict();
 export const previsLightSchema = z.object({visible: z.boolean(), azimuth: angle, elevation: tilt, intensity: measure(0, 4)}).strict();
 // Exports are the newest exported images of a keyframe, oldest first.
 export const previsKeyframeSchema = z.object({id: keyframeId, name, camera: previsCameraSchema,
@@ -94,6 +100,23 @@ export const previsSceneSchema = sceneShape.superRefine((scene, context) => {
   const issue = previsSceneIssue(scene);
   if (issue) context.addIssue({code: z.ZodIssueCode.custom, message: issue});
 });
+/** One scene element that names a subject, in figure-then-prop order. */
+export interface PrevisSubjectReferenceEntry {
+  readonly elementKind: 'figure' | 'prop';
+  readonly elementId: string;
+  readonly reference: PrevisSubjectReference;
+}
+/** Every mannequin/prop subject reference of a scene, in stable order. Reading
+ * tolerates the optional field in every format; only format-5 saves may write
+ * it, where the service resolves each reference before storing the scene. */
+export function previsSceneSubjectReferences(scene: PrevisScene): readonly PrevisSubjectReferenceEntry[] {
+  return [
+    ...scene.figures.flatMap(figure => figure.subject === undefined ? []
+      : [{elementKind: 'figure' as const, elementId: figure.id, reference: figure.subject}]),
+    ...scene.props.flatMap(prop => prop.subject === undefined ? []
+      : [{elementKind: 'prop' as const, elementId: prop.id, reference: prop.subject}]),
+  ];
+}
 /** The scene of a new previs node: one standing figure, the key light and an
  * eye-level camera. Names stay empty; the editor shows localized defaults. */
 export function defaultPrevisScene(): PrevisScene {

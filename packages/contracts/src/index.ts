@@ -147,10 +147,11 @@ const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRo
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 import {sequenceEditRpcSchemas} from './sequence-edit-rpc.ts';
-import {sequenceInspectionSchemas} from './sequence-inspection.ts';
+import {sequenceGenerationInputSchemas, sequenceInspectionSchemas} from './sequence-inspection.ts';
 export const schemas={
 ...sequenceEditRpcSchemas,
 ...sequenceInspectionSchemas,
+...sequenceGenerationInputSchemas,
 ...exportControlSchemas,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
@@ -344,6 +345,7 @@ Object.assign(descriptions,{
  'sequence.commit':'只提交与预览计划摘要一致的共享格式5同步envelope；一个事务写画板、时间线、基线、回执和历史，稳定请求重放不重复写',
  'sequence.history.get':'只读查询格式5统一编辑历史的游标和当前撤销/重做动作摘要；不创建时间线、不写回执',
  'sequence.board.get':'只读读取格式5画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执',
+ 'sequence.generation-inputs.get':'只读计算一个镜头的实际生成输入投影：模式、各引用线的角色/来源/顺序、服务不支持的原因、主图和实际用到几项；不写项目、任务或回执',
  'sequence.undo':'按格式5统一历史游标撤销一个已保存动作；仅当动作、位置和修订仍匹配时写回原逆补丁并推进业务修订',
  'sequence.redo':'按格式5统一历史游标重做一个已撤销动作，复用原正向补丁和身份；不重新规划或分配ID',
  'timeline.history.get':'只读查询时间线编辑历史与撤销/重做位置；不创建时间线，不包含媒体或生成任务',

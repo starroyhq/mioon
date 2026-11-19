@@ -13,6 +13,7 @@ import {
   isSequenceEditInputDigest, isSequenceEditIntentSequence, isSequenceEditRequestId, isSequenceEditUuid,
   sequenceEditEnvelopeOperationName, sequenceEditEnvelopeSchema, sequenceEditHistoryEntrySchema,
   sequenceEditImpactCount, sequenceEditIntentOperationName, sequenceEditIntentSide, sequenceEditOperationName,
+  sequenceEditPrevisIntentSchema, sequenceEditPrevisOperationName,
   sequenceEditReceiptSchema, sequenceEditReferenceIntentSchema, sequenceEditReferenceOperationName,
   sequenceEditSubjectIntentSchema, sequenceEditSubjectOperationName, sequenceEditUtf8Bytes,
 } from '../packages/contracts/src/sequence-edit.ts';
@@ -20,8 +21,10 @@ import type {
   BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditBaselineChange, SequenceEditEnvelope,
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
-  ReferenceEdgeOperation, SequenceEditReferenceIntent, SubjectBindingOperation,
+  SequenceEditPrevisIntent, PrevisIntentOperation, ReferenceEdgeOperation,
+  SequenceEditReferenceIntent, SubjectBindingOperation, SubjectEditOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
+import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
 const projectId = uuid('1'), filmId = uuid('2'), actionId = uuid('3'), epoch = uuid('4');
@@ -67,6 +70,17 @@ function envelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEn
   };
 }
 const cardNode = uuid('13'), bindingEdgeId = uuid('92');
+const previsNode = uuid('55');
+const previsIntentOf = (operation: PrevisIntentOperation): SequenceEditPrevisIntent => ({side: 'board', operation});
+const createPrevis: PrevisIntentOperation = {kind: 'previs-create', nodeId: previsNode, label: 'Scene',
+  position: {x: 20, y: 30}};
+const savePrevis: PrevisIntentOperation = {kind: 'previs-scene-set', nodeId: previsNode,
+  expectedSceneRevision: 1, scene: defaultPrevisScene()};
+function previsEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
+  return envelope({intents: [], previsIntent: previsIntentOf(createPrevis),
+    impact: {nodeIds: [previsNode], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},
+    baseline: {...envelope().baseline, targets: []}, ...overrides});
+}
 function bindingEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
   return subjectEnvelope({allocation: {clips: [], nodes: [], splitClips: [],
     edges: [{id: bindingEdgeId, fromId: cardNode, toId: shotA}]}, ...overrides});
@@ -128,11 +142,16 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
   ];
-  const subjectSamples: Array<[SubjectBindingOperation, string]> = [
+  const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
     [lockBinding, 'subject.binding.set-mode'],
     [detachBinding, 'subject.binding.detach'],
     [restoreBinding, 'subject.binding.restore'],
+    [{kind: 'subject.card.create', nodeId: nodeA, subjectId: uuid('60'), position: {x: 0, y: 0}}, 'subject.card.create'],
+    [{kind: 'subject.card.delete', nodeId: nodeA}, 'subject.card.delete'],
+  ];
+  const previsSamples: Array<[PrevisIntentOperation, string]> = [
+    [createPrevis, 'previs.create'], [savePrevis, 'previs.scene.set'],
   ];
   const referenceSamples: Array<[ReferenceEdgeOperation, string]> = [
     [{kind: 'reference-edge', edit: {kind: 'attach', edgeId: uuid('94'), shotId: shotA,
@@ -140,13 +159,21 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'reference-edge', edit: {kind: 'set-role', edgeId: uuid('94'), shotId: shotA,
       role: 'reference_image'}}, 'reference.role.set'],
     [{kind: 'reference-edge', edit: {kind: 'detach', edgeId: uuid('94'), shotId: shotA}}, 'reference.detach'],
+    [{kind: 'reference-edge', edit: {kind: 'reorder', shotId: shotA, edgeIds: [uuid('94'), uuid('95')]}}, 'reference.reorder'],
   ];
-  assert.equal(subjectSamples.length, 4);
-  assert.equal(referenceSamples.length, 3);
-  assert.equal(samples.length + subjectSamples.length + referenceSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
+  assert.equal(subjectSamples.length, 6);
+  assert.equal(previsSamples.length, 2);
+  assert.equal(referenceSamples.length, 4);
+  assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length,
+    SEQUENCE_EDIT_OPERATIONS.length);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');
+    assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
+    assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
+  }
+  for (const [operation, name] of previsSamples) {
+    assert.equal(sequenceEditPrevisOperationName(operation), name);
     assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
     assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
   }
@@ -267,6 +294,39 @@ test('subject binding intents validate the mode/version pair and stay board-only
     'the allocated edge must target the created binding shot');
 });
 
+test('previs intents are one board family: create and scene-save name their node in the impact', () => {
+  assert.equal(isSequenceEditEnvelope(previsEnvelope()), true);
+  assert.equal(sequenceEditPrevisIntentSchema.safeParse(previsIntentOf(createPrevis)).success, true);
+  assert.equal(sequenceEditPrevisIntentSchema.safeParse(previsIntentOf(savePrevis)).success, true);
+  assert.equal(sequenceEditEnvelopeOperationName(previsEnvelope()), 'previs.create');
+  assert.equal(sequenceEditEnvelopeOperationName(previsEnvelope({previsIntent: previsIntentOf(savePrevis)})), 'previs.scene.set');
+  assert.equal(sequenceEditPrevisOperationName(createPrevis), 'previs.create');
+  assert.equal(sequenceEditPrevisOperationName(savePrevis), 'previs.scene.set');
+  // The node is a board row: create carries exactly one new impact node and the
+  // save lists the node it replaces; neither combines with another family.
+  assert.equal(sequenceEditEnvelopeSchema.safeParse(previsEnvelope()).success, true);
+  assert.equal(sequenceEditEnvelopeSchema.safeParse(previsEnvelope({previsIntent: previsIntentOf(savePrevis),
+    baseline: {...envelope().baseline, targets: [{kind: 'node', id: previsNode, revision: 3}]}})).success, true);
+  const rejected: unknown[] = [
+    previsEnvelope({impact: {...previsEnvelope().impact, nodeIds: [nodeA]}}),
+    previsEnvelope({baseline: {...previsEnvelope().baseline, targets: [{kind: 'node', id: previsNode, revision: 1}]}}),
+    previsEnvelope({intents: [intent(connect)]}),
+    previsEnvelope({subjectIntent: subjectIntent(createBinding)}),
+    previsEnvelope({propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties',
+      edits: [{clipId: clipA, patch: {gain: 1}}]}}}),
+    envelope({intents: [], subjectIntent: subjectIntent(createBinding), previsIntent: previsIntentOf(createPrevis)}),
+    previsEnvelope({previsIntent: previsIntentOf(savePrevis),
+      impact: {...previsEnvelope().impact, nodeIds: [nodeA]}}),
+    previsEnvelope({previsIntent: {side: 'timeline', operation: createPrevis} as never}),
+    previsEnvelope({previsIntent: previsIntentOf({kind: 'previs-create', nodeId: 'not-a-uuid', label: '',
+      position: {x: 0, y: 0}})}),
+  ];
+  for (const candidate of rejected) {
+    assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false, JSON.stringify(candidate).slice(0, 200));
+  }
+
+});
+
 test('subtitle intents carry one timeline action with cue impact and unique identifiers', () => {
   const cueA = '10000000-0000-4000-8000-000000000070';
   const cueB = '10000000-0000-4000-8000-000000000071';
@@ -306,6 +366,7 @@ test('reference edge intents stay board-only and require the pre-allocated mater
   for (const operation of [
     {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: referenceEdgeId, shotId: shotA, role: 'reference_image'}},
     {kind: 'reference-edge', edit: {kind: 'detach', edgeId: referenceEdgeId, shotId: shotA}},
+    {kind: 'reference-edge', edit: {kind: 'reorder', shotId: shotA, edgeIds: [referenceEdgeId]}},
   ] as ReferenceEdgeOperation[]) {
     assert.equal(sequenceEditReferenceIntentSchema.safeParse(referenceIntent(operation)).success, true);
     assert.equal(isSequenceEditEnvelope(referenceEnvelope({referenceIntent: referenceIntent(operation),
@@ -328,6 +389,14 @@ test('reference edge intents stay board-only and require the pre-allocated mater
     // A malformed role never enters the contract.
     referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'set-role',
       edgeId: referenceEdgeId, shotId: shotA, role: 'not_a_role' as never}})}),
+    // Reorder needs every reordered edge listed in the impact.
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'reorder',
+      shotId: shotA, edgeIds: [referenceEdgeId, uuid('95')]}})}),
+    // Reorder rejects duplicate and empty edge lists.
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'reorder',
+      shotId: shotA, edgeIds: [referenceEdgeId, referenceEdgeId]}})}),
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'reorder',
+      shotId: shotA, edgeIds: []}})}),
   ];
   for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
     JSON.stringify(candidate).slice(0, 160));

@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="8afa2973cecb50cfa0cbd9ccaa719f935882ca50c7c9a26e93d9bb27bd5f415a";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="11a18dd5d5620f5b5e863cc5a8e93b7e1fcd2715f8c2dcb5d137871271f47c74";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -732,26 +732,165 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "const": "board"
      },
      "operation": {
-      "type": "object",
-      "properties": {
-       "kind": {
-        "type": "string",
-        "const": "subject-binding"
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "subject-binding"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "create"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "subjectId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "subject",
+               "style"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "shotId",
+             "subjectId",
+             "role"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "set-mode"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "detach"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "restore"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
        },
-       "edit": {
+       {
         "anyOf": [
          {
           "type": "object",
           "properties": {
            "kind": {
             "type": "string",
-            "const": "create"
+            "const": "subject.card.create"
            },
-           "bindingId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-           },
-           "shotId": {
+           "nodeId": {
             "type": "string",
             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
            },
@@ -759,20 +898,28 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "type": "string",
             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
            },
-           "role": {
-            "type": "string",
-            "enum": [
-             "subject",
-             "style"
-            ]
+           "position": {
+            "type": "object",
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
            }
           },
           "required": [
            "kind",
-           "bindingId",
-           "shotId",
+           "nodeId",
            "subjectId",
-           "role"
+           "position"
           ],
           "additionalProperties": false
          },
@@ -781,103 +928,22 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
           "properties": {
            "kind": {
             "type": "string",
-            "const": "set-mode"
+            "const": "subject.card.delete"
            },
-           "bindingId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-           },
-           "bindingMode": {
-            "type": "string",
-            "enum": [
-             "follow",
-             "locked"
-            ]
-           },
-           "subjectVersionId": {
-            "anyOf": [
-             {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             {
-              "type": "null"
-             }
-            ]
-           }
-          },
-          "required": [
-           "kind",
-           "bindingId",
-           "bindingMode",
-           "subjectVersionId"
-          ],
-          "additionalProperties": false
-         },
-         {
-          "type": "object",
-          "properties": {
-           "kind": {
-            "type": "string",
-            "const": "detach"
-           },
-           "bindingId": {
+           "nodeId": {
             "type": "string",
             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
            }
           },
           "required": [
            "kind",
-           "bindingId"
-          ],
-          "additionalProperties": false
-         },
-         {
-          "type": "object",
-          "properties": {
-           "kind": {
-            "type": "string",
-            "const": "restore"
-           },
-           "bindingId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-           },
-           "bindingMode": {
-            "type": "string",
-            "enum": [
-             "follow",
-             "locked"
-            ]
-           },
-           "subjectVersionId": {
-            "anyOf": [
-             {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             {
-              "type": "null"
-             }
-            ]
-           }
-          },
-          "required": [
-           "kind",
-           "bindingId",
-           "bindingMode",
-           "subjectVersionId"
+           "nodeId"
           ],
           "additionalProperties": false
          }
         ]
        }
-      },
-      "required": [
-       "kind",
-       "edit"
-      ],
-      "additionalProperties": false
+      ]
      }
     },
     "required": [
@@ -1002,6 +1068,34 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "shotId"
           ],
           "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "reorder"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "edgeIds": {
+            "type": "array",
+            "items": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 48
+           }
+          },
+          "required": [
+           "kind",
+           "shotId",
+           "edgeIds"
+          ],
+          "additionalProperties": false
          }
         ]
        }
@@ -1089,6 +1183,503 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "edits"
       ],
       "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
+   "previsIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "board"
+     },
+     "operation": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "previs-create"
+         },
+         "nodeId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "label": {
+          "type": "string",
+          "maxLength": 150
+         },
+         "position": {
+          "type": "object",
+          "properties": {
+           "x": {
+            "type": "number"
+           },
+           "y": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "x",
+           "y"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kind",
+         "nodeId",
+         "label",
+         "position"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "previs-scene-set"
+         },
+         "nodeId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "expectedSceneRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+         },
+         "scene": {
+          "type": "object",
+          "properties": {
+           "schemaVersion": {
+            "type": "number",
+            "const": 1
+           },
+           "figures": {
+            "type": "array",
+            "items": {
+             "type": "object",
+             "properties": {
+              "id": {
+               "type": "string",
+               "pattern": "^f[1-9][0-9]{0,3}$"
+              },
+              "name": {
+               "type": "string",
+               "maxLength": 20,
+               "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+              },
+              "visible": {
+               "type": "boolean"
+              },
+              "position": {
+               "type": "array",
+               "minItems": 3,
+               "maxItems": 3,
+               "items": [
+                {
+                 "type": "number",
+                 "minimum": -100,
+                 "maximum": 100
+                },
+                {
+                 "type": "number",
+                 "minimum": -100,
+                 "maximum": 100
+                },
+                {
+                 "type": "number",
+                 "minimum": -100,
+                 "maximum": 100
+                }
+               ]
+              },
+              "rotation": {
+               "type": "number",
+               "minimum": -180,
+               "maximum": 180
+              },
+              "pose": {
+               "type": "string",
+               "enum": [
+                "stand",
+                "walk",
+                "sit",
+                "hold",
+                "look-back"
+               ]
+              },
+              "held": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "properties": {
+                  "propId": {
+                   "type": "string",
+                   "pattern": "^p[1-9][0-9]{0,3}$"
+                  },
+                  "hand": {
+                   "type": "string",
+                   "enum": [
+                    "left",
+                    "right"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "propId",
+                  "hand"
+                 ],
+                 "additionalProperties": false
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "subject": {
+               "type": "object",
+               "properties": {
+                "subjectId": {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                "subjectVersionId": {
+                 "type": "string",
+                 "format": "uuid"
+                }
+               },
+               "required": [
+                "subjectId"
+               ],
+               "additionalProperties": false
+              }
+             },
+             "required": [
+              "id",
+              "name",
+              "visible",
+              "position",
+              "rotation",
+              "pose",
+              "held"
+             ],
+             "additionalProperties": false
+            },
+            "maxItems": 8
+           },
+           "props": {
+            "type": "array",
+            "items": {
+             "type": "object",
+             "properties": {
+              "id": {
+               "type": "string",
+               "pattern": "^p[1-9][0-9]{0,3}$"
+              },
+              "kind": {
+               "type": "string",
+               "enum": [
+                "box",
+                "cylinder",
+                "sphere",
+                "panel",
+                "umbrella",
+                "phone",
+                "bag",
+                "cup"
+               ]
+              },
+              "name": {
+               "type": "string",
+               "maxLength": 20,
+               "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+              },
+              "visible": {
+               "type": "boolean"
+              },
+              "position": {
+               "type": "array",
+               "minItems": 3,
+               "maxItems": 3,
+               "items": [
+                {
+                 "type": "number",
+                 "minimum": -100,
+                 "maximum": 100
+                },
+                {
+                 "type": "number",
+                 "minimum": -100,
+                 "maximum": 100
+                },
+                {
+                 "type": "number",
+                 "minimum": -100,
+                 "maximum": 100
+                }
+               ]
+              },
+              "rotation": {
+               "type": "number",
+               "minimum": -180,
+               "maximum": 180
+              },
+              "size": {
+               "type": "array",
+               "minItems": 3,
+               "maxItems": 3,
+               "items": [
+                {
+                 "type": "number",
+                 "minimum": 0.01,
+                 "maximum": 20
+                },
+                {
+                 "type": "number",
+                 "minimum": 0.01,
+                 "maximum": 20
+                },
+                {
+                 "type": "number",
+                 "minimum": 0.01,
+                 "maximum": 20
+                }
+               ]
+              },
+              "subject": {
+               "type": "object",
+               "properties": {
+                "subjectId": {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                "subjectVersionId": {
+                 "type": "string",
+                 "format": "uuid"
+                }
+               },
+               "required": [
+                "subjectId"
+               ],
+               "additionalProperties": false
+              }
+             },
+             "required": [
+              "id",
+              "kind",
+              "name",
+              "visible",
+              "position",
+              "rotation",
+              "size"
+             ],
+             "additionalProperties": false
+            },
+            "maxItems": 24
+           },
+           "light": {
+            "type": "object",
+            "properties": {
+             "visible": {
+              "type": "boolean"
+             },
+             "azimuth": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+             },
+             "elevation": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+             },
+             "intensity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 4
+             }
+            },
+            "required": [
+             "visible",
+             "azimuth",
+             "elevation",
+             "intensity"
+            ],
+            "additionalProperties": false
+           },
+           "camera": {
+            "type": "object",
+            "properties": {
+             "position": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": [
+               {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100
+               },
+               {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100
+               },
+               {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 100
+               }
+              ]
+             },
+             "yaw": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+             },
+             "pitch": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+             },
+             "focalLength": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 300
+             }
+            },
+            "required": [
+             "position",
+             "yaw",
+             "pitch",
+             "focalLength"
+            ],
+            "additionalProperties": false
+           },
+           "keyframes": {
+            "type": "array",
+            "items": {
+             "type": "object",
+             "properties": {
+              "id": {
+               "type": "string",
+               "pattern": "^k[1-9][0-9]{0,3}$"
+              },
+              "name": {
+               "type": "string",
+               "maxLength": 20,
+               "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+              },
+              "camera": {
+               "type": "object",
+               "properties": {
+                "position": {
+                 "type": "array",
+                 "minItems": 3,
+                 "maxItems": 3,
+                 "items": [
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  },
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  },
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  }
+                 ]
+                },
+                "yaw": {
+                 "type": "number",
+                 "minimum": -180,
+                 "maximum": 180
+                },
+                "pitch": {
+                 "type": "number",
+                 "minimum": -90,
+                 "maximum": 90
+                },
+                "focalLength": {
+                 "type": "number",
+                 "minimum": 10,
+                 "maximum": 300
+                }
+               },
+               "required": [
+                "position",
+                "yaw",
+                "pitch",
+                "focalLength"
+               ],
+               "additionalProperties": false
+              },
+              "exports": {
+               "type": "array",
+               "items": {
+                "type": "string",
+                "format": "uuid"
+               },
+               "maxItems": 4
+              }
+             },
+             "required": [
+              "id",
+              "name",
+              "camera",
+              "exports"
+             ],
+             "additionalProperties": false
+            },
+            "maxItems": 24
+           },
+           "activeKeyframeId": {
+            "anyOf": [
+             {
+              "type": "string",
+              "pattern": "^k[1-9][0-9]{0,3}$"
+             },
+             {
+              "type": "null"
+             }
+            ]
+           }
+          },
+          "required": [
+           "schemaVersion",
+           "figures",
+           "props",
+           "light",
+           "camera",
+           "keyframes",
+           "activeKeyframeId"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kind",
+         "nodeId",
+         "expectedSceneRevision",
+         "scene"
+        ],
+        "additionalProperties": false
+       }
+      ]
      }
     },
     "required": [
@@ -1727,26 +2318,165 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "const": "board"
        },
        "operation": {
-        "type": "object",
-        "properties": {
-         "kind": {
-          "type": "string",
-          "const": "subject-binding"
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "subject-binding"
+           },
+           "edit": {
+            "anyOf": [
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "create"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "shotId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "subjectId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "role": {
+                "type": "string",
+                "enum": [
+                 "subject",
+                 "style"
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId",
+               "shotId",
+               "subjectId",
+               "role"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "set-mode"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "bindingMode": {
+                "type": "string",
+                "enum": [
+                 "follow",
+                 "locked"
+                ]
+               },
+               "subjectVersionId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId",
+               "bindingMode",
+               "subjectVersionId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "detach"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "restore"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "bindingMode": {
+                "type": "string",
+                "enum": [
+                 "follow",
+                 "locked"
+                ]
+               },
+               "subjectVersionId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId",
+               "bindingMode",
+               "subjectVersionId"
+              ],
+              "additionalProperties": false
+             }
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "edit"
+          ],
+          "additionalProperties": false
          },
-         "edit": {
+         {
           "anyOf": [
            {
             "type": "object",
             "properties": {
              "kind": {
               "type": "string",
-              "const": "create"
+              "const": "subject.card.create"
              },
-             "bindingId": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             "shotId": {
+             "nodeId": {
               "type": "string",
               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
              },
@@ -1754,20 +2484,28 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "type": "string",
               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
              },
-             "role": {
-              "type": "string",
-              "enum": [
-               "subject",
-               "style"
-              ]
+             "position": {
+              "type": "object",
+              "properties": {
+               "x": {
+                "type": "number"
+               },
+               "y": {
+                "type": "number"
+               }
+              },
+              "required": [
+               "x",
+               "y"
+              ],
+              "additionalProperties": false
              }
             },
             "required": [
              "kind",
-             "bindingId",
-             "shotId",
+             "nodeId",
              "subjectId",
-             "role"
+             "position"
             ],
             "additionalProperties": false
            },
@@ -1776,103 +2514,22 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "properties": {
              "kind": {
               "type": "string",
-              "const": "set-mode"
+              "const": "subject.card.delete"
              },
-             "bindingId": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             "bindingMode": {
-              "type": "string",
-              "enum": [
-               "follow",
-               "locked"
-              ]
-             },
-             "subjectVersionId": {
-              "anyOf": [
-               {
-                "type": "string",
-                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-               },
-               {
-                "type": "null"
-               }
-              ]
-             }
-            },
-            "required": [
-             "kind",
-             "bindingId",
-             "bindingMode",
-             "subjectVersionId"
-            ],
-            "additionalProperties": false
-           },
-           {
-            "type": "object",
-            "properties": {
-             "kind": {
-              "type": "string",
-              "const": "detach"
-             },
-             "bindingId": {
+             "nodeId": {
               "type": "string",
               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
              }
             },
             "required": [
              "kind",
-             "bindingId"
-            ],
-            "additionalProperties": false
-           },
-           {
-            "type": "object",
-            "properties": {
-             "kind": {
-              "type": "string",
-              "const": "restore"
-             },
-             "bindingId": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             "bindingMode": {
-              "type": "string",
-              "enum": [
-               "follow",
-               "locked"
-              ]
-             },
-             "subjectVersionId": {
-              "anyOf": [
-               {
-                "type": "string",
-                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-               },
-               {
-                "type": "null"
-               }
-              ]
-             }
-            },
-            "required": [
-             "kind",
-             "bindingId",
-             "bindingMode",
-             "subjectVersionId"
+             "nodeId"
             ],
             "additionalProperties": false
            }
           ]
          }
-        },
-        "required": [
-         "kind",
-         "edit"
-        ],
-        "additionalProperties": false
+        ]
        }
       },
       "required": [
@@ -1997,6 +2654,34 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "shotId"
             ],
             "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "reorder"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "edgeIds": {
+              "type": "array",
+              "items": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "minItems": 1,
+              "maxItems": 48
+             }
+            },
+            "required": [
+             "kind",
+             "shotId",
+             "edgeIds"
+            ],
+            "additionalProperties": false
            }
           ]
          }
@@ -2084,6 +2769,503 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "edits"
         ],
         "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "previsIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "board"
+       },
+       "operation": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "previs-create"
+           },
+           "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "label": {
+            "type": "string",
+            "maxLength": 150
+           },
+           "position": {
+            "type": "object",
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "nodeId",
+           "label",
+           "position"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "previs-scene-set"
+           },
+           "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "expectedSceneRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+           },
+           "scene": {
+            "type": "object",
+            "properties": {
+             "schemaVersion": {
+              "type": "number",
+              "const": 1
+             },
+             "figures": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "properties": {
+                "id": {
+                 "type": "string",
+                 "pattern": "^f[1-9][0-9]{0,3}$"
+                },
+                "name": {
+                 "type": "string",
+                 "maxLength": 20,
+                 "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+                },
+                "visible": {
+                 "type": "boolean"
+                },
+                "position": {
+                 "type": "array",
+                 "minItems": 3,
+                 "maxItems": 3,
+                 "items": [
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  },
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  },
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  }
+                 ]
+                },
+                "rotation": {
+                 "type": "number",
+                 "minimum": -180,
+                 "maximum": 180
+                },
+                "pose": {
+                 "type": "string",
+                 "enum": [
+                  "stand",
+                  "walk",
+                  "sit",
+                  "hold",
+                  "look-back"
+                 ]
+                },
+                "held": {
+                 "anyOf": [
+                  {
+                   "type": "object",
+                   "properties": {
+                    "propId": {
+                     "type": "string",
+                     "pattern": "^p[1-9][0-9]{0,3}$"
+                    },
+                    "hand": {
+                     "type": "string",
+                     "enum": [
+                      "left",
+                      "right"
+                     ]
+                    }
+                   },
+                   "required": [
+                    "propId",
+                    "hand"
+                   ],
+                   "additionalProperties": false
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                },
+                "subject": {
+                 "type": "object",
+                 "properties": {
+                  "subjectId": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "subjectVersionId": {
+                   "type": "string",
+                   "format": "uuid"
+                  }
+                 },
+                 "required": [
+                  "subjectId"
+                 ],
+                 "additionalProperties": false
+                }
+               },
+               "required": [
+                "id",
+                "name",
+                "visible",
+                "position",
+                "rotation",
+                "pose",
+                "held"
+               ],
+               "additionalProperties": false
+              },
+              "maxItems": 8
+             },
+             "props": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "properties": {
+                "id": {
+                 "type": "string",
+                 "pattern": "^p[1-9][0-9]{0,3}$"
+                },
+                "kind": {
+                 "type": "string",
+                 "enum": [
+                  "box",
+                  "cylinder",
+                  "sphere",
+                  "panel",
+                  "umbrella",
+                  "phone",
+                  "bag",
+                  "cup"
+                 ]
+                },
+                "name": {
+                 "type": "string",
+                 "maxLength": 20,
+                 "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+                },
+                "visible": {
+                 "type": "boolean"
+                },
+                "position": {
+                 "type": "array",
+                 "minItems": 3,
+                 "maxItems": 3,
+                 "items": [
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  },
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  },
+                  {
+                   "type": "number",
+                   "minimum": -100,
+                   "maximum": 100
+                  }
+                 ]
+                },
+                "rotation": {
+                 "type": "number",
+                 "minimum": -180,
+                 "maximum": 180
+                },
+                "size": {
+                 "type": "array",
+                 "minItems": 3,
+                 "maxItems": 3,
+                 "items": [
+                  {
+                   "type": "number",
+                   "minimum": 0.01,
+                   "maximum": 20
+                  },
+                  {
+                   "type": "number",
+                   "minimum": 0.01,
+                   "maximum": 20
+                  },
+                  {
+                   "type": "number",
+                   "minimum": 0.01,
+                   "maximum": 20
+                  }
+                 ]
+                },
+                "subject": {
+                 "type": "object",
+                 "properties": {
+                  "subjectId": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "subjectVersionId": {
+                   "type": "string",
+                   "format": "uuid"
+                  }
+                 },
+                 "required": [
+                  "subjectId"
+                 ],
+                 "additionalProperties": false
+                }
+               },
+               "required": [
+                "id",
+                "kind",
+                "name",
+                "visible",
+                "position",
+                "rotation",
+                "size"
+               ],
+               "additionalProperties": false
+              },
+              "maxItems": 24
+             },
+             "light": {
+              "type": "object",
+              "properties": {
+               "visible": {
+                "type": "boolean"
+               },
+               "azimuth": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+               },
+               "elevation": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+               },
+               "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 4
+               }
+              },
+              "required": [
+               "visible",
+               "azimuth",
+               "elevation",
+               "intensity"
+              ],
+              "additionalProperties": false
+             },
+             "camera": {
+              "type": "object",
+              "properties": {
+               "position": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": [
+                 {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100
+                 },
+                 {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100
+                 },
+                 {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100
+                 }
+                ]
+               },
+               "yaw": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+               },
+               "pitch": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+               },
+               "focalLength": {
+                "type": "number",
+                "minimum": 10,
+                "maximum": 300
+               }
+              },
+              "required": [
+               "position",
+               "yaw",
+               "pitch",
+               "focalLength"
+              ],
+              "additionalProperties": false
+             },
+             "keyframes": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "properties": {
+                "id": {
+                 "type": "string",
+                 "pattern": "^k[1-9][0-9]{0,3}$"
+                },
+                "name": {
+                 "type": "string",
+                 "maxLength": 20,
+                 "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+                },
+                "camera": {
+                 "type": "object",
+                 "properties": {
+                  "position": {
+                   "type": "array",
+                   "minItems": 3,
+                   "maxItems": 3,
+                   "items": [
+                    {
+                     "type": "number",
+                     "minimum": -100,
+                     "maximum": 100
+                    },
+                    {
+                     "type": "number",
+                     "minimum": -100,
+                     "maximum": 100
+                    },
+                    {
+                     "type": "number",
+                     "minimum": -100,
+                     "maximum": 100
+                    }
+                   ]
+                  },
+                  "yaw": {
+                   "type": "number",
+                   "minimum": -180,
+                   "maximum": 180
+                  },
+                  "pitch": {
+                   "type": "number",
+                   "minimum": -90,
+                   "maximum": 90
+                  },
+                  "focalLength": {
+                   "type": "number",
+                   "minimum": 10,
+                   "maximum": 300
+                  }
+                 },
+                 "required": [
+                  "position",
+                  "yaw",
+                  "pitch",
+                  "focalLength"
+                 ],
+                 "additionalProperties": false
+                },
+                "exports": {
+                 "type": "array",
+                 "items": {
+                  "type": "string",
+                  "format": "uuid"
+                 },
+                 "maxItems": 4
+                }
+               },
+               "required": [
+                "id",
+                "name",
+                "camera",
+                "exports"
+               ],
+               "additionalProperties": false
+              },
+              "maxItems": 24
+             },
+             "activeKeyframeId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^k[1-9][0-9]{0,3}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "schemaVersion",
+             "figures",
+             "props",
+             "light",
+             "camera",
+             "keyframes",
+             "activeKeyframeId"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "nodeId",
+           "expectedSceneRevision",
+           "scene"
+          ],
+          "additionalProperties": false
+         }
+        ]
        }
       },
       "required": [
@@ -2924,6 +4106,32 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    }
   },
   "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.generation-inputs.get": {
+  "type": "object",
+  "properties": {
+   "shotId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "connectionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "configurationRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "modelEntryId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "shotId"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
@@ -5203,6 +6411,23 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "type": "null"
           }
          ]
+        },
+        "subject": {
+         "type": "object",
+         "properties": {
+          "subjectId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "subjectVersionId": {
+           "type": "string",
+           "format": "uuid"
+          }
+         },
+         "required": [
+          "subjectId"
+         ],
+         "additionalProperties": false
         }
        },
        "required": [
@@ -5296,6 +6521,23 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "maximum": 20
           }
          ]
+        },
+        "subject": {
+         "type": "object",
+         "properties": {
+          "subjectId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "subjectVersionId": {
+           "type": "string",
+           "format": "uuid"
+          }
+         },
+         "required": [
+          "subjectId"
+         ],
+         "additionalProperties": false
         }
        },
        "required": [

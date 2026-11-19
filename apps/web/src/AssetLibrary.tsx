@@ -73,6 +73,8 @@ export interface AssetLibraryProps {
   subjectBlocked?: boolean;
   onInspectShot?: ((shotId: string) => void) | undefined;
   onInspectSubject?: ((subjectId: string) => void) | undefined;
+  /** Only the format-5 board enables dragging subject cards onto the canvas. */
+  subjectDragToBoard?: boolean | undefined;
   inspectedSubjectId?: string | null;
   timelineUsage?: UsageSnapshot;
   onLocateTimelineUse?: ((use: TimelineAssetUse, isStillCurrent: () => boolean) => void) | undefined;
@@ -81,7 +83,7 @@ export interface AssetLibraryProps {
 
   confirm?: unknown;
 }
-export default function AssetLibrary({ activeTab, onTabChange, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, onDetectScenes, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, onInspectSubject, inspectedSubjectId, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked,  confirm }: AssetLibraryProps) {
+export default function AssetLibrary({ activeTab, onTabChange, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, onDetectScenes, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, onInspectSubject, inspectedSubjectId, subjectDragToBoard, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked,  confirm }: AssetLibraryProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const editing = mode === 'editing';
   const gate = useProjectMediaReadGate();
@@ -191,7 +193,7 @@ export default function AssetLibrary({ activeTab, onTabChange, assets, filter, o
         onTimeline={typeof onTimeline !== 'function' ? undefined : () => onTimeline(menuAsset.id)} timelineDisabled={!project || Boolean(busy.timeline)} onPreview={() => onPreview(menuAsset)}
         onDetectScenes={onDetectScenes ? () => onDetectScenes(menuAsset) : undefined} />}
       </div></WorkspaceVisibilityProvider>
-      {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary  subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} onInspectSubject={onInspectSubject} inspectedSubjectId={inspectedSubjectId} /></div></WorkspaceVisibilityProvider>}
+      {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary  subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} onInspectSubject={onInspectSubject} inspectedSubjectId={inspectedSubjectId} dragToBoard={subjectDragToBoard} /></div></WorkspaceVisibilityProvider>}
     </CollapsibleContent>
   </Collapsible>;
 }
