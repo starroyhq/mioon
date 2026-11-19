@@ -11,7 +11,8 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
-import {projectLiveBoard, boardDeleteIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent,
+import {assetKind, dragAsset} from '../../../apps/web/src/Timeline.tsx';
+import {projectLiveBoard, boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
@@ -57,6 +58,7 @@ function Harness(): React.ReactElement {
   const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
   const [generationOptions, setGenerationOptions] = useState<Record<string, Record<string, unknown>>>({});
   const [inputs, setInputs] = useState<SequenceGenerationInputView | null>(null);
+  const [revealNodeId, setRevealNodeId] = useState<string | null>(null);
   const stateRef = useRef<Row>({});
   const session = useRef(new BoardUiSession(rpc, () => projectId));
   const refresh = useCallback(async (): Promise<void> => {
@@ -74,6 +76,51 @@ function Harness(): React.ReactElement {
     }
   }, []);
   useEffect(() => {void refresh();}, [refresh]);
+  const boardNodeType = (kind: string): 'image' | 'video' | 'audio' | null =>
+    kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null;
+  const freeBoardPosition = (): {x: number; y: number} => {
+    const positions = Object.values<{x: number; y: number}>((stateRef.current.positions ?? {}));
+    const xs = positions.map(point => point.x), ys = positions.map(point => point.y);
+    const center = {x: (Math.min(0, ...xs) + Math.max(0, ...xs)) / 2, y: (Math.min(0, ...ys) + Math.max(0, ...ys)) / 2};
+    for (let ring = 0; ring < 20; ring += 1) for (let dx = -ring; dx <= ring; dx += 1) for (let dy = -ring; dy <= ring; dy += 1) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+      const candidate = {x: center.x + dx * 310, y: center.y + dy * 300};
+      if (!positions.some(point => Math.abs(point.x - candidate.x) < 260 && Math.abs(point.y - candidate.y) < 264)) return candidate;
+    }
+    return {x: 100, y: 100};
+  };
+  const addAssetToBoard = useCallback(async (kind: string, asset: Row): Promise<void> => {
+    const nodeType = boardNodeType(kind);
+    if (!nodeType) return;
+    const nodeId = uuid();
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(boardNodeCreateIntent(nodeId, nodeType, String(asset.name ?? '素材'),
+        freeBoardPosition(), {assetId: String(asset.id)}));
+      if (!outcome.ok) return;
+      setNotice({id: outcome.actionId, message: `Added ${String(asset.name ?? '')}`});
+      await refresh();
+      setSelectedNodeId(nodeId); setRevealNodeId(nodeId);
+    } finally {setBusy(false);}
+  }, [refresh]);
+  const dropAssetOnBoard = useCallback(async (assetId: string, position: {x: number; y: number}): Promise<void> => {
+    const asset = (data?.assets ?? []).find((item: Row) => item.id === assetId) as Row | undefined;
+    if (!asset) return;
+    const kind = String(asset.mimeType ?? '').split('/')[0] ?? '';
+    const nodeType = boardNodeType(kind);
+    if (!nodeType) return;
+    const nodeId = uuid();
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(boardNodeCreateIntent(nodeId, nodeType, String(asset.name ?? '素材'),
+        position, {assetId: String(asset.id)}));
+      if (!outcome.ok) return;
+      setNotice({id: outcome.actionId, message: `Added ${String(asset.name ?? '')}`});
+      await refresh();
+      setSelectedNodeId(nodeId); setRevealNodeId(nodeId);
+    } finally {setBusy(false);}
+  }, [data, refresh]);
+
   useEffect(() => {
     const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
     if (!shot) {setInputs(null); return;}
@@ -238,7 +285,8 @@ function Harness(): React.ReactElement {
         selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} runReference={runReference}
         runSubject={runSubject} inputs={inputs}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
-        notice={notice} reduceMotion={reduced} busy={busy}/>
+        notice={notice} reduceMotion={reduced} busy={busy}
+        onAssetDrop={(assetId, position) => {void dropAssetOnBoard(assetId, position);}} revealNodeId={revealNodeId}/>
     </main>
     <aside className="board-fixture-inspector">
       <BoardInspector board={projection} activeFilmId={activeFilmId} mount={mount} selectedNodeId={selectedNodeId}
@@ -253,6 +301,14 @@ function Harness(): React.ReactElement {
         providers={providers} generationOptions={generationOptions[selectedNodeId!]}
         inputs={inputs} onGenerationOptionsChange={updateGenerationOptions} onInputRoleChange={changeInputRole as never}
         onInputDetach={detachInput} onInputPrimary={setPrimaryInput}/>
+      <aside className="board-fixture-assets" data-testid="board-fixture-assets">
+        {(data?.assets ?? []).map((asset: Row) => <div key={asset.id} className="asset-card"
+          data-testid={`asset-card-${asset.id}`} draggable onDragStart={event => dragAsset(event.nativeEvent as unknown as Parameters<typeof dragAsset>[0], asset.id)}>
+          <strong>{asset.name}</strong>
+          <button type="button" data-testid={`asset-to-canvas-${asset.id}`}
+            onClick={() => {void addAssetToBoard(assetKind(asset as never), asset);}}>添加到画板</button>
+        </div>)}
+      </aside>
       <section className="board-fixture-subjects" data-testid="board-fixture-subjects">
         <h4>{t('boardUi.inspector.subjects')}</h4>
         {(mount?.subjects ?? []).map(subject => <div key={subject.id} className="board-fixture-subject"

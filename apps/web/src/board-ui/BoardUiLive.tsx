@@ -12,7 +12,7 @@ import type {BoardPortConnection} from './connection-ports.ts';
 import type {BoardUiEdge} from './BoardUiStatic.tsx';
 import type {BoardLive} from './live.ts';
 import {boardConnectIntent, boardDeleteIntent, boardDisconnectIntent, boardDuplicateIntent, boardInsertIntent,
-  boardLayoutIntent, boardRestoreIntent, boardRootCreateIntent, boardShotAppendIntent} from './live.ts';
+  boardLayoutIntent, boardNodeCreateIntent, boardRestoreIntent, boardRootCreateIntent, boardShotAppendIntent} from './live.ts';
 import type {BoardHistoryView, BoardMountView, BoardOutcome} from './live-session.ts';
 import type {SequenceEditAllocation, SequenceEditIntent, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {subjectBindingCreateOperation, subjectBindingDetachOperation, subjectBindingRestoreOperation,
@@ -49,6 +49,10 @@ export interface BoardUiLiveProps {
   readonly reduceMotion?: boolean;
   readonly busy?: boolean;
   readonly showErrors?: boolean;
+  /** FR-C2: an asset-library card dropped on the board. */
+  readonly onAssetDrop?: (assetId: string, position: {x: number; y: number}) => void;
+  /** FR-C2: pan this newly-created card into view. */
+  readonly revealNodeId?: string | null;
 }
 
 function messageOf(t: ReturnType<typeof useI18n>['t'], code: string): string {
@@ -63,6 +67,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [copied, setCopied] = useState<readonly {kind: 'shot' | 'node'; id: string}[]>([]);
   const [menu, setMenu] = useState<{x: number; y: number; nodeId: string} | null>(null);
+  const [paneMenu, setPaneMenu] = useState<{x: number; y: number; position: {x: number; y: number}} | null>(null);
   const busy = Boolean(props.busy);
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const selectedEdge = selectedEdgeId ? props.board.edges.find(edge => edge.id === selectedEdgeId) ?? null : null;
@@ -233,13 +238,15 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   };
   const menuNode = menu ? props.board.nodes.find(node => node.id === menu.nodeId) : null;
   return <div className="board-ui-live" data-testid="board-ui-live" data-busy={busy ? 'true' : undefined}
-    onContextMenu={contextMenu} onPointerDown={event => { if (!(event.target as HTMLElement).closest('.board-ui-context-menu')) setMenu(null); }}>
+    onContextMenu={contextMenu} onPointerDown={event => { if (!(event.target as HTMLElement).closest('.board-ui-context-menu')) {setMenu(null); setPaneMenu(null);} }}>
     <BoardUiStatic projection={props.board.projection} nodes={props.board.nodes} edges={props.board.edges}
       positions={props.board.positions} reduceMotion={props.reduceMotion} selectedNodeId={props.selectedNodeId}
       onSelectNode={props.onSelectNode} onConnect={connectSequence} onAddShot={addShot}
       showInspector={false} selectedEdgeId={selectedEdgeId} onSelectEdge={setSelectedEdgeId}
       onNodesMoved={moveNodes} filmSynced={props.mount?.inSync ?? true} virtualize={props.board.nodes.length > 200}
-      onSubjectDrop={dropSubject} unsupportedEdgeIds={unsupportedEdges}/>
+      onSubjectDrop={dropSubject} unsupportedEdgeIds={unsupportedEdges} onAssetDrop={props.onAssetDrop}
+      onPaneContextMenu={(position, screen) => setPaneMenu({position, x: screen.x, y: screen.y})}
+      revealNodeId={props.revealNodeId}/>
     <div className="board-ui-live-toolbar" role="toolbar" aria-label={t('boardUi.board')}>
       <button type="button" data-testid="board-ui-add-shot" disabled={busy} onClick={addShot}>{t('boardUi.addShot')}</button>
       <button type="button" data-testid="board-ui-add-root" disabled={busy} onClick={addRoot}>{t('boardUi.addRoot')}</button>
@@ -248,6 +255,21 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
       <button type="button" data-testid="board-ui-archive" disabled={busy} aria-expanded={archiveOpen}
         onClick={() => setArchiveOpen(open => !open)}>{t('boardUi.archiveCount', {count: archived.length})}</button>
     </div>
+    {paneMenu && <div className="board-ui-context-menu" role="menu" data-testid="board-pane-menu"
+      style={{left: paneMenu.x, top: paneMenu.y}} onPointerDown={event => event.stopPropagation()}>
+      <button type="button" role="menuitem" data-testid="board-pane-add-text" disabled={busy}
+        onClick={() => {
+          const nodeId = uuid();
+          edit(boardNodeCreateIntent(nodeId, 'text', t('projects.default.note'), paneMenu.position, {text: ''}),
+            t('boardUi.notice.textAdded'));
+          setPaneMenu(null);
+        }}>{t('boardUi.menu.addText')}</button>
+      <button type="button" role="menuitem" data-testid="board-pane-paste" disabled={busy || !copied.length}
+        onClick={() => {
+          duplicate(copied);
+          setPaneMenu(null);
+        }}>{t('boardUi.menu.paste')}</button>
+    </div>}
     {menu && menuNode && menuNode.kind !== 'film' && menuNode.kind !== 'subject' && <div className="board-ui-context-menu"
       role="menu" data-testid="board-ui-context-menu" style={{left: menu.x, top: menu.y}}>
       <button type="button" role="menuitem" data-testid="board-menu-copy" onClick={() => copy(menu.nodeId)}>{t('boardUi.menu.copy')}</button>
