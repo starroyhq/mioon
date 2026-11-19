@@ -178,6 +178,7 @@ test('preview allocates the new edge identity for connect and insert board actio
     edit: {kind: 'connect', fromId: shotA, toId: shotB}}}]);
   assert.ok(connectPreview.envelope.allocation.edges.some((edge: any) => edge.fromId === shotA && edge.toId === shotB));
   commit(service, world, connectPreview);
+  // A newly allocated random edge id decides `ORDER BY id`; compare the set, not the row order.
   assert.deepEqual(readSequenceEditContext(world.store).board.edges.map(edge => `${edge.fromId}>${edge.toId}`).sort(),
     [`${rootId}>${shotA}`, `${shotA}>${shotB}`].sort());
   undo(service, world);

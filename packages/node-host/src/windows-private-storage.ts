@@ -20,6 +20,8 @@ export interface WindowsStorageNative {
   syncManagedDirectory?(directory:string,options:NativeManagedOptions):void;
   renameManaged?(source:string,destination:string,options:NativeManagedOptions,metadata:()=>Stats):NativeInspection;
   removeManaged?(file:string,options:NativeManagedOptions):void;
+  /** Read-only Windows volume/sync-root facts for project locations. */
+  projectVolumeFacts?(path:string):unknown;
 }
 const unavailable=()=>new PrivateStorageError('WINDOWS_ACL_UNIMPLEMENTED','The complete Windows private storage helper is unavailable.','STORAGE_PRIVACY_UNAVAILABLE');
 const failure=(error:unknown):never=>{

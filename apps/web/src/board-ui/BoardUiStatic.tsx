@@ -22,6 +22,10 @@ export interface BoardUiEdge {
   readonly role?: ChainReferenceRole;
   readonly sourcePort?: BoardPortId;
   readonly targetPort?: BoardPortId;
+  /** RI-b material-line source asset; present only on reference edges. */
+  readonly sourceAssetId?: string;
+  /** RI-b/SB-b owner binding row; subject lines are edited by the subject card. */
+  readonly subjectBindingId?: string;
 }
 
 export interface BoardUiStaticProps {
@@ -46,6 +50,10 @@ export interface BoardUiStaticProps {
   readonly virtualize?: boolean;
   /** SB-b: drop a subject from the library at the flow position. */
   readonly onSubjectDrop?: (subjectId: string, position: {readonly x: number; readonly y: number}) => void;
+  /** RI-b: reference lines the selected service cannot use, so the connector
+   * shows the same state as the property panel (empty while no service is
+   * selected). */
+  readonly unsupportedEdgeIds?: ReadonlySet<string>;
 }
 
 type Film = BoardUiProjection['films'][number];
@@ -141,8 +149,9 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
     if (!connection || connection.kind !== edge.kind) return [];
     const base = {id: edge.id, source: connection.sourceId, target: connection.targetId, sourceHandle: connection.sourcePort, targetHandle: connection.targetPort};
     return connection.kind === 'sequence' ? [{...base, type: 'sequence', data: {reduceMotion, selected: edge.id === props.selectedEdgeId}}]
-      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion, selected: edge.id === props.selectedEdgeId}}];
-  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId]);
+      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion,
+        selected: edge.id === props.selectedEdgeId, unsupported: props.unsupportedEdgeIds?.has(edge.id) === true}}];
+  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId, props.unsupportedEdgeIds]);
   const locate = (id: string) => {
     select(id);
     const node = flow.getNode(id);

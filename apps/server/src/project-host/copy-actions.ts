@@ -14,7 +14,7 @@ import {captureClosedProjectSnapshot} from '../../../../packages/business/src/pr
 import {inspectProjectFormatHeader} from '../../../../packages/business/src/project-file/connection.ts';
 import {withLockedProjectCopy} from '../../../../packages/business/src/project-file/adopt-copy.ts';
 import {createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, inspectCopiedProjectFile, openProjectBackup,
-  publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
+  publishProjectCopyDirectory, publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {initializeProjectCopyHistory, readProjectCopyHistory} from '../../../../packages/business/src/project-file/copy-history.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/store.ts';
 import {copyProjectVersionsToNewProjectInside} from '../../../../packages/business/src/project-versions/copy-to-project.ts';
@@ -177,7 +177,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
           throw copyFailure('PROJECT_FILE_EXISTS', '目标文件或文件夹已存在。');
         }
         if (!matches(folder, intent.directoryPlaceholderIdentity) || readdirSync(folder).length !== 0) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '模板目标文件夹已被占用，未合并或覆盖。');
-        renameSync(intent.stageDirectory!, folder); syncCopiedDirectory(path.dirname(folder));
+        publishProjectCopyDirectory(intent.stageDirectory!, folder); syncCopiedDirectory(path.dirname(folder));
       } else {
         const found = copyIdentity(target);
         if (found && !sameCopyIdentity(found, intent.placeholderIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标已被其他文件占用。');

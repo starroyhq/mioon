@@ -4,6 +4,7 @@ import {isProjectFileHeld} from '../packages/business/src/project-file/held-file
 import {isAppLibraryHeld} from '../packages/business/src/app-db/connection.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import test from 'node:test';
+import {projectLocationDecision} from '../apps/desktop/src/project-location-policy.ts';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
@@ -334,6 +335,7 @@ function backupLocationPicker(file:string,options:{facts?:ProjectLocationFacts;p
   nativeDialogs:tokens,trayHost:null,refreshApplicationMenu:()=>{},ownsWindow:()=>current,
   finishNativePresentation:()=>{calls.push(['finish']);},nt:(key:string)=>key,nativeBackendCurrent:check,
   nativeOwner:()=>current?{window,isCurrent:()=>current}:null,
+  projectLocationDecision,
   probeDesktopProjectLocation:async(input:unknown)=>{calls.push(['probe',input]);assert.equal(tokens.size,0,'save sheet lease is released before location admission');return options.probe?options.probe(input):options.facts??{fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};},
   showOwnedDialog:async(parent:unknown,ownerContext:unknown,warning:unknown)=>{calls.push(['warning',warning]);assert.equal(parent,window);assert.equal(ownerContext,context);await options.warning?.();return 0;},
   dialog:{showSaveDialog:async(parent:unknown)=>{calls.push(['save']);assert.equal(parent,window);return {canceled:false,filePath:file};}}};

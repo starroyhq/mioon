@@ -289,6 +289,8 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /onValueChange=\{changeMode\}/);
   assert.match(app, /workspaceMode === 'canvas'/);
   assert.match(app, /workspaceMode === 'editing'/);
+  assert.match(app, /subjectDragToBoard=\{format5 && workspaceMode === 'canvas'\}/);
+  assert.doesNotMatch(app, /subjectDragToBoard=\{format5\}/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);
 });
