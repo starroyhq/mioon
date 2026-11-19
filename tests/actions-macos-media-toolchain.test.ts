@@ -153,7 +153,11 @@ test('the macOS media workflow uses the cached, re-verified toolchain and upload
   assert.match(workflow, /media-environment\.ts --platform=darwin --output=artifacts\/macos-media-ffmpeg9\/media\.json/);
   assert.match(workflow, /probe\.alphaOverlayProbe\?\.variant !== 'alpha-mode-tag'/);
   assert.match(workflow, /macos-media-toolchain\.ts evidence --cache=unavailable/);
-  assert.match(workflow, /node --test tests\/timeline-image-media\.test\.ts tests\/timeline-image-filter\.test\.ts/);
+  // The comparison lane must use the reviewed test entry so macOS gets the
+  // fixed /private/tmp TMPDIR; a bare `node --test` traverses the /var symlink
+  // and the private-storage policy rejects it.
+  assert.match(workflow, /node scripts\/tooling\.ts test --suite=macos-media --file=timeline-image-media\.test\.ts --file=timeline-image-filter\.test\.ts --reporter=tap/);
+  assert.doesNotMatch(workflow, /node --test tests\//);
   assert.match(workflow, /node scripts\/tooling\.ts test --suite=macos-media --concurrency=2 --reporter=tap[\s\S]*Run the reviewed macOS media group \(FFmpeg 9\)|Run the reviewed macOS media group \(FFmpeg 9\)[\s\S]*node scripts\/tooling\.ts test --suite=macos-media --concurrency=2 --reporter=tap/);
   assert.match(workflow, /name: macos-media-ffmpeg9-evidence/);
 });

@@ -127,7 +127,7 @@ jobs:
         run: node .github/scripts/macos-media-toolchain.ts evidence --cache=unavailable --media=artifacts/macos-media-ffmpeg9/media.json --output=artifacts/macos-media-ffmpeg9/toolchain.json
 
       - name: Run the premultiplied overlay media tests (FFmpeg 9)
-        run: node --test tests/timeline-image-media.test.ts tests/timeline-image-filter.test.ts
+        run: node scripts/tooling.ts test --suite=macos-media --file=timeline-image-media.test.ts --file=timeline-image-filter.test.ts --reporter=tap
 
       - name: Run the reviewed macOS media group (FFmpeg 9)
         run: node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap
