@@ -55,9 +55,26 @@ test('editing text diffing reuses ids, adds and removes only the changed lines',
 
 test('the dirty flag compares lines, speakers and order', () => {
   const lines = [line(1, '一', subjectA), line(2, '二')];
-  assert.equal(dialoguePanelDirty(lines, parseDialogueText(formatDialogueText(lines, names), names)), false);
-  assert.equal(dialoguePanelDirty(lines, parseDialogueText('二\n阿璃：一', names)), true);
-  assert.equal(dialoguePanelDirty(lines, parseDialogueText('一\n二', names)), true, 'a dropped speaker is a change');
+  assert.equal(dialoguePanelDirty(lines, parseDialogueText(formatDialogueText(lines, names), names), names), false);
+  assert.equal(dialoguePanelDirty(lines, parseDialogueText('二\n阿璃：一', names), names), true);
+  assert.equal(dialoguePanelDirty(lines, parseDialogueText('一\n二', names), names), true, 'a dropped speaker is a change');
+});
+
+test('a speaker whose name is not loaded stays on the line instead of looking dirty', () => {
+  const unloaded = line(1, '一句', '80000000-0000-4000-8000-000000000199');
+  const text = formatDialogueText([unloaded], names);
+  assert.equal(text, '一句');
+  const draft = parseDialogueText(text, names);
+  assert.equal(dialoguePanelDirty([unloaded], draft, names), false, 'an unloaded speaker is not a change');
+  assert.deepEqual(dialogueEdits(shotId, [unloaded], draft, () => 'new-id', names), []);
+  // Editing the text keeps the stored speaker because the edit carries no speaker field.
+  const edited = dialogueEdits(shotId, [unloaded], parseDialogueText('一句改', names), () => 'new-id', names);
+  assert.deepEqual(edited, [{kind: 'update', shotId, lineId: unloaded.id, text: '一句改'}]);
+  // A line whose speaker name IS loaded still drops the prefix when the user removes it.
+  const named = line(1, '一句', subjectA);
+  assert.equal(dialoguePanelDirty([named], parseDialogueText('一句', names), names), true);
+  assert.deepEqual(dialogueEdits(shotId, [named], parseDialogueText('一句', names), () => 'new-id', names),
+    [{kind: 'update', shotId, lineId: named.id, text: '一句', speakerSubjectId: null}]);
 });
 
 test('new dialogue line ids are unique uuids', () => {

@@ -62,8 +62,14 @@ export function parseDialogueText(text: string, subjectNames: Readonly<Record<st
   });
 }
 
-function sameLine(line: DialogueLineView, draft: DialogueDraftLine): boolean {
-  return line.text === draft.text && (line.speakerSubjectId ?? null) === draft.speakerSubjectId;
+function sameLine(line: DialogueLineView, draft: DialogueDraftLine,
+  subjectNames: Readonly<Record<string, string>>): boolean {
+  if (line.text !== draft.text) return false;
+  if ((line.speakerSubjectId ?? null) === draft.speakerSubjectId) return true;
+  // A speaker whose name is not loaded yet cannot be shown in the text; keeping
+  // the stored speaker must not look like an unsaved change (otherwise saving an
+  // untouched panel would strip it).
+  return line.speakerSubjectId !== undefined && subjectNames[line.speakerSubjectId] === undefined;
 }
 
 /** Diff stored lines against the edited text into one action's edits.
@@ -75,21 +81,24 @@ function sameLine(line: DialogueLineView, draft: DialogueDraftLine): boolean {
 export function dialogueEdits(
   shotId: string, lines: readonly DialogueLineView[], draft: readonly DialogueDraftLine[],
   allocateId: () => string = newDialogueLineId,
+  subjectNames: Readonly<Record<string, string>> = {},
 ): SequenceEditDialogueEdit[] {
   let prefix = 0;
-  while (prefix < lines.length && prefix < draft.length && sameLine(lines[prefix]!, draft[prefix]!)) prefix++;
+  while (prefix < lines.length && prefix < draft.length && sameLine(lines[prefix]!, draft[prefix]!, subjectNames)) prefix++;
   let suffix = 0;
   while (suffix < lines.length - prefix && suffix < draft.length - prefix
-    && sameLine(lines[lines.length - 1 - suffix]!, draft[draft.length - 1 - suffix]!)) suffix++;
+    && sameLine(lines[lines.length - 1 - suffix]!, draft[draft.length - 1 - suffix]!, subjectNames)) suffix++;
   const oldMiddle = lines.slice(prefix, lines.length - suffix);
   const newMiddle = draft.slice(prefix, draft.length - suffix);
   const edits: SequenceEditDialogueEdit[] = [];
   const paired = Math.min(oldMiddle.length, newMiddle.length);
   for (let index = 0; index < paired; index++) {
     const oldLine = oldMiddle[index]!, draftLine = newMiddle[index]!;
-    if (sameLine(oldLine, draftLine)) continue;
+    if (sameLine(oldLine, draftLine, subjectNames)) continue;
+    const speakerUnknown = oldLine.speakerSubjectId !== undefined
+      && subjectNames[oldLine.speakerSubjectId] === undefined && draftLine.speakerSubjectId === null;
     edits.push({kind: 'update', shotId, lineId: oldLine.id, text: draftLine.text,
-      speakerSubjectId: draftLine.speakerSubjectId});
+      ...(speakerUnknown ? {} : {speakerSubjectId: draftLine.speakerSubjectId})});
   }
   for (let index = paired; index < newMiddle.length; index++) {
     const draftLine = newMiddle[index]!;
@@ -104,7 +113,8 @@ export function dialogueEdits(
 }
 
 /** Presence of any edit means the panel has unsaved changes. */
-export function dialoguePanelDirty(lines: readonly DialogueLineView[], draft: readonly DialogueDraftLine[]): boolean {
+export function dialoguePanelDirty(lines: readonly DialogueLineView[], draft: readonly DialogueDraftLine[],
+  subjectNames: Readonly<Record<string, string>> = {}): boolean {
   if (lines.length !== draft.length) return true;
-  return lines.some((line, index) => !sameLine(line, draft[index]!));
+  return lines.some((line, index) => !sameLine(line, draft[index]!, subjectNames));
 }

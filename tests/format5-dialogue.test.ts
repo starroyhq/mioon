@@ -345,6 +345,38 @@ test('a floating shot keeps its cue in place and re-attaching reuses the same cu
   assert.ok(reattached[0]!.anchor !== null, 'the reused cue is anchored to the new main-track segment');
 });
 
+test('editing a floating shot line refreshes its detached cue, and removing the line removes it', t => {
+  const store = fixture(t);
+  const connect = edit(store).preview({projectId, requestId: requestId(), intents: [
+    {side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId: shotB, toId: shotC}}},
+  ]}) as Record<string, any>;
+  assert.equal(connect.ok, undefined, `connect preview failed: ${JSON.stringify(connect)}`);
+  edit(store).commit({projectId, envelope: connect.envelope, expectedPlanDigest: connect.planDigest});
+  const disconnect = edit(store).preview({projectId, requestId: requestId(), intents: [
+    {side: 'board', operation: {kind: 'board', edit: {kind: 'disconnect', fromId: shotB, toId: shotC}}},
+  ]}) as Record<string, any>;
+  assert.equal(disconnect.ok, undefined, `disconnect preview failed: ${JSON.stringify(disconnect)}`);
+  edit(store).commit({projectId, envelope: disconnect.envelope, expectedPlanDigest: disconnect.planDigest});
+  const detached = cueFor(store, shotC, line3)!;
+  assert.equal(detached.anchor, null);
+  // Editing the floating shot's line keeps the detached cue in place with the new text.
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotC, lineId: line3, text: '游离台词改'},
+  ]}});
+  assert.equal(shotDialogue(store, shotC)[0]!.text, '游离台词改');
+  const refreshed = cues(store).find(cue => cue.id === detached.id)!;
+  assert.equal(refreshed.text, '游离台词改');
+  assert.equal(refreshed.anchor, null, 'the floating shot keeps its cue unanchored in place');
+  assert.equal(refreshed.startFrame, detached.startFrame);
+  // Removing the line removes its detached cue too; undo restores both sides.
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [{kind: 'remove', shotId: shotC, lineId: line3}]}});
+  assert.deepEqual(shotDialogue(store, shotC), []);
+  assert.equal(cues(store).some(cue => cue.id === detached.id), false);
+  undo(store);
+  assert.equal(shotDialogue(store, shotC)[0]!.text, '游离台词改');
+  assert.equal(cues(store).find(cue => cue.id === detached.id)!.text, '游离台词改');
+});
+
 test('archiving a shot turns its linked cues into ordinary cues and undo restores the link', t => {
   const store = fixture(t);
   commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [

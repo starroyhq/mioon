@@ -105,6 +105,10 @@ export interface Format5DialogueProjectionInput {
   /** Live shot ids: a cue whose shot is gone (archived in this action) becomes
    * an ordinary cue at the same frame. */
   readonly liveShotIds: ReadonlySet<string>;
+  /** Lines of shots that are not on the main track (their linked cues stay
+   * detached): the cue text still follows the line and removed lines remove
+   * their cue. */
+  readonly linkedShots?: ReadonlyMap<string, readonly {readonly id: string; readonly text: string}[]>;
 }
 
 export interface Format5DialogueProjectionSuccess {
@@ -277,8 +281,28 @@ export function projectFormat5DialogueCues(input: Format5DialogueProjectionInput
     return {ok: false, code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT', ids: [...conflictIds].sort()};
   }
   // A cue linked to a shot that is still live but no longer on the main track
-  // keeps its identity and absolute frame; the anchor is already null when the
-  // owner vanished. Nothing else is projected for it.
+  // keeps its identity and absolute frame (anchor null); its text still follows
+  // the line, and a removed line removes the cue.
+  const projectedShotIds = new Set(input.shots.map(shot => shot.shotId));
+  if (input.linkedShots) {
+    for (const cue of [...next.values()]) {
+      const ref = cue.dialogueRef;
+      if (!ref || projectedShotIds.has(ref.shotId) || !input.liveShotIds.has(ref.shotId)) continue;
+      const lines = input.linkedShots.get(ref.shotId);
+      if (!lines) continue;
+      const line = lines.find(item => item.id === ref.lineId);
+      if (!line) {
+        next.delete(cue.id);
+        removed.add(cue.id);
+        changed.delete(cue.id);
+        continue;
+      }
+      if (cue.text !== line.text) {
+        next.set(cue.id, {...cue, text: line.text});
+        changed.add(cue.id);
+      }
+    }
+  }
   const cues = [...next.values()].sort((left, right) => left.startFrame - right.startFrame
     || left.id.localeCompare(right.id));
   const subtitles: SequenceEditSubtitleProfileChange = input.subtitleProfilePresent || cues.length === 0

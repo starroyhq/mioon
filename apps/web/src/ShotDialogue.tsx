@@ -68,13 +68,13 @@ export default function ShotDialogue({shot = null, subjectNames = {}, projectId,
     setErrorKey(null);
   }, [initial]);
   const draftLines = useMemo(() => parseDialogueText(draft, subjectNames), [draft, names]);
-  const dirty = dialoguePanelDirty(lines, draftLines);
+  const dirty = dialoguePanelDirty(lines, draftLines, subjectNames);
   const blocked = disabled || !shot || !projectId;
   const error = errorKey ? t(errorKey as never) : null;
 
   async function save(): Promise<void> {
     if (!shot || !projectId || busy || !dirty) return;
-    const edits = dialogueEdits(shot.id, lines, draftLines);
+    const edits = dialogueEdits(shot.id, lines, draftLines, newDialogueLineId, subjectNames);
     if (edits.length === 0) return;
     setBusy(true);
     setErrorKey(null);

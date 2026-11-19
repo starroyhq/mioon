@@ -224,6 +224,11 @@ export function planDialogueAction(store: ProjectStore, intent: SequenceEditDial
       after: {board: {writes: [], removals: []}, timeline: timelineDelta([], [], {kind: 'unchanged'})},
       changedShotIds: [], changedCueIds: [], removedCueIds: [], createdCueIds: [], nextTimeline: timeline};
   }
+  const linkedShots = new Map<string, {id: string; text: string}[]>();
+  for (const [shotId, lines] of linesByShot) {
+    if (segmentsByShot.has(shotId)) continue;
+    linkedShots.set(shotId, lines.map(line => ({id: line.id, text: line.text})));
+  }
   const projection = projectFormat5DialogueCues({
     timelineId: timeline.id,
     cues: timeline.subtitles?.cues ?? [],
@@ -231,6 +236,7 @@ export function planDialogueAction(store: ProjectStore, intent: SequenceEditDial
     shots: projectedShots,
     previousMainShotIds: new Set(segmentsByShot.keys()),
     previousCues: cueById,
+    ...(linkedShots.size ? {linkedShots} : {}),
     liveShotIds: new Set([...store.db.prepare('SELECT id FROM project.shots WHERE projectId=? AND archivedAt IS NULL')
       .all(store.projectId) as Row[]].map(item => String(item.id))),
   });
