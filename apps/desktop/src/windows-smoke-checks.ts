@@ -80,9 +80,9 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  const createdAt=record(await request('/api/rpc','project.template.instantiate',{templateId:'timeline-basics',templateVersion:1,parentDir:smokeRoot,name:'W2 Smoke',requestId:randomUUID()}));
  const project=record(createdAt.project),projectId=String(project.projectId),projectFile=String(project.projectFile);
  assert.ok(/^[0-9a-f-]{36}$/u.test(projectId));assert.equal(path.basename(projectFile),'W2 Smoke.mioon');assert.equal(path.dirname(projectFile),path.join(smokeRoot,'W2 Smoke'));
+ await mark('project-core-created');
  assert.equal(record(record(await request(projectAddress(projectId),'project.get',{projectId})).project).name,'W2 Smoke');
  await access(projectFile);
- await mark('project-core-created');
  const renamed=record(await request('/api/rpc','project.rename',{requestId:randomUUID(),projectId,
   expectedRevision:Number(record(record(await request(projectAddress(projectId),'project.get',{projectId})).project).revision),name:'W2 Smoke Renamed'}));
  assert.equal(renamed.name,'W2 Smoke Renamed');

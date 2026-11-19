@@ -151,6 +151,23 @@ export function inspectCopiedProjectFile(file: string): ProjectBackupIdentity {
 }
 
 export function syncCopiedFile(file: string): void {
+  // FlushFileBuffers needs a writable handle: a read-only handle fails with
+  // EPERM on Windows while the POSIX fsync-on-read path is valid. Copied files
+  // are writable, so reopen for writing there; a deliberately read-only file
+  // only gets a best-effort flush, matching the directory-sync no-op below.
+  if (process.platform === 'win32') {
+    let fd: number;
+    try { fd = openSync(file, 'r+'); }
+    catch { try { fd = openSync(file, 'r'); } catch { return; } }
+    try {
+      try { fsyncSync(fd); }
+      catch (error) {
+        const code = (error as {code?: unknown} | null)?.code;
+        if (!['EPERM', 'EACCES', 'EBADF'].includes(String(code))) throw error;
+      }
+    } finally { closeSync(fd); }
+    return;
+  }
   const fd = openSync(file, 'r');
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
