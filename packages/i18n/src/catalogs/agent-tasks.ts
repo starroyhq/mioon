@@ -8,8 +8,8 @@ export const agentTaskMessages = {
   'agent.task.resolveLocal': { 'zh-Hans': '核对未提交并重新规划', 'zh-Hant': '核對未提交並重新規劃', en: 'Verify no commit and replan', ja: '未確定の変更がないことを照合して再計画' },
   'agent.task.connectionIntro': {"zh-Hans": "Mio 通过这里的模型理解你的要求并决定下一步。界面不显示密钥本身", "zh-Hant": "Mio 透過這裡的模型理解你的要求並決定下一步。介面不顯示金鑰本身", "en": "Mio uses this model to understand your request and decide what to do next. The key itself is never displayed", "ja": "Mio はここで設定したモデルでリクエストを理解し、次の操作を決めます。キーそのものは表示しません"},
   'agent.task.protocolScope': {"zh-Hans": "支持连续多步执行，实际操作取决于执行方式和授权", "zh-Hant": "支援連續多步執行，實際操作取決於執行方式和授權", "en": "Supports multiple steps, subject to execution settings and authorization", "ja": "実行方法と許可に応じて、複数のステップを続けて実行できます"},
-  'agent.task.waitReconcile': {"zh-Hans": "生成结果待核对", "zh-Hant": "生成結果待核對", "en": "Generation result unconfirmed", "ja": "生成結果が未確認です"},
-  'agent.task.paidReconcile': {"zh-Hans": "生成结果待核对", "zh-Hant": "生成結果待核對", "en": "Generation result unconfirmed", "ja": "生成結果が未確認です"},
+  'agent.task.waitReconcile': {"zh-Hans": "生成结果未确认", "zh-Hant": "生成結果未確認", "en": "Generation result unconfirmed", "ja": "生成結果が未確認です"},
+  'agent.task.paidReconcile': {"zh-Hans": "生成结果未确认，可能已受理并计费", "zh-Hant": "生成結果未確認，可能已受理並計費", "en": "Generation result unconfirmed; it may have been accepted and billed", "ja": "生成結果が未確認です。受理・課金済みの可能性があります"},
   'agent.task.existingRequests': {"zh-Hans": "在任务中查看", "zh-Hant": "在任務中檢視", "en": "View in tasks", "ja": "タスクで確認"},
   'agent.task.editingRetained': {"zh-Hans": "其他窗口或上次未结束的编辑", "zh-Hant": "其他視窗或上次未結束的編輯", "en": "Unfinished edits from another window or an earlier session", "ja": "別のウィンドウや前回の未終了の編集"},
   'agent.task.attach': {"zh-Hans": "添加附件", "zh-Hant": "新增附件", "en": "Add attachment", "ja": "添付ファイルを追加"},
@@ -72,6 +72,6 @@ export const agentTaskMessages = {
   "agent.task.tier.paid": {"zh-Hans": "会产生费用", "zh-Hant": "費用が発生する操作", "en": "Paid operations", "ja": "費用が発生する操作"},
   "agent.task.cost.pending": {"zh-Hans": "待提交", "zh-Hant": "待提交", "en": "Not submitted", "ja": "送信前"},
   "agent.task.cost.submitted": {"zh-Hans": "已提交付费请求／可能计费", "zh-Hant": "已提交付費請求／可能計費", "en": "Paid request submitted; charges may apply", "ja": "有料リクエスト送信済み。課金される場合があります"},
-  "agent.task.cost.unknown": {"zh-Hans": "结果未知／费用待核对", "zh-Hant": "結果未知／費用待核對", "en": "Result unknown; cost unconfirmed", "ja": "結果不明。費用を確認してください"},
+  "agent.task.cost.unknown": {"zh-Hans": "费用待确认", "zh-Hant": "費用待確認", "en": "Cost unconfirmed", "ja": "費用は未確認です"},
   "agent.task.cost.charged": {"zh-Hans": "已产生费用", "zh-Hant": "已產生費用", "en": "Cost incurred", "ja": "費用発生済み"},
 } as const satisfies MessageCatalog;

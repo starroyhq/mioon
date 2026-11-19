@@ -431,23 +431,9 @@
     {
       "file": "apps/web/src/comfy-image-settings.ts",
       "category": "cjk-source",
-      "hash": "719d71285e107a47b69ff2e81d50521ea5fd3a86c1bc037a8caec512d32e03fe",
+      "hash": "521eab112725a754c45a7fa9a613dd98d7bcb1957c9eb3a5ddeba3613e956afa",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ComfyImageSettings renders state.displayMessages, comfyConnectorAvailabilityDescriptor and comfyImageCheckDescriptor; immutable module admission/state decisions still use original stable codes. Four-locale counterpart: connections.comfy.notice.rereading."
-    },
-    {
-      "file": "apps/web/src/comfy-image-settings.ts",
-      "category": "cjk-source",
-      "hash": "53d578c3ac17b00f55d70a59dfc6315c6526787a5fb41e5f16c986d089203426",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ComfyImageSettings renders state.displayMessages, comfyConnectorAvailabilityDescriptor and comfyImageCheckDescriptor; immutable module admission/state decisions still use original stable codes. Four-locale counterpart: connections.comfy.notice.conflict."
-    },
-    {
-      "file": "apps/web/src/comfy-image-settings.ts",
-      "category": "cjk-source",
-      "hash": "65551cd9f5baa574c2800dfec4a7ef13c5ceb49f3e9a2afa9986d3136cee9839",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ComfyImageSettings renders state.displayMessages, comfyConnectorAvailabilityDescriptor and comfyImageCheckDescriptor; immutable module admission/state decisions still use original stable codes. Four-locale counterpart: connections.comfy.notice.unknown."
     },
     {
       "file": "apps/web/src/comfy-image-settings.ts",
@@ -1481,23 +1467,9 @@
     {
       "file": "apps/web/src/image-settings.ts",
       "category": "cjk-source",
-      "hash": "85b978b05681837780a78f49bb0ab5999fb0b58f551ad9065a9fc2e3cc5f2124",
+      "hash": "b85d26d29ea2ec982dbb298020236707871bad2393c42f2c16483ef415921c3d",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.notice.rereading."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "2b182b322a84907f231ec31fb1a8ffd17914a80a65c570fa808f940a34530dd4",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.notice.conflict."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "3e21ca80ef29466cd9d42f7e6cb9389dd52db70437140273b3edfd5288cb2a8a",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.notice.unknown."
     },
     {
       "file": "apps/web/src/image-settings.ts",

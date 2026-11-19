@@ -342,10 +342,22 @@ export const mioPanelMessages = {
     "ja": "前回の実行が未完了です"
   },
   "agent.panel.recoveryBody": {
-    "zh-Hans": "部分步骤结果待确认",
-    "zh-Hant": "部分步驟結果待確認",
+    "zh-Hans": "部分步骤结果未确认",
+    "zh-Hant": "部分步驟結果未確認",
     "en": "Some step results are unconfirmed",
     "ja": "一部のステップの結果が未確認です"
+  },
+  "agent.panel.unknownSubmitted": {
+    "zh-Hans": "已提交，可能计费",
+    "zh-Hant": "已提交，可能計費",
+    "en": "Submitted; charges may apply",
+    "ja": "送信済みです。課金される場合があります"
+  },
+  "agent.panel.unknownApplied": {
+    "zh-Hans": "已应用",
+    "zh-Hant": "已套用",
+    "en": "Applied",
+    "ja": "適用済みです"
   },
   "agent.panel.abandon": {
     "zh-Hans": "放弃",
@@ -354,16 +366,16 @@ export const mioPanelMessages = {
     "ja": "破棄"
   },
   "agent.panel.unknownStep": {
-    "zh-Hans": "先核对：{name}",
-    "zh-Hant": "先核對：{name}",
-    "en": "Check first: {name}",
-    "ja": "先に確認：{name}"
+    "zh-Hans": "{name} 结果未确认",
+    "zh-Hant": "{name} 結果未確認",
+    "en": "{name} result is unconfirmed",
+    "ja": "{name} の結果は未確認です"
   },
   "agent.panel.unknownModel": {
-    "zh-Hans": "模型请求可能已发送，请先标记为失败再继续",
-    "zh-Hant": "模型請求可能已傳送，請先標記為失敗再繼續",
-    "en": "The model request may have been sent. Mark it as failed before continuing",
-    "ja": "モデルリクエストは送信済みの可能性があります。失敗として記録してから続行してください"
+    "zh-Hans": "模型请求可能已发送",
+    "zh-Hant": "模型請求可能已傳送",
+    "en": "The model request may have been sent",
+    "ja": "モデルリクエストは送信済みの可能性があります"
   },
   "agent.panel.generationNotSubmitted": {
     "zh-Hans": "这次请求未提交，未产生费用",
