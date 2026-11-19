@@ -305,11 +305,27 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, 
       const pageColor = await window.webContents.executeJavaScript(pageBandColorScript) as string;
       diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${diagnostics?.received ?? 0} page=${pageColor} received=${cssColorToHex(diagnostics?.lastReceived)} applied=${cssColorToHex(diagnostics?.applied)} error=${diagnostics?.error === undefined ? 'none' : diagnostics.error.replace(/[^A-Za-z0-9 =:._#-]/gu, '_')}`;
     } catch { diag = ' diagnostics=unavailable'; }
-    const {png, source} = await capture(window, window.getTitle());
-    captured = png;
-    phase = 'verify-band';
-    const bandDelta = bandColorDelta(png, facts);
-    capturedMismatch = bandDelta;
+    let png: Buffer | undefined, source: 'window' | 'content' = 'window', bandDelta = 0;
+    captured = undefined;
+    // The DWM caption band repaints asynchronously after a theme change; at
+    // fractional device scales it can trail the page by a frame or two. Re-capture
+    // a bounded number of times while keeping the same color threshold.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        // An inactive window paints the system caption band in the inactive
+        // color; re-focus before re-capturing a mismatched fractional-scale shot.
+        try { window.show(); window.focus(); app.focus({steal: true}); } catch { /* Best effort in CI sessions. */ }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      const shot = await capture(window, window.getTitle());
+      png = shot.png; source = shot.source;
+      captured = png;
+      phase = 'verify-band';
+      bandDelta = bandColorDelta(png, facts);
+      capturedMismatch = bandDelta;
+      if (bandDelta <= WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE) break;
+    }
+    assert.ok(png !== undefined && png.length > 0, 'The screenshot capture produced no bytes');
     assert.ok(bandDelta <= WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, `Caption band color differs from the page by ${bandDelta}`);
     phase = 'write';
     await mkdir(path.dirname(screenshot), {recursive: true});
