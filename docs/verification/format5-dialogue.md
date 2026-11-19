@@ -64,13 +64,13 @@
 
 ## 检查与结果
 
-- `tests/format5-dialogue.test.ts`（12 项）：两侧一致、ID 唯一、切开跟随、删行/撤销、
+- `tests/format5-dialogue.test.ts`（13 项）：两侧一致、ID 唯一、切开跟随、删行/撤销、
   游离/接回/归档/复制、普通字幕不动、超长/帧不足/重叠拒绝、noop、精确重放。
 - `tests/format5-dialogue-performance.test.ts`：500 镜头 + 500 台词/字幕 + 1,000 锚定段，
   单次台词编辑共享事务本机 p95 约 41 ms（预算 100 ms；Linux CI 断言代码路径 p95 ≤200 ms）。
 - `tests/sequence-edit-contract.test.ts`：dialogueIntent 正反例与历史补丁兼容。
 - `tests/format5-mio-write.test.ts`：Mio 台词增删改排序 + 一步 Mio 撤销 + `sequence.inspect` 读回。
-- `tests/dialogue-panel-state.test.ts`、`tests/dialogue-ui.test.ts`：面板文本/差异/空状态/四语文案与
+- `tests/dialogue-panel-state.test.ts`（5 项）、`tests/dialogue-ui.test.ts`（3 项）：面板文本/差异/未载入说话人/空状态/四语文案与
   生产接线（App/Inspector/Timeline/SubtitleLane）静态检查。
 - 回归：`format5-timeline-sync`、`format5-timeline-sync-b`、`format5-clip-properties`、
   `sequence-edit*`、`format5-editor-history`、`format5-subject-binding`、`format5-mio-*`、
