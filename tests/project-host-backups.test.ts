@@ -22,7 +22,8 @@ async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions
   const backups = createProjectBackups({directories, registry, identity: statProjectFileIdentity,
     assertProjectFile: createApplicationFileGuard(directories), onWarning: (_, code) => warnings.push(code), ...options});
   const log: string[] = [];
-  const manager = createProjectHostManager({directories, registry, hooks: [backups.hooks], ...(options.managerFormat === undefined ? {} : {targetFormat: options.managerFormat}),
+  const managerFormat = options.managerFormat ?? options.sourceFormat ?? 5;
+  const manager = createProjectHostManager({directories, registry, hooks: [backups.hooks], targetFormat: managerFormat,
     factory: async (): Promise<ProjectHostRuntime> => ({handle: async () => false, isBusy: () => false,
       interrupt: () => {log.push('interrupt');}, drain: async () => {log.push('drain');}, dispose: () => {log.push('dispose');}})});
   t.after(async () => {await manager.closeAll(); rmSync(root, {recursive: true, force: true});});
