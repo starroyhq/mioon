@@ -99,7 +99,7 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   'shot.reorder': 'sequence.preview/commit', 'version.select': 'sequence.preview/commit',
   'shot.create': 'sequence.preview/commit', 'shot.update': 'sequence.preview/commit',
   'node.create': 'sequence.preview/commit', 'node.update': 'sequence.preview/commit',
-  'reference.attach': 'not_yet_available', 'reference.detach': 'not_yet_available',
+  'reference.attach': 'sequence.preview/commit', 'reference.detach': 'sequence.preview/commit',
   'previs.create': 'not_yet_available', 'previs.scene.set': 'not_yet_available', 'previs.thumbnail.set': 'not_yet_available',
   'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
   'subject.binding.set': 'sequence.preview/commit',

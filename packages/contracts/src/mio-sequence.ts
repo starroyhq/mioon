@@ -6,12 +6,14 @@
  * commits exactly that envelope + plan digest. */
 import {z} from 'zod';
 import {sequenceEditClipPropertiesIntentSchema, sequenceEditFormatIntentSchema} from './sequence-edit.ts';
+import {FORMAT5_REFERENCE_ROLES} from './project-format5.ts';
 
 const uuid = z.string().uuid();
 const offset = z.number().int().min(0).max(9007199254740991);
 export const MIO_SEQUENCE_ACTION_LIMITS = Object.freeze({maxTargets: 50, maxText: 120});
 
 const boardEdge = {fromId: uuid, toId: uuid} as const;
+const referenceRole = z.enum(FORMAT5_REFERENCE_ROLES);
 const subjectEdit = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('create'), shotId: uuid, subjectId: uuid, role: z.enum(['subject', 'style'])}).strict(),
   z.object({kind: z.literal('set-mode'), bindingId: uuid, bindingMode: z.enum(['follow', 'locked']), subjectVersionId: uuid.nullable()}).strict(),
@@ -35,6 +37,9 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
     versionId: uuid.nullable().optional()}).strict(),
   z.object({kind: z.literal('copy-move'), clipId: uuid, beforeClipId: uuid.nullable()}).strict(),
   z.object({kind: z.literal('subject-binding'), edit: subjectEdit}).strict(),
+  z.object({kind: z.literal('reference-attach'), sourceNodeId: uuid, shotId: uuid, role: referenceRole.optional()}).strict(),
+  z.object({kind: z.literal('reference-set-role'), edgeId: uuid, shotId: uuid, role: referenceRole}).strict(),
+  z.object({kind: z.literal('reference-detach'), edgeId: uuid, shotId: uuid}).strict(),
   z.object({kind: z.literal('clip-properties'),
     edits: sequenceEditClipPropertiesIntentSchema.shape.operation.shape.edits}).strict(),
   z.object({kind: z.literal('format-set'),

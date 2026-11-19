@@ -13,7 +13,7 @@ import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
-import type {BoardIntentOperation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+import type {BoardIntentOperation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt, SequenceEditReferenceIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, any>;
@@ -76,6 +76,23 @@ function boardIntent(action: MioSequenceAction): SequenceEditIntent {
     default: throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '不是画板动作。', 409);
   }
 }
+function referenceRequest(action: MioSequenceAction): {referenceIntent: SequenceEditReferenceIntent; allocation: {edges: {id: string; fromId: string; toId: string}[]}} {
+  switch (action.kind) {
+    case 'reference-attach': {
+      const edgeId = randomUUID();
+      return {allocation: {edges: [{id: edgeId, fromId: action.sourceNodeId, toId: action.shotId}]},
+        referenceIntent: {side: 'board', operation: {kind: 'reference-edge', edit: {kind: 'attach', edgeId,
+          shotId: action.shotId, sourceNodeId: action.sourceNodeId, ...(action.role ? {role: action.role} : {})}}}};
+    }
+    case 'reference-set-role': return {allocation: {edges: []},
+      referenceIntent: {side: 'board', operation: {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: action.edgeId,
+        shotId: action.shotId, role: action.role}}}};
+    case 'reference-detach': return {allocation: {edges: []},
+      referenceIntent: {side: 'board', operation: {kind: 'reference-edge', edit: {kind: 'detach', edgeId: action.edgeId,
+        shotId: action.shotId}}}};
+    default: throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '不是引用线动作。', 409);
+  }
+}
 function subjectIntent(action: Extract<MioSequenceAction, {kind: 'subject-binding'}>): SequenceEditSubjectIntent {
   const edit = action.edit.kind === 'create' ? {...action.edit, bindingId: randomUUID()} : action.edit;
   return {side: 'board', operation: {kind: 'subject-binding', edit} as SequenceEditSubjectIntent['operation']};
@@ -106,6 +123,11 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
   const request: Row = {projectId, requestId, origin: 'mio'};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
+  else if (action.kind === 'reference-attach' || action.kind === 'reference-set-role' || action.kind === 'reference-detach') {
+    const reference = referenceRequest(action);
+    request.referenceIntent = reference.referenceIntent;
+    request.allocation = reference.allocation;
+  }
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
