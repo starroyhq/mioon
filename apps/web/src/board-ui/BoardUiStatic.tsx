@@ -34,6 +34,15 @@ export interface BoardUiStaticProps {
   readonly onConnect: (connection: BoardPortConnection) => void;
   readonly onLocateNode?: (nodeId: string) => void;
   readonly onAddShot: () => void;
+  /** The real workbench supplies its own inspector; the static fixture keeps the inline one. */
+  readonly showInspector?: boolean;
+  readonly filmSynced?: boolean;
+  readonly selectedEdgeId?: string | null;
+  readonly onSelectEdge?: (edgeId: string | null) => void;
+  /** Batch coordinate writes after one drag gesture, for the unified history. */
+  readonly onNodesMoved?: (moves: readonly {readonly nodeId: string; readonly x: number; readonly y: number}[]) => void;
+  /** Virtualize off-screen cards for the 500-shot board measurement. */
+  readonly virtualize?: boolean;
 }
 
 type Film = BoardUiProjection['films'][number];
@@ -78,6 +87,7 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   const [open, setOpen] = useState(true);
   const [moved, setMoved] = useState<Readonly<Record<string, {x: number; y: number}>>>({});
   const [sizes, setSizes] = useState<Readonly<Record<string, {width: number; height: number}>>>({});
+  const dirtyMoves = useRef(new Set<string>());
   const selectedId = props.selectedNodeId === undefined ? selection : props.selectedNodeId;
   const selectionRef = useRef(selectedId);
   selectionRef.current = selectedId;
@@ -126,9 +136,9 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
     const connection = resolveBoardPortConnection({nodeId: source.id, kind: source.kind, portId: sourcePort}, {nodeId: target.id, kind: target.kind, portId: targetPort});
     if (!connection || connection.kind !== edge.kind) return [];
     const base = {id: edge.id, source: connection.sourceId, target: connection.targetId, sourceHandle: connection.sourcePort, targetHandle: connection.targetPort};
-    return connection.kind === 'sequence' ? [{...base, type: 'sequence', data: {reduceMotion}}]
-      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion}}];
-  }), [edges, byId, reduceMotion, moved, props.positions]);
+    return connection.kind === 'sequence' ? [{...base, type: 'sequence', data: {reduceMotion, selected: edge.id === props.selectedEdgeId}}]
+      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion, selected: edge.id === props.selectedEdgeId}}];
+  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId]);
   const locate = (id: string) => {
     select(id);
     const node = flow.getNode(id);
@@ -137,7 +147,10 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   };
   const positionsChanged = (changes: NodeChange<CardNode>[]) => {
     const positions = changes.flatMap(change => change.type === 'position' && change.position ? [[change.id, change.position] as const] : []);
-    if (positions.length) setMoved(previous => ({...previous, ...Object.fromEntries(positions)}));
+    if (positions.length) {
+      for (const [id] of positions) dirtyMoves.current.add(id);
+      setMoved(previous => ({...previous, ...Object.fromEntries(positions)}));
+    }
     const dimensions = changes.flatMap(change => change.type === 'dimensions' && change.dimensions ? [[change.id, change.dimensions] as const] : []);
     if (dimensions.length) setSizes(previous => {
       const next = {...previous};
@@ -152,14 +165,21 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
     if (selected?.type === 'select') select(selected.id);
     else if (changes.some(change => change.type === 'select' && !change.selected && change.id === selectedId)) select(null);
   };
+  const flushMoves = (): void => {
+    const pending = [...dirtyMoves.current].filter(id => moved[id]).map(id => ({nodeId: id, x: moved[id]!.x, y: moved[id]!.y}));
+    dirtyMoves.current.clear();
+    if (pending.length) props.onNodesMoved?.(pending);
+  };
   const film = projection.films.find(item => item.items.some(node => node.nodeId === selectedId) || item.id === selectedId) ?? projection.films[0];
   const selected = selectedId ? byId.get(selectedId) : null;
-  return <div className="board-ui-static" data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') setDrag(null);}}>
+  return <div className={`board-ui-static${props.showInspector === false ? ' board-ui-no-inspector' : ''}`} data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') {setDrag(null); props.onSelectEdge?.(null);}}}>
     <div className="board-ui-canvas" data-testid="board-ui-canvas">
       <ReactFlow<CardNode, BoardSequenceEdge | BoardReferenceEdge> nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={boardEdgeTypes}
         proOptions={{hideAttribution: true}}
-        fitView fitViewOptions={{padding: .12, maxZoom: .9}} minZoom={.05} maxZoom={2} onlyRenderVisibleElements={false}
-        onNodesChange={positionsChanged} onNodeClick={(_, node) => select(node.id)} onPaneClick={() => select(null)}
+        fitView fitViewOptions={{padding: .12, maxZoom: .9}} minZoom={.05} maxZoom={2} onlyRenderVisibleElements={props.virtualize ?? false}
+        onNodesChange={positionsChanged} onNodeClick={(_, node) => {props.onSelectEdge?.(null); select(node.id);}}
+        onNodeDragStop={flushMoves} onEdgeClick={(_, edge) => props.onSelectEdge?.(edge.id)}
+        onPaneClick={() => {select(null); props.onSelectEdge?.(null);}}
         onConnectStart={(_, start) => {
           const node = start.nodeId ? byId.get(start.nodeId) : null;
           const port = node && boardPorts(node.kind).find(value => value.id === start.handleId);
@@ -169,10 +189,10 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
         isValidConnection={value => normalizeConnection(value) !== null}
         onConnect={value => {const result = normalizeConnection(value); if (result) props.onConnect(result); setDrag(null);}}
       ><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot, #ffffff1f)"/></ReactFlow>
-      {film && <BoardFilmStrip film={film} open={open} onOpenChange={setOpen} selectedNodeId={selectedId} onLocateNode={locate} onAddShot={props.onAddShot}/>}
+      {film && <BoardFilmStrip film={film} open={open} onOpenChange={setOpen} selectedNodeId={selectedId} onLocateNode={locate} onAddShot={props.onAddShot} synced={props.filmSynced ?? true}/>}
     </div>
-    <aside className="board-ui-inspector">{!selected ? <BoardFilmOverview overview={projection.overview}/>
-      : <section className="board-selection-summary" data-testid="board-selected-summary"><h3>{selected.name}</h3><span>{selected.aspectRatio ?? (selected.kind === 'film' ? film?.aspectRatio ?? t('boardUi.aspectUnknown') : '')}</span></section>}</aside>
+    {props.showInspector !== false && <aside className="board-ui-inspector">{!selected ? <BoardFilmOverview overview={projection.overview}/>
+      : <section className="board-selection-summary" data-testid="board-selected-summary"><h3>{selected.name}</h3><span>{selected.aspectRatio ?? (selected.kind === 'film' ? film?.aspectRatio ?? t('boardUi.aspectUnknown') : '')}</span></section>}</aside>}
   </div>;
 }
 

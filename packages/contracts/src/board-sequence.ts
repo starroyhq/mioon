@@ -16,7 +16,8 @@ export interface ChainBoard {
   readonly edges: readonly SequenceEdge[];
 }
 
-export type ChainReferenceRole = 'first_frame' | 'subject_reference' | 'composition' | 'reference_audio' | 'reference_video';
+export type ChainReferenceRole = 'first_frame' | 'last_frame' | 'reference_image' | 'subject_reference' | 'style_reference'
+  | 'composition' | 'reference_audio' | 'reference_video';
 export type ChainConnectionKind = 'sequence' | 'reference';
 export type ChainConnectionErrorCode =
   | 'INVALID_SEQUENCE_TYPES'

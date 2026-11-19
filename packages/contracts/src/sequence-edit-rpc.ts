@@ -44,6 +44,23 @@ export const sequenceCommitRequestSchema = z.object({
 }).strict();
 export const sequenceHistoryGetRequestSchema = sequenceEditingSchemas['sequence.history.get'];
 export const sequenceHistoryCommandRequestSchema = sequenceEditingSchemas['sequence.undo'];
+/** Read-only board mounting data: unified sync revision/order state plus the
+ * archived board rows UI-B2 can restore. Board graph/content rows themselves
+ * come from `project.get`; this operation never plans or writes. */
+export const sequenceBoardGetRequestSchema = z.object({projectId: uuid}).strict();
+const boardPoint = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
+export const sequenceBoardGetResponseSchema = z.object({
+  projectId: uuid,
+  timelineRevision: z.number().int().positive(),
+  syncRevision: z.number().int().positive(),
+  inSync: z.boolean(),
+  archived: z.array(z.object({
+    id: uuid, kind: z.enum(['shot', 'node']), name: z.string().min(1).max(500),
+    position: boardPoint.nullable(),
+  }).strict()).max(500),
+}).strict();
+export type SequenceBoardGetRequest = z.infer<typeof sequenceBoardGetRequestSchema>;
+export type SequenceBoardGetResponse = z.infer<typeof sequenceBoardGetResponseSchema>;
 export const sequencePreviewResponseSchema = z.object({
   envelope: sequenceEditEnvelopeSchema,
   planDigest: digest,
@@ -55,6 +72,7 @@ export const sequenceEditRpcSchemas = Object.freeze({
   'sequence.history.get': sequenceEditingSchemas['sequence.history.get'],
   'sequence.undo': sequenceEditingSchemas['sequence.undo'],
   'sequence.redo': sequenceEditingSchemas['sequence.redo'],
+  'sequence.board.get': sequenceBoardGetRequestSchema,
 });
 export type SequencePreviewRequest = z.infer<typeof sequencePreviewRequestSchema>;
 export type SequenceCommitRequest = z.infer<typeof sequenceCommitRequestSchema>;

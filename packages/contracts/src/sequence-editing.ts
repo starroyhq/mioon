@@ -107,10 +107,17 @@ const trackEditSchema = z.discriminatedUnion('kind', [
     sourceInFrame: operationFrame.optional()}).strict(),
   z.object({kind: z.literal('version'), clipId: operationUuid, version: operationVersion.nullable(), locked: z.boolean()}).strict(),
 ]);
+const boardPositionSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
 export const sequenceEditOperationSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('board'), edit: boardEditSchema}).strict(),
   z.object({kind: z.literal('sync-board'), newClipIds: z.record(operationUuid, operationUuid).optional()}).strict(),
   z.object({kind: z.literal('board-version'), nodeId: operationUuid, version: operationVersion.nullable()}).strict(),
+  z.object({kind: z.literal('board.root.create'), nodeId: operationUuid, name: z.string().min(1).max(150),
+    position: boardPositionSchema}).strict(),
+  z.object({kind: z.literal('board.shot.append'), nodeId: operationUuid, name: z.string().min(1).max(150),
+    position: boardPositionSchema.optional()}).strict(),
+  z.object({kind: z.literal('board.layout.move'), moves: z.array(z.object({nodeId: operationUuid, x: z.number().finite(),
+    y: z.number().finite()}).strict()).min(1).max(500)}).strict(),
   z.object({kind: z.literal('track'), edit: trackEditSchema}).strict(),
 ]);
 export type SequenceEditOperationInput = z.infer<typeof sequenceEditOperationSchema>;

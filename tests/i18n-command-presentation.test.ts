@@ -85,7 +85,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   assert.equal(typeof retiredOrigin, 'string');
   expectedOperations.unshift('project.rename', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
   expectedOperations.unshift(...round2Operations);
-  expectedOperations.unshift('sequence.preview', 'sequence.commit', 'sequence.history.get', 'sequence.undo', 'sequence.redo', 'sequence.inspect');
+  expectedOperations.unshift('sequence.preview', 'sequence.commit', 'sequence.history.get', 'sequence.undo', 'sequence.redo', 'sequence.board.get', 'sequence.inspect');
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');
   expectedOperations.splice(expectedOperations.indexOf('asset.disposition.set') + 1, 0, 'asset.annotation.list', 'asset.annotation.set');
