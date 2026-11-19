@@ -36,6 +36,6 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
 export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
 export const mioSequenceEditSchemas = Object.freeze({
   'sequence.tool.edit': mioSequenceActionSchema,
-  'sequence.tool.undo': z.object({actionId: uuid}).strict(),
+  'sequence.tool.undo': z.object({actionId: uuid.optional()}).strict(),
 });
 export type MioSequenceToolOperation = keyof typeof mioSequenceEditSchemas;
