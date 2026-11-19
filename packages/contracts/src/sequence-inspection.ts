@@ -89,7 +89,7 @@ export type SequenceGenerationInputStatus = 'used' | 'unsupported';
  * resolved (node/asset/subject name plus version) and `reason` is a stable code
  * the browser localizes; unknown roles never disappear from the list. */
 export interface SequenceGenerationInputEntryView {
-  readonly source: 'edge' | 'subject';
+  readonly source: 'edge' | 'subject' | 'previs';
   readonly edgeId?: string;
   readonly bindingId?: string;
   readonly sourceNodeId?: string;
