@@ -112,7 +112,7 @@ test('the production shell routes format-5 panel edits through the shared entry'
   for (const fragment of [
     "from './edit-ui/format5-panel-edits.ts'",
     'format5ClipInspectorEdit(', 'format5PropertiesAction(', 'format5RunPayload(',
-    "runPayload(payload)", 'format5RunPayload({subtitlesIntent: built.intent}', 'saveFormat5Subtitle(intent, live)',
+    "runPayload(payload)", 'format5RunPayload({subtitlesIntent: built.intent}', 'async function saveFormat5Subtitle(intent: SubtitleIntent)',
     'format5ClipPropertyEdit(clipId, \'transform\'', 'format5ClipPropertyEdit(clipId, \'transition\'',
     'timelineCrossfadeEnvelopes(outgoing as never, incoming as never)',
     'loudnessContext={clipLoudnessContext as never}',
