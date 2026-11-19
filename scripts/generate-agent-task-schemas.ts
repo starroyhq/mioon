@@ -38,7 +38,8 @@ for(const [operation,schema] of Object.entries(mioCanvasSchemas)){
 // document identities, revisions and replay keys.
 for(const [operation,schema] of Object.entries(mioSequenceEditSchemas)){
  const {$schema:_dialect,...converted}=zodToJsonSchema(schema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}) as Record<string,unknown>;
- entries[operation]=projectAgentTaskToolSchema(converted);
+ // The model wire builder requires an object root before walking anyOf branches.
+ entries[operation]=projectAgentTaskToolSchema(operation==='sequence.tool.edit'?{type:'object',...converted}:converted);
 }
 for(const [operation,schema] of Object.entries(mioCanvasCopySchemas)){
  const {$schema:_dialect,...converted}=zodToJsonSchema(schema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}) as Record<string,unknown>;
