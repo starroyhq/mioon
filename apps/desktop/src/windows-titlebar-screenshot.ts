@@ -204,12 +204,13 @@ function bandColorDelta(png: Buffer, facts: TitleBarFacts, reported: string): {d
   };
   const inside = pixel(xInside), outside = pixel(xOutside);
   const probe = `in=${pixelHex(inside)} out=${pixelHex(outside)} target=${hex}`;
-  const delta = (actual: number[]): number => Math.max(...actual.map((channel, index) => Math.abs(channel - target[index]!)));
   const probeText = `${probe} xy=${xInside},${xOutside},${y} sz=${size.width}x${size.height} iw=${facts.innerWidth} rt=${facts.overlay.right}`;
   // The system band pixel is the feature under test; the page pixel beside the
   // band can legitimately belong to a different topbar section (especially in
   // dark themes), so it is recorded in the probe but not asserted.
   if (target === null) return {delta: Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!)), probe: probeText};
+  const targetRgb = target;
+  const delta = (actual: number[]): number => Math.max(...actual.map((channel, index) => Math.abs(channel - targetRgb[index]!)));
   return {delta: delta(inside), probe: probeText};
 }
 
