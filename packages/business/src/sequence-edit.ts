@@ -992,6 +992,8 @@ export interface SequenceEditHistoryRequest {
   readonly requestId: string;
   readonly actionId: string;
   readonly expected: {readonly position: number; readonly revision: number};
+  /** Selects the user or Mio stack; defaults to the user stack. */
+  readonly origin?: 'user' | 'mio';
 }
 
 function entryAffected(entry: SequenceEditHistoryEntry): number {
@@ -1026,6 +1028,11 @@ export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' 
     const targetPosition = direction === 'undo' ? prepared.state.position : prepared.state.position + 1;
     const entry = readSequenceEditHistoryEntry(store, request.actionId);
     if (!entry || entry.position !== targetPosition) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
+    const requestedOrigin = request.origin ?? 'user';
+    if (entry.origin !== requestedOrigin) {
+      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步属于另一条撤销栈，不能在这里撤回。', [request.actionId],
+        {reason: 'ORIGIN', origin: entry.origin, requestedOrigin});
+    }
     const source = direction === 'undo' ? entry.afterPatch : entry.beforePatch;
     const apply = direction === 'undo' ? entry.beforePatch : entry.afterPatch;
     if (!boardDeltaMatches(store, source.board) || !timelineDeltaMatches(store, source.timeline)) {
@@ -1055,27 +1062,39 @@ export interface SequenceEditHistoryProjection extends SequenceEditHistoryView {
   readonly conflict: boolean;
   readonly undoConflict: boolean;
   readonly redoConflict: boolean;
+  readonly undoBlockedBy: 'user' | 'mio' | null;
+  readonly redoBlockedBy: 'user' | 'mio' | null;
   readonly undoAvailable: boolean;
   readonly redoAvailable: boolean;
   readonly earliestPosition: number | null;
   readonly atEarliest: boolean;
 }
-export function readSequenceEditHistory(store: ProjectStore): SequenceEditHistoryProjection {
+export function readSequenceEditHistory(store: ProjectStore, requestedOrigin: 'user' | 'mio' = 'user'): SequenceEditHistoryProjection {
   assertFormat5(store);
   const prepared = prepareSequenceEditHistory(store);
   const floor = sequenceEditHistoryFloor(store);
-  const undoEntry = prepared.view.undo ? readSequenceEditHistoryEntry(store, prepared.view.undo.actionId) : null;
-  const redoEntry = prepared.view.redo ? readSequenceEditHistoryEntry(store, prepared.view.redo.actionId) : null;
+  const current = prepared.state.position;
+  const globalUndo = prepared.view.undo ? readSequenceEditHistoryEntry(store, prepared.view.undo.actionId) : null;
+  const globalRedo = prepared.view.redo ? readSequenceEditHistoryEntry(store, prepared.view.redo.actionId) : null;
+  const nearest = (direction: 'undo' | 'redo'): SequenceEditHistoryEntry | null => {
+    const row = (direction === 'undo'
+      ? store.db.prepare(`SELECT actionId FROM main.editor_history_entries WHERE projectId=? AND origin=? AND position<=? ORDER BY position DESC LIMIT 1`).get(store.projectId, requestedOrigin, current)
+      : store.db.prepare(`SELECT actionId FROM main.editor_history_entries WHERE projectId=? AND origin=? AND position>? ORDER BY position ASC LIMIT 1`).get(store.projectId, requestedOrigin, current)) as {actionId?: unknown} | undefined;
+    return typeof row?.actionId === 'string' ? readSequenceEditHistoryEntry(store, row.actionId) : null;
+  };
+  const undoEntry = nearest('undo'), redoEntry = nearest('redo');
+  const undoBlockedBy = undoEntry && undoEntry.position !== current ? (globalUndo?.origin ?? null) : null;
+  const redoBlockedBy = redoEntry && redoEntry.position !== current + 1 ? (globalRedo?.origin ?? null) : null;
   const stale = (entry: SequenceEditHistoryEntry | null, patch: SequenceEditStateDelta | null): boolean =>
     !!entry && !!patch && (!boardDeltaMatches(store, patch.board) || !timelineDeltaMatches(store, patch.timeline));
-  const undoConflict = stale(undoEntry, undoEntry?.afterPatch ?? null);
-  const redoConflict = stale(redoEntry, redoEntry?.beforePatch ?? null);
+  const undoConflict = !!undoBlockedBy || stale(undoEntry, undoEntry?.afterPatch ?? null);
+  const redoConflict = !!redoBlockedBy || stale(redoEntry, redoEntry?.beforePatch ?? null);
   const action = (entry: SequenceEditHistoryEntry | null) => entry
     ? {actionId: entry.actionId, operation: entry.operation, affected: entryAffected(entry),
       ...(entry.origin === 'mio' ? {origin: 'mio' as const} : {})} : null;
   const atEarliest = floor === null || prepared.state.position < floor;
   return {...prepared.view, projectId: store.projectId, undo: action(undoEntry), redo: action(redoEntry),
-    conflict: undoConflict || redoConflict, undoConflict, redoConflict,
+    conflict: undoConflict || redoConflict, undoConflict, redoConflict, undoBlockedBy, redoBlockedBy,
     undoAvailable: !!undoEntry && !undoConflict, redoAvailable: !!redoEntry && !redoConflict,
     earliestPosition: floor, atEarliest};
 }
@@ -1130,18 +1149,19 @@ export function createSequenceEditing(store: ProjectStore): SequenceEditingServi
       if (operation === 'sequence.history.get') {
         const {projectId} = parsed.data as {projectId: string};
         if (projectId !== store.projectId) throw new AppError('VALIDATION_ERROR', '项目范围无效。', 400);
-        return sequenceEditingResponses[operation].parse(readSequenceEditHistory(store));
+        return sequenceEditingResponses[operation].parse(readSequenceEditHistory(store, (parsed.data as {origin?: 'user' | 'mio'}).origin ?? 'user'));
       }
       if (operation === 'sequence.edit') {
         const envelope = parsed.data as unknown as SequenceEditEnvelope;
         if (envelope.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
         return sequenceEditingResponses[operation].parse(applySequenceEdit(store, envelope, authorize));
       }
-      const history = parsed.data as {projectId?: string; requestId: string; actionId: string; expected: {position: number; revision: number}};
+      const history = parsed.data as {projectId?: string; requestId: string; actionId: string; expected: {position: number; revision: number}; origin?: 'user' | 'mio'};
       if (history.projectId !== undefined && history.projectId !== store.projectId) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '项目范围无效。');
       return sequenceEditingResponses[operation].parse(applySequenceEditHistory(store,
         operation === 'sequence.undo' ? 'undo' : 'redo',
-        {projectId: store.projectId, requestId: history.requestId, actionId: history.actionId, expected: history.expected}, authorize));
+        {projectId: store.projectId, requestId: history.requestId, actionId: history.actionId, expected: history.expected,
+          ...(history.origin ? {origin: history.origin} : {})}, authorize));
     },
   };
 }

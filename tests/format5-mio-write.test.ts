@@ -84,14 +84,14 @@ test('Mio write actions preview and commit the server-built envelope with origin
   const receipt=commitMioSequenceAction(store,plan);
   assert.equal(receipt.status,'applied');
   assert.equal(receipt.projectId,projectId);
-  const history=readSequenceEditHistory(store);
+  const history=readSequenceEditHistory(store,'mio');
   assert.equal(history.undo?.actionId,receipt.actionId);
   assert.equal(history.undo?.origin,'mio');
   // D5: Mio undo addresses its own action only while it is the cursor top.
   const undo=prepareMioSequenceUndo(store,projectId,req(2),receipt.actionId);
   const undone=applyMioSequenceUndo(store,undo);
   assert.equal(undone.status,'applied');
-  assert.equal(readSequenceEditHistory(store).undo,null);
+  assert.equal(readSequenceEditHistory(store,'mio').undo,null);
 });
 
 test('Mio undo refuses a user-origin action and a stale cursor', t => {
@@ -124,16 +124,65 @@ test('FR-A clip properties are opened as a Mio action through the same envelope'
   assert.equal(receipt.status,'applied');
   const timeline=store.get('timelines',timelineId) as any;
   assert.equal(timeline.clips.find((clip: any)=>clip.id===clipA).name,'Mio 属性改名');
-  assert.equal(readSequenceEditHistory(store).undo?.origin,'mio');
+  assert.equal(readSequenceEditHistory(store,'mio').undo?.origin,'mio');
   const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(7),receipt.actionId));
   assert.equal(undone.status,'applied');
   assert.equal((store.get('timelines',timelineId) as any).clips.find((clip: any)=>clip.id===clipA).name,'A');
+});
+
+test('D5: user undo sees the Mio stack as blocked and Mio undo cannot cross a user action', t => {
+  const store=fixture(t);
+  const service=createFormat5SequenceEditService(store);
+  const userFirst=service.preview({projectId,requestId:req(20),origin:'user',
+    propertiesIntent:{side:'timeline',operation:{kind:'clip-properties',edits:[{clipId:clipA,patch:{name:'User below'}}]}}}) as any;
+  const userFirstReceipt=service.commit({projectId,envelope:userFirst.envelope,expectedPlanDigest:userFirst.planDigest}) as any;
+  const mioPlan=previewMioSequenceAction(store,projectId,req(21),{kind:'set-mode',clipId:clipA,mode:'locked',versionId:versionA});
+  const mioReceipt=commitMioSequenceAction(store,mioPlan);
+  const userView=readSequenceEditHistory(store,'user');
+  assert.equal(userView.undo?.actionId,userFirstReceipt.actionId);
+  assert.equal(userView.undoBlockedBy,'mio');
+  assert.throws(()=>service.undo({projectId,requestId:req(22),actionId:userFirstReceipt.actionId,
+    expected:{position:userView.position,revision:userView.revision},origin:'user'}),
+  {code:'SEQUENCE_EDIT_HISTORY_CONFLICT'});
+  const mioView=readSequenceEditHistory(store,'mio');
+  assert.equal(mioView.undo?.actionId,mioReceipt.actionId);
+  assert.equal(mioView.undoBlockedBy,null);
+  // A real user action above the Mio action makes the user stack top again,
+  // while the Mio stack is now blocked by a later user action.
+  const userTopPreview=service.preview({projectId,requestId:req(23),origin:'user',
+    propertiesIntent:{side:'timeline',operation:{kind:'clip-properties',edits:[{clipId:clipA,patch:{name:'User above'}}]}}}) as any;
+  service.commit({projectId,envelope:userTopPreview.envelope,expectedPlanDigest:userTopPreview.planDigest});
+  const blockedMio=readSequenceEditHistory(store,'mio');
+  assert.equal(blockedMio.undoBlockedBy,'user');
+  assert.throws(()=>prepareMioSequenceUndo(store,projectId,req(24),mioReceipt.actionId),{code:'SEQUENCE_EDIT_HISTORY_CONFLICT'});
+  const userTop=readSequenceEditHistory(store,'user');
+  assert.equal(userTop.undoBlockedBy,null);
+  assert.equal(userTop.undo?.origin,undefined);
+});
+
+test('MT-4 board actions are bounded server-side previews and commits', t => {
+  const store=fixture(t);
+  const beforeShots=(store.db.prepare('SELECT count(*) AS n FROM project.shots').get() as {n:number}).n;
+  const append=previewMioSequenceAction(store,projectId,req(30),{kind:'board-shot-append',name:'Appended shot'});
+  assert.equal(append.envelope.origin,'mio');
+  const appendReceipt=commitMioSequenceAction(store,append);
+  assert.equal(appendReceipt.status,'applied');
+  assert.equal((store.db.prepare('SELECT count(*) AS n FROM project.shots').get() as {n:number}).n,beforeShots+1);
+  const layout=previewMioSequenceAction(store,projectId,req(31),{kind:'board-layout-move',
+    moves:[{nodeId:shotA,x:123,y:456}]});
+  assert.equal(commitMioSequenceAction(store,layout).status,'applied');
+  assert.deepEqual((store.get('shots',shotA) as any).position,{x:123,y:456});
+  const tools=listAgentTaskTools(false,true);
+  assert.equal(tools.find(tool=>tool.operation==='sequence.board.get')?.name,'mioon_sequence_board_get');
 });
 
 test('write actions are bounded and reject generated ids supplied as envelopes', () => {
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root,envelope:{}}).success,false);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'split',clipId:projectId,offsetFrames:0}).success,false);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-shot-append',name:'New shot'}).success,true);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1,y:2}]}).success,true);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1_000_001,y:2}]}).success,false);
   const tools=listAgentTaskTools(false,true);
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.edit'&&tool.risk==='local_reversible'));
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.undo'));

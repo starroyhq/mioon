@@ -21,11 +21,11 @@ export const sequenceHistoryCursorSchema = z.object({
 
 export const sequenceEditingSchemas = Object.freeze({
   'sequence.edit': sequenceEditEnvelopeSchema,
-  'sequence.history.get': z.object({projectId: uuid}).strict(),
+  'sequence.history.get': z.object({projectId: uuid, origin: z.enum(['user', 'mio']).optional()}).strict(),
   'sequence.undo': z.object({projectId: uuid, requestId: z.string().refine(isSequenceEditRequestId, 'Invalid request id'),
-    actionId: uuid, expected: sequenceHistoryCursorSchema}).strict(),
+    actionId: uuid, expected: sequenceHistoryCursorSchema, origin: z.enum(['user', 'mio']).optional()}).strict(),
   'sequence.redo': z.object({projectId: uuid, requestId: z.string().refine(isSequenceEditRequestId, 'Invalid request id'),
-    actionId: uuid, expected: sequenceHistoryCursorSchema}).strict(),
+    actionId: uuid, expected: sequenceHistoryCursorSchema, origin: z.enum(['user', 'mio']).optional()}).strict(),
 });
 export type SequenceEditingOperation = keyof typeof sequenceEditingSchemas;
 export type SequenceEditInput = z.infer<typeof sequenceEditingSchemas['sequence.edit']>;
@@ -43,6 +43,7 @@ export const sequenceHistoryViewResponseSchema = z.object({
   projectId: uuid, epoch: uuid, position: z.number().int().safe().min(0), revision: z.number().int().safe().min(1),
   undo: sequenceEditHistoryActionSchema.nullable(), redo: sequenceEditHistoryActionSchema.nullable(),
   conflict: z.boolean(), undoConflict: z.boolean(), redoConflict: z.boolean(),
+  undoBlockedBy: z.enum(['user', 'mio']).nullable(), redoBlockedBy: z.enum(['user', 'mio']).nullable(),
   undoAvailable: z.boolean(), redoAvailable: z.boolean(),
   /** Lowest retained history position, or null while the stack is empty. */
   earliestPosition: z.number().int().safe().min(1).nullable(),
@@ -54,6 +55,8 @@ export interface SequenceHistoryViewResponse extends SequenceEditHistoryView {
   readonly conflict: boolean;
   readonly undoConflict: boolean;
   readonly redoConflict: boolean;
+  readonly undoBlockedBy: 'user' | 'mio' | null;
+  readonly redoBlockedBy: 'user' | 'mio' | null;
   readonly undoAvailable: boolean;
   readonly redoAvailable: boolean;
   readonly earliestPosition: number | null;
