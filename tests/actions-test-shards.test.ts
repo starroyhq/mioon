@@ -62,28 +62,36 @@ function workflowJob(workflow: string, name: string): string {
   assert.ok(value, `the ${name} job must exist`);
   return value;
 }
-test('portable PR change detection can read the base after multiple follow-up commits', async () => {
+test('macOS PR change detection can read the base after multiple follow-up commits', async () => {
   const workflow = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
-  const portable = workflowJob(workflow, 'portable');
-  const checkout = /      - name: Checkout frozen source\r?\n([\s\S]*?)(?=      - name:|(?![\s\S]))/m.exec(portable)?.[1];
-  assert.ok(checkout, 'portable jobs must check out the frozen revision before comparing changes');
+  const macos = workflowJob(workflow, 'macos');
+  const checkout = /      - name: Checkout frozen source\r?\n([\s\S]*?)(?=      - name:|(?![\s\S]))/m.exec(macos)?.[1];
+  assert.ok(checkout, 'the macOS job must check out the frozen revision before comparing changes');
   assert.match(checkout, /uses: actions\/checkout@[a-f0-9]{40}/);
   assert.match(checkout, /ref: \$\{\{ inputs\.source_sha \}\}/);
-  assert.match(portable, /PR_BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
-  assert.match(portable, /git diff --name-only "\$PR_BASE_SHA" HEAD/);
+  assert.match(macos, /PR_BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(macos, /git diff --name-only "\$PR_BASE_SHA" HEAD/);
   assert.match(checkout, /^          fetch-depth: 0\r?$/m,
     'the PR base can be older than any fixed shallow depth after subsequent commits');
 });
-test('macOS desktop group runs in its own job with the reviewed suite and diagnostics', async () => {
+test('macOS portable and desktop checks share one required job', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const workflow = await readFile(path.join(root, '.github/workflows/checks.yml'), 'utf8');
-  const desktop = workflowJob(workflow, 'macos-desktop');
-  assert.match(desktop, /runs-on: macos-15/);
-  assert.match(desktop, /timeout-minutes: 15/);
-  assert.match(desktop, /node scripts\/tooling\.ts test --suite=macos-desktop --concurrency=2 --reporter=tap/);
-  assert.match(desktop, /pnpm install --frozen-lockfile/);
-  assert.match(desktop, /name: checks-macos-desktop-diagnostics/);
-  assert.doesNotMatch(desktop, /^\s+needs:/m, 'the desktop group must not wait for the Linux full shards');
+  assert.doesNotMatch(workflow, /^  macos-desktop:/m, 'the desktop group must not be a second macOS job');
+  const macos = workflowJob(workflow, 'macos');
+  assert.match(macos, /runs-on: macos-15/);
+  assert.match(macos, /timeout-minutes: 45/);
+  assert.match(macos, /node scripts\/tooling\.ts typecheck/);
+  assert.match(macos, /node scripts\/tooling\.ts test --suite=portable --concurrency=1 --reporter=tap/);
+  assert.match(macos, /tests\/actions-test-shards\.test\.ts/);
+  assert.match(macos, /node scripts\/tooling\.ts test --suite=macos-desktop --concurrency=2 --reporter=tap/);
+  assert.ok(macos.indexOf('Test portable source behavior') < macos.indexOf('Test the reviewed macOS desktop group'),
+    'the portable checks must run before the desktop group on the shared runner');
+  assert.match(macos, /name: checks-macos-diagnostics/);
+  assert.doesNotMatch(macos, /^\s+needs:/m, 'the macOS job must not wait for the Linux full shards');
+  const portable = workflowJob(workflow, 'portable');
+  assert.match(portable, /runs-on: windows-2025/, 'the remaining portable lane runs on Windows only');
+  assert.doesNotMatch(portable, /sheet: macos|runs-on: macos-15/);
   const ci = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8');
   assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
   assert.match(ci, /needs: checks/);
