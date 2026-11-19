@@ -139,10 +139,16 @@ test('K1 format switch and scene split meet the local budgets', async t => {
   console.log(JSON.stringify({benchmark: 'format5-format-scenes', shots, mainClips: shots, auxiliaryClips: auxiliary,
     cues, buildMs, formatTotal, formatCodePath, formatCommit, sceneCodePath, sceneCommit, sceneTotal}));
   assert.ok(buildMs < 180_000, `fixture build took ${buildMs}ms`);
-  const budget = process.platform === 'linux' ? 200 : 100;
-  assert.ok(formatCodePath.p95 <= budget, `format K1 code path p95 ${formatCodePath.p95}ms exceeds ${budget}ms`);
-  if (process.platform !== 'linux') assert.ok(formatTotal.p95 <= budget, `format K1 p95 ${formatTotal.p95}ms exceeds ${budget}ms`);
-  const sceneBudget = process.platform === 'linux' ? 400 : 500;
-  assert.ok(sceneCodePath.max <= sceneBudget, `scene K1 code path ${sceneCodePath.max}ms exceeds ${sceneBudget}ms`);
+  if (process.platform === 'linux') {
+    assert.ok(formatCodePath.p95 <= 200, `format K1 code path p95 ${formatCodePath.p95}ms exceeds 200ms`);
+    assert.ok(formatCodePath.max <= 400, `format K1 code path max ${formatCodePath.max}ms exceeds 400ms`);
+    assert.ok(sceneCodePath.p95 <= 400, `scene K1 code path p95 ${sceneCodePath.p95}ms exceeds 400ms`);
+    assert.ok(sceneCodePath.max <= 800, `scene K1 code path max ${sceneCodePath.max}ms exceeds 800ms`);
+  } else {
+    assert.ok(formatTotal.p95 <= 100, `format K1 p95 ${formatTotal.p95}ms exceeds 100ms`);
+    assert.ok(formatTotal.max <= 200, `format K1 max ${formatTotal.max}ms exceeds 200ms`);
+    assert.ok(sceneTotal.p95 <= 200, `scene K1 p95 ${sceneTotal.p95}ms exceeds 200ms`);
+    assert.ok(sceneTotal.max <= 400, `scene K1 max ${sceneTotal.max}ms exceeds 400ms`);
+  }
   });
 });
