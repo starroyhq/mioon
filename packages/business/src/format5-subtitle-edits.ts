@@ -221,13 +221,21 @@ export function planSubtitleEdits(store: ProjectStore, intent: SequenceEditSubti
   const beforeProfile = timeline.subtitles ? {kind: 'unchanged' as const} : {kind: 'absent' as const};
   const afterProfile = timeline.subtitles ? {kind: 'unchanged' as const}
     : nextCues.length ? {kind: 'set' as const, value: {profileId: TIMELINE_SUBTITLE_PROFILE_ID}} : {kind: 'absent' as const};
+  // The shared delta applier is incremental (write these rows, delete these ids),
+  // so the inverse patch must list rows the other side created. A full-list
+  // rewrite would make undoing an `add` leave the new cue behind.
+  const beforeCues = timeline.subtitles?.cues ?? [];
+  const beforeIds = new Set(beforeCues.map(cue => cue.id));
+  const afterIds = new Set(nextCues.map(cue => cue.id));
+  const createdCueIds = nextCues.filter(cue => !beforeIds.has(cue.id)).map(cue => cue.id);
+  const deletedCueIds = beforeCues.filter(cue => !afterIds.has(cue.id)).map(cue => cue.id);
   const shotWrites = [...shots.entries()].map(([id, shot]) => ({id, data: writeShotDialogue(store, shot)}))
     .filter((entry, index) => JSON.stringify(entry.data) !== JSON.stringify([...shots.values()][index]!.before));
   const beforeShots = [...shots.entries()].filter(([id]) => shotWrites.some(entry => entry.id === id))
     .map(([id, shot]) => ({id, data: shot.row}));
-  return {before: stateDelta(before, [], beforeProfile, beforeShots),
-    after: stateDelta(after, [...removed], afterProfile, shotWrites),
-    changedCueIds: [...touched].sort(), removedCueIds: [...removed].sort(),
+  return {before: stateDelta(beforeCues, createdCueIds, beforeProfile, beforeShots),
+    after: stateDelta(nextCues, deletedCueIds, afterProfile, shotWrites),
+    changedCueIds: [...touched].sort(), removedCueIds: deletedCueIds.sort(),
     changedShotIds: shotWrites.map(entry => entry.id).sort()};
 }
 

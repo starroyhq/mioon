@@ -26,6 +26,9 @@ import {
 } from '../../../apps/web/src/edit-ui/session.ts';
 import type {SequenceHistoryView} from '../../../apps/web/src/edit-ui/session.ts';
 import type {SequenceSyncCommand} from '../../../packages/contracts/src/sequence-sync.ts';
+import {
+  format5ClipInspectorEdit, format5ClipPropertyEdit, format5PropertiesIntent, format5SubtitleEdit,
+} from '../../../apps/web/src/edit-ui/format5-panel-edits.ts';
 
 type Row = Record<string, any>;
 interface WireData {project: Row; timeline: Row; shots: readonly Row[]; versions: readonly Row[]; assets: readonly Row[]; projectFormatVersion: 5}
@@ -63,10 +66,11 @@ function Harness(): React.ReactElement {
   const [exportIssues, setExportIssues] = useState<readonly {code: string; clipId: string}[]>([]);
   const [lastOperation, setLastOperation] = useState('');
   const [lastError, setLastError] = useState('');
+  const [lastUndo, setLastUndo] = useState('');
   const session = useRef(new Format5EditSession(rpc, () => projectId));
   const busy = useRef(false);
   const stateRef = useRef<Row>({});
-  stateRef.current = {data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError};
+  stateRef.current = {data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError, lastUndo};
 
   const refresh = async (): Promise<void> => {
     const project = await rpc('project.get', {projectId}) as WireData;
@@ -83,10 +87,12 @@ function Harness(): React.ReactElement {
       event.preventDefault();
       const run = async (): Promise<void> => {
         const view = await rpc('sequence.history.get', {projectId}) as SequenceHistoryView;
+        const target = event.shiftKey ? view.redo : view.undo;
         const result = event.shiftKey ? await session.current.redo(view) : await session.current.undo(view);
         setLastOperation(event.shiftKey ? 'redo' : 'undo');
+        setLastUndo(`${target?.operation ?? 'none'}:${result.ok ? 'ok' : result.code}`);
         if (!result.ok) setLastError(result.code);
-        await refresh();
+        try {await refresh();} catch (error) {setLastError(`refresh:${(error as {code?: string}).code ?? 'error'}`);}
       };
       void run();
     };
@@ -94,7 +100,7 @@ function Harness(): React.ReactElement {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  useEffect(() => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};}, [data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError]);
+  useEffect(() => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};}, [data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError, lastUndo]);
   const timeline = data?.timeline ?? null;
   const projection = useMemo(() => data ? format5Projection(timeline as never, data.shots as never, data.versions as never) : null,
     [data, timeline]);
@@ -124,6 +130,78 @@ function Harness(): React.ReactElement {
     try {return await applyOutcome(command, await session.current.run(command));}
     finally {busy.current = false;}
   };
+  // UI-E3: the production mapping/session entry the panels use, exposed for the
+  // headless flow. Each call is one preview/commit with the real kernel.
+  const panelClipId = '90000000-0000-4000-8000-000000000030';
+  const panelResult = async (label: string, payload: Record<string, unknown>): Promise<Row> => {
+    const result = await session.current.runPayload(payload) as Row;
+    setLastOperation(label);
+    setLastError(result.ok ? '' : String(result.code ?? 'UNKNOWN'));
+    if (result.ok) {
+      setNotice({id: `wire-panel-${Date.now()}`, message: t('editUi.notice.propertiesSaved', {name: '面板'})});
+      setNoticeActionId(String(result.actionId ?? ''));
+    }
+    await refresh();
+    return {ok: result.ok, ...(result.ok ? {actionId: result.actionId} : {code: result.code})};
+  };
+  const panelSubtitle = async (label: string, operation: string, input: Row, newCueId: string): Promise<Row> => {
+    const built = format5SubtitleEdit({scope: 'wire', projectId, timelineId: data?.timeline?.id ?? '',
+      selection: 0, serial: 0, operation, input, previousIds: []} as never, newCueId);
+    if (!built.intent) {setLastOperation(label); setLastError(String(built.unsupported ?? 'payload')); return {ok: false, code: built.unsupported};}
+    const result = await panelResult(label, {subtitlesIntent: built.intent});
+    return {...result, cueId: newCueId};
+  };
+  useEffect(() => {
+    if (!data) return;
+    const clip = data.timeline.clips.find((item: Row) => item.id === panelClipId);
+    const properties = (label: string, patch: Row): Promise<Row> =>
+      panelResult(label, {propertiesIntent: format5PropertiesIntent(panelClipId, patch)});
+    const property = (label: string, key: 'transform' | 'transition', value: unknown): Promise<Row> => {
+      const mapped = clip ? format5ClipPropertyEdit(panelClipId, key, value, Number(clip.durationFrames)) : {unsupported: true as const};
+      if ('unsupported' in mapped) {setLastOperation(label); setLastError('unsupported'); return Promise.resolve({ok: false, code: 'unsupported'});}
+      return panelResult(label, {propertiesIntent: mapped});
+    };
+    (window as any).__panel = {
+      rename: () => properties('panel-rename', {name: '改名镜头'}),
+      props: () => properties('panel-props', {gain: 0.5, fadeInFrames: 3}),
+      colour: () => properties('panel-colour', {colour: {profileId: 'mioon-rec709-sdr-clip-v1', source: null, look: null}}),
+      transform: () => property('panel-transform', 'transform', {profileId: 'mioon-clip-transform-v1',
+        keyframes: [{frame: 0, x: 5, y: 0, scale: 1}], rotation: 0, crop: {left: 0, top: 0, right: 0, bottom: 0}}),
+      // The transition lives on the incoming clip of a cut (A2, not the head A).
+      transition: () => {
+        const incoming = data.timeline.clips.find((item: Row) => item.id === '90000000-0000-4000-8000-000000000031');
+        const mapped = incoming ? format5ClipPropertyEdit(incoming.id, 'transition',
+          {profileId: 'mioon-clip-transition-v1', kind: 'dissolve', durationFrames: 8}, Number(incoming.durationFrames)) : {unsupported: true as const};
+        if ('unsupported' in mapped) return Promise.resolve({ok: false, code: 'unsupported'});
+        return panelResult('panel-transition', {propertiesIntent: mapped});
+      },
+      history: () => rpc('sequence.history.get', {projectId}),
+      project: () => rpc('project.get', {projectId}),
+      cues: () => ((((window as any).__wireState?.data || {}).timeline || {}).subtitles || {}).cues || [],
+      unsupportedRect: () => {
+        if (!clip) return {kind: 'unsupported', reason: 'field', fields: ['rect']};
+        const edit = format5ClipInspectorEdit(clip as Row, {...clip, rect: {x: 1, y: 1, width: 10, height: 10}},
+          data.timeline.clips as Row[], mainTrackId);
+        setLastOperation('panel-unsupported');
+        setLastError(edit.kind === 'properties' ? '' : 'unsupported');
+        return edit as unknown as Row;
+      },
+      addSubtitle: (text: string, startFrame: number, durationFrames: number) =>
+        panelSubtitle('panel-subtitle-add', 'timeline.subtitle.add', {text, startFrame, durationFrames}, crypto.randomUUID()),
+      updateSubtitle: (cueId: string, text: string) =>
+        panelSubtitle('panel-subtitle-update', 'timeline.subtitle.update', {cueId, patch: {text}}, 'unused'),
+      removeSubtitle: (cueId: string) =>
+        panelSubtitle('panel-subtitle-remove', 'timeline.subtitle.remove', {cueId}, 'unused'),
+      double: async () => {
+        const payload = {propertiesIntent: format5PropertiesIntent(panelClipId, {gain: 0.7})};
+        const results = await Promise.all([session.current.runPayload(payload), session.current.runPayload(payload)]);
+        setLastOperation('panel-double');
+        await refresh();
+        return results.map(result => result.ok ? 'applied' : String(result.code));
+      },
+    };
+  }, [data, t]);
+
   const removeSelected = async (): Promise<void> => {if (selectedClipId) await run(format5RemoveCommand(selectedClipId));};
   const splitSelected = async (): Promise<void> => {
     const clip = data?.timeline.clips.find((item: Row) => item.id === selectedClipId);

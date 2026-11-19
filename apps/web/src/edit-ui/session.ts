@@ -20,6 +20,12 @@ export interface SequencePreviewResponse {
   readonly warnings: readonly {readonly code: string}[];
 }
 export interface SequenceFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]}
+function failureFrom(error: unknown): SequenceFailure {
+  const record = error as {code?: string; details?: {ids?: unknown}} | null;
+  const raw = record?.details && typeof record.details === 'object' ? record.details.ids : undefined;
+  const ids = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : [];
+  return {ok: false, code: record?.code ?? 'GENERIC', ...(ids.length ? {ids} : {})};
+}
 export interface SequenceSuccess {readonly ok: true; readonly actionId: string; readonly operation: string;
   readonly patch: unknown; readonly receipt: SequenceEditReceipt}
 export type SequenceOutcome = SequenceSuccess | SequenceFailure;
@@ -224,6 +230,24 @@ export class Format5EditSession {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {return await this.commitInternal();} finally {this.inFlight = false;}
+  }
+  /** UI-E3: preview then commit any shared intent family (FR-A properties,
+   * FR-B subtitles) with the same one-flight guard as the TS commands. */
+  async runPayload(payload: Readonly<Record<string, unknown>>): Promise<SequenceOutcome> {
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      const preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('preview'),
+        ...payload}) as SequencePreviewResponse | SequenceFailure;
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      const accepted = preview as SequencePreviewResponse;
+      if (typeof accepted.planDigest !== 'string' || !accepted.envelope) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      return commitOutcome(await this.endpoint('sequence.commit')({projectId, envelope: accepted.envelope,
+        expectedPlanDigest: accepted.planDigest}));
+    } catch (error) {return failureFrom(error);}
+    finally {this.inFlight = false;}
   }
   /** Preview then commit; one click while a request is in flight never queues a
    * second write. */
