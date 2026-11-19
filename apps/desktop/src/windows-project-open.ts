@@ -16,7 +16,12 @@ export const waitForWindowCondition = async (window: BrowserWindow, check: () =>
 };
 const evaluate = (window: BrowserWindow, script: string): Promise<unknown> => window.webContents.executeJavaScript(script, true);
 const record = (value: unknown): Record<string, unknown> => (value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
-const openButton = (projectId: string): string => `[data-testid="project-home-open-${projectId.replace(/[^0-9a-f-]/gu, '')}"]`;
+const openButton = (projectId: string): string => {
+  const id = projectId.replace(/[^0-9a-f-]/gu, '');
+  // The launcher home renders the recent-project catalog (pf-card-open); the
+  // dialog surface keeps the project-home-open prefix.
+  return `[data-testid="pf-card-open-${id}"],[data-testid="project-home-open-${id}"]`;
+};
 /** Refreshes the launcher home and clicks the project's real open button. */
 export async function openRegisteredProject(launcher: BrowserWindow, backendUrl: string, projectId: string,
   onStep: (step: 'home' | 'list' | 'window' | 'workbench') => Promise<void> = async () => {}): Promise<BrowserWindow> {
@@ -60,7 +65,7 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
   }
   if (!ready) {
     const diagnostic = record(await evaluate(launcher, `(async () => {
-      const cards = document.querySelectorAll('[data-testid^="project-home-open-"]');
+      const cards = document.querySelectorAll('[data-testid^="pf-card-open-"],[data-testid^="project-home-open-"]');
       const target = document.querySelector(${JSON.stringify(button)});
       let bridge = null;
       try { const recent = await window.__mioonProjectEntries.listRecent();
