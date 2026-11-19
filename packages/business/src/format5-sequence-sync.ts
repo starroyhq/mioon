@@ -26,7 +26,8 @@ import type {
   SequenceEditTransactionFailure, MainTrackProjectionPort,
 } from '@mioon/contracts/sequence-edit';
 import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
-import {planSubjectBindingAction, readSubjectBinding} from './format5-subject-binding.ts';
+import {readSubjectBinding} from './format5-subject-binding.ts';
+import {planSubjectEditAction} from './format5-subject-card.ts';
 import {planPrevisAction} from './format5-previs.ts';
 import {prunePrevisThumbnails} from './previs.ts';
 import {planReferenceEdgeAction} from './format5-reference-inputs.ts';
@@ -767,7 +768,7 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta): vo
 
 /** Native-column binding row: content comes from the patch, revision is always
  * the live row + 1 (or 1 when the tombstone is created). */
-function applySubjectBindingWrite(store: ProjectStore, data: Row): void {
+export function applySubjectBindingWrite(store: ProjectStore, data: Row): void {
   const current = readSubjectBinding(store, String(data.id));
   const revision = current ? Number(current.revision) + 1 : 1;
   if (!Number.isSafeInteger(revision) || revision >= Number.MAX_SAFE_INTEGER) {
@@ -817,8 +818,13 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const durationFrames = [...[...clips.values()].map(clip => clip.startFrame + clip.durationFrames),
     ...[...cues.values()].map(cue => cue.startFrame + cue.durationFrames)]
     .reduce((maximum, value) => Math.max(maximum, value), 0);
+  const subtitleChange = delta.subtitles ?? {kind: 'unchanged' as const};
+  const subtitleProfile = subtitleChange.kind === 'unchanged'
+    ? (current.subtitles ? {profileId: current.subtitles.profileId,
+      ...(current.subtitles.basisPresetId !== undefined ? {basisPresetId: current.subtitles.basisPresetId} : {})} : null)
+    : subtitleChange.kind === 'absent' ? null : subtitleChange.value;
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
-    clips: [...clips.values()], subtitles: current.subtitles ? {...current.subtitles, cues: [...cues.values()]} : undefined};
+    clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
   const update = planFormat5TimelineEntityUpdate(state, {clips: delta.clips, cues: delta.cues,
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
   const headerRaw = JSON.stringify(format5TimelineHeader(next));
@@ -1100,7 +1106,7 @@ function runSubjectBindingSync(store: ProjectStore, envelope: SequenceEditEnvelo
       return writeFailure(store, envelope, 'SEQUENCE_EDIT_REVISION_CONFLICT');
     }
     let plan;
-    try { plan = planSubjectBindingAction(store, envelope); }
+    try { plan = planSubjectEditAction(store, envelope); }
     catch (error) {
       if (error instanceof AppError && isSequenceEditErrorCode(error.code)) {
         return writeFailure(store, envelope, error.code);
@@ -1110,9 +1116,12 @@ function runSubjectBindingSync(store: ProjectStore, envelope: SequenceEditEnvelo
     if (sameJson(plan.before.board, plan.after.board)) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
     applyBoardDelta(store, plan.after.board);
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
+    const nodes = plan.after.board.writes.filter(item => item.kind === 'node' || item.kind === 'shot').length
+      + plan.after.board.removals.filter(item => item.kind === 'node' || item.kind === 'shot').length;
     const affected: SequenceEditAffectedCounts = {
-      nodes: 0,
-      edges: plan.after.board.writes.filter(item => item.kind === 'edge').length + plan.after.board.removals.length,
+      nodes,
+      edges: plan.after.board.writes.filter(item => item.kind === 'edge').length
+        + plan.after.board.removals.filter(item => item.kind === 'edge').length,
       mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0,
       subjectBindings: plan.after.board.writes.filter(item => item.kind === 'subject_binding').length,
     };

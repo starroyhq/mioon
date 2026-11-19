@@ -22,7 +22,7 @@ import type {
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
   SequenceEditPrevisIntent, PrevisIntentOperation, ReferenceEdgeOperation,
-  SequenceEditReferenceIntent, SubjectBindingOperation,
+  SequenceEditReferenceIntent, SubjectBindingOperation, SubjectEditOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 
@@ -142,11 +142,13 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
   ];
-  const subjectSamples: Array<[SubjectBindingOperation, string]> = [
+  const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
     [lockBinding, 'subject.binding.set-mode'],
     [detachBinding, 'subject.binding.detach'],
     [restoreBinding, 'subject.binding.restore'],
+    [{kind: 'subject.card.create', nodeId: nodeA, subjectId: uuid('60'), position: {x: 0, y: 0}}, 'subject.card.create'],
+    [{kind: 'subject.card.delete', nodeId: nodeA}, 'subject.card.delete'],
   ];
   const previsSamples: Array<[PrevisIntentOperation, string]> = [
     [createPrevis, 'previs.create'], [savePrevis, 'previs.scene.set'],
@@ -158,7 +160,7 @@ test('side follows the SA operation kind and every kind maps to one stable name'
       role: 'reference_image'}}, 'reference.role.set'],
     [{kind: 'reference-edge', edit: {kind: 'detach', edgeId: uuid('94'), shotId: shotA}}, 'reference.detach'],
   ];
-  assert.equal(subjectSamples.length, 4);
+  assert.equal(subjectSamples.length, 6);
   assert.equal(previsSamples.length, 2);
   assert.equal(referenceSamples.length, 3);
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length,
@@ -322,6 +324,28 @@ test('previs intents are one board family: create and scene-save name their node
     assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false, JSON.stringify(candidate).slice(0, 200));
   }
 
+});
+
+test('subtitle intents carry one timeline action with cue impact and unique identifiers', () => {
+  const cueA = '10000000-0000-4000-8000-000000000070';
+  const cueB = '10000000-0000-4000-8000-000000000071';
+  const subtitles = (edits: unknown[], overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope =>
+    envelope({intents: [], originSide: 'timeline',
+      subtitlesIntent: {side: 'timeline', operation: {kind: 'subtitles', edits}} as never,
+      impact: {...envelope().impact, subtitleCueIds: [cueA]}, ...overrides});
+  const add = {kind: 'add', cue: {id: cueA, text: 'Caption', startFrame: 0, durationFrames: 10}};
+  assert.equal(isSequenceEditEnvelope(subtitles([add])), true);
+  assert.equal(sequenceEditEnvelopeOperationName(subtitles([add])), 'timeline.subtitle.edit');
+  const rejected: unknown[] = [
+    subtitles([add], {intents: [intent(connect)]}),
+    subtitles([add], {originSide: 'board'}),
+    subtitles([{kind: 'add', cue: {id: cueB, text: 'Other', startFrame: 20, durationFrames: 10}}]),
+    subtitles([{kind: 'update', cueId: cueA, patch: {}}]),
+    subtitles([{kind: 'add', cue: {id: cueA, text: 'One', startFrame: 0, durationFrames: 10}},
+      {kind: 'add', cue: {id: cueA, text: 'Two', startFrame: 20, durationFrames: 10}}]),
+  ];
+  for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
+    JSON.stringify(candidate).slice(0, 160));
 });
 
 const referenceEdgeId = uuid('94'), referenceSource = uuid('14');
