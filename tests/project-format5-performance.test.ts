@@ -93,7 +93,14 @@ function sample(store: ProjectStore, mode: Mode, committed: () => {milliseconds:
   const after = [targetRevision(store, first), targetRevision(store, last), targetRevision(store, cue, 'timeline_subtitle')];
   const expectedDelta = mode === 'batch' ? [1, 1, 0] : mode === 'single' ? [1, 0, 0] : [0, 0, 0];
   assert.deepEqual(after, before.map((value, index) => value + expectedDelta[index]!));
-  return {totalMs, readMs, validateMs, writeMs, beginMs, terminalFenceMs, commitMs,
+  // The phases must tile the measured transaction. `unattributedMs` is the
+  // part no phase claims: a growing value means new work (record assembly, GC,
+  // response serialization…) slipped in without a timer. The failing 1,500-clip
+  // samples showed no such gap; their tail sat in `commitMs` (fsync), so keep
+  // this number diagnostic instead of hiding it in the total.
+  const attributedMs = beginMs + readMs + validateMs + writeMs + terminalFenceMs + commitMs;
+  return {totalMs, readMs, validateMs, writeMs, beginMs, terminalFenceMs, commitMs, attributedMs,
+    unattributedMs: totalMs - attributedMs,
     changedRows: Number(store.db.prepare('SELECT total_changes() AS n').get()!.n) - changes, bytes};
 }
 function distribution(values: readonly number[]) {
@@ -147,18 +154,24 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing bu
         totalMs: distribution(samples.map(sample => sample.totalMs)), readMs: distribution(samples.map(sample => sample.readMs)),
         validateMs: distribution(samples.map(sample => sample.validateMs)), writeMs: distribution(samples.map(sample => sample.writeMs)),
         beginMs: distribution(samples.map(sample => sample.beginMs)), terminalFenceMs: distribution(samples.map(sample => sample.terminalFenceMs)), commitMs: distribution(samples.map(sample => sample.commitMs)),
+        attributedMs: distribution(samples.map(sample => sample.attributedMs)),
+        unattributedMs: distribution(samples.map(sample => sample.unattributedMs)),
         changedRows: distribution(samples.map(sample => sample.changedRows)), timelineBytes: samples[0]!.bytes};
       results.push(result);
     }
     t.diagnostic(JSON.stringify({scope: 'kernel-timeline-native-rows-with-terminal-fence', platform: process.platform, arch: process.arch,
       cpu: cpus()[0]?.model, sqlite: store.db.prepare('SELECT sqlite_version() AS version').get()!.version,
       journal: store.db.prepare('PRAGMA project.journal_mode').get()!.journal_mode,
+      synchronous: store.db.prepare('PRAGMA project.synchronous').get()!.synchronous,
       totalClips: total, mainClips: Math.min(total, FORMAT5_LIMITS.mainTrackClips), subtitleCues: timeline.subtitles!.cues.length,
       cold: Object.fromEntries(Object.entries(cold).map(([key, value]) => [key, round(value)])), results,
       peakProcessRssMiB: round(process.resourceUsage().maxRSS / 1024)}));
     const linux = process.platform === 'linux';
     assert.ok(cold.totalMs <= (linux ? 400 : 200), JSON.stringify(cold));
     for (const result of results) {
+      // The measured phases must explain the transaction median. A large
+      // residual is the signal to add a timer, not noise to retry away.
+      assert.ok(Math.abs(result.unattributedMs.p50) <= 5, JSON.stringify(result));
       assert.ok(result.totalMs.p95 <= (linux ? 200 : 100), JSON.stringify(result));
       assert.ok(result.totalMs.max <= (linux ? 400 : 200), JSON.stringify(result));
     }
