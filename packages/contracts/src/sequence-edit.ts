@@ -94,7 +94,7 @@ export function isSequenceEditRequestId(value: unknown): value is string {
 export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.connect', 'board.disconnect', 'board.insert', 'board.delete', 'board.sync', 'board.version',
   'board.root.create', 'board.shot.append', 'board.layout.move',
-  'board.node.create', 'board.shot.update', 'board.node.update', 'board.archive', 'board.restore',
+  'board.node.create', 'board.shot.update', 'board.node.update', 'board.restore',
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
@@ -134,9 +134,10 @@ export type BoardIntentOperation =
   | {readonly kind: 'board.node.create'; readonly nodeId: string;
     readonly nodeType: 'image' | 'video' | 'audio' | 'text'; readonly name: string;
     readonly position: BoardPosition; readonly assetId?: string; readonly text?: string}
-  | {readonly kind: 'board.shot.update'; readonly shotId: string; readonly patch: BoardShotUpdatePatch}
-  | {readonly kind: 'board.node.update'; readonly nodeId: string; readonly patch: BoardNodeUpdatePatch}
-  | {readonly kind: 'board.archive'; readonly items: readonly BoardTarget[]}
+  | {readonly kind: 'board.shot.update'; readonly shotId: string; readonly expectedRevision: number;
+    readonly patch: BoardShotUpdatePatch}
+  | {readonly kind: 'board.node.update'; readonly nodeId: string; readonly expectedRevision: number;
+    readonly patch: BoardNodeUpdatePatch}
   | {readonly kind: 'board.restore'; readonly items: readonly BoardTarget[]}
   | {readonly kind: 'board.paste'; readonly documentId: string; readonly snapshotId: string;
     readonly viewport: {readonly x: number; readonly y: number; readonly width: number; readonly height: number}}
@@ -148,7 +149,7 @@ export function isBoardIntentOperation(operation: {readonly kind: string}): oper
   return operation.kind === 'board.root.create' || operation.kind === 'board.shot.append'
     || operation.kind === 'board.layout.move' || operation.kind === 'board.node.create'
     || operation.kind === 'board.shot.update' || operation.kind === 'board.node.update'
-    || operation.kind === 'board.archive' || operation.kind === 'board.restore'
+    || operation.kind === 'board.restore'
     || operation.kind === 'board.paste' || operation.kind === 'board.duplicate';
 }
 
@@ -353,7 +354,6 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
     case 'board.node.create': return 'board.node.create';
     case 'board.shot.update': return 'board.shot.update';
     case 'board.node.update': return 'board.node.update';
-    case 'board.archive': return 'board.archive';
     case 'board.restore': return 'board.restore';
     case 'board.paste': return 'board.paste';
     case 'board.duplicate': return 'board.duplicate';
@@ -575,7 +575,7 @@ const allocationSchema = z.object({
 });
 const operationSchema = z.object({kind: z.enum(['board', 'sync-board', 'board-version', 'track',
   'board.root.create', 'board.shot.append', 'board.layout.move', 'board.node.create', 'board.shot.update',
-  'board.node.update', 'board.archive', 'board.restore', 'board.paste', 'board.duplicate'])}).passthrough();
+  'board.node.update', 'board.restore', 'board.paste', 'board.duplicate'])}).passthrough();
 const intentSchema = z.object({side: z.enum(SEQUENCE_EDIT_SIDES), operation: operationSchema}).strict()
   .superRefine((value, context) => {
     if (sequenceEditIntentSide(value.operation as unknown as Pick<ChainSyncOperation, 'kind'>) !== value.side) {

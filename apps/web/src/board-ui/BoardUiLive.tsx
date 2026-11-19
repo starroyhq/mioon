@@ -2,7 +2,7 @@
  * format-5 projection and routes every graph command through the one
  * preview -> commit RPC. Selection, errors and the undo notice stay local; the
  * surrounding workbench supplies data, session and refresh. */
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {format5CommandErrorMessageKey} from '../edit-ui/session.ts';
 import EditUiNoticeBar from '../edit-ui/EditUiNotice.tsx';
@@ -11,8 +11,8 @@ import BoardUiStatic from './BoardUiStatic.tsx';
 import type {BoardPortConnection} from './connection-ports.ts';
 import type {BoardUiEdge} from './BoardUiStatic.tsx';
 import type {BoardLive} from './live.ts';
-import {boardConnectIntent, boardDisconnectIntent, boardInsertIntent,
-  boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent} from './live.ts';
+import {boardConnectIntent, boardDeleteIntent, boardDisconnectIntent, boardDuplicateIntent, boardInsertIntent,
+  boardLayoutIntent, boardRestoreIntent, boardRootCreateIntent, boardShotAppendIntent} from './live.ts';
 import type {BoardHistoryView, BoardMountView, BoardOutcome} from './live-session.ts';
 import type {SequenceEditAllocation, SequenceEditIntent, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {subjectBindingCreateOperation, subjectBindingDetachOperation, subjectBindingRestoreOperation,
@@ -53,6 +53,8 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [subjectPicker, setSubjectPicker] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState<readonly {kind: 'shot' | 'node'; id: string}[]>([]);
+  const [menu, setMenu] = useState<{x: number; y: number; nodeId: string} | null>(null);
   const busy = Boolean(props.busy);
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const selectedEdge = selectedEdgeId ? props.board.edges.find(edge => edge.id === selectedEdgeId) ?? null : null;
@@ -150,16 +152,57 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     edit(boardLayoutIntent(moves), t('boardUi.notice.moved', {count: moves.length}));
   };
   const restore = (archivedId: string, name: string): void => {
-    if (!props.activeFilmId) return;
-    const chain = props.board.projection.films.find(item => item.id === props.activeFilmId);
-    const tail = chain?.items.at(-1)?.nodeId ?? props.activeFilmId;
-    edit(boardConnectIntent(tail, archivedId), t('boardUi.notice.restored', {name}));
+    // board.restore owns the UI-B2 semantics: shots re-enter at the active chain
+    // tail, other node kinds come back detached. The archived list owns the kind
+    // because the archived node is no longer part of the live board projection.
+    const kind = props.mount?.archived.find(item => item.id === archivedId)?.kind ?? 'node';
+    edit(boardRestoreIntent([{kind, id: archivedId}]), t('boardUi.notice.restored', {name}));
     setArchiveOpen(false);
   };
+  const duplicate = (items: readonly {kind: 'shot' | 'node'; id: string}[]): void => {
+    if (!items.length || busy) return;
+    const maxX = Math.max(0, ...Object.values(props.board.positions).map(point => point.x));
+    edit(boardDuplicateIntent(items, {x: maxX + 80, y: 120, width: 600, height: 420}),
+      t('boardUi.notice.duplicated', {count: items.length}));
+    setMenu(null);
+  };
+  const copy = (nodeId: string | null): void => {
+    const node = nodeId ? props.board.nodes.find(value => value.id === nodeId) : null;
+    if (!node || node.kind === 'film' || node.kind === 'subject') return;
+    setCopied([{kind: node.kind === 'shot' ? 'shot' : 'node', id: node.id}]);
+    setMenu(null);
+  };
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() === 'c') { if (props.selectedNodeId) {copy(props.selectedNodeId); event.preventDefault();} return; }
+      if (event.key.toLowerCase() === 'v') { if (copied.length) {duplicate(copied); event.preventDefault();} return; }
+      if (event.key.toLowerCase() === 'd') {
+        const node = props.selectedNodeId ? props.board.nodes.find(value => value.id === props.selectedNodeId) : null;
+        if (node && node.kind !== 'film' && node.kind !== 'subject') {
+          duplicate([{kind: node.kind === 'shot' ? 'shot' : 'node', id: node.id}]);
+          event.preventDefault();
+        }
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, [copied, props.selectedNodeId, props.board.nodes]);
   const archived = props.mount?.archived ?? [];
   const error = errorCode === 'REFERENCE_READONLY' ? t('boardUi.referenceReadonly')
     : errorCode ? messageOf(t, errorCode) : null;
-  return <div className="board-ui-live" data-testid="board-ui-live" data-busy={busy ? 'true' : undefined}>
+  const contextMenu = (event: React.MouseEvent<HTMLDivElement>): void => {
+    const target = (event.target as HTMLElement).closest('[data-testid^="board-card-"]');
+    const nodeId = target?.getAttribute('data-testid')?.replace('board-card-', '') ?? null;
+    if (!nodeId || !props.board.nodes.some(node => node.id === nodeId)) {setMenu(null); return;}
+    event.preventDefault();
+    setMenu({x: event.clientX, y: event.clientY, nodeId});
+  };
+  const menuNode = menu ? props.board.nodes.find(node => node.id === menu.nodeId) : null;
+  return <div className="board-ui-live" data-testid="board-ui-live" data-busy={busy ? 'true' : undefined}
+    onContextMenu={contextMenu} onPointerDown={event => { if (!(event.target as HTMLElement).closest('.board-ui-context-menu')) setMenu(null); }}>
     <BoardUiStatic projection={props.board.projection} nodes={props.board.nodes} edges={props.board.edges}
       positions={props.board.positions} reduceMotion={props.reduceMotion} selectedNodeId={props.selectedNodeId}
       onSelectNode={props.onSelectNode} onConnect={connectSequence} onAddShot={addShot}
@@ -174,6 +217,16 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
       <button type="button" data-testid="board-ui-archive" disabled={busy} aria-expanded={archiveOpen}
         onClick={() => setArchiveOpen(open => !open)}>{t('boardUi.archiveCount', {count: archived.length})}</button>
     </div>
+    {menu && menuNode && menuNode.kind !== 'film' && menuNode.kind !== 'subject' && <div className="board-ui-context-menu"
+      role="menu" data-testid="board-ui-context-menu" style={{left: menu.x, top: menu.y}}>
+      <button type="button" role="menuitem" data-testid="board-menu-copy" onClick={() => copy(menu.nodeId)}>{t('boardUi.menu.copy')}</button>
+      <button type="button" role="menuitem" data-testid="board-menu-duplicate" disabled={busy}
+        onClick={() => duplicate([{kind: menuNode.kind === 'shot' ? 'shot' : 'node', id: menuNode.id}])}>{t('boardUi.menu.duplicate')}</button>
+      <button type="button" role="menuitem" data-testid="board-menu-paste" disabled={busy || !copied.length}
+        onClick={() => duplicate(copied)}>{t('boardUi.menu.paste')}</button>
+      <button type="button" role="menuitem" data-testid="board-menu-delete" disabled={busy}
+        onClick={() => { edit(boardDeleteIntent(menuNode.id), t('boardUi.notice.deleted', {name: menuNode.name})); setMenu(null); }}>{t('boardUi.deleteNode')}</button>
+    </div>}
     {subjectPicker && <div className="board-ui-live-subject-picker" data-testid="board-ui-subject-picker" role="dialog"
       aria-label={t('boardUi.addSubject')}>
       <header><strong>{t('boardUi.addSubject')}</strong><button type="button" aria-label={t('boardUi.collapse')}

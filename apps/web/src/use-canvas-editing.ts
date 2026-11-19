@@ -11,8 +11,6 @@ interface UseCanvasEditingOptions extends CanvasEditingContext {
   onNotice?: (notice: CanvasEditingNotice) => void;
   onArchived?: (targets: readonly CanvasTarget[]) => void;
   onCreated?: (targets: readonly CanvasTarget[]) => void;
-  format5?: () => boolean;
-  sequenceRun?: (intent: unknown) => Promise<{ok: boolean; actionId?: string; code?: string}>;
 }
 
 const detachedContext: CanvasEditingContext = {scope: '', projectId: null, enabled: false, writable: false, base: undefined};
@@ -31,8 +29,6 @@ export function useCanvasEditing(options: UseCanvasEditingOptions) {
       onNotice: notice => callbacks.current.onNotice?.(notice),
       onArchived: targets => callbacks.current.onArchived?.(targets),
       onCreated: targets => callbacks.current.onCreated?.(targets),
-      format5: () => callbacks.current.format5?.() ?? false,
-      sequenceRun: intent => callbacks.current.sequenceRun!(intent),
     });
   }
   const controller = ref.current;

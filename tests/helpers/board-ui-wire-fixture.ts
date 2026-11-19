@@ -29,7 +29,7 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const projectId = store.projectId;
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
-    ({id: nodeId, projectId, type, position: {x: 0, y: 0}, createdAt: at, ...extra});
+    ({id: nodeId, projectId, type, position: {x: 0, y: 0}, revision: 1, createdAt: at, ...extra});
   const tracks = [
     {id: BOARD_IDS.video, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false},
     {id: BOARD_IDS.audio, name: 'A1', kind: 'audio', orderIndex: 1, hidden: false, muted: false},
@@ -143,9 +143,9 @@ export async function createBoardUiWireStressFixture(): Promise<{store: ProjectS
     shotIds.forEach((shotId, index) => store.put('shots', {id: shotId, projectId, title: `镜头 ${index + 1}`,
       orderIndex: index, selectedVersionId: null, duration: 1, position: {x: (index % 25) * 280, y: Math.floor(index / 25) * 240},
       aspectRatio: '9:16', revision: 1, createdAt: at, updatedAt: at}));
-    store.put('nodes', {id: rootId, projectId, type: 'sequence_root', name: '成片',
+    store.put('nodes', {id: rootId, projectId, type: 'sequence_root', revision: 1, name: '成片',
       position: {x: -300, y: -100}, createdAt: at});
-    imageIds.forEach((imageId, index) => store.put('nodes', {id: imageId, projectId, type: 'image', assetId: imageAsset,
+    imageIds.forEach((imageId, index) => store.put('nodes', {id: imageId, projectId, type: 'image', assetId: imageAsset, revision: 1,
       label: `参考图 ${index + 1}`, position: {x: (index % 20) * 260, y: 4000 + Math.floor(index / 20) * 220}, createdAt: at}));
     for (const edge of sequenceEdges) store.put('edges', edge);
     for (const edge of referenceEdges) store.put('edges', edge);

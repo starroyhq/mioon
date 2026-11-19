@@ -126,7 +126,6 @@ test('side follows the SA operation kind and every kind maps to one stable name'
   assert.equal(sequenceEditIntentSide({kind: 'board.node.create'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.shot.update'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.node.update'}), 'board');
-  assert.equal(sequenceEditIntentSide({kind: 'board.archive'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.restore'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.paste'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board.duplicate'}), 'board');
@@ -142,9 +141,8 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'board.layout.move', moves: [{nodeId: nodeA, x: 10, y: 20}]}, 'board.layout.move'],
     [{kind: 'board.node.create', nodeId: nodeA, nodeType: 'text', name: 'Note', position: {x: 0, y: 0},
       text: 'hello'}, 'board.node.create'],
-    [{kind: 'board.shot.update', shotId: shotA, patch: {title: 'Renamed'}}, 'board.shot.update'],
-    [{kind: 'board.node.update', nodeId: nodeA, patch: {name: 'Renamed'}}, 'board.node.update'],
-    [{kind: 'board.archive', items: [{kind: 'shot', id: shotA}]}, 'board.archive'],
+    [{kind: 'board.shot.update', shotId: shotA, expectedRevision: 1, patch: {title: 'Renamed'}}, 'board.shot.update'],
+    [{kind: 'board.node.update', nodeId: nodeA, expectedRevision: 1, patch: {name: 'Renamed'}}, 'board.node.update'],
     [{kind: 'board.restore', items: [{kind: 'node', id: nodeA}]}, 'board.restore'],
     [{kind: 'board.paste', documentId: uuid('95'), snapshotId: uuid('96'),
       viewport: {x: 0, y: 0, width: 100, height: 100}}, 'board.paste'],

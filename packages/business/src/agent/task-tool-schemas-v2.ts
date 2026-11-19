@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="bbeb88ed40fd2daddcbe02deba67cd393787d357d0d3e9b487e0d64ce51c3b8b";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="dc2c4f616f21fc9f9619d19eb2986badbd53eab1104518dda3bd97e52ca68f2b";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -413,6 +413,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "type": "string",
            "format": "uuid"
           },
+          "expectedRevision": {
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
           "patch": {
            "type": "object",
            "properties": {
@@ -460,6 +465,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "required": [
           "kind",
           "shotId",
+          "expectedRevision",
           "patch"
          ],
          "additionalProperties": false
@@ -474,6 +480,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
           "nodeId": {
            "type": "string",
            "format": "uuid"
+          },
+          "expectedRevision": {
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
           },
           "patch": {
            "type": "object",
@@ -510,47 +521,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "required": [
           "kind",
           "nodeId",
+          "expectedRevision",
           "patch"
-         ],
-         "additionalProperties": false
-        },
-        {
-         "type": "object",
-         "properties": {
-          "kind": {
-           "type": "string",
-           "const": "board.archive"
-          },
-          "items": {
-           "type": "array",
-           "items": {
-            "type": "object",
-            "properties": {
-             "kind": {
-              "type": "string",
-              "enum": [
-               "shot",
-               "node"
-              ]
-             },
-             "id": {
-              "type": "string",
-              "format": "uuid"
-             }
-            },
-            "required": [
-             "kind",
-             "id"
-            ],
-            "additionalProperties": false
-           },
-           "minItems": 1,
-           "maxItems": 50
-          }
-         },
-         "required": [
-          "kind",
-          "items"
          ],
          "additionalProperties": false
         },
@@ -2435,7 +2407,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "board.node.create",
             "board.shot.update",
             "board.node.update",
-            "board.archive",
             "board.restore",
             "board.paste",
             "board.duplicate"
@@ -11099,6 +11070,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "string",
       "format": "uuid"
      },
+     "expectedRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+     },
      "patch": {
       "type": "object",
       "properties": {
@@ -11150,6 +11126,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "shotId",
+     "expectedRevision",
      "patch"
     ],
     "additionalProperties": false
@@ -11164,6 +11141,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "nodeId": {
       "type": "string",
       "format": "uuid"
+     },
+     "expectedRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
      },
      "patch": {
       "type": "object",
@@ -11204,47 +11186,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "nodeId",
+     "expectedRevision",
      "patch"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "board-archive"
-     },
-     "targets": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "kind": {
-         "type": "string",
-         "enum": [
-          "shot",
-          "node"
-         ]
-        },
-        "id": {
-         "type": "string",
-         "format": "uuid"
-        }
-       },
-       "required": [
-        "kind",
-        "id"
-       ],
-       "additionalProperties": false
-      },
-      "minItems": 1,
-      "maxItems": 50
-     }
-    },
-    "required": [
-     "kind",
-     "targets"
     ],
     "additionalProperties": false
    },

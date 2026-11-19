@@ -33,7 +33,7 @@ function fixture(t: test.TestContext) {
     // clipboard copy expects the complete saved shot grammar.
     for (const id of [shotA, shotB]) {
       const row = world.store.db.prepare('SELECT data FROM project.shots WHERE id=?').get(id) as {data: string};
-      world.store.put('shots', {...JSON.parse(row.data), prompt: '', aspectRatio: '9:16', referenceAssetIds: [],
+      world.store.put('shots', {...JSON.parse(row.data), prompt: '', aspectRatio: '9:16', referenceAssetIds: [], revision: 1,
         parameters: {}, position: {x: id === shotA ? 0 : 300, y: 0}, selectedVersionId: JSON.parse(row.data).selectedVersionId});
     }
     for (const [kind, ids] of [['shot', [shotA, shotB]], ['node', [rootId]], ['timeline_clip', [clipA, clipB]]] as const) {
@@ -70,8 +70,8 @@ test('node create/update and shot update share the unified board transaction and
   assert.equal(node.label, 'Note');
   // Update text node name/text and the shot title in one action.
   run(service, world.projectId, 'fr-c-update-1', [
-    {side: 'board', operation: {kind: 'board.node.update', nodeId: textId, patch: {name: 'Renamed', text: 'edited'}}},
-    {side: 'board', operation: {kind: 'board.shot.update', shotId: shotA, patch: {title: 'Shot A2', duration: 3}}},
+    {side: 'board', operation: {kind: 'board.node.update', nodeId: textId, expectedRevision: 1, patch: {name: 'Renamed', text: 'edited'}}},
+    {side: 'board', operation: {kind: 'board.shot.update', shotId: shotA, expectedRevision: 1, patch: {title: 'Shot A2', duration: 3}}},
   ]);
   node = JSON.parse(String(sql(world, 'SELECT data FROM project.nodes WHERE id=?', textId)!.data)) as Record<string, unknown>;
   assert.equal(node.name, 'Renamed');
@@ -79,6 +79,12 @@ test('node create/update and shot update share the unified board transaction and
   const shot = JSON.parse(String(sql(world, 'SELECT data FROM project.shots WHERE id=?', shotA)!.data)) as Record<string, unknown>;
   assert.equal(shot.title, 'Shot A2');
   assert.equal(shot.duration, 3);
+  // A stale editor revision is refused before any row changes.
+  const stale = service.preview({projectId: world.projectId, requestId: 'fr-c-stale-rev-1',
+    intents: [{side: 'board', operation: {kind: 'board.node.update', nodeId: textId, expectedRevision: 99,
+      patch: {name: 'Stale'}}}]}) as {ok?: boolean; code?: string};
+  assert.equal(stale.ok, false);
+  assert.equal(stale.code, 'REVISION_CONFLICT');
   // One undo reverses both rows (the action is shared).
   const view = service.history({projectId: world.projectId}) as SequenceEditHistoryView;
   assert.ok(view.undo);
@@ -93,8 +99,7 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
   const {world, owner, service} = fixture(t);
   // A chain shot archives through the existing board delete plan (its main-track
   // clip and sequence edges leave the projection).
-  run(service, world.projectId, 'fr-c-archive-1', [{side: 'board', operation: {kind: 'board.archive',
-    items: [{kind: 'shot', id: shotB}]}}]);
+  run(service, world.projectId, 'fr-c-archive-1', [{side: 'board', operation: {kind: 'board', edit: {kind: 'delete', nodeId: shotB}}}]);
   let archived = sql(world, 'SELECT archivedAt FROM project.shots WHERE id=?', shotB)!;
   assert.equal(typeof archived.archivedAt, 'string');
   assert.equal(sql(world, 'SELECT 1 FROM project.edges WHERE id=?', edgeAB), undefined);
@@ -102,11 +107,22 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
     items: [{kind: 'shot', id: shotB}]}}]);
   archived = sql(world, 'SELECT archivedAt FROM project.shots WHERE id=?', shotB)!;
   assert.equal(archived?.archivedAt, null);
-  // Duplicate copies a live shot as a detached board row (no chain edge).
+  // UI-B2 restore semantics: the shot re-enters at the active chain tail.
+  assert.ok(sql(world, "SELECT 1 FROM project.edges WHERE json_extract(data,'$.source')=? AND json_extract(data,'$.target')=?", shotA, shotB),
+    'restored shot is connected to the chain tail');
+  // Duplicate copies a live shot as a detached board row (no chain edge). The
+  // new id is allocated by preview in allocation.nodes and commit reuses it.
   const before = Number(sql(world, 'SELECT COUNT(*) AS n FROM project.shots')!.n);
-  run(service, world.projectId, 'fr-c-duplicate-1', [{side: 'board', operation: {kind: 'board.duplicate',
-    items: [{kind: 'shot', id: shotA}], viewport: {x: 200, y: 200, width: 400, height: 300}}}]);
+  const duplicatePreview = service.preview({projectId: world.projectId, requestId: 'fr-c-duplicate-1',
+    intents: [{side: 'board', operation: {kind: 'board.duplicate', items: [{kind: 'shot', id: shotA}],
+      viewport: {x: 200, y: 200, width: 400, height: 300}}}]}) as
+      {envelope: {allocation: {nodes: {fromNodeId: string; nodeId: string}[]}}; planDigest: string};
+  const pair = duplicatePreview.envelope.allocation.nodes.find(item => item.fromNodeId === shotA);
+  assert.ok(pair, 'duplicate allocates its new id in the preview envelope');
+  service.commit({projectId: world.projectId, envelope: duplicatePreview.envelope as never,
+    expectedPlanDigest: duplicatePreview.planDigest});
   assert.equal(Number(sql(world, 'SELECT COUNT(*) AS n FROM project.shots')!.n), before + 1);
+  assert.ok(sql(world, 'SELECT data FROM project.shots WHERE id=?', pair!.nodeId), 'commit writes the previewed id');
   // Clipboard snapshot + paste through the same owner creates another detached copy.
   const canvas = createCanvasEditing(world.store, {clipboardOwner: owner});
   const shotRevision = Number(sql(world, `SELECT revision FROM project.agent_task_target_revisions_v2
@@ -114,8 +130,15 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
   const snapshot = canvas.call('canvas.copy.snapshot', {projectId: world.projectId, documentId,
     targets: [{kind: 'shot', id: shotA, revision: shotRevision}]}) as {snapshotId: string};
   assert.ok(snapshot.snapshotId);
-  run(service, world.projectId, 'fr-c-paste-1', [{side: 'board', operation: {kind: 'board.paste',
-    documentId, snapshotId: snapshot.snapshotId, viewport: {x: 400, y: 400, width: 400, height: 300}}}]);
+  const pastePreview = service.preview({projectId: world.projectId, requestId: 'fr-c-paste-1',
+    intents: [{side: 'board', operation: {kind: 'board.paste', documentId, snapshotId: snapshot.snapshotId,
+      viewport: {x: 400, y: 400, width: 400, height: 300}}}]}) as
+      {envelope: {allocation: {nodes: {fromNodeId: string; nodeId: string}[]}}; planDigest: string};
+  const pastePair = pastePreview.envelope.allocation.nodes[0];
+  assert.ok(pastePair, 'paste allocates its new id in the preview envelope');
+  service.commit({projectId: world.projectId, envelope: pastePreview.envelope as never,
+    expectedPlanDigest: pastePreview.planDigest});
+  assert.ok(sql(world, 'SELECT data FROM project.shots WHERE id=?', pastePair!.nodeId), 'paste writes the previewed id');
   const detached = world.store.db.prepare(`SELECT data FROM project.shots WHERE archivedAt IS NULL
     AND json_extract(data,'$.title')='A'`).all() as {data: string}[];
   assert.ok(detached.length >= 3, `expected original plus two detached copies, got ${detached.length}`);

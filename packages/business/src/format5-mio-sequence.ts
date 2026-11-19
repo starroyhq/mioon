@@ -72,11 +72,9 @@ function boardIntent(action: MioSequenceAction): SequenceEditIntent {
       ...(action.assetId === undefined ? {} : {assetId: action.assetId}),
       ...(action.text === undefined ? {} : {text: action.text})}} as SequenceEditIntent;
     case 'board-shot-update': return {side: 'board', operation: {kind: 'board.shot.update',
-      shotId: action.shotId, patch: action.patch}} as SequenceEditIntent;
+      shotId: action.shotId, expectedRevision: action.expectedRevision, patch: action.patch}} as SequenceEditIntent;
     case 'board-node-update': return {side: 'board', operation: {kind: 'board.node.update',
-      nodeId: action.nodeId, patch: action.patch}} as SequenceEditIntent;
-    case 'board-archive': return {side: 'board', operation: {kind: 'board.archive',
-      items: action.targets}} as SequenceEditIntent;
+      nodeId: action.nodeId, expectedRevision: action.expectedRevision, patch: action.patch}} as SequenceEditIntent;
     case 'board-restore': return {side: 'board', operation: {kind: 'board.restore',
       items: action.targets}} as SequenceEditIntent;
     case 'board-duplicate': return {side: 'board', operation: {kind: 'board.duplicate',
@@ -143,7 +141,7 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
-  'board-node-create', 'board-shot-update', 'board-node-update', 'board-archive', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
+  'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {

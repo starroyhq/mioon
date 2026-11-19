@@ -63,10 +63,6 @@ interface ControllerOptions {
   onCreated?: (targets: readonly CanvasTarget[]) => void;
   createNonce?: () => string;
   now?: () => number;
-  /** Format-5 board mode: archive/restore/paste/duplicate route through the
-   * unified sequence session; reads stay on the canvas read operations. */
-  format5?: () => boolean;
-  sequenceRun?: (intent: unknown) => Promise<{ok: boolean; actionId?: string; code?: string}>;
 }
 
 const blankArchive: ArchiveState = {items: [], count: 0, loading: false, error: null, hasMore: false, canRestoreAll: false};
@@ -151,8 +147,7 @@ function validFirstPage(page: Page): Page {
 }
 
 export function createCanvasEditingController({rpc, refresh, isCurrent = () => true, onError = () => {}, onNotice = () => {}, onArchived = () => {},
-  onCreated = () => {}, createNonce = () => globalThis.crypto.randomUUID(), now = Date.now,
-  format5 = () => false, sequenceRun}: ControllerOptions) {
+  onCreated = () => {}, createNonce = () => globalThis.crypto.randomUUID(), now = Date.now}: ControllerOptions) {
   let context: CanvasEditingContext = {scope: '', projectId: null, enabled: false, writable: false, base: undefined};
   let generation = 0, historySerial = 0, archiveSerial = 0;
   let reviewing: Preview | null = null, page: Page | null = null, appliedStamp: Stamp | undefined;
@@ -373,19 +368,6 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     }
   }
 
-  async function sequenceBoard(action: 'archive' | 'restore', targets: readonly CanvasTarget[], flight: Flight): Promise<boolean> {
-    if (!sequenceRun) throw error('CANVAS_EDIT_CONTRACT_INVALID');
-    const items = targets.filter(target => target.kind !== 'edge').map(target => ({kind: target.kind, id: target.id}));
-    if (!items.length) return false;
-    const outcome = await sequenceRun({side: 'board', operation: {kind: `board.${action}` as 'board.archive' | 'board.restore', items}});
-    if (!outcome.ok) throw error(outcome.code ?? 'CANVAS_EDIT_CONFLICT');
-    flight.dispatched = true;
-    if (visible(flight)) {
-      if (action === 'archive') onArchived(targets);
-      emit({toast: {kind: 'archive', count: items.length, actionId: outcome.actionId ?? ''}});
-    } else emit({toast: null});
-    return true;
-  }
   const controller = {
     getSnapshot: () => state,
     subscribe(listener: () => void) {
@@ -399,7 +381,6 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     archiveSelection(targets: readonly CanvasTarget[]) {
       if (!targets.length || reviewing) return Promise.resolve(false);
       return act(async flight => {
-        if (format5()) return sequenceBoard('archive', targets, flight);
         const base = context.base;
         if (!base) throw error('CANVAS_UI_LAYOUT_NOT_READY');
         const review = await preview({projectId: flight.projectId, operation: 'archive', targets: expectations(base, targets).map(toExpectation)});
@@ -431,7 +412,6 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     restore(item: CanvasTargetExpectation) {
       if (reviewing) return Promise.resolve(false);
       return act(async flight => {
-        if (format5()) return sequenceBoard('restore', [item], flight);
         const review = await preview({projectId: flight.projectId, operation: 'restore', targets: [toExpectation(item)]});
         return commitArchive(flight, 'restore', review);
       });
@@ -447,7 +427,6 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
           collected = appendArchivePage(collected, await archivePage(projectId, collected.next));
         }
         if (!writable(flight)) return false;
-        if (format5()) return sequenceBoard('restore', collected.items, flight);
         const review = await preview({projectId, operation: 'restore', targets: collected.items.map(toExpectation)});
         if (!writable(flight)) return false;
         const check = await archivePage(projectId, undefined, 1);
@@ -484,32 +463,12 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
       if (reviewing || state.clipboardWriteUnknown) return Promise.resolve(false);
       return act(async flight => {
         const snapshotId = await readSnapshot();
-        if (!snapshotId) return false;
-        if (format5()) {
-          if (!canApply() || !sequenceRun) return false;
-          const outcome = await sequenceRun({side: 'board', operation: {kind: 'board.paste', documentId, snapshotId, viewport}});
-          if (!outcome.ok) throw error(outcome.code ?? 'CANVAS_EDIT_CONFLICT');
-          flight.dispatched = true;
-          if (visible(flight)) emit({toast: {kind: 'paste', count: 1, actionId: outcome.actionId ?? ''}});
-          return true;
-        }
-        return applyPaste(flight, documentId, snapshotId, viewport, 'paste', canApply);
+        return snapshotId ? applyPaste(flight, documentId, snapshotId, viewport, 'paste', canApply) : false;
       });
     },
     duplicate(documentId: string, viewport: PasteViewport, targets: readonly CanvasTarget[], canApply: () => boolean) {
       if (reviewing || state.clipboardWriteUnknown) return Promise.resolve(false);
       return act(async flight => {
-        if (format5()) {
-          if (!canApply() || !sequenceRun) return false;
-          const outcome = await sequenceRun({side: 'board', operation: {kind: 'board.duplicate',
-            items: targets.filter(target => target.kind !== 'edge').map(target => ({kind: target.kind, id: target.id})),
-            viewport}});
-          if (!outcome.ok) throw error(outcome.code ?? 'CANVAS_EDIT_CONFLICT');
-          flight.dispatched = true;
-          if (visible(flight)) emit({toast: {kind: 'duplicate', count: targets.filter(target => target.kind !== 'edge').length,
-            actionId: outcome.actionId ?? ''}});
-          return true;
-        }
         const snapshot = await freezeSelection(flight, documentId, targets);
         return snapshot ? applyPaste(flight, documentId, snapshot.snapshotId, viewport, 'duplicate', canApply) : false;
       });
