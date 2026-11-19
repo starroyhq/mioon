@@ -24,6 +24,7 @@ export const editUiMessages = {
   'editUi.error.COPY_NODE_REQUIRED': {'zh-Hans':'这一段属于切开后的片段，需要先复制成新镜头。','zh-Hant':'這一段屬於切開後的片段，需要先複製成新鏡頭。',en:'This split piece needs a copied shot first.',ja:'分割されたこの部分は、先に新しいショットとして複製する必要があります。'},
   'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT': {'zh-Hans':'副轨或字幕会重叠，先挪开再试。','zh-Hant':'副軌或字幕會重疊，先挪開再試。',en:'Other-track clips or subtitles would overlap. Move them first.',ja:'ほかのトラックまたは字幕が重なります。先に移動してください。'},
   'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT': {'zh-Hans':'时间线已有新改动，请刷新后再试。','zh-Hant':'時間線已有新改動，請重新整理後再試。',en:'The timeline changed. Refresh and try again.',ja:'タイムラインが更新されました。再読み込みしてもう一度お試しください。'},
+  'editUi.error.mioUndoBlocked': {'zh-Hans':'上一步是 Mio 的改动，请在 Mio 里撤销','zh-Hant':'上一步是 Mio 的改動，請在 Mio 裡復原',en:'The last change was made by Mio. Undo it from Mio.',ja:'直前の変更は Mio によるものです。Mio 側で元に戻してください。'},
   'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT': {'zh-Hans':'撤销位置已经变了，请重新查看历史。','zh-Hant':'復原位置已經變了，請重新查看歷史。',en:'The undo position moved. Check history again.',ja:'元に戻す位置が変わりました。履歴を確認してください。'},
   'editUi.error.SEQUENCE_EDIT_PATCH_INVALID': {'zh-Hans':'这次修改已不适用，请重新预览。','zh-Hant':'這次修改已不適用，請重新預覽。',en:'This change no longer applies. Preview it again.',ja:'この変更は適用できません。もう一度プレビューしてください。'},
   'editUi.error.SEQUENCE_EDIT_NOOP': {'zh-Hans':'已经是这个状态。','zh-Hant':'已經是這個狀態。',en:'Already in that state.',ja:'すでにその状態です。'},

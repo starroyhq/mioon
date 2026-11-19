@@ -594,7 +594,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
  if(format5){
-  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'按已检查的目标执行一个有界格式 5 序列动作：连接/断开/插入/删除节点、重排/移除/切开片段、跟随/锁定版本、切开后复制挪动、主体绑定三态。服务器生成并预览 envelope，展示影响后按审批提交；模型不提供 envelope、分配 ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'按已检查的目标执行一个有界格式 5 序列动作：连接/断开/插入/删除节点、重排/移除/切开片段、跟随/锁定版本、切开后复制挪动、主体绑定三态、片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称）。服务器生成并预览 envelope，展示影响后按审批提交；模型不提供 envelope、分配 ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
   for(const tool of definitions){const reason=FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation];if(reason!==undefined)tool.unavailableReason=reason;}
@@ -781,6 +781,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if('beforeClipId' in action&&!action.beforeClipId){}else if('beforeClipId' in action)add('timeline_clip',action.beforeClipId);
    if('fromId' in action){add('node',action.fromId);add('node',action.toId);}
    if('nodeId' in action)add('node',action.nodeId);
+   if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
    if(action.kind==='subject-binding'){
     if(action.edit.kind==='create'){add('shot',action.edit.shotId);add('subject',action.edit.subjectId);}
     else add('subject_binding',action.edit.bindingId);
@@ -788,7 +789,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
-   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding'].includes(action.kind);
+   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties'].includes(action.kind);
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,
      ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }

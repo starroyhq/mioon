@@ -113,6 +113,23 @@ test('split action allocates the right clip server-side and reports bounded impa
   assert.ok(!JSON.stringify(plan.summary).includes('envelope'));
 });
 
+test('FR-A clip properties are opened as a Mio action through the same envelope', t => {
+  const store=fixture(t);
+  const plan=previewMioSequenceAction(store,projectId,req(6),{kind:'clip-properties',
+    edits:[{clipId:clipA,patch:{name:'Mio 属性改名'}}]});
+  assert.equal(plan.envelope.origin,'mio');
+  assert.equal((plan.envelope as any).propertiesIntent.operation.kind,'clip-properties');
+  assert.equal(plan.summary.counts.clips,1);
+  const receipt=commitMioSequenceAction(store,plan);
+  assert.equal(receipt.status,'applied');
+  const timeline=store.get('timelines',timelineId) as any;
+  assert.equal(timeline.clips.find((clip: any)=>clip.id===clipA).name,'Mio 属性改名');
+  assert.equal(readSequenceEditHistory(store).undo?.origin,'mio');
+  const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(7),receipt.actionId));
+  assert.equal(undone.status,'applied');
+  assert.equal((store.get('timelines',timelineId) as any).clips.find((clip: any)=>clip.id===clipA).name,'A');
+});
+
 test('write actions are bounded and reject generated ids supplied as envelopes', () => {
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root,envelope:{}}).success,false);

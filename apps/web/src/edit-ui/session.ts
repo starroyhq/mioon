@@ -23,7 +23,9 @@ export interface SequenceFailure {readonly ok: false; readonly code: string; rea
 export interface SequenceSuccess {readonly ok: true; readonly actionId: string; readonly operation: string;
   readonly patch: unknown; readonly receipt: SequenceEditReceipt}
 export type SequenceOutcome = SequenceSuccess | SequenceFailure;
-export interface HistoryActionView {readonly actionId: string; readonly operation: string; readonly affected: number}
+export interface HistoryActionView {readonly actionId: string; readonly operation: string; readonly affected: number;
+  /** Present only for Mio actions (D5); UI Ctrl+Z must not undo these. */
+  readonly origin?: 'user' | 'mio'}
 export interface SequenceHistoryView {
   readonly epoch: string; readonly position: number; readonly revision: number;
   readonly undo: HistoryActionView | null; readonly redo: HistoryActionView | null;

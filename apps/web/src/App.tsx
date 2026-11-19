@@ -2825,6 +2825,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!format5) return null;
     const view = await format5Session().history();
     if (!view) return null;
+    // D5 minimal guard: a Mio action is not part of the user undo stack. Keep
+    // it intact and tell the user to undo it from Mio until MT-4 adds the
+    // separate cursor/conflict rules. Redo has no such constraint.
+    if (direction === 'undo' && view.undo?.origin === 'mio') {
+      notify(t('editUi.error.mioUndoBlocked'), 'warning');
+      return null;
+    }
     const result = direction === 'undo' ? await format5Session().undo(view) : await format5Session().redo(view);
     if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return null;}
     setFormat5Notice(null); setFormat5NoticeActionId(null);

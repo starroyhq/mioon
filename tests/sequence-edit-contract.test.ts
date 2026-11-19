@@ -246,6 +246,31 @@ test('subject binding intents validate the mode/version pair and stay board-only
     'the allocated edge must target the created binding shot');
 });
 
+test('clip property intents carry one timeline action with bounded patches and clip impact', () => {
+  const properties = (edits: unknown[], overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope =>
+    envelope({intents: [], originSide: 'timeline',
+      propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties', edits}} as never,
+      impact: {...envelope().impact, mainTrackClipIds: [clipA]},
+      baseline: {...envelope().baseline, targets: [{kind: 'clip', id: clipA, revision: 1}]},
+      ...overrides});
+  assert.equal(isSequenceEditEnvelope(properties([{clipId: clipA, patch: {gain: 0.5}}])), true);
+  assert.equal(sequenceEditEnvelopeOperationName(properties([{clipId: clipA, patch: {gain: 0.5}}])),
+    'timeline.clip.set-properties');
+  const rejected: unknown[] = [
+    // both intent families
+    properties([{clipId: clipA, patch: {gain: 0.5}}], {intents: [intent(connect)]}),
+    // origin side must be timeline
+    properties([{clipId: clipA, patch: {gain: 0.5}}], {originSide: 'board'}),
+    // edited clip must appear in the impact
+    properties([{clipId: shotB, patch: {gain: 0.5}}]),
+    // empty patch and duplicate clip are invalid payloads
+    properties([{clipId: clipA, patch: {}}]),
+    properties([{clipId: clipA, patch: {gain: 0.5}}, {clipId: clipA, patch: {gain: 0.6}}]),
+  ];
+  for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
+    JSON.stringify(candidate).slice(0, 160));
+});
+
 test('a subject binding row is a board entity: mixed patches invert and stay in one history entry', () => {
   const bindingRow = {id: bindingA, projectId, shotId: shotA, subjectId: shotSubjectA, role: 'subject',
     revision: 1, bindingMode: 'follow', subjectVersionId: null, reviewedHeadVersionId: null,

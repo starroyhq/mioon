@@ -98,6 +98,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
   const request: Row = {projectId, requestId, origin: 'mio'};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
+  else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
+    operation: {kind: 'clip-properties', edits: action.edits}};
   else if (['connect', 'disconnect', 'insert', 'delete-node'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
