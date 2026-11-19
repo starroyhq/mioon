@@ -2798,8 +2798,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function clipLoudnessContext(): TimelineClipLoudnessContext | undefined {
     // Format 5 measures and applies loudness through the unified entry; the
     // observation card is a format-3/4(旧路径) tool and stays hidden until its
-    // analysis write is routed (UI-E3 report leftover).
-    if (format5) return undefined;
+    // analysis write is routed (UI-E3 report leftover). Read the persisted
+    // format instead of the render closure so the source seam stays evaluable.
+    if (dataRef.current?.projectFormatVersion === 5) return undefined;
     const saved = dataRef.current!.timeline, workspaceScope = editorSession.current, editing = viewRef.current!.editing;
     const clip = saved?.clips.find(item => item.id === editing.selectedClipId);
     const readable = !clip?.assetId || projectMedia.canRead(dataRef.current!.assets.find(asset => asset.id === clip.assetId));

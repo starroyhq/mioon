@@ -117,7 +117,7 @@ test('the production shell routes format-5 panel edits through the shared entry'
     'timelineCrossfadeEnvelopes(outgoing as never, incoming as never)',
     'loudnessContext={clipLoudnessContext as never}',
     "function clipLoudnessContext(): TimelineClipLoudnessContext | undefined",
-    'if (format5) return undefined;',
+    'if (dataRef.current?.projectFormatVersion === 5) return undefined;',
     'submit: format5 ? saveFormat5Subtitle : saveSubtitle',
   ]) assert.ok(app.includes(fragment), fragment);
   // The legacy RPC must not be reachable from the format-5 inspector save path.
