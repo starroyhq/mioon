@@ -313,12 +313,6 @@ export const subjectsMessages = {
     "en": "Shot not loaded",
     "ja": "ショット未読み込み"
   },
-  "subjects.binding.reviewSuffix": {
-    "zh-Hans": " · 待复核",
-    "zh-Hant": " · 待複核",
-    "en": " · Needs review",
-    "ja": " · 要再確認"
-  },
   "subjects.binding.pinnedSuffix": {
     "zh-Hans": " · 已固定版本",
     "zh-Hant": " · 已固定版本",

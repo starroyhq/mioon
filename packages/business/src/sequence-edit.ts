@@ -102,7 +102,11 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   'shot.create': 'sequence.preview/commit', 'shot.update': 'sequence.preview/commit',
   'node.create': 'sequence.preview/commit', 'node.update': 'sequence.preview/commit',
   'reference.attach': 'sequence.preview/commit', 'reference.detach': 'sequence.preview/commit',
-  'previs.create': 'not_yet_available', 'previs.scene.set': 'not_yet_available', 'previs.thumbnail.set': 'not_yet_available',
+  // Previs scene writes are board actions, so they own a `previsIntent` in the
+  // unified entry (G line); thumbnails stay a disposable cache keyed to a scene
+  // revision and are not a history action.
+  'previs.create': 'sequence.preview/commit', 'previs.scene.set': 'sequence.preview/commit',
+  'previs.thumbnail.set': 'not_yet_available',
   'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
   'subject.binding.set': 'sequence.preview/commit',
 });

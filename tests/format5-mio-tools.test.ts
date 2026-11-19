@@ -79,8 +79,22 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.equal(format5Tools.some(item => item.operation === 'timeline.seed' && item.unavailableReason !== undefined), true);
   assert.equal(format5Tools.some(item => item.operation === 'timeline.shots.append' && item.unavailableReason !== undefined), true);
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['shot.reorder']!, /明确链顺序/);
+  // G line: the format-5 previs scene tool is the only projection that accepts
+  // mannequin/prop subject references; formats 3/4 keep the frozen shape.
+  assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /统一 sequence 入口/);
+  assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.create'] !== undefined, true);
+  assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.thumbnail.set'] !== undefined, true);
+  const previsParameters = (tools: readonly {operation: string; parameters: unknown}[], subject: boolean): void => {
+    const parameters = tools.find(item => item.operation === 'previs.scene.set')!.parameters as {
+      properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}},
+        props: {items: {properties: Record<string, unknown>}}}}}};
+    assert.equal('subject' in parameters.properties.scene.properties.figures.items.properties, subject);
+    assert.equal('subject' in parameters.properties.scene.properties.props.items.properties, subject);
+  };
+  previsParameters(format5Tools, true);
   const nativeTools = listAgentTaskTools(false, false);
   assert.equal(nativeTools.some(item => item.operation === 'sequence.inspect'), false);
+  previsParameters(nativeTools, false);
   const loaded = listAgentTaskToolsForChannel(true, {format5: true}).find(item => item.name === 'mioon_tools_load');
   assert.ok(loaded);
 });

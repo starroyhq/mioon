@@ -7,7 +7,7 @@ import {validatedProjectAssetSource} from './project-media-storage.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {assertCanvasTargetActive} from './canvas-active.ts';
-import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,previsThumbnailPublicSchemas,publicValue,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
+import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSceneSubjectReferences,previsSchemas,previsThumbnailPublicSchemas,publicValue,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
 import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
@@ -49,6 +49,7 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  PREVIS_THUMBNAIL_SLOT:'当前场景没有这个关键帧',
  PREVIS_THUMBNAIL_INVALID:'缩略图必须是长边不超过384像素、不超过64KB的JPEG',
  PREVIS_STATE_CONFLICT:'工作区当前不能保存预演',
+ PREVIS_SUBJECT_FORMAT:'预演主体只在项目格式 5 保存',
 });
 const failure=(code: string,status=409,details?: unknown): AppError=>new AppError(code,messages[code]??messages.INVALID_PREVIS_RECORD!,status,details);
 function invalid(): never {throw failure('INVALID_PREVIS_RECORD');}
@@ -108,6 +109,7 @@ export function previsJpegSize(bytes: Uint8Array): {width: number; height: numbe
  * keyframe exports are image assets of their new project. */
 export function validateImportedPrevisNode(db: DatabaseSync,value: unknown,projectId: string): void {
  if(!isPrevisNodeRecord(value)||value.projectId!==projectId)invalid();
+ if(!format5(db)&&previsSceneSubjectReferences(value.scene).length)invalid();
  for(const assetId of value.scene.keyframes.flatMap(keyframe=>keyframe.exports))exportAsset(db,projectId,assetId);
 }
 function exportAsset(db: DatabaseSync,projectId: string,assetId: string): void {
@@ -118,6 +120,15 @@ function exportAsset(db: DatabaseSync,projectId: string,assetId: string): void {
  const record=asset as Row|null;
  if(!record||typeof record!=='object'||record.id!==assetId||record.projectId!==projectId||!IMAGE_TYPES.has(String(record.mimeType)))reject();
  try{validateImageConsumption(db,record as {id: string; provenance?: unknown},projectId);}catch{reject();}
+}
+
+/** Validate every keyframe export a save introduces: it must be an image asset
+ * of the project. Exports that already entered the scene were validated then and
+ * are trusted unless the caller asks for a full pass. Streamed previs writes
+ * reuse the same check for format-5 scene saves. */
+export function assertPrevisSceneExports(db: DatabaseSync,projectId: string,scene: PrevisScene,
+ known: ReadonlySet<string>=new Set()): void {
+ for(const assetId of scene.keyframes.flatMap(keyframe=>keyframe.exports))if(!known.has(assetId))exportAsset(db,projectId,assetId);
 }
 
 /** A digest is derived only from bounded, owned scene dependencies, never a
@@ -150,6 +161,15 @@ const format4=(db: DatabaseSync): boolean=>{
  const version=db.prepare('PRAGMA project.user_version').get()?.user_version;
  return version===FORMAT4_PROJECT_SCHEMA_VERSION||version===FORMAT5_PROJECT_SCHEMA_VERSION;
 };
+const format5=(db: DatabaseSync): boolean=>db.prepare('PRAGMA project.user_version').get()?.user_version===FORMAT5_PROJECT_SCHEMA_VERSION;
+/** Format 5 writes previs scenes through the unified sequence entry; the legacy
+ * receipt writer refuses them instead of writing outside history-13. Format 3/4
+ * keeps accepting the same fields as before. */
+function assertPrevisSubjectReferences(db: DatabaseSync,scene: PrevisScene): void {
+ if(previsSceneSubjectReferences(scene).length===0)return;
+ if(format5(db))throw new AppError('UNSUPPORTED_OPERATION','格式 5 的预演写入走统一序列入口。',409,{use:'sequence.preview/commit'});
+ throw failure('PREVIS_SUBJECT_FORMAT');
+}
 const fingerprintedThumbnails=(db: DatabaseSync): boolean=>db.prepare('SELECT name FROM pragma_table_info(?)').all('previs_thumbnails').some(row=>row.name==='sourceFingerprintDigest');
 
 /** Read-only previs node and thumbnail access, shared with restored workspaces. */
@@ -265,6 +285,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
  function setScene(raw: unknown): PrevisNodeRecord {
   const input=parse<SceneSetInput>('previs.scene.set',raw);
   writable('previs.scene.set',input as unknown as Row);
+  assertPrevisSubjectReferences(db,input.scene);
   const {requestId,...fields}=input,hash=inputHash('previs.scene.set',fields);
   return settle('previs.scene.set',input,fresh=>{
    const prior=receipt(requestId);
@@ -277,8 +298,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
     expectedSceneRevision:input.expectedSceneRevision,currentSceneRevision:current.sceneRevision,current:publicValue(current)});
    if(current.revision>=Number.MAX_SAFE_INTEGER||current.sceneRevision>=Number.MAX_SAFE_INTEGER)throw failure('PREVIS_REVISION_LIMIT');
    // Earlier exports were checked when they were added.
-   const known=new Set(current.scene.keyframes.flatMap(keyframe=>keyframe.exports));
-   for(const assetId of input.scene.keyframes.flatMap(keyframe=>keyframe.exports))if(!known.has(assetId))exportAsset(db,input.projectId,assetId);
+   assertPrevisSceneExports(db,input.projectId,input.scene,new Set(current.scene.keyframes.flatMap(keyframe=>keyframe.exports)));
    const next: PrevisNodeRecord={...current,scene:input.scene,revision:current.revision+1,sceneRevision:current.sceneRevision+1};
    put('nodes',next);
    prunePrevisThumbnails(db,current.id,current.scene,input.scene);

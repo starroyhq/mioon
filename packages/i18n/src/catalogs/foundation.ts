@@ -78,12 +78,6 @@ export const foundationMessages = {
     "en": "Original diagnostic details",
     "ja": "元の診断情報"
   },
-  "common.unknownError": {
-    "zh-Hans": "操作未能完成。请核对当前状态后再决定是否重试",
-    "zh-Hant": "操作未能完成。請核對目前狀態後再決定是否重試",
-    "en": "The operation could not be completed. Check its current state before deciding whether to retry",
-    "ja": "操作を完了できませんでした。現在の状態を確認してから、再試行するか判断してください"
-  },
   "common.invalidMessage": {
     "zh-Hans": "此提示暂时无法显示",
     "zh-Hant": "此提示暫時無法顯示",
