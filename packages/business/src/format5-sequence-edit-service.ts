@@ -131,9 +131,9 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const state = historyState(store);
     const edgeId = (input.allocation?.edges ?? []).find((edge: Row) => uuid(edge?.id))?.id as string | undefined
       ?? randomUUID();
-    const envelope = buildSubjectBindingEnvelope(store as never, command as never, {
+    const envelope: SequenceEditEnvelope = {...buildSubjectBindingEnvelope(store as never, command as never, {
       requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
-      historyPosition: state.position, historyRevision: state.revision, edgeId});
+      historyPosition: state.position, historyRevision: state.revision, edgeId}), ...(input.origin ? {origin: input.origin} : {})};
     try { planSubjectBindingAction(store as never, envelope); }
     catch (error) {
       if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
@@ -147,7 +147,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const command = commandFromIntent(intents[0]!);
     if (!command) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
     const result = previewSequenceSync(store, command, {requestId: input.requestId,
-      ...(input.actionId ? {actionId: input.actionId} : {})}) as Row;
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {})}) as Row;
     if (result.ok === false) return failure(String(result.code), (result.ids as string[]) ?? []);
     return result;
   }
@@ -161,7 +161,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const envelope: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
       actionId: input.actionId ?? randomUUID(), requestId: input.requestId, originSide: intents[0]!.side,
-      filmId: context.rootNodeId, intents,
+      filmId: context.rootNodeId, intents, ...(input.origin ? {origin: input.origin} : {}),
       baseline: {contentRevision: content, timelineRevision: context.timeline.revision,
         syncRevision: context.syncRevision, historyPosition: state.position,
         historyRevision: state.revision, targets: []},
@@ -177,7 +177,8 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
-      ...(input.actionId ? {actionId: input.actionId} : {}), propertiesIntent: input.propertiesIntent as never});
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      propertiesIntent: input.propertiesIntent as never});
     if (input.subjectIntent) return subjectPreview(input);
     const intents = (input.intents ?? []) as SequenceEditIntent[];
     if (intents.length === 0) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);

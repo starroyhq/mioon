@@ -205,6 +205,7 @@ function clipTargetRevision(store: ProjectStore, clipId: string): number {
 /** Build the shared envelope for a UI/MT caller. */
 export function buildClipPropertiesEnvelope(store: ProjectStore, intent: SequenceEditClipPropertiesIntent,
   options: {readonly requestId: string; readonly actionId: string; readonly epoch: string;
+    readonly origin?: 'user' | 'mio';
     readonly historyPosition: number; readonly historyRevision: number}): SequenceEditEnvelope {
   if (!isFormat5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
   const record = readFormat5TimelineRecord(store.db, 'project');
@@ -222,7 +223,7 @@ export function buildClipPropertiesEnvelope(store: ProjectStore, intent: Sequenc
   const sync = store.db.prepare('SELECT revision FROM project.sequence_sync_state').get() as Row | undefined;
   return {
     contractVersion: SEQUENCE_EDIT_CONTRACT_VERSION, projectId: store.projectId, epoch: options.epoch,
-    actionId: options.actionId, requestId: options.requestId, originSide: 'timeline',
+    actionId: options.actionId, requestId: options.requestId, originSide: 'timeline', ...(options.origin ? {origin: options.origin} : {}),
     filmId: record.mainTrack.sequenceNodeId, intents: [], propertiesIntent: intent,
     baseline: {contentRevision: content, timelineRevision: record.revision, syncRevision: Number(sync?.revision ?? 1),
       historyPosition: options.historyPosition, historyRevision: options.historyRevision, targets},
@@ -240,13 +241,13 @@ export interface ClipPropertiesPreview {
   readonly warnings: readonly {code: string}[];
 }
 export function previewClipProperties(store: ProjectStore, input: {
-  readonly requestId: string; readonly actionId?: string; readonly propertiesIntent: SequenceEditClipPropertiesIntent;
+  readonly requestId: string; readonly actionId?: string; readonly origin?: 'user' | 'mio'; readonly propertiesIntent: SequenceEditClipPropertiesIntent;
 }): ClipPropertiesPreview | {ok: false; code: string; ids: readonly string[]} {
   if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   try {
     const state = prepareSequenceEditHistory(store).state;
     const envelope = buildClipPropertiesEnvelope(store, input.propertiesIntent, {
-      requestId: input.requestId, actionId: input.actionId ?? crypto.randomUUID(), epoch: state.epoch,
+      requestId: input.requestId, actionId: input.actionId ?? crypto.randomUUID(), epoch: state.epoch, ...(input.origin ? {origin: input.origin} : {}),
       historyPosition: state.position, historyRevision: state.revision});
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {

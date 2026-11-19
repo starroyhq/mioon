@@ -905,7 +905,7 @@ export const FORMAT5_MANIFEST_CHANGES: Readonly<Record<"project" | "history", Sc
     {type: "table", name: "canvas_history_state", tbl_name: "canvas_history_state", sha256: "3a10ecaa09605534961c25061f93925c5d057a2a48b791161cb21ba245041880"},
     {type: "table", name: "canvas_receipt_window", tbl_name: "canvas_receipt_window", sha256: "b2cff09a92417f3b32bcc89d6084becf0992ee69f8af3c0159bef781f9768513"},
     {type: "table", name: "canvas_requests", tbl_name: "canvas_requests", sha256: "68210dbfb86cb8b77bc6ce251eeeb9253cf4d431096cff86876fc156b2008777"},
-    {type: "table", name: "editor_history_entries", tbl_name: "editor_history_entries", sha256: "115e7a2f7e68da4ffd2bff01b151da54f161c5d5cdac0e5189600a8cf4e91ea4"},
+    {type: "table", name: "editor_history_entries", tbl_name: "editor_history_entries", sha256: "095716ec678b2c1b5b4ad4194e01c42899a7acb969034b6ca6df634ae860fc47"},
     {type: "table", name: "editor_history_state", tbl_name: "editor_history_state", sha256: "75ed82ea3d8d2be2dd8fe8212296f532b07d22284b19b64196dc6844489638f4"},
     {type: "table", name: "editor_receipt_window", tbl_name: "editor_receipt_window", sha256: "7fcf2435c751a374a213a7a12ef4cb0548d671effcb135250a07b45be077832c"},
     {type: "table", name: "editor_requests", tbl_name: "editor_requests", sha256: "f2d9b924f6a32007c700078d9fe7bc4c6976ffc1acaa22363d40da0f21ee62f8"},

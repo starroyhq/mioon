@@ -6,6 +6,7 @@ import {modelOperationDefinition} from '../packages/client/src/index.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {mioCanvasSchemas} from '../packages/contracts/src/mio-canvas.ts';
 import {mioCanvasCopySchemas} from '../packages/contracts/src/mio-canvas-copy.ts';
+import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
 import {publicOperationSchemas} from '../packages/contracts/src/public-operations.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
 
@@ -35,6 +36,10 @@ for(const [operation,schema] of Object.entries(mioCanvasSchemas)){
 }
 // The model's clipboard uses host-owned handles instead of the public UI's
 // document identities, revisions and replay keys.
+for(const [operation,schema] of Object.entries(mioSequenceEditSchemas)){
+ const {$schema:_dialect,...converted}=zodToJsonSchema(schema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}) as Record<string,unknown>;
+ entries[operation]=projectAgentTaskToolSchema(converted);
+}
 for(const [operation,schema] of Object.entries(mioCanvasCopySchemas)){
  const {$schema:_dialect,...converted}=zodToJsonSchema(schema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}) as Record<string,unknown>;
  entries[operation]=projectAgentTaskToolSchema(converted);

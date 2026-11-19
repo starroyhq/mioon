@@ -23,7 +23,9 @@ export interface SequenceFailure {readonly ok: false; readonly code: string; rea
 export interface SequenceSuccess {readonly ok: true; readonly actionId: string; readonly operation: string;
   readonly patch: unknown; readonly receipt: SequenceEditReceipt}
 export type SequenceOutcome = SequenceSuccess | SequenceFailure;
-export interface HistoryActionView {readonly actionId: string; readonly operation: string; readonly affected: number}
+export interface HistoryActionView {readonly actionId: string; readonly operation: string; readonly affected: number;
+  /** Present only for Mio actions (D5); UI Ctrl+Z must not undo these. */
+  readonly origin?: 'user' | 'mio'}
 export interface SequenceHistoryView {
   readonly epoch: string; readonly position: number; readonly revision: number;
   readonly undo: HistoryActionView | null; readonly redo: HistoryActionView | null;
@@ -37,6 +39,9 @@ export interface SequenceHistoryView {
   readonly redoConflict?: boolean;
 }
 export type SequenceRpc = (operation: string, input: unknown) => Promise<unknown>;
+/** D5 minimal user-undo protection: a Mio action at the top is not part of the
+ * user Ctrl+Z stack. MT-4 adds the separate cursor/conflict rules. */
+export const format5UserUndoBlocked = (view: SequenceHistoryView | null): boolean => view?.undo?.origin === 'mio';
 
 const uuid = (): string => globalThis.crypto?.randomUUID?.() ??
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
