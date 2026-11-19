@@ -31,7 +31,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
-import { createWindowsProjectVolumeReader } from '../../../packages/node-host/src/windows-project-volume.ts';
+import { createWindowsProjectVolumeReaderFromFile } from '../../../packages/node-host/src/windows-project-volume.ts';
 import type {DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
 import desktopIdentity from '../identity.ts';
 import { BackendSupervisor } from './supervisor.ts';
@@ -181,17 +181,15 @@ if (productionChannelRejected) {
     app.commandLine.appendSwitch('class', identity.appId);
   }
   // Register the shipped Windows ACL helper before any storage access.
-  try {
-    const nativeStorage = initializeDesktopPrivateStorage(privateStorageHelperFile(app));
-    // The shipped helper also answers read-only volume facts for project
-    // location admission. A helper without that reviewed entry keeps the
-    // project-location probe closed rather than guessing from path strings.
-    if (nativeStorage && process.platform === 'win32' && typeof nativeStorage.projectVolumeFacts === 'function') {
-      configureDesktopWindowsProjectVolume(createWindowsProjectVolumeReader(nativeStorage));
-    }
-    paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel);
-  }
+  try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
   catch (error) { startupStorageError = error; }
+  // The same shipped helper answers read-only volume facts for project
+  // location admission. A helper without that reviewed entry keeps the probe
+  // closed; the startup storage check above owns a missing helper failure.
+  if (!startupStorageError && process.platform === 'win32') {
+    try { configureDesktopWindowsProjectVolume(createWindowsProjectVolumeReaderFromFile(privateStorageHelperFile(app))); }
+    catch { /* Project location admission stays unavailable. */ }
+  }
 }
 const appearanceCache = !startupStorageError ? createDesktopAppearanceCache({root:paths.userData,dataRoot:paths.dataDir,appId:identity.appId,channel:identity.channel}) : null;
 // Renderer health evidence for issue #4: bounded local records for unresponsive,
@@ -1602,7 +1600,7 @@ else {
       const output = smokeOutput;
       if (windowsPackageSmoke && process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT) {
         const { runWindowsTitleBarScreenshot } = await import('./windows-titlebar-screenshot.ts');
-        await runWindowsTitleBarScreenshot({ app, getWindow: () => win, output,
+        await runWindowsTitleBarScreenshot({ app, getWindow: () => win, backendUrl: ready?.url ?? '', output,
           screenshot: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT,
           scenario: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCENARIO ?? '',
           theme: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_THEME === 'light' ? 'light' : 'dark',

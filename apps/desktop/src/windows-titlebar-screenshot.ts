@@ -1,22 +1,25 @@
 // Development-package Windows title bar screenshots. Fixed inputs only: the
 // outer smoke driver names one scenario, and the app captures its own window.
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
-import {mkdir, writeFile} from 'node:fs/promises';
+import {createHash, randomUUID} from 'node:crypto';
+import {mkdir, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import type {App, BrowserWindow, NativeImage} from 'electron';
-import {desktopCapturer, nativeImage, screen} from 'electron';
+import type {App, NativeImage} from 'electron';
+import {BrowserWindow, desktopCapturer, nativeImage, screen} from 'electron';
 import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-window-chrome.ts';
 import {windowsTitleBarDiagnostics} from './window-chrome.ts';
 
 export const WINDOWS_TITLEBAR_SCENARIOS = Object.freeze(['normal-light', 'normal-dark', 'maximized-light',
-  'maximized-dark', 'dpi-125', 'dpi-150'] as const);
+  'maximized-dark', 'dpi-125', 'dpi-150', 'workbench-light', 'workbench-dark', 'workbench-maximized-light',
+  'workbench-maximized-dark'] as const);
 export type WindowsTitleBarScenario = typeof WINDOWS_TITLEBAR_SCENARIOS[number];
-export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES = Object.freeze(['launcher-ready', 'theme', 'appearance', 'maximize', 'settle', 'facts', 'capture', 'verify-band', 'write'] as const);
+export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES = Object.freeze(['launcher-ready', 'workbench', 'theme', 'appearance', 'maximize', 'settle', 'facts', 'capture', 'verify-band', 'write'] as const);
 type ScreenshotPhase = typeof WINDOWS_TITLEBAR_SCREENSHOT_PHASES[number];
 export interface WindowsTitleBarScreenshotOptions {
   app: App;
   getWindow(): BrowserWindow | null;
+  /** Loopback backend origin used by the workbench scenarios. */
+  backendUrl: string;
   output: string;
   screenshot: string;
   scenario: string;
@@ -58,7 +61,7 @@ async function launcherReady(window: BrowserWindow): Promise<void> {
 /** Sets the authenticated application preference through the same API the UI uses.
  * A concurrent writer can bump the revision between the read and the write, so a
  * rejected write is retried against a fresh revision instead of failing the run. */
-async function applyTheme(window: BrowserWindow, theme: 'light' | 'dark'): Promise<void> {
+async function applyTheme(window: BrowserWindow, theme: 'light' | 'dark', ready: () => Promise<void>): Promise<void> {
   const write = async (): Promise<boolean> => evaluate(window, `(async () => {
     const read = await fetch('/api/ui-preferences', {cache: 'no-store', credentials: 'same-origin'});
     const current = await read.json();
@@ -80,7 +83,7 @@ async function applyTheme(window: BrowserWindow, theme: 'light' | 'dark'): Promi
   // navigate-and-apply once and report the renderer's real state if it fails.
   for (let attempt = 0; attempt < 2; attempt += 1) {
     window.webContents.reload();
-    await launcherReady(window);
+    await ready();
     const reached = await waitFor(window, () => evaluate(window, `document.documentElement.dataset.theme === ${JSON.stringify(theme)}`) as Promise<boolean>,
       20000, '').then(() => true, () => false);
     if (reached) return;
@@ -195,10 +198,52 @@ function bandColorDelta(png: Buffer, facts: TitleBarFacts): number {
   return Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!));
 }
 
+async function workbenchReady(window: BrowserWindow): Promise<void> {
+  await waitFor(window, () => evaluate(window, `Boolean(document.querySelector('[data-testid="workbench"]'))`) as Promise<boolean>,
+    60000, 'The screenshot workbench did not become ready');
+}
+/** Template projects cannot be opened through a native dialog in CI, so the
+ * launcher renderer creates one through the reviewed backend entry and then
+ * opens it through the trusted desktop bridge. Both are product paths. */
+async function createWorkbenchScreenshotWindow({app, launcher, backendUrl}: {app: App; launcher: BrowserWindow; backendUrl: string}): Promise<{window: BrowserWindow; root: string}> {
+  assert.ok(/^https?:\/\/127\.0\.0\.1:\d+$/u.test(backendUrl), 'The workbench screenshot needs the loopback backend URL');
+  const root = path.join(app.getPath('documents'), 'Mioon Windows Screenshot ' + randomUUID());
+  await mkdir(root, {recursive: true});
+  const session = launcher.webContents.session;
+  const response = await session.fetch(new URL('/api/rpc', backendUrl).href, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({operation: 'project.template.instantiate', input: {templateId: 'timeline-basics', templateVersion: 1,
+      parentDir: root, name: 'Screenshot ' + randomUUID().slice(0, 8), requestId: randomUUID()}})});
+  const payload = record(await response.json());
+  assert.ok(response.ok && payload.ok === true, 'The workbench screenshot project could not be created');
+  const project = record(record(payload.data).project), projectId = String(project.projectId);
+  assert.match(projectId, /^[0-9a-f-]{36}$/u);
+  const opened = record(await evaluate(launcher, `(async () => {
+    const recent = await window.__mioonProjectEntries.listRecent();
+    if (!recent.registered.some(value => value.project.projectId === ${JSON.stringify(projectId)})) return {status: 'missing'};
+    const result = await window.__mioonProjectEntries.openRecent({projectId: ${JSON.stringify(projectId)}, remember: false, entryToken: crypto.randomUUID()});
+    return {status: result.status, projectId: result.projectId ?? null};
+  })()`) as unknown);
+  assert.equal(opened.status, 'opened', 'The workbench screenshot project did not open');
+  assert.equal(opened.projectId, projectId);
+  const expectedUrl = new URL(`/?project=${projectId}`, backendUrl).href;
+  await waitFor(launcher, () => Promise.resolve(BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl)),
+    30000, 'The screenshot project window did not open');
+  const window = BrowserWindow.getAllWindows().find(value => !value.isDestroyed() && value.webContents.getURL() === expectedUrl)!;
+  await workbenchReady(window);
+  return {window, root};
+}
+const closeScreenshotWindow = async (window: BrowserWindow | undefined): Promise<void> => {
+  if (!window || window.isDestroyed()) return;
+  const closed = new Promise<void>(resolve => {window.once('closed', () => resolve());});
+  try {window.close();} catch {return;}
+  await Promise.race([closed, new Promise<void>(resolve => setTimeout(resolve, 5000))]);
+};
+
 /** Runs one screenshot scenario, writes the fixed PNG and a fixed JSON record,
  * then returns so the caller can quit the application. */
-export async function runWindowsTitleBarScreenshot({app, getWindow, output, screenshot, scenario, theme, maximized, scale, refreshAppearance}: WindowsTitleBarScreenshotOptions): Promise<void> {
+export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, output, screenshot, scenario, theme, maximized, scale, refreshAppearance}: WindowsTitleBarScreenshotOptions): Promise<void> {
   let phase: ScreenshotPhase = 'launcher-ready';
+  let workbench: BrowserWindow | undefined, workbenchRoot: string | undefined;
   let captured: Buffer | undefined;
   let capturedMismatch: number | undefined;
   let diag = '';
@@ -216,15 +261,23 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
     } catch { /* The outer smoke driver records its own fixed failure code. */ }
   };
   try {
-    const window = getWindow();
-    assert.ok(window && !window.isDestroyed(), 'The screenshot launcher window must be live');
+    const launcher = getWindow();
+    assert.ok(launcher && !launcher.isDestroyed(), 'The screenshot launcher window must be live');
     assert.ok((WINDOWS_TITLEBAR_SCENARIOS as readonly string[]).includes(scenario), 'Unknown Windows title bar screenshot scenario');
     assert.equal(app.isPackaged, true);
     assert.equal(process.platform, 'win32');
     assert.equal(process.arch, 'x64');
-    await launcherReady(window);
+    await launcherReady(launcher);
+    let window = launcher;
+    if (scenario.startsWith('workbench-')) {
+      phase = 'workbench';
+      const created = await createWorkbenchScreenshotWindow({app, launcher, backendUrl});
+      window = created.window;
+      workbench = created.window;
+      workbenchRoot = created.root;
+    }
     phase = 'theme';
-    await applyTheme(window, theme);
+    await applyTheme(window, theme, scenario.startsWith('workbench-') ? () => workbenchReady(window) : () => launcherReady(window));
     phase = 'appearance';
     // The saved preference is authoritative only after the window appearance reads
     // it back; that callback also repaints the system caption overlay colors.
@@ -278,5 +331,8 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
       screenshot: {bytes: png.length, sha256, source}}, null, 2) + '\n');
   } catch (error) {
     await writeFailure(error);
+  } finally {
+    await closeScreenshotWindow(workbench);
+    if (workbenchRoot !== undefined) await rm(workbenchRoot, {recursive: true, force: true}).catch(() => {});
   }
 }

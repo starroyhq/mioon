@@ -1,3 +1,5 @@
+import {createRequire} from 'node:module';
+import path from 'node:path';
 import {PrivateStorageError} from '@mioon/contracts/private-storage';
 import type {WindowsStorageNative} from './windows-private-storage.ts';
 
@@ -43,4 +45,15 @@ export function createWindowsProjectVolumeReader(native: WindowsStorageNative): 
     return Object.freeze({fileSystem: text(facts.fileSystem), isLocal: flag(facts.isLocal), volumeReadOnly: flag(facts.volumeReadOnly),
       permissionBits: flag(facts.permissionBits), cloudSyncRoot: flag(facts.cloudSyncRoot), placeholder: flag(facts.placeholder)});
   };
+}
+
+/** Load the reader directly from the shipped helper file. The desktop main
+ * process names this absolute `.node` path; nothing is searched or resolved
+ * from user input. */
+export function createWindowsProjectVolumeReaderFromFile(helperFile: string): (existingPath: string) => Promise<WindowsProjectVolumeFacts> {
+  if (process.platform !== 'win32' || typeof helperFile !== 'string' || !path.isAbsolute(helperFile) || path.extname(helperFile) !== '.node') return failure();
+  let native: WindowsStorageNative;
+  try { native = createRequire(import.meta.url)(helperFile) as WindowsStorageNative; }
+  catch { return failure(); }
+  return createWindowsProjectVolumeReader(native);
 }

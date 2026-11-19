@@ -255,7 +255,7 @@ bool underSyncRoot(const std::wstring& path){
   }
   return false;
 }
-napi_value booleanValue(napi_env env,bool value){napi_value result;check(napi_create_boolean(env,value,&result)==napi_ok);return result;}
+napi_value booleanValue(napi_env env,bool value){napi_value result;check(napi_get_boolean(env,value,&result)==napi_ok);return result;}
 napi_value projectVolumeFacts(napi_env env,napi_callback_info info){return guarded(env,[&]{
   auto values=args(env,info,1);
   auto raw=ordinaryPath(text(env,values[0]));

@@ -158,7 +158,7 @@ export function readWindowsPackageMetadata(archive: string, reader: AsarReader =
 export interface WindowsTitleBarScreenshotScenario {
   readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number; readonly maximized: boolean;
 }
-export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.freeze(['launcher-ready', 'theme', 'appearance',
+export const WINDOWS_TITLEBAR_SCREENSHOT_PHASES: readonly string[] = Object.freeze(['launcher-ready', 'workbench', 'theme', 'appearance',
   'maximize', 'settle', 'facts', 'capture', 'verify-band', 'write']);
 /** The packaged app writes this fixed failure shape when a screenshot step
  * assertion fails; only the shared phase name crosses the boundary. */
@@ -185,6 +185,10 @@ export const WINDOWS_TITLEBAR_SCENARIOS: readonly WindowsTitleBarScreenshotScena
   Object.freeze({name: 'maximized-dark', theme: 'dark', scale: 1, maximized: true}),
   Object.freeze({name: 'dpi-125', theme: 'light', scale: 1.25, maximized: false}),
   Object.freeze({name: 'dpi-150', theme: 'light', scale: 1.5, maximized: false}),
+  Object.freeze({name: 'workbench-light', theme: 'light', scale: 1, maximized: false}),
+  Object.freeze({name: 'workbench-dark', theme: 'dark', scale: 1, maximized: false}),
+  Object.freeze({name: 'workbench-maximized-light', theme: 'light', scale: 1, maximized: true}),
+  Object.freeze({name: 'workbench-maximized-dark', theme: 'dark', scale: 1, maximized: true}),
 ]);
 export interface WindowsTitleBarScreenshot {readonly name: string; readonly theme: 'light' | 'dark'; readonly scale: number;
   readonly maximized: boolean; readonly frame: 'win-overlay'; readonly devicePixelRatio: number;

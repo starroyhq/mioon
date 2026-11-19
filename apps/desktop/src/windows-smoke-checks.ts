@@ -211,7 +211,7 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   await mark('native-project-location');
   // Real volume facts for the actual project location used by the core flows.
   const documents=app.getPath('documents'),smokeRoot=path.join(documents,'Mioon Windows Smoke '+randomUUID());
-  await mkdir(smokeRoot,{recursive:false});
+  await mkdir(smokeRoot,{recursive:true});
   try{
    const facts=await probeDesktopProjectLocation({path:smokeRoot,purpose:'create',isDirectory:true});
    assert.equal(facts.fileSystem.toLowerCase(),'ntfs');
