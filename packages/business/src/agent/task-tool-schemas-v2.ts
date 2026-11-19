@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="ead5c8f145345f1a55eb6a50f1257891b393f57c3c60766102a137ddfa950266";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="8afa2973cecb50cfa0cbd9ccaa719f935882ca50c7c9a26e93d9bb27bd5f415a";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -886,6 +886,139 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "referenceIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "board"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "reference-edge"
+       },
+       "edit": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "attach"
+           },
+           "edgeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "sourceNodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "role": {
+            "type": "string",
+            "enum": [
+             "first_frame",
+             "last_frame",
+             "reference_image",
+             "subject_reference",
+             "style_reference",
+             "composition",
+             "reference_audio",
+             "reference_video"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "edgeId",
+           "shotId",
+           "sourceNodeId"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "set-role"
+           },
+           "edgeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "role": {
+            "type": "string",
+            "enum": [
+             "first_frame",
+             "last_frame",
+             "reference_image",
+             "subject_reference",
+             "style_reference",
+             "composition",
+             "reference_audio",
+             "reference_video"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "edgeId",
+           "shotId",
+           "role"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "detach"
+           },
+           "edgeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           }
+          },
+          "required": [
+           "kind",
+           "edgeId",
+           "shotId"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "edit"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "propertiesIntent": {
     "type": "object",
     "properties": {
@@ -946,6 +1079,246 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
           "patch"
          ],
          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 100
+       }
+      },
+      "required": [
+       "kind",
+       "edits"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
+   "subtitlesIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "subtitles"
+       },
+       "edits": {
+        "type": "array",
+        "items": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "add"
+            },
+            "cue": {
+             "type": "object",
+             "properties": {
+              "id": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "text": {
+               "type": "string",
+               "maxLength": 256
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 300000
+              },
+              "durationFrames": {
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 300000
+              },
+              "anchor": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "properties": {
+                  "clipId": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "offsetFrames": {
+                   "type": "integer",
+                   "minimum": 0,
+                   "maximum": 300000
+                  }
+                 },
+                 "required": [
+                  "clipId",
+                  "offsetFrames"
+                 ],
+                 "additionalProperties": false
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "dialogueRef": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "properties": {
+                  "shotId": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "lineId": {
+                   "type": "string",
+                   "format": "uuid"
+                  }
+                 },
+                 "required": [
+                  "shotId",
+                  "lineId"
+                 ],
+                 "additionalProperties": false
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              }
+             },
+             "required": [
+              "id",
+              "text",
+              "startFrame",
+              "durationFrames"
+             ],
+             "additionalProperties": false
+            }
+           },
+           "required": [
+            "kind",
+            "cue"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "update"
+            },
+            "cueId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "patch": {
+             "type": "object",
+             "properties": {
+              "text": {
+               "type": "string",
+               "maxLength": 256
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 300000
+              },
+              "durationFrames": {
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 300000
+              },
+              "anchor": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "properties": {
+                  "clipId": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "offsetFrames": {
+                   "type": "integer",
+                   "minimum": 0,
+                   "maximum": 300000
+                  }
+                 },
+                 "required": [
+                  "clipId",
+                  "offsetFrames"
+                 ],
+                 "additionalProperties": false
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "dialogueRef": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "properties": {
+                  "shotId": {
+                   "type": "string",
+                   "format": "uuid"
+                  },
+                  "lineId": {
+                   "type": "string",
+                   "format": "uuid"
+                  }
+                 },
+                 "required": [
+                  "shotId",
+                  "lineId"
+                 ],
+                 "additionalProperties": false
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              }
+             },
+             "additionalProperties": false
+            }
+           },
+           "required": [
+            "kind",
+            "cueId",
+            "patch"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "remove"
+            },
+            "cueId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            }
+           },
+           "required": [
+            "kind",
+            "cueId"
+           ],
+           "additionalProperties": false
+          }
+         ]
         },
         "minItems": 1,
         "maxItems": 100
@@ -1508,6 +1881,139 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "referenceIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "board"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "reference-edge"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "attach"
+             },
+             "edgeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "sourceNodeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "first_frame",
+               "last_frame",
+               "reference_image",
+               "subject_reference",
+               "style_reference",
+               "composition",
+               "reference_audio",
+               "reference_video"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "edgeId",
+             "shotId",
+             "sourceNodeId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "set-role"
+             },
+             "edgeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "first_frame",
+               "last_frame",
+               "reference_image",
+               "subject_reference",
+               "style_reference",
+               "composition",
+               "reference_audio",
+               "reference_video"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "edgeId",
+             "shotId",
+             "role"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "detach"
+             },
+             "edgeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             }
+            },
+            "required": [
+             "kind",
+             "edgeId",
+             "shotId"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "propertiesIntent": {
       "type": "object",
       "properties": {
@@ -1568,6 +2074,246 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "patch"
            ],
            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 100
+         }
+        },
+        "required": [
+         "kind",
+         "edits"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "subtitlesIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "subtitles"
+         },
+         "edits": {
+          "type": "array",
+          "items": {
+           "anyOf": [
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "add"
+              },
+              "cue": {
+               "type": "object",
+               "properties": {
+                "id": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "text": {
+                 "type": "string",
+                 "maxLength": 256
+                },
+                "startFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 300000
+                },
+                "durationFrames": {
+                 "type": "integer",
+                 "minimum": 1,
+                 "maximum": 300000
+                },
+                "anchor": {
+                 "anyOf": [
+                  {
+                   "type": "object",
+                   "properties": {
+                    "clipId": {
+                     "type": "string",
+                     "format": "uuid"
+                    },
+                    "offsetFrames": {
+                     "type": "integer",
+                     "minimum": 0,
+                     "maximum": 300000
+                    }
+                   },
+                   "required": [
+                    "clipId",
+                    "offsetFrames"
+                   ],
+                   "additionalProperties": false
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                },
+                "dialogueRef": {
+                 "anyOf": [
+                  {
+                   "type": "object",
+                   "properties": {
+                    "shotId": {
+                     "type": "string",
+                     "format": "uuid"
+                    },
+                    "lineId": {
+                     "type": "string",
+                     "format": "uuid"
+                    }
+                   },
+                   "required": [
+                    "shotId",
+                    "lineId"
+                   ],
+                   "additionalProperties": false
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                }
+               },
+               "required": [
+                "id",
+                "text",
+                "startFrame",
+                "durationFrames"
+               ],
+               "additionalProperties": false
+              }
+             },
+             "required": [
+              "kind",
+              "cue"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "update"
+              },
+              "cueId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "patch": {
+               "type": "object",
+               "properties": {
+                "text": {
+                 "type": "string",
+                 "maxLength": 256
+                },
+                "startFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 300000
+                },
+                "durationFrames": {
+                 "type": "integer",
+                 "minimum": 1,
+                 "maximum": 300000
+                },
+                "anchor": {
+                 "anyOf": [
+                  {
+                   "type": "object",
+                   "properties": {
+                    "clipId": {
+                     "type": "string",
+                     "format": "uuid"
+                    },
+                    "offsetFrames": {
+                     "type": "integer",
+                     "minimum": 0,
+                     "maximum": 300000
+                    }
+                   },
+                   "required": [
+                    "clipId",
+                    "offsetFrames"
+                   ],
+                   "additionalProperties": false
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                },
+                "dialogueRef": {
+                 "anyOf": [
+                  {
+                   "type": "object",
+                   "properties": {
+                    "shotId": {
+                     "type": "string",
+                     "format": "uuid"
+                    },
+                    "lineId": {
+                     "type": "string",
+                     "format": "uuid"
+                    }
+                   },
+                   "required": [
+                    "shotId",
+                    "lineId"
+                   ],
+                   "additionalProperties": false
+                  },
+                  {
+                   "type": "null"
+                  }
+                 ]
+                }
+               },
+               "additionalProperties": false
+              }
+             },
+             "required": [
+              "kind",
+              "cueId",
+              "patch"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "remove"
+              },
+              "cueId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              }
+             },
+             "required": [
+              "kind",
+              "cueId"
+             ],
+             "additionalProperties": false
+            }
+           ]
           },
           "minItems": 1,
           "maxItems": 100
@@ -9521,6 +10267,102 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "edit"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-attach"
+     },
+     "sourceNodeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "first_frame",
+       "last_frame",
+       "reference_image",
+       "composition",
+       "reference_audio",
+       "reference_video",
+       "subject_reference",
+       "style_reference"
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "sourceNodeId",
+     "shotId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-set-role"
+     },
+     "edgeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "first_frame",
+       "last_frame",
+       "reference_image",
+       "composition",
+       "reference_audio",
+       "reference_video",
+       "subject_reference",
+       "style_reference"
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "edgeId",
+     "shotId",
+     "role"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-detach"
+     },
+     "edgeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "edgeId",
+     "shotId"
     ],
     "additionalProperties": false
    },

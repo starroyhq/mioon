@@ -96,6 +96,7 @@ const needsFrameFence=(operation:string,input:Value):boolean=>
 
 // Every public RPC is reviewed here. New operations fail discovery until this
 // list is deliberately extended; advisory operationEffects never grant access.
+const toolProperty=(value:unknown,key:string):unknown=>object(value)?(value as Record<string,unknown>)[key]:undefined;
 const readOperations=[
  'subject.variants.list','subject.variants.get','previs.thumbnail.get','project.version.list','project.version.preview',
  'asset.media.status.list','asset.media.location.list','image.service.list','image.review.list','image.review.get',
@@ -575,6 +576,7 @@ import {AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS,FORMAT5_UNAVAILABLE_OPERATIONS}
 import {isFormat5Project} from '../sequence-edit.ts';
 import {mioSequenceEditSchemas} from '../../../contracts/src/mio-sequence.ts';
 import {previewMioSequenceAction,commitMioSequenceAction,prepareMioSequenceUndo,applyMioSequenceUndo} from '../format5-mio-sequence.ts';
+import {readFrozenFormat5GenerationInputs} from '../format5-reference-inputs.ts';
 import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.ts';
 export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
@@ -594,7 +596,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
  if(format5){
-  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'按已检查的目标执行一个有界格式 5 序列动作：连接/断开/插入/删除节点、重排/移除/切开片段、跟随/锁定版本、切开后复制挪动、主体绑定三态、片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称）、画板根/镜头创建和有界布局移动。服务器生成并预览 envelope，展示影响后按审批提交；模型不提供 envelope、分配 ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'按已检查的目标执行一个有界格式 5 序列动作：连接/断开/插入/删除节点、重排/移除/切开片段、跟随/锁定版本、切开后复制挪动、主体绑定三态、引用线连接/改角色/断开（素材、预演、音频）、片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称）、画板根/镜头创建和有界布局移动。服务器生成并预览 envelope，展示影响后按审批提交；模型不提供 envelope、分配 ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
@@ -676,6 +678,12 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   }
   if(previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId)return previsTaskView(store,projectId,value);
   const projected=transactionResult(operation,projectId,value);
+  if(operation==='generation.submit'){
+   const freeze=readFrozenFormat5GenerationInputs(toolProperty(value,'snapshot'));
+   if(freeze)return {...(object(projected)?projected:{value:projected}),referenceInputs:{mode:freeze.mode,
+    used:freeze.entries.filter(entry=>entry.status==='used').map(entry=>({role:entry.role,assetId:entry.assetId})),
+    unsupported:freeze.entries.filter(entry=>entry.status==='unsupported').map(entry=>({role:entry.role,assetId:entry.assetId,reason:entry.reason??'UNSUPPORTED'}))}};
+  }
   if(!hasGenerationAspectSource(prepared))return projected;
   const aspectRatio=readGenerationAspectResponseRatio({...prepared.input,requestId},value,projectId);
   if(!aspectRatio||!object(projected))fail('AGENT_TASK_INVALID_TOOL_RESULT','生成回执没有返回与本次请求匹配的画幅');
@@ -759,6 +767,10 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   rejectHostFields(input);
   for(const target of agentTaskExplicitTargets(operation,input,projectId))beforeTargetRead?.(target);
   owned('shots',input.shotId,projectId);
+  // RI-a: on a format-5 project the board reference lines own generation inputs.
+  if(format5&&(Object.hasOwn(input,'videoInput')||Object.hasOwn(input,'subjectVersionId')))
+   return {message:'格式 5 的生成输入由画板引用线决定：先用 sequence 工具连接/改角色/断开引用线，再提交生成；不要直接传 videoInput 或 subjectVersionId。',
+    issues:[{field:'videoInput',reason:'invalid_value' as const}]};
   let capabilities:unknown;
   if(typeof input.connectionId==='string'&&typeof input.modelEntryId==='string'){
    const connections:unknown=await services.call('video.connection.list',{});
@@ -792,11 +804,14 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     if(action.edit.kind==='create'){add('shot',action.edit.shotId);add('subject',action.edit.subjectId);}
     else add('subject_binding',action.edit.bindingId);
    }
+   if(action.kind==='reference-attach'){add('node',action.sourceNodeId);add('shot',action.shotId);}
+   if(action.kind==='reference-set-role'||action.kind==='reference-detach'){add('edge',action.edgeId);add('shot',action.shotId);}
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue',
-     'board-root-create','board-shot-append','board-layout-move'].includes(action.kind);
+    'board-root-create','board-shot-append','board-layout-move',
+    'reference-attach','reference-set-role','reference-detach'].includes(action.kind);
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,
      ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }

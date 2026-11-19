@@ -282,6 +282,101 @@ test('a shot that cannot fit its lines rejects the action instead of moving ordi
 });
 
 // ---------------------------------------------------------------------------
+// Subtitle edits on linked cues write the same dialogue line (coordinator item)
+// ---------------------------------------------------------------------------
+
+function commitSubtitles(store: ProjectStore, edits: readonly unknown[]): Record<string, any> {
+  const preview = edit(store).preview({projectId, requestId: requestId(),
+    subtitlesIntent: {side: 'timeline', operation: {kind: 'subtitles', edits}}}) as Record<string, any>;
+  assert.equal(preview.ok, undefined, `subtitle preview failed: ${JSON.stringify(preview)}`);
+  const result = edit(store).commit({projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest}) as Record<string, any>;
+  assert.notEqual(result.status, 'not_applied', `subtitle commit failed: ${JSON.stringify(result)}`);
+  return {...result, envelope: preview.envelope};
+}
+function subtitleFailure(store: ProjectStore, edits: readonly unknown[]): {code: string} {
+  const preview = edit(store).preview({projectId, requestId: requestId(),
+    subtitlesIntent: {side: 'timeline', operation: {kind: 'subtitles', edits}}}) as Record<string, any>;
+  assert.equal(preview.ok, false, `subtitle preview unexpectedly succeeded: ${JSON.stringify(preview).slice(0, 300)}`);
+  return {code: String(preview.code)};
+}
+
+test('editing a linked subtitle text writes the shot line in the same subtitle action', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  const cue = cueFor(store, shotA, line1)!;
+  const before = timeline(store);
+  commitSubtitles(store, [{kind: 'update', cueId: cue.id, patch: {text: '字幕侧改的'}}]);
+  assert.equal(cueFor(store, shotA, line1)!.text, '字幕侧改的', 'the cue text changes');
+  assert.equal(shotDialogue(store, shotA).find(line => line.id === line1)!.text, '字幕侧改的',
+    'the same shot dialogue line changes');
+  // Other fields of the cue and its link are kept.
+  const after = cueFor(store, shotA, line1)!;
+  assert.deepEqual(after.anchor, cue.anchor);
+  assert.deepEqual(after.dialogueRef, {shotId: shotA, lineId: line1});
+  undo(store);
+  assert.equal(cueFor(store, shotA, line1)!.text, '第一句改');
+  assert.equal(shotDialogue(store, shotA).find(line => line.id === line1)!.text, '第一句改',
+    'one undo restores both sides');
+});
+
+test('removing a linked subtitle removes the dialogue line; other lines keep their cues', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  const cue = cueFor(store, shotA, line2)!;
+  commitSubtitles(store, [{kind: 'remove', cueId: cue.id}]);
+  assert.deepEqual(shotDialogue(store, shotA).map(line => line.id), [line1], 'both sides drop the line');
+  assert.equal(dialogueCues(store, shotA).length, 1);
+  assert.equal(cueFor(store, shotA, line2), undefined);
+  undo(store);
+  assert.deepEqual(shotDialogue(store, shotA).map(line => line.id), [line1, line2]);
+  assert.equal(cueFor(store, shotA, line2)!.text, '第二句');
+});
+
+test('subtitle add stays an ordinary cue and linking fields are rejected', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  const added = id(60);
+  commitSubtitles(store, [{kind: 'add', cue: {id: added, text: '普通', startFrame: 60, durationFrames: 10,
+    dialogueRef: {shotId: shotA, lineId: line2}}}]);
+  const stored = cues(store).find(cue => cue.id === added)!;
+  assert.equal(stored.dialogueRef, undefined, 'add never links a dialogue line');
+  assert.equal(cueFor(store, shotA, line2)!.text, '第二句');
+  // An update cannot create/remove the link either.
+  const cue = cueFor(store, shotA, line1)!;
+  assert.equal(subtitleFailure(store, [{kind: 'update', cueId: cue.id, patch: {dialogueRef: null}}]).code,
+    'SEQUENCE_EDIT_SUBTITLE_INVALID');
+});
+
+test('a detached linked subtitle can still have its text edited and keeps the link', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  const cue = cueFor(store, shotA, line1)!;
+  store.tx(() => {
+    const record = timeline(store);
+    record.subtitles!.cues.find(item => item.id === cue.id)!.anchor = null;
+    store.put('timelines', record);
+  });
+  commitSubtitles(store, [{kind: 'update', cueId: cue.id, patch: {text: '未挂靠改'}}]);
+  const after = cues(store).find(item => item.id === cue.id)!;
+  assert.equal(after.text, '未挂靠改');
+  assert.equal(after.anchor, null, 'a text edit does not attach a detached cue');
+  assert.equal(shotDialogue(store, shotA).find(line => line.id === line1)!.text, '未挂靠改');
+  // Timing edits keep the dialogue line untouched.
+  const second = cueFor(store, shotA, line2)!;
+  commitSubtitles(store, [{kind: 'update', cueId: second.id, patch: {durationFrames: 5}}]);
+  assert.equal(shotDialogue(store, shotA).find(line => line.id === line2)!.text, '第二句');
+  assert.equal(cueFor(store, shotA, line2)!.dialogueRef!.lineId, line2);
+});
+
+// ---------------------------------------------------------------------------
 // Main-track lifecycle: split, float, re-attach, archive, copy
 // ---------------------------------------------------------------------------
 

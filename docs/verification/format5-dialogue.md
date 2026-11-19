@@ -62,10 +62,28 @@
 | `SubtitleLane` `dialogueCues` | 剪辑字幕轨的关联标记（台词 cue 左侧标记 + 提示里带镜头名） |
 | Mio：`sequence.tool.edit` 的 `dialogue` 动作、`sequence.inspect` 的 `dialogue` 行 | 按对齐规则开放；格式 5 指纹按授权重生成，格式 3/4 两套不变 |
 
+## 字幕编辑 ↔ 台词接线（#314 FR-B 合入后，协调人「合入前」第 2 条）
+
+字幕结构 intent（`subtitlesIntent`）作用在 `dialogueRef` 非空的字幕上时，同一事务写回镜头侧：
+
+- `update` 改文字 → 同事务写 `shot.data.dialogue` 对应行文本（等价 `set-text-by-cue`）；改起止帧/锚点不动台词行，保留关联。
+- `remove` → 同时删掉那条台词行（P5 D7「两边删行等价」）；其余台词的 cue 不变。
+- `add` → 永远是普通字幕：即使传入 `dialogueRef` 也不存关联；`update` 里改 `dialogueRef` 直接拒绝（关联由台词 intent 维护）。
+- 未挂靠字幕（`anchor:null`，镜头游离时留下的真实字幕）允许只改文字，锚点保持未挂靠。
+- 一次字幕动作的补丁同时带 shot 行正反写与 cue 行正反写，共用统一 history，一步撤销恢复两侧；影响计数与 target 修订同时列 shot 与 cue。
+- 测试：`tests/format5-dialogue.test.ts` 新增 4 项（同事务改文字+撤销、删行等价、add 普通字幕/拒绝建链、未挂靠只改字）；合同测试两边的用例都在（合并后 19 项）。
+
+## 合入 main（64799cc3：FR-B #314 + RI-a #317）
+
+- `SequenceEditTimelineDelta.subtitles` 三态只保留一份（#314 的形状）；台词投影与 #314 的 header 处理合成同一个 `subtitleProfileOf`。
+- 三个 intent 家族（引用线 / 字幕 / 台词）与 D5 画板工具在手写文件里取并集：`sequence-edit.ts`、`sequence-edit-rpc.ts`、`mio-sequence.ts`、`sequence-inspection.ts`、`format5-sequence-edit-service.ts`、`format5-sequence-inspection.ts`、`format5-sequence-sync.ts`、`format5-mio-sequence.ts`、`task-tools-v2.ts`。
+- 生成文件按合并后代码重新生成：`task-tool-schemas-v2.ts`（`--check` 通过）、格式 5 指纹（相对 main 90/99 条变化，全部来自台词动作与两处描述，格式 3/4 两套逐字节不变）。
+- 合并后复跑：台词 18、字幕结构 2、渲染 3、引用线 3、合同 19、sequence-edit/rpc/guards、TS/TSb、FR-A、主体绑定、history、Mio 读写 9/工具 3、内核 25/12/11/11/5/7、五指守卫与 agent 工具全线通过；无头验收 9 项与 K1 性能复跑通过。
+
 ## 检查与结果
 
-- `tests/format5-dialogue.test.ts`（14 项）：两侧一致、ID 唯一、切开跟随、删行/撤销、
-  游离/接回/归档/复制、普通字幕不动、超长/帧不足/重叠拒绝、noop、精确重放、未挂靠 cue 不被后续同步自动挂上。
+- `tests/format5-dialogue.test.ts`（18 项）：两侧一致、ID 唯一、切开跟随、删行/撤销、
+  游离/接回/归档/复制、普通字幕不动、超长/帧不足/重叠拒绝、noop、精确重放、未挂靠 cue 不被后续同步自动挂上、字幕编辑同事务写回台词。
 - `tests/format5-dialogue-performance.test.ts`：500 镜头 + 500 台词/字幕 + 1,000 锚定段，
   单次台词编辑共享事务本机 p95 约 41 ms（预算 100 ms；Linux CI 断言代码路径 p95 ≤200 ms）。
 - `tests/sequence-edit-contract.test.ts`：dialogueIntent 正反例与历史补丁兼容。

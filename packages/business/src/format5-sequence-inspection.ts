@@ -12,6 +12,7 @@ import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import type {SequenceInspectionDiff, SequenceInspectionPage, SequenceInspectionSegment} from '../../contracts/src/sequence-inspection.ts';
+import {readShotReferenceEdges} from './format5-reference-inputs.ts';
 
 type Row = Record<string, any>;
 const format5 = (store: ProjectStore): boolean =>
@@ -104,6 +105,10 @@ export function createSequenceInspectionService(store: ProjectStore): {handlers:
           ...(version ? {} : {})};
       });
       const inSync = !differences.some(diff => diff.id === nodeId || clips.some(clip => diff.id === clip.id));
+      const edges = kind === 'shot' ? readShotReferenceEdges(store, nodeId) : [];
+      const references = edges.filter(edge => edge.kind === 'reference' && edge.sourceAssetId !== undefined).slice(0, 8)
+        .map(edge => ({edgeId: edge.id, role: String(edge.kind === 'reference' ? edge.role : ''),
+          assetId: String(edge.kind === 'reference' ? edge.sourceAssetId : ''), sourceNodeId: edge.source}));
       const dialogue = Array.isArray(shot?.dialogue) && shot.dialogue.length > 0
         ? (shot.dialogue as Row[]).filter(line => typeof line.id === 'string' && typeof line.text === 'string')
           .map(line => ({id: String(line.id), text: String(line.text),
@@ -112,6 +117,7 @@ export function createSequenceInspectionService(store: ProjectStore): {handlers:
       segments.push({nodeId, kind, order: index, groupIds: [...new Set(group.map(clip => String((clip as Row).sequenceSource?.segmentGroupId)))],
         clipIds: group.map(clip => clip.id), startFrame: first.startFrame,
         durationFrames: group.reduce((sum, clip) => sum + clip.durationFrames, 0), clips, inSync,
+        ...(edges.length ? {references, referenceCount: edges.length} : {}),
         ...(dialogue && dialogue.length ? {dialogue} : {})});
     });
     const filtered = segments.filter(segment => segment.order >= after);
