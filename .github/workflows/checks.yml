@@ -287,20 +287,11 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  portable:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.target == 'macos' && 30 || 20 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS portable source checks
-            os: macos-15
-            target: macos
-          - name: Windows portable source checks (no desktop support)
-            os: windows-2025
-            target: windows
+
+  macos:
+    name: macOS portable and desktop checks
+    runs-on: macos-15
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -341,7 +332,7 @@ jobs:
         run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-ffmpeg-toolchain.test.ts tests/actions-test-shards.test.ts
 
       - name: Measure motion layer prototype on macOS
-        if: matrix.target == 'macos' && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         timeout-minutes: 8
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -361,7 +352,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Measure export segments on macOS arm64
-        if: matrix.target == 'macos' && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         # The small runner selects one encoder. Both 120-second renders take
         # about four minutes each, in addition to the short fixture and setup.
         timeout-minutes: 12
@@ -385,35 +376,39 @@ jobs:
             printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Test the reviewed macOS desktop group
+        id: desktop
+        run: node scripts/tooling.ts test --suite=macos-desktop --concurrency=2 --reporter=tap
+
       - name: Write safe diagnostics
         if: always()
         env:
-          TARGET: ${{ matrix.target }}
           TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
           TEST_RESULT: ${{ steps.tests.outcome }}
           HELPER_RESULT: ${{ steps.helpers.outcome }}
+          DESKTOP_RESULT: ${{ steps.desktop.outcome }}
         run: |
-          mkdir -p "artifacts/checks-$TARGET"
+          mkdir -p artifacts/checks-macos
           {
             node --version
             pnpm --version
-            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT"
-          } > "artifacts/checks-$TARGET/status.log"
-          cat "artifacts/checks-$TARGET/status.log" >> "$GITHUB_STEP_SUMMARY"
+            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\ndesktop-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT" "$DESKTOP_RESULT"
+          } > artifacts/checks-macos/status.log
+          cat artifacts/checks-macos/status.log >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: checks-${{ matrix.target }}-diagnostics
-          path: artifacts/checks-${{ matrix.target }}/
+          name: checks-macos-diagnostics
+          path: artifacts/checks-macos/
           retention-days: 7
           if-no-files-found: warn
 
-  macos-desktop:
-    name: macOS desktop test group
-    runs-on: macos-15
-    timeout-minutes: 15
+  portable:
+    name: Windows portable source checks (no desktop support)
+    runs-on: windows-2025
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -441,28 +436,38 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test the reviewed macOS desktop group
-        id: desktop
-        run: node scripts/tooling.ts test --suite=macos-desktop --concurrency=2 --reporter=tap
+      - name: Typecheck source and CI helpers
+        id: typecheck
+        run: node scripts/tooling.ts typecheck
+
+      - name: Test portable source behavior
+        id: tests
+        run: node scripts/tooling.ts test --suite=portable --concurrency=1 --reporter=tap
+
+      - name: Test CI and release helpers
+        id: helpers
+        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-ffmpeg-toolchain.test.ts tests/actions-test-shards.test.ts
 
       - name: Write safe diagnostics
         if: always()
         env:
-          DESKTOP_RESULT: ${{ steps.desktop.outcome }}
+          TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+          HELPER_RESULT: ${{ steps.helpers.outcome }}
         run: |
-          mkdir -p artifacts/checks-macos-desktop
+          mkdir -p artifacts/checks-windows
           {
             node --version
             pnpm --version
-            printf 'desktop-tests=%s\n' "$DESKTOP_RESULT"
-          } > artifacts/checks-macos-desktop/status.log
-          cat artifacts/checks-macos-desktop/status.log >> "$GITHUB_STEP_SUMMARY"
+            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT"
+          } > artifacts/checks-windows/status.log
+          cat artifacts/checks-windows/status.log >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: checks-macos-desktop-diagnostics
-          path: artifacts/checks-macos-desktop/
+          name: checks-windows-diagnostics
+          path: artifacts/checks-windows/
           retention-days: 7
           if-no-files-found: warn
