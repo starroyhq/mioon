@@ -9,7 +9,7 @@ import {cleanEnvironment} from '../.github/scripts/media-environment.ts';
 import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArguments, runWindowsDevelopmentSmoke,
   readWindowsPackageMetadata, smokeFailureCode, terminateOwnedWindowsTree, validateWindowsDevelopmentPackage,
   validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment,
-  WINDOWS_SMOKE_PHASES, WINDOWS_TITLEBAR_SCENARIOS, appCheckFailureName, appStartupErrorShape, phaseMarkerName, startupFailureReason,
+  WINDOWS_SMOKE_PHASES, WINDOWS_TITLEBAR_SCENARIOS, appCheckFailureDetail, appCheckFailureName, appStartupErrorShape, phaseMarkerName, startupFailureReason,
   validateWindowsTitleBarScreenshot} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
@@ -333,6 +333,10 @@ test('a hung launch reports only the last fixed phase marker from the workspace'
 
 test('a packaged app check failure is reported by fixed check name without raw text', async () => {
   const failShape = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: 'launcher-ui-ready'};
+  assert.equal(appCheckFailureDetail({...failShape, detail: 'PROJECT_TEMPLATE_NOT_FOUND' }), 'PROJECT_TEMPLATE_NOT_FOUND');
+  assert.equal(appCheckFailureName({...failShape, detail: 'PROJECT_TEMPLATE_NOT_FOUND' }), 'launcher-ui-ready');
+  assert.equal(appCheckFailureName({...failShape, detail: 'C:\\private\\synthetic'}), undefined);
+  assert.equal(appCheckFailureDetail({...failShape, detail: 'C:\\private\\synthetic'}), undefined);
   const f = fixture();
   f.services.launch = async () => {f.file(`${workspace}\\result.json`, JSON.stringify(failShape));};
   assert.deepEqual(await runWindowsDevelopmentSmoke(args, f.services), failShape);

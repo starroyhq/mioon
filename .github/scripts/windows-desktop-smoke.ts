@@ -42,7 +42,7 @@ export interface WindowsLaunchReport {
   schemaVersion: 1; scope: 'windows-development-launch'; ok: true; channel: 'development'; platform: 'win32'; arch: 'x64';
   isPackaged: true; appVersion: string; runtime: {node: string; electron: string}; checks: SmokeCheck[];
 }
-interface FailureReport {schemaVersion: 1; scope: 'windows-development-launch'; ok: false; code: FailureCode; phase?: string; check?: string; reason?: string}
+interface FailureReport {schemaVersion: 1; scope: 'windows-development-launch'; ok: false; code: FailureCode; phase?: string; check?: string; detail?: string; reason?: string}
 /** Fixed progress markers the packaged app writes beside its report. */
 export const WINDOWS_SMOKE_PHASES: readonly string[] = Object.freeze(['startup', 'smoke', 'packaged-development-identity',
   'bundled-utility-node-sqlite', 'launcher-ui-ready', 'renderer-sandbox-and-origin', 'secure-memory-cookie',
@@ -55,8 +55,24 @@ const fixedName = (value: unknown, keys: readonly string[]): string | undefined 
   const name = value[keys[keys.length - 1]!];
   return typeof name === 'string' && WINDOWS_SMOKE_PHASES.includes(name) ? name : undefined;
 };
-export const appCheckFailureName = (value: unknown): string | undefined =>
-  record(value) && value.ok === false && value.code === 'WINDOWS_SMOKE_CHECK_FAILED' ? fixedName(value, ['schemaVersion', 'scope', 'ok', 'code', 'check']) : undefined;
+/** Fixed, path-free error codes only; app failures never carry raw messages. */
+const safeReasonDetail = (value: unknown): string | false | undefined => {
+  if (!record(value) || value.detail === undefined) return undefined;
+  const detail = value.detail;
+  return typeof detail === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/u.test(detail) ? detail : false;
+};
+const checkFailure = (value: unknown): Record<string, unknown> | undefined =>
+  record(value) && value.schemaVersion === 1 && value.scope === 'windows-development-launch' && value.ok === false &&
+  value.code === 'WINDOWS_SMOKE_CHECK_FAILED' && typeof value.check === 'string' && WINDOWS_SMOKE_PHASES.includes(value.check) &&
+  Object.keys(value).every(key => ['schemaVersion', 'scope', 'ok', 'code', 'check', 'detail'].includes(key)) ? value : undefined;
+export const appCheckFailureName = (value: unknown): string | undefined => {
+  const failure = checkFailure(value);
+  return failure && safeReasonDetail(value) !== false ? failure.check as string : undefined;
+};
+export const appCheckFailureDetail = (value: unknown): string | undefined => {
+  const detail = safeReasonDetail(value);
+  return detail === false ? undefined : detail;
+};
 export const phaseMarkerName = (value: unknown): string | undefined => fixedName(value, ['schemaVersion', 'scope', 'phase']);
 const safeReason = (value: unknown): string | undefined => typeof value === 'string' && /^[A-Z][A-Z0-9_]{2,64}$/u.test(value) ? value : undefined;
 /** Early storage/helper failures are fixed codes written instead of a dialog. */
@@ -406,8 +422,9 @@ export async function runWindowsDevelopmentSmoke(args: readonly string[], servic
     try {await services.launch(options.binary, environment, options.workspace);} catch (error) {launchError = error;}
     if (launchError !== undefined) {
       const code = smokeFailureCode(launchError), report = parsed(await optionalText(reportFile));
-      const reportedCheck = appCheckFailureName(report), startupReason = startupFailureReason(report);
-      if (reportedCheck !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck};
+      const reportedCheck = appCheckFailureName(report), reportedDetail = appCheckFailureDetail(report), startupReason = startupFailureReason(report);
+      if (reportedCheck !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_CHECK_FAILED', check: reportedCheck,
+        ...(reportedDetail === undefined ? {} : {detail: reportedDetail})};
       else if (startupReason !== undefined) result = {schemaVersion: 1, scope: 'windows-development-launch', ok: false, code: 'WINDOWS_SMOKE_STARTUP_FAILED', reason: startupReason};
       else if (code === 'WINDOWS_SMOKE_APP_TIMEOUT' && (() => {
         try {validateWindowsLaunchReport(report, expected); return true;} catch {return false;}

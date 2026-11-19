@@ -209,12 +209,15 @@ async function createWorkbenchScreenshotWindow({app, launcher, backendUrl}: {app
   assert.ok(/^https?:\/\/127\.0\.0\.1:\d+$/u.test(backendUrl), 'The workbench screenshot needs the loopback backend URL');
   const root = path.join(app.getPath('documents'), 'Mioon Windows Screenshot ' + randomUUID());
   await mkdir(root, {recursive: true});
-  const session = launcher.webContents.session;
-  const response = await session.fetch(new URL('/api/rpc', backendUrl).href, {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({operation: 'project.template.instantiate', input: {templateId: 'timeline-basics', templateVersion: 1,
-      parentDir: root, name: 'Screenshot ' + randomUUID().slice(0, 8), requestId: randomUUID()}})});
-  const payload = record(await response.json());
-  assert.ok(response.ok && payload.ok === true, 'The workbench screenshot project could not be created');
+  // The launcher renderer owns the authenticated same-origin fetch; native
+  // file dialogs cannot be automated in CI.
+  const payload = record(await evaluate(launcher, `(async () => {
+    const response = await fetch('/api/rpc', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({operation: 'project.template.instantiate', input: {templateId: 'timeline-basics', templateVersion: 1,
+        parentDir: ${JSON.stringify(root)}, name: 'Screenshot ' + crypto.randomUUID().slice(0, 8), requestId: crypto.randomUUID()}})});
+    return response.json().catch(() => null);
+  })()`) as unknown);
+  assert.ok(payload.ok === true, 'The workbench screenshot project could not be created');
   const project = record(record(payload.data).project), projectId = String(project.projectId);
   assert.match(projectId, /^[0-9a-f-]{36}$/u);
   const opened = record(await evaluate(launcher, `(async () => {

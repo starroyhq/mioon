@@ -41,7 +41,7 @@ export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-dev
  'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','project-location-facts','project-location-paths',
  'project-location-network','native-project-core-flows','project-core-create','project-core-export','project-core-open','project-core-reopen','write-report'] as const);
 
-interface CoreFlowOptions {app:App;session:Session|null;ready:BackendReady|null;smokeRoot:string;
+interface CoreFlowOptions {app:App;ready:BackendReady|null;smokeRoot:string;
  mark:(next:typeof WINDOWS_SMOKE_PHASES[number])=>Promise<void>}
 const waitUntil=async(check:()=>Promise<boolean>,timeoutMs:number,message:string):Promise<void>=>{
  const deadline=Date.now()+timeoutMs;
@@ -53,13 +53,26 @@ const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
  * UI uses. Native location dialogs cannot be automated, so creation uses the
  * fixed template entry with an explicit retained parent directory; everything
  * after it (open, close, reopen) goes through the trusted desktop host. */
-async function runProjectCoreFlows({app,session,ready,smokeRoot,mark}:CoreFlowOptions):Promise<void>{
- assert.ok(session&&ready);
+async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):Promise<void>{
+ assert.ok(ready);
+ /** Uses the launcher renderer's authenticated same-origin fetch, the exact
+  * route the product UI uses. Main-process session.fetch is avoided here so
+  * cookie/origin behaviour cannot differ from a real window. */
  const request=async(address:string,operation:string,input:unknown):Promise<unknown>=>{
-  const response=await session.fetch(new URL(address,ready.url).href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,input})});
-  const payload=record(await response.json());
-  if(!response.ok||payload.ok!==true)throw new Error('Windows project core flow request failed');
-  return payload.data;
+  const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
+  const result=record(await launcher.webContents.executeJavaScript(`(async()=>{
+   const response=await fetch(${JSON.stringify(address)},{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({operation:${JSON.stringify(operation)},input:${JSON.stringify(input)}})});
+   const body=await response.json().catch(()=>null);
+   return {status:response.status,body};
+  })()`,true));
+  const body=record(result.body);
+  if(result.status!==200||body.ok!==true){
+   const code=record(body.error)?.code;
+   throw Object.assign(new Error('Windows project core flow request failed'),
+    {code:typeof code==='string'&&/^[A-Z][A-Z0-9_]{2,64}$/u.test(code)?code:'UNKNOWN'});
+  }
+  return body.data;
  };
  const projectAddress=(projectId:string)=>`/api/projects/${projectId}/rpc`;
  await mark('project-core-create');
@@ -246,7 +259,7 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
    throw error;
   }
   await mark('native-project-core-flows');
-  await runProjectCoreFlows({app,session:getSession(),ready:getReady(),smokeRoot,mark});
+  await runProjectCoreFlows({app,ready:getReady(),smokeRoot,mark});
   passed('native-project-core-flows');
   try{await rm(smokeRoot,{recursive:true,force:true});}catch{/* The runner is disposable; cleanup never hides a passing flow. */}
   blocked('live-mio-and-generation','LIVE_CREDENTIALS_NOT_CONFIGURED');
@@ -254,10 +267,11 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   await mkdir(path.dirname(output),{recursive:true});
   await writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:true,channel:'development',platform:'win32',arch:'x64',isPackaged:true,
    appVersion:app.getVersion(),runtime:{node:report.runtime.node,electron:report.runtime.electron},checks},null,2)+'\n');
- }catch{
-  // Fixed failure evidence only: the outer driver reads the check name, while
-  // assertion messages and paths never leave this process.
+ }catch(error){
+  // Fixed failure evidence only: a phase marker plus a bounded error code, never
+  // assertion messages or paths. The outer driver validates both shape and enum.
+  const raw=(error as {code?:unknown}|null)?.code,detail=typeof raw==='string'&&/^[A-Z][A-Z0-9_]{2,64}$/u.test(raw)?raw:'UNKNOWN';
   await mkdir(path.dirname(output),{recursive:true}).catch(()=>{});
-  await writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_CHECK_FAILED',check:phase})+'\n').catch(()=>{});
+  await writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_CHECK_FAILED',check:phase,detail})+'\n').catch(()=>{});
  }
 }
