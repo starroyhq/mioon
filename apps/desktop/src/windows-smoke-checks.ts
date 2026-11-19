@@ -42,7 +42,7 @@ export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-dev
  'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','project-location-facts','project-location-paths',
  'project-location-network','native-project-core-flows','project-core-create','project-core-created','project-core-renamed',
  'project-core-imported','project-core-export','project-core-open','project-core-open-home','project-core-open-list',
- 'project-core-open-window','project-core-open-workbench','project-core-reopen','write-report'] as const);
+ 'project-core-open-window','project-core-open-workbench','project-core-reopen','project-core-close','write-report'] as const);
 
 interface CoreFlowOptions {app:App;ready:BackendReady|null;smokeRoot:string;
  mark:(next:typeof WINDOWS_SMOKE_PHASES[number])=>Promise<void>}
@@ -95,7 +95,15 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  assert.equal(asset.name,'smoke-import.png');assert.equal(asset.mimeType,'image/png');
  await mark('project-core-imported');
  const launcherWindow=()=>{const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());return launcher;};
- const closeEditor=async(editor:BrowserWindow):Promise<void>=>{const closed=new Promise<void>(resolve=>{if(editor.isDestroyed())return resolve();editor.once('closed',()=>resolve());});editor.close();await closed;};
+ const closeEditor=async(editor:BrowserWindow):Promise<void>=>{
+  if(editor.isDestroyed())return;
+  const closed=new Promise<void>(resolve=>{editor.once('closed',()=>resolve());});
+  try{editor.close();}catch{try{editor.destroy();}catch{/* Already gone. */}return;}
+  // Native close admission normally answers at once; a reopened renderer can be
+  // transiently busy, so bound the wait and force-destroy only the smoke window.
+  await Promise.race([closed,new Promise<void>(resolve=>setTimeout(resolve,10000))]);
+  if(!editor.isDestroyed())try{editor.destroy();}catch{/* Already gone. */}
+ };
  // The export worker lives in the open project host: queue the render while the
  // real editor window holds its lease, exactly as the UI does, then close.
  await mark('project-core-open');
@@ -123,6 +131,7 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  await closeEditor(editor);
  await mark('project-core-reopen');
  editor=await openRegisteredProject(launcherWindow(),ready.url,projectId,openStep);
+ await mark('project-core-close');
  await closeEditor(editor);
  clearSmokeWorkspace(projectFile);
 }

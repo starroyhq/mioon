@@ -52,7 +52,7 @@ export const WINDOWS_SMOKE_PHASES: readonly string[] = Object.freeze(['startup',
   'project-location-facts', 'project-location-paths', 'project-location-network', 'native-project-core-flows',
   'project-core-create', 'project-core-created', 'project-core-renamed', 'project-core-imported', 'project-core-export',
   'project-core-open', 'project-core-open-home', 'project-core-open-list', 'project-core-open-window',
-  'project-core-open-workbench', 'project-core-reopen', 'write-report']);
+  'project-core-open-workbench', 'project-core-reopen', 'project-core-close', 'write-report']);
 const fixedName = (value: unknown, keys: readonly string[]): string | undefined => {
   if (!record(value) || !exactKeys(value, keys) || value.schemaVersion !== 1 || value.scope !== 'windows-development-launch') return undefined;
   const name = value[keys[keys.length - 1]!];
