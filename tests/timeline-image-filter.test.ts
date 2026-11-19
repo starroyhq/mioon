@@ -21,7 +21,7 @@ const layerRuntime={checkMediaEffect,createPrivateTemporaryDirectory,validatePri
 // FFmpeg 8.1+ tags decoded PNGs as straight alpha; an inline graph that already
 // carries premultiply-filter output must declare the real mode before overlay.
 // Older tools have no alpha-mode filter and keep the reviewed legacy graph.
-const alphaModeTag = spawnSync(mediaExecutable('ffmpeg'), ['-hide_banner', '-h', 'filter=setparams'], {encoding: 'utf8', timeout: 10000, windowsHide: true}).stdout?.includes('alpha_mode') ? ',setparams=alpha_mode=premultiplied' : '';
+const alphaModeTag = spawnSync(mediaExecutable('ffmpeg'), ['-hide_banner', '-h', 'filter=setparams'], {encoding: 'utf8', timeout: 10000, windowsHide: true, env: testEnv()}).stdout?.includes('alpha_mode') ? ',setparams=alpha_mode=premultiplied' : '';
 
 const sha=(bytes: NonSharedBuffer|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 // Independent closed-form oracle, not the production table generator.
