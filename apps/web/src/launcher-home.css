@@ -19,6 +19,20 @@
 
 .launcher-home-titlebar { flex: none; height: 48px; margin-inline: -12px; }
 :root[data-desktop-frame="mac-inset"] .launcher-home-titlebar { height: var(--wb-topbar); -webkit-app-region: drag; }
+:root[data-desktop-frame="win-overlay"] .launcher-home-titlebar { height: var(--wb-topbar); -webkit-app-region: drag; }
+/* The system caption buttons sit over the main column; reserve one drag band as
+   tall as the shared top bar and start the launcher content below it. */
+:root[data-desktop-frame="win-overlay"] .project-home-screen > .project-home.launcher-home > .project-home-layout { position: relative; }
+:root[data-desktop-frame="win-overlay"] .project-home-screen > .project-home.launcher-home > .project-home-layout::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--wb-topbar);
+  -webkit-app-region: drag;
+}
+:root[data-desktop-frame="win-overlay"] .project-home-screen > .project-home.launcher-home > .project-home-layout > .project-home-main {
+  padding-top: calc(16px + var(--wb-topbar));
+}
 
 .launcher-home-brand { display: flex; align-items: center; gap: 14px; padding: 10px 10px 24px; }
 .launcher-home-brand > img { flex: none; border-radius: 8px; }

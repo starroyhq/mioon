@@ -221,6 +221,16 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
   min-height: var(--wb-topbar);
   padding-block: 0;
 }
+:root[data-desktop-frame="win-overlay"] .project-home.project-home-settings-window > .project-home-header {
+  height: var(--wb-topbar);
+  min-height: var(--wb-topbar);
+  padding-block: 0;
+  padding-right: var(--win-titlebar-trailing);
+  -webkit-app-region: drag;
+}
+:root[data-desktop-frame="win-overlay"] .project-home.project-home-settings-window > .project-home-header :is(a, button, input, select, textarea, [role="tablist"], [role="button"], [tabindex]:not([tabindex="-1"]), summary) {
+  -webkit-app-region: no-drag;
+}
 .native-settings-panel .settings-center { grid-template-columns: 188px minmax(0, 1fr); }
 @media (max-width: 820px) { .native-settings-panel .settings-center { grid-template-columns: 164px minmax(0, 1fr); } .native-settings-panel .settings-center-content { padding-inline: 18px; } }
 

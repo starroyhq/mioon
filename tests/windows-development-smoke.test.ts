@@ -9,7 +9,8 @@ import {cleanEnvironment} from '../.github/scripts/media-environment.ts';
 import {WINDOWS_SMOKE_TIMEOUT_MS, launchWindowsPackage, parseWindowsSmokeArguments, runWindowsDevelopmentSmoke,
   readWindowsPackageMetadata, smokeFailureCode, terminateOwnedWindowsTree, validateWindowsDevelopmentPackage,
   validateWindowsLaunchReport, windowsDevelopmentPackageExpectation, windowsSmokeEnvironment,
-  WINDOWS_SMOKE_PHASES, appCheckFailureName, appStartupErrorShape, phaseMarkerName, startupFailureReason} from '../.github/scripts/windows-desktop-smoke.ts';
+  WINDOWS_SMOKE_PHASES, WINDOWS_TITLEBAR_SCENARIOS, appCheckFailureName, appStartupErrorShape, phaseMarkerName, startupFailureReason,
+  validateWindowsTitleBarScreenshot} from '../.github/scripts/windows-desktop-smoke.ts';
 
 const binary = 'C:\\package\\win-unpacked\\mioon-dev.exe', workspace = 'C:\\smoke\\attempt', output = 'C:\\evidence\\smoke.json';
 const userData = 'C:\\Users\\Synthetic\\AppData\\Local\\mioon-smoke', userDataParent = 'C:\\Users\\Synthetic\\AppData\\Local';
@@ -77,6 +78,49 @@ test('Windows CLI arguments accept only an absolute delivered x64 executable, ev
     args.map(value => value.startsWith('--user-data=') ? `--user-data=${workspace}\\user-data` : value),
     args.map(value => value.startsWith('--user-data=') ? '--user-data=relative-user-data' : value),
   ]) assert.throws(() => parseWindowsSmokeArguments(invalid), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_INVALID_ARGUMENTS');
+});
+
+test('the optional screenshot directory is a new absolute path outside the smoke workspace', () => {
+  const screenshots = 'C:\\evidence\\screenshots';
+  assert.deepEqual(parseWindowsSmokeArguments([...args, `--screenshots=${screenshots}`]), {binary, output, workspace, userData, screenshots});
+  for (const invalid of [[...args, `--screenshots=${workspace}\\shots`], [...args, '--screenshots=relative\\shots'],
+    [...args, `--screenshots=${screenshots}`, '--screenshots=C:\\evidence\\other'], [...args, '--screenshots=']]) {
+    assert.throws(() => parseWindowsSmokeArguments(invalid), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_INVALID_ARGUMENTS');
+  }
+  assert.equal(parseWindowsSmokeArguments(args).screenshots, undefined);
+});
+
+test('title bar screenshot records require the fixed overlay geometry and window-control band', () => {
+  const scenario = WINDOWS_TITLEBAR_SCENARIOS[0]!;
+  const report = (overrides: Record<string, unknown> = {}) => ({schemaVersion: 1, scope: 'windows-titlebar-screenshot', ok: true,
+    scenario: scenario.name, platform: 'win32', arch: 'x64', isPackaged: true, theme: 'light', scale: 1, maximized: false,
+    frame: 'win-overlay', devicePixelRatio: 1, overlay: {visible: true, right: 1302}, innerWidth: 1440, barHeight: 44,
+    trailing: 138, bandColorDelta: 0, screenshot: {bytes: 24576, sha256: 'a'.repeat(64), source: 'window'}, ...overrides});
+  const validated = validateWindowsTitleBarScreenshot(report(), scenario);
+  assert.deepEqual(validated, {name: scenario.name, theme: 'light', scale: 1, maximized: false, frame: 'win-overlay',
+    devicePixelRatio: 1, overlay: {visible: true, right: 1302}, innerWidth: 1440, barHeight: 44, trailing: 138, bandColorDelta: 0,
+    screenshot: {bytes: 24576, sha256: 'a'.repeat(64), source: 'window'}});
+  assert.notEqual(validated, report());
+  const invalid: Array<Record<string, unknown>> = [
+    report({theme: 'dark'}), report({scale: 1.25}), report({maximized: true}), report({frame: 'mac-inset'}),
+    report({devicePixelRatio: 1.1}), report({devicePixelRatio: 1.25}), report({overlay: {visible: false, right: 1302}}),
+    report({overlay: {visible: true, right: 1302, extra: 1}}), report({overlay: {visible: true, right: 2000}}),
+    report({innerWidth: 100}), report({barHeight: 43}), report({trailing: 100}), report({trailing: 200}),
+    report({bandColorDelta: 9}), report({bandColorDelta: -1}), report({bandColorDelta: 1.5}), report({bandColorDelta: '0'}),
+    report({screenshot: {bytes: 1024, sha256: 'a'.repeat(64), source: 'window'}}),
+    report({screenshot: {bytes: 24576.5, sha256: 'a'.repeat(64), source: 'window'}}),
+    report({screenshot: {bytes: 24576, sha256: 'A'.repeat(64), source: 'window'}}),
+    report({screenshot: {bytes: 24576, sha256: 'a'.repeat(64), source: 'screen'}}),
+    report({scenario: 'unknown'}), report({platform: 'darwin'}), report({ok: false}), report({extra: true}),
+    {...report(), screenshot: undefined}, report({scope: 'windows-development-launch'}),
+  ];
+  for (const value of invalid) assert.throws(() => validateWindowsTitleBarScreenshot(value, scenario), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_SCREENSHOT_INVALID');
+  const scaled = WINDOWS_TITLEBAR_SCENARIOS.find(entry => entry.name === 'dpi-125')!;
+  assert.deepEqual(validateWindowsTitleBarScreenshot(report({scenario: 'dpi-125', theme: 'light', scale: 1.25, devicePixelRatio: 1.25}), scaled).scale, 1.25);
+  for (const scenario of WINDOWS_TITLEBAR_SCENARIOS) {
+    const measured = {name: scenario.name, theme: scenario.theme, scale: scenario.scale, maximized: scenario.maximized};
+    assert.deepEqual(measured, scenario);
+  }
 });
 
 test('the app environment preserves Windows prerequisites but excludes provider, Node, Electron and caller smoke injection', () => {
