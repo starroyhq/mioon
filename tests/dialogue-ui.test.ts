@@ -71,7 +71,8 @@ test('the production shell mounts the dialogue panel and subtitle dialogue marks
   const read = (file: string): string => readFileSync(path.join(root, file), 'utf8');
   const app = read('apps/web/src/App.tsx');
   assert.match(app, /import ShotDialogue from '\.\/ShotDialogue\.tsx';/u);
-  assert.match(app, /shotDialogue=\{format5 && chosenShot \? <ShotDialogue/u);
+  assert.match(app, /const shotDialogueSection = format5 && chosenShot \? <ShotDialogue/u);
+  assert.match(app, /shotDialogue=\{shotDialogueSection\}/u);
   assert.match(app, /dialogueCues=\{format5 \? format5DialogueCues\.marks : null\}/u);
   assert.match(read('apps/web/src/Inspector.tsx'), /\{shotDialogue\}/u);
   assert.match(read('apps/web/src/Timeline.tsx'), /dialogueCues=\{dialogueCues\}/u);
