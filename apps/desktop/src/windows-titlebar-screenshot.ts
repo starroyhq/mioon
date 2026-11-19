@@ -8,6 +8,7 @@ import type {App, NativeImage} from 'electron';
 import {BrowserWindow, desktopCapturer, nativeImage, screen} from 'electron';
 import {WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE, WINDOWS_WINDOW_CHROME} from '../../../packages/contracts/src/desktop-window-chrome.ts';
 import {windowsTitleBarDiagnostics} from './window-chrome.ts';
+import {openRegisteredProject} from './windows-project-open.ts';
 
 export const WINDOWS_TITLEBAR_SCENARIOS = Object.freeze(['normal-light', 'normal-dark', 'maximized-light',
   'maximized-dark', 'dpi-125', 'dpi-150', 'workbench-light', 'workbench-dark', 'workbench-maximized-light',
@@ -220,19 +221,7 @@ async function createWorkbenchScreenshotWindow({app, launcher, backendUrl}: {app
   assert.ok(payload.ok === true, 'The workbench screenshot project could not be created');
   const project = record(record(payload.data).project), projectId = String(project.projectId);
   assert.match(projectId, /^[0-9a-f-]{36}$/u);
-  const opened = record(await evaluate(launcher, `(async () => {
-    const recent = await window.__mioonProjectEntries.listRecent();
-    if (!recent.registered.some(value => value.project.projectId === ${JSON.stringify(projectId)})) return {status: 'missing'};
-    const result = await window.__mioonProjectEntries.openRecent({projectId: ${JSON.stringify(projectId)}, remember: false, entryToken: crypto.randomUUID()});
-    return {status: result.status, projectId: result.projectId ?? null};
-  })()`) as unknown);
-  assert.equal(opened.status, 'opened', 'The workbench screenshot project did not open');
-  assert.equal(opened.projectId, projectId);
-  const expectedUrl = new URL(`/?project=${projectId}`, backendUrl).href;
-  await waitFor(launcher, () => Promise.resolve(BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl)),
-    30000, 'The screenshot project window did not open');
-  const window = BrowserWindow.getAllWindows().find(value => !value.isDestroyed() && value.webContents.getURL() === expectedUrl)!;
-  await workbenchReady(window);
+  const window = await openRegisteredProject(launcher, backendUrl, projectId);
   return {window, root};
 }
 const closeScreenshotWindow = async (window: BrowserWindow | undefined): Promise<void> => {

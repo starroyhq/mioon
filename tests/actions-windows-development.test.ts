@@ -74,8 +74,11 @@ test('Windows title bar screenshots are fixed scenarios captured by the packaged
   assert.match(screenshot, /desktopCapturer/);
   assert.match(screenshot, /WINDOWS_WINDOW_CHROME\.topbarHeight/);
   assert.doesNotMatch(screenshot, /exec\(|spawn\(|child_process/u);
-  assert.match(screenshot, /__mioonProjectEntries\.openRecent/);
+  assert.match(screenshot, /openRegisteredProject/);
   assert.match(screenshot, /project\.template\.instantiate/);
+  const projectOpen = await read('apps/desktop/src/windows-project-open.ts');
+  assert.match(projectOpen, /project-home-open-/);
+  assert.match(projectOpen, /launcher-help-refresh/);
   const main = await read('apps/desktop/src/main.ts');
   assert.match(main, /process\.env\.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT/);
   assert.match(main, /backendUrl: ready\?\.url/);

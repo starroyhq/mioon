@@ -16,6 +16,7 @@ import type {DesktopStartReport} from './smoke-checks.ts';
 import {probeDesktopProjectLocation} from './project-location-probe.ts';
 import type {WindowsProjectVolumeReader} from './project-location-probe.ts';
 import {projectLocationDecision} from './project-location-policy.ts';
+import {openRegisteredProject} from './windows-project-open.ts';
 
 interface SmokeCheck {name:string;status:'passed'|'blocked';code?:string}
 interface InspectableContents {getLastWebPreferences():WebPreferences|null|undefined}
@@ -92,24 +93,12 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  const asset=record(await request(projectAddress(projectId),'asset.import',{projectId,name:'smoke-import.png',mimeType:'image/png',dataBase64:image.toString('base64')}));
  assert.equal(asset.name,'smoke-import.png');assert.equal(asset.mimeType,'image/png');
  await mark('project-core-imported');
- const bridgeOpen=async():Promise<BrowserWindow>=>{
-  const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
-  const result=record(await launcher.webContents.executeJavaScript(`(async()=>{const recent=await window.__mioonProjectEntries.listRecent();
-   const entry=recent.registered.find(value=>value.project.projectId===${JSON.stringify(projectId)});if(!entry)return {status:'missing'};
-   const opened=await window.__mioonProjectEntries.openRecent({projectId:${JSON.stringify(projectId)},remember:false,entryToken:crypto.randomUUID()});
-   return {status:opened.status,projectId:opened.projectId??null};})()`,true));
-  assert.equal(result.status,'opened');assert.equal(result.projectId,projectId);
-  const expectedUrl=new URL(`/?project=${projectId}`,ready.url).href;
-  await waitUntil(async()=>BrowserWindowRuntime.getAllWindows().some(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl),30000,'The project window did not open');
-  const editor=BrowserWindowRuntime.getAllWindows().find(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl)!;
-  await waitUntil(async()=>Boolean(await editor.webContents.executeJavaScript(`Boolean(document.querySelector('[data-testid="workbench"]'))`,true).catch(()=>false)),60000,'The project workbench did not become ready');
-  return editor;
- };
+ const launcherWindow=()=>{const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());return launcher;};
  const closeEditor=async(editor:BrowserWindow):Promise<void>=>{const closed=new Promise<void>(resolve=>{if(editor.isDestroyed())return resolve();editor.once('closed',()=>resolve());});editor.close();await closed;};
  // The export worker lives in the open project host: queue the render while the
  // real editor window holds its lease, exactly as the UI does, then close.
  await mark('project-core-open');
- let editor=await bridgeOpen();
+ let editor=await openRegisteredProject(launcherWindow(),ready.url,projectId);
  await mark('project-core-export');
  const state=record(await request(projectAddress(projectId),'project.get',{projectId}));
  const timeline=record(state.timeline),exportIdValue=record(await request(projectAddress(projectId),'timeline.render',{projectId,
@@ -131,7 +120,7 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  assert.equal((await stat(outputFile)).size,outputSize);assert.match(String(output.sha256),/^[0-9a-f]{64}$/u);
  await closeEditor(editor);
  await mark('project-core-reopen');
- editor=await bridgeOpen();
+ editor=await openRegisteredProject(launcherWindow(),ready.url,projectId);
  await closeEditor(editor);
  clearSmokeWorkspace(projectFile);
 }
