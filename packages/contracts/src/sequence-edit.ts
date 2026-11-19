@@ -97,6 +97,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
+  'subject.card.create', 'subject.card.delete',
   'reference.attach', 'reference.role.set', 'reference.detach',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
@@ -169,11 +170,23 @@ export type SubjectBindingOperation =
   | {readonly kind: 'subject-binding'; readonly edit: {readonly kind: 'restore'; readonly bindingId: string;
     readonly bindingMode: 'follow' | 'locked'; readonly subjectVersionId: string | null}};
 
+/** SB-b subject-card commands. A card stores only `subjectId` and canvas fields;
+ * deleting a card is a board-only action in the same unified history. Subject
+ * and version rows are retained project evidence, so the only supported removal
+ * is the board card (active bindings become detached tombstones and their
+ * reference edges are removed). Deleting a subject from the library needs a
+ * format-6 archived column and is out of scope for 0.3.0. */
+export type SubjectCardOperation =
+  | {readonly kind: 'subject.card.create'; readonly nodeId: string; readonly subjectId: string;
+    readonly position: {readonly x: number; readonly y: number}}
+  | {readonly kind: 'subject.card.delete'; readonly nodeId: string};
+export type SubjectEditOperation = SubjectBindingOperation | SubjectCardOperation;
+
 /** One subject intent: always board side, never combined with a sync-board
  * projection because it writes no timeline row. */
 export interface SequenceEditSubjectIntent {
   readonly side: 'board';
-  readonly operation: SubjectBindingOperation;
+  readonly operation: SubjectEditOperation;
 }
 
 /**
@@ -280,7 +293,9 @@ export function sequenceEditIntentSide(operation: {readonly kind: string}): Sequ
 }
 
 /** Stable `history13.operation` name of one subject-binding edit. */
-export function sequenceEditSubjectOperationName(operation: SubjectBindingOperation): SequenceEditOperationName {
+export function sequenceEditSubjectOperationName(operation: SubjectEditOperation): SequenceEditOperationName {
+  if (operation.kind === 'subject.card.create') return 'subject.card.create';
+  if (operation.kind === 'subject.card.delete') return 'subject.card.delete';
   switch (operation.edit.kind) {
     case 'create': return 'subject.binding.create';
     case 'set-mode': return 'subject.binding.set-mode';
@@ -554,9 +569,18 @@ const subjectBindingEditSchema = z.discriminatedUnion('kind', [
     context.addIssue({code: z.ZodIssueCode.custom, message: 'Only a locked binding stores an applied subject version'});
   }
 });
+const cardPositionSchema = z.object({x: z.number().finite(), y: z.number().finite()}).strict();
+const subjectCardOperationSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('subject.card.create'), nodeId: uuidSchema, subjectId: uuidSchema,
+    position: cardPositionSchema}).strict(),
+  z.object({kind: z.literal('subject.card.delete'), nodeId: uuidSchema}).strict(),
+]);
 export const sequenceEditSubjectIntentSchema = z.object({
   side: z.literal('board'),
-  operation: z.object({kind: z.literal('subject-binding'), edit: subjectBindingEditSchema}).strict(),
+  operation: z.union([
+    z.object({kind: z.literal('subject-binding'), edit: subjectBindingEditSchema}).strict(),
+    subjectCardOperationSchema,
+  ]),
 }).strict();
 const subjectIntentSchema = sequenceEditSubjectIntentSchema;
 const referenceRoleSchema = z.enum(['first_frame', 'last_frame', 'reference_image', 'subject_reference',
@@ -668,7 +692,9 @@ export const sequenceEditEnvelopeSchema = z.object({
   if (hasSubject) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action carries no CS/TS intent'});
     if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subject action is board-origin'});
-    const edit = value.subjectIntent!.operation.edit;
+    const operation = value.subjectIntent!.operation;
+    if (operation.kind !== 'subject-binding') return;
+    const edit = operation.edit;
     // A create action also writes the reference edge that connects the subject
     // card to the shot. Its id is pre-allocated in `allocation.edges`, matching
     // the envelope's retry identity; a missing allocation is rejected rather
