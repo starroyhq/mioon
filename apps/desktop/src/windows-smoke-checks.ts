@@ -41,7 +41,8 @@ export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-dev
  'renderer-network-window-permission-fences','private-discovery-acl','configured-windows-media-tools',
  'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','project-location-facts','project-location-paths',
  'project-location-network','native-project-core-flows','project-core-create','project-core-created','project-core-renamed',
- 'project-core-imported','project-core-export','project-core-open','project-core-reopen','write-report'] as const);
+ 'project-core-imported','project-core-export','project-core-open','project-core-open-home','project-core-open-list',
+ 'project-core-open-window','project-core-open-workbench','project-core-reopen','write-report'] as const);
 
 interface CoreFlowOptions {app:App;ready:BackendReady|null;smokeRoot:string;
  mark:(next:typeof WINDOWS_SMOKE_PHASES[number])=>Promise<void>}
@@ -98,7 +99,8 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  // The export worker lives in the open project host: queue the render while the
  // real editor window holds its lease, exactly as the UI does, then close.
  await mark('project-core-open');
- let editor=await openRegisteredProject(launcherWindow(),ready.url,projectId);
+ const openStep=async(step:'home'|'list'|'window'|'workbench')=>mark(step==='home'?'project-core-open-home':step==='list'?'project-core-open-list':step==='window'?'project-core-open-window':'project-core-open-workbench');
+ let editor=await openRegisteredProject(launcherWindow(),ready.url,projectId,openStep);
  await mark('project-core-export');
  const state=record(await request(projectAddress(projectId),'project.get',{projectId}));
  const timeline=record(state.timeline),exportIdValue=record(await request(projectAddress(projectId),'timeline.render',{projectId,
@@ -120,7 +122,7 @@ async function runProjectCoreFlows({app,ready,smokeRoot,mark}:CoreFlowOptions):P
  assert.equal((await stat(outputFile)).size,outputSize);assert.match(String(output.sha256),/^[0-9a-f]{64}$/u);
  await closeEditor(editor);
  await mark('project-core-reopen');
- editor=await openRegisteredProject(launcherWindow(),ready.url,projectId);
+ editor=await openRegisteredProject(launcherWindow(),ready.url,projectId,openStep);
  await closeEditor(editor);
  clearSmokeWorkspace(projectFile);
 }
