@@ -825,6 +825,12 @@ export const operationMessages = {
     "en": "Query export progress and files",
     "ja": "書き出しの進捗とファイルを照会します"
   },
+  "operation.sequence.inspect": {
+    "zh-Hans": "按根有界分页只读格式5顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史",
+    "zh-Hant": "依根有界分頁唯讀格式5順序鏈、片段組、實際/畫板版本、狀態、錨、游離節點和差異；同一快照識別續頁，不寫畫板、時間軸、回執或歷史",
+    "en": "Read one bounded page of the format-5 chain order, clip groups, applied/board versions, state, anchors, free nodes and differences under one snapshot cursor; writes no board, timeline, receipt or history",
+    "ja": "フォーマット5の順序チェーン、クリップグループ、適用/ボードバージョン、状態、アンカー、游离ノード、差分を1つのスナップショットカーソルで有界に読み取ります。ボード、タイムライン、回執、履歴は書き込みません"
+  },
   "operation.sequence.preview": {
     "zh-Hans": "只读预览一条格式5主轨或画板同步命令，返回共享动作 envelope 和计划摘要；不写画板、时间线、回执或历史条目，首次可能创建统一历史游标",
     "zh-Hant": "唯讀預覽一條格式5主軌或畫板同步命令，回傳共用動作 envelope 和計畫摘要；不寫畫板、時間軸、回執或歷史條目，首次可能建立統一歷史游標",

@@ -31,7 +31,7 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length,162); // Retired notes stay absent; UI-E2 adds five project-scoped sequence operations.
+  assert.equal(operations.length,163); // Retired notes stay absent; UI-E2 adds five project-scoped sequence operations.
   for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list'])assert.ok(operations.includes(operation),operation);
   assert.equal(operations.includes('project.notes.set'), false);
   for (const operation of PREVIS_OUTPUT_OPERATIONS) {
