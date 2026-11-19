@@ -332,6 +332,11 @@ test('MT-5 exposes the bounded generation-input read tool and the new approval t
   assert.equal(prepare({kind: 'reference-reorder', shotId: shotA,
     edgeIds: materialEdges(store, shotA).map(edge => edge.id)}).forceApproval, true);
   assert.equal(prepare({kind: 'subject-card-create', subjectId}).forceApproval, true);
+  const cardPlan = prepare({kind: 'subject-card-create', subjectId});
+  commitMioSequenceAction(store, cardPlan.sequence!.plan as never);
+  const cardId = (store.db.prepare(`SELECT id FROM project.nodes WHERE projectId=? AND archivedAt IS NULL
+    AND json_valid(data) AND json_extract(data,'$.type')='subject_card'`).get(projectId) as any).id as string;
+  assert.equal(prepare({kind: 'subject-card-delete', nodeId: cardId}).forceApproval, true);
   assert.equal(prepare({kind: 'previs-create', label: '预演 2'}).forceApproval, true);
   const previsPlan = prepare({kind: 'previs-create', label: '预演 3'});
   commitMioSequenceAction(store, previsPlan.sequence!.plan as never);
