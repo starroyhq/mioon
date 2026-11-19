@@ -12,7 +12,7 @@ import {projectIdMismatch} from './errors.ts';
 const legacy = (...segments: readonly string[]): string => `/${segments.map(encodeURIComponent).join('/')}`;
 /** Families whose handlers match the whole prefix and answer unknown subpaths
  * themselves. */
-const FAMILIES = new Set(['timeline-audio-preview', 'local-drafts', 'local-delivery', 'local-shot-text', 'tasks']);
+const FAMILIES = new Set(['timeline-audio-preview', 'local-drafts', 'local-delivery', 'local-shot-text', 'request-outcome', 'tasks']);
 /** The project and the existing path that serves a project-scoped pathname,
  * or null when the pathname is not one: app-level routes such as
  * `agent/tasks/v2/policy` or `images/settings`, `package-preview` (served

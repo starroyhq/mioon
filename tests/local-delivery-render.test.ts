@@ -93,6 +93,6 @@ test('long provenance is collapsed while frozen output settings remain visible i
 
 test('terminal request copy does not imply another execution and keeps provenance collapsed', () => {
   assert.match(rendered.accepted, /原导出请求已确认接受/); assert.doesNotMatch(rendered.accepted, /是否完成渲染，请查看导出记录|恢复可能会首次提交原导出|确认恢复同一原请求/);
-  assert.match(rendered.notApplied, /原请求未应用/); assert.doesNotMatch(rendered.notApplied, /恢复可能会首次提交原导出|确认恢复同一原请求/);
+  assert.match(rendered.notApplied, /原导出请求已确认未应用/); assert.doesNotMatch(rendered.notApplied, /恢复可能会首次提交原导出|确认恢复同一原请求/);
   for (const html of [rendered.accepted, rendered.notApplied]) assertCollapsedProvenance(html,'delivery-intent-provenance');
 });

@@ -111,7 +111,7 @@ function Harness(): React.ReactElement {
     history: historySource(data, history), busy: busy.current, pending: false, dirty: false, online: true}) : null,
   [data, timeline, history]);
 
-  const applyOutcome = async (command: {kind: string; clipId?: string}, result: {ok: boolean; code?: string; actionId?: string}): Promise<boolean> => {
+  const applyOutcome = async (command: {kind: string; clipId?: string}, result: {ok: boolean; code?: string; actionId?: string | null}): Promise<boolean> => {
     if (!result.ok) {setLastError(result.code ?? 'UNKNOWN'); setLastOperation(command.kind); return false;}
     setLastError(''); setLastOperation(command.kind);
     if (command.kind !== 'clip-version') {
@@ -176,6 +176,27 @@ function Harness(): React.ReactElement {
         return panelResult('panel-transition', {propertiesIntent: mapped});
       },
       history: () => rpc('sequence.history.get', {projectId}),
+      clearTransition: (clipId: string) => {
+        const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
+        const mapped = clip ? format5ClipPropertyEdit(clipId, 'transition', null, Number(clip.durationFrames)) : {unsupported: true as const};
+        if ('unsupported' in mapped) return Promise.resolve({ok: false, code: 'unsupported'});
+        return panelResult('panel-transition-clear', {propertiesIntent: mapped});
+      },
+      format: async (presetId: string) => {
+        const result = await session.current.format(presetId) as Row;
+        setLastOperation('panel-format');
+        setLastError(result.ok ? '' : String(result.code ?? 'UNKNOWN'));
+        await refresh();
+        return {ok: result.ok, ...(result.ok ? {} : {code: result.code})};
+      },
+      applyGains: (gains: readonly {clipId: string; gain: number}[]) =>
+        panelResult('panel-loudness-gains', {propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties',
+          edits: gains.map(item => ({clipId: item.clipId, patch: {gain: item.gain}}))}}}),
+      audioRole: (clipId: string, role: string) =>
+        panelResult('panel-audio-role', {propertiesIntent: format5PropertiesIntent(clipId, {audioRole: role})}),
+      envelope: (clipId: string) =>
+        panelResult('panel-volume-envelope', {propertiesIntent: format5PropertiesIntent(clipId,
+          {volumeEnvelope: {profileId: 'mioon-clip-linear-attenuation-v1', points: [{frame: 0, multiplier: 1}, {frame: 20, multiplier: 0.5}]}})}),
       project: () => rpc('project.get', {projectId}),
       cues: () => ((((window as any).__wireState?.data || {}).timeline || {}).subtitles || {}).cues || [],
       unsupportedRect: () => {
@@ -312,7 +333,15 @@ function Harness(): React.ReactElement {
           historyState={historyState!} splitState={splitState!} onHistory={() => undefined} onSplit={() => {void splitSelected();}}
           onSelectClip={id => {setSelectedClipId(id); setPlayhead(timeline!.clips.find((item: Row) => item.id === id)?.startFrame ?? 0);}}
           selectedClipId={selectedClipId} selectedCueId={null} onSelectSubtitle={() => undefined}
-          onAddSubtitle={() => undefined} onAddAsset={() => undefined} onMoveClip={(clipId: string, trackId: string, startFrame: number) => {void (async () => {
+          onAddSubtitle={() => undefined} onAddAsset={() => undefined}
+          onAddTransition={((clipId: string, transition: never) => {void (async () => {
+            const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
+            const mapped = clip ? format5ClipPropertyEdit(clipId, 'transition', transition, Number(clip.durationFrames)) : {unsupported: true as const};
+            if ('unsupported' in mapped) {setLastOperation('panel-transition-add'); setLastError('unsupported'); return;}
+            const result = await panelResult('panel-transition-add', {propertiesIntent: mapped});
+            if (result.ok) setSelectedClipId(clipId);
+          })();}) as never}
+          onMoveClip={(clipId: string, trackId: string, startFrame: number) => {void (async () => {
             setSelectedClipId(clipId);
             const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
             if (!clip) return;

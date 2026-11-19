@@ -236,3 +236,25 @@ test('task HTTP uses the authenticated UI endpoint, validates every 200 and neve
   assert.doesNotThrow(() => validateTaskEnvelope(envelope(), { input: { patch: { muted: true }, trackId, requestId: input.requestId, expectedRevision: 1, projectId } }));
   assert.equal(taskInputKey(input), taskInputKey(structuredClone(input)));
 });
+
+test('automatic re-read only loads, gets and reconciles; it never executes or acknowledges', async () => {
+  const f = fixture({ get: async () => envelope(makeTask({ status: 'dispatching', revision: 2 })),
+    reconcile: async () => envelope(makeTask({ status: 'applied', revision: 3 })) });
+  f.task = makeTask({ status: 'dispatching', revision: 2 });
+  const controller = createEditTaskController({ client: f.client as unknown as EditTaskClient });
+  const snapshot = await controller.reread(projectId);
+  assert.deepEqual(f.calls.map(call => call.name),['list','get','reconcile']);
+  assert.equal(snapshot.items[0]?.status,'applied');
+  f.calls.length = 0;
+  await controller.reread(projectId);
+  assert.deepEqual(f.calls.map(call => call.name),['list']);
+});
+
+test('a failed re-read keeps the dispatching task and never runs a write', async () => {
+  const f = fixture({ get: async () => { throw Object.assign(Error('transport'), { code: 'EDIT_TASK_UNAVAILABLE' }); } });
+  f.task = makeTask({ status: 'dispatching', revision: 2 });
+  const controller = createEditTaskController({ client: f.client as unknown as EditTaskClient });
+  const snapshot = await controller.reread(projectId);
+  assert.deepEqual(f.calls.map(call => call.name),['list','get']);
+  assert.equal(snapshot.items[0]?.status,'dispatching');
+});

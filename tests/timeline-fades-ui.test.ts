@@ -213,7 +213,7 @@ test('invalid local fade drafts stay visible and block even direct form submissi
   }
 });
 
-test('edits made during save survive its acknowledgment without silently rebasing the newer draft', async () => {
+test('edits made during save survive its acknowledgment and continue from the acknowledged revision', async () => {
   const pending = deferred(), calls: ({ id: unknown; patch: {} | undefined; revision: number; })[] = [];
   const h = await inspectorHarness({ onSave: (id: unknown, patch: {}|undefined, revision: number) => { calls.push({ id, patch: structuredClone(patch), revision }); return calls.length === 1 ? pending.promise : Promise.resolve(timeline(clip(patch), revision + 1)); } });
   h.edit('clip-fade-in', '15'); const saving = h.submit(); await tick();
@@ -224,10 +224,19 @@ test('edits made during save survive its acknowledgment without silently rebasin
   h.render({ clip: saved, timeline: timeline(saved, 8), busy: false });
   assert.equal((h.find('clip-fade-out'))!.props.value, '20'); assert.equal((h.find('clip-gain'))!.props['aria-valuetext'], '−∞'); assert.equal(h.dirtyEvents.at(-1), true);
   assert.equal(Object.hasOwn(((calls[0].patch) as unknown as Parameters<typeof Object.hasOwn>[0]), 'fadeOutFrames'), false);
-  assert.equal((h.find('save-clip'))!.props.disabled, true); await h.submit(); assert.equal(calls.length, 1);
-  await h.reset(); h.edit('clip-fade-out', '20'); h.edit('clip-gain', '−∞');
-  await h.submit(); h.render();
-  assert.equal(calls[1].revision, 8); assert.equal(((calls[1].patch)! as unknown as {fadeInFrames:(20)}).fadeInFrames, 15); assert.equal(((calls[1].patch)! as unknown as {fadeOutFrames:(0)}).fadeOutFrames, 20); assert.equal(((calls[1].patch)! as {gain:number}).gain, 0); assert.equal(h.dirtyEvents.at(-1), false);
+  // The acknowledged save only covered the original input. The newer input
+  // stays dirty and is neither silently dropped nor silently submitted: only
+  // an explicit save continues from the acknowledged revision.
+  assert.match(h.text(), /原输入已保存.*当前新输入尚未保存/);
+  assert.doesNotMatch(h.text(), /草稿基于较早的时间线版本或来源/);
+  assert.equal(calls.length, 1);
+  assert.equal((h.find('save-clip'))!.props.disabled, false);
+  await h.submit(); h.render({ clip: saved, timeline: timeline(saved, 8), busy: false });
+  assert.equal(calls.length, 2); assert.equal(calls[1].revision, 8);
+  assert.equal(((calls[1].patch)! as unknown as {fadeInFrames: number}).fadeInFrames, 15);
+  assert.equal(((calls[1].patch)! as unknown as {fadeOutFrames: number}).fadeOutFrames, 20);
+  assert.equal(((calls[1].patch)! as unknown as {gain: number}).gain, 0);
+  assert.equal(h.dirtyEvents.at(-1), false);
 });
 
 test('failed or unacknowledged save preserves fade edits and does not retry', async () => {
@@ -246,7 +255,7 @@ test('every newer timeline revision preserves the exact dirty fade input and req
   h.render({ timeline: timeline(clip(), 8) });
   assert.equal((h.find('save-clip'))!.props.disabled, true); assert.equal((h.find('clip-fade-in'))!.props.value, '15');
   const remote = clip({ fadeOutFrames: 25 }); h.render({ clip: remote, timeline: timeline(remote, 9) });
-  assert.equal((h.find('save-clip'))!.props.disabled, true); assert.equal((h.find('clip-fade-in'))!.props.value, '15'); assert.match(h.text(), /草稿的时间线版本或来源已变化/);
+  assert.equal((h.find('save-clip'))!.props.disabled, true); assert.equal((h.find('clip-fade-in'))!.props.value, '15'); assert.match(h.text(), /草稿基于较早的时间线版本或来源.*输入仍保留/);
   await h.submit(); assert.equal(h.saves.length, 0);
   await h.reset(); assert.equal((h.find('clip-fade-in'))!.props.value, 0); assert.equal((h.find('clip-fade-out'))!.props.value, 25); assert.equal(h.dirtyEvents.at(-1), false);
   h.edit('clip-name', 'After reload'); await h.submit();

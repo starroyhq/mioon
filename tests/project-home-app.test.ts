@@ -95,6 +95,11 @@ function environment(options:HomeOptions = {}) {
       getStatus: () => options.preferenceStatus || { phase: 'saved' },
       update: (...args: unknown[]) => calls.push(['preferences.update', ...args]),
     } },
+    // Invocation boundary for the bounded automatic re-read added by RV: the
+    // re-read orchestration has its own unit tests; here the exact trigger is
+    // recorded so project-open behavior still proves it runs once per open.
+    autoReread: async (projectId: string) => { calls.push(['autoReread', projectId]); },
+    format5LostRef: {current: {clear: () => {calls.push(['format5LostClear']);}}},
     tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async (projectId: unknown) => calls.push(['tasks.load', projectId]) } },
     rpc: async (operation: string, input: { projectId: string; }) => {
       calls.push(['rpc', operation, input]);
@@ -224,10 +229,10 @@ test('actual selection keeps home visible after preferences resolve until valida
   const held = deferred(), h = harness({ get: () => held.promise }), pending = h.selectProject(id(1)); await tick();
   assert.equal(h.env.currentProject.current, id(1)); assert.equal(h.env.viewReady.current, true);
   assert.equal(h.env.projectOpening.phase, 'opening'); assert.equal(h.env.loading, true); assert.equal(h.eligible(), false);
-  assert.equal(h.env.openedProject.current, null); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'tasks.load') as unknown), []);
+  assert.equal(h.env.openedProject.current, null); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'autoReread') as unknown), []);
   held.resolve!(snapshot(id(1))); assert.equal(await pending, true);
   assert.equal(h.env.projectOpening.phase, 'ready'); assert.equal(h.eligible(), true); assert.equal(Object.isFrozen(h.env.openedProject.current), true);
-  assert.deepEqual(callsOf(h, 'remember'), []); assert.deepEqual(h.env.openedProject.current, opening.projectOpenAttempt(id(1), 1, 'normal')); assert.deepEqual(callsOf(h, 'tasks.load'), [['tasks.load', id(1)]]);
+  assert.deepEqual(callsOf(h, 'remember'), []); assert.deepEqual(h.env.openedProject.current, opening.projectOpenAttempt(id(1), 1, 'normal')); assert.deepEqual(callsOf(h, 'autoReread'), [['autoReread', id(1)]]);
 });
 
 test('actual refresh rejects wrong-project responses before reconciliation or publishing data', async () => {
@@ -259,7 +264,7 @@ for (const code of ['UNAUTHORIZED', 'LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT
     for (const options of [{ get: async () => { throw failure(code); } }, { preferenceStatus: { phase: 'local', error: failure(code) } }]) {
       const h = harness(options); assert.equal(await h.selectProject(id(1)), false);
       assert.equal(h.env.auth, code === 'UNAUTHORIZED' ? false : 'error'); assert.equal(h.eligible(), false);
-      assert.equal(h.env.openedProject.current, null); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'tasks.load') as unknown), []);
+      assert.equal(h.env.openedProject.current, null); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'autoReread') as unknown), []);
     }
   });
 }
@@ -342,7 +347,7 @@ test('selection checks fresh membership and pinned directory identity after the 
     const before = h.env.dataRef.current; h.calls.length = 0;
     assert.equal(await h.selectProject(id(2)), false);
     assert.deepEqual(callsOf(h, 'directory'), [['directory', '/api/project-entries', 'GET']]);
-    for (const effect of ['rpc', 'preferences', 'flush', 'pushState', 'replaceState', 'tasks.load']) assert.deepEqual(callsOf(h, effect), [], effect);
+    for (const effect of ['rpc', 'preferences', 'flush', 'pushState', 'replaceState', 'autoReread']) assert.deepEqual(callsOf(h, effect), [], effect);
     assert.equal(h.env.currentProject.current, id(1)); assert.equal(h.env.projectEpoch.current, 0); assert.equal(h.env.navigationEpoch.current, 0);
     assert.equal(h.env.dataRef.current, before);
     assert.equal(h.env.projectEntryIdentityRef.current.getState().identityBlocked, replacement.registered.length !== 1);
@@ -425,7 +430,7 @@ test('nonempty startup without a project URL never reads project contents, and h
   assert.deepEqual(h.env.projects, projects);assert.equal('lastProjectRef' in h.env,false);assert.deepEqual(callsOf(h,'directory'),[['directory','/api/project-entries','GET']]);assert.equal(h.env.projectEntryIdentityRef.current.getVerifiedScope(),PROJECT_ENTRY_TEST_SCOPE); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
   assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
   assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
-  for (const action of ['preferences', 'tasks.load', 'remember', 'replaceState', 'pushState']) assert.deepEqual(callsOf(h, action), [], action);
+  for (const action of ['preferences', 'autoReread', 'remember', 'replaceState', 'pushState']) assert.deepEqual(callsOf(h, action), [], action);
   assert.doesNotMatch(app, /\blastProjectRef\b|\blastProjectStatus\b|\bLastProjectStatus\b|\bcreateLastProjectController\b|\/api\/last-project/u);
 });
 
@@ -463,7 +468,7 @@ test('native assigned-project failure stays on that UUID and never falls through
   assert.equal(h.env.projectOpening.phase, 'error'); assert.equal(h.env.projectOpening.projectId, id(3));
   assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
   assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get').map(call => (call[2] as {projectId:string}).projectId), [id(3)]);
-  assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'tasks.load') as unknown), []);
+  assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'autoReread') as unknown), []);
 });
 
 test('native invalid assignment cannot borrow a valid Web fallback', async () => {
@@ -826,7 +831,7 @@ test('native first read of a damaged project presents backup recovery and opens 
   assert.equal(source.env.projectOpening.projectId, sourceId);
   assert.equal(source.env.data.project, null);
   assert.equal(source.projectSessionReady(), false);
-  assert.deepEqual(callsOf(source, 'tasks.load'), []);
+  assert.deepEqual(callsOf(source, 'autoReread'), []);
 
   const failed = render(source);
   assert.match(failed.html, /data-testid="editor-window-opening"/u);

@@ -86,7 +86,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   projectOpening:{phase:'ready',projectId:id(1),error:''},homePage:'projects',
   projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,projectDirectoryProjects,
   requestCounter:{current:0},preferencesRef:{current:{flush:async()=>{},load:async()=>view,getStatus:()=>({phase:'saved'}),update:(...args: unknown[])=>calls.push(['preferences',...args])}},
-  tasksRef:{current:{getState:()=>({phase:'idle'}),load:async()=>{}}},viewReady:{current:true},dataRef:{current:{project:{id:id(1)}}},
+  tasksRef:{current:{getState:()=>({phase:'idle'}),load:async()=>{}}},autoReread:(projectId: string)=>calls.push(['autoReread',projectId]),format5LostRef:{current:{clear:()=>calls.push(['format5LostClear'])}},viewReady:{current:true},dataRef:{current:{project:{id:id(1)}}},
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
   updateView:()=>{},URL,
   window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}},__mioonUiPreferences:{markOpened:(projectId: string)=>calls.push(['markOpened',projectId])}},
@@ -114,6 +114,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
 test('actual App marks only successfully loaded selections and never mounts a retired locator writer',async()=>{
  const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.equal(f.env.projectSessionReady(),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[]);assert.equal('lastProjectRef' in f.env,false);
  assert.deepEqual(f.calls.filter(x=>x[0]==='markOpened'),[['markOpened',id(2)]]);
+ assert.deepEqual(f.calls.filter(x=>x[0]==='autoReread'),[['autoReread',id(2)]],'A successful open runs the bounded automatic re-read once for the opened project');
  assert.deepEqual(f.calls.filter(x=>x[0]==='setSelectedTaskId'),[['setSelectedTaskId',undefined]],'Changing projects clears the previous project task-detail selection');
  assert.ok(f.calls.findIndex(x=>x[0]==='markOpened')>f.calls.findIndex(x=>x[0]==='setProjectOpening'&&(x[1] as {phase: string}).phase==='ready'),'recent-open time is recorded only after the actual project-open gate accepts');
  const resetTab=f.calls.find(call=>call[0]==='setRightDockTab')![1] as (tab: string) => string;assert.equal(resetTab('tasks'),'properties');

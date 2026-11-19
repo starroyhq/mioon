@@ -302,7 +302,7 @@ function harness(t: test.TestContext) {
     loading: false, importSession: { current: { active: true, selection: 0, leaseRevoked: false } }, agentDraft: { current: false }, imageDraft: { current: false },
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, canLeave: () => unknown) => canLeave(), confirm: (async () => true) as (message?:unknown)=>Promise<unknown>,
     projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,
-    requestCounter: { current: 0 }, preferencesRef: { current: null as ReturnType<typeof createWorkspacePreferences>|null }, tasksRef: { current: { getState: () => ({}), load: async () => {} } },
+    requestCounter: { current: 0 }, format5LostRef: {current: {clear: () => {}}}, preferencesRef: { current: null as ReturnType<typeof createWorkspacePreferences>|null }, tasksRef: { current: { getState: () => ({}), load: async () => {} } },
     viewReady: { current: true }, viewRef: { current: state.view }, dataRef: { current: {} }, emptyData: {}, dragging: { current: false },
     pendingForProject: () => [], updateView: () => assert.fail('Selected fixtures must not trigger passive first-item selection'),
     notify: (...args: unknown[]) => calls.push(['notify', ...args]), readableError: (error: { message: unknown; }) => error.message, URL,

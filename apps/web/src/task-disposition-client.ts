@@ -14,6 +14,8 @@ export function useTaskDispositions({projectId,scope,enabled,targets}:Options):T
  const signature=JSON.stringify(targets.map(item=>[item.kind,item.taskId,item.status]));
  const owner=useMemo(()=>({projectId,scope,enabled,signature}),[projectId,scope,enabled,signature]);
  const current=useRef<typeof owner|null>(owner),flight=useRef<{owner:typeof owner;value:Pending}|null>(null),pending=useRef<{owner:typeof owner;value:Pending}|null>(null);
+ // Read-only reconciliation: only the existing list RPC, one bounded pass.
+ const readItems=useMemo(()=>async(signal?:AbortSignal):Promise<TaskDisposition[]>=>{const items:TaskDisposition[]=[];for(let offset=0;offset<targets.length;offset+=TASK_DISPOSITION_BATCH_LIMIT){const input={projectId,targets:targets.slice(offset,offset+TASK_DISPOSITION_BATCH_LIMIT).map(({kind,taskId})=>({kind,taskId}))},response=await rpc('task.disposition.list',input,signal?{signal}:{});if(!isTaskDispositionListResponse(response,input))throw Error('Invalid task disposition response');items.push(...response.items);}return items;},[projectId,targets]);
  const [state,setState]=useState<{owner:typeof owner;phase:TaskDispositionView['phase'];items:TaskDisposition[];busy:boolean;uncertain:boolean}|null>(null),[revision,setRevision]=useState(0);
  const actual=state?.owner===owner?state:null;
  useLayoutEffect(()=>{current.current=owner;pending.current=null;flight.current=null;return()=>{if(current.current===owner)current.current=null;};},[owner]);
@@ -21,15 +23,33 @@ export function useTaskDispositions({projectId,scope,enabled,targets}:Options):T
   const controller=new AbortController();
   if(!enabled||!projectId||!targets.length){setState({owner,phase:enabled?'ready':'idle',items:[],busy:false,uncertain:false});return()=>{controller.abort();};}
   setState({owner,phase:'loading',items:[],busy:false,uncertain:false});
-  void(async()=>{try{const items:TaskDisposition[]=[];for(let offset=0;offset<targets.length;offset+=TASK_DISPOSITION_BATCH_LIMIT){const input={projectId,targets:targets.slice(offset,offset+TASK_DISPOSITION_BATCH_LIMIT).map(({kind,taskId})=>({kind,taskId}))},response=await rpc('task.disposition.list',input,{signal:controller.signal});if(!isTaskDispositionListResponse(response,input))throw Error('Invalid task disposition response');items.push(...response.items);}if(current.current===owner&&!controller.signal.aborted)setState({owner,phase:'ready',items,busy:false,uncertain:false});}catch{if(current.current===owner&&!controller.signal.aborted)setState({owner,phase:'error',items:[],busy:false,uncertain:false});}})();
+  void(async()=>{try{const items=await readItems(controller.signal);if(current.current===owner&&!controller.signal.aborted)setState({owner,phase:'ready',items,busy:false,uncertain:false});}catch{if(current.current===owner&&!controller.signal.aborted)setState({owner,phase:'error',items:[],busy:false,uncertain:false});}})();
   return()=>{controller.abort();};
  },[owner,revision]);
+ const expectedTargets=(value:Pending):readonly TaskDispositionCheckedTarget[]=>value.operation==='task.disposition.markFailed'
+  ? [value.input as unknown as TaskDispositionCheckedTarget] : value.input.targets as readonly TaskDispositionCheckedTarget[];
+ // Exactly one read-only pass after a lost response. Only the server's
+ // revision+1 with the expected source status proves the disposition landed;
+ // otherwise the uncertainty and the retained request stay.
+ const verify=async(value:Pending)=>{
+  const expected=expectedTargets(value);
+  try{
+   const items=await readItems();
+   if(current.current!==owner)return;
+   const applied=expected.every(target=>{const item=items.find(next=>next.kind===target.kind&&next.taskId===target.taskId);return item!==undefined&&item.revision===target.expectedRevision+1&&item.sourceStatus===target.expectedStatus;});
+   if(!applied)return;
+   // A newer explicit action owns the pending slot; never clear it here.
+   if(pending.current&&pending.current.value!==value)return;
+   pending.current=null;
+   setState(previous=>previous?.owner===owner?{...previous,uncertain:false,busy:false,items}:previous);
+  }catch{/* Unreadable evidence is not proof of either outcome. */}
+ };
  const send=async(value:Pending)=>{
   if(current.current!==owner||!enabled||flight.current?.owner===owner)return;
   const ticket={owner,value};flight.current=ticket;
   pending.current={owner,value};setState(previous=>previous?.owner===owner?{...previous,busy:true,uncertain:false}:previous);
   try{const response=await rpc(value.operation,value.input,{});const expected=value.operation==='task.disposition.markFailed'?[value.input as unknown as TaskDispositionCheckedTarget]:value.input.targets as TaskDispositionCheckedTarget[];if(!isTaskDispositionMutationResponse(response)||response.operation!==value.operation||response.projectId!==projectId||response.requestId!==value.input.requestId||response.items.length!==expected.length||response.items.some((item,index)=>item.kind!==expected[index].kind||item.taskId!==expected[index].taskId||item.revision!==expected[index].expectedRevision+1||item.sourceStatus!==expected[index].expectedStatus))throw Error('Invalid task disposition response');if(current.current!==owner)return;pending.current=null;setState(previous=>previous?.owner===owner?{...previous,busy:false,uncertain:false,items:previous.items.map(item=>response.items.find(next=>next.kind===item.kind&&next.taskId===item.taskId)??item)}:previous);}
-  catch(error){if(current.current===owner){const definitive=error instanceof ApiError&&error.definitive;if(definitive)pending.current=null;setState(previous=>previous?.owner===owner?{...previous,phase:definitive?'error':previous.phase,busy:false,uncertain:!definitive}:previous);}}
+  catch(error){if(current.current===owner){const definitive=error instanceof ApiError&&error.definitive;if(definitive)pending.current=null;setState(previous=>previous?.owner===owner?{...previous,phase:definitive?'error':previous.phase,busy:false,uncertain:!definitive}:previous);if(!definitive)void verify(value);}}
   finally{if(flight.current===ticket)flight.current=null;}
  };
  const checked=(item:TaskDisposition):TaskDispositionCheckedTarget=>({kind:item.kind,taskId:item.taskId,expectedRevision:item.revision,expectedStatus:item.sourceStatus});

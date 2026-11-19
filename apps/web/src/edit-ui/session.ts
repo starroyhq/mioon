@@ -13,6 +13,8 @@ import type {EditUiProjection, EditUiTimeline, EditUiVersion} from './projection
 import {sequenceSyncIntent} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceEditEnvelope, SequenceEditReceipt, SequenceEditTrackIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
+import {classifyCommitFailure, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
+import type {LostResponseOptions, LostResponseView, LostRetryResult} from './lost-response.ts';
 
 export interface SequencePreviewResponse {
   readonly envelope: SequenceEditEnvelope;
@@ -20,15 +22,14 @@ export interface SequencePreviewResponse {
   readonly warnings: readonly {readonly code: string}[];
 }
 export interface SequenceFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]}
-function failureFrom(error: unknown): SequenceFailure {
-  const record = error as {code?: string; details?: {ids?: unknown}} | null;
-  const raw = record?.details && typeof record.details === 'object' ? record.details.ids : undefined;
-  const ids = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : [];
-  return {ok: false, code: record?.code ?? 'GENERIC', ...(ids.length ? {ids} : {})};
-}
-export interface SequenceSuccess {readonly ok: true; readonly actionId: string; readonly operation: string;
-  readonly patch: unknown; readonly receipt: SequenceEditReceipt}
-export type SequenceOutcome = SequenceSuccess | SequenceFailure;
+/** A commit whose result was lost and whose receipt could not settle it. The
+ * exact envelope stays in the lost-response state until retry or abandon. */
+export interface SequenceUnconfirmed {readonly ok: false; readonly code: typeof UNCONFIRMED_CODE; readonly unconfirmed: true}
+export interface SequenceSuccess {readonly ok: true; readonly actionId: string | null; readonly operation: string;
+  readonly patch: unknown; readonly receipt?: SequenceEditReceipt;
+  /** Settled by the receipt read, not by the lost commit response. */
+  readonly resolvedFromReceipt?: true}
+export type SequenceOutcome = SequenceSuccess | SequenceFailure | SequenceUnconfirmed;
 export interface HistoryActionView {readonly actionId: string; readonly operation: string; readonly affected: number;
   /** Present only for Mio actions (D5); UI Ctrl+Z must not undo these. */
   readonly origin?: 'user' | 'mio'}
@@ -106,6 +107,7 @@ export function format5PatchCommand(clip: Pick<AppTimelineClip, 'id' | 'trackId'
 
 export function format5CommandErrorMessageKey(code: string | undefined): string {
   switch (code) {
+    case UNCONFIRMED_CODE: return 'editUi.error.EDIT_RESULT_UNCONFIRMED';
     case 'COPY_NODE_REQUIRED': return 'editUi.error.COPY_NODE_REQUIRED';
     case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
@@ -169,37 +171,57 @@ export function format5InspectorSequence(timeline: AppTimeline | null, shots: re
     ...callbacks};
 }
 
-function commitOutcome(value: unknown): SequenceOutcome {
-  if (value !== null && typeof value === 'object') {
-    const row = value as Record<string, any>;
-    if (row.ok === false) return {ok: false, code: String(row.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'), ids: row.ids ?? []};
-    if (row.receipt) return {ok: true, actionId: String(row.actionId ?? row.receipt.actionId), operation: String(row.operation ?? row.receipt.operation), patch: row.patch, receipt: row.receipt};
-    if (row.status === 'applied' || row.status === 'not_applied') {
-      return {ok: true, actionId: String(row.actionId), operation: String(row.operation), patch: undefined, receipt: row as unknown as SequenceEditReceipt};
-    }
-  }
-  return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+type ParsedCommit = ReturnType<typeof parseSequenceCommit>;
+const parsedOutcome = (parsed: ParsedCommit): SequenceOutcome => parsed.kind === 'success'
+  ? {ok: true, actionId: parsed.actionId, operation: parsed.operation, patch: parsed.patch, ...(parsed.receipt ? {receipt: parsed.receipt} : {})}
+  : parsed.kind === 'failure' ? {ok: false, code: parsed.code, ids: parsed.ids}
+  : {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+
+type PendingEdit = {readonly envelope: SequenceEditEnvelope; readonly planDigest: string};
+
+export interface Format5SessionOptions {
+  /** Shared workspace state; both format-5 sessions must receive the same one. */
+  readonly lost?: LostResponseState;
+  /** Convenience for tests/standalone fixtures; equivalent to a private state. */
+  readonly readOutcome?: LostResponseOptions['readOutcome'];
 }
 
 /** One preview/confirm session. `preview` may run twice for a copy decision; the
  * second envelope is the one the confirmation and commit must reuse. */
 export class Format5EditSession {
-  private pending: {envelope: SequenceEditEnvelope; planDigest: string; requestId: string} | null = null;
-  private copy: {request: EditUiCopyMoveRequest; pending: {envelope: SequenceEditEnvelope; planDigest: string; requestId: string}} | null = null;
+  private pending: PendingEdit | null = null;
+  private copy: {request: EditUiCopyMoveRequest; pending: PendingEdit} | null = null;
   private inFlight = false;
   private readonly rpc: SequenceRpc;
   private readonly projectId: () => string | null;
-  constructor(rpc: SequenceRpc, projectId: () => string | null) {
+  private readonly lost: LostResponseState;
+  constructor(rpc: SequenceRpc, projectId: () => string | null, options: Format5SessionOptions = {}) {
+    if (options.lost && options.readOutcome) throw new TypeError('Pass either lost or readOutcome, not both.');
     this.rpc = rpc;
     this.projectId = projectId;
+    this.lost = options.lost ?? new LostResponseState(options.readOutcome ? {readOutcome: options.readOutcome} : {});
   }
 
   get busy(): boolean {return this.inFlight}
   get copyRequest(): EditUiCopyMoveRequest | null {return this.copy?.request ?? null}
+  /** The one lost edit the App renders a bar for, if any. */
+  get unconfirmed(): LostResponseView | null {return this.lost.view}
+
+  /** Before a lost edit is settled, every new format-5 write is refused with one
+   * reason; the controls stay enabled on purpose. A retained edit of another
+   * project can never be retried here, so switching projects drops it. */
+  private guardUnconfirmed(): SequenceFailure | null {
+    const view = this.lost.view;
+    if (!view) return null;
+    if (view.projectId !== this.projectId()) {this.lost.clear(); return null;}
+    return {ok: false, code: UNCONFIRMED_CODE};
+  }
 
   private endpoint(operation: string): (input: unknown) => Promise<unknown> {return input => this.rpc(operation, input)}
 
   async preview(command: SequenceSyncCommand): Promise<SequencePreviewResponse | SequenceFailure> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     const projectId = this.projectId();
     if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
     const requestId = format5RequestId('preview');
@@ -209,51 +231,154 @@ export class Format5EditSession {
       if ((response as SequenceFailure).ok === false) return response as SequenceFailure;
       const preview = response as SequencePreviewResponse;
       if (typeof preview.planDigest !== 'string' || !preview.envelope) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      this.pending = {envelope: preview.envelope, planDigest: preview.planDigest, requestId};
+      this.pending = {envelope: preview.envelope, planDigest: preview.planDigest};
       return preview;
     } catch (error) {
       return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};
     }
   }
-  private async commitInternal(): Promise<SequenceOutcome> {
-    const pending = this.pending;
-    if (!pending || !this.projectId()) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+
+  /** The one commit path of both sessions' semantics: a definite rejection keeps
+   * the old error display, an unknown result retains the exact envelope. */
+  private async commitPending(pending: PendingEdit): Promise<SequenceOutcome> {
+    const projectId = this.projectId();
+    if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+    let row: unknown;
     try {
-      const result = commitOutcome(await this.endpoint('sequence.commit')({projectId: this.projectId(), envelope: pending.envelope,
-        expectedPlanDigest: pending.planDigest}));
-      this.pending = null;
-      return result;
+      row = await this.endpoint('sequence.commit')({projectId, envelope: pending.envelope,
+        expectedPlanDigest: pending.planDigest});
     } catch (error) {
-      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};
+      const failure = classifyCommitFailure(error);
+      if (failure.kind === 'rejected') {
+        this.pending = null; this.copy = null; this.lost.clear();
+        return {ok: false, code: failure.code, ids: failure.ids};
+      }
+      return this.retainUnconfirmed(pending);
     }
+    const parsed = parseSequenceCommit(row);
+    if (parsed.kind === 'unknown') return this.retainUnconfirmed(pending);
+    this.pending = null; this.copy = null; this.lost.clear();
+    return parsedOutcome(parsed);
   }
-  async commit(): Promise<SequenceOutcome> {
-    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+  /** Keep the accepted envelope + digest, read the immutable receipt exactly
+   * once, and return the honest conclusion (or stay unconfirmed). */
+  private async retainUnconfirmed(pending: PendingEdit): Promise<SequenceOutcome> {
+    this.pending = null;
+    this.copy = null;
+    const entry = {projectId: pending.envelope.projectId, requestId: pending.envelope.requestId,
+      envelope: pending.envelope, planDigest: pending.planDigest};
+    this.lost.retain(entry, () => this.retryUnconfirmed());
+    const verdict = await this.lost.reconcileOnce(() => this.projectId() === entry.projectId);
+    if (verdict.kind === 'applied') {
+      return {ok: true, actionId: null, operation: verdict.operation ?? 'sequence.edit', patch: undefined,
+        resolvedFromReceipt: true};
+    }
+    if (verdict.kind === 'not_applied') return {ok: false, code: verdict.code};
+    return {ok: false, code: UNCONFIRMED_CODE, unconfirmed: true};
+  }
+
+  /** The bar's retry: resend the retained envelope/digest, never a new preview. */
+  async retryUnconfirmed(): Promise<LostRetryResult> {
+    const entry = this.lost.retained;
+    if (!entry || this.inFlight || this.projectId() !== entry.projectId) {
+      return {ok: false, code: UNCONFIRMED_CODE, unconfirmed: true};
+    }
+
     this.inFlight = true;
-    try {return await this.commitInternal();} finally {this.inFlight = false;}
+    try {
+      const result = await this.commitPending({envelope: entry.envelope, planDigest: entry.planDigest});
+      if (result.ok) return {ok: true, actionId: result.actionId};
+      return 'unconfirmed' in result ? {ok: false, code: result.code, unconfirmed: true} : {ok: false, code: result.code};
+    } finally {this.inFlight = false;}
   }
-  /** UI-E3: preview then commit any shared intent family (FR-A properties,
-   * FR-B subtitles) with the same one-flight guard as the TS commands. */
-  async runPayload(payload: Readonly<Record<string, unknown>>): Promise<SequenceOutcome> {
+
+  /** The bar's abandon: drop the retained envelope without writing or refreshing. */
+  abandonUnconfirmed(): void {this.lost.clear()}
+
+  /** FR-B2 output-frame change through the same preview/commit handshake. */
+  async format(presetId: string): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
       const projectId = this.projectId();
       if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
-      const preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('preview'),
-        ...payload}) as SequencePreviewResponse | SequenceFailure;
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('format'),
+          formatIntent: {side: 'timeline', operation: {kind: 'timeline-format', presetId}}}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
-      const accepted = preview as SequencePreviewResponse;
-      if (typeof accepted.planDigest !== 'string' || !accepted.envelope) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      return commitOutcome(await this.endpoint('sequence.commit')({projectId, envelope: accepted.envelope,
-        expectedPlanDigest: accepted.planDigest}));
-    } catch (error) {return failureFrom(error);}
-    finally {this.inFlight = false;}
+      const response = preview as SequencePreviewResponse;
+      if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      const pending = {envelope: response.envelope, planDigest: response.planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
+    } finally {this.inFlight = false;}
+  }
+  /** FR-B2: split one main-track clip at the current scene cuts. */
+  async splitAtScenes(assetId: string, resultId: string): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('split-scenes'),
+          intents: [sequenceSyncIntent({kind: 'clip-split-scenes', assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      const response = preview as SequencePreviewResponse;
+      if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      const pending = {envelope: response.envelope, planDigest: response.planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
+    } finally {this.inFlight = false;}
+  }
+
+  /** UI-E3: one FR-A properties / FR-B subtitles action through the same
+   * preview + lost-response commit handshake as every other format-5 write. */
+  async runPayload(payload: Readonly<Record<string, unknown>>): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('panel-preview'),
+          ...payload}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      const response = preview as SequencePreviewResponse;
+      if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      const pending = {envelope: response.envelope, planDigest: response.planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
+    } finally {this.inFlight = false;}
+  }
+
+  async commit(): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    const pending = this.pending;
+    if (!pending) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {return await this.commitPending(pending);} finally {this.inFlight = false;}
   }
   /** Preview then commit; one click while a request is in flight never queues a
    * second write. */
   /** FR-D: one track add/update through the same preview/commit handshake. */
   async runTrack(trackIntent: SequenceEditTrackIntent): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
@@ -265,24 +390,30 @@ export class Format5EditSession {
           trackIntent}) as SequencePreviewResponse | SequenceFailure;
       } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
-      this.pending = {envelope: (preview as SequencePreviewResponse).envelope,
-        planDigest: (preview as SequencePreviewResponse).planDigest, requestId: format5RequestId('track')};
-      return await this.commitInternal();
+      const pending = {envelope: (preview as SequencePreviewResponse).envelope,
+        planDigest: (preview as SequencePreviewResponse).planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
     } finally {this.inFlight = false;}
   }
   async run(command: SequenceSyncCommand): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
       const preview = await this.preview(command);
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
-      return await this.commitInternal();
+      return await this.commitPending(this.pending!);
     } finally {this.inFlight = false;}
   }
   /** Reorder/copy-aware move: try the plain move first, then re-preview with the
    * server-allocated copy identity. The confirmation shows only after the copy
    * preview succeeds; confirm commits that exact envelope and digest. */
   async requestMove(command: SequenceSyncCommand, request: Omit<EditUiCopyMoveRequest, 'timelineRevision'> & {timelineRevision: number}): Promise<SequenceOutcome | {readonly needsCopy: true}> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
       const firstPreview = await this.preview(command);
@@ -294,15 +425,18 @@ export class Format5EditSession {
         this.copy = {request, pending: this.pending!};
         return {needsCopy: true};
       }
-      return await this.commitInternal();
+      return await this.commitPending(this.pending!);
     } finally {this.inFlight = false;}
   }
   async confirmCopy(): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     if (!this.copy) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-    this.pending = this.copy.pending;
+    const pending = this.copy.pending;
+    this.pending = pending;
     this.copy = null;
     this.inFlight = true;
-    try {return await this.commitInternal();} finally {this.inFlight = false;}
+    try {return await this.commitPending(pending);} finally {this.inFlight = false;}
   }
   cancelCopy(): void {this.copy = null; this.pending = null;}
 
@@ -313,19 +447,23 @@ export class Format5EditSession {
     catch {return null;}
   }
   async undo(view: SequenceHistoryView): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     const projectId = this.projectId();
     if (!projectId || !view.undo || view.undoConflict === true) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
-      return commitOutcome(await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('undo'),
-        origin: 'user', actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}));
+      return parsedOutcome(parseSequenceCommit(await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('undo'),
+        origin: 'user', actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}})));
     } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
   }
   async redo(view: SequenceHistoryView): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
     const projectId = this.projectId();
     if (!projectId || !view.redo || view.redoConflict === true) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
-      return commitOutcome(await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('redo'),
-        origin: 'user', actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}));
+      return parsedOutcome(parseSequenceCommit(await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('redo'),
+        origin: 'user', actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}})));
     } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
   }
 }

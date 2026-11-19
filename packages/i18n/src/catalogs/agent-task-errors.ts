@@ -33,10 +33,10 @@ export const agentTaskErrorMessages = {
     "ja": "ローカルワークスペースの応答を確認できません。元の実行を再読み込みしてください"
   },
   "agent.task.error.generic": {
-    "zh-Hans": "这一步未能完成，请核对已保存的记录",
-    "zh-Hant": "這一步未能完成，請核對已儲存的紀錄",
-    "en": "This step could not complete. Check the saved records",
-    "ja": "このステップを完了できませんでした。保存済みの記録を確認してください"
+    "zh-Hans": "这一步未能完成",
+    "zh-Hant": "這一步未能完成",
+    "en": "This step could not complete",
+    "ja": "このステップを完了できませんでした"
   },
   "agent.task.error.notFound": {
     "zh-Hans": "找不到这次执行或项目，请重新读取",
@@ -81,10 +81,10 @@ export const agentTaskErrorMessages = {
     "ja": "前の結果が不明です。再送せず、先に元のリクエストを確認してください"
   },
   "agent.task.error.storageLimit": {
-    "zh-Hans": "Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断",
-    "zh-Hant": "Mio 工作歷史已達容量上限，既有紀錄保留，請先檢查容量診斷",
-    "en": "Mio task history reached its storage limit. Existing records are retained; check storage diagnostics",
-    "ja": "Mio のタスク履歴が保存上限に達しました。既存の記録は保持されています。容量診断を確認してください"
+    "zh-Hans": "Mio 任务历史已达存储上限，已有记录保留",
+    "zh-Hant": "Mio 工作歷史已達儲存上限，既有紀錄保留",
+    "en": "Mio task history reached its storage limit; existing records are retained",
+    "ja": "Mio のタスク履歴が保存上限に達しました。既存の記録は保持されています"
   },
   "agent.task.error.storage": {
     "zh-Hans": "无法安全读取或保存执行记录，已停止后续操作",
@@ -153,16 +153,16 @@ export const agentTaskErrorMessages = {
     "ja": "推論を含む出力が上限に達し、応答が未完了です。受信した内容は保持されています。タスクを分割して再試行してください"
   },
   "agent.task.error.incomplete": {
-    "zh-Hans": "模型未完成这次回复，已保留收到的内容，请核对结果后重试",
-    "zh-Hant": "模型未完成這次回覆，已保留收到的內容，請核對結果後重試",
-    "en": "The model did not complete this response. Received content is retained; check the result before retrying",
-    "ja": "モデルの応答が完了しませんでした。受信した内容は保持されています。結果を確認してから再試行してください"
+    "zh-Hans": "回复未完成，已保留收到的内容",
+    "zh-Hant": "回覆未完成，已保留收到的內容",
+    "en": "The response did not complete; the received content is retained",
+    "ja": "応答が完了しませんでした。受信した内容は保持されています"
   },
   "agent.task.error.limit": {
-    "zh-Hans": "已达到输入、输出或存储上限，请核对已保存的记录",
-    "zh-Hant": "已達輸入、輸出或儲存上限，請核對已儲存的紀錄",
-    "en": "An input, output or storage limit was reached. Check the saved records",
-    "ja": "入力、出力、または保存容量の上限に達しました。保存済みの記録を確認してください"
+    "zh-Hans": "已达到输入或输出上限，回复未完成",
+    "zh-Hant": "已達輸入或輸出上限，回覆未完成",
+    "en": "An input or output limit was reached before the response completed",
+    "ja": "入力または出力の上限に達し、応答が完了しませんでした"
   },
   "agent.task.error.key": {
     "zh-Hans": "请先在 Mio 设置中保存此模型的密钥",
@@ -171,10 +171,10 @@ export const agentTaskErrorMessages = {
     "ja": "先に Mio の設定でこのモデルのキーを保存してください"
   },
   "agent.task.error.tools": {
-    "zh-Hans": "本轮无法执行模型请求的操作，请核对已保存的记录",
-    "zh-Hant": "本輪無法執行模型請求的操作，請核對已儲存的紀錄",
-    "en": "The requested operation cannot run in this round. Check the saved records",
-    "ja": "このラウンドでは要求された操作を実行できません。保存済みの記録を確認してください"
+    "zh-Hans": "本轮无法执行该操作（未执行，未保存）",
+    "zh-Hant": "本輪無法執行該操作（未執行，未儲存）",
+    "en": "This operation cannot run in this round (not executed, not saved)",
+    "ja": "このラウンドではこの操作を実行できません（未実行・未保存）"
   },
   "agent.task.error.provider": {
     "zh-Hans": "模型服务在回复时报告错误，已保留收到的内容",

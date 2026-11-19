@@ -1,6 +1,7 @@
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { canonicalImageInput, comfyImageConfigurationSchema, comfyImageSettingsResultSchema, normalizeComfyImageBaseUrl, getComfyImageDestination, comfyImageCheckResultSchema, comfyConnectorAvailabilitySchema } from '@mioon/contracts';
+import { settingsRecoveryVerdict, settingsRecoveryRetryable, settingsRecoveryMessages, settingsRecoveryMessageText } from './settings-recovery.ts';
 
 export type ComfyConnectorAvailability=ReturnType<typeof comfyConnectorAvailabilitySchema.parse>;
 export type ComfyImageSettingsResult=ReturnType<typeof comfyImageSettingsResultSchema.parse>;
@@ -28,6 +29,7 @@ export interface ComfyImageSettingsState {
   draft: ComfyImageConfiguration|null;
   check: ComfyImageCheckResult|null;
   recovery: ComfyRecovery;
+  recoveryRetryable: boolean;
   message: string;
   displayMessages: unknown[];
 }
@@ -98,9 +100,10 @@ export function createComfyImageSettingsClient({ fetchImpl = (...args: Parameter
     check: (input: {baseUrl: string; model: string}) => request('/api/images/comfy-check', 'POST', input) as Promise<ComfyImageCheckResult>,
   };
 }
-export const initialComfyImageSettingsState=(): ComfyImageSettingsState => ({ phase: 'loading', availability: null, availabilityPhase: 'loading', snapshot: null, draft: null, check: null, recovery: null, message: '', displayMessages: [] });
+export const initialComfyImageSettingsState=(): ComfyImageSettingsState => ({ phase: 'loading', availability: null, availabilityPhase: 'loading', snapshot: null, draft: null, check: null, recovery: null, recoveryRetryable: false, message: '', displayMessages: [] });
 export const comfyImageSettingsEditable=(state: ComfyImageSettingsState): boolean=>Boolean(state.snapshot) && !['loading', 'saving', 'reconciling', 'checking'].includes(state.phase);
-export const comfyImageSettingsCanSave=(state: ComfyImageSettingsState): boolean=>comfyImageSettingsEditable(state) && !state.recovery && state.phase !== 'blocked';
+export const comfyImageSettingsCanSave=(state: ComfyImageSettingsState): boolean=>comfyImageSettingsEditable(state) && state.phase !== 'blocked' &&
+  (!state.recovery || state.recovery === 'unknown' && state.recoveryRetryable);
 export const comfyImageSettingsDirty=(state: ComfyImageSettingsState): boolean=>Boolean(state.snapshot && canonicalImageInput(state.draft) !== canonicalImageInput(state.snapshot.configuration));
 export function comfyImageCheckLabel(check: ComfyImageCheckResult|null): string {
   if (!check) return '未检查当前地址。保存设置不代表服务可用，也不会检查模型。';
@@ -149,14 +152,26 @@ export function createComfyImageSettingsSession({ client = createComfyImageSetti
     try {
       const safe = safeSettings(await client.write({ expectedRevision: revision, configuration: copy(configuration) })); if (!current(token)) return false;
       if (safe.revision !== revision + 1 || canonicalImageInput(safe.configuration) !== canonicalImageInput(configuration)) throw failure('INVALID_RESPONSE');
-      receive(safe); publish({ snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, message: '本地连接设置已保存。没有探测服务或生成图像；每次生成仍需准备并审批。', displayMessages: [message('connections.comfy.notice.saved')] }); return true;
+      receive(safe); publish({ snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, recoveryRetryable: false, message: '本地连接设置已保存。没有探测服务或生成图像；每次生成仍需准备并审批。', displayMessages: [message('connections.comfy.notice.saved')] }); return true;
     } catch (error) {
       if (!current(token)) return false;
       const code=errorCode(error);
       if (code!==undefined&&['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION', 'COMFY_ENDPOINT_INVALID', 'COMFY_ENDPOINT_DENIED', 'COMFY_SETTINGS_VALIDATION', 'COMFY_SETTINGS_DESTINATION_DENIED'].includes(code)) { publish({ phase: 'error', message: '此次设置未被接受。请检查本机地址、端口与 checkpoint；必要时重新登录。', displayMessages: [message('connections.comfy.notice.rejected')] }); return false; }
-      const recovery: ComfyRecovery = code!==undefined&&['IMAGE_SETTINGS_CONFLICT', 'COMFY_SETTINGS_CONFLICT'].includes(code) ? 'conflict' : 'unknown'; publish({ phase: 'reconciling', recovery, message: '正在读取当前保存状态，不会重试保存或检查服务。', displayMessages: [message('connections.comfy.notice.rereading')] });
-      try { const safe = safeSettings(await client.read()); if (!current(token)) return false; receive(safe); publish({ snapshot: safe, phase: 'review', check: null, message: recovery === 'conflict' ? '设置已在其他窗口变化。草稿保留，请核对后继续。' : '保存结果尚未确认。已读取当前设置，请核对；不会自动重试。', displayMessages: (recovery === 'conflict' ? [message('connections.comfy.notice.conflict')] : [message('connections.comfy.notice.unknown')]) }); }
-      catch { if (current(token)) publish({ phase: 'blocked', message: '暂时无法核实保存结果。草稿保留，请重新读取后再保存。', displayMessages: [message('connections.notice.blocked')] }); }
+      const recovery: ComfyRecovery = code!==undefined&&['IMAGE_SETTINGS_CONFLICT', 'COMFY_SETTINGS_CONFLICT'].includes(code) ? 'conflict' : 'unknown';
+      publish({ phase: 'reconciling', recovery, message: '正在读取当前保存状态。', displayMessages: [message('connections.comfy.notice.rereading')] });
+      try {
+        const safe = safeSettings(await client.read()); if (!current(token)) return false; receive(safe);
+        const verdict = settingsRecoveryVerdict({ revision: safe.revision, fingerprint: canonicalImageInput(safe.configuration), secret: null },
+          { revision, fingerprint: canonicalImageInput(configuration), secret: null, secretReplaced: false, conflict: recovery === 'conflict' });
+        if (verdict === 'applied') {
+          publish({ snapshot: safe, draft: copy(safe.configuration), phase: 'saved', recovery: null, recoveryRetryable: false, check: null,
+            message: '本地连接设置已保存。没有探测服务或生成图像；每次生成仍需准备并审批。', displayMessages: [message('connections.comfy.notice.saved')] });
+          return true;
+        }
+        publish({ snapshot: safe, phase: 'review', check: null, recovery, recoveryRetryable: settingsRecoveryRetryable(verdict, false),
+          message: settingsRecoveryMessageText(verdict, false), displayMessages: settingsRecoveryMessages(verdict, false) });
+      }
+      catch { if (current(token)) publish({ phase: 'blocked', recoveryRetryable: false, message: '暂时无法核实保存结果。草稿保留，请重新读取后再保存。', displayMessages: [message('connections.notice.blocked')] }); }
       return false;
     }
   }

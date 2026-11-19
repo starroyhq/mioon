@@ -143,3 +143,4 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
     AND json_extract(data,'$.title')='A'`).all() as {data: string}[];
   assert.ok(detached.length >= 3, `expected original plus two detached copies, got ${detached.length}`);
 });
+

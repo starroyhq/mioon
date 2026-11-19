@@ -164,7 +164,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     confirm: async () => true, readableError: (e: Error) => e.message, pendingForProject: () => [], URL, URLSearchParams,
     window: { location: { href: 'http://127.0.0.1:4318/', search: '' }, history: { pushState() {}, replaceState() {} } },
-    tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } },
+    tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } }, autoReread: async (projectId: unknown) => calls.push(['autoReread', projectId]), format5LostRef: {current: {clear: () => {calls.push(['format5LostClear']);}}},
     preferencesRef: { current: { update: (...args: unknown[]) => calls.push(['preferences', ...args]), flush: async () => {}, load: async () => defaultWorkspaceState(), getStatus: () => ({ phase: 'saved' }) } },
     projectEntryIdentityRef: {current:identity},readProjectEntryIdentity,projectDirectoryProjects,
     preferenceScope: { current: null }, locatorIdentity: { current: null }, migrateBrowserStorage() {},
@@ -280,7 +280,7 @@ test('the actual home create callback enables workbench modes only after success
   const f = harness(), props = modeProps(f), tree = ui.Surface(props), home = nodes(tree).find(node => node.props && node.props.onCreate) as RenderNode | undefined;
   assertHome(ui.render(props)); assert.ok(home, 'project home must receive onCreate'); assert.equal(home!.props!.onCreate, f.create); assert.deepEqual(f.calls, []);
   assert.equal(await (home!.props!.onCreate as (...args: unknown[])=>Promise<boolean>)('第一个项目', ''), true);
-  const dispatch = f.calls.find((call: unknown[]) => call[0] === 'dispatch') as unknown as unknown[]; assert.deepEqual(dispatch.slice(0, 4), ['dispatch', 'project-create', 'project.create', { name: '第一个项目', description: '' }]); assert.equal(dispatch.length, 6);
+  const dispatch = f.calls.find((call: unknown[]) => call[0] === 'dispatch') as unknown as unknown[]; assert.deepEqual(dispatch.slice(0, 4), ['dispatch', 'project-create', 'project.create', { name: '第一个项目', description: '' }]); assert.equal(dispatch.length, 6); assert.deepEqual(f.calls.filter((call: unknown[]) => call[0] === 'autoReread'), [['autoReread', A]], 'A successful create runs the bounded automatic re-read for the opened project');
   assert.equal(f.env.currentProject.current, A); assert.equal(f.env.viewReady.current, true); assert.equal(f.env.loading, false);
   assert.equal(f.env.projectSessionReady(), true); assert.equal(f.env.openedProject.current!.projectId, A);
   assertDisabled(ui.render(modeProps(f)), false); await f.change('editing'); assert.equal(f.env.viewRef.current.activeMode, 'editing');

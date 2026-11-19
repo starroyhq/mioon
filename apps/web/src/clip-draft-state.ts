@@ -36,7 +36,11 @@ export interface ClipDraftCapture extends Readonly<ClipDraftKey> { readonly scop
 export interface ClipVolumeCompositionToken { readonly owner: symbol }
 export type ClipDraftPhase = 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'conflict' | 'unsupported';
 export interface ClipDraftState {
-  raw: ClipDraftRaw; dirty: boolean; baseRevision: number; source: ClipDraftSource; conflict: boolean;
+  raw: ClipDraftRaw; dirty: boolean; baseRevision: number; source: ClipDraftSource; conflict: boolean; canRebase: boolean;
+  /** Value written by the acknowledged save that offered the rebase. Rebase
+   * stays available only while this clip's latest saved value still equals it;
+   * a same-clip change elsewhere invalidates the offer (RV review 11-19). */
+  rebaseSaved: ClipDraftRaw | null;
   phase: ClipDraftPhase; error: string; errorDisplay?: MessageDescriptor; candidate: ClipDraftRecord | null; savedAt: string | null; submitting: boolean; businessPending: boolean;
   compositionPending: boolean;
   autosavePaused: boolean; failure: ClipDraftFailure | null; retainedRecord: boolean;
@@ -110,7 +114,7 @@ export function createClipDraftController({ context: initial, client, validateTi
   let composition: { token: ClipVolumeCompositionToken; generation: number; serial: number; kind: 'volume' | 'opacity' } | null = null;
   let envelope: ClipDraftEnvelope | null = null, timer: ReturnType<typeof setTimeout> | undefined, flight: Promise<void> | null = null;
   let closeFlight: Promise<boolean> | null = null;
-  let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false,
+  let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false, canRebase: false, rebaseSaved: null,
     compositionPending: false, phase: 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
   let collaborationBaseline: {proof:AgentEditingProof;saved:ClipDraftRaw}|null=context.collaboration?{proof:copy(context.collaboration),saved:copy(context.saved)}:null;
   const captures = new WeakSet<ClipDraftCapture>();
@@ -123,6 +127,10 @@ export function createClipDraftController({ context: initial, client, validateTi
   }
   const belongs = (owner: number) => active && owner === generation;
   const conflict = () => context.timelineRevision !== state.baseRevision || !sameClipDraftValue(context.source, state.source);
+  /** The saved-value evidence behind an offered rebase is still valid: this
+   * clip did not change in the meantime and the draft source is unchanged. */
+  const canRebaseStillSafe = () => Boolean(state.rebaseSaved &&
+    sameClipDraftValue(context.saved, state.rebaseSaved) && sameClipDraftValue(context.source, state.source));
   const draftMatches = () => Boolean(envelope?.draft && sameClipDraftValue(envelope.draft.raw, state.raw) && envelope.draft.baseRevision === state.baseRevision && sameClipDraftValue(envelope.draft.source, state.source));
   // Business dirty remains true after a sidecar ACK. A clean form (including an
   // explicit local-only abandonment) has no current raw input left to persist.
@@ -253,7 +261,7 @@ export function createClipDraftController({ context: initial, client, validateTi
           // An external context replacement cannot revoke the old input owner.
           // Keep its composing DOM/token available to settle, but freeze effects.
           context = { ...context, connected: false, volumeEnvelopeEditable: false, opacityEnvelopeEditable: false };
-          emit({ conflict: true }); return;
+          emit({ conflict: true, canRebase: false, rebaseSaved: null }); return;
         }
         controller.dispose(); return;
       } // A different mounted owner needs a fresh controller.
@@ -262,9 +270,9 @@ export function createClipDraftController({ context: initial, client, validateTi
       const canRebase=Boolean(proof&&baseline&&proof.ownerId===baseline.proof.ownerId&&proof.kind===baseline.proof.kind&&proof.id===baseline.proof.id&&proof.revision===baseline.proof.revision&&proof.timelineRevision===next.timelineRevision&&sameClipDraftValue(next.saved,baseline.saved)&&sameClipDraftValue(next.source,state.source));
       context = copy(next);
       if (state.dirty || composition || state.submitting) {
-        if(canRebase&&!state.submitting&&!state.businessPending&&!state.candidate){if(state.baseRevision!==context.timelineRevision){serial++;if(composition)composition.serial=serial;}emit({baseRevision:context.timelineRevision,conflict:false});}
-        else if (conflict()) emit({ conflict: true });
-      } else {collaborationBaseline=proof&&!state.candidate?{proof:copy(proof),saved:copy(context.saved)}:null;emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false });}
+        if(canRebase&&!state.submitting&&!state.businessPending&&!state.candidate){if(state.baseRevision!==context.timelineRevision){serial++;if(composition)composition.serial=serial;}emit({baseRevision:context.timelineRevision,conflict:false,canRebase:false,rebaseSaved:null});}
+        else if (conflict()) emit({ conflict: true, canRebase: canRebaseStillSafe(), rebaseSaved: canRebaseStillSafe() ? state.rebaseSaved : null });
+      } else {collaborationBaseline=proof&&!state.candidate?{proof:copy(proof),saved:copy(context.saved)}:null;emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false, canRebase: false, rebaseSaved: null });}
       schedule();
     },
     beginVolumeComposition(token: ClipDraftCapture): ClipVolumeCompositionToken | null {
@@ -318,7 +326,7 @@ export function createClipDraftController({ context: initial, client, validateTi
         // A DELETE already sent while the target was valid is not cancelled.
         // Its exact ACK may update the local record, but never clear stale input.
         if (!isCurrent(token) || !canDiscard()) return false;
-        serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return true;
+        serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, canRebase: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return true;
       } catch (error) { if (belongs(owner)) pausePersistence(error); return false; }
       finally {if (discarding === cancellation) {discarding = null;emit({});schedule();}}
     },
@@ -362,16 +370,51 @@ export function createClipDraftController({ context: initial, client, validateTi
         if (!result) { emit({ submitting: false, businessPending: false }); return null; }
         const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch, expectedRaw) : null;
         if (!saved) throw recoveryDisplayError(Error('片段保存确认与原始输入不一致；本地草稿仍保留。'), displayMessage('recovery.clip.error.timelineAck'));
-        if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) { emit({ submitting: false, businessPending: false, conflict: true, error: '时间线已有更新；本地草稿仍保留，请核对最新片段。', errorDisplay: displayMessage('recovery.clip.timelineChanged') }); return result; }
-        if (savedSerial !== serial) { emit({ submitting: false, businessPending: false, conflict: true, error: '原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段。', errorDisplay: displayMessage('recovery.clip.newerInput') }); schedule(); return result; }
+        if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) {
+          // The acknowledged save landed at base+1. A newer timeline revision can
+          // be rebased onto only while this clip's latest saved value still equals
+          // what the acknowledge wrote: otherwise another writer changed the same
+          // clip (e.g. its gain) and rebasing would silently overwrite that change.
+          // A changed source cannot be rebased because the draft was written for
+          // the old source.
+          const savedRaw = rawFor(saved), sourceUnchanged = sameClipDraftValue(context.source, source);
+          const canRebase = sourceUnchanged && context.timelineRevision > base + 1 &&
+            sameClipDraftValue(context.saved, savedRaw);
+          emit({ submitting: false, businessPending: false, conflict: true, canRebase,
+            rebaseSaved: canRebase ? copy(savedRaw) : null,
+            error: sourceUnchanged ? '时间线已在保存后更新；本地草稿仍保留。' : '片段来源已变化；本地草稿仍保留。',
+            errorDisplay: displayMessage('recovery.clip.timelineChanged') });
+          return result;
+        }
+        if (savedSerial !== serial) {
+          // Acknowledged save of the original input: keep the newer in-memory input
+          // and continue from the acknowledged revision instead of discarding it.
+          emit({ submitting: false, businessPending: false, conflict: false, canRebase: false, rebaseSaved: null, baseRevision: base + 1,
+            dirty: true, error: '原输入已保存；当前新输入尚未保存。', errorDisplay: displayMessage('recovery.clip.newerInput') });
+          schedule();
+          return result;
+        }
         if (localUnconfirmed) { emit({ submitting: false, businessPending: false, conflict: true, error: '片段已保存到时间线，但本地草稿状态尚未确认。当前输入仍保留，请重新核对本地记录。', errorDisplay: displayMessage('recovery.clip.savedUnconfirmed') }); return result; }
         if (stored?.draft && envelope && sameClipDraftValue(stored, envelope)) {
           try { if (!await clearRecord(stored, owner)) {if (belongs(owner)) emit({submitting: false, businessPending: false, conflict: true});return result;} }
           catch (error) { if (belongs(owner)) { emit({ submitting: false, businessPending: false, conflict: true }); pausePersistence(error, '片段已保存，但本地草稿清除未确认。', false, displayMessage('recovery.clip.clearUnconfirmed')); } return result; }
         }
-        if (!belongs(owner) || savedSerial !== serial) { if (belongs(owner)) emit({ submitting: false, businessPending: false, conflict: true }); return result; }
-        serial++; emit({ raw: rawFor(saved), dirty: false, baseRevision: base + 1, source, conflict: false, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return result;
+        if (!belongs(owner) || savedSerial !== serial) { if (belongs(owner)) emit({ submitting: false, businessPending: false, conflict: true, canRebase: false, rebaseSaved: null }); return result; }
+        serial++; emit({ raw: rawFor(saved), dirty: false, baseRevision: base + 1, source, conflict: false, canRebase: false, rebaseSaved: null, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return result;
       } catch (error) { if (belongs(owner)) emit({ submitting: false, businessPending: false, error: message(error), errorDisplay: recoveryErrorMessage(error) }); return null; }
+    },
+    /** Keep the local draft and move its base to the latest observed revision,
+     * then let autosave retry once. Only valid while the source is unchanged and
+     * this clip's latest saved value still equals the acknowledged save that
+     * offered the rebase; a same-clip change elsewhere keeps the conflict. */
+    rebaseDraft(): boolean {
+      if (!active || !state.conflict || !state.canRebase || !state.rebaseSaved ||
+        !sameClipDraftValue(context.source, state.source) ||
+        !sameClipDraftValue(context.saved, state.rebaseSaved) ||
+        context.timelineRevision <= state.baseRevision) return false;
+      emit({ baseRevision: context.timelineRevision, conflict: false, canRebase: false, rebaseSaved: null, phase: 'ready', error: '', errorDisplay: undefined });
+      schedule();
+      return true;
     },
     load, flush, flushForClose,
     activate() { active = true; },

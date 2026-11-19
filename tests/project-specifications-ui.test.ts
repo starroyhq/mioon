@@ -574,7 +574,7 @@ test('actual format save callback uses only the existing durable timeline lane a
   const calls: unknown[][] = [];
   const save = appFunction('async function saveTimelineFormat(', 'const timelineFormat =', { timelineFormatContext: () => context(), isDurableEditOperation: (value: string) => contracts.DURABLE_EDIT_OPERATIONS.includes(value as typeof contracts.DURABLE_EDIT_OPERATIONS[number]),
     runDurable: async (...args:{validateResponse:(timeline:FixtureTimeline)=>void}[]) => { calls.push(args); args[4].validateResponse(timeline()); return timeline(); }, timelineFormatAcknowledged: format.timelineFormatAcknowledged,
-    tasksRef: { current: { blocked: () => false } } });
+    tasksRef: { current: { blocked: () => false } }, dataRef: { current: { projectFormatVersion: 4 } } });
   assert.equal((await save(intent)).status, 'applied'); assert.equal(calls[0][0], 'timeline:mutation'); assert.equal(calls[0][1], 'timeline.format.set'); assert.equal(calls[0][2], intent.input);
   f.ack(); await pending;
 });

@@ -121,6 +121,12 @@ function undo(store: ProjectStore): void {
   createSequenceEditing(store).call('sequence.undo', {projectId, requestId: requestId(),
     actionId: history.undo.actionId, expected: {position: history.position, revision: history.revision}});
 }
+function redo(store: ProjectStore): void {
+  const history = createSequenceEditing(store).call('sequence.history.get', {projectId}) as Record<string, any>;
+  assert.ok(history.redo, 'there must be a redo step');
+  createSequenceEditing(store).call('sequence.redo', {projectId, requestId: requestId(),
+    actionId: history.redo.actionId, expected: {position: history.position, revision: history.revision}});
+}
 function timeline(store: ProjectStore) {
   return readFormat5TimelineRecord(store.db, 'project')!;
 }
@@ -334,6 +340,26 @@ test('removing a linked subtitle removes the dialogue line; other lines keep the
   undo(store);
   assert.deepEqual(shotDialogue(store, shotA).map(line => line.id), [line1, line2]);
   assert.equal(cueFor(store, shotA, line2)!.text, '第二句');
+});
+
+test('undo of a subtitle add removes its cue and redo restores it', t => {
+  const store = fixture(t);
+  const added = id(59);
+  let preview = edit(store).preview({projectId, requestId: requestId(),
+    subtitlesIntent: {side: 'timeline', operation: {kind: 'subtitles', edits: [{kind: 'add',
+      cue: {id: added, text: '加一句', startFrame: 10, durationFrames: 20}}]}}}) as Record<string, any>;
+  assert.equal(preview.ok, undefined, JSON.stringify(preview));
+  const committed = edit(store).commit({projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest}) as Record<string, any>;
+  assert.equal(committed.status, 'applied');
+  assert.equal(cues(store).some(cue => cue.id === added), true);
+  // The incremental delta applier needs the created cue in the inverse removal
+  // list; a full-list rewrite would silently leave it behind on undo.
+  undo(store);
+  assert.equal(cues(store).some(cue => cue.id === added), false, 'undo removes the added cue');
+  assert.deepEqual(cues(store).map(cue => cue.id), [plainCue], 'the pre-existing cue stays');
+  redo(store);
+  assert.equal(cues(store).some(cue => cue.id === added), true, 'redo restores the added cue');
+  undo(store);
 });
 
 test('subtitle add stays an ordinary cue and linking fields are rejected', t => {

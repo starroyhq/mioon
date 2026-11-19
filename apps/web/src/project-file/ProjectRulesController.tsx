@@ -22,6 +22,17 @@ function OpenProjectRules({projectId, projectFile, onClose,admission,interaction
   const [controller] = useState(() => createProjectRulesState({projectId,admission:{key:admission?.key??JSON.stringify(['standalone',projectId]),scope:admission?.scope??'standalone',isCurrent:allowed},receiptScope:admission?.scope??null}));
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), snapshot = state.snapshot;
   useEffect(() => { controller.connect(); void controller.load(); return () => controller.dispose(); }, [controller]);
+  // Automatic read-only follow-up for a retained rules write: lookup once, and
+  // only an uncertain result triggers the coordinator-approved reconcile once.
+  // A failed read keeps both buttons and never rewrites the retained request.
+  const autoRead = useRef<'idle'|'lookup'|'reconcile'|'done'>('idle');
+  useEffect(() => { autoRead.current = 'idle'; }, [projectId]);
+  useEffect(() => {
+    if (!allowed() || state.mutation === 'working' || state.receiptBlocked) return;
+    if (!state.pending) { autoRead.current = 'done'; return; }
+    if (autoRead.current === 'idle') { autoRead.current = 'lookup'; void controller.lookup(); return; }
+    if (autoRead.current === 'lookup' && state.lookup?.status === 'uncertain') { autoRead.current = 'reconcile'; void controller.reconcile(); }
+  }, [state.mutation, state.pending, state.lookup?.status]);
   const working = state.mutation === 'working', unknown = state.pending !== null, unavailable = snapshot?.trust === 'unavailable' || snapshot?.readError !== null && snapshot?.readError !== undefined;
   const submittingWrite = working && (state.action === 'save' || state.action === 'enable');
   const blocked = !allowed() || working || unknown || snapshot?.pendingWrites === true || unavailable || state.receiptBlocked;

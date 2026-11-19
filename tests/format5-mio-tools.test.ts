@@ -81,7 +81,7 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['shot.reorder']!, /明确链顺序/);
   // G line: the format-5 previs scene tool is the only projection that accepts
   // mannequin/prop subject references; formats 3/4 keep the frozen shape.
-  assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /统一 sequence 入口/);
+  assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /previs-scene-set/);
   assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.create'] !== undefined, true);
   // The previs thumbnail is a rebuildable cache written outside the unified
   // history (scene-revision CAS), so its existing tool stays available.
@@ -104,6 +104,20 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   previsParameters(nativeTools, false);
   const loaded = listAgentTaskToolsForChannel(true, {format5: true}).find(item => item.name === 'mioon_tools_load');
   assert.ok(loaded);
+  // MT-5: the generation-input projection is a bounded format-5 read tool only.
+  const generationInputs = format5Tools.find(item => item.operation === 'sequence.generation-inputs.get');
+  assert.equal(generationInputs?.name, 'mioon_sequence_generation_inputs_get');
+  assert.equal(generationInputs?.risk, 'read_only');
+  assert.equal(generationInputs?.unavailableReason, undefined);
+  assert.equal(nativeTools.some(item => item.operation === 'sequence.generation-inputs.get'), false);
+  const generationParameters = generationInputs?.parameters as {required: string[]; additionalProperties: boolean};
+  assert.deepEqual(generationParameters.required, ['shotId']);
+  assert.equal(generationParameters.additionalProperties, false);
+  assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.create']!, /previs-create/);
+  assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /previs-scene-set/);
+  // MT-5 opens every new bound action from the one sequence tool instead of
+  // adding a second write surface.
+  assert.equal(format5Tools.filter(item => item.risk !== 'read_only' && item.operation.startsWith('sequence.tool.')).length, 2);
 });
 
 test('sequence inspection pages the chain against one frozen snapshot', t => {

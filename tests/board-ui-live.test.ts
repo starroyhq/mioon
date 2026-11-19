@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {projectLiveBoard, subjectBindingCreateOperation, subjectBindingDetachOperation,
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../apps/web/src/board-ui/live.ts';
 import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
+import {LostResponseState, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
+import {ApiError} from '../apps/web/src/api.ts';
+import type {RequestOutcome} from '../apps/web/src/request-outcome-client.ts';
 import {boardConnectIntent, boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent} from '../apps/web/src/board-ui/live.ts';
 
 const id = (number: number): string => `60000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -232,4 +235,152 @@ test('subject command builders and the subject preview/commit handshake keep ide
   void busy.runSubject(subjectCardDeleteOperation(id(70)));
   const second = await busy.runSubject(subjectCardDeleteOperation(id(70)));
   assert.equal(second.ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// Lost board commit response: one retained envelope, one read-only receipt
+// lookup, retry/abandon without a second write.
+// ---------------------------------------------------------------------------
+const PLAN_DIGEST = 'e'.repeat(64);
+type BoardScenario = 'applied' | 'not-applied' | 'lost-after-write' | 'lost-before-write' | 'rejected';
+function boardHarness(initial: {readonly scenarios: readonly BoardScenario[];
+  readonly read: RequestOutcome | 'missing' | 'error'}) {
+  const calls: {operation: string; input: any}[] = [];
+  const writes: {requestId: string; status: 'applied' | 'not_applied'}[] = [];
+  const reads: {projectId: string; requestId: string}[] = [];
+  const scenarios = [...initial.scenarios];
+  let previews = 0;
+  const rpc = async (operation: string, input: any) => {
+    calls.push({operation, input});
+    if (operation === 'sequence.preview') {
+      previews++;
+      return {envelope: {contractVersion: 1, projectId, requestId: `board-preview-${previews}`,
+        intents: input.intents ?? []}, planDigest: PLAN_DIGEST, warnings: []};
+    }
+    if (operation === 'sequence.commit') {
+      const scenario = scenarios.shift() ?? 'applied';
+      const requestId = String(input.envelope.requestId);
+      if (scenario === 'rejected') throw new ApiError('conflict', 'SEQUENCE_EDIT_REVISION_CONFLICT', {}, true, 409);
+      if (scenario === 'lost-before-write') throw new ApiError('lost response', 'NETWORK', undefined, false);
+      if (scenario === 'lost-after-write') {
+        writes.push({requestId, status: 'applied'});
+        throw new ApiError('lost response', 'NETWORK', undefined, false);
+      }
+      if (scenario === 'not-applied') {
+        writes.push({requestId, status: 'not_applied'});
+        return {status: 'not_applied', operation: 'board.connect', code: 'SEQUENCE_EDIT_NOOP'};
+      }
+      writes.push({requestId, status: 'applied'});
+      return {status: 'applied', actionId: id(70), operation: 'board.connect'};
+    }
+    if (operation === 'sequence.history.get') return null;
+    throw Object.assign(new Error(`unexpected ${operation}`), {code: 'GENERIC'});
+  };
+  const readOutcome = async (input: {projectId: string; requestId: string}): Promise<RequestOutcome> => {
+    reads.push({projectId: input.projectId, requestId: input.requestId});
+    if (initial.read === 'error') throw new ApiError('unavailable', 'REQUEST_OUTCOME_UNAVAILABLE', {}, false);
+    if (initial.read === 'missing') return {applied: false, operation: null};
+    return initial.read;
+  };
+  // The preview request id differs from the envelope request id, exactly like
+  // the production preview; commit/receipt identity is `envelope.requestId`.
+  const session = new BoardUiSession(rpc, () => projectId, {lost: new LostResponseState({readOutcome, readTimeoutMs: 20})});
+  return {session, calls, writes, reads,
+    commits: (): any[] => calls.filter(call => call.operation === 'sequence.commit'),
+    previews: (): number => calls.filter(call => call.operation === 'sequence.preview').length};
+}
+const appliedBoardRead: RequestOutcome = {applied: true, operation: 'board.connect', status: 'applied', code: null};
+
+test('a board commit whose response is lost resolves applied from one receipt read without writing twice', async () => {
+  const h = boardHarness({scenarios: ['lost-after-write'], read: appliedBoardRead});
+  const outcome = await h.session.run(intent);
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) {assert.equal(outcome.status, 'applied'); assert.equal(outcome.actionId, null); assert.equal(outcome.resolvedFromReceipt, true);}
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.deepEqual(h.reads[0], {projectId, requestId: h.commits()[0]!.input.envelope.requestId});
+  assert.equal(h.session.unconfirmed, null);
+  // The same action after the settled edit is a new request, not a replay.
+  const again = await h.session.run(intent);
+  assert.equal(again.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('a board commit that never reached the service stays unconfirmed and retry executes exactly once', async () => {
+  const h = boardHarness({scenarios: ['lost-before-write', 'applied'], read: 'missing'});
+  const first = await h.session.run(intent);
+  assert.equal(first.ok, false);
+  if (!first.ok) {assert.equal(first.code, UNCONFIRMED_CODE); assert.equal('unconfirmed' in first, true);}
+  assert.equal(h.session.unconfirmed?.requestId, h.commits()[0]!.input.envelope.requestId);
+  assert.equal(h.writes.length, 0);
+  const retried = await h.session.retryUnconfirmed();
+  assert.equal(retried.ok, true);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.commits().length, 2);
+  assert.equal(h.commits()[1]!.input.envelope.requestId, h.commits()[0]!.input.envelope.requestId);
+  assert.deepEqual(h.commits()[1]!.input.envelope, h.commits()[0]!.input.envelope);
+  assert.equal(h.commits()[1]!.input.expectedPlanDigest, PLAN_DIGEST);
+  assert.equal(h.session.unconfirmed, null);
+  const previews = h.previews();
+  assert.equal(previews, 1, 'retry never previews again');
+});
+
+test('unconfirmed board edits block runMany and runSubject with the same reason', async () => {
+  const h = boardHarness({scenarios: ['lost-before-write'], read: 'missing'});
+  const first = await h.session.run(intent);
+  assert.equal(first.ok, false);
+  const callsBefore = h.calls.length;
+  for (const blocked of [await h.session.runMany([intent]),
+    await h.session.runSubject(subjectCardDeleteOperation(id(70)))]) {
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) assert.equal(blocked.code, UNCONFIRMED_CODE);
+  }
+  assert.equal(h.calls.length, callsBefore, 'blocked board writes make no preview or commit call');
+});
+
+test('a not-applied board receipt is surfaced as a rejection, not an applied outcome', async () => {
+  const h = boardHarness({scenarios: ['not-applied'], read: 'missing'});
+  const outcome = await h.session.run(intent);
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) assert.equal(outcome.code, 'SEQUENCE_EDIT_NOOP');
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(h.writes[0]!.status, 'not_applied');
+  // An explicit not-applied receipt is a conclusion: the next edit still works.
+  const next = await h.session.run(intent);
+  assert.equal(next.ok, true);
+});
+
+test('a definite board rejection keeps the old error path and never reads a receipt', async () => {
+  const rejected = boardHarness({scenarios: ['rejected'], read: appliedBoardRead});
+  const outcome = await rejected.session.run(intent);
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) assert.equal(outcome.code, 'SEQUENCE_EDIT_REVISION_CONFLICT');
+  assert.equal(rejected.reads.length, 0);
+  assert.equal(rejected.session.unconfirmed, null);
+});
+
+test('board abandon drops the retained envelope without any follow-up write', async () => {
+  const h = boardHarness({scenarios: ['lost-before-write'], read: 'missing'});
+  await h.session.run(intent);
+  assert.ok(h.session.unconfirmed);
+  h.session.abandonUnconfirmed();
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(h.commits().length, 1);
+  assert.equal(h.writes.length, 0);
+  const next = await h.session.run(intent);
+  assert.equal(next.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('a lost subject commit retries the same envelope and never re-previews', async () => {
+  const h = boardHarness({scenarios: ['lost-before-write', 'applied'], read: 'missing'});
+  const first = await h.session.runSubject(subjectCardDeleteOperation(id(70)));
+  assert.equal(first.ok, false);
+  const retried = await h.session.retryUnconfirmed();
+  assert.equal(retried.ok, true);
+  const commits = h.commits();
+  assert.equal(commits.length, 2);
+  assert.equal(commits[1]!.input.envelope.requestId, commits[0]!.input.envelope.requestId);
+  assert.deepEqual(commits[1]!.input.envelope, commits[0]!.input.envelope);
+  assert.equal(h.previews(), 1);
 });

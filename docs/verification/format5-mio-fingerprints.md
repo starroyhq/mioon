@@ -34,3 +34,9 @@
 ## 预演主体（G 线，11-19）
 
 预演人偶/道具的 `subject` 字段改变了 `mioon_previs_scene_set` 的格式 5 工具参数（格式 3/4 保持冻结形状），但它属于 canvas 工具组，冻结的 16 个场景没有任何一个加载它，所以格式 5 的 99 条请求重生成后逐字节一致（0 条变化）。工具 schema 的差异由 `tests/format5-mio-tools.test.ts` 直接断言，而不是靠请求指纹覆盖。格式 3、格式 4 两套夹具未重新生成，仍由 `tests/agent-task-request-fingerprints-v2.test.ts` 逐字节门禁。
+
+## MT-5 动作补齐（11-19）
+
+- `mioon_sequence_edit` 新增 `reference-reorder`、`subject-card-create/delete`、`previs-create/previs-scene-set` 五个动作；格式 5 core 新增只读工具 `mioon_sequence_generation_inputs_get`（`sequence.generation-inputs.get`，输出最多 64 条）。详见 `docs/verification/format5-mio-mt5.md`。
+- 格式 5 套件按授权重生成：99 条中 96 条变化，只有 `diagnostic_text` 的 3 条（三协议）逐字节不变。逐条差异在卡笔记目录的 `mt5-fingerprint-differences.md`。
+- 格式 3/4 两套夹具未动，仍逐字节一致。

@@ -11,10 +11,11 @@ import {createFormat5SequenceEditService} from './format5-sequence-edit-service.
 import {createSequenceEditing, readSequenceEditHistory} from './sequence-edit.ts';
 import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {readSequenceSyncContext} from './format5-sequence-sync.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
 import type {BoardIntentOperation, SequenceEditDialogueEdit, SequenceEditDialogueIntent, SequenceEditEnvelope,
-  SequenceEditIntent, SequenceEditReceipt, SequenceEditReferenceIntent,
+  SequenceEditIntent, SequenceEditPrevisIntent, SequenceEditReceipt, SequenceEditReferenceIntent,
   SequenceEditSubjectIntent, SequenceEditTrackIntent} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
@@ -44,6 +45,8 @@ const versionOf = (store: ProjectStore, nodeId: string): string | null => {
 };
 function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: {mainTrack?: {trackId?: string}}): ReturnType<typeof sequenceSyncIntent> {
   switch (action.kind) {
+    case 'split-at-scenes': return sequenceSyncIntent({kind: 'clip-split-scenes',
+      assetId: action.assetId, resultId: action.resultId});
     case 'reorder': return sequenceSyncIntent({kind: 'clip-move', clipId: action.clipId, beforeClipId: action.beforeClipId});
     case 'remove': return sequenceSyncIntent({kind: 'clip-remove', clipId: action.clipId});
     case 'split': return sequenceSyncIntent({kind: 'clip-split', clipId: action.clipId,
@@ -107,6 +110,18 @@ function dialogueIntent(action: Extract<MioSequenceAction, {kind: 'dialogue'}>):
   });
   return {side: 'board', operation: {kind: 'dialogue', edits}};
 }
+
+/** A deterministic free board spot for an object the model did not place: to
+ * the right of every live shot/node, on the second row the board already uses
+ * for auxiliary cards. Kept inside the contract's coordinate range. */
+function freeBoardPosition(store: ProjectStore): {x: number; y: number} {
+  const context = readSequenceSyncContext(store);
+  const right = [...context.shots.values(), ...context.nodeRows.values()].reduce((maximum, row) => {
+    const value = (row as Row).position;
+    if (value === null || typeof value !== 'object' || !Number.isFinite((value as Row).x)) return maximum;
+    return Math.max(maximum, Number((value as Row).x));
+  }, 0);
+  return {x: Math.min(1_000_000, right + 340), y: 120};}
 function referenceRequest(action: MioSequenceAction): {referenceIntent: SequenceEditReferenceIntent; allocation: {edges: {id: string; fromId: string; toId: string}[]}} {
   switch (action.kind) {
     case 'reference-attach': {
@@ -121,12 +136,28 @@ function referenceRequest(action: MioSequenceAction): {referenceIntent: Sequence
     case 'reference-detach': return {allocation: {edges: []},
       referenceIntent: {side: 'board', operation: {kind: 'reference-edge', edit: {kind: 'detach', edgeId: action.edgeId,
         shotId: action.shotId}}}};
+    case 'reference-reorder': return {allocation: {edges: []},
+      referenceIntent: {side: 'board', operation: {kind: 'reference-edge', edit: {kind: 'reorder',
+        shotId: action.shotId, edgeIds: [...action.edgeIds]}}}};
     default: throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '不是引用线动作。', 409);
   }
 }
 function subjectIntent(action: Extract<MioSequenceAction, {kind: 'subject-binding'}>): SequenceEditSubjectIntent {
   const edit = action.edit.kind === 'create' ? {...action.edit, bindingId: randomUUID()} : action.edit;
   return {side: 'board', operation: {kind: 'subject-binding', edit} as SequenceEditSubjectIntent['operation']};
+}
+function subjectCardIntent(store: ProjectStore,
+  action: Extract<MioSequenceAction, {kind: 'subject-card-create' | 'subject-card-delete'}>): SequenceEditSubjectIntent {
+  if (action.kind === 'subject-card-create') return {side: 'board', operation: {kind: 'subject.card.create',
+    nodeId: randomUUID(), subjectId: action.subjectId, position: action.position ?? freeBoardPosition(store)}};
+  return {side: 'board', operation: {kind: 'subject.card.delete', nodeId: action.nodeId}};
+}
+function previsIntent(store: ProjectStore,
+  action: Extract<MioSequenceAction, {kind: 'previs-create' | 'previs-scene-set'}>): SequenceEditPrevisIntent {
+  if (action.kind === 'previs-create') return {side: 'board', operation: {kind: 'previs-create',
+    nodeId: randomUUID(), label: action.label, position: action.position ?? freeBoardPosition(store)}};
+  return {side: 'board', operation: {kind: 'previs-scene-set', nodeId: action.nodeId,
+    expectedSceneRevision: action.expectedSceneRevision, scene: action.scene}};
 }
 export interface MioSequencePlan {
   readonly envelope: SequenceEditEnvelope;
@@ -154,22 +185,32 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
   const request: Row = {projectId, requestId, origin: 'mio'};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
-  else if (action.kind === 'reference-attach' || action.kind === 'reference-set-role' || action.kind === 'reference-detach') {
+  else if (action.kind === 'subject-card-create' || action.kind === 'subject-card-delete')
+    request.subjectIntent = subjectCardIntent(store, action);
+  else if (action.kind === 'previs-create' || action.kind === 'previs-scene-set')
+    request.previsIntent = previsIntent(store, action);
+  else if (action.kind === 'reference-attach' || action.kind === 'reference-set-role'
+    || action.kind === 'reference-detach' || action.kind === 'reference-reorder') {
     const reference = referenceRequest(action);
     request.referenceIntent = reference.referenceIntent;
     request.allocation = reference.allocation;
   }
+  else if (action.kind === 'subtitles') request.subtitlesIntent = {side: 'timeline', operation: {kind: 'subtitles',
+    edits: action.edits.map(edit => edit.kind === 'add' ? {kind: 'add' as const, cue: {...edit.cue, id: randomUUID()}}
+      : edit)}};
   else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
+  else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
+    operation: {kind: 'timeline-format', presetId: action.presetId}};
   else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',
     operation: {kind: 'track-structure', edit: {kind: 'add', trackId: randomUUID(), trackKind: action.trackKind,
       ...(action.name ? {name: action.name} : {})}}} satisfies SequenceEditTrackIntent;
   else if (action.kind === 'track-update') request.trackIntent = {side: 'timeline',
     operation: {kind: 'track-structure', edit: {kind: 'update', trackId: action.trackId, patch: action.patch}}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
-  'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
-  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
+    'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
+  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
     const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');

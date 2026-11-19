@@ -141,6 +141,51 @@ def main() -> int:
             log('UI-E3 inspector property edits go through the shared entry with undo/redo')
             capture(page, 'ui-e3-panels.png')
 
+            # UI-E3 review: the quick transition add entry B hid in AU is back;
+            # colour/audio-role/volume-envelope/loudness-gain batches all commit
+            # through the same production session, and the format panel path runs.
+            # The previous panel check already set a transition on that cut; clear
+            # it through the same session so the quick-add button appears again.
+            cleared = page.evaluate("() => window.__panel.clearTransition('90000000-0000-4000-8000-000000000031')")
+            assert cleared['ok'], cleared
+            page.wait_for_function(
+                "() => { const state = window.__wireState;"
+                " const clip = ((state.data || {}).timeline?.clips || []).find(item => item.id === '90000000-0000-4000-8000-000000000031');"
+                " return !clip?.transitionIn; }",
+                timeout=15000)
+            transition_button = page.get_by_test_id('timeline-transition-add-90000000-0000-4000-8000-000000000031')
+            expect(transition_button).to_be_visible()
+            expect(transition_button).to_be_enabled()
+            transition_button.click()
+            page.wait_for_function(
+                "() => { const state = window.__wireState;"
+                " const clip = ((state.data || {}).timeline?.clips || []).find(item => item.id === '90000000-0000-4000-8000-000000000031');"
+                " return document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'panel-transition-add'"
+                "   && clip?.transitionIn?.kind === 'dissolve'; }",
+                timeout=15000)
+            gains = page.evaluate("() => window.__panel.applyGains([{clipId: '90000000-0000-4000-8000-000000000030', gain: 0.8}])")
+            assert gains['ok'], gains
+            role = page.evaluate("() => window.__panel.audioRole('90000000-0000-4000-8000-000000000030', 'music')")
+            assert role['ok'], role
+            envelope = page.evaluate("() => window.__panel.envelope('90000000-0000-4000-8000-000000000030')")
+            assert envelope['ok'], envelope
+            page.wait_for_function(
+                "() => { const state = window.__wireState;"
+                " const clip = ((state.data || {}).timeline?.clips || []).find(item => item.id === '90000000-0000-4000-8000-000000000030');"
+                " return clip?.gain === 0.8 && clip?.audioRole === 'music'"
+                "   && clip?.volumeEnvelope?.profileId === 'mioon-clip-linear-attenuation-v1'; }",
+                timeout=15000)
+            log('UI-E3 AU entries restored: quick transition, colour/audio role/envelope, loudness gains')
+            # Format panel (FR-B2) through the production session.commit path.
+            format_result = page.evaluate("() => window.__panel.format('landscape_720')")
+            assert format_result['ok'], format_result
+            page.wait_for_function(
+                "() => { const timeline = (window.__wireState.data || {}).timeline || {};"
+                " return timeline.width === 1280 && timeline.height === 720; }",
+                timeout=15000)
+            log('UI-E3 format panel switches the output frame through the shared entry')
+            capture(page, 'ui-e3-au-entries.png')
+
             # Subtitle page: plain add/update/remove, one-step undo, overlap
             # rejection, and an in-flight second click that never writes.
             added = page.evaluate("() => window.__panel.addSubtitle('面板字幕', 10, 20)")
@@ -238,15 +283,29 @@ def main() -> int:
 
             # Native shortcuts traverse the same unified history on a trim.
             page.get_by_test_id(f'timeline-clip-{CLIP_A}').click()
+            trim_base = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
             page.get_by_test_id('wire-trim').click()
-            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'clip-trim'")
-            before = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
+            # The label lands before the follow-up history refresh; wait for the
+            # cursor too so the shortcut expectations below are exact.
+            page.wait_for_function(
+                "position => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'clip-trim'"
+                " && Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === position",
+                arg=trim_base + 1, timeout=15000)
+            before = trim_base + 1
             page.locator('body').press('Control+z')
-            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'")
+            # The shortcut publishes its operation before the follow-up history
+            # refresh lands; wait for the cursor itself, not just the label.
+            page.wait_for_function(
+                "position => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'"
+                " && Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === position",
+                arg=before - 1, timeout=15000)
             after_undo = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
             assert after_undo == before - 1, (before, after_undo)
             page.locator('body').press('Control+Shift+z')
-            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'redo'")
+            page.wait_for_function(
+                "position => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'redo'"
+                " && Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === position",
+                arg=before, timeout=15000)
             after_redo = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
             assert after_redo == before, (before, after_redo)
             log('Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z traverse the unified history', position=after_redo)
@@ -288,6 +347,7 @@ def main() -> int:
             expect(issue).to_have_attribute('data-code', 'PLACEHOLDER_CLIP')
             page.get_by_test_id('wire-export-locate').click()
             log('export preflight reports PLACEHOLDER_CLIP and locates its clip', code='PLACEHOLDER_CLIP')
+
             capture(page, '21-export-placeholder.png')
             assert not errors, errors
             result.update({'ok': True, 'projectClips': len(restored['data']['timeline']['clips']),
