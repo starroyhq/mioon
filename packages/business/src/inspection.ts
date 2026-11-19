@@ -8,8 +8,7 @@ import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {readTimelineStorage,timelineStorageFormat} from './project-file/timeline-storage.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
@@ -137,7 +136,9 @@ function excerpt(value: unknown): {prompt: string;promptTruncated: boolean} {
 /** Format-5 chain/group evidence attached to the existing bounded inspect
  * DTOs. Released 3/4 formats keep their exact DTO. */
 function format5SequenceEvidence(db: DatabaseSync,projectId: string): Record<string,unknown>|null {
- if(timelineStorageFormat(db,'project')!==FORMAT5_PROJECT_SCHEMA_VERSION)return null;
+ let isFormat5=false;
+ try{isFormat5=db.prepare("SELECT 1 AS present FROM project.sqlite_schema WHERE type='table' AND name='timeline_clips' LIMIT 1").get()!==undefined;}catch{isFormat5=false;}
+ if(!isFormat5)return null;
  const timeline=readFormat5TimelineRecord(db,'project');
  if(!timeline||timeline.projectId!==projectId)return null;
  const sync=db.prepare('SELECT revision FROM project.sequence_sync_state').get() as {revision?:unknown}|undefined;
