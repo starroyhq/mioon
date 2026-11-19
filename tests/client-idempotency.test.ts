@@ -100,3 +100,47 @@ test('corrupted pending record blocks replacement instead of generating a new re
   assert.throws(() => prepareSubmission(entry({ input: { requestId: 'replacement' } })), /记录损坏/);
   assert.deepEqual(JSON.parse(storage.getItem(key)!)!.input, {});
 });
+
+test('durable edit task evidence clears only the exact prepared intent', (t: TestContext) => {
+  fixture(t); const projectId = 'project-a';
+  const original = entry({ operation: 'timeline.clip.update', key: 'timeline:mutation',
+    input: { projectId, expectedRevision: 3, requestId: 'durable-request', clipId: 'clip-a', patch: { startFrame: 1 } } });
+  prepareSubmission(original);
+  const task = (overrides: Record<string, unknown> = {}) => ({ id: 'task-1', projectId, operation: 'timeline.clip.update',
+    requestId: 'durable-request', status: 'applied', input: original.input, ...overrides });
+  reconcilePending(projectId, { editTasks: [task({ input: { ...original.input, patch: { title: 'y' } } })] });
+  assert.deepEqual(readPending(projectId, original.key), original);
+  reconcilePending(projectId, { editTasks: [task({ operation: 'timeline.track.add' })] });
+  assert.deepEqual(readPending(projectId, original.key), original);
+  for (const status of ['prepared', 'dispatching', 'unknown']) {
+    reconcilePending(projectId, { editTasks: [task({ status })] });
+    assert.deepEqual(readPending(projectId, original.key), original, status);
+  }
+  reconcilePending(projectId, { editTasks: [task({ status: 'not_applied' })] });
+  assert.equal(readPending(projectId, original.key), null);
+});
+
+test('immutable receipt evidence clears only the project-scoped exact operation', (t: TestContext) => {
+  fixture(t); const projectId = 'project-a';
+  const original = entry({ operation: 'asset.annotation.set', key: 'annotation:asset-a',
+    input: { projectId, assetId: 'asset-a', expectedRevision: 2, requestId: 'receipt-request', tags: [], note: 'x' } });
+  prepareSubmission(original);
+  const outcomes = (value: {applied: boolean;operation: string|null}) => new Map([['receipt-request', value]]);
+  reconcilePending(projectId, { requestOutcomes: outcomes({ applied: false, operation: null }) });
+  assert.deepEqual(readPending(projectId, original.key), original);
+  reconcilePending(projectId, { requestOutcomes: outcomes({ applied: true, operation: 'asset.disposition.set' }) });
+  assert.deepEqual(readPending(projectId, original.key), original);
+  reconcilePending(projectId, { requestOutcomes: outcomes({ applied: true, operation: 'asset.annotation.set' }) });
+  assert.equal(readPending(projectId, original.key), null);
+});
+
+test('the timeline snapshot safety decision still holds after adding receipt evidence', (t: TestContext) => {
+  fixture(t); const projectId = 'project-a';
+  const original = entry({ operation: 'timeline.clip.update', key: 'timeline:mutation',
+    input: { projectId, expectedRevision: 7, requestId: 'timeline-request', clipId: 'clip-a', patch: { startFrame: 1 } } });
+  prepareSubmission(original);
+  reconcilePending(projectId, { timeline: { revision: 99 }, jobs: [], exports: [], requestOutcomes: new Map() });
+  assert.deepEqual(readPending(projectId, original.key), original);
+  reconcilePending(projectId, { requestOutcomes: new Map([['timeline-request', { applied: true, operation: 'timeline.clip.update' }]]) });
+  assert.equal(readPending(projectId, original.key), null);
+});

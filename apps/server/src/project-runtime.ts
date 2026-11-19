@@ -51,6 +51,7 @@ import { createImageHttp } from './image-http.ts';
 import type { ServerOptions } from './index.ts';
 import type { createProjectDeletionGate } from './project-deletion-gate.ts';
 import { createProjectPackageHttp } from './project-package-http.ts';
+import { createRequestOutcomeHttp } from './request-outcome-http.ts';
 import type { ProjectAddress } from './project-host/request.ts';
 import {ProjectHostCleanupError} from './project-host/host.ts';
 import {createProjectDraftsFactory} from './project-host/drafts.ts';
@@ -189,6 +190,10 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
     // reconciles durable evidence and never dispatches a prepared edit.
     if (!deferBackgroundRecovery) await editTasks.reconcileStartup();
     const editTasksHttp = createEditTasksHttp({tasks: editTasks, signal: shutdown.signal});
+    // Read-only receipt lookup for retained UI requests. It is deliberately a
+    // small project HTTP route, not an RPC operation: RPC schemas feed the
+    // agent tool catalog and the frozen request fingerprints.
+    const requestOutcomeHttp = createRequestOutcomeHttp({db: ordinaryStore.db, signal: shutdown.signal, assertAvailable: () => assertProjectStore(store)});
     const workspacePreferences: WorkspacePreferences = createWorkspacePreferences(ordinaryStore,application?{application:{db:application.db,tx:application.tx,hasProject}}:{});
     uiPreferences = createUiPreferences({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
@@ -229,7 +234,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
     return {
       providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
       draftsFactory,
-      editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, projectPackageHttp,
+      editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, requestOutcomeHttp, projectPackageHttp,
       exportFileRecovery, audioPreviewHttp, continuousAudioHttp,
       taskToolsV2, taskRuntimeV2, taskHttpV2, agentDiagnosticsHttp, projectRules, closeSettings,
       backgroundTasks: createProjectBackgroundState(store),

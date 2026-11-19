@@ -262,6 +262,8 @@ import { isGenerationAspectNotApplied, isGenerationAspectResponse } from '../../
 import type { GenerationAspectSource } from '../../../packages/contracts/src/generation-aspect.ts';
 import { readGenerationProviderDirectory } from './video-provider-directory.ts';
 import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.ts';
+import { createRequestOutcomeClient } from './request-outcome-client.ts';
+import { rereadProjectPending, rereadEvidence } from './pending-reread.ts';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.ts';
 import { createWorkspacePreferences } from './workspace-preferences.ts';
@@ -765,6 +767,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   if (!tasksRef.current) tasksRef.current = createEditTaskController({ onChange: ((projectId: string, snapshot: never) => {
     if (currentProject.current === projectId) setTaskState(snapshot as unknown as TaskState);
   }) as unknown as () => void } as unknown as Parameters<typeof createEditTaskController>[0]);
+  const requestOutcomeClientRef = useRef<ReturnType<typeof createRequestOutcomeClient> | null>(null);
+  if (!requestOutcomeClientRef.current) requestOutcomeClientRef.current = createRequestOutcomeClient();
+  const rereadFlight = useRef<{projectId: string;epoch: number;session: string|null}|null>(null);
   const navigationEpoch = useRef(0);
   const [, setNavigationPresentation] = useState(0);
   const projectEpoch = useRef(0);
@@ -1196,6 +1201,35 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     updateView('shared', { assetSearch: asset.name, assetFilter: 'all' }); setPanelOpen('assets', true); setMobilePanel('assets');
     return true;
   }
+  // One bounded automatic re-read per project epoch. It only loads, reads edit
+  // tasks and receipt outcomes; it never replays, executes or acknowledges a
+  // write. A failed or superseded pass keeps every retained request untouched.
+  const autoReread = useCallback(async (projectId: string,{ load = true }: {load?: boolean} = {}): Promise<void> => {
+    const epoch = projectEpoch.current, session = editorSession.current;
+    const current = () => currentProject.current === projectId && projectEpoch.current === epoch && editorSession.current === session &&
+      importSession.current.active && !importSession.current.leaseRevoked;
+    if (!current() || !tasksRef.current) return;
+    const flying = rereadFlight.current;
+    if (flying?.projectId === projectId && flying.epoch === epoch) return;
+    rereadFlight.current = { projectId, epoch, session };
+    try {
+      const snapshot = load ? await tasksRef.current.reread(projectId) : tasksRef.current.getState(projectId);
+      if (!current()) return;
+      const entries = pendingForProject(projectId, { strict: true });
+      const results = await rereadProjectPending(projectId, { entries, readOutcome: requestOutcomeClientRef.current!.read, current });
+      if (!current()) return;
+      const snapshotData = dataRef.current as unknown as { jobs?: unknown; exports?: unknown };
+      reconcilePending(projectId, { jobs: snapshotData.jobs, exports: snapshotData.exports, editTasks: snapshot.items, ...rereadEvidence(results) });
+      const remaining = pendingForProject(projectId);
+      const remainingKeys = new Set(remaining.map(entry => entry.key));
+      setPending(remaining);
+      const cleared = entries.filter(entry => !remainingKeys.has(entry.key));
+      if (cleared.some(entry => entry.operation === 'asset.annotation.set')) setAnnotationRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 }));
+      if (cleared.some(entry => entry.operation === 'asset.disposition.set')) setDispositionRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 }));
+      if (cleared.some(entry => entry.operation.startsWith('subject.'))) setSubjectRefresh(value => ({ ...value, [projectId]: (value[projectId] || 0) + 1 }));
+    } catch { /* Retained requests and their original bytes stay; no toast on a failed probe. */ }
+    finally { if (rereadFlight.current?.projectId === projectId && rereadFlight.current?.epoch === epoch) rereadFlight.current = null; }
+  }, []);
   async function selectProject(id: string, initial = false, fromHistory = false, reloadPreferences = false): Promise<boolean> {
     if(importSession.current.leaseRevoked)return false;
     if (nativeWindow && id !== nativeWindow.context.initialProjectId) return nativeProjectEntry?.open(id) ?? false;
@@ -1259,7 +1293,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!projectResponseMatches(next, id) || !canPublishProjectOpen(attempt, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: editorSession.current as string, preferencesReady: viewReady.current, dataProjectId: next?.project?.id || null, loading: false })) throw Object.assign(localizedError(msg('shell.error.selectionNotReady')), { code: 'BACKEND_PROTOCOL_ERROR' });
     openedProject.current = attempt; setProjectOpening({ phase: 'ready', projectId: id, error: '' });
     if (!nativeWindow) void window.__mioonUiPreferences?.markOpened?.(id);
-    void tasksRef.current!.load(id);
+    void autoReread(id);
     if (next && !viewRef.current!.canvas.selectedId) { const first = [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] || next.nodes.find((n: AppNode) => n.type !== 'text') || next.nodes[0]; if (first) updateView('canvas', { selectedId: first.id }, { passive: true }); }
     return true;
     } catch (e) {
@@ -2188,7 +2222,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function captureTaskView(): unknown { return captureTaskWorkspaceIntent(readTaskViewContext); }
   function openTasks(canReveal: () => boolean = () => true, selectedId?: string): boolean {
     if (clipDraftRef.current?.hasPendingComposition() || !canReveal() || !currentProject.current || !viewReady.current) return false;
-    markPanelIntent(); setSelectedTaskId(selectedId); setShowDelivery(false); setShowImage(false); setShowTasks(true); return true;
+    markPanelIntent(); setSelectedTaskId(selectedId); setShowDelivery(false); setShowImage(false); setShowTasks(true);
+    // Opening the task center is one of the two bounded automatic re-read
+    // triggers; it runs with the same project epoch guard and never blocks.
+    void autoReread(currentProject.current);
+    return true;
   }
   async function openAgentRequests(selectedId?: string): Promise<boolean> {
     const location = parseAgentTaskRecoveryLocation(selectedId);

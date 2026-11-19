@@ -31,6 +31,7 @@ export interface EditTaskSubmitInput {
 export interface EditTaskController {
   getState(projectId: string): EditTaskSnapshot;
   load(projectId: string): Promise<EditTaskSnapshot>;
+  reread(projectId: string): Promise<EditTaskSnapshot>;
   blocked(projectId: string,lane?: string|null): boolean;
   assertReady(projectId: string,lane: string|null): void;
   submit(input: EditTaskSubmitInput,options?: {canExecute?: (task?: EditTask)=>boolean}): Promise<EditTaskEnvelope>;
@@ -124,6 +125,27 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     }
     return getState(projectId);
   }
+  // Read-only automatic re-read. It may only load, get and reconcile: the
+  // server's reconcile answers from the immutable receipt and otherwise turns a
+  // stale dispatching claim into `unknown`. It never dispatches a write, never
+  // executes and never acknowledges; acknowledgment stays an explicit action.
+  async function reread(projectId: string): Promise<EditTaskSnapshot> {
+    const loaded = await load(projectId);
+    const value = state(projectId), epoch = value.epoch;
+    for (const task of loaded.items) {
+      if (epoch !== value.epoch) return getState(projectId);
+      if (terminal(task) || task.status === 'prepared' || value.busy.has(task.id)) continue;
+      const options = task.operation === 'timeline.loudness.apply' ? { operation: task.operation } : {};
+      try {
+        let response = receive(await client.get({ projectId, taskId: task.id, ...options }), taskIdentity(task), value);
+        if (epoch !== value.epoch) return getState(projectId);
+        if (terminal(response.task) || response.task.acknowledged || value.busy.has(task.id)) continue;
+        response = receive(await client.reconcile({ projectId, taskId: task.id, digest: task.digest }, options as EditTaskRequestOptions), taskIdentity(task), value);
+        if (epoch !== value.epoch) return getState(projectId);
+      } catch { /* A failed probe keeps the task and its retained intent unchanged. */ }
+    }
+    return getState(projectId);
+  }
   function blocked(projectId: string,lane: string|null): boolean {
     const value = state(projectId);
     return value.phase !== 'ready' || Boolean(lane && value.busy.has(lane)) || [...value.tasks.values()].some(task => !task.acknowledged && (!lane || task.lane === lane));
@@ -185,6 +207,6 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     return receive(await client.prepare({ projectId: entry.projectId, operation: entry.operation, input: frozen(entry.input), origin: 'legacy_session' }),
       { projectId: entry.projectId, operation: entry.operation, input: entry.input, origin: 'legacy_session' }, value);
   }
-  return { getState, load, blocked: (projectId: string,lane?: string|null): boolean => blocked(projectId, lane ?? null), assertReady, submit, recover, acknowledge, adopt };
+  return { getState, load, reread, blocked: (projectId: string,lane?: string|null): boolean => blocked(projectId, lane ?? null), assertReady, submit, recover, acknowledge, adopt };
 }
 function taskIdentity(task: EditTask): TaskExpectation { return { projectId: task.projectId, taskId: task.id, digest: task.digest, operation: task.operation, input: task.input, origin: task.origin }; }
