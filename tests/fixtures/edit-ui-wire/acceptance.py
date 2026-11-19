@@ -49,6 +49,49 @@ def main() -> int:
             assert state['data']['timeline']['clips'], 'fixture timeline must have clips'
             assert len(state['data']['timeline']['clips']) == 4
 
+            # 21-06: the shot properties dialogue panel edits the shot's line list
+            # through the real sequence preview/commit and projects real cues; one
+            # undo then returns the project to the pristine structural baseline.
+            panel = page.get_by_test_id('shot-dialogue')
+            expect(panel).to_be_visible()
+            textarea = page.get_by_test_id('shot-dialogue-text')
+            expect(textarea).to_have_value('我们回不去了。')
+            textarea.fill('我们回不去了。\n走吧。')
+            page.get_by_test_id('shot-dialogue-save').click()
+            page.wait_for_function(
+                "() => { const state = window.__wireState;"
+                " const shot = (state.data.shots || []).find(item => item.id === '90000000-0000-4000-8000-000000000003');"
+                " const cues = (((state.data.timeline || {}).subtitles || {}).cues || [])"
+                "   .filter(cue => cue.dialogueRef && cue.dialogueRef.shotId === '90000000-0000-4000-8000-000000000003');"
+                " return Boolean(shot) && (shot.dialogue || []).length === 2 && cues.length === 2; }",
+                timeout=15000)
+            dialogue = page.evaluate('() => window.__wireState')
+            shot = [item for item in dialogue['data']['shots'] if item['id'] == '90000000-0000-4000-8000-000000000003'][0]
+            assert [line['text'] for line in shot['dialogue']] == ['我们回不去了。', '走吧。'], 'the panel writes the ordered shot lines'
+            shot_cues = [cue for cue in dialogue['data']['timeline']['subtitles']['cues']
+                         if cue.get('dialogueRef') and cue['dialogueRef']['shotId'] == '90000000-0000-4000-8000-000000000003']
+            assert len(shot_cues) == 2, 'each line has one real cue'
+            for cue in shot_cues:
+                line = [item for item in shot['dialogue'] if item['id'] == cue['dialogueRef']['lineId']][0]
+                assert cue['text'] == line['text'], 'the cue text is the same line text'
+            all_linked = [cue for cue in dialogue['data']['timeline']['subtitles']['cues'] if cue.get('dialogueRef')]
+            expect(page.locator('[data-testid^="subtitle-cue-"][data-dialogue-shot]')).to_have_count(len(all_linked))
+            expect(page.get_by_test_id('shot-dialogue-cues')).to_contain_text('2')
+            log('21-06 dialogue panel saves lines and their linked subtitle cues', position=dialogue['history']['position'],
+                shotCues=len(shot_cues), linkedCues=len(all_linked))
+            capture(page, '21-06-dialogue.png')
+            # One undo drops the lines and their cues before the structural flows.
+            page.get_by_test_id('wire-undo-key').click()
+            page.wait_for_function(
+                "() => { const state = window.__wireState;"
+                " const shot = (state.data.shots || []).find(item => item.id === '90000000-0000-4000-8000-000000000003');"
+                " const cues = (((state.data.timeline || {}).subtitles || {}).cues || []);"
+                " return document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'"
+                "   && (shot.dialogue || []).length === 1 && cues.length === 0; }",
+                timeout=15000)
+            log('21-06 one undo restores the pre-dialogue shot lines and timeline')
+
+
             # 21-04 first: delete, one undo bar, then undo (simple action).
             page.get_by_test_id(f'timeline-clip-{CLIP_A}').click()
             page.get_by_test_id('wire-delete').click()
@@ -116,38 +159,6 @@ def main() -> int:
             page.get_by_test_id('wire-export-locate').click()
             log('export preflight reports PLACEHOLDER_CLIP and locates its clip', code='PLACEHOLDER_CLIP')
             capture(page, '21-export-placeholder.png')
-            # 21-06: the shot properties dialogue panel edits the shot line
-            # through the real sequence preview/commit and projects its cues even
-            # after the structural flows above.
-            panel = page.get_by_test_id('shot-dialogue')
-            expect(panel).to_be_visible()
-            textarea = page.get_by_test_id('shot-dialogue-text')
-            expect(textarea).to_have_value('我们回不去了。')
-            textarea.fill('我们回不去了。\n走吧。')
-            page.get_by_test_id('shot-dialogue-save').click()
-            page.wait_for_function(
-                "() => { const state = window.__wireState;"
-                " const shot = (state.data.shots || []).find(item => item.id === '90000000-0000-4000-8000-000000000003');"
-                " const cues = (((state.data.timeline || {}).subtitles || {}).cues || [])"
-                "   .filter(cue => cue.dialogueRef && cue.dialogueRef.shotId === '90000000-0000-4000-8000-000000000003');"
-                " return Boolean(shot) && (shot.dialogue || []).length === 2 && cues.length === 2; }",
-                timeout=15000)
-            dialogue = page.evaluate('() => window.__wireState')
-            shot = [item for item in dialogue['data']['shots'] if item['id'] == '90000000-0000-4000-8000-000000000003'][0]
-            assert [line['text'] for line in shot['dialogue']] == ['我们回不去了。', '走吧。'], 'the panel writes the ordered shot lines'
-            shot_cues = [cue for cue in dialogue['data']['timeline']['subtitles']['cues']
-                         if cue.get('dialogueRef') and cue['dialogueRef']['shotId'] == '90000000-0000-4000-8000-000000000003']
-            assert len(shot_cues) == 2, 'each line has one real cue'
-            for cue in shot_cues:
-                line = [item for item in shot['dialogue'] if item['id'] == cue['dialogueRef']['lineId']][0]
-                assert cue['text'] == line['text'], 'the cue text is the same line text'
-            all_linked = [cue for cue in dialogue['data']['timeline']['subtitles']['cues'] if cue.get('dialogueRef')]
-            expect(page.locator('[data-testid^="subtitle-cue-"][data-dialogue-shot]')).to_have_count(len(all_linked))
-            expect(page.get_by_test_id('shot-dialogue-cues')).to_contain_text('2')
-            log('21-06 dialogue panel saves lines and their linked subtitle cues', position=dialogue['history']['position'],
-                shotCues=len(shot_cues), linkedCues=len(all_linked))
-            capture(page, '21-06-dialogue.png')
-
             assert not errors, errors
             result.update({'ok': True, 'projectClips': len(restored['data']['timeline']['clips']),
                            'browserVersion': browser.version})
