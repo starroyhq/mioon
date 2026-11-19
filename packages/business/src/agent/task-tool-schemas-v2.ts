@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="dca30c4bde1a0cb2349e20a59d5701c66f2e0983136e37f67f77b601a0a69ec0";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="f56a3ce6d8ee3ef9ae6b29399f8845fad6176ae2ad917230948f63f8ca1b526b";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -212,6 +212,127 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
           "kind",
           "nodeId",
           "version"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "board.root.create"
+          },
+          "nodeId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "name": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 150
+          },
+          "position": {
+           "type": "object",
+           "properties": {
+            "x": {
+             "type": "number"
+            },
+            "y": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "x",
+            "y"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "required": [
+          "kind",
+          "nodeId",
+          "name",
+          "position"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "board.shot.append"
+          },
+          "nodeId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "name": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 150
+          },
+          "position": {
+           "type": "object",
+           "properties": {
+            "x": {
+             "type": "number"
+            },
+            "y": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "x",
+            "y"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "required": [
+          "kind",
+          "nodeId",
+          "name"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "board.layout.move"
+          },
+          "moves": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "nodeId": {
+              "type": "string",
+              "format": "uuid"
+             },
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "nodeId",
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
+           },
+           "minItems": 1,
+           "maxItems": 500
+          }
+         },
+         "required": [
+          "kind",
+          "moves"
          ],
          "additionalProperties": false
         },
@@ -912,7 +1033,10 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "board",
             "sync-board",
             "board-version",
-            "track"
+            "track",
+            "board.root.create",
+            "board.shot.append",
+            "board.layout.move"
            ]
           }
          },
@@ -1432,6 +1556,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "actionId",
    "expected"
   ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "sequence.board.get": {
+  "type": "object",
+  "properties": {},
+  "required": [],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },

@@ -6,14 +6,17 @@ import type {ChainReferenceRole} from '../../../../packages/contracts/src/board-
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import './edges.css';
 
-export type BoardSequenceEdge = Edge<{reduceMotion?: boolean}, 'sequence'>;
-export type BoardReferenceEdge = Edge<{role: ChainReferenceRole; reduceMotion?: boolean}, 'reference'> & {
-  data: {role: ChainReferenceRole; reduceMotion?: boolean};
+export type BoardSequenceEdge = Edge<{reduceMotion?: boolean; selected?: boolean}, 'sequence'>;
+export type BoardReferenceEdge = Edge<{role: ChainReferenceRole; reduceMotion?: boolean; selected?: boolean}, 'reference'> & {
+  data: {role: ChainReferenceRole; reduceMotion?: boolean; selected?: boolean};
 };
 
 const roleKeys = {
   first_frame: 'boardUi.role.firstFrame',
+  last_frame: 'boardUi.role.lastFrame',
+  reference_image: 'boardUi.role.referenceImage',
   subject_reference: 'boardUi.role.subject',
+  style_reference: 'boardUi.role.style',
   composition: 'boardUi.role.composition',
   reference_audio: 'boardUi.role.audio',
   reference_video: 'boardUi.role.video',
@@ -51,7 +54,7 @@ export function getBoardReferencePath({sourceX, sourceY, targetX, targetY,
 export const SequenceEdgeView = memo(function SequenceEdgeView(props: EdgeProps<BoardSequenceEdge>) {
   const [path] = getSmoothStepPath({...props, offset: 32, borderRadius: 24});
   const motionStyle: CSSProperties = {offsetPath: `path('${path}') view-box`};
-  return <g className="board-sequence-edge" data-board-edge-kind="sequence" data-edge-id={props.id}
+  return <g className={`board-sequence-edge${props.data?.selected ? ' is-selected' : ''}`} data-board-edge-kind="sequence" data-edge-id={props.id}
     data-testid={`board-sequence-edge-${props.id}`} data-reduce-motion={props.data?.reduceMotion ? 'true' : undefined}>
     <BaseEdge id={props.id} path={path} interactionWidth={props.interactionWidth}
       className="board-sequence-line" style={{...props.style, strokeDasharray: 'none'}} />
@@ -62,7 +65,7 @@ export const SequenceEdgeView = memo(function SequenceEdgeView(props: EdgeProps<
 export const ReferenceEdgeView = memo(function ReferenceEdgeView(props: EdgeProps<BoardReferenceEdge>) {
   const {t} = useI18n();
   const [path, labelX, labelY] = getBoardReferencePath(props);
-  return <g className="board-reference-edge" data-board-edge-kind="reference" data-edge-id={props.id}
+  return <g className={`board-reference-edge${props.data?.selected ? ' is-selected' : ''}`} data-board-edge-kind="reference" data-edge-id={props.id}
     data-testid={`board-reference-edge-${props.id}`} data-reduce-motion={props.data?.reduceMotion ? 'true' : undefined}>
     <BaseEdge id={props.id} path={path} interactionWidth={props.interactionWidth}
       className="board-reference-line" style={{...props.style, strokeDasharray: '7 6'}} />

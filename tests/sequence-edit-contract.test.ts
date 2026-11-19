@@ -105,13 +105,19 @@ test('side follows the SA operation kind and every kind maps to one stable name'
   assert.equal(sequenceEditIntentSide({kind: 'sync-board'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'board-version'}), 'board');
   assert.equal(sequenceEditIntentSide({kind: 'track'}), 'timeline');
-  const samples: Array<[ChainSyncOperation, string]> = [
+  assert.equal(sequenceEditIntentSide({kind: 'board.root.create'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.shot.append'}), 'board');
+  assert.equal(sequenceEditIntentSide({kind: 'board.layout.move'}), 'board');
+  const samples: Array<[ChainSyncOperation | import('../packages/contracts/src/sequence-edit.ts').BoardIntentOperation, string]> = [
     [{kind: 'board', edit: {kind: 'connect', fromId: shotA, toId: shotB}}, 'board.connect'],
     [{kind: 'board', edit: {kind: 'disconnect', fromId: shotA, toId: shotB}}, 'board.disconnect'],
     [{kind: 'board', edit: {kind: 'insert', fromId: shotA, toId: shotB, nodeId: nodeA}}, 'board.insert'],
     [{kind: 'board', edit: {kind: 'delete', nodeId: nodeA}}, 'board.delete'],
     [{kind: 'sync-board'}, 'board.sync'],
     [{kind: 'board-version', nodeId: nodeA, version: null}, 'board.version'],
+    [{kind: 'board.root.create', nodeId: nodeA, name: 'Film', position: {x: 0, y: 0}}, 'board.root.create'],
+    [{kind: 'board.shot.append', nodeId: nodeA, name: 'Shot'}, 'board.shot.append'],
+    [{kind: 'board.layout.move', moves: [{nodeId: nodeA, x: 10, y: 20}]}, 'board.layout.move'],
     [{kind: 'track', edit: {kind: 'move', clipId: clipA, beforeClipId: null}}, 'timeline.clip.move'],
     [{kind: 'track', edit: {kind: 'move-off-track', clipId: clipA, trackId: uuid('50'), startFrame: 0}}, 'timeline.clip.move-off-track'],
     [{kind: 'track', edit: {kind: 'remove', clipId: clipA}}, 'timeline.clip.remove'],

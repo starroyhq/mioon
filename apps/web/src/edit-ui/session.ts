@@ -27,6 +27,14 @@ export interface HistoryActionView {readonly actionId: string; readonly operatio
 export interface SequenceHistoryView {
   readonly epoch: string; readonly position: number; readonly revision: number;
   readonly undo: HistoryActionView | null; readonly redo: HistoryActionView | null;
+  /** Added by the unified history service (format-5 0.3.0). Older callers only
+   * read the cursor fields above. */
+  readonly earliestPosition?: number | null;
+  readonly atEarliest?: boolean;
+  readonly undoAvailable?: boolean;
+  readonly redoAvailable?: boolean;
+  readonly undoConflict?: boolean;
+  readonly redoConflict?: boolean;
 }
 export type SequenceRpc = (operation: string, input: unknown) => Promise<unknown>;
 
