@@ -86,6 +86,10 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('format-set'),
     presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
   z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),
+  // ED: put one library asset into the timeline. The server expands the asset
+  // into a board media node plus main clip, or an anchored overlay clip, and
+  // allocates every new identity; the model only names asset, track and frame.
+  z.object({kind: z.literal('insert-asset'), assetId: uuid, trackId: uuid.nullable(), startFrame: offset}).strict(),
   z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
   z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
     name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),

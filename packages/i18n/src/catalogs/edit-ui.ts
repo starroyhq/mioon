@@ -17,6 +17,8 @@ export const editUiMessages = {
   'editUi.copyMove.title': {'zh-Hans':'复制成新镜头再挪？','zh-Hant':'複製成新鏡頭再挪？',en:'Copy as a new shot and move?',ja:'新しいショットとして複製して移動しますか？'},
   'editUi.copyMove.cancel': {'zh-Hans':'取消','zh-Hant':'取消',en:'Cancel',ja:'キャンセル'},
   'editUi.copyMove.confirm': {'zh-Hans':'复制并挪动','zh-Hant':'複製並挪動',en:'Copy and move',ja:'複製して移動'},
+  'editUi.notice.added': {'zh-Hans':'已添加 {name}','zh-Hant':'已新增 {name}',en:'Added {name}',ja:'{name}を追加しました'},
+  'editUi.notice.pasted': {'zh-Hans':'已粘贴 {name}','zh-Hant':'已貼上 {name}',en:'Pasted {name}',ja:'{name}を貼り付けました'},
   'editUi.notice.split': {'zh-Hans':'已切开 {name}','zh-Hant':'已切開 {name}',en:'Split {name}',ja:'{name}を分割しました'},
   'editUi.notice.moved': {'zh-Hans':'已移动 {name}','zh-Hant':'已移動 {name}',en:'Moved {name}',ja:'{name}を移動しました'},
   'editUi.notice.movedOffTrack': {'zh-Hans':'已移到 {track}','zh-Hant':'已移到 {track}',en:'Moved to {track}',ja:'{track}へ移動しました'},

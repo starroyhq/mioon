@@ -19,8 +19,8 @@ import type {EditUiNotice} from '../../../apps/web/src/edit-ui/EditUiNotice.tsx'
 import ShotVersionBar from '../../../apps/web/src/edit-ui/ShotVersionBar.tsx';
 import type {EditUiInspectorSequence} from '../../../apps/web/src/edit-ui/status.tsx';
 import {
-  Format5EditSession, format5CommandErrorMessageKey, format5InspectorSequence, format5MoveCommand,
-  format5MoveOffTrackCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand,
+  Format5EditSession, format5CommandErrorMessageKey, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand,
+  format5MoveOffTrackCommand, format5PasteClipCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand,
   format5VersionCommand,
 } from '../../../apps/web/src/edit-ui/session.ts';
 import type {SequenceHistoryView} from '../../../apps/web/src/edit-ui/session.ts';
@@ -38,6 +38,10 @@ const rpc = async (operation: string, input: unknown): Promise<any> => {
 const projectId = '90000000-0000-4000-8000-000000000001';
 const mainTrackId = '90000000-0000-4000-8000-000000000060';
 const track2Id = '90000000-0000-4000-8000-000000000061';
+const audioTrackId = '90000000-0000-4000-8000-000000000062';
+const imageAssetId = '90000000-0000-4000-8000-000000000012';
+const videoAssetId = '90000000-0000-4000-8000-000000000011';
+const audioAssetId = '90000000-0000-4000-8000-000000000013';
 const imageClipId = '90000000-0000-4000-8000-000000000033';
 
 function historySource(data: WireData | null, history: SequenceHistoryView | null) {
@@ -58,13 +62,15 @@ function Harness(): React.ReactElement {
   const [notice, setNotice] = useState<EditUiNotice | null>(null);
   const [noticeActionId, setNoticeActionId] = useState<string | null>(null);
   const [copyRequest, setCopyRequest] = useState<EditUiCopyMoveRequest | null>(null);
+  const clipboard = useRef<string | null>(null);
+  const [clipboardReady, setClipboardReady] = useState(false);
   const [exportIssues, setExportIssues] = useState<readonly {code: string; clipId: string}[]>([]);
   const [lastOperation, setLastOperation] = useState('');
   const [lastError, setLastError] = useState('');
   const session = useRef(new Format5EditSession(rpc, () => projectId));
   const busy = useRef(false);
   const stateRef = useRef<Row>({});
-  stateRef.current = {data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError};
+  stateRef.current = {data, history, selectedClipId, playhead, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError};
 
   const refresh = async (): Promise<void> => {
     const project = await rpc('project.get', {projectId}) as WireData;
@@ -92,7 +98,7 @@ function Harness(): React.ReactElement {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  useEffect(() => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};}, [data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError]);
+  useEffect(() => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};}, [data, history, selectedClipId, playhead, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError]);
   const timeline = data?.timeline ?? null;
   const projection = useMemo(() => data ? format5Projection(timeline as never, data.shots as never, data.versions as never) : null,
     [data, timeline]);
@@ -169,6 +175,33 @@ function Harness(): React.ReactElement {
     } finally {busy.current = false;}
   };
   const cancelCopy = (): void => {session.current.cancelCopy(); setCopyRequest(null); setLastOperation('copy-cancelled');};
+  const insertAsset = async (assetId: string, trackId: string | null, startFrame: number): Promise<void> => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const result = await session.current.run(format5InsertAssetCommand(assetId, trackId, startFrame));
+      setLastError(result.ok ? '' : result.code);
+      if (result.ok) {
+        setNotice({id: `wire-${Date.now()}`, message: `已添加素材`}); setNoticeActionId(result.actionId ?? null);
+        await refresh();
+      }
+      setLastOperation('insert-asset');
+    } finally {busy.current = false;}
+  };
+  const copySelectedClip = (): void => {
+    if (!selectedClipId) return;
+    clipboard.current = selectedClipId; setClipboardReady(true); setLastOperation('copy-clip');
+  };
+  const pasteClip = async (): Promise<void> => {
+    if (busy.current || !clipboard.current) return;
+    busy.current = true;
+    try {
+      const result = await session.current.run(format5PasteClipCommand(clipboard.current, playhead));
+      setLastError(result.ok ? '' : result.code);
+      if (result.ok) {setNotice({id: `wire-${Date.now()}`, message: '已粘贴片段'}); setNoticeActionId(result.actionId ?? null); await refresh();}
+      setLastOperation('paste-clip');
+    } finally {busy.current = false;}
+  };
   const sequenceFor = (clipId: string | undefined): EditUiInspectorSequence | null => {
     if (!data || !clipId) return null;
     return format5InspectorSequence(timeline as never, data.shots as never, data.versions as never, clipId, {});
@@ -198,6 +231,17 @@ function Harness(): React.ReactElement {
       <button type="button" data-testid="wire-split" onClick={() => {void splitSelected();}}>切开</button>
       <button type="button" data-testid="wire-trim" onClick={() => {void trimSelected();}}>修剪</button>
       <button type="button" data-testid="wire-move-copy" onClick={() => {void moveSelected();}}>移到 V2</button>
+      <button type="button" data-testid="wire-insert-start" onClick={() => {void insertAsset(imageAssetId, null, 0);}}>素材到开头</button>
+      <button type="button" data-testid="wire-insert-mid" onClick={() => {void insertAsset(videoAssetId, null, 45);}}>素材到中间</button>
+      <button type="button" data-testid="wire-insert-end" onClick={() => {void insertAsset(imageAssetId, null, 150);}}>素材到末尾</button>
+      <button type="button" data-testid="wire-insert-v2" onClick={() => {void insertAsset(videoAssetId, track2Id, 10);}}>素材到 V2</button>
+      <button type="button" data-testid="wire-insert-audio" onClick={() => {void insertAsset(audioAssetId, audioTrackId, 5);}}>素材到音频轨</button>
+      <button type="button" data-testid="wire-copy" onClick={() => {copySelectedClip();}}>复制</button>
+      <button type="button" data-testid="wire-copy-v2" onClick={() => {const v2 = data?.timeline.clips.find((item: Row) => item.trackId === track2Id); if (v2) {clipboard.current = v2.id; setClipboardReady(true); setLastOperation('copy-clip');}}}>复制 V2 片段</button>
+      <button type="button" data-testid="wire-paste" onClick={() => {void pasteClip();}}>粘贴</button>
+      <button type="button" data-testid="wire-playhead-60" onClick={() => setPlayhead(60)}>播放头 60</button>
+      <button type="button" data-testid="wire-playhead-70" onClick={() => setPlayhead(70)}>播放头 70</button>
+      <button type="button" data-testid="wire-playhead-120" onClick={() => setPlayhead(120)}>播放头 120</button>
       <button type="button" data-testid="wire-delete" onClick={() => {void removeSelected();}}>删除</button>
       <button type="button" data-testid="wire-undo" onClick={() => {void undoNotice();}}>撤销条</button>
       <button type="button" data-testid="wire-export" onClick={() => {void exportCheck();}}>导出检查</button>
@@ -210,7 +254,7 @@ function Harness(): React.ReactElement {
         await session.current.redo(view); setLastOperation('redo'); await refresh();
       })();}}>Shift+Cmd+Z</button>
       <span className="wire-state" data-testid="wire-state" data-operation={lastOperation} data-error={lastError}
-        data-clips={data.timeline.clips.length} data-position={history?.position ?? -1}>{lastOperation || 'ready'}{lastError ? ` · ${lastError}` : ''}</span>
+        data-clips={data.timeline.clips.length} data-position={history?.position ?? -1} data-playhead={playhead}>{lastOperation || 'ready'}{lastError ? ` · ${lastError}` : ''}</span>
     </header>
     <div className="wire-main">
       <section className="wire-canvas">
@@ -218,7 +262,7 @@ function Harness(): React.ReactElement {
           historyState={historyState!} splitState={splitState!} onHistory={() => undefined} onSplit={() => {void splitSelected();}}
           onSelectClip={id => {setSelectedClipId(id); setPlayhead(timeline!.clips.find((item: Row) => item.id === id)?.startFrame ?? 0);}}
           selectedClipId={selectedClipId} selectedCueId={null} onSelectSubtitle={() => undefined}
-          onAddSubtitle={() => undefined} onAddAsset={() => undefined} onMoveClip={(clipId: string, trackId: string, startFrame: number) => {void (async () => {
+          onAddSubtitle={() => undefined} onAddAsset={(assetId: string, trackId: string, startFrame: number) => {void insertAsset(assetId, trackId === mainTrackId ? null : trackId, startFrame);}} onPasteClipboard={() => {void pasteClip();}} clipboardPasteAvailable={clipboardReady} onMoveClip={(clipId: string, trackId: string, startFrame: number) => {void (async () => {
             setSelectedClipId(clipId);
             const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
             if (!clip) return;

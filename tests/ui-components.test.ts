@@ -269,6 +269,7 @@ test('renderer uses shared components for ordinary controls and modal confirmati
     assert.doesNotMatch(source, /window\.confirm\(/, `${name} must use the cancellable confirmation provider`);
   }
   const app = readFileSync(resolve(renderer, 'App.tsx'), 'utf8');
+  const timelineSource = readFileSync(resolve(renderer, 'Timeline.tsx'), 'utf8');
   const main = readFileSync(resolve(renderer, 'main.tsx'), 'utf8');
   assert.match(main, /<ConfirmationProvider labels=\{\{ title: t\('common.confirmTitle'\), cancel: t\('common.cancel'\), continue: t\('common.continue'\) \}\} renderMessage=\{renderMessage\}>/);
   assert.match(app, /async function inspect\(/);
@@ -295,7 +296,15 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /canSeed=\{format5 \? false : Boolean\(sortedShots/);
   assert.match(app, /onAddTransition=\{format5 \? undefined : addTimelineTransition\}/);
   assert.equal((app.match(/onRippleRemove=\{format5 \? undefined :/g) ?? []).length, 2, 'timeline menu and inspector hide ripple removal');
-  assert.match(app, /onCanvas=\{format5 \? undefined : addNode\} onTimeline=\{format5 \? undefined : addTimelineAsset\}/);
+  assert.match(app, /onCanvas=\{format5 \? undefined : addNode\} onTimeline=\{addTimelineAsset\}/);
+  assert.match(app, /format5AddTimelineAsset/);
+  assert.match(app, /format5InsertAssetCommand/);
+  assert.match(app, /format5PasteClipCommand/);
+  assert.match(app, /format5CopyTimelineClip/);
+  assert.match(app, /onPasteClipboard=\{format5 \?/);
+  assert.match(app, /clipboardPasteAvailable=\{format5ClipboardReady\}/);
+  assert.match(app, /key === 'v'/);
+  assert.match(timelineSource, /timeline-menu-paste/);
   assert.doesNotMatch(app, /subjectDragToBoard=\{format5\}/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);

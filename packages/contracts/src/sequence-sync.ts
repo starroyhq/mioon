@@ -13,6 +13,7 @@ import {sequenceEditIntentSide} from './sequence-edit.ts';
 export const SEQUENCE_SYNC_COMMANDS = Object.freeze([
   'sync-board', 'board-version', 'clip-version',
   'clip-remove', 'clip-add', 'clip-split', 'clip-trim', 'clip-move', 'clip-move-off-track',
+  'insert-asset', 'paste-clip',
 ] as const);
 export type SequenceSyncCommandKind = (typeof SEQUENCE_SYNC_COMMANDS)[number];
 
@@ -39,7 +40,10 @@ export type SequenceSyncCommand =
   | {readonly kind: 'clip-remove'; readonly clipId: string}
   /** Insert one existing free shot/media into the main track. */
   | {readonly kind: 'clip-add'; readonly clip: SequenceSyncAddClip; readonly beforeClipId: string | null;
-    readonly nodeKind?: 'shot' | 'video' | 'image'}
+    readonly nodeKind?: 'shot' | 'video' | 'image'; readonly nodeAssetId?: string; readonly nodeName?: string;
+    readonly copyFromClipId?: string}
+  | {readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number}
+  | {readonly kind: 'paste-clip'; readonly clipId: string; readonly startFrame: number}
   /** Split one segment; left keeps its id, the right takes the allocated id. */
   | {readonly kind: 'clip-split'; readonly clipId: string; readonly offsetFrames: number;
     readonly rightClipId: string; readonly rightSourceInFrame?: number}
@@ -78,7 +82,15 @@ export function sequenceSyncOperation(command: SequenceSyncCommand): ChainSyncOp
         splitGroupId: command.clip.segmentGroupId, versionId: command.clip.versionId ?? null,
         versionLocked: command.clip.locked ?? false, startFrame: command.clip.startFrame,
         durationFrames: command.clip.durationFrames, sourceInFrame: command.clip.sourceInFrame,
-      }, beforeClipId: command.beforeClipId, ...(command.nodeKind ? {nodeKind: command.nodeKind} : {})}};
+      }, beforeClipId: command.beforeClipId, ...(command.nodeKind ? {nodeKind: command.nodeKind} : {}),
+      ...(command.nodeAssetId ? {nodeAssetId: command.nodeAssetId} : {}),
+      ...(command.nodeName ? {nodeName: command.nodeName} : {}),
+      ...(command.copyFromClipId ? {copyFromClipId: command.copyFromClipId} : {})}};
+    case 'insert-asset':
+      return {kind: 'track', edit: {kind: 'insert-asset', assetId: command.assetId, trackId: command.trackId,
+        startFrame: command.startFrame}};
+    case 'paste-clip':
+      return {kind: 'track', edit: {kind: 'paste-clip', clipId: command.clipId, startFrame: command.startFrame}};
     case 'clip-split-scenes':
       return {kind: 'track', edit: {kind: 'split-at-scenes', assetId: command.assetId, resultId: command.resultId}};
     case 'clip-split':

@@ -98,7 +98,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.node.create', 'board.shot.update', 'board.node.update', 'board.restore',
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
-  'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
+  'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
   'timeline.clip.splitAtScenes', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'subject.card.create', 'subject.card.delete',
@@ -406,7 +406,10 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
         case 'move': return 'timeline.clip.move';
         case 'move-off-track': return 'timeline.clip.move-off-track';
         case 'remove': return 'timeline.clip.remove';
-        case 'add': return 'timeline.clip.add';
+        case 'add': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
+        case 'insert-asset': return 'timeline.clip.add';
+        case 'paste-clip': return 'timeline.clip.paste';
+        case 'add-overlay': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'split': return 'timeline.clip.split';
         case 'trim': return 'timeline.clip.trim';
         case 'version': return 'timeline.clip.version';

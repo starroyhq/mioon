@@ -23,7 +23,7 @@ import type {
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditHistoryAction,
   SequenceEditHistoryCommand, SequenceEditHistoryView, SequenceEditImpact, SequenceEditPatch, SequenceEditPlan,
   SequenceEditReceipt, SequenceEditStateDelta, SequenceEditTimelineCommit, SequenceEditTimelineDelta,
-  SequenceEditTransactionFailure, MainTrackProjectionPort,
+  SequenceEditTransactionFailure, SequenceEditIntent, MainTrackProjectionPort,
 } from '@mioon/contracts/sequence-edit';
 import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
 import {readSubjectBinding} from './format5-subject-binding.ts';
@@ -422,9 +422,271 @@ function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncCont
     .map(target => ({clipId: target.clip.id, reason: 'FADE_BOUNDS' as const, cutFrames: [...target.fadeCutFrames]}))];
   return {timeline: {...timeline, clips}, split, skipped};
 }
+// ---------------------------------------------------------------------------
+// ED: insert one asset / paste one copied clip
+// ---------------------------------------------------------------------------
+
+/** Exact board rows created by one ED action. SA models only chain nodes and
+ * media, so shot/node/adoption rows and any overlay clip travel beside the plan
+ * until boardPlanEntities/patchMainTimeline consume them. */
+interface InsertMetadata {
+  readonly nodeRows: ReadonlyMap<string, Row>;
+  readonly shotRows: ReadonlyMap<string, Row>;
+  readonly adoptionRows: ReadonlyMap<string, Row>;
+  readonly nodeKinds: ReadonlyMap<string, ChainNode['kind']>;
+  readonly clipNames: ReadonlyMap<string, string>;
+  readonly extraOtherClips: readonly Format5Clip[];
+}
+const insertMetadata = new WeakMap<object, InsertMetadata>();
+function metadataOf(plan: SequenceEditPlan): InsertMetadata | undefined {return insertMetadata.get(plan);}
+function attachMetadata(plan: SequenceEditPlan, metadata: InsertMetadata): SequenceEditPlan {
+  insertMetadata.set(plan, metadata);
+  return plan;
+}
+function assetKindOf(asset: Row): 'image' | 'video' | 'audio' | null {
+  const mime = typeof asset.mimeType === 'string' ? asset.mimeType : '';
+  return mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : null;
+}
+function assetFrames(asset: Row, kind: 'image' | 'video' | 'audio'): number | null {
+  return kind === 'image' ? 90 : sourceFrameCount(asset.duration);
+}
+function assetName(asset: Row, fallback: string): string {
+  return typeof asset.name === 'string' && asset.name ? asset.name.slice(0, 200) : fallback;
+}
+function mainClips(context: SyncContext): Format5Clip[] {
+  const mainTrackId = context.timeline.mainTrack.trackId;
+  return [...context.timeline.clips].filter(clip => clip.trackId === mainTrackId)
+    .sort((left, right) => left.startFrame - right.startFrame || left.id.localeCompare(right.id));
+}
+function insertionBefore(context: SyncContext, startFrame: number): string | null {
+  const clips = mainClips(context);
+  const target = clips.findIndex(clip => startFrame < clip.startFrame + clip.durationFrames);
+  if (target < 0) return null;
+  // SA refuses an insertion between two pieces of one split group. A drop inside
+  // the later pieces lands after the whole group; a drop on the first piece
+  // still lands before it.
+  const nodeId = clips[target]!.sequenceSource?.nodeId;
+  if (nodeId === undefined) return clips[target]!.id;
+  const first = clips.findIndex(clip => clip.sequenceSource?.nodeId === nodeId);
+  let last = first;
+  while (last + 1 < clips.length && clips[last + 1]!.sequenceSource?.nodeId === nodeId) last += 1;
+  const at = target > first ? last + 1 : first;
+  return at < clips.length ? clips[at]!.id : null;
+}
+function ownerAt(context: SyncContext, startFrame: number): Format5Clip | null {
+  return mainClips(context).find(clip => clip.startFrame <= startFrame && startFrame < clip.startFrame + clip.durationFrames) ?? null;
+}
+function freeBoardPosition(context: SyncContext): {x: number; y: number} {
+  let right = 0;
+  for (const row of [...context.shots.values(), ...context.nodeRows.values()]) {
+    const point = row.position;
+    if (point !== null && typeof point === 'object' && Number.isFinite(point.x)) right = Math.max(right, Number(point.x));
+  }
+  return {x: Math.min(1_000_000, right + 340), y: 120};
+}
+function insertClipTitle(pairs: Map<string, string>, clipId: string, title: string): Map<string, string> {
+  pairs.set(clipId, title);
+  return pairs;
+}
+function planMainInsert(context: SyncContext, input: {
+  readonly nodeId: string; readonly clipId: string; readonly beforeClipId: string | null;
+  readonly kind: 'shot' | 'image' | 'video'; readonly media: ChainSyncMedia; readonly nodeRow?: Row;
+  readonly durationFrames: number; readonly sourceInFrame: number; readonly versionId: string | null;
+  readonly title: string; readonly shotRow?: Row; readonly adoptionRow?: Row;
+}): SequenceEditPlan | SequenceEditTransactionFailure {
+  if (context.board.nodes.some(node => node.id === input.nodeId) || context.media.some(item => item.nodeId === input.nodeId))
+    return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [input.nodeId]);
+  const planningState = {board: {nodes: [...context.board.nodes, {id: input.nodeId, kind: input.kind}], edges: context.board.edges},
+    filmId: context.rootNodeId, media: [...context.media, input.media], clips: context.clips, anchored: context.anchored};
+  const edit: TrackSyncEdit = {kind: 'add', clip: {id: input.clipId, nodeId: input.nodeId,
+    versionId: input.versionId, versionLocked: false, startFrame: 0, durationFrames: input.durationFrames,
+    sourceInFrame: input.sourceInFrame, splitGroupId: input.clipId}, beforeClipId: input.beforeClipId,
+    media: input.media, nodeKind: input.kind};
+  const plan = planChainSync(planningState, {kind: 'track', edit});
+  if (!plan.ok) return failure(plan.code as SequenceEditErrorCode, 'id' in plan && typeof plan.id === 'string' ? [plan.id] : []);
+  const shotRows = new Map<string, Row>(); if (input.shotRow) shotRows.set(input.nodeId, input.shotRow);
+  const adoptionRows = new Map<string, Row>();
+  if (input.adoptionRow) adoptionRows.set(String(input.adoptionRow.id), input.adoptionRow);
+  const nodeRows = new Map<string, Row>(); if (input.nodeRow) nodeRows.set(input.nodeId, input.nodeRow);
+  return attachMetadata(plan, {nodeRows, shotRows, adoptionRows,
+    nodeKinds: new Map([[input.nodeId, input.kind]]), clipNames: insertClipTitle(new Map(), input.clipId, input.title),
+    extraOtherClips: []});
+}
+function planOverlayInsert(context: SyncContext, clip: Format5Clip, owner: Format5Clip): SequenceEditPlan {
+  const anchored = {id: clip.id, startFrame: clip.startFrame, anchorClipId: owner.id};
+  const plan = {ok: true as const, issues: [] as const, warnings: [] as const,
+    after: {board: context.board, filmId: context.rootNodeId, media: context.media,
+      clips: context.clips, anchored: [...context.anchored, anchored].sort((left, right) => left.id.localeCompare(right.id))},
+    changes: {nodes: [], edges: [], media: [], clips: [], anchored: [{before: null, after: anchored}]}} as unknown as SequenceEditPlan;
+  return attachMetadata(plan, {nodeRows: new Map(), shotRows: new Map(), adoptionRows: new Map(),
+    nodeKinds: new Map(), clipNames: new Map(), extraOtherClips: [clip]});
+}
+function overlayClipForAsset(asset: Row, kind: 'image' | 'video' | 'audio', clipId: string, trackId: string,
+  startFrame: number, durationFrames: number, owner: Format5Clip): Format5Clip {
+  return {id: clipId, trackId, name: assetName(asset, kind === 'audio' ? 'Audio' : kind), startFrame,
+    durationFrames, sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1,
+    assetId: String(asset.id), sourceState: 'ready',
+    anchor: {clipId: owner.id, offsetFrames: startFrame - owner.startFrame}};
+}
+/** Validate an account of a new node/media pair. Copy actions reuse the source
+ * clip's applied version; asset insertion locks to the asset id as the format-5
+ * media selected version. */
+function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
+  edit: Extract<TrackSyncEdit, {kind: 'add'}>): SequenceEditPlan | SequenceEditTransactionFailure {
+  if (edit.nodeAssetId) {
+    const asset = context.assets.get(edit.nodeAssetId);
+    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.nodeAssetId]);
+    const kind = assetKindOf(asset);
+    if (kind !== 'image' && kind !== 'video') return failure('INVALID_MEDIA', [edit.nodeAssetId]);
+    const media = kind === 'image'
+      ? {nodeId: edit.clip.nodeId, selectedVersion: {id: edit.nodeAssetId, sourceFrames: null as null}, durationFrames: edit.clip.durationFrames}
+      : (() => {const frames = sourceFrameCount(asset.duration); return frames === null ? null :
+        {nodeId: edit.clip.nodeId, selectedVersion: {id: edit.nodeAssetId!, sourceFrames: frames}, durationFrames: frames};})();
+    if (!media) return failure('INVALID_MEDIA', [edit.nodeAssetId]);
+    const nodeRow = {id: edit.clip.nodeId, projectId: context.projectId, type: kind, assetId: edit.nodeAssetId,
+      name: edit.nodeName ?? assetName(asset, kind), label: edit.nodeName ?? assetName(asset, kind),
+      position: freeBoardPosition(context), revision: 1, createdAt: now(), updatedAt: now()};
+    return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
+      kind, media: {...media, durationFrames: edit.clip.durationFrames}, nodeRow,
+      durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
+      versionId: edit.nodeAssetId, title: edit.nodeName ?? assetName(asset, kind)});
+  }
+  if (edit.copyFromClipId) {
+    const source = context.timeline.clips.find(clip => clip.id === edit.copyFromClipId);
+    if (!source || source.trackId !== context.timeline.mainTrack.trackId) return failure('CLIP_NOT_FOUND', [edit.copyFromClipId]);
+    const sourceNodeId = source.sequenceSource?.nodeId;
+    const node = sourceNodeId ? context.board.nodes.find(item => item.id === sourceNodeId) : undefined;
+    if (!node || !sourceNodeId) return failure('CLIP_NOT_FOUND', [edit.copyFromClipId]);
+    const media = context.media.find(item => item.nodeId === sourceNodeId);
+    if (!media) return failure('MISSING_MEDIA', [sourceNodeId]);
+    const copied = context.shots.get(sourceNodeId);
+    if (node.kind === 'shot') {
+      if (!copied) return failure('INVALID_MEDIA', [sourceNodeId]);
+      const selected = source.versionId ?? null;
+      const shotRow = {...copied, id: edit.clip.nodeId, selectedVersionId: selected, createdAt: now(), updatedAt: now()};
+      const version = selected === null ? undefined : context.versions.get(selected);
+      if (selected !== null && !version) return failure('INVALID_MEDIA', [selected]);
+      const adoptionRow = version === undefined ? undefined : {id: randomUUID(), projectId: context.projectId,
+        shotId: edit.clip.nodeId, versionId: selected!, createdAt: now()};
+      const mediaCopy = {nodeId: edit.clip.nodeId, selectedVersion: selected === null ? null
+        : (media.selectedVersion === null ? null : {id: media.selectedVersion.id, sourceFrames: media.selectedVersion.sourceFrames}),
+        durationFrames: media.durationFrames};
+      return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
+        kind: 'shot', media: mediaCopy, shotRow, ...(adoptionRow ? {adoptionRow} : {}),
+        durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
+        versionId: selected, title: typeof copied.title === 'string' ? copied.title : 'Clip'});
+    }
+    const nodeRow = context.nodeRows.get(sourceNodeId);
+    if (!nodeRow) return failure('INVALID_MEDIA', [sourceNodeId]);
+    const mediaCopy = {nodeId: edit.clip.nodeId, selectedVersion: media.selectedVersion === null ? null
+      : {id: media.selectedVersion.id, sourceFrames: media.selectedVersion.sourceFrames}, durationFrames: media.durationFrames};
+    return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
+      kind: node.kind as 'image' | 'video', media: mediaCopy, nodeRow: {...nodeRow, id: edit.clip.nodeId},
+      durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
+      versionId: edit.clip.versionId, title: assetName(context.assets.get(String(media.selectedVersion?.id)) ?? {}, 'Clip')});
+  }
+  return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [edit.clip.nodeId]);
+}
+function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, {kind: 'add-overlay'}>):
+  SequenceEditPlan | SequenceEditTransactionFailure {
+  const mainTrackId = context.timeline.mainTrack.trackId;
+  if (edit.trackId === mainTrackId) return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+  const track = context.timeline.tracks.find(item => item.id === edit.trackId);
+  if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+  const owner = ownerAt(context, edit.startFrame);
+  if (!owner) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [edit.trackId]);
+  let clip: Format5Clip;
+  if (edit.copyFromClipId) {
+    const source = context.timeline.clips.find(item => item.id === edit.copyFromClipId);
+    if (!source || source.trackId === mainTrackId || !source.assetId) return failure('CLIP_NOT_FOUND', [edit.copyFromClipId]);
+    const {sequenceSource: _source, ...sourceBase} = source;
+    clip = {...sourceBase, id: edit.clipId, trackId: edit.trackId, startFrame: edit.startFrame,
+      durationFrames: edit.durationFrames, sourceInFrame: edit.sourceInFrame,
+      anchor: {clipId: owner.id, offsetFrames: edit.startFrame - owner.startFrame}};
+    if (source.sourceState === 'placeholder') return failure('INVALID_MEDIA', [source.id]);
+    if (track.kind === 'audio' && !String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
+      return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+    if (track.kind === 'video' && String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
+      return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+  } else {
+    const asset = edit.assetId ? context.assets.get(edit.assetId) : undefined;
+    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.assetId ?? '']);
+    const kind = assetKindOf(asset);
+    if (kind === null) return failure('INVALID_MEDIA', [edit.assetId!]);
+    if (track.kind === 'audio' ? kind !== 'audio' : kind === 'audio') return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+    clip = overlayClipForAsset(asset, kind, edit.clipId, edit.trackId, edit.startFrame, edit.durationFrames, owner);
+  }
+  return planOverlayInsert(context, clip, owner);
+}
+/** Expand the two minimal ED intents into the exact add/add-overlay envelope
+ * the UI will confirm. Allocation ids are added before the envelope digest. */
+function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditEnvelope): SequenceEditEnvelope | SequenceEditTransactionFailure {
+  const operation = envelope.intents[0]?.operation;
+  if (operation?.kind !== 'track') return envelope;
+  const edit = operation.edit;
+  if (edit.kind !== 'insert-asset' && edit.kind !== 'paste-clip') return envelope;
+  const allocation = envelope.allocation.clips as {nodeId: string; clipId: string}[];
+  const allocated = allocation[0];
+  const mainTrackId = context.timeline.mainTrack.trackId;
+  if (edit.kind === 'insert-asset') {
+    const asset = context.assets.get(edit.assetId);
+    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.assetId]);
+    const kind = assetKindOf(asset);
+    if (kind === null) return failure('INVALID_MEDIA', [edit.assetId]);
+    const targetTrackId = edit.trackId ?? mainTrackId;
+    const track = context.timeline.tracks.find(item => item.id === targetTrackId);
+    if (!track) return failure('INVALID_TRACK_TARGET', [targetTrackId]);
+    const main = targetTrackId === mainTrackId;
+    if (main ? kind === 'audio' : track.kind !== (kind === 'audio' ? 'audio' : 'video'))
+      return failure('INVALID_TRACK_TARGET', [targetTrackId]);
+    const frames = assetFrames(asset, kind);
+    if (frames === null || frames < 1 || frames > 18000) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
+    if (main) {
+      const ids = allocated ?? {nodeId: randomUUID(), clipId: randomUUID()};
+      if (!allocated) allocation.push(ids);
+      const addEdit: TrackSyncEdit = {kind: 'add', clip: {id: ids.clipId, nodeId: ids.nodeId, versionId: null,
+        versionLocked: false, startFrame: 0, durationFrames: frames, sourceInFrame: 0, splitGroupId: ids.clipId},
+        beforeClipId: insertionBefore(context, edit.startFrame), nodeKind: kind as 'image' | 'video',
+        nodeAssetId: edit.assetId, nodeName: assetName(asset, kind)};
+      return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: addEdit}}]};
+    }
+    if (!ownerAt(context, edit.startFrame)) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [targetTrackId]);
+    const ids = allocated ?? {nodeId: targetTrackId, clipId: randomUUID()};
+    if (!allocated) allocation.push(ids);
+    const overlayEdit: TrackSyncEdit = {kind: 'add-overlay', clipId: ids.clipId, trackId: targetTrackId,
+      startFrame: edit.startFrame, durationFrames: frames, sourceInFrame: 0,
+      name: assetName(asset, kind === 'audio' ? 'Audio' : kind), assetId: edit.assetId};
+    return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: overlayEdit}}]};
+  }
+  const source = context.timeline.clips.find(clip => clip.id === edit.clipId);
+  if (!source) return failure('CLIP_NOT_FOUND', [edit.clipId]);
+  if (source.trackId === mainTrackId) {
+    const ids = allocated ?? {nodeId: randomUUID(), clipId: randomUUID()};
+    if (!allocated) allocation.push(ids);
+    const addEdit: TrackSyncEdit = {kind: 'add', clip: {id: ids.clipId, nodeId: ids.nodeId,
+      versionId: source.versionId ?? null, versionLocked: false, startFrame: 0,
+      durationFrames: source.durationFrames, sourceInFrame: source.sourceInFrame, splitGroupId: ids.clipId},
+      beforeClipId: insertionBefore(context, edit.startFrame), copyFromClipId: source.id};
+    return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: addEdit}}]};
+  }
+  if (!ownerAt(context, edit.startFrame)) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [source.trackId]);
+  const ids = allocated ?? {nodeId: source.trackId, clipId: randomUUID()};
+  if (!allocated) allocation.push(ids);
+  const overlayEdit: TrackSyncEdit = {kind: 'add-overlay', clipId: ids.clipId, trackId: source.trackId,
+    startFrame: edit.startFrame, durationFrames: source.durationFrames, sourceInFrame: source.sourceInFrame,
+    name: source.name || 'Clip', copyFromClipId: source.id};
+  return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: overlayEdit}}]};
+}
+
 function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, sceneCuts?: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
   if (envelope.intents.length !== 1) return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
   const operation = envelope.intents[0]!.operation;
+  if (operation.kind === 'track' && operation.edit.kind === 'add' && (operation.edit.nodeAssetId || operation.edit.copyFromClipId))
+    return expandedAddPlan(context, envelope, operation.edit);
+  if (operation.kind === 'track' && operation.edit.kind === 'add-overlay')
+    return expandedOverlayPlan(context, operation.edit);
+  if (operation.kind === 'track' && (operation.edit.kind === 'insert-asset' || operation.edit.kind === 'paste-clip'))
+    return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (operation.kind === 'track' && operation.edit.kind === 'split-at-scenes') {
     return planSceneSplit(context, envelope, operation.edit, sceneCuts ?? []);
   }
@@ -542,7 +804,9 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
   const mainTrackId = context.timeline.mainTrack.trackId;
   const planNodes = new Map(plan.after.board.nodes.map(node => [node.id, node]));
   const copiedNodes = new Set(plan.copiedNode ? [plan.copiedNode.toNodeId] : []);
+  const meta = metadataOf(plan);
   const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
+  if (meta) for (const clip of mainClips) {const name = meta.clipNames.get(clip.id); if (name) clip.name = name;}
   const ownerList = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
   const ownerSegments = new Map(ownerList.map(owner => [owner.id, owner] as const));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
@@ -555,6 +819,7 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan): Format
   }
   // A segment moved off the main track keeps its content but becomes an
   // other-track item with an explicit anchor.
+  if (meta) for (const clip of meta.extraOtherClips) clips.push(clip);
   if (plan.transfer) {
     const original = existing.get(plan.transfer.clip.id);
     if (!original) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '转移的片段不存在。', 409, {id: plan.transfer.clip.id});
@@ -707,6 +972,27 @@ function boardPlanEntities(context: SyncContext, plan: SequenceEditPlan, envelop
       extraNodeRows.set(toNodeId, nodeRow);
       writesAfter.push({kind: 'node', id: toNodeId, data: nodeRow});
       removalsBefore.push({kind: 'node', id: toNodeId, data: nodeRow});
+    }
+  }
+  const meta = metadataOf(plan);
+  if (meta) {
+    for (const [id, row] of meta.nodeRows) {
+      if (context.board.nodes.some(node => node.id === id)) continue;
+      const kind = meta.nodeKinds.get(id);
+      if (!kind) continue;
+      writesAfter.push({kind: 'node', id, data: row});
+      removalsBefore.push({kind: 'node', id, data: row});
+      extraNodeRows.set(id, row);
+      extraNodeKinds.set(id, kind);
+    }
+    for (const [id, row] of meta.shotRows) {
+      writesAfter.push({kind: 'shot', id, data: row});
+      removalsBefore.push({kind: 'shot', id, data: row});
+      extraShots.set(id, row);
+    }
+    for (const [id, row] of meta.adoptionRows) {
+      writesAfter.push({kind: 'adoption', id, data: row});
+      removalsBefore.push({kind: 'adoption', id, data: row});
     }
   }
   // Chain edge rewiring: removals by pair, additions by accepted allocation.
@@ -1115,7 +1401,10 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
       impact: {nodeIds: [], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},
       allocation,
     };
-    const plan = planEnvelope(context, provisional, cuts);
+    const expanded = expandMinimalSequenceSync(context, provisional);
+    if ((expanded as SequenceEditTransactionFailure).ok === false) return expanded as SequenceEditTransactionFailure;
+    const effective = expanded as SequenceEditEnvelope;
+    const plan = planEnvelope(context, effective, cuts);
     if ('ok' in plan && plan.ok === false) return plan;
     const successful = plan as SequenceEditPlan;
     const mainTrackId = context.timeline.mainTrack.trackId;
@@ -1126,17 +1415,19 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
     allocateEdgeIds(context, successful, allocation);
-    const mainTrackClipSet = new Set(context.timeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
+    const mainTrackClipSet = new Set(nextTimeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
+    const otherTrackClipSet = new Set(nextTimeline.clips.filter(clip => clip.trackId !== mainTrackId).map(clip => clip.id));
     const mainClipIds = successful.changes.clips.map(change => change.after?.id ?? change.before?.id)
       .filter((clipId): clipId is string => !!clipId && mainTrackClipSet.has(clipId));
     const otherItemIds = [...new Set(successful.changes.anchored.map(change => change.after?.id ?? change.before?.id).filter((id): id is string => !!id))];
+    const newNodeIds = successful.after.board.nodes.filter(node => !context.board.nodes.some(item => item.id === node.id)).map(node => node.id);
     const changedEdgeIds: string[] = [];
     for (const edge of successful.changes.edges) {
       const key = `${edge.after?.fromId ?? edge.before?.fromId}>${edge.after?.toId ?? edge.before?.toId}`;
       const existing = context.edgeRows.values();
       for (const row of existing) if (row.kind === 'sequence' && `${row.source}>${row.target}` === key) changedEdgeIds.push(String(row.id));
     }
-    const copiedNodeIds = successful.changes.nodes.flatMap(change => change.after ? [change.after.id] : []);
+    const copiedNodeIds = [...new Set([...successful.changes.nodes.flatMap(change => change.after ? [change.after.id] : []), ...newNodeIds])];
     const extraOtherTrackIds = sceneData
       ? [...new Set(sceneData.split.filter(row => context.timeline.clips.some(clip => clip.id === row.clipId && clip.trackId !== mainTrackId))
         .flatMap(row => row.clipIds.slice(1)))]
@@ -1144,19 +1435,18 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     const impact: SequenceEditImpact = {
       nodeIds: copiedNodeIds,
       edgeIds: [...new Set([...changedEdgeIds, ...provisional.allocation.edges.map(item => item.id)])],
-      mainTrackClipIds: mainClipIds.filter(id => successful.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)),
-      otherTrackItemIds: [...otherItemIds.filter(id => context.timeline.clips.some(clip => clip.id === id && clip.trackId !== mainTrackId)),
-        ...extraOtherTrackIds],
+      mainTrackClipIds: [...new Set(mainClipIds.filter(id => successful.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)))],
+      otherTrackItemIds: [...new Set([...otherItemIds.filter(id => otherTrackClipSet.has(id)), ...extraOtherTrackIds])],
       subtitleCueIds: otherItemIds.filter(id => (context.timeline.subtitles?.cues ?? []).some(cue => cue.id === id)),
     };
     const kindName = (kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue'): string =>
       kind === 'clip' ? 'timeline_clip' : kind === 'cue' ? 'timeline_cue' : kind;
-    const targets = targetKinds({...provisional, impact}).flatMap(target => {
+    const targets = targetKinds({...effective, impact}).flatMap(target => {
       const row = store.db.prepare('SELECT revision FROM project.agent_task_target_revisions_v2 WHERE kind=? AND targetId=?')
         .get(kindName(target.kind), target.id) as Row | undefined;
       return row && Number.isSafeInteger(row.revision) ? [{kind: target.kind, id: target.id, revision: Number(row.revision)}] : [];
     });
-    const envelope: SequenceEditEnvelope = {...provisional, allocation, impact, baseline: {...provisional.baseline, targets}};
+    const envelope: SequenceEditEnvelope = {...effective, allocation, impact, baseline: {...effective.baseline, targets}};
     if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
     return {envelope, warnings: planWarnings(successful), planDigest: sequenceEditInputDigest(envelope)};
   });

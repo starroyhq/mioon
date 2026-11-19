@@ -88,7 +88,13 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
         segmentGroupId: edit.clip.splitGroupId ?? edit.clip.id, startFrame: edit.clip.startFrame,
         durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
         versionId: edit.clip.versionId, locked: edit.clip.versionLocked},
-      beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {})};
+      beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {}),
+      ...(edit.nodeAssetId ? {nodeAssetId: edit.nodeAssetId} : {}),
+      ...(edit.nodeName ? {nodeName: edit.nodeName} : {}),
+      ...(edit.copyFromClipId ? {copyFromClipId: edit.copyFromClipId} : {})};
+    case 'insert-asset': return {kind: 'insert-asset', assetId: edit.assetId, trackId: edit.trackId,
+      startFrame: edit.startFrame};
+    case 'paste-clip': return {kind: 'paste-clip', clipId: edit.clipId, startFrame: edit.startFrame};
     case 'split-at-scenes': return {kind: 'clip-split-scenes', assetId: edit.assetId, resultId: edit.resultId};
     case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
       rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};

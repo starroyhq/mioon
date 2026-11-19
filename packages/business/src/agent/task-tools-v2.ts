@@ -599,7 +599,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
  if(format5){
-  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'执行一条有界格式5序列动作（连线/剪辑/主体绑定/主体卡/引用线连接改角色断开排序/片段属性/画板创建更新恢复复制/画幅切换/按场景切开/字幕增改删/预演新建保存）。服务器预览 envelope 并展示影响后按审批提交；模型不提供 envelope、ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'执行一条有界格式5序列动作（连线/剪辑/主体绑定/主体卡/引用线连接改角色断开排序/片段属性/画板创建更新恢复复制/画幅切换/按场景切开/字幕增改删/素材入轨/预演新建保存）。服务器预览 envelope 并展示影响后按审批提交；模型不提供 envelope、ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
@@ -815,6 +815,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='reference-attach'){add('node',action.sourceNodeId);add('shot',action.shotId);}
    if(action.kind==='reference-set-role'||action.kind==='reference-detach'){add('edge',action.edgeId);add('shot',action.shotId);}
    if(action.kind==='reference-reorder'){add('shot',action.shotId);for(const edgeId of action.edgeIds)add('edge',edgeId);}
+   if(action.kind==='insert-asset'){add('asset',action.assetId);if(action.trackId)add('timeline_track',action.trackId);}
    if(action.kind==='subject-card-create')add('subject',action.subjectId);
    if(action.kind==='subject-card-delete')add('node',action.nodeId);
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
@@ -822,7 +823,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties',
-    'format-set','split-at-scenes','subtitles','board-root-create','board-shot-append','board-layout-move',
+    'format-set','split-at-scenes','insert-asset','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
     'subject-card-create','subject-card-delete','previs-create'].includes(action.kind);

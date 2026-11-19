@@ -14,7 +14,7 @@ const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `90000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 export const WIRE_IDS = {
   project: id(1), root: id(2), shotA: id(3), shotB: id(4), imageNode: id(5), video: id(60), video2: id(61), audio: id(62),
-  assetA: id(10), assetB: id(11), imageAsset: id(12), versionA: id(20), versionB: id(21),
+  assetA: id(10), assetB: id(11), imageAsset: id(12), audioAsset: id(13), versionA: id(20), versionB: id(21),
   clipA: id(30), clipA2: id(31), clipB: id(32), imageClip: id(33), groupA: id(40), groupB: id(41), groupImage: id(42),
   timeline: id(50), edge1: id(80), edge2: id(81), edge3: id(82),
 } as const;
@@ -65,6 +65,7 @@ export async function createEditUiWireFixture(): Promise<{store: ProjectStore; s
     store.put('assets', {id: WIRE_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, sha256: sha('a'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.imageAsset, projectId, name: '图片.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10});
+    store.put('assets', {id: WIRE_IDS.audioAsset, projectId, name: '声音.wav', mimeType: 'audio/wav', duration: 2, sha256: sha('f'), sizeBytes: 10});
     store.put('jobs', {id: id(71), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: WIRE_IDS.shotA, createdAt: at, updatedAt: at});
     store.put('jobs', {id: id(72), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: WIRE_IDS.shotB, createdAt: at, updatedAt: at});
     store.put('versions', {id: WIRE_IDS.versionA, projectId, jobId: id(71), shotId: WIRE_IDS.shotA, number: 1,
