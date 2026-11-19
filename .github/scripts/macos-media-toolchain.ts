@@ -69,6 +69,19 @@ interface MediaProbe {
   readonly versions: {readonly ffmpeg: string; readonly ffprobe: string};
   readonly capabilities: {readonly filters: Readonly<Record<string, boolean>>; readonly encoders: Readonly<Record<string, boolean>>};
   readonly cliCapabilities: Readonly<Record<string, boolean>>;
+  readonly alphaOverlayProbe: {readonly ok: true; readonly variant: 'alpha-mode-tag' | 'legacy'; readonly filterSupported: boolean;
+    readonly expected: readonly number[]; readonly observed: readonly number[]};
+}
+const ALPHA_VARIANTS = ['alpha-mode-tag', 'legacy'] as const;
+const probePixel = (value: unknown): readonly number[] | null => Array.isArray(value) && value.length === 3 &&
+  value.every(channel => Number.isSafeInteger(channel) && channel >= 0 && channel <= 255) ? value as readonly number[] : null;
+function readAlphaOverlayProbe(value: unknown): MediaProbe['alphaOverlayProbe'] {
+  const probe = recordOf(value);
+  if (!probe || probe.ok !== true || typeof probe.variant !== 'string' || !(ALPHA_VARIANTS as readonly string[]).includes(probe.variant) ||
+      typeof probe.filterSupported !== 'boolean') fail('MEDIA_CAPABILITY_MISSING');
+  const expected = probePixel(probe.expected), observed = probePixel(probe.observed);
+  if (!expected || !observed || expected.some((channel, index) => Math.abs(channel - observed[index]!) > 1)) fail('MEDIA_CAPABILITY_MISSING');
+  return probe as MediaProbe['alphaOverlayProbe'];
 }
 
 function readMediaProbe(value: unknown): MediaProbe {
@@ -87,6 +100,7 @@ function readMediaProbe(value: unknown): MediaProbe {
   }
   const cli = probe.cliCapabilities;
   if (!cli || typeof cli !== 'object' || Object.values(cli).some(flag => flag !== true) || !Object.keys(cli).length) fail('MEDIA_CAPABILITY_MISSING');
+  readAlphaOverlayProbe(probe.alphaOverlayProbe);
   return probe as MediaProbe;
 }
 
@@ -113,6 +127,7 @@ export async function writeToolchainEvidence({bottleSha, cacheState: state, medi
     versions: probe.versions,
     capabilities: probe.capabilities,
     cliCapabilities: probe.cliCapabilities,
+    alphaOverlayProbe: probe.alphaOverlayProbe,
   };
   await mkdir(path.dirname(path.resolve(output)), {recursive: true});
   await writeFile(output, JSON.stringify(evidence, null, 2) + '\n', {mode: 0o600});

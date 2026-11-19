@@ -5,6 +5,8 @@ import {constants} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {PREMULTIPLIED_OVERLAY_TOLERANCE, probePremultipliedOverlay} from '../../packages/business/src/premultiplied-overlay-probe.ts';
+import type {PremultipliedOverlayProbeResult} from '../../packages/business/src/premultiplied-overlay-probe.ts';
 
 export type TargetPlatform = 'linux' | 'darwin';
 export type TargetArch = 'x64' | 'arm64';
@@ -91,6 +93,19 @@ export async function probeMediaCli(ffmpeg: string, {env = cleanEnvironment(), t
     return {filterArgumentFromFile: true, complexFilterArgumentFromFile: true, fpsModePassthrough: true, pngEncode: true, pngDecode: true};
   } finally { await rm(directory, {recursive: true, force: true}); }
 }
+export type AlphaOverlayProbe = PremultipliedOverlayProbeResult;
+/** Render one tiny premultiplied-overlay frame and compare the pixel. This is a
+ * behavior probe, not a version-string check: FFmpeg 8.1 changed the overlay
+ * alpha semantics that the staged image path depends on. */
+export async function probePremultipliedOverlayCli(ffmpeg: string, {env = cleanEnvironment(), temporaryRoot = tmpdir(), execute = command}: {
+  env?: NodeJS.ProcessEnv; temporaryRoot?: string; execute?: typeof command;
+} = {}): Promise<AlphaOverlayProbe> {
+  return probePremultipliedOverlay(ffmpeg, {
+    temporaryRoot,
+    execute: (file, args, options) => execute(file, args, 'PREMULTIPLIED_OVERLAY_PROBE_FAILED', {env, timeout: options.timeout}),
+  });
+}
+
 export async function inspectMedia(platform: TargetPlatform): Promise<Record<string, unknown>> {
   const ffmpeg = await executable('ffmpeg', process.env.MIOON_FFMPEG_PATH), ffprobe = await executable('ffprobe', process.env.MIOON_FFPROBE_PATH);
   const version = await command(ffmpeg, ['-version'], 'FFMPEG_VERSION_FAILED');
@@ -101,8 +116,13 @@ export async function inspectMedia(platform: TargetPlatform): Promise<Record<str
   const capabilities = mediaCapabilities(platform, filters, encoders);
   if (Object.values(capabilities.filters).includes(false) || Object.values(capabilities.encoders).includes(false)) throw new MediaCapabilityFailure(capabilities);
   const cliCapabilities = await probeMediaCli(ffmpeg);
+  const alphaOverlayProbe = await probePremultipliedOverlayCli(ffmpeg);
+  if (!alphaOverlayProbe.ok || !alphaOverlayProbe.observed ||
+      alphaOverlayProbe.observed.some((value, index) => Math.abs(value - alphaOverlayProbe.expected[index]!) > PREMULTIPLIED_OVERLAY_TOLERANCE)) {
+    throw new CheckFailure('PREMULTIPLIED_OVERLAY_COMPOSITION_UNSUPPORTED');
+  }
   if (platform === 'linux' && !(await command('tar', ['--version'], 'GNU_TAR_PROBE_FAILED')).startsWith('tar (GNU tar)')) fail('GNU_TAR_REQUIRED');
-  return {ok: true, platform, tools: {ffmpeg, ffprobe}, versions: {ffmpeg: version.split('\n')[0], ffprobe: probeVersion.split('\n')[0]}, capabilities, cliCapabilities, gnuTar: platform === 'linux'};
+  return {ok: true, platform, tools: {ffmpeg, ffprobe}, versions: {ffmpeg: version.split('\n')[0], ffprobe: probeVersion.split('\n')[0]}, capabilities, cliCapabilities, alphaOverlayProbe, gnuTar: platform === 'linux'};
 }
 if (isMain(import.meta.url)) {
   let output: string | undefined;

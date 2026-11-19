@@ -12,11 +12,17 @@ import {timelineImageDisplayTable,timelineImageFilterGraph,TIMELINE_IMAGE_DISPLA
 import {TIMELINE_COLOUR_OUTPUT_FILTER,timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
+import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {prepareTimelineImageLayers,TIMELINE_IMAGE_LAYER_LIMITS} from '../packages/business/src/timeline-image-staging.ts';
 import {onMediaProcess,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
 import type { BinaryLike } from 'crypto';
 
 const layerRuntime={checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses};
+// FFmpeg 8.1+ tags decoded PNGs as straight alpha; an inline graph that already
+// carries premultiply-filter output must declare the real mode before overlay.
+// Older tools have no alpha-mode filter and keep the reviewed legacy graph.
+const alphaModeTag = spawnSync(mediaExecutable('ffmpeg'), ['-hide_banner', '-h', 'filter=setparams'], {encoding: 'utf8', timeout: 10000, windowsHide: true}).stdout?.includes('alpha_mode') ? ',setparams=alpha_mode=premultiplied' : '';
+
 const sha=(bytes: NonSharedBuffer|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 // Independent closed-form oracle, not the production table generator.
 const display=(code: number)=>code/255<=.04045?Math.pow(code/(255*12.92),1/2.4):(code/255+.055)/1.055;
@@ -122,13 +128,13 @@ test('hidden RGB is invariant after look/resize and contain padding remains tran
 test('one/two encoded RGB8 premultiplied overlays match independent composition oracle',{timeout:30000},async t=>{
  const f=await fixture(t),data=randomPixels(4,2),file=await png(f.root,'layer',4,2,data),background=Buffer.from(Array.from({length:32},()=>[51,102,153]).flat()),bg=await png(f.root,'background',8,4,background,3);
  const base=timelineImageFilterGraph(options(f,4,2,8,4)),expected=resize(((premultiply(converted(data))) as unknown as Parameters<typeof resize>[0]),4,2,8,4);
- const one=await frame([file,bg],[...base,'[1:v]format=rgba[bg]','[bg][out]overlay=format=rgb:alpha=premultiplied:shortest=1[one]'],'rgba',8,4,'one');
- const two=await frame([file,bg],[...base,'[out]split[a][b]','[1:v]format=rgba[bg]','[bg][a]overlay=format=rgb:alpha=premultiplied:shortest=1[first]','[first][b]overlay=format=rgb:alpha=premultiplied:shortest=1[two]'],'rgba',8,4,'two');
+ const one=await frame([file,bg],[...base,`[out]format=rgba${alphaModeTag}[tagged]`,'[1:v]format=rgba[bg]','[bg][tagged]overlay=format=rgb:alpha=premultiplied:shortest=1[one]'],'rgba',8,4,'one');
+ const two=await frame([file,bg],[...base,`[out]format=rgba${alphaModeTag},split[a][b]`,'[1:v]format=rgba[bg]','[bg][a]overlay=format=rgb:alpha=premultiplied:shortest=1[first]','[first][b]overlay=format=rgb:alpha=premultiplied:shortest=1[two]'],'rgba',8,4,'two');
  for(let p=0;p<32;p++)for(let c=0;c<3;c++){const first=expected[p][c]*255+[51,102,153][c]*(1-expected[p][3]),second=expected[p][c]*255+first*(1-expected[p][3]);near([one[p*4+c]],[first],2,'single overlay');near([two[p*4+c]],[second],3,'double overlay');}
 });
 test('mixed known BT709 limited video background and PNG keep explicit limited YUV420 output mapping',{timeout:30000},async t=>{
  const f=await fixture(t),w=8,h=4,n=w*h,data=Buffer.from(Array.from({length:n},()=>[128,64,192,128]).flat()),file=await png(f.root,'mixed',w,h,data),yuv=path.join(f.root,'background.yuv');await writeFile(yuv,Buffer.concat([Buffer.alloc(n,80),Buffer.alloc(n/4,110),Buffer.alloc(n/4,150)]));
- const inputs=[file,['-f','rawvideo','-pixel_format','yuv420p','-video_size',`${w}x${h}`,'-i',yuv]],base=timelineImageFilterGraph(options(f,w,h)),filters=[...base,`[1:v]${timelineColourInputFilter('limited')},format=rgba[bg]`,'[bg][out]overlay=format=rgb:alpha=premultiplied:shortest=1[composed]'];
+ const inputs=[file,['-f','rawvideo','-pixel_format','yuv420p','-video_size',`${w}x${h}`,'-i',yuv]],base=timelineImageFilterGraph(options(f,w,h)),filters=[...base,`[out]format=rgba${alphaModeTag}[tagged]`,`[1:v]${timelineColourInputFilter('limited')},format=rgba[bg]`,'[bg][tagged]overlay=format=rgb:alpha=premultiplied:shortest=1[composed]'];
  const actual=await frame(inputs,filters,'rgba',w,h,'composed'),output=await frame(inputs,[...filters,`[composed]${TIMELINE_COLOUR_OUTPUT_FILTER}[final]`],'yuv420p',w,h,'final');
  const y=(80-16)/219,cb=(110-128)/224,cr=(150-128)/224,bg=[y+1.5748*cr,y-(.0722*1.8556/.7152)*cb-(.2126*1.5748/.7152)*cr,y+1.8556*cb],a=128/255,rgb=[128,64,192].map((code,c)=>display(code)*a+bg[c]*(1-a));
  for(let p=0;p<n;p++)near([...actual.subarray(p*4,p*4+3)],rgb.map(v=>v*255),2,'mixed composition');

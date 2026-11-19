@@ -143,7 +143,7 @@ test('deferred export admission pins parsed input and revokes inherited callback
 for(const scenario of ['timeline after first segment','storyboard source probe','storyboard final output probe','storyboard version source probe','storyboard version final output probe'] as const)test(`current ${scenario} owner drift blocks all later effects and publication`,async t=>{
  const f=await fixture(t,{media:true}),binary=path.join(f.root,'synthetic-media.ts'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
  const metadata={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'30'},{index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2}],format:{duration:'1'}};
- writeFileSync(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const value=${JSON.stringify(metadata)};if(args.at(-1).endsWith('synthetic.mp4'))value.format.duration='10';process.stdout.write(JSON.stringify(value));}else writeFileSync(args.at(-1),Buffer.from('${mp4HeaderFixture('synthetic rendered bytes').toString('base64')}','base64'),{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
+ writeFileSync(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const value=${JSON.stringify(metadata)};if(args.at(-1).endsWith('synthetic.mp4'))value.format.duration='10';process.stdout.write(JSON.stringify(value));}else if(args.includes('-filter_complex')&&String(args.at(-1)).endsWith('.rgb')){writeFileSync(args.at(-1),Buffer.from(Array.from({length:12},()=>[89,83,172]).flat()),{flag:'wx'});}else writeFileSync(args.at(-1),Buffer.from('${mp4HeaderFixture('synthetic rendered bytes').toString('base64')}','base64'),{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
  process.env.MIOON_FFMPEG_PATH=binary;process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{for(const [key,value]of Object.entries(old))if(value===undefined)delete (process.env as unknown as Record<PropertyKey,unknown>)[key];else process.env[key]=value;});
  let value;
  if(scenario.startsWith('timeline')){
@@ -152,10 +152,14 @@ for(const scenario of ['timeline after first segment','storyboard source probe',
  }else value=await f.services.call('export.create',{projectId:f.project.id,requestId:randomUUID()});
  const replacementShot=scenario.includes('version')?await f.services.call('shot.create',{projectId:f.project.id,title:'Different legitimate owner'}):null;
  let probes=0,encodes=0,changed=false;
+ // The colour-image render path first judges the premultiplied-overlay alpha
+ // behavior with one synthetic FFmpeg invocation. The ownership-drift trigger
+ // still targets the first real segment, not that capability probe.
+ const capabilityProbes=scenario==='timeline after first segment'?1:0;
  const off=onMediaProcess(event=>{
   if(event.type==='started'){if(event.kind==='ffprobe')probes++;if(event.kind==='ffmpeg')encodes++;}
   // S1 reference hashing has no probe: stitch source/output and final fileInfo are the three native observations.
-  const drift=scenario==='timeline after first segment'?event.type==='exited'&&event.kind==='ffmpeg'&&encodes===1:event.type==='started'&&event.kind==='ffprobe'&&probes===(scenario.endsWith('source probe')?1:3);
+  const drift=scenario==='timeline after first segment'?event.type==='exited'&&event.kind==='ffmpeg'&&encodes===1+capabilityProbes:event.type==='started'&&event.kind==='ffprobe'&&probes===(scenario.endsWith('source probe')?1:3);
   if(!changed&&drift){
    changed=true;
    if(replacementShot){
@@ -170,7 +174,7 @@ for(const scenario of ['timeline after first segment','storyboard source probe',
  });t.after(off);
  const before=f.store.db.prepare('SELECT count(*) n FROM assets').get()!.n,worker=startWorker(f.store,f.services,new Map());try{await worker.tick();}finally{await worker.stop();}
  const result=(f.store.get('exports',value.id)!);assert.equal(changed,true);assert.equal(result!.status,'failed');assert.equal(result!.assetId,null);assert.equal(f.store.db.prepare('SELECT count(*) n FROM assets').get()!.n,before);
- assert.equal(encodes,scenario.endsWith('source probe')?0:1);assert.equal(readdirSync(path.join(f.root,'media')).filter(name=>name.startsWith('export-')).length,0);
+ assert.equal(encodes,(scenario.endsWith('source probe')?0:1)+capabilityProbes);assert.equal(readdirSync(path.join(f.root,'media')).filter(name=>name.startsWith('export-')).length,0);
 });
 
 test('current actual Mock download decodes and publishes a selected version', {timeout:15000},async t=>{
