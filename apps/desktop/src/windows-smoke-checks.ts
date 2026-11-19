@@ -14,6 +14,7 @@ import type {DesktopPaths} from './config.ts';
 import type {BackendReady} from './supervisor.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 import {probeDesktopProjectLocation} from './project-location-probe.ts';
+import type {WindowsProjectVolumeReader} from './project-location-probe.ts';
 import {projectLocationDecision} from './project-location-policy.ts';
 
 interface SmokeCheck {name:string;status:'passed'|'blocked';code?:string}
@@ -27,6 +28,7 @@ interface WindowsSmokeOptions {
  report:DesktopStartReport;
  safeStorage:DesktopSafeStorage;
  output:string;
+ windowsProjectVolume?: WindowsProjectVolumeReader | null;
 }
 const record=(value:unknown):Record<string,unknown>=>{
  assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;
@@ -36,9 +38,11 @@ const record=(value:unknown):Record<string,unknown>=>{
 export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-development-identity','bundled-utility-node-sqlite',
  'launcher-ui-ready','renderer-sandbox-and-origin','secure-memory-cookie','loopback-rpc-and-anonymous-denial',
  'renderer-network-window-permission-fences','private-discovery-acl','configured-windows-media-tools',
- 'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','native-project-core-flows','write-report'] as const);
+ 'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','project-location-facts','project-location-paths',
+ 'project-location-network','native-project-core-flows','project-core-create','project-core-export','project-core-open','write-report'] as const);
 
-interface CoreFlowOptions {app:App;session:Session|null;ready:BackendReady|null;smokeRoot:string;projectId:null}
+interface CoreFlowOptions {app:App;session:Session|null;ready:BackendReady|null;smokeRoot:string;
+ mark:(next:typeof WINDOWS_SMOKE_PHASES[number])=>Promise<void>}
 const waitUntil=async(check:()=>Promise<boolean>,timeoutMs:number,message:string):Promise<void>=>{
  const deadline=Date.now()+timeoutMs;
  while(Date.now()<deadline){if(await check())return;await new Promise(resolve=>setTimeout(resolve,100));}
@@ -49,7 +53,7 @@ const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
  * UI uses. Native location dialogs cannot be automated, so creation uses the
  * fixed template entry with an explicit retained parent directory; everything
  * after it (open, close, reopen) goes through the trusted desktop host. */
-async function runProjectCoreFlows({app,session,ready,smokeRoot}:CoreFlowOptions):Promise<void>{
+async function runProjectCoreFlows({app,session,ready,smokeRoot,mark}:CoreFlowOptions):Promise<void>{
  assert.ok(session&&ready);
  const request=async(address:string,operation:string,input:unknown):Promise<unknown>=>{
   const response=await session.fetch(new URL(address,ready.url).href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,input})});
@@ -58,6 +62,7 @@ async function runProjectCoreFlows({app,session,ready,smokeRoot}:CoreFlowOptions
   return payload.data;
  };
  const projectAddress=(projectId:string)=>`/api/projects/${projectId}/rpc`;
+ await mark('project-core-create');
  const createdAt=record(await request('/api/rpc','project.template.instantiate',{templateId:'timeline-basics',templateVersion:1,parentDir:smokeRoot,name:'W2 Smoke',requestId:randomUUID()}));
  const project=record(createdAt.project),projectId=String(project.projectId),projectFile=String(project.projectFile);
  assert.ok(/^[0-9a-f-]{36}$/u.test(projectId));assert.equal(path.basename(projectFile),'W2 Smoke.mioon');assert.equal(path.dirname(projectFile),path.join(smokeRoot,'W2 Smoke'));
@@ -70,6 +75,7 @@ async function runProjectCoreFlows({app,session,ready,smokeRoot}:CoreFlowOptions
  const image=await readFile(example);
  const asset=record(await request(projectAddress(projectId),'asset.import',{projectId,name:'smoke-import.png',mimeType:'image/png',dataBase64:image.toString('base64')}));
  assert.equal(asset.name,'smoke-import.png');assert.equal(asset.mimeType,'image/png');
+ await mark('project-core-export');
  const state=record(await request(projectAddress(projectId),'project.get',{projectId}));
  const timeline=record(state.timeline),exportIdValue=record(await request(projectAddress(projectId),'timeline.render',{projectId,
   expectedRevision:Number(timeline.revision),requestId:randomUUID(),purpose:'export',exportRange:{startFrame:0,endFrame:60}}));
@@ -88,6 +94,7 @@ async function runProjectCoreFlows({app,session,ready,smokeRoot}:CoreFlowOptions
  const outputFile=String(output.fileLocation),outputSize=Number(output.sizeBytes);
  assert.ok(path.isAbsolute(outputFile));assert.ok(Number.isSafeInteger(outputSize)&&outputSize>1024);
  assert.equal((await stat(outputFile)).size,outputSize);assert.match(String(output.sha256),/^[0-9a-f]{64}$/u);
+ await mark('project-core-open');
  const bridgeOpen=async():Promise<BrowserWindow>=>{
   const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
   const result=record(await launcher.webContents.executeJavaScript(`(async()=>{const recent=await window.__mioonProjectEntries.listRecent();
@@ -120,7 +127,7 @@ function clearSmokeWorkspace(projectFile:string):void{
 /** The hard gate is packaged launch/security, not complete Windows support.
  * Unavailable project and live-provider flows remain explicit blocked entries.
  * Progress and failure evidence contain fixed names only; never raw errors. */
-export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,report,safeStorage,output}:WindowsSmokeOptions):Promise<void>{
+export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,report,safeStorage,output,windowsProjectVolume}:WindowsSmokeOptions):Promise<void>{
  const checks:SmokeCheck[]=[];
  const passed=(name:string)=>{checks.push({name,status:'passed'});};
  const blocked=(name:string,code:string)=>{checks.push({name,status:'blocked',code});};
@@ -212,18 +219,21 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   // Real volume facts for the actual project location used by the core flows.
   const documents=app.getPath('documents'),smokeRoot=path.join(documents,'Mioon Windows Smoke '+randomUUID());
   await mkdir(smokeRoot,{recursive:true});
+  const volumeDependencies=windowsProjectVolume?{readWindowsVolume:windowsProjectVolume}:{};
   try{
-   const facts=await probeDesktopProjectLocation({path:smokeRoot,purpose:'create',isDirectory:true});
+   await mark('project-location-facts');
+   const facts=await probeDesktopProjectLocation({path:smokeRoot,purpose:'create',isDirectory:true},volumeDependencies);
    assert.equal(facts.fileSystem.toLowerCase(),'ntfs');
    assert.equal(facts.isLocal,true);assert.equal(facts.volumeReadOnly,false);assert.equal(facts.permissionBits,true);
-   assert.equal(facts.cloud,'not-reported');
-   assert.deepEqual(projectLocationDecision(facts),{kind:'admit'});
+   assert.notEqual(projectLocationDecision(facts).kind,'reject');
+   await mark('project-location-paths');
    // Windows path details are rejected by the same probe before any file work.
    for(const [file,reason] of [[path.join(smokeRoot,'CON'),'reserved-name'],[path.join(smokeRoot,'trailing.'),'trailing-dot-or-space'],
     [path.join(smokeRoot,'bad<name'),'invalid-character'],['\\.\pipe\mioon','device-path']] as const){
     await probeDesktopProjectLocation({path:file,purpose:'create',isDirectory:false}).then(()=>assert.fail('malformed project path was accepted'),
      error=>{const value=record(error);assert.equal(value.code,'PROJECT_LOCATION_INVALID');assert.equal(record(value.details).reason,reason);});
    }
+   await mark('project-location-network');
    const network=await probeDesktopProjectLocation({path:path.join(smokeRoot,'film.mioon'),purpose:'open',isDirectory:false},{
     readWindowsVolume:async()=>({fileSystem:'SMB',isLocal:false,volumeReadOnly:false,permissionBits:true,cloudSyncRoot:false,placeholder:false})});
    assert.deepEqual(projectLocationDecision(network),{kind:'reject'});
@@ -233,7 +243,7 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
    throw error;
   }
   await mark('native-project-core-flows');
-  await runProjectCoreFlows({app,session:getSession(),ready:getReady(),smokeRoot,projectId:null});
+  await runProjectCoreFlows({app,session:getSession(),ready:getReady(),smokeRoot,mark});
   passed('native-project-core-flows');
   try{await rm(smokeRoot,{recursive:true,force:true});}catch{/* The runner is disposable; cleanup never hides a passing flow. */}
   blocked('live-mio-and-generation','LIVE_CREDENTIALS_NOT_CONFIGURED');

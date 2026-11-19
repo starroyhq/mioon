@@ -81,6 +81,7 @@ import type {ProjectEntryDesktopOwner,ProjectEntryLocationAdmission} from './pro
 import { PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT } from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import { configureDesktopWindowsProjectVolume, probeDesktopProjectLocation } from './project-location-probe.ts';
+import type { WindowsProjectVolumeReader } from './project-location-probe.ts';
 import { projectLocationDecision } from './project-location-policy.ts';
 import {createProjectLocationHelp} from './project-location-help.ts';
 import {createAssetRelinkHost} from './asset-relink-host.ts';
@@ -167,6 +168,7 @@ const systemLanguages = (): readonly string[] => { try { return app.getPreferred
 setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
 let paths!: DesktopPaths;
 let startupStorageError: unknown;
+let windowsProjectVolume: WindowsProjectVolumeReader | null = null;
 if (productionChannelRejected) {
   // The existing fatal startup path shows a dialog in an isolated profile and
   // exits before the single-instance lock, workspace or vault can start.
@@ -187,8 +189,10 @@ if (productionChannelRejected) {
   // location admission. A helper without that reviewed entry keeps the probe
   // closed; the startup storage check above owns a missing helper failure.
   if (!startupStorageError && process.platform === 'win32') {
-    try { configureDesktopWindowsProjectVolume(createWindowsProjectVolumeReaderFromFile(privateStorageHelperFile(app))); }
-    catch { /* Project location admission stays unavailable. */ }
+    try {
+      windowsProjectVolume = createWindowsProjectVolumeReaderFromFile(privateStorageHelperFile(app));
+      configureDesktopWindowsProjectVolume(windowsProjectVolume);
+    } catch { /* Project location admission stays unavailable. */ }
   }
 }
 const appearanceCache = !startupStorageError ? createDesktopAppearanceCache({root:paths.userData,dataRoot:paths.dataDir,appId:identity.appId,channel:identity.channel}) : null;
@@ -1609,7 +1613,8 @@ else {
           refreshAppearance: () => windowContext?.appearance?.refresh() });
       } else if (windowsPackageSmoke) {
         const { runWindowsSmoke } = await import('./windows-smoke-checks.ts');
-        await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output });
+        await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output,
+          windowsProjectVolume });
       } else {
       const { runSmoke } = await import('./smoke-checks.ts');
       await runSmoke({ app, getWindow: () => win, getSession: () => activeSession,

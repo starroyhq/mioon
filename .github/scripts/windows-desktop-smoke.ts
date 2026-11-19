@@ -48,7 +48,8 @@ export const WINDOWS_SMOKE_PHASES: readonly string[] = Object.freeze(['startup',
   'bundled-utility-node-sqlite', 'launcher-ui-ready', 'renderer-sandbox-and-origin', 'secure-memory-cookie',
   'loopback-rpc-and-anonymous-denial', 'renderer-network-window-permission-fences', 'private-discovery-acl',
   'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'native-project-location',
-  'native-project-core-flows', 'write-report']);
+  'project-location-facts', 'project-location-paths', 'project-location-network', 'native-project-core-flows',
+  'project-core-create', 'project-core-export', 'project-core-open', 'write-report']);
 const fixedName = (value: unknown, keys: readonly string[]): string | undefined => {
   if (!record(value) || !exactKeys(value, keys) || value.schemaVersion !== 1 || value.scope !== 'windows-development-launch') return undefined;
   const name = value[keys[keys.length - 1]!];
