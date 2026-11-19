@@ -143,14 +143,13 @@ for (const slot of ['agent', 'official', 'custom', 'comfy']) {
     assertSafe(ui.changes); ui.unmount();
   });
 
-  test(`${slot}: matching readback after unknown save still blocks until explicit review`, async () => {
+  test(`${slot}: matching readback after unknown save resolves as saved without blocking navigation`, async () => {
     const f = fixture(slot, { write: () => Promise.reject(Object.assign(Error('synthetic-key-never-reflected'), { code: 'NETWORK' })) }), ui = renderer(slot, f);
     await ready(ui); ui.edit(changedValue(slot)); ui.save(); await flush(); ui.render();
     assert.ok(ui.latest(), 'Unknown results need a navigation report'); assert.equal(ui.latest().dirty, false, 'Fixture rereads the matching saved configuration');
-    assert.equal(ui.latest().busy, false); assert.equal(ui.latest().blocked, true); assert.equal(f.writes.length, 1); assert.equal(f.reads, 2);
-    const registry = navigation.createSettingsNavigationRegistry(), owner = registry.register(slot); owner.update(ui.latest()); assert.equal(registry.canLeave(registry.capture()), false);
-    const button = slot === 'comfy' ? nodes(ui.render()).find(node => node.type === 'Button' && JSON.stringify(node.props.children).includes('核对后保留草稿')) : ui.find(slot === 'agent' ? 'review' : 'keep-draft');
-    (button)!.props.onClick(); assert.equal(ui.latest().blocked, false); assert.equal(f.writes.length, 1); assertSafe(ui.changes); ui.unmount();
+    assert.equal(ui.latest().busy, false); assert.equal(ui.latest().blocked, false, 'A matching revision and body is an applied save, not an unresolved one'); assert.equal(f.writes.length, 1, 'The automatic readback never resends the write'); assert.equal(f.reads, 2);
+    const registry = navigation.createSettingsNavigationRegistry(), owner = registry.register(slot); owner.update(ui.latest()); assert.equal(registry.canLeave(registry.capture()), true, 'A proven save lifts the navigation block');
+    assert.equal(f.writes.length, 1); assertSafe(ui.changes); ui.unmount();
   });
 
   test(`${slot}: unresolved reconciliation publishes busy and blocked before any readback arrives`, async () => {
@@ -249,15 +248,17 @@ for (const slot of ['official', 'custom', 'comfy']) {
     }
   });
 
-  test(`${slot}: Back denied during saving or unknown recovery keeps the session usable`, async () => {
+  test(`${slot}: Back denied while saving or while recovery stays unresolved keeps the session usable`, async () => {
     for (const outcome of ['saving', 'unknown']) {
       const held = deferred(); let writes = 0, ui: ReturnType<typeof renderer>;
-      const f = fixture(slot, { write: (_, saved) => ++writes > 1 ? Promise.resolve(saved) : outcome === 'saving' ? held.promise : Promise.reject(Object.assign(Error('unknown'), { code: 'NETWORK' })) });
+      const f = fixture(slot, { write: (_, saved) => ++writes > 1 ? Promise.resolve(saved) : outcome === 'saving' ? held.promise : Promise.reject(Object.assign(Error('unknown'), { code: 'NETWORK' })),
+        read: outcome === 'unknown' ? (count: number, saved: unknown) => count === 1 ? Promise.resolve(saved) : Promise.resolve({ ...(saved as Record<string, unknown>), revision: 99 }) : undefined });
       ui = renderer(slot, f, undefined, { beforeClose: () => !ui.latest().busy && !ui.latest().blocked }); await ready(ui);
       ui.edit(changedValue(slot)); ui.save(); if (outcome === 'unknown') await flush(); ui.render();
       assert.equal(await ui.back(), false); assert.equal(ui.closes, 0);
       if (outcome === 'saving') { (held.resolve)!(f.saved()); await flush(); ui.render(); }
       else {
+        assert.equal(ui.latest().blocked, true, 'An unmatched readback is not proof that the write was applied');
         const button = slot === 'comfy' ? nodes(ui.render()).find(node => node.type === 'Button' && JSON.stringify(node.props.children).includes('核对后保留草稿')) : ui.find(slot === 'agent' ? 'review' : 'keep-draft');
         (button)!.props.onClick(); ui.render();
       }

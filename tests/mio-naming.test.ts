@@ -40,8 +40,9 @@ test('Mio wording distinguishes execution from the background task center and re
     assert.ok(translate(locale, 'agent.task.unknown').trim());
     assert.match(translate(locale, 'agent.task.editingDiscardConfirm'), /[？?]$/u);
   }
-  assert.equal(translate('zh-Hans', 'agent.task.waitReconcile'), '生成结果待核对');
-  assert.equal(translate('zh-Hans', 'agent.task.paidReconcile'), '生成结果待核对');
+  assert.equal(translate('zh-Hans', 'agent.task.waitReconcile'), '生成结果未确认');
+  assert.equal(translate('zh-Hans', 'agent.task.paidReconcile'), '生成结果未确认，可能已受理并计费');
+  assert.match(translate('zh-Hans', 'agent.task.paidReconcile'), /计费/u);
   assert.match(translate('en', 'redesign.tasks.search'), /tasks/);
   assert.deepEqual(validateCatalogs(agentTaskMessages), []);
 });
