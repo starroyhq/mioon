@@ -95,7 +95,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
-  'subject.card.create', 'subject.card.delete', 'subject.delete',
+  'subject.card.create', 'subject.card.delete',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
@@ -140,15 +140,15 @@ export type SubjectBindingOperation =
     readonly bindingMode: 'follow' | 'locked'; readonly subjectVersionId: string | null}};
 
 /** SB-b subject-card commands. A card stores only `subjectId` and canvas fields;
- * deleting a card or subject is a board-only action in the same unified history.
- * Subject/version rows are retained by the format-5 storage contract, so
- * `subject.delete` removes the subject's board presence (cards, active bindings
- * and reference edges) rather than the retained library evidence. */
+ * deleting a card is a board-only action in the same unified history. Subject
+ * and version rows are retained project evidence, so the only supported removal
+ * is the board card (active bindings become detached tombstones and their
+ * reference edges are removed). Deleting a subject from the library needs a
+ * format-6 archived column and is out of scope for 0.3.0. */
 export type SubjectCardOperation =
   | {readonly kind: 'subject.card.create'; readonly nodeId: string; readonly subjectId: string;
     readonly position: {readonly x: number; readonly y: number}}
-  | {readonly kind: 'subject.card.delete'; readonly nodeId: string}
-  | {readonly kind: 'subject.delete'; readonly subjectId: string};
+  | {readonly kind: 'subject.card.delete'; readonly nodeId: string};
 export type SubjectEditOperation = SubjectBindingOperation | SubjectCardOperation;
 
 /** One subject intent: always board side, never combined with a sync-board
@@ -196,7 +196,6 @@ export function sequenceEditIntentSide(operation: {readonly kind: string}): Sequ
 export function sequenceEditSubjectOperationName(operation: SubjectEditOperation): SequenceEditOperationName {
   if (operation.kind === 'subject.card.create') return 'subject.card.create';
   if (operation.kind === 'subject.card.delete') return 'subject.card.delete';
-  if (operation.kind === 'subject.delete') return 'subject.delete';
   switch (operation.edit.kind) {
     case 'create': return 'subject.binding.create';
     case 'set-mode': return 'subject.binding.set-mode';
@@ -454,7 +453,6 @@ const subjectCardOperationSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('subject.card.create'), nodeId: uuidSchema, subjectId: uuidSchema,
     position: cardPositionSchema}).strict(),
   z.object({kind: z.literal('subject.card.delete'), nodeId: uuidSchema}).strict(),
-  z.object({kind: z.literal('subject.delete'), subjectId: uuidSchema}).strict(),
 ]);
 export const sequenceEditSubjectIntentSchema = z.object({
   side: z.literal('board'),

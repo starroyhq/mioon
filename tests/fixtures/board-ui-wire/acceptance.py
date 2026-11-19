@@ -316,24 +316,6 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     log('deleting a subject card confirms its impact and undoes as one step')
     capture(page, '21-01-subject-delete-card-undone.png')
 
-    # 4. Deleting the subject removes its board presence but keeps the library
-    # rows; one undo restores the card and bindings.
-    page.get_by_test_id(f'board-card-{card["id"]}').click()
-    page.get_by_test_id('board-inspector-delete-subject').click()
-    expect(page.get_by_test_id('board-delete-confirm')).to_be_visible()
-    page.get_by_test_id('board-delete-confirm-button').click()
-    page.wait_for_function("(cardId) => !window.__boardWireState.cards.some(item => item.id === cardId)",
-                           arg=card['id'], timeout=15000)
-    assert state(page)['history']['undo']['operation'] == 'subject.delete'
-    assert any(subject['id'] == subject_id for subject in state(page)['subjects']), \
-        'the subject library row is retained'
-    page.locator('body').press('Control+z')
-    page.wait_for_function("(cardId) => window.__boardWireState.cards.some(item => item.id === cardId)",
-                           arg=card['id'], timeout=15000)
-    log('deleting the subject removes its board presence, keeps the library row and undoes as one step')
-    capture(page, '21-01-subject-delete-subject-undone.png')
-
-
 
 if __name__ == '__main__':
     try:

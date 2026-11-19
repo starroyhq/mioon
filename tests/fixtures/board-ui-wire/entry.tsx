@@ -13,7 +13,7 @@ import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
 import {projectLiveBoard, boardConnectIntent, boardDeleteIntent, boardVersionIntent,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
-  subjectCardCreateOperation, subjectCardDeleteOperation, subjectDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
+  subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
 import {BoardUiSession} from '../../../apps/web/src/board-ui/live-session.ts';
 import type {BoardBinding, BoardMountView, BoardOutcome} from '../../../apps/web/src/board-ui/live-session.ts';
@@ -123,11 +123,6 @@ function Harness(): React.ReactElement {
     void runSubject(subjectCardDeleteOperation(nodeId), undefined,
       t('boardUi.notice.subjectCardDeleted', {name: subjectName(subjectId)}));
   }, [runSubject, mount, t]);
-  const deleteSubject = useCallback((subjectId: string): void => {
-    setSelectedNodeId(null);
-    void runSubject(subjectDeleteOperation(subjectId), undefined,
-      t('boardUi.notice.subjectRemoved', {name: subjectName(subjectId)}));
-  }, [runSubject, mount, t]);
   const undoNotice = useCallback(async (actionId: string): Promise<boolean> => {
     const view = await session.current.history();
     if (!view?.undo || view.undo.actionId !== actionId) {setNotice(null); return false;}
@@ -183,7 +178,7 @@ function Harness(): React.ReactElement {
         onOpenInEditing={nodeId => setOpenedNode(nodeId)}
         onRestore={(archivedId, name) => {void restore(archivedId, name);}}
         onSetBindingMode={setBindingMode} onDetachBinding={detachBinding} onRestoreBinding={restoreBinding}
-        onDeleteSubjectCard={deleteCard} onDeleteSubject={deleteSubject}/>
+        onDeleteSubjectCard={deleteCard}/>
       <section className="board-fixture-subjects" data-testid="board-fixture-subjects">
         <h4>{t('boardUi.inspector.subjects')}</h4>
         {(mount?.subjects ?? []).map(subject => <div key={subject.id} className="board-fixture-subject"

@@ -125,27 +125,6 @@ test('deleting one card detaches its active bindings and removes their edges; un
   } finally {store.close();}
 });
 
-test('removing a subject from the board keeps its retained library rows and is undone as one action', () => {
-  const f = fixture(), seeded = seed(f), store = seeded.store;
-  try {
-    const bindingId = randomUUID(), edgeId = randomUUID();
-    assert.equal(runSequenceSync(store, buildSubjectBindingEnvelope(store, {kind: 'create', bindingId, shotId: seeded.shotId,
-      subjectId: seeded.subjectId, role: 'subject'}, {...action(seeded), requestId: `bind-${randomUUID()}`,
-      actionId: randomUUID(), edgeId})).ok, true);
-    const envelope = cardEnvelope(seeded, {kind: 'subject-delete', subjectId: seeded.subjectId});
-    assert.equal(planSubjectEditAction(store, envelope).after.board.removals.some(item => item.kind === 'node'), true);
-    assert.equal(runSequenceSync(store, envelope).ok, true);
-    assert.equal(cardCount(store), 0);
-    assert.equal(store.db.prepare('SELECT bindingMode FROM project.subject_bindings WHERE id=?').get(bindingId)!.bindingMode, 'detached');
-    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.subjects WHERE id=?').get(seeded.subjectId)!.n, 1,
-      'subject and version evidence are retained');
-    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.subject_versions WHERE subjectId=?').get(seeded.subjectId)!.n, 1);
-    assert.equal(undo(seeded, envelope).ok, true);
-    assert.equal(cardCount(store), 1);
-    assert.equal(store.db.prepare('SELECT bindingMode FROM project.subject_bindings WHERE id=?').get(bindingId)!.bindingMode, 'follow');
-  } finally {store.close();}
-});
-
 test('the board read projection lists subjects, their versions and every binding state', () => {
   const f = fixture(), seeded = seed(f), store = seeded.store;
   try {
@@ -171,7 +150,7 @@ test('card creation rejects a duplicate subject card and an unknown subject', ()
     const duplicate = cardEnvelope(seeded, {kind: 'card-create', nodeId: randomUUID(), subjectId: seeded.subjectId,
       position: {x: 0, y: 0}});
     assert.throws(() => planSubjectEditAction(store, duplicate), {code: 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'});
-    assert.throws(() => cardEnvelope(seeded, {kind: 'subject-delete', subjectId: randomUUID()}),
+    assert.throws(() => cardEnvelope(seeded, {kind: 'card-delete', nodeId: randomUUID()}),
       {code: 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'});
   } finally {store.close();}
 });

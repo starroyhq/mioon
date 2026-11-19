@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectLiveBoard, subjectBindingCreateOperation, subjectBindingDetachOperation,
-  subjectCardCreateOperation, subjectCardDeleteOperation, subjectDeleteOperation} from '../apps/web/src/board-ui/live.ts';
+  subjectCardCreateOperation, subjectCardDeleteOperation} from '../apps/web/src/board-ui/live.ts';
 import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
 import {boardConnectIntent, boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent} from '../apps/web/src/board-ui/live.ts';
 
@@ -154,7 +154,6 @@ test('subject command builders and the subject preview/commit handshake keep ide
   assert.deepEqual(subjectCardCreateOperation(id(70), id(71), {x: 1, y: 2}),
     {kind: 'subject.card.create', nodeId: id(70), subjectId: id(71), position: {x: 1, y: 2}});
   assert.deepEqual(subjectCardDeleteOperation(id(70)), {kind: 'subject.card.delete', nodeId: id(70)});
-  assert.deepEqual(subjectDeleteOperation(id(71)), {kind: 'subject.delete', subjectId: id(71)});
   assert.deepEqual(subjectBindingCreateOperation(id(80), id(3), id(71), 'style'), {kind: 'subject-binding',
     edit: {kind: 'create', bindingId: id(80), shotId: id(3), subjectId: id(71), role: 'style'}});
   assert.deepEqual(subjectBindingDetachOperation(id(80)), {kind: 'subject-binding', edit: {kind: 'detach', bindingId: id(80)}});

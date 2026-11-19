@@ -1,16 +1,13 @@
 /** SB-b subject cards on the format-5 board.
  *
  * A `subject_card` node stores only `subjectId` and canvas fields; subject and
- * subject-version rows are retained project content. Card creation/deletion and
- * "remove this subject from the board" therefore only touch board rows, active
- * bindings (tombstone detach) and their reference edges. Every action is one
- * shared subject intent, applied by `runSequenceSync` in the same transaction
- * and history entry as bindings and board edits.
- *
- * The format-5 storage contract retains subjects and versions, so
- * `subject.delete` removes the subject's board presence (cards, active
- * bindings, reference edges) and keeps the library evidence. Physical library
- * deletion would require a separate storage-retention decision.
+ * subject-version rows are retained project content. Creating or deleting a
+ * card only touches board rows, active bindings (tombstone detach) and their
+ * reference edges. Every action is one shared subject intent, applied by
+ * `runSequenceSync` in the same transaction and history entry as bindings and
+ * board edits. A subject has at most one live card, so card deletion is the
+ * board-level "remove this subject from the board" action; deleting the
+ * subject-library record itself needs a format-6 archived column.
  */
 import {AppError} from '@mioon/contracts';
 import {format5EdgeSchema, format5SubjectBindingSchema} from '@mioon/contracts/project-format5';
@@ -40,15 +37,13 @@ const parse = (value: unknown): Row => {
 export type SubjectCardCommand =
   | {readonly kind: 'card-create'; readonly nodeId: string; readonly subjectId: string;
     readonly position: {readonly x: number; readonly y: number}}
-  | {readonly kind: 'card-delete'; readonly nodeId: string}
-  | {readonly kind: 'subject-delete'; readonly subjectId: string};
+  | {readonly kind: 'card-delete'; readonly nodeId: string};
 
 function operationOf(command: SubjectCardCommand): SubjectCardOperation {
   switch (command.kind) {
     case 'card-create': return {kind: 'subject.card.create', nodeId: command.nodeId, subjectId: command.subjectId,
       position: {x: command.position.x, y: command.position.y}};
     case 'card-delete': return {kind: 'subject.card.delete', nodeId: command.nodeId};
-    case 'subject-delete': return {kind: 'subject.delete', subjectId: command.subjectId};
   }
 }
 
@@ -115,11 +110,8 @@ const stateDelta = (board: SequenceEditBoardDelta): SequenceEditStateDelta => ({
 export function buildSubjectCardEnvelope(store: ProjectStore, command: SubjectCardCommand,
   options: {readonly requestId: string; readonly actionId: string; readonly epoch: string;
     readonly historyPosition: number; readonly historyRevision: number; readonly origin?: 'user' | 'mio'}): SequenceEditEnvelope {
-  if (!isUuid(command.kind === 'subject-delete' ? command.subjectId : command.kind === 'card-create' ? command.subjectId : '')
-    && command.kind === 'card-create') invalid('主体标识无效');
-  if (command.kind === 'subject-delete' && !isUuid(command.subjectId)) invalid('主体标识无效');
-  if (command.kind === 'card-create' && (!isUuid(command.nodeId) || !subjectExists(store, command.subjectId))) invalid('主体或卡标识无效');
-  if (command.kind === 'subject-delete' && !subjectExists(store, command.subjectId)) invalid('主体不存在');
+  if (command.kind === 'card-create' && (!isUuid(command.nodeId) || !isUuid(command.subjectId)
+    || !subjectExists(store, command.subjectId))) invalid('主体或卡标识无效');
   const contentRevision = readProjectContentStamp(store.db).contentSequence;
   const state = readFormat5TimelineState(store.db, 'project');
   const header = state.header ? parse(state.header.raw) : {};
@@ -131,10 +123,10 @@ export function buildSubjectCardEnvelope(store: ProjectStore, command: SubjectCa
     subtitleCueIds: [], subjectBindingIds: []};
   if (command.kind === 'card-create') impact = {...impact, nodeIds: [command.nodeId]};
   else {
-    const subjectId = command.kind === 'card-delete' ? subjectIdOfCard(store, cardById(store, command.nodeId)) : command.subjectId;
-    const cards = command.kind === 'card-delete' ? [cardById(store, command.nodeId)] : liveCards(store, subjectId);
+    const card = cardById(store, command.nodeId);
+    const subjectId = subjectIdOfCard(store, card);
     const bindings = bindingRows(store, subjectId);
-    impact = {...impact, nodeIds: cards.map(card => card.id),
+    impact = {...impact, nodeIds: [card.id],
       edgeIds: bindings.map(binding => binding.edgeId).filter((id): id is string => id !== null),
       subjectBindingIds: bindings.map(binding => binding.id)};
   }
@@ -167,16 +159,15 @@ export function planSubjectCardAction(store: ProjectStore, envelope: SequenceEdi
     return {before: stateDelta({writes: [], removals: [nodeEntity(row)]}),
       after: stateDelta({writes: [nodeEntity(row)], removals: []})};
   }
-  const subjectId = operation.kind === 'subject.card.delete'
-    ? subjectIdOfCard(store, cardById(store, operation.nodeId)) : operation.subjectId;
-  if (!isUuid(subjectId) || !subjectExists(store, subjectId)) invalid('主体不存在');
-  const cards = operation.kind === 'subject.card.delete'
-    ? [cardById(store, operation.nodeId)] : liveCards(store, subjectId);
+  const card = cardById(store, operation.nodeId);
+  const subjectId = subjectIdOfCard(store, card);
   const bindings = bindingRows(store, subjectId);
   const active = bindings.filter(binding => binding.bindingMode !== 'detached');
   const edgeIds = [...new Set(active.map(binding => binding.edgeId).filter((id): id is string => id !== null))];
-  if (!cards.length && !active.length) return {before: stateDelta({writes: [], removals: []}),
-    after: stateDelta({writes: [], removals: []})};
+  const cards = [card];
+  if (!active.length && !edgeIds.length) {
+    // Deleting a card with no active reference still removes the card row.
+  }
   const removedEdges = edgeIds.map(id => edgeEntity(edgeRow(store, id)));
   const beforeWrites: SequenceEditBoardEntity[] = [...cards.map(card => nodeEntity(card.data)),
     ...active.map(binding => bindingEntity(binding)), ...removedEdges];

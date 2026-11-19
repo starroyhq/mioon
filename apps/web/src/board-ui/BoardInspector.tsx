@@ -25,10 +25,9 @@ export interface BoardInspectorProps {
   readonly onDetachBinding: (binding: BoardBinding) => void;
   readonly onRestoreBinding: (binding: BoardBinding) => void;
   readonly onDeleteSubjectCard: (nodeId: string, subjectId: string) => void;
-  readonly onDeleteSubject: (subjectId: string) => void;
 }
 
-interface DeleteRequest {readonly kind: 'card' | 'subject'; readonly nodeId?: string; readonly subjectId: string}
+interface DeleteRequest {readonly nodeId: string; readonly subjectId: string}
 
 export default function BoardInspector(props: BoardInspectorProps): React.ReactElement {
   const {t, formatNumber} = useI18n();
@@ -50,9 +49,8 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     ? bindings.filter(binding => binding.shotId === selected.id && binding.bindingMode === 'detached') : [];
   const subjectBindings = subject ? bindings.filter(binding => binding.subjectId === subject.id) : [];
   const subjectActive = subjectBindings.filter(binding => binding.bindingMode !== 'detached');
-  const subjectCards = subject ? props.board.nodes.filter(node => node.kind === 'subject' && node.subjectId === subject.id) : [];
   const impact = confirm ? {
-    cards: confirm.kind === 'card' ? 1 : subjectCards.length,
+    cards: 1,
     bindings: bindings.filter(binding => binding.subjectId === confirm.subjectId).length,
     active: bindings.filter(binding => binding.subjectId === confirm.subjectId && binding.bindingMode !== 'detached').length,
     shots: new Set(bindings.filter(binding => binding.subjectId === confirm.subjectId).map(binding => binding.shotId)).size,
@@ -81,17 +79,15 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     </li>;
   };
   const confirmDialog = confirm && impact && <div className="board-confirm-backdrop" role="dialog" aria-modal="true"
-    aria-label={t(confirm.kind === 'card' ? 'boardUi.delete.cardTitle' : 'boardUi.delete.subjectTitle', {name: subject?.name ?? ''})}
+    aria-label={t('boardUi.delete.cardTitle', {name: subject?.name ?? ''})}
     data-testid="board-delete-confirm">
     <section className="board-confirm-dialog">
-      <h3>{t(confirm.kind === 'card' ? 'boardUi.delete.cardTitle' : 'boardUi.delete.subjectTitle', {name: subject?.name ?? ''})}</h3>
+      <h3>{t('boardUi.delete.cardTitle', {name: subject?.name ?? ''})}</h3>
       <p data-testid="board-delete-impact">{t('boardUi.delete.impact', impact)}</p>
-      {confirm.kind === 'subject' && <p>{t('boardUi.delete.keepSubject')}</p>}
       <div className="board-confirm-actions">
         <button type="button" data-testid="board-delete-cancel" onClick={() => setConfirm(null)}>{t('boardUi.delete.cancel')}</button>
         <button type="button" data-testid="board-delete-confirm-button" disabled={props.busy}
-          onClick={() => { if (confirm.kind === 'card' && confirm.nodeId) props.onDeleteSubjectCard(confirm.nodeId, confirm.subjectId);
-            else props.onDeleteSubject(confirm.subjectId); setConfirm(null); }}>
+          onClick={() => { props.onDeleteSubjectCard(confirm.nodeId, confirm.subjectId); setConfirm(null); }}>
           {t('boardUi.delete.confirm')}</button>
       </div>
     </section>
@@ -149,11 +145,8 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
           </section>
           <div className="board-danger-actions">
             <button type="button" data-testid="board-inspector-delete-card" disabled={props.busy}
-              onClick={() => setConfirm({kind: 'card', nodeId: selected.id, subjectId: subject.id})}>
+              onClick={() => setConfirm({nodeId: selected.id, subjectId: subject.id})}>
               {t('boardUi.inspector.deleteCard')}</button>
-            <button type="button" data-testid="board-inspector-delete-subject" disabled={props.busy}
-              onClick={() => setConfirm({kind: 'subject', subjectId: subject.id})}>
-              {t('boardUi.inspector.deleteSubject')}</button>
           </div>
         </section>}
         {selected.kind === 'shot' && props.onOpenInEditing &&

@@ -165,8 +165,6 @@ export const subjectCardCreateOperation = (nodeId: string, subjectId: string, po
   ({kind: 'subject.card.create', nodeId, subjectId, position: {x: position.x, y: position.y}});
 export const subjectCardDeleteOperation = (nodeId: string): SubjectCardOperation =>
   ({kind: 'subject.card.delete', nodeId});
-export const subjectDeleteOperation = (subjectId: string): SubjectCardOperation =>
-  ({kind: 'subject.delete', subjectId});
 
 export interface SubjectBindable {
   readonly bindingId: string; readonly shotId: string; readonly subjectId: string; readonly role: 'subject' | 'style';

@@ -124,7 +124,6 @@ function subjectCardCommand(operation: import('../../contracts/src/sequence-edit
     case 'subject.card.create': return {kind: 'card-create', nodeId: operation.nodeId,
       subjectId: operation.subjectId, position: operation.position};
     case 'subject.card.delete': return {kind: 'card-delete', nodeId: operation.nodeId};
-    case 'subject.delete': return {kind: 'subject-delete', subjectId: operation.subjectId};
   }
 }
 

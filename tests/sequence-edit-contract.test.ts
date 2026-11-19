@@ -134,9 +134,8 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [restoreBinding, 'subject.binding.restore'],
     [{kind: 'subject.card.create', nodeId: nodeA, subjectId: uuid('60'), position: {x: 0, y: 0}}, 'subject.card.create'],
     [{kind: 'subject.card.delete', nodeId: nodeA}, 'subject.card.delete'],
-    [{kind: 'subject.delete', subjectId: uuid('60')}, 'subject.delete'],
   ];
-  assert.equal(subjectSamples.length, 7);
+  assert.equal(subjectSamples.length, 6);
   assert.equal(samples.length + subjectSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);

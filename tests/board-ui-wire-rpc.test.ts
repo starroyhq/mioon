@@ -147,20 +147,6 @@ test('subject cards, bindings, delete commands and the board read projection sha
   assert.equal((await call('project.get', {projectId: f.projectId})).nodes.some((node: any) => node.id === cardId), true);
 });
 
-test('removing a subject from the board keeps the subject library rows and uses one undo step', async (t: test.TestContext) => {
-  const f = await boardFixture(t);
-  const call = callOf(f.services);
-  const cardId = randomUUID();
-  await subjectPreviewCall(call, f.projectId, {kind: 'subject.card.create', nodeId: cardId,
-    subjectId: BOARD_IDS.subjectLook, position: {x: 300, y: 200}});
-  await subjectPreviewCall(call, f.projectId, {kind: 'subject.delete', subjectId: BOARD_IDS.subjectLook});
-  const after = await call('sequence.board.get', {projectId: f.projectId});
-  assert.equal(after.subjects.some((item: any) => item.id === BOARD_IDS.subjectLook), true,
-    'the subject library row is retained');
-  assert.equal((await call('project.get', {projectId: f.projectId})).nodes.some((node: any) => node.id === cardId), false);
-  assert.equal(after.bindings.filter((item: any) => item.subjectId === BOARD_IDS.subjectLook && item.bindingMode !== 'detached').length, 0);
-});
-
 test('a look subject binds to a shot with the style role', async (t: test.TestContext) => {
   const f = await boardFixture(t);
   const call = callOf(f.services);
