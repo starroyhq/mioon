@@ -18,7 +18,12 @@ const subjectEdit = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('detach'), bindingId: uuid}).strict(),
   z.object({kind: z.literal('restore'), bindingId: uuid, bindingMode: z.enum(['follow', 'locked']), subjectVersionId: uuid.nullable()}).strict(),
 ]);
+const point = z.object({x: z.number().finite().min(-1_000_000).max(1_000_000),
+  y: z.number().finite().min(-1_000_000).max(1_000_000)}).strict();
 export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('board-root-create'), name: z.string().min(1).max(200), position: point}).strict(),
+  z.object({kind: z.literal('board-shot-append'), name: z.string().min(1).max(200), position: point.optional()}).strict(),
+  z.object({kind: z.literal('board-layout-move'), moves: z.array(z.object({nodeId: uuid}).merge(point)).min(1).max(50)}).strict(),
   z.object({kind: z.literal('connect'), ...boardEdge}).strict(),
   z.object({kind: z.literal('disconnect'), ...boardEdge}).strict(),
   z.object({kind: z.literal('insert'), ...boardEdge, nodeId: uuid}).strict(),
