@@ -18,6 +18,28 @@ export interface ChainBoard {
 
 export type ChainReferenceRole = 'first_frame' | 'last_frame' | 'reference_image' | 'subject_reference' | 'style_reference'
   | 'composition' | 'reference_audio' | 'reference_video';
+/** Source card families that may feed a material reference line (RI-a/RI-b).
+ * Shared by the service planner and the browser so role defaulting, the role
+ * menu and the unsupported projection can never drift apart. */
+export type ReferenceSourceKind = 'image' | 'video' | 'audio' | 'previs';
+export const REFERENCE_SOURCE_ROLES: Readonly<Record<ReferenceSourceKind, readonly ChainReferenceRole[]>> = Object.freeze({
+  image: Object.freeze(['first_frame', 'last_frame', 'reference_image', 'composition'] as const),
+  video: Object.freeze(['reference_video'] as const),
+  audio: Object.freeze(['reference_audio'] as const),
+  previs: Object.freeze(['composition', 'first_frame', 'reference_image'] as const),
+});
+export const DEFAULT_REFERENCE_ROLE: Readonly<Record<ReferenceSourceKind, ChainReferenceRole>> = Object.freeze({
+  image: 'first_frame', video: 'reference_video', audio: 'reference_audio', previs: 'composition',
+});
+export function defaultReferenceRole(kind: ReferenceSourceKind): ChainReferenceRole {
+  return DEFAULT_REFERENCE_ROLE[kind];
+}
+export function referenceRoleAllowed(kind: ReferenceSourceKind, role: ChainReferenceRole): boolean {
+  return REFERENCE_SOURCE_ROLES[kind].includes(role);
+}
+/** Roles that occupy a strict frame slot and therefore have a per-shot maximum. */
+export const FRAME_REFERENCE_ROLES: readonly ChainReferenceRole[] = Object.freeze(['first_frame', 'last_frame']);
+
 export type ChainConnectionKind = 'sequence' | 'reference';
 export type ChainConnectionErrorCode =
   | 'INVALID_SEQUENCE_TYPES'

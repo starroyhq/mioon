@@ -14,3 +14,6 @@
 @keyframes board-reference-flow{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
 [data-reduce-motion="true"] .board-sequence-dot,[data-reduce-motion="true"] .board-reference-line{animation:none!important}
 @media(prefers-reduced-motion:reduce){.board-sequence-dot,.board-reference-line{animation:none!important}}
+.board-reference-edge.is-unsupported .board-reference-line{stroke:var(--wb-warning,#d9a441);opacity:.7}
+.board-reference-edge.is-unsupported .board-reference-label{border-color:var(--wb-warning,#d9a441);color:var(--wb-warning,#d9a441)}
+.board-reference-unsupported{color:var(--wb-warning,#d9a441)}

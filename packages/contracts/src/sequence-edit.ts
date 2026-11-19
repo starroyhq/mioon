@@ -95,7 +95,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
-  'reference.attach', 'reference.role.set', 'reference.detach',
+  'reference.attach', 'reference.role.set', 'reference.detach', 'reference.reorder',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
@@ -167,7 +167,12 @@ export type ReferenceEdgeOperation =
   | {readonly kind: 'reference-edge'; readonly edit: {readonly kind: 'set-role'; readonly edgeId: string;
     readonly shotId: string; readonly role: ChainReferenceRole}}
   | {readonly kind: 'reference-edge'; readonly edit: {readonly kind: 'detach'; readonly edgeId: string;
-    readonly shotId: string}};
+    readonly shotId: string}}
+  /** RI-b: put every material reference edge of one shot in the given order.
+   * The first reference image is the primary image; the order is also the
+   * prompt/image numbering order sent to the provider. */
+  | {readonly kind: 'reference-edge'; readonly edit: {readonly kind: 'reorder'; readonly shotId: string;
+    readonly edgeIds: readonly string[]}};
 
 /** One material reference intent: always board side, never combined with a
  * sync-board projection because it writes only the edge and the shot
@@ -182,6 +187,7 @@ export function sequenceEditReferenceOperationName(operation: ReferenceEdgeOpera
     case 'attach': return 'reference.attach';
     case 'set-role': return 'reference.role.set';
     case 'detach': return 'reference.detach';
+    case 'reorder': return 'reference.reorder';
   }
 }
 
@@ -489,6 +495,8 @@ const referenceEdgeEditSchema = z.discriminatedUnion('kind', [
     role: referenceRoleSchema.optional()}).strict(),
   z.object({kind: z.literal('set-role'), edgeId: uuidSchema, shotId: uuidSchema, role: referenceRoleSchema}).strict(),
   z.object({kind: z.literal('detach'), edgeId: uuidSchema, shotId: uuidSchema}).strict(),
+  z.object({kind: z.literal('reorder'), shotId: uuidSchema,
+    edgeIds: z.array(uuidSchema).min(1).max(48).refine(ids => new Set(ids).size === ids.length, 'Duplicate edge id')}).strict(),
 ]);
 export const sequenceEditReferenceIntentSchema = z.object({
   side: z.literal('board'),
@@ -541,8 +549,11 @@ export const sequenceEditEnvelopeSchema = z.object({
       && edge.toId === edit.shotId && edge.fromId === edit.sourceNodeId)) {
       context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference attach requires its edge allocation'});
     }
-    if (edit.kind !== 'attach' && !value.impact.edgeIds.includes(edit.edgeId)) {
+    if ((edit.kind === 'set-role' || edit.kind === 'detach') && !value.impact.edgeIds.includes(edit.edgeId)) {
       context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference role change or detach must list its edge impact'});
+    }
+    if (edit.kind === 'reorder' && edit.edgeIds.some(id => !value.impact.edgeIds.includes(id))) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference reorder must list every reordered edge'});
     }
     return;
   }

@@ -19,8 +19,14 @@ export interface BoardUiEdge {
   readonly sourceId: string;
   readonly targetId: string;
   readonly role?: ChainReferenceRole;
+  /** Material-line source asset; present only on reference edges. */
+  readonly sourceAssetId?: string;
+  /** Subject-reference owner row; subject lines are edited by the subject card. */
+  readonly subjectBindingId?: string;
   readonly sourcePort?: BoardPortId;
   readonly targetPort?: BoardPortId;
+  /** Set by the live workbench when the selected service rejects this input. */
+  readonly unsupported?: boolean;
 }
 
 export interface BoardUiStaticProps {
@@ -43,6 +49,8 @@ export interface BoardUiStaticProps {
   readonly onNodesMoved?: (moves: readonly {readonly nodeId: string; readonly x: number; readonly y: number}[]) => void;
   /** Virtualize off-screen cards for the 500-shot board measurement. */
   readonly virtualize?: boolean;
+  /** Edge ids the selected service cannot use; connectors show that state. */
+  readonly unsupportedEdgeIds?: ReadonlySet<string>;
 }
 
 type Film = BoardUiProjection['films'][number];
@@ -137,8 +145,9 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
     if (!connection || connection.kind !== edge.kind) return [];
     const base = {id: edge.id, source: connection.sourceId, target: connection.targetId, sourceHandle: connection.sourcePort, targetHandle: connection.targetPort};
     return connection.kind === 'sequence' ? [{...base, type: 'sequence', data: {reduceMotion, selected: edge.id === props.selectedEdgeId}}]
-      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion, selected: edge.id === props.selectedEdgeId}}];
-  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId]);
+      : [{...base, type: 'reference', data: {role: edge.role ?? connection.role, reduceMotion,
+        selected: edge.id === props.selectedEdgeId, unsupported: props.unsupportedEdgeIds?.has(edge.id) === true}}];
+  }), [edges, byId, reduceMotion, moved, props.positions, props.selectedEdgeId, props.unsupportedEdgeIds]);
   const locate = (id: string) => {
     select(id);
     const node = flow.getNode(id);

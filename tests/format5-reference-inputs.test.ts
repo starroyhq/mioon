@@ -12,9 +12,10 @@ import {prepareSequenceEditHistory, findSequenceEditReceipt} from '../packages/b
 import {runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {
-  buildReferenceEdgeEnvelope, planFormat5GenerationInputs, readFormat5ShotReferenceCandidates,
-  readShotReferenceEdges, resolveReferenceSource,
+  buildReferenceEdgeEnvelope, planFormat5GenerationInputs, readFormat5GenerationInputView,
+  readFormat5ShotReferenceCandidates, readShotReferenceEdges, resolveReferenceSource,
 } from '../packages/business/src/format5-reference-inputs.ts';
+import {buildSubjectBindingEnvelope} from '../packages/business/src/format5-subject-binding.ts';
 import {createSequenceEditing} from '../packages/business/src/sequence-edit.ts';
 
 let scratch: string;
@@ -65,18 +66,18 @@ function seed(f: ReturnType<typeof fixture>): Seeded {
     store.db.prepare('INSERT INTO project.assets(id,projectId,data) VALUES(?,?,?)').run(id, store.projectId, doc(id, mimeType, extra));
     return id;
   };
-  const node = (type: string, assetId: string): string => {
+  const node = (type: string, assetId: string, label: string): string => {
     const id = randomUUID();
-    store.put('nodes', {id, projectId: store.projectId, type, assetId, position: {x: 10, y: 10}, createdAt: timestamp});
+    store.put('nodes', {id, projectId: store.projectId, type, assetId, label, position: {x: 10, y: 10}, createdAt: timestamp});
     return id;
   };
-  const imageA = {nodeId: node('image', imageAsset()), assetId: ''};
-  const imageB = {nodeId: node('image', imageAsset()), assetId: ''};
+  const imageA = {nodeId: node('image', imageAsset(), '参考图 A'), assetId: ''};
+  const imageB = {nodeId: node('image', imageAsset(), '参考图 B'), assetId: ''};
   const audioAssetId = mediaAsset('audio/wav', {duration: 5});
   const videoAssetId = mediaAsset('video/mp4', {duration: 4});
   const seeded: Seeded = {store, shotId: shot.id, imageA, imageB,
-    audio: {nodeId: node('audio', audioAssetId), assetId: audioAssetId},
-    video: {nodeId: node('video', videoAssetId), assetId: videoAssetId},
+    audio: {nodeId: node('audio', audioAssetId, '对白'), assetId: audioAssetId},
+    video: {nodeId: node('video', videoAssetId, '运镜参考'), assetId: videoAssetId},
     cardNodeId: randomUUID(), subjectId: randomUUID()};
   store.tx(() => {
     const head = randomUUID();
@@ -104,12 +105,13 @@ function action(store: ProjectStore) {
 }
 
 let requestSerial = 0;
-function command(seeded: Seeded, kind: 'attach' | 'set-role' | 'detach', edit: Record<string, unknown>) {
+function command(seeded: Seeded, kind: 'attach' | 'set-role' | 'detach' | 'reorder', edit: Record<string, unknown>) {
   const store = seeded.store;
   const edgeId = typeof edit.edgeId === 'string' ? edit.edgeId : randomUUID();
   const requestId = `ri-reference-${++requestSerial}-${kind}`;
   const envelope = buildReferenceEdgeEnvelope(store,
-    {kind, edgeId, shotId: seeded.shotId, ...edit} as never,
+    (kind === 'reorder' ? {kind, shotId: seeded.shotId, edgeIds: edit.edgeIds}
+      : {kind, edgeId, shotId: seeded.shotId, ...edit}) as never,
     {...action(store), requestId, actionId: randomUUID()});
   return {requestId, edgeId, envelope};
 }
@@ -290,6 +292,111 @@ test('reference generation planning combines frames, multi-image references, pre
     assert.deepEqual(withAudioReferences.audios.map(audio => audio.assetId), [seeded.audio.assetId]);
     assert.equal(withAudioReferences.entries.find(entry => entry.role === 'first_frame'), undefined);
     assert.equal(withAudioReferences.unsupported, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test('reference reorder sets the primary image order and stays one undoable board action', () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const first = command(seeded, 'attach', {sourceNodeId: seeded.imageA.nodeId, role: 'reference_image'});
+    assert.equal((runSequenceSync(store, first.envelope) as Record<string, any>).ok, true);
+    const second = command(seeded, 'attach', {sourceNodeId: seeded.imageB.nodeId, role: 'reference_image'});
+    assert.equal((runSequenceSync(store, second.envelope) as Record<string, any>).ok, true);
+    const audio = command(seeded, 'attach', {sourceNodeId: seeded.audio.nodeId});
+    assert.equal((runSequenceSync(store, audio.envelope) as Record<string, any>).ok, true);
+    const binding = {
+      version: 1, connectionId: randomUUID(), configurationRevision: 1, providerId: 'ark',
+      region: 'cn-beijing', workspaceId: '', endpoint: 'https://ark.cn-beijing.volces.com/api/v3',
+      credentialRef: '00000000-0000-4000-8000-000000000000',
+      model: {id: randomUUID(), name: 'doubao-seedance-2-5-260628', modelId: 'doubao-seedance-2-5-260628',
+        templateId: 'ark-v3', enabled: true, archived: false, inputModes: ['text', 'image', 'frames', 'reference'],
+        aspectRatios: ['9:16', '16:9'], durationResolutionMap: [{duration: [4, 8], resolution: ['720p']}],
+        audio: 'off', seed: false},
+      outputHosts: ['output.example'],
+    } as never;
+    const before = readFormat5GenerationInputView(store, seeded.shotId, {binding});
+    assert.equal(before.primaryEdgeId, first.edgeId);
+    assert.deepEqual(planFormat5GenerationInputs(store, seeded.shotId, {binding}).images.map(image => image.assetId),
+      [seeded.imageA.assetId, seeded.imageB.assetId]);
+    // Put the second image first: it becomes the primary image and numbering base.
+    const reorder = command(seeded, 'reorder', {edgeIds: [second.edgeId, first.edgeId, audio.edgeId]});
+    const receipt = runSequenceSync(store, reorder.envelope) as Record<string, any>;
+    assert.equal(receipt.ok, true, JSON.stringify(receipt));
+    assert.equal(receipt.receipt.operation, 'reference.reorder');
+    assert.deepEqual(planFormat5GenerationInputs(store, seeded.shotId, {binding}).images.map(image => image.assetId),
+      [seeded.imageB.assetId, seeded.imageA.assetId]);
+    const after = readFormat5GenerationInputView(store, seeded.shotId, {binding});
+    assert.equal(after.primaryEdgeId, second.edgeId);
+    assert.equal(after.primaryEdgeId, after.entries.find(entry => entry.primary)?.edgeId);
+    // A partial or foreign order list is rejected without writing.
+    const invalid = command(seeded, 'reorder', {edgeIds: [first.edgeId]});
+    const invalidResult = runSequenceSync(store, invalid.envelope) as Record<string, any>;
+    assert.equal(invalidResult.ok, false);
+    assert.equal(invalidResult.code, 'SEQUENCE_EDIT_REFERENCE_INVALID');
+    // Undo restores the original provider order.
+    const afterChange = prepareSequenceEditHistory(store);
+    const undo = createSequenceEditing(store).call('sequence.undo', {projectId: store.projectId,
+      requestId: `ri-undo-reorder-${randomUUID()}`, actionId: reorder.envelope.actionId,
+      expected: {position: afterChange.state.position, revision: afterChange.state.revision}}) as Record<string, any>;
+    assert.equal(undo.status, 'applied');
+    assert.deepEqual(planFormat5GenerationInputs(store, seeded.shotId, {binding}).images.map(image => image.assetId),
+      [seeded.imageA.assetId, seeded.imageB.assetId]);
+  } finally {
+    store.close();
+  }
+});
+
+test('the generation-input view reports mode, resolved labels, subject versions, used and unsupported entries', () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    runSequenceSync(store, command(seeded, 'attach', {sourceNodeId: seeded.imageA.nodeId, role: 'reference_image'}).envelope);
+    runSequenceSync(store, command(seeded, 'attach', {sourceNodeId: seeded.imageB.nodeId, role: 'reference_image'}).envelope);
+    runSequenceSync(store, command(seeded, 'attach', {sourceNodeId: seeded.audio.nodeId}).envelope);
+    // A subject binding enters the same plan through the SB intent.
+    const bindingId = randomUUID(),
+      state = prepareSequenceEditHistory(store);
+    const subjectEnvelope = buildSubjectBindingEnvelope(store, {kind: 'create', bindingId,
+      shotId: seeded.shotId, subjectId: seeded.subjectId, role: 'subject'},
+      {requestId: `ri-subject-${randomUUID()}`, actionId: randomUUID(), edgeId: randomUUID(),
+        epoch: state.state.epoch, historyPosition: state.state.position, historyRevision: state.state.revision});
+    assert.equal((runSequenceSync(store, subjectEnvelope) as Record<string, any>).ok, true);
+    // Without a selected service every connected input stays visible but unsupported.
+    const unselected = readFormat5GenerationInputView(store, seeded.shotId);
+    assert.equal(unselected.service, null);
+    assert.equal(unselected.mode, 'references');
+    assert.ok(unselected.entries.length >= 4);
+    assert.equal(unselected.usedCount, 0);
+    assert.ok(unselected.entries.every(entry => entry.status === 'unsupported' && entry.reason === 'SERVICE_NOT_SELECTED'));
+    const ark = {
+      version: 1, connectionId: randomUUID(), configurationRevision: 1, providerId: 'ark',
+      region: 'cn-beijing', workspaceId: '', endpoint: 'https://ark.cn-beijing.volces.com/api/v3',
+      credentialRef: '00000000-0000-4000-8000-000000000000',
+      model: {id: randomUUID(), name: 'doubao-seedance-2-5-260628', modelId: 'doubao-seedance-2-5-260628',
+        templateId: 'ark-v3', enabled: true, archived: false, inputModes: ['text', 'image', 'frames', 'reference'],
+        aspectRatios: ['9:16', '16:9'], durationResolutionMap: [{duration: [4, 8], resolution: ['720p']}],
+        audio: 'off', seed: false},
+      outputHosts: ['output.example'],
+    } as never;
+    const view = readFormat5GenerationInputView(store, seeded.shotId, {binding: ark});
+    assert.equal(view.service?.providerId, 'ark');
+    assert.equal(view.mode, 'references');
+    assert.equal(view.unsupportedCount, 0);
+    assert.equal(view.usedCount, 4);
+    const image = view.entries.find(entry => entry.edgeId === readShotReferenceEdges(store, seeded.shotId)[0]!.id)!;
+    assert.equal(image.label, '参考图 A');
+    assert.equal(image.sourceKind, 'image');
+    assert.equal(image.status, 'used');
+    const subject = view.entries.find(entry => entry.source === 'subject')!;
+    assert.equal(subject.label, 'Hero');
+    assert.equal(subject.subjectVersionNumber, 1);
+    assert.equal(subject.role, 'subject_reference');
+    // A service without reference support marks every non-frame line explicitly.
+    const wan = {...(ark as Record<string, any>), model: {...(ark as Record<string, any>).model,
+      modelId: 'wan3.0-video', templateId: 'wan30-v1', inputModes: ['text', 'image', 'frames', 'reference']}} as never;
+    const wanView = readFormat5GenerationInputView(store, seeded.shotId, {binding: wan});
+    assert.ok(wanView.entries.some(entry => entry.role === 'reference_audio' && entry.status === 'unsupported'));
   } finally {
     store.close();
   }

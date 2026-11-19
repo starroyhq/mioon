@@ -5,6 +5,8 @@
  * One in-flight command per session prevents double clicks from writing twice.
  */
 import type {SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt} from '../../../../packages/contracts/src/sequence-edit.ts';
+import type {BoardEditRequest} from './inputs.ts';
+import {isBoardEditRequest} from './inputs.ts';
 import {format5RequestId} from '../edit-ui/session.ts';
 import type {SequenceHistoryView} from '../edit-ui/session.ts';
 
@@ -62,16 +64,20 @@ export class BoardUiSession {
   private endpoint(operation: string): (input: unknown) => Promise<unknown> {
     return input => this.rpc(operation, input);
   }
-  async run(intent: SequenceEditIntent): Promise<BoardOutcome> {
+  /** Preview exactly one action family: a CS/TS intent list, a material
+   * reference action, or a subject-binding action. The service returns the
+   * envelope and digest the commit must repeat byte-for-byte. */
+  async run(request: SequenceEditIntent | BoardEditRequest): Promise<BoardOutcome> {
     if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
     this.inFlight = true;
     try {
       const projectId = this.projectId();
       if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      const payload = isBoardEditRequest(request) ? request : {intents: [request]};
       let preview: Row | null;
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
-          intents: [intent]}));
+          ...payload}));
       } catch (error) {return {ok: false, code: codeOf(error)};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),

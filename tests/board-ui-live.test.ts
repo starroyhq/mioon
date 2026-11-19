@@ -132,3 +132,46 @@ test('the session binds history and read projections through the same operations
   assert.equal(calls.at(-1)!.input.actionId, id(80));
   assert.deepEqual(calls.at(-1)!.input.expected, {position: 2, revision: 3});
 });
+
+test('reference-line commands and the unified session carry the shared reference intent', async () => {
+  const {referenceAttachRequest, subjectBindingCreateRequest, referenceRoleRequest, referenceDetachRequest,
+    subjectBindingDetachRequest, referenceReorderRequest, isBoardEditRequest, unsupportedReasonKey,
+    referenceRoleOptions} = await import('../apps/web/src/board-ui/inputs.ts');
+  const attach = referenceAttachRequest(image, shotA, 'first_frame') as {referenceIntent: any};
+  assert.equal(attach.referenceIntent.side, 'board');
+  assert.equal(attach.referenceIntent.operation.kind, 'reference-edge');
+  assert.equal(attach.referenceIntent.operation.edit.kind, 'attach');
+  assert.equal(attach.referenceIntent.operation.edit.shotId, shotA);
+  assert.equal(attach.referenceIntent.operation.edit.sourceNodeId, image);
+  assert.equal(attach.referenceIntent.operation.edit.role, 'first_frame');
+  assert.match(attach.referenceIntent.operation.edit.edgeId, /^[0-9a-f-]{36}$/u);
+  const subject = subjectBindingCreateRequest(shotA, id(90), 'style') as {subjectIntent: any};
+  assert.equal(subject.subjectIntent.operation.edit.kind, 'create');
+  assert.equal(subject.subjectIntent.operation.edit.role, 'style');
+  assert.equal(isBoardEditRequest(attach), true);
+  assert.equal(isBoardEditRequest({side: 'board', operation: {kind: 'board'}}), false);
+  assert.equal((referenceRoleRequest(id(91), shotA, 'reference_image') as {referenceIntent: any})
+    .referenceIntent.operation.edit.role, 'reference_image');
+  assert.equal((referenceDetachRequest(id(91), shotA) as {referenceIntent: any})
+    .referenceIntent.operation.edit.kind, 'detach');
+  assert.equal((subjectBindingDetachRequest(id(92)) as {subjectIntent: any})
+    .subjectIntent.operation.edit.kind, 'detach');
+  assert.deepEqual((referenceReorderRequest(shotA, [id(93), id(94)]) as {referenceIntent: any})
+    .referenceIntent.operation.edit.edgeIds, [id(93), id(94)]);
+  assert.deepEqual(referenceRoleOptions('image'), ['first_frame', 'last_frame', 'reference_image', 'composition']);
+  assert.equal(unsupportedReasonKey('EXCLUSIVE_MODE'), 'boardUi.inputs.reason.exclusiveMode');
+  assert.equal(unsupportedReasonKey('SOMETHING_NEW'), 'boardUi.inputs.unsupported');
+
+  const {calls, rpc} = recorder({
+    'sequence.preview': (input: any) => ({envelope: {contractVersion: 1, projectId, requestId: input.requestId,
+      referenceIntent: input.referenceIntent}, planDigest: 'c'.repeat(64), warnings: []}),
+    'sequence.commit': () => ({ok: true, actionId: id(95), operation: 'reference.attach',
+      receipt: {status: 'applied', actionId: id(95), operation: 'reference.attach'}}),
+  });
+  const session = new BoardUiSession(rpc, () => projectId);
+  const outcome = await session.run(attach);
+  assert.equal(outcome.ok, true);
+  assert.equal(calls[0]!.input.referenceIntent.operation.edit.kind, 'attach');
+  assert.equal(Object.hasOwn(calls[0]!.input, 'intents'), false);
+  assert.equal(calls[1]!.input.envelope.referenceIntent.operation.edit.kind, 'attach');
+});

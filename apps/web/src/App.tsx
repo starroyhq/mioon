@@ -210,6 +210,8 @@ import BoardInspector from './board-ui/BoardInspector.tsx';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
 import {boardConnectIntent, boardDeleteIntent, boardVersionIntent, projectLiveBoard} from './board-ui/live.ts';
+import {referenceDetachRequest, referenceReorderRequest, referenceRoleRequest, subjectBindingDetachRequest} from './board-ui/inputs.ts';
+import type {BoardEditRequest, SequenceGenerationInputView} from './board-ui/inputs.ts';
 import { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';
 import SubtitleInspector from './SubtitleInspector.tsx';
 import { useSubtitles } from './use-subtitles.ts';
@@ -2267,6 +2269,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const format5BoardSessionRef = useRef<BoardUiSession | null>(null);
   const [format5BoardMount, setFormat5BoardMount] = useState<BoardMountView | null>(null);
   const [format5BoardBusy, setFormat5BoardBusy] = useState(false);
+  // RI-b: live generation-input projection of the selected shot under the
+  // selected exact video connection; the board and property panel share it.
+  const [format5Inputs, setFormat5Inputs] = useState<SequenceGenerationInputView | null>(null);
   function format5BoardSession(): BoardUiSession {
     format5BoardSessionRef.current ??= new BoardUiSession(rpc, () => currentProject.current);
     return format5BoardSessionRef.current;
@@ -2295,11 +2300,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }).catch(() => {});
     return () => {cancelled = true;};
   }, [format5, data.project?.id, timeline?.id, timeline?.revision, format5History?.position, format5History?.revision]);
-  async function format5BoardRun(intent: Parameters<BoardUiSession['run']>[0], noticeMessage: string): Promise<BoardOutcome> {
+  async function format5BoardRun(request: Parameters<BoardUiSession['run']>[0], noticeMessage: string): Promise<BoardOutcome> {
     if (!format5) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
     setFormat5BoardBusy(true);
     try {
-      const outcome = await format5BoardSession().run(intent);
+      const outcome = await format5BoardSession().run(request);
       if (outcome.ok && outcome.status === 'applied') {
         setFormat5Notice({id: outcome.actionId, message: noticeMessage});
         setFormat5NoticeActionId(outcome.actionId);
@@ -2339,6 +2344,48 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const tail = chain?.items.at(-1)?.nodeId ?? format5ActiveFilmId;
     if (!tail || tail === archivedId) return;
     await format5BoardRun(boardConnectIntent(tail, archivedId), t('boardUi.notice.restored', {name}));
+  }
+  function format5GenerationSelection(shotId: string) {
+    const shot = dataRef.current.shots.find(item => item.id === shotId) ?? {};
+    return generationSelection(providers, generationOptionsRef.current[shotId] ?? {}, shot as never);
+  }
+  const format5InputRequest = (shotId: string): {shotId: string; connectionId?: string;
+    configurationRevision?: number; modelEntryId?: string} => {
+    const selection = format5GenerationSelection(shotId);
+    const provider = selection.provider;
+    return {shotId, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision) && selection.modelEntryId
+      ? {connectionId: provider.connectionId, configurationRevision: Number(provider.configurationRevision),
+        modelEntryId: selection.modelEntryId} : {})};
+  };
+  const format5InputRequestKey = format5 && selectedId && data.shots.some(shot => shot.id === selectedId)
+    ? JSON.stringify(format5InputRequest(selectedId)) : '';
+  useEffect(() => {
+    if (!format5 || !format5InputRequestKey) {setFormat5Inputs(null); return;}
+    const request = JSON.parse(format5InputRequestKey) as {shotId: string; connectionId?: string;
+      configurationRevision?: number; modelEntryId?: string};
+    let cancelled = false;
+    void rpc('sequence.generation-inputs.get', {projectId: currentProject.current, ...request})
+      .then(view => {if (!cancelled) setFormat5Inputs(view as SequenceGenerationInputView);})
+      .catch(() => {if (!cancelled) setFormat5Inputs(null);});
+    return () => {cancelled = true;};
+  }, [format5, format5InputRequestKey, format5BoardBusy, format5History?.position, data.edges, data.shots]);
+  async function format5InputRoleChange(edgeId: string, shotId: string, role: Parameters<typeof referenceRoleRequest>[2]): Promise<void> {
+    await format5BoardRun(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
+  }
+  async function format5InputDetach(entry: {source: 'edge' | 'subject'; edgeId?: string; bindingId?: string}, shotId: string): Promise<void> {
+    if (entry.source === 'subject' && entry.bindingId) {
+      await format5BoardRun(subjectBindingDetachRequest(entry.bindingId), t('boardUi.notice.referenceDetached', {name: format5BoardProjection?.nodes.find(node => node.id === shotId)?.name ?? ''}));
+      return;
+    }
+    if (!entry.edgeId) return;
+    await format5BoardRun(referenceDetachRequest(entry.edgeId, shotId), t('boardUi.notice.referenceDetached', {name: format5BoardProjection?.nodes.find(node => node.id === shotId)?.name ?? ''}));
+  }
+  async function format5InputPrimary(edgeId: string, shotId: string): Promise<void> {
+    const ordered = (format5Inputs?.entries ?? []).flatMap(entry => entry.source === 'edge' && entry.edgeId ? [entry.edgeId] : []);
+    const unique = [...new Set(ordered)];
+    if (!unique.includes(edgeId)) return;
+    await format5BoardRun(referenceReorderRequest(shotId, [edgeId, ...unique.filter(id => id !== edgeId)]),
+      t('boardUi.notice.primaryChanged'));
   }
   async function format5OpenShotInTimeline(nodeId: string): Promise<void> {
     const snapshot = dataRef.current;
@@ -4322,7 +4369,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} inputs={format5Inputs} subjectBindingForNode={nodeId => { const node = data.nodes.find(item => item.id === nodeId && item.type === 'subject_card') as {subjectId?: unknown} | undefined; const subjectId = typeof node?.subjectId === 'string' ? node.subjectId : null; if (!subjectId) return null; const subject = subjects.state?.subjects?.[subjectId]; if (!subject) return null; return {subjectId, role: subject.kind === 'look' ? 'style' as const : 'subject' as const}; }} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
         draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
           ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)
@@ -4372,6 +4419,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><WorkbenchPanelHeader collapseLabel={t('shell.collapseInspector')} collapseTestId="toggle-inspector"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={false} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} /></WorkbenchPanelHeader><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy={workspaceMode === "canvas" && tab === "versions" ? "right-dock-versions-tab" : "right-dock-properties-tab"} visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{subjectPanel ? <div className="inspector-container">{subjectPanel}</div> : workspaceMode === 'canvas' ? <div className="inspector-container">
     {format5 && format5BoardProjection ? <BoardInspector board={format5BoardProjection} activeFilmId={format5ActiveFilmId} mount={format5BoardMount}
       selectedNodeId={selectedId || null} versions={data.versions} shots={data.shots} busy={format5BoardBusy}
+      providers={providers} generationOptions={generationOptions[selectedId as string]} inputs={format5Inputs}
+      onGenerationOptionsChange={(shotId, options) => updateGenerationOptions(shotId, options as GenerationOptionState)}
+      onInputRoleChange={(edgeId, shotId, role) => { void format5InputRoleChange(edgeId, shotId, role); }}
+      onInputDetach={(entry, shotId) => { void format5InputDetach(entry, shotId); }}
+      onInputPrimary={(edgeId, shotId) => { void format5InputPrimary(edgeId, shotId); }}
       onSelectVersion={(nodeId, versionId) => { void format5BoardVersion(nodeId, versionId); }}
       onDelete={nodeId => { void format5BoardDeleteNode(nodeId); }}
       onOpenInEditing={nodeId => { void format5OpenShotInTimeline(nodeId); }}

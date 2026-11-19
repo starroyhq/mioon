@@ -94,3 +94,76 @@ test('the unified RPC registry exposes the board read operation and its effects'
   assert.equal(operationEffect('sequence.board.get').readOnly, true);
   assert.equal(Object.hasOwn(operationEffects, 'sequence.board.get'), true);
 });
+
+async function previewCommitRequest(call: Call, projectId: string, request: Record<string, unknown>) {
+  const preview = await call('sequence.preview', {projectId, requestId: `preview-${randomUUID()}`, ...request});
+  assert.equal(preview.ok, undefined, JSON.stringify(preview));
+  const committed = await call('sequence.commit', {projectId, envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest});
+  assert.equal(committed.status, 'applied', JSON.stringify(committed));
+  return {preview, committed};
+}
+
+test('the read-only generation-input projection lists connected lines before any service is chosen', async (t: test.TestContext) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  assert.equal(Object.hasOwn(schemas, 'sequence.generation-inputs.get'), true);
+  assert.equal(operationEffect('sequence.generation-inputs.get').readOnly, true);
+  assert.equal(Object.hasOwn(operationEffects, 'sequence.generation-inputs.get'), true);
+  const view = await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA});
+  assert.equal(view.service, null);
+  assert.equal(view.mode, 'frames');
+  assert.equal(view.usedCount, 0);
+  assert.equal(view.unsupportedCount, 1);
+  assert.equal(view.entries[0].edgeId, BOARD_IDS.referenceEdge);
+  assert.equal(view.entries[0].role, 'first_frame');
+  assert.equal(view.entries[0].label, '参考图 · 街景');
+  assert.equal(view.entries[0].status, 'unsupported');
+  assert.equal(view.entries[0].reason, 'SERVICE_NOT_SELECTED');
+  assert.equal(view.entries[0].primary, undefined);
+  // A service triple requires the real configured connection.
+  await assert.rejects(call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA,
+    connectionId: randomUUID(), configurationRevision: 1, modelEntryId: randomUUID()}), {code: 'VIDEO_SETTINGS_UNAVAILABLE'});
+});
+
+test('reference connect, role change, reorder, detach and one undo step ride the unified sequence RPC', async (t: test.TestContext) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  const assetId = randomUUID(), nodeId = randomUUID();
+  f.store.tx(() => {
+    f.store.put('assets', {id: assetId, projectId: f.projectId, name: '参考图 B.png', mimeType: 'image/png',
+      duration: null, sha256: 'e'.repeat(64), sizeBytes: 10, createdAt: '2026-01-01T00:00:00.000Z'});
+    f.store.put('nodes', {id: nodeId, projectId: f.projectId, type: 'image', assetId, label: '参考图 B',
+      position: {x: 120, y: 330}, createdAt: '2026-01-01T00:00:00.000Z'});
+  });
+  const attached = await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
+    operation: {kind: 'reference-edge', edit: {kind: 'attach', edgeId: randomUUID(), shotId: BOARD_IDS.shotA,
+      sourceNodeId: nodeId, role: 'reference_image'}}}});
+  assert.equal(attached.committed.operation, 'reference.attach');
+  const afterAttach = await call('project.get', {projectId: f.projectId});
+  const referenceEdges = afterAttach.edges.filter((edge: any) => edge.kind === 'reference');
+  assert.equal(referenceEdges.length, 2);
+  assert.equal((await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA}))
+    .entries.length, 2);
+
+  const newEdge = referenceEdges.find((edge: any) => edge.source === nodeId);
+  assert.ok(newEdge);
+  const role = await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
+    operation: {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: newEdge.id,
+      shotId: BOARD_IDS.shotA, role: 'composition'}}}});
+  assert.equal(role.committed.operation, 'reference.role.set');
+  const reorder = await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
+    operation: {kind: 'reference-edge', edit: {kind: 'reorder', shotId: BOARD_IDS.shotA,
+      edgeIds: [newEdge.id, BOARD_IDS.referenceEdge]}}}});
+  assert.equal(reorder.committed.operation, 'reference.reorder');
+  const ordered = await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA});
+  assert.deepEqual(ordered.entries.map((entry: any) => entry.edgeId), [newEdge.id, BOARD_IDS.referenceEdge]);
+  const detach = await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
+    operation: {kind: 'reference-edge', edit: {kind: 'detach', edgeId: newEdge.id, shotId: BOARD_IDS.shotA}}}});
+  assert.equal(detach.committed.operation, 'reference.detach');
+  assert.equal((await call('project.get', {projectId: f.projectId})).edges.length, 3);
+  const view = await call('sequence.history.get', {projectId: f.projectId});
+  await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${randomUUID()}`,
+    actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}});
+  assert.equal((await call('project.get', {projectId: f.projectId})).edges.length, 4);
+});

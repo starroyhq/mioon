@@ -15,6 +15,9 @@ import {boardConnectIntent, boardDisconnectIntent, boardInsertIntent,
   boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent} from './live.ts';
 import type {BoardHistoryView, BoardMountView, BoardOutcome} from './live-session.ts';
 import type {SequenceEditIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
+import type {BoardEditRequest, SequenceGenerationInputView} from './inputs.ts';
+import {referenceAttachRequest, referenceDetachRequest, subjectBindingCreateRequest,
+  subjectBindingDetachRequest} from './inputs.ts';
 
 type Row = Record<string, any>;
 const uuid = (): string => globalThis.crypto?.randomUUID?.() ??
@@ -30,7 +33,13 @@ export interface BoardUiLiveProps {
   readonly mount: BoardMountView | null;
   readonly selectedNodeId: string | null;
   readonly onSelectNode: (nodeId: string | null) => void;
-  readonly run: (intent: SequenceEditIntent, noticeMessage: string) => Promise<BoardOutcome>;
+  readonly run: (request: SequenceEditIntent | BoardEditRequest, noticeMessage: string) => Promise<BoardOutcome>;
+  /** Live generation inputs of the selected service; unsupported lines show the
+   * same state here and in the property panel. */
+  readonly inputs?: SequenceGenerationInputView | null;
+  /** Subject cards route to SB's binding intent; null when the node is not a
+   * subject card or its subject data is not loaded yet. */
+  readonly subjectBindingForNode?: (nodeId: string) => {readonly subjectId: string; readonly role: 'subject' | 'style'} | null;
   readonly onUndoNotice: (actionId: string) => Promise<boolean> | boolean | void;
   readonly onDismissNotice: (notice: EditUiNotice) => void;
   readonly notice: EditUiNotice | null;
@@ -52,24 +61,53 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const selectedEdge = selectedEdgeId ? props.board.edges.find(edge => edge.id === selectedEdgeId) ?? null : null;
   const film = props.board.projection.films.find(item => item.id === props.activeFilmId) ?? props.board.projection.films[0] ?? null;
-  const call = useCallback(async (intent: SequenceEditIntent, noticeMessage: string): Promise<void> => {
+  const call = useCallback(async (request: SequenceEditIntent | BoardEditRequest, noticeMessage: string): Promise<void> => {
     setErrorCode(null);
-    const outcome = await props.run(intent, noticeMessage);
+    const outcome = await props.run(request, noticeMessage);
     if (!outcome.ok) setErrorCode(outcome.code);
     else if (outcome.status === 'not_applied') setErrorCode('SEQUENCE_EDIT_NOOP');
   }, [props.run]);
-  const edit = (intent: SequenceEditIntent, noticeMessage: string): void => { if (!busy) void call(intent, noticeMessage); };
-  const connectSequence = (connection: BoardPortConnection): void => {
+  const edit = (request: SequenceEditIntent | BoardEditRequest, noticeMessage: string): void => { if (!busy) void call(request, noticeMessage); };
+  const connect = (connection: BoardPortConnection): void => {
     if (busy) return;
-    if (connection.kind !== 'sequence') {setErrorCode('REFERENCE_READONLY'); return;}
-    edit(boardConnectIntent(connection.sourceId, connection.targetId), t('boardUi.notice.inserted', {name: nameOf(connection.sourceId)}));
+    if (connection.kind === 'sequence') {
+      edit(boardConnectIntent(connection.sourceId, connection.targetId), t('boardUi.notice.inserted', {name: nameOf(connection.sourceId)}));
+      return;
+    }
+    const subject = props.subjectBindingForNode?.(connection.sourceId) ?? null;
+    if (subject) {
+      edit(subjectBindingCreateRequest(connection.targetId, subject.subjectId, subject.role),
+        t('boardUi.notice.referenceAttached', {name: nameOf(connection.targetId)}));
+      return;
+    }
+    if (props.board.nodes.find(node => node.id === connection.sourceId)?.kind === 'subject') {
+      setErrorCode('REFERENCE_READONLY');
+      return;
+    }
+    edit(referenceAttachRequest(connection.sourceId, connection.targetId, connection.role),
+      t('boardUi.notice.referenceAttached', {name: nameOf(connection.targetId)}));
   };
   const nameOf = (nodeId: string): string => props.board.nodes.find(node => node.id === nodeId)?.name ?? '';
   const disconnect = (): void => {
-    if (!selectedEdge || selectedEdge.kind !== 'sequence') return;
-    edit(boardDisconnectIntent(selectedEdge.sourceId, selectedEdge.targetId), t('boardUi.notice.disconnected'));
+    if (!selectedEdge) return;
+    if (selectedEdge.kind === 'sequence') {
+      edit(boardDisconnectIntent(selectedEdge.sourceId, selectedEdge.targetId), t('boardUi.notice.disconnected'));
+    } else if (selectedEdge.sourceAssetId !== undefined) {
+      edit(referenceDetachRequest(selectedEdge.id, selectedEdge.targetId), t('boardUi.notice.referenceDetached', {name: nameOf(selectedEdge.targetId)}));
+    } else if (selectedEdge.subjectBindingId !== undefined) {
+      edit(subjectBindingDetachRequest(selectedEdge.subjectBindingId), t('boardUi.notice.referenceDetached', {name: nameOf(selectedEdge.targetId)}));
+    } else return;
     setSelectedEdgeId(null);
   };
+  const unsupportedEdgeIds = new Set((props.inputs?.entries ?? []).flatMap(entry => {
+    if (entry.status !== 'unsupported') return [];
+    if (entry.edgeId) return [entry.edgeId];
+    if (entry.bindingId) {
+      const edge = props.board.edges.find(candidate => candidate.subjectBindingId === entry.bindingId);
+      return edge ? [edge.id] : [];
+    }
+    return [];
+  }));
   const insert = (): void => {
     if (!selectedEdge || !selected || selectedEdge.kind !== 'sequence') return;
     if (selected.id === selectedEdge.sourceId || selected.id === selectedEdge.targetId || selected.kind === 'film' || selected.kind === 'subject') return;
@@ -100,14 +138,15 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     setArchiveOpen(false);
   };
   const archived = props.mount?.archived ?? [];
-  const error = errorCode === 'REFERENCE_READONLY' ? t('boardUi.referenceReadonly')
+  const error = errorCode === 'REFERENCE_READONLY' ? t('boardUi.inspector.subjectHint')
     : errorCode ? messageOf(t, errorCode) : null;
   return <div className="board-ui-live" data-testid="board-ui-live" data-busy={busy ? 'true' : undefined}>
     <BoardUiStatic projection={props.board.projection} nodes={props.board.nodes} edges={props.board.edges}
       positions={props.board.positions} reduceMotion={props.reduceMotion} selectedNodeId={props.selectedNodeId}
-      onSelectNode={props.onSelectNode} onConnect={connectSequence} onAddShot={addShot}
+      onSelectNode={props.onSelectNode} onConnect={connect} onAddShot={addShot}
       showInspector={false} selectedEdgeId={selectedEdgeId} onSelectEdge={setSelectedEdgeId}
-      onNodesMoved={moveNodes} filmSynced={props.mount?.inSync ?? true} virtualize={props.board.nodes.length > 200}/>
+      onNodesMoved={moveNodes} filmSynced={props.mount?.inSync ?? true} virtualize={props.board.nodes.length > 200}
+      unsupportedEdgeIds={unsupportedEdgeIds}/>
     <div className="board-ui-live-toolbar" role="toolbar" aria-label={t('boardUi.board')}>
       <button type="button" data-testid="board-ui-add-shot" disabled={busy} onClick={addShot}>{t('boardUi.addShot')}</button>
       <button type="button" data-testid="board-ui-add-root" disabled={busy} onClick={addRoot}>{t('boardUi.addRoot')}</button>
@@ -117,7 +156,8 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     {selectedEdge && <div className="board-ui-live-actions" role="toolbar" aria-label={t('boardUi.board')}>
       {selectedEdge.kind === 'sequence' && selected && canInsert(selected.id, selectedEdge) &&
         <button type="button" data-testid="board-ui-insert" disabled={busy} onClick={insert}>{t('boardUi.insertHere')}</button>}
-      {selectedEdge.kind === 'sequence' && <button type="button" data-testid="board-ui-disconnect" disabled={busy}
+      {(selectedEdge.kind === 'sequence' || selectedEdge.sourceAssetId !== undefined
+        || selectedEdge.subjectBindingId !== undefined) && <button type="button" data-testid="board-ui-disconnect" disabled={busy}
         onClick={disconnect}>{t('boardUi.disconnectEdge')}</button>}
     </div>}
     {archiveOpen && <div className="board-ui-live-archive" data-testid="board-ui-archive-popover" role="dialog"

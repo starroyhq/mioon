@@ -17,6 +17,7 @@ import type {BoardMountView, BoardOutcome} from '../../../apps/web/src/board-ui/
 import type {EditUiNotice} from '../../../apps/web/src/edit-ui/EditUiNotice.tsx';
 import type {SequenceHistoryView} from '../../../apps/web/src/edit-ui/session.ts';
 import type {SequenceEditIntent} from '../../../packages/contracts/src/sequence-edit.ts';
+import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
 
 type Row = Record<string, any>;
 const projectId = '70000000-0000-4000-8000-000000000001';
@@ -44,6 +45,7 @@ function Harness(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [reduced, setReduced] = useState(false);
   const [openedNode, setOpenedNode] = useState<string | null>(null);
+  const [inputs, setInputs] = useState<SequenceGenerationInputView | null>(null);
   const stateRef = useRef<Row>({});
   const session = useRef(new BoardUiSession(rpc, () => projectId));
   const refresh = useCallback(async (): Promise<void> => {
@@ -53,12 +55,15 @@ function Harness(): React.ReactElement {
       const nextHistory = await rpc('sequence.history.get', {projectId});
       const nextMount = await rpc('sequence.board.get', {projectId});
       setData(next); setHistory(nextHistory); setMount(nextMount);
+      const shotId = selectedNodeId ?? '70000000-0000-4000-8000-000000000003';
+      try { setInputs(await rpc('sequence.generation-inputs.get', {projectId, shotId}) as SequenceGenerationInputView); }
+      catch { setInputs(null); }
     } catch (error) {
       console.error('board fixture refresh failed', error);
       (window as any).__boardWireError = String((error as Error)?.message ?? error);
       throw error;
     }
-  }, []);
+  }, [selectedNodeId]);
   useEffect(() => {void refresh();}, [refresh]);
   useEffect(() => {
     const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -70,10 +75,10 @@ function Harness(): React.ReactElement {
     versions: data.versions, assets: data.assets, jobs: data.jobs, clips: data.timeline?.clips ?? [], frameAspect: '9:16', thumbnailFor: syntheticThumb}) : null,
   [data]);
   const activeFilmId = data?.timeline?.mainTrack?.sequenceNodeId ?? null;
-  const run = useCallback(async (intent: SequenceEditIntent, message: string): Promise<BoardOutcome> => {
+  const run = useCallback(async (request: SequenceEditIntent | BoardEditRequest, message: string): Promise<BoardOutcome> => {
     setBusy(true);
     try {
-      const outcome = await session.current.run(intent);
+      const outcome = await session.current.run(request);
       if (outcome.ok && outcome.status === 'applied') {
         setNotice({id: outcome.actionId, message});
         await refresh();
@@ -112,24 +117,26 @@ function Harness(): React.ReactElement {
   useEffect(() => {
     stateRef.current = {ready: Boolean(data), data, history, mount, selectedNodeId, notice, busy, reduced, openedNode,
       cards: projection?.nodes.map(node => ({id: node.id, kind: node.kind, name: node.name})) ?? [],
+      inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, entries: inputs.entries.map(entry => ({status: entry.status, role: entry.role, edgeId: entry.edgeId}))} : null,
       films: projection?.projection.films.map(film => ({id: film.id, items: film.items.map(item => item.nodeId)})) ?? [],
       floating: projection?.projection.floatingNodeIds ?? [], positions: projection?.positions ?? {},
       timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync};
     (window as any).__boardWireState = stateRef.current;
-  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection]);
+  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs]);
   if (!projection) return <div className="board-fixture-loading">Loading…</div>;
   return <div className="board-fixture">
     <header className="board-fixture-head"><strong>Mioon · 画板</strong><span data-testid="fixture-format">格式 5</span>
       <span data-testid="fixture-sync" data-synced={mount?.inSync ? 'true' : 'false'}>{t(mount?.inSync ? 'boardUi.synced' : 'boardUi.outOfSync')}</span></header>
     <main className="board-fixture-board" data-testid="board-fixture-board">
       <BoardUiLive board={projection} activeFilmId={activeFilmId} history={history} mount={mount}
-        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run}
+        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} inputs={inputs}
+        subjectBindingForNode={() => null}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
         notice={notice} reduceMotion={reduced} busy={busy}/>
     </main>
     <aside className="board-fixture-inspector">
       <BoardInspector board={projection} activeFilmId={activeFilmId} mount={mount} selectedNodeId={selectedNodeId}
-        versions={data?.versions ?? []} shots={data?.shots ?? []} busy={busy}
+        versions={data?.versions ?? []} shots={data?.shots ?? []} busy={busy} inputs={inputs}
         onSelectVersion={(nodeId, versionId) => {void run(boardVersionIntent(nodeId, versionId), t('boardUi.notice.version', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''}));}}
         onDelete={nodeId => {void run(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''})); setSelectedNodeId(null);}}
         onOpenInEditing={nodeId => setOpenedNode(nodeId)}
