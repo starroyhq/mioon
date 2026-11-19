@@ -142,7 +142,10 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
  const checks:SmokeCheck[]=[];
  const passed=(name:string)=>{checks.push({name,status:'passed'});};
  const blocked=(name:string,code:string)=>{checks.push({name,status:'blocked',code});};
- const phaseFile=`${output}.phase`;
+ const phaseFile=`${output}.phase`,stepFile=`${output}.steps`,startedAt=Date.now();
+ const step=async(event:'enter'|'exit'|'timeout',name:string):Promise<void>=>{
+  await writeFile(stepFile,JSON.stringify({event,phase:name,ms:Date.now()-startedAt})+'\n',{flag:'a'}).catch(()=>{});
+ };
  let phase='smoke';
  let watchdog:ReturnType<typeof setTimeout>|undefined;
  /** Converts a hung step into deterministic fixed evidence instead of a driver
@@ -151,13 +154,15 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   if(watchdog!==undefined)clearTimeout(watchdog);
   const limit=phase==='project-core-export'?200000:phase.startsWith('project-core-open')?70000:100000;
   watchdog=setTimeout(()=>{
-   void writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_CHECK_FAILED',check:phase,detail:'SMOKE_STEP_TIMEOUT'})+'\n')
+   void step('timeout',phase).then(()=>writeFile(output,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',ok:false,code:'WINDOWS_SMOKE_CHECK_FAILED',check:phase,detail:'SMOKE_STEP_TIMEOUT'})+'\n'))
     .catch(()=>{}).finally(()=>app.exit(1));
   },limit);watchdog.unref?.();
  };
  const mark=async(next:typeof WINDOWS_SMOKE_PHASES[number]):Promise<void>=>{
+  await step('enter',next);
   phase=next;
   await writeFile(phaseFile,JSON.stringify({schemaVersion:1,scope:'windows-development-launch',phase:next})+'\n').catch(()=>{});
+  await step('exit',next);
   armWatchdog();
  };
  try{
