@@ -215,7 +215,7 @@ export function writeSequenceEditAction(store: ProjectStore, input: {
   const position = state.position + 1;
   const entry: SequenceEditHistoryEntry = {
     actionId: input.envelope.actionId, projectId: store.projectId, epoch: state.epoch, position,
-    operation: sequenceEditEnvelopeOperationName(input.envelope), origin: 'user',
+    operation: sequenceEditEnvelopeOperationName(input.envelope), origin: input.envelope.origin ?? 'user',
     beforePatch: input.patch.before, afterPatch: input.patch.after, createdAt: now(),
   };
   const parsedEntry = sequenceEditHistoryEntrySchema.safeParse(entry);

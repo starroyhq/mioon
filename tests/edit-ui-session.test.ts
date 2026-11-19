@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence,
+  Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5UserUndoBlocked,
   format5MoveCommand, format5PatchCommand, format5Projection, format5SplitCommand, format5TrimCommand,
 } from '../apps/web/src/edit-ui/session.ts';
 import type {SequenceRpc} from '../apps/web/src/edit-ui/session.ts';
@@ -163,4 +163,14 @@ test('clip patches map to the six supported TS commands and reject unknown field
   assert.equal('kind' in version && version.kind, 'clip-version');
   assert.equal('kind' in move && move.kind, 'clip-move-off-track');
   assert.deepEqual(format5PatchCommand(clip, {gain: 0.5}, 'track-main'), {unsupported: ['gain']});
+});
+
+test('user Ctrl+Z protection detects a Mio action at the history top', () => {
+  const view = {epoch: projectId, position: 2, revision: 3,
+    undo: {actionId: 'action-mio', operation: 'timeline.clip.set-properties', affected: 1, origin: 'mio' as const},
+    redo: null};
+  assert.equal(format5UserUndoBlocked(view), true);
+  assert.equal(format5UserUndoBlocked({...view, undo: {...view.undo, origin: 'user' as const}}), false);
+  assert.equal(format5UserUndoBlocked({...view, undo: {...view.undo, origin: undefined}}), false);
+  assert.equal(format5UserUndoBlocked(null), false);
 });

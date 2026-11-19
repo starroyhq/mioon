@@ -931,7 +931,7 @@ function allocateEdgeIds(context: SyncContext, plan: SequenceEditPlan,
  * a UI-E2/MT caller sends to `runSequenceSync`. The envelope carries the
  * observed revisions, impact ids, new-id allocation and the contract baseline. */
 export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCommand,
-  options: {readonly requestId: string; readonly actionId?: string}): SequenceSyncPreview | SequenceEditTransactionFailure {
+  options: {readonly requestId: string; readonly actionId?: string; readonly origin?: 'user' | 'mio'}): SequenceSyncPreview | SequenceEditTransactionFailure {
   if (!format5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   return store.tx(() => {
     const context = readSyncContext(store);
@@ -942,7 +942,7 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     const provisional: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
       actionId: options.actionId ?? randomUUID(), requestId: options.requestId,
-      originSide: intent.side, filmId: context.rootNodeId, intents: [intent],
+      originSide: intent.side, filmId: context.rootNodeId, intents: [intent], ...(options.origin ? {origin: options.origin} : {}),
       baseline: {contentRevision: content, timelineRevision: context.timeline.revision, syncRevision: context.syncRevision,
         historyPosition: state.position, historyRevision: state.revision, targets: []},
       impact: {nodeIds: [], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},

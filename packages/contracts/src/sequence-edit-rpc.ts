@@ -8,7 +8,7 @@
  * including oldest-entry eviction and `atEarliest`.
  */
 import {z} from 'zod';
-import {sequenceEditEnvelopeSchema, sequenceEditSubjectIntentSchema} from './sequence-edit.ts';
+import {sequenceEditClipPropertiesIntentSchema, sequenceEditEnvelopeSchema, sequenceEditSubjectIntentSchema} from './sequence-edit.ts';
 import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
 import {sequenceEditingSchemas} from './sequence-editing.ts';
 import type {SequenceEditIntent} from './sequence-edit.ts';
@@ -26,14 +26,16 @@ export const sequencePreviewRequestSchema = z.object({
   requestId: z.string().min(8).max(200),
   actionId: uuid.optional(),
   originSide: z.enum(['board', 'timeline']).optional(),
+  origin: z.enum(['user', 'mio']).optional(),
   intents: z.array(sequenceEditIntentPayloadSchema).min(1).max(64).optional(),
   subjectIntent: sequenceEditSubjectIntentSchema.optional(),
+  propertiesIntent: sequenceEditClipPropertiesIntentSchema.optional(),
   allocation: allocationSchema.optional(),
 }).strict().superRefine((value, context) => {
-  const hasIntents = value.intents !== undefined;
-  const hasSubject = value.subjectIntent !== undefined;
-  if (hasIntents === hasSubject) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
-    message: 'Provide exactly one of intents and subjectIntent.'});
+  const families = [value.intents !== undefined, value.subjectIntent !== undefined, value.propertiesIntent !== undefined]
+    .filter(Boolean).length;
+  if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
+    message: 'Provide exactly one of intents, subjectIntent and propertiesIntent.'});
 });
 export const sequenceCommitRequestSchema = z.object({
   projectId: uuid,

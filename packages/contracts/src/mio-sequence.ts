@@ -1,0 +1,41 @@
+/** Bounded Mio/MT write actions for the unified format-5 sequence RPC.
+ *
+ * The model names inspected targets and one action; it never supplies an
+ * envelope, allocation or receipt. The tool implementation builds and previews
+ * the shared envelope server-side, obtains approval for the stable impact, then
+ * commits exactly that envelope + plan digest. */
+import {z} from 'zod';
+import {sequenceEditClipPropertiesIntentSchema} from './sequence-edit.ts';
+
+const uuid = z.string().uuid();
+const offset = z.number().int().min(0).max(9007199254740991);
+export const MIO_SEQUENCE_ACTION_LIMITS = Object.freeze({maxTargets: 50, maxText: 120});
+
+const boardEdge = {fromId: uuid, toId: uuid} as const;
+const subjectEdit = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('create'), shotId: uuid, subjectId: uuid, role: z.enum(['subject', 'style'])}).strict(),
+  z.object({kind: z.literal('set-mode'), bindingId: uuid, bindingMode: z.enum(['follow', 'locked']), subjectVersionId: uuid.nullable()}).strict(),
+  z.object({kind: z.literal('detach'), bindingId: uuid}).strict(),
+  z.object({kind: z.literal('restore'), bindingId: uuid, bindingMode: z.enum(['follow', 'locked']), subjectVersionId: uuid.nullable()}).strict(),
+]);
+export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('connect'), ...boardEdge}).strict(),
+  z.object({kind: z.literal('disconnect'), ...boardEdge}).strict(),
+  z.object({kind: z.literal('insert'), ...boardEdge, nodeId: uuid}).strict(),
+  z.object({kind: z.literal('delete-node'), nodeId: uuid}).strict(),
+  z.object({kind: z.literal('reorder'), clipId: uuid, beforeClipId: uuid.nullable()}).strict(),
+  z.object({kind: z.literal('remove'), clipId: uuid}).strict(),
+  z.object({kind: z.literal('split'), clipId: uuid, offsetFrames: z.number().int().min(1).max(18000)}).strict(),
+  z.object({kind: z.literal('set-mode'), clipId: uuid, mode: z.enum(['follow', 'locked']),
+    versionId: uuid.nullable().optional()}).strict(),
+  z.object({kind: z.literal('copy-move'), clipId: uuid, beforeClipId: uuid.nullable()}).strict(),
+  z.object({kind: z.literal('subject-binding'), edit: subjectEdit}).strict(),
+  z.object({kind: z.literal('clip-properties'),
+    edits: sequenceEditClipPropertiesIntentSchema.shape.operation.shape.edits}).strict(),
+]);
+export type MioSequenceAction = z.infer<typeof mioSequenceActionSchema>;
+export const mioSequenceEditSchemas = Object.freeze({
+  'sequence.tool.edit': mioSequenceActionSchema,
+  'sequence.tool.undo': z.object({actionId: uuid}).strict(),
+});
+export type MioSequenceToolOperation = keyof typeof mioSequenceEditSchemas;
