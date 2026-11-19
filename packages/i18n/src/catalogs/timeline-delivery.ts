@@ -3208,12 +3208,6 @@ export const timelineDeliveryMessages = {
     "en": "Status unknown",
     "ja": "状態不明"
   },
-  "recovery.workspace.taskProtocol": {
-    "zh-Hans": "任务的工作区身份确认无效，原编号和参数仍保留。请核对原工作区与原请求，不要重新创建请求",
-    "zh-Hant": "工作的工作區身分確認無效，原編號和參數仍保留。請核對原工作區與原請求，不要重新建立請求",
-    "en": "The task's workspace identity could not be validated. Its original ID and parameters are retained. Check the original workspace and request; do not create a replacement request",
-    "ja": "タスクのワークスペース識別情報を検証できませんでした。元の ID とパラメーターは保持されています。元のワークスペースとリクエストを確認し、別のリクエストを作成しないでください"
-  },
   "export.history.previewRevision": {
     "zh-Hans": "时间线预览 · 修订版 {revision}{snapshot}",
     "zh-Hant": "時間軸預覽 · 修訂版 {revision}{snapshot}",
