@@ -7,7 +7,7 @@ import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline,
 } from './project-format5.ts';
-import type {BoardSequenceErrorCode} from './board-sequence.ts';
+import type {BoardSequenceErrorCode, ChainReferenceRole} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
 import type {
   ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning,
@@ -95,6 +95,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
+  'reference.attach', 'reference.role.set', 'reference.detach',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
@@ -143,6 +144,45 @@ export type SubjectBindingOperation =
 export interface SequenceEditSubjectIntent {
   readonly side: 'board';
   readonly operation: SubjectBindingOperation;
+}
+
+/**
+ * RI material reference-line actions (0.3.0). A reference edge is a board object
+ * like a shot/node/edge: the whole row lives in `SequenceEditBoardDelta`, so undo
+ * restores its identity, role, source asset and order byte-for-byte. Subject
+ * cards are NOT this family: their reference edge and binding row travel in
+ * SB's `subjectIntent` so those runs never duplicate the binding write.
+ *
+ * - `attach` default-role by the source node type when `role` is omitted; the
+ *   edge id and source asset id are resolved/pre-allocated by the caller.
+ * - `set-role` changes only the persisted role (the connector keeps its edge id
+ *   and source asset); first/last frame cardinality is re-checked.
+ * - `detach` removes the edge row (it is a material edge, not a tombstone).
+ * All three keep the legacy first/last-frame shot projection in the same
+ * transaction (plan §2.1) so old readers see a consistent selection.
+ */
+export type ReferenceEdgeOperation =
+  | {readonly kind: 'reference-edge'; readonly edit: {readonly kind: 'attach'; readonly edgeId: string;
+    readonly shotId: string; readonly sourceNodeId: string; readonly role?: ChainReferenceRole}}
+  | {readonly kind: 'reference-edge'; readonly edit: {readonly kind: 'set-role'; readonly edgeId: string;
+    readonly shotId: string; readonly role: ChainReferenceRole}}
+  | {readonly kind: 'reference-edge'; readonly edit: {readonly kind: 'detach'; readonly edgeId: string;
+    readonly shotId: string}};
+
+/** One material reference intent: always board side, never combined with a
+ * sync-board projection because it writes only the edge and the shot
+ * compatibility projection. */
+export interface SequenceEditReferenceIntent {
+  readonly side: 'board';
+  readonly operation: ReferenceEdgeOperation;
+}
+
+export function sequenceEditReferenceOperationName(operation: ReferenceEdgeOperation): SequenceEditOperationName {
+  switch (operation.edit.kind) {
+    case 'attach': return 'reference.attach';
+    case 'set-role': return 'reference.role.set';
+    case 'detach': return 'reference.detach';
+  }
 }
 
 /** FR-A clip properties: one undo step may change several clips (for example one
@@ -226,8 +266,9 @@ export function sequenceEditOperationName(intents: readonly SequenceEditIntent[]
 
 /** `history13.operation` for the action envelope. One subject action uses its
  * own stable name; every existing action keeps its intent-joined name. */
-export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent'>): string {
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'referenceIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
+  if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
   return sequenceEditOperationName(envelope.intents);
 }
@@ -344,7 +385,10 @@ export interface SequenceEditEnvelope {
    * delta, so one undo step restores both. Optional and additive: existing
    * CS/TS envelopes and receipts are unchanged. */
   readonly subjectIntent?: SequenceEditSubjectIntent;
-  /** FR-A clip property patch; exactly one of intents/subjectIntent/propertiesIntent. */
+  /** RI material reference-line action; exactly one intent family is present.
+   * A subject-card connector travels in `subjectIntent`, never here. */
+  readonly referenceIntent?: SequenceEditReferenceIntent;
+  /** FR-A clip property patch; exactly one intent family is present. */
   readonly propertiesIntent?: SequenceEditClipPropertiesIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
@@ -438,6 +482,19 @@ export const sequenceEditSubjectIntentSchema = z.object({
   operation: z.object({kind: z.literal('subject-binding'), edit: subjectBindingEditSchema}).strict(),
 }).strict();
 const subjectIntentSchema = sequenceEditSubjectIntentSchema;
+const referenceRoleSchema = z.enum(['first_frame', 'last_frame', 'reference_image', 'subject_reference',
+  'style_reference', 'composition', 'reference_audio', 'reference_video']);
+const referenceEdgeEditSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('attach'), edgeId: uuidSchema, shotId: uuidSchema, sourceNodeId: uuidSchema,
+    role: referenceRoleSchema.optional()}).strict(),
+  z.object({kind: z.literal('set-role'), edgeId: uuidSchema, shotId: uuidSchema, role: referenceRoleSchema}).strict(),
+  z.object({kind: z.literal('detach'), edgeId: uuidSchema, shotId: uuidSchema}).strict(),
+]);
+export const sequenceEditReferenceIntentSchema = z.object({
+  side: z.literal('board'),
+  operation: z.object({kind: z.literal('reference-edge'), edit: referenceEdgeEditSchema}).strict(),
+}).strict();
+const referenceIntentSchema = sequenceEditReferenceIntentSchema;
 const clipPropertiesPatchSchema = z.object({
   transform: z.unknown().optional(),
   transition: z.unknown().optional(),
@@ -464,12 +521,31 @@ export const sequenceEditEnvelopeSchema = z.object({
   origin: z.enum(['user', 'mio']).optional(),
   intents: z.array(intentSchema).max(SEQUENCE_EDIT_LIMITS.intents),
   subjectIntent: subjectIntentSchema.optional(),
+  referenceIntent: referenceIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
+  const hasReference = value.referenceIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
-  if (hasSubject && hasProperties) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
+  if ([hasSubject, hasReference, hasProperties].filter(Boolean).length > 1) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
+  }
+  if (hasReference) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference action carries no CS/TS intent'});
+    if (value.originSide !== 'board') context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference action is board-origin'});
+    const edit = value.referenceIntent!.operation.edit;
+    // The edge id is pre-allocated in the envelope for retry identity; a subject
+    // binding create keeps its own allocation rule in the subject family.
+    if (edit.kind === 'attach' && !value.allocation.edges.some(edge => edge.id === edit.edgeId
+      && edge.toId === edit.shotId && edge.fromId === edit.sourceNodeId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference attach requires its edge allocation'});
+    }
+    if (edit.kind !== 'attach' && !value.impact.edgeIds.includes(edit.edgeId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference role change or detach must list its edge impact'});
+    }
+    return;
+  }
   if (hasProperties) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A clip property action carries no CS/TS intent'});
     if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A clip property action is timeline-origin'});
@@ -909,13 +985,18 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   missing/wrong-track clip, a value outside the frozen clip schema (transform
  *   keyframes, transition fit, gain/fades/envelope/colour/audio role), or the
  *   same clip twice. Nothing is written; the caller re-previews.
+ * - `SEQUENCE_EDIT_REFERENCE_INVALID`: a material reference action names a
+ *   missing/archived/foreign source or shot, a role that the source type cannot
+ *   provide, a subject-card connector (which belongs to the SB binding family),
+ *   a previs node without a verifiable published output, an edge that is not a
+ *   material reference, or an edge identity already used by another owner.
  */
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_REFERENCE_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

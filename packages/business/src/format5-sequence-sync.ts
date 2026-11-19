@@ -27,6 +27,7 @@ import type {
 } from '@mioon/contracts/sequence-edit';
 import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
 import {planSubjectBindingAction, readSubjectBinding} from './format5-subject-binding.ts';
+import {planReferenceEdgeAction} from './format5-reference-inputs.ts';
 import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
@@ -1035,6 +1036,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
   if (envelope.projectId !== store.projectId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   const inputDigest = sequenceEditInputDigest(envelope);
   if (envelope.subjectIntent) return runSubjectBindingSync(store, envelope, inputDigest);
+  if (envelope.referenceIntent) return runReferenceEdgeSync(store, envelope, inputDigest);
   return store.tx(() => {
     const replay = findSequenceEditReceipt(store, envelope.requestId);
     if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
@@ -1110,6 +1112,47 @@ function runSubjectBindingSync(store: ProjectStore, envelope: SequenceEditEnvelo
       edges: plan.after.board.writes.filter(item => item.kind === 'edge').length + plan.after.board.removals.length,
       mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0,
       subjectBindings: plan.after.board.writes.filter(item => item.kind === 'subject_binding').length,
+    };
+    const receipt = receiptDraft(envelope, inputDigest, {affected, contentRevision,
+      timelineRevision: Number(header.revision ?? 1), syncRevision: Number(sync?.revision ?? 1)});
+    const patch: SequenceEditPatch = {version: 1, before: plan.before, after: plan.after};
+    const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
+    return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
+  });
+}
+
+/** One shared transaction for a material reference-line action: replay,
+ * revision CAS, board delta (edge + legacy frame projection), one history entry
+ * and the immutable receipt. */
+function runReferenceEdgeSync(store: ProjectStore, envelope: SequenceEditEnvelope, inputDigest: string): SequenceSyncResult {
+  return store.tx(() => {
+    const replay = findSequenceEditReceipt(store, envelope.requestId);
+    if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
+    const content = readProjectContentStamp(store.db).contentSequence;
+    const state = readFormat5TimelineState(store.db, 'project');
+    const header = state.header ? JSON.parse(state.header.raw) as Row : {};
+    const sync = store.db.prepare('SELECT revision FROM project.sequence_sync_state').get() as Row | undefined;
+    if (envelope.baseline.contentRevision !== content
+      || envelope.baseline.timelineRevision !== Number(header.revision ?? 1)
+      || envelope.baseline.syncRevision !== Number(sync?.revision ?? 1)) {
+      return writeFailure(store, envelope, 'SEQUENCE_EDIT_REVISION_CONFLICT');
+    }
+    let plan;
+    try { plan = planReferenceEdgeAction(store, envelope); }
+    catch (error) {
+      if (error instanceof AppError && isSequenceEditErrorCode(error.code)) {
+        return writeFailure(store, envelope, error.code);
+      }
+      throw error;
+    }
+    if (sameJson(plan.before.board, plan.after.board)) return writeFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
+    applyBoardDelta(store, plan.after.board);
+    const contentRevision = readProjectContentStamp(store.db).contentSequence;
+    const affected: SequenceEditAffectedCounts = {
+      nodes: plan.after.board.writes.filter(item => item.kind === 'shot').length,
+      edges: plan.after.board.writes.filter(item => item.kind === 'edge').length
+        + plan.after.board.removals.filter(item => item.kind === 'edge').length,
+      mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0,
     };
     const receipt = receiptDraft(envelope, inputDigest, {affected, contentRevision,
       timelineRevision: Number(header.revision ?? 1), syncRevision: Number(sync?.revision ?? 1)});
