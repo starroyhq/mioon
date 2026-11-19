@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="8afa2973cecb50cfa0cbd9ccaa719f935882ca50c7c9a26e93d9bb27bd5f415a";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="cf35cf488dcebfd8e776e9c3c2b5414264f5b05f0e6b3fe3064660bc35782f4d";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -732,26 +732,165 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "const": "board"
      },
      "operation": {
-      "type": "object",
-      "properties": {
-       "kind": {
-        "type": "string",
-        "const": "subject-binding"
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "subject-binding"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "create"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "subjectId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "subject",
+               "style"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "shotId",
+             "subjectId",
+             "role"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "set-mode"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "detach"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "restore"
+             },
+             "bindingId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "bindingMode": {
+              "type": "string",
+              "enum": [
+               "follow",
+               "locked"
+              ]
+             },
+             "subjectVersionId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "bindingId",
+             "bindingMode",
+             "subjectVersionId"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
        },
-       "edit": {
+       {
         "anyOf": [
          {
           "type": "object",
           "properties": {
            "kind": {
             "type": "string",
-            "const": "create"
+            "const": "subject.card.create"
            },
-           "bindingId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-           },
-           "shotId": {
+           "nodeId": {
             "type": "string",
             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
            },
@@ -759,20 +898,28 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "type": "string",
             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
            },
-           "role": {
-            "type": "string",
-            "enum": [
-             "subject",
-             "style"
-            ]
+           "position": {
+            "type": "object",
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
            }
           },
           "required": [
            "kind",
-           "bindingId",
-           "shotId",
+           "nodeId",
            "subjectId",
-           "role"
+           "position"
           ],
           "additionalProperties": false
          },
@@ -781,103 +928,22 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
           "properties": {
            "kind": {
             "type": "string",
-            "const": "set-mode"
+            "const": "subject.card.delete"
            },
-           "bindingId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-           },
-           "bindingMode": {
-            "type": "string",
-            "enum": [
-             "follow",
-             "locked"
-            ]
-           },
-           "subjectVersionId": {
-            "anyOf": [
-             {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             {
-              "type": "null"
-             }
-            ]
-           }
-          },
-          "required": [
-           "kind",
-           "bindingId",
-           "bindingMode",
-           "subjectVersionId"
-          ],
-          "additionalProperties": false
-         },
-         {
-          "type": "object",
-          "properties": {
-           "kind": {
-            "type": "string",
-            "const": "detach"
-           },
-           "bindingId": {
+           "nodeId": {
             "type": "string",
             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
            }
           },
           "required": [
            "kind",
-           "bindingId"
-          ],
-          "additionalProperties": false
-         },
-         {
-          "type": "object",
-          "properties": {
-           "kind": {
-            "type": "string",
-            "const": "restore"
-           },
-           "bindingId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-           },
-           "bindingMode": {
-            "type": "string",
-            "enum": [
-             "follow",
-             "locked"
-            ]
-           },
-           "subjectVersionId": {
-            "anyOf": [
-             {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             {
-              "type": "null"
-             }
-            ]
-           }
-          },
-          "required": [
-           "kind",
-           "bindingId",
-           "bindingMode",
-           "subjectVersionId"
+           "nodeId"
           ],
           "additionalProperties": false
          }
         ]
        }
-      },
-      "required": [
-       "kind",
-       "edit"
-      ],
-      "additionalProperties": false
+      ]
      }
     },
     "required": [
@@ -1727,26 +1793,165 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "const": "board"
        },
        "operation": {
-        "type": "object",
-        "properties": {
-         "kind": {
-          "type": "string",
-          "const": "subject-binding"
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "subject-binding"
+           },
+           "edit": {
+            "anyOf": [
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "create"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "shotId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "subjectId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "role": {
+                "type": "string",
+                "enum": [
+                 "subject",
+                 "style"
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId",
+               "shotId",
+               "subjectId",
+               "role"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "set-mode"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "bindingMode": {
+                "type": "string",
+                "enum": [
+                 "follow",
+                 "locked"
+                ]
+               },
+               "subjectVersionId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId",
+               "bindingMode",
+               "subjectVersionId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "detach"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "restore"
+               },
+               "bindingId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "bindingMode": {
+                "type": "string",
+                "enum": [
+                 "follow",
+                 "locked"
+                ]
+               },
+               "subjectVersionId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "bindingId",
+               "bindingMode",
+               "subjectVersionId"
+              ],
+              "additionalProperties": false
+             }
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "edit"
+          ],
+          "additionalProperties": false
          },
-         "edit": {
+         {
           "anyOf": [
            {
             "type": "object",
             "properties": {
              "kind": {
               "type": "string",
-              "const": "create"
+              "const": "subject.card.create"
              },
-             "bindingId": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             "shotId": {
+             "nodeId": {
               "type": "string",
               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
              },
@@ -1754,20 +1959,28 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "type": "string",
               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
              },
-             "role": {
-              "type": "string",
-              "enum": [
-               "subject",
-               "style"
-              ]
+             "position": {
+              "type": "object",
+              "properties": {
+               "x": {
+                "type": "number"
+               },
+               "y": {
+                "type": "number"
+               }
+              },
+              "required": [
+               "x",
+               "y"
+              ],
+              "additionalProperties": false
              }
             },
             "required": [
              "kind",
-             "bindingId",
-             "shotId",
+             "nodeId",
              "subjectId",
-             "role"
+             "position"
             ],
             "additionalProperties": false
            },
@@ -1776,103 +1989,22 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "properties": {
              "kind": {
               "type": "string",
-              "const": "set-mode"
+              "const": "subject.card.delete"
              },
-             "bindingId": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             "bindingMode": {
-              "type": "string",
-              "enum": [
-               "follow",
-               "locked"
-              ]
-             },
-             "subjectVersionId": {
-              "anyOf": [
-               {
-                "type": "string",
-                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-               },
-               {
-                "type": "null"
-               }
-              ]
-             }
-            },
-            "required": [
-             "kind",
-             "bindingId",
-             "bindingMode",
-             "subjectVersionId"
-            ],
-            "additionalProperties": false
-           },
-           {
-            "type": "object",
-            "properties": {
-             "kind": {
-              "type": "string",
-              "const": "detach"
-             },
-             "bindingId": {
+             "nodeId": {
               "type": "string",
               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
              }
             },
             "required": [
              "kind",
-             "bindingId"
-            ],
-            "additionalProperties": false
-           },
-           {
-            "type": "object",
-            "properties": {
-             "kind": {
-              "type": "string",
-              "const": "restore"
-             },
-             "bindingId": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-             },
-             "bindingMode": {
-              "type": "string",
-              "enum": [
-               "follow",
-               "locked"
-              ]
-             },
-             "subjectVersionId": {
-              "anyOf": [
-               {
-                "type": "string",
-                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-               },
-               {
-                "type": "null"
-               }
-              ]
-             }
-            },
-            "required": [
-             "kind",
-             "bindingId",
-             "bindingMode",
-             "subjectVersionId"
+             "nodeId"
             ],
             "additionalProperties": false
            }
           ]
          }
-        },
-        "required": [
-         "kind",
-         "edit"
-        ],
-        "additionalProperties": false
+        ]
        }
       },
       "required": [

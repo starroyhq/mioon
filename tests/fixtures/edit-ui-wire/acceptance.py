@@ -112,11 +112,19 @@ def main() -> int:
             page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'clip-trim'")
             before = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
             page.locator('body').press('Control+z')
-            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'")
+            # The shortcut publishes its operation before the follow-up history
+            # refresh lands; wait for the cursor itself, not just the label.
+            page.wait_for_function(
+                "position => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'"
+                " && Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === position",
+                arg=before - 1, timeout=15000)
             after_undo = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
             assert after_undo == before - 1, (before, after_undo)
             page.locator('body').press('Control+Shift+z')
-            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'redo'")
+            page.wait_for_function(
+                "position => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'redo'"
+                " && Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === position",
+                arg=before, timeout=15000)
             after_redo = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
             assert after_redo == before, (before, after_redo)
             log('Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z traverse the unified history', position=after_redo)

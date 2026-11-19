@@ -210,7 +210,11 @@ import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
-import {boardConnectIntent, boardDeleteIntent, boardVersionIntent, projectLiveBoard} from './board-ui/live.ts';
+import {boardConnectIntent, boardDeleteIntent, boardVersionIntent, projectLiveBoard,
+  subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
+  subjectCardDeleteOperation} from './board-ui/live.ts';
+import type {BoardBinding} from './board-ui/live-session.ts';
+import type {SequenceEditAllocation, SubjectEditOperation} from '../../../packages/contracts/src/sequence-edit.ts';
 import { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';
 import SubtitleInspector from './SubtitleInspector.tsx';
 import { useSubtitles } from './use-subtitles.ts';
@@ -2278,9 +2282,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }, []);
   const format5BoardProjection = useMemo(() => format5 ? projectLiveBoard({
     shots: data.shots, nodes: data.nodes, edges: data.edges, versions: data.versions, assets: data.assets, jobs: data.jobs,
-    clips: data.timeline?.clips ?? [],
+    clips: data.timeline?.clips ?? [], subjects: format5BoardMount?.subjects ?? [],
     frameAspect: timelineOutputRatio(timeline as never) ?? '9:16', thumbnailFor: format5ThumbnailFor,
-  }) : null, [format5, data.shots, data.nodes, data.edges, data.versions, data.assets, data.jobs, data.timeline?.clips, timeline, format5ThumbnailFor]);
+  }) : null, [format5, data.shots, data.nodes, data.edges, data.versions, data.assets, data.jobs, data.timeline?.clips,
+    format5BoardMount?.subjects, timeline, format5ThumbnailFor]);
   const format5ActiveFilmId = ((timeline as unknown as {mainTrack?: {sequenceNodeId?: string}} | null)?.mainTrack?.sequenceNodeId) ?? null;
   async function format5LoadBoard(): Promise<BoardMountView | null> {
     if (!format5 || !currentProject.current || dataRef.current.projectFormatVersion !== 5) return null;
@@ -2321,6 +2326,49 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setFormat5Notice(null); setFormat5NoticeActionId(null);
     await refresh(currentProject.current); await format5RefreshHistory(); await format5LoadBoard();
     return true;
+  }
+  async function format5BoardRunSubject(operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
+    noticeMessage: string): Promise<BoardOutcome> {
+    if (!format5) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+    setFormat5BoardBusy(true);
+    try {
+      const outcome = await format5BoardSession().runSubject(operation, allocation);
+      if (outcome.ok && outcome.status === 'applied') {
+        setFormat5Notice({id: outcome.actionId, message: noticeMessage});
+        setFormat5NoticeActionId(outcome.actionId);
+        await refresh(currentProject.current);
+        await format5RefreshHistory();
+        await format5LoadBoard();
+      } else if (!outcome.ok) notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+      return outcome;
+    } finally {setFormat5BoardBusy(false);}
+  }
+  function subjectName(subjectId: string): string {
+    return format5BoardMount?.subjects.find(subject => subject.id === subjectId)?.name ?? '';
+  }
+  function cardNodeForSubject(subjectId: string): string | null {
+    return format5BoardProjection?.nodes.find(node => node.kind === 'subject' && node.subjectId === subjectId)?.id ?? null;
+  }
+  function format5SetBindingMode(binding: BoardBinding, mode: 'follow' | 'locked', versionId: string | null): void {
+    void format5BoardRunSubject(subjectBindingModeOperation(binding.id, mode, versionId), undefined,
+      t('boardUi.notice.bindingUpdated', {name: subjectName(binding.subjectId)}));
+  }
+  function format5DetachBinding(binding: BoardBinding): void {
+    void format5BoardRunSubject(subjectBindingDetachOperation(binding.id), undefined,
+      t('boardUi.notice.subjectDetached'));
+  }
+  function format5RestoreBinding(binding: BoardBinding): void {
+    const cardNodeId = cardNodeForSubject(binding.subjectId);
+    if (!cardNodeId) {notify(t('boardUi.inspector.noSubjects'), 'error'); return;}
+    const edgeId = globalThis.crypto.randomUUID();
+    void format5BoardRunSubject(subjectBindingRestoreOperation(binding.id, 'follow', null),
+      {clips: [], nodes: [], splitClips: [], edges: [{id: edgeId, fromId: cardNodeId, toId: binding.shotId}]},
+      t('boardUi.notice.subjectLinked', {name: subjectName(binding.subjectId)}));
+  }
+  function format5DeleteSubjectCard(nodeId: string, subjectId: string): void {
+    if (selectedId === nodeId) updateView('canvas', {selectedId: null});
+    void format5BoardRunSubject(subjectCardDeleteOperation(nodeId), undefined,
+      t('boardUi.notice.subjectCardDeleted', {name: subjectName(subjectId)}));
   }
   function format5SelectBoardNode(nodeId: string | null): void {
     if (nodeId === null) {updateView('canvas', {selectedId: null}); updateView('activeMode', 'canvas'); return;}
@@ -4332,7 +4380,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       { id: 'subjects', label: t('subjects.subjects'), icon: 'subjects', selected: libraryTab === 'subjects', onClick: () => showCompactLibrary('subjects'), focusSelector: '[data-testid=library-subjects-tab]' },
     ]} bottomAction={{ id: 'import', label: t('assets.importLocal'), icon: 'import', disabled: Boolean(busy.import), onClick: () => { if (!clipDraftRef.current?.hasPendingComposition() && !busy.import) fileInput.current?.click(); } }} />)}
     <PanelBoundary name="assets" className={panelOverlay === 'assets' ? 'panel-overlay' : ''} visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
-    <AssetLibrary activeTab={libraryTab} onTabChange={setLibraryTab} annotations={annotations} annotationBlocked={annotationBlocked}  confirm={confirm} timelineUsage={timelineUsage as never} onLocateTimelineUse={locateAssetUse} subjects={subjects as never} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onInspectSubject={id => { void inspectSubject(id); }} inspectedSubjectId={subjectFocusActive && subjectFocus ? subjectFocus.subjectId : null} onShowTasks={() => openTasks()} dispositions={dispositions as never} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds as Set<string>} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} onDetectScenes={asset => openSceneDetection(asset, true)} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
+    <AssetLibrary activeTab={libraryTab} onTabChange={setLibraryTab} annotations={annotations} annotationBlocked={annotationBlocked}  confirm={confirm} timelineUsage={timelineUsage as never} onLocateTimelineUse={locateAssetUse} subjects={subjects as never} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onInspectSubject={id => { void inspectSubject(id); }} subjectDragToBoard={format5} inspectedSubjectId={subjectFocusActive && subjectFocus ? subjectFocus.subjectId : null} onShowTasks={() => openTasks()} dispositions={dispositions as never} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds as Set<string>} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} onDetectScenes={asset => openSceneDetection(asset, true)} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
     {panelOverlay === 'assets' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-assets" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('assets', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
@@ -4348,7 +4396,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runSubject={format5BoardRunSubject} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
         draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
           ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)
@@ -4401,7 +4449,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onSelectVersion={(nodeId, versionId) => { void format5BoardVersion(nodeId, versionId); }}
       onDelete={nodeId => { void format5BoardDeleteNode(nodeId); }}
       onOpenInEditing={nodeId => { void format5OpenShotInTimeline(nodeId); }}
-      onRestore={(archivedId, name) => { void format5BoardRestore(archivedId, name); }} /> :
+      onRestore={(archivedId, name) => { void format5BoardRestore(archivedId, name); }}
+      onSetBindingMode={format5SetBindingMode} onDetachBinding={format5DetachBinding}
+      onRestoreBinding={format5RestoreBinding} onDeleteSubjectCard={format5DeleteSubjectCard} /> :
     canvasEditingEnabled && canvasSelectedItems.length > 1 ? <aside className="inspector"><CanvasSelectionInspector items={canvasSelectedItems} />
       <CanvasOverview shots={data.shots} versions={data.versions} jobs={jobs as React.ComponentProps<typeof CanvasOverview>['jobs']} nodes={data.nodes} />
     </aside> : storyboardPanel ?? previsPanel ?? <Inspector protectEditing={(content,onDiscard) => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} onDiscard={onDiscard} disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:chosenShot.revision ?? 0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:chosenNode.revision ?? 0}] : []} canRelease={() => !shotDirty && !shotTextRef.current?.hasUnsaved() && !shotTextRef.current?.getState().pending && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain && !isBusy(`save:${chosenShot?.id || chosenNode?.id}`)}>{content}</AgentEditingBoundary>} onEditImage={openImageEdit} annotations={annotations} annotationAsset={librarySource as never} assetSections={sceneSummary(librarySource as AppAsset | null)} annotationBlocked={annotationBlocked}  onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext } as never} onShotTextController={registerShotText} onShotTextAccepted={((({ response }: {response: {projectId: string}}) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }) as never)} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects as never} subjectBlocked={subjectBlocked} shotDialogue={format5 && chosenShot ? <ShotDialogue shot={chosenShot as never} subjectNames={format5DialogueSubjects} projectId={data.project?.id ?? null} cueCount={format5DialogueCues.counts.get(chosenShot.id) ?? 0} disabled={!online || auth !== true || loading || format5SessionBusy} rpc={(operation, input) => rpc(operation, input)} onApplied={() => { const project = currentProject.current; if (!project) return; void refresh(project); void format5RefreshHistory(); }}></ShotDialogue> : null} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} videoDirectoryUnavailable={videoDirectoryUnavailable} onRetryVideoDirectory={() => { void refresh(); }} showEnvironmentSetup={!nativeWindow} configureGeneration={configureVideoGeneration ? () => openGlobalSettings('models') : undefined} generationFrame={data.timelineFrameTransaction === true ? data.timeline : null} generationOptions={generationOptions[selectedId as string]} onGenerationOptionsChange={updateGenerationOptions as never} tab={tab} setTab={setTab} busy={busy} onSave={saveShot as never} onNodeSave={saveNode as never} onGenerate={generate as never} regenerationJobId={regenerationJobId} onRegenerate={(shot, options, job, stillCurrent) => generate(shot, options, { job, stillCurrent })} onCancelJob={(job, stillCurrent) => { const live = dataRef.current!.jobs.find(item => item.id === job.id); if (!stillCurrent() || live?.projectId !== currentProject.current || live?.status !== job.status || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return; return run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }, undefined, { canExecute: stillCurrent }); }} onRetryJob={retryGeneration} onSelectVersion={selectVersion as never} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots as never[]} nodes={data.nodes as never[]} edges={data.edges as never[]} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={((id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true })) as never} timelineStatus={shotTimelineView(chosenShot?.id)} onViewInEditing={viewShotInEditing} onAddVersion={(assetId: string) => addTimelineAsset(assetId)} />}

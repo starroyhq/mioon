@@ -72,7 +72,7 @@ test('sequence.board.get exposes revisions, sync state and the archive for the r
   assert.equal(before.syncRevision, readSequenceEditContext(world.store).syncRevision);
   assert.equal(before.inSync, true);
   assert.deepEqual(before.archived, []);
-  assert.deepEqual(Object.keys(before).sort(), ['archived', 'inSync', 'projectId', 'syncRevision', 'timelineRevision'].sort());
+  assert.deepEqual(Object.keys(before).sort(), ['archived', 'bindings', 'inSync', 'projectId', 'subjects', 'syncRevision', 'timelineRevision'].sort());
 });
 
 test('a layout move is one undoable board action and does not change the timeline or sync revision', (t: test.TestContext) => {

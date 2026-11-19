@@ -6,3 +6,7 @@ html,body,#root{height:100%;margin:0;background:#0b0c0e;}
 .board-fixture-inspector{min-height:0;overflow:auto;border:1px solid #2e3138;border-radius:8px;background:#141518;}
 .board-fixture-status{grid-column:1/3;display:flex;gap:16px;align-items:center;padding:0 10px;color:#767b84;font-size:10px;font-family:ui-monospace,monospace;}
 .board-fixture-opening{padding:20px;}
+.board-fixture-subjects {display:flex;flex-direction:column;gap:5px;padding:10px;border-top:1px solid #2e3138;}
+.board-fixture-subjects h4 {margin:0 0 4px;font-size:10px;color:#a3a7af;text-transform:uppercase;letter-spacing:.8px;}
+.board-fixture-subject {display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid #2e3138;border-radius:5px;background:#1b1d21;cursor:grab;font-size:11px;}
+.board-fixture-subject small {color:#a3a7af;font-size:10px;}
