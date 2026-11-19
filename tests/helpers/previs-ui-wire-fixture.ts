@@ -36,7 +36,7 @@ export interface PrevisUiWireFixture {
 export async function createPrevisUiWireFixture(): Promise<PrevisUiWireFixture> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-previs-ui-wire-'));
   const projectId = PREVIS_UI_IDS.project;
-  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   // A real project-owned PNG for the subject head version.
   const bytes = await renderMockImagePng({width: 64, height: 96});

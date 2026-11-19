@@ -11,6 +11,10 @@ import {previewFormat5Upgrade, upgradeProjectFormatTo5} from '../packages/busine
 import {createFormat4UpgradeBackup, readFormat4BackupManifest, verifyFormat4Backup} from '../packages/business/src/project-file/format4-backup.ts';
 import {restoreFormat4Backup} from '../packages/business/src/project-file/format4-restore.ts';
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
+import {inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
+import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
+import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
 import {buildRestorePlan} from '../packages/business/src/project-versions/preview.ts';
@@ -52,7 +56,7 @@ test('released format 3 and 4 projects confirm, back up once and convert to form
     // Without the trusted confirmation nothing is written, including no backup.
     assert.throws(() => upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location, approveUpgrade: () => false}),
       {code: 'PROJECT_FORMAT_UPGRADE_REQUIRED', status: 409});
-    assert.equal(inspectProjectFormatReadOnly(f.projectFile, {format5: true}).formatVersion, source);
+    assert.equal(inspectProjectFormatReadOnly(f.projectFile).formatVersion, source);
     const phases: string[] = [];
     const result = upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location,
       approveUpgrade: value => value.contentToken === preview.contentToken && value.projectVersion === source,
@@ -78,7 +82,7 @@ test('released format 3 and 4 projects confirm, back up once and convert to form
         assert.ok(Object.hasOwn(document!.tables, table), table);
       }
     } finally {result.store.close();}
-    const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location, format5: true});
+    const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
     try {assert.equal(reopened.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT5_PROJECT_SCHEMA_VERSION);}
     finally {reopened.close();}
     assert.deepEqual(readdirSync(path.join(f.location.localDir, 'format-upgrade-backups')), [result.backupId]);
@@ -97,7 +101,7 @@ test('storage failures at every upgrade boundary leave the original pair untouch
         error => error === failure, `${code} at ${boundary}`);
       // The source files, format header and content stamp are exactly the ones
       // the confirmation previewed; a new process opens the old format again.
-      const identity = inspectProjectFormatReadOnly(f.projectFile, {format5: true});
+      const identity = inspectProjectFormatReadOnly(f.projectFile);
       assert.equal(identity.formatVersion, 4);
       assert.equal(identity.contentSequence, previewFor(f).contentSequence);
       const store = openStore({projectFile: f.projectFile, locate: () => f.location, format4: {}});
@@ -111,7 +115,7 @@ test('storage failures at every upgrade boundary leave the original pair untouch
   const failure = Object.assign(new Error('Synthetic storage failure'), {code: 'SQLITE_IOERR'});
   assert.throws(() => upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location,
     approveUpgrade: () => true, onUpgradeBoundary: phase => {if (phase === 'after-commit') throw failure;}}), error => error === failure);
-  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location, format5: true});
+  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
   try {assert.equal(reopened.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT5_PROJECT_SCHEMA_VERSION);}
   finally {reopened.close();}
 });
@@ -124,12 +128,12 @@ test('the original-format backup restores the pre-upgrade pair and the project c
   result.store.close();
   const backupRoot = path.join(f.location.localDir, 'format-upgrade-backups');
   const manifest = readFormat4BackupManifest(backupRoot, result.backupId!);
-  const current = inspectProjectFormatReadOnly(f.projectFile, {format5: true});
+  const current = inspectProjectFormatReadOnly(f.projectFile);
   const restored = restoreFormat4Backup({projectFile: f.projectFile, location: f.location, projectId: current.projectId,
     backupId: result.backupId!, expected: current});
   assert.equal(restored.projectVersion, 4);
   assert.equal(restored.historyVersion, manifest.historyVersion);
-  const legacy = inspectProjectFormatReadOnly(f.projectFile, {format5: true});
+  const legacy = inspectProjectFormatReadOnly(f.projectFile, {});
   assert.equal(legacy.formatVersion, 4);
   assert.equal(legacy.contentSequence, sourcePreview.contentSequence);
   assert.equal(legacy.contentToken, sourcePreview.contentToken);
@@ -137,6 +141,57 @@ test('the original-format backup restores the pre-upgrade pair and the project c
   const again = upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location, approveUpgrade: () => true});
   try {assert.equal(again.store.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT5_PROJECT_SCHEMA_VERSION);}
   finally {again.store.close();}
+});
+
+test('released 0.1.x and 0.2.0 projects upgrade with a confirmation, edit and undo, and leave an independently readable backup', () => {
+  for (const release of releases) {
+    const f = released(release), source = sourceVersions.get(release)!, preview = previewFor(f);
+    assert.equal(preview.projectVersion, source);
+    assert.equal(preview.targetProjectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+    assert.equal(preview.targetHistoryVersion, FORMAT5_HISTORY_SCHEMA_VERSION);
+    assert.throws(() => upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location}),
+      {code: 'PROJECT_FORMAT_UPGRADE_REQUIRED'});
+    const result = upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location, approveUpgrade: value => {
+      assert.deepEqual(value, preview); return true;
+    }});
+    try {
+      assert.equal(Number(result.store.db.prepare('PRAGMA project.user_version').get()?.user_version), FORMAT5_PROJECT_SCHEMA_VERSION);
+      const timeline = readFormat5TimelineRecord(result.store.db, 'project');
+      assert.ok(timeline && timeline.clips.length > 0);
+      const clip = timeline.clips.find(value => value.durationFrames > 2);
+      assert.ok(clip);
+      const edit = createFormat5SequenceEditService(result.store);
+      const left = edit.preview({projectId: result.store.projectId, requestId: randomUUID(),
+        intents: [sequenceSyncIntent({kind: 'clip-split', clipId: clip.id,
+          offsetFrames: Math.floor(clip.durationFrames / 2), rightClipId: randomUUID()})]}) as {
+            envelope: unknown; planDigest: string};
+      const committed = edit.commit({projectId: result.store.projectId, envelope: left.envelope,
+        expectedPlanDigest: left.planDigest}) as {status: string; actionId: string};
+      assert.equal(committed.status, 'applied');
+      const afterSplit = readFormat5TimelineRecord(result.store.db, 'project')!;
+      assert.equal(afterSplit.clips.length, timeline.clips.length + 1);
+      const history = edit.history({projectId: result.store.projectId}) as {position: number; revision: number};
+      const undone = edit.undo({projectId: result.store.projectId, requestId: randomUUID(), actionId: committed.actionId,
+        expected: {position: history.position, revision: history.revision}}) as {status: string};
+      assert.equal(undone.status, 'applied');
+      assert.equal(readFormat5TimelineRecord(result.store.db, 'project')!.clips.length, timeline.clips.length);
+    } finally {result.store.close();}
+    assert.ok(result.backupId);
+    const backupRoot = path.join(f.location.localDir, 'format-upgrade-backups'), entries = readdirSync(backupRoot);
+    assert.equal(entries.length, 1);
+    const manifest = readFormat4BackupManifest(backupRoot, result.backupId!);
+    assert.equal(manifest.projectVersion, source);
+    verifyFormat4Backup(path.join(backupRoot, result.backupId!), manifest);
+    // The original-format backup is a complete pair that still opens on its own.
+    const standalone = path.join(scratch, `standalone-${release}-${serial++}.mioon`);
+    assert.equal(inspectCopiedProjectFile(path.join(backupRoot, result.backupId!, 'project.mioon')).formatVersion, source);
+    cpSync(path.join(backupRoot, result.backupId!, 'project.mioon'), standalone); chmodSync(standalone, 0o600);
+    const store = openProjectStore({projectFile: standalone, locate: () => ({localDir: path.join(scratch, `standalone-${release}-local`),
+      cacheDir: path.join(scratch, `standalone-${release}-cache`), tempDir: path.join(scratch, `standalone-${release}-tmp`)}),
+      ...(source === 4 ? {format4: {}} : {})});
+    try {assert.equal((store.get('projects', preview.projectId) as {id: string}).id, preview.projectId);}
+    finally {store.close();}
+  }
 });
 
 test('a format 5 project copies to a new file with its native rows and named versions restore clips', async () => {
@@ -172,7 +227,7 @@ test('a format 5 project copies to a new file with its native rows and named ver
     assert.equal(copy.formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
     assert.notEqual(copy.projectId, store.projectId);
     const copiedLocation = {localDir: path.join(f.root, 'copied-records'), cacheDir: path.join(f.root, 'copied-cache'), tempDir: path.join(f.root, 'copied-temp')};
-    const copied = openProjectStore({projectFile: target, locate: () => copiedLocation, format5: true});
+    const copied = openProjectStore({projectFile: target, locate: () => copiedLocation});
     try {
       assert.equal(copied.projectId, copy.projectId);
       assert.equal(copied.db.prepare('SELECT count(*) n FROM project.timeline_clips').get()!.n, clipCount);

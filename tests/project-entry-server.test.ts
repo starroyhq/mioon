@@ -17,7 +17,7 @@ import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createMemoryProjectRegistry, createProjectHostManager, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
+import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_HISTORY_SCHEMA_VERSION,FORMAT5_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {FORMAT_UPGRADE_BACKUP_DIRECTORY, readFormat4BackupManifest, verifyFormat4Backup} from '../packages/business/src/project-file/format4-backup.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
 import {projectEntriesResponseSchema,projectEntryIdentitySchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
@@ -42,7 +42,7 @@ function object(value: unknown): Record<string, unknown> {
 }
 
 async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {
-  externalProjectsRoot = false, rejectBackup = false, legacyA = false, legacyHost = false,
+  externalProjectsRoot = false, rejectBackup = false, legacyA = false, legacyHost = false, target4 = false,
   projectCatalogClient = undefined as ServerOptions['projectCatalogClient'], projectCatalogTimeoutMsForTest = undefined as number | undefined,
 } = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
@@ -54,14 +54,15 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
     await server?.close();
     rmSync(root, {recursive: true, force: true});
   });
-  const a = createServerProject(dataDir, {name: 'Catalog A', ...(legacyA || legacyHost ? {projectFormat: PROJECT_FILE_SCHEMA_VERSION} : {})});
+  const a = createServerProject(dataDir, {name: 'Catalog A', projectFormat: legacyA || legacyHost ? PROJECT_FILE_SCHEMA_VERSION
+    : target4 ? FORMAT4_PROJECT_SCHEMA_VERSION : FORMAT5_PROJECT_SCHEMA_VERSION});
   let aFile = a.store.projectFile;
   const summary = createProjectHomeServices(a.store).handlers['project.summary.list']()[0]!;
   const coverAsset = randomUUID();
   writeProjectCover({cacheDir: a.store.cacheDir,
     source: {assetId: coverAsset, mimeType: 'image/png', sourceFingerprint: 'a'.repeat(64)}, jpeg});
   a.store.close();
-  const b = createServerProject(dataDir, {name: 'Catalog B'});
+  const b = createServerProject(dataDir, {name: 'Catalog B', projectFormat: legacyHost ? FORMAT4_PROJECT_SCHEMA_VERSION : FORMAT5_PROJECT_SCHEMA_VERSION});
   let bFile = b.store.projectFile;
   b.store.close();
   if (externalProjectsRoot) {
@@ -84,7 +85,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   let inspect!: InspectProject, inspectApplication!: InspectApplication,backupAttempts=0;
   server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel, projectCatalogClient, projectCatalogTimeoutMsForTest,
     inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;},
-    ...(legacyHost ? {projectFormatForTest: PROJECT_FILE_SCHEMA_VERSION} : {}),
+    ...(legacyHost ? {projectFormatForTest: PROJECT_FILE_SCHEMA_VERSION} : target4 ? {projectFormatForTest: FORMAT4_PROJECT_SCHEMA_VERSION} : {projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION}),
     ...(rejectBackup?{projectBackupCopyForTest:async()=>{backupAttempts++;throw Error('Metadata reads must not start backups');}}:{})});
   const owned = server;
   const fetchOwned = (route: string, options: RequestInit = {}) => fetch(owned.url + route, {...options,
@@ -221,8 +222,8 @@ test('the default web host opens legacy metadata without writes and upgrades onl
   assert.equal(first.projectId, projectId);
   assert.equal(first.projectVersion, PROJECT_FILE_SCHEMA_VERSION);
   assert.equal(first.historyVersion, HISTORY_SCHEMA_VERSION);
-  assert.equal(first.targetProjectVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
-  assert.equal(first.targetHistoryVersion, FORMAT4_HISTORY_SCHEMA_VERSION);
+  assert.equal(first.targetProjectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(first.targetHistoryVersion, FORMAT5_HISTORY_SCHEMA_VERSION);
   const readOnly = await f.json(`${base}/read-only`);
   assert.equal(readOnly.status, 200, JSON.stringify(readOnly.body));
   assert.deepEqual(projectFormatReadOnlyViewSchema.parse(readOnly.body.data), {projectId, name: 'Catalog A', description: '',
@@ -272,8 +273,8 @@ test('the default web host opens legacy metadata without writes and upgrades onl
   assert.deepEqual((await f.catalog()).registered.find(entry => entry.project.projectId === projectId)?.availability, {state: 'open'});
   assert.equal((await mioHistory()).status, 200);
   const db = f.native(projectId);
-  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
-  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT5_HISTORY_SCHEMA_VERSION);
   assert.equal(db.prepare('SELECT version FROM cache.schema_version').get()?.version, CACHE_SCHEMA_VERSION);
 });
 
@@ -311,6 +312,7 @@ test('a catalog shares one private identity scan but checks each project and ref
   const {control} = createProjectEntries({manager, registry, projectsDir: directories.projectsDir, channel: 'web', signal: shutdown.signal,
     readScope: () => 'a'.repeat(64), createProject: async () => assert.fail('Catalog must not create a project'), refreshSummaries() {}, assertProjectFile: guard,
     catalogClient: {async scan(inputs) {return inputs.map(scanProjectCatalogFile);}, close() {}},
+    targetFormat: FORMAT5_PROJECT_SCHEMA_VERSION,
   });
   const opened: string[] = [];
   const open = fs.openSync;
@@ -325,25 +327,25 @@ test('a catalog shares one private identity scan but checks each project and ref
     reads = [];
     return (await control.listRecent()).registered.map(entry => entry.availability);
   };
-  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'invalid', reason: 'format-newer'}]);
+  assert.deepEqual(await readCatalog(), [{state: 'upgrade-required'}, {state: 'upgrade-required'}]);
   assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
   for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 0);
   assert.deepEqual(opened, candidates);
 
   writeFileSync(secret, '{}', {mode: 0o600});
   opened.length = 0;
-  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  assert.deepEqual(await readCatalog(), [{state: 'upgrade-required'}, {state: 'available'}]);
   assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
   assert.ok(reads.includes(secret), 'the second read refreshes private identities before reading any project header');
   for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 0);
   assert.deepEqual(opened, [], 'a same-generation hint avoids opening the stable file, and the private guard still rejects a previously cached inode');
 
   const stable = candidates[0]!, bytes = readFileSync(stable), previousMtime = fs.statSync(stable).mtime;
-  bytes.writeUInt32BE(FORMAT4_PROJECT_SCHEMA_VERSION, 60);
+  bytes.writeUInt32BE(FORMAT5_PROJECT_SCHEMA_VERSION, 60);
   writeFileSync(stable, bytes);
   fs.utimesSync(stable, previousMtime, new Date(previousMtime.getTime() + 2000));
   opened.length = 0;
-  assert.deepEqual(await readCatalog(), [{state: 'invalid', reason: 'format-newer'}, {state: 'available'}]);
+  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'available'}]);
   assert.deepEqual(opened, [stable], 'a changed generation is read again');
 
   rejectRefresh = true;
@@ -683,7 +685,7 @@ test('single registration metadata requires authenticated exact canonical GET wi
 for (const firstRead of ['http', 'trusted'] as const) {
   test(`${firstRead} catalog refreshes an open editor's summary without opening a closed project`, async t => {
     t.mock.timers.enable({apis: ['Date'], now: Date.parse('2026-11-03T00:00:00.000Z')});
-    const f = await fixture(t, 'production'), windowId = randomUUID();
+    const f = await fixture(t, 'production', {target4: true}), windowId = randomUUID();
     const opened = await f.server.projectEntries.acquire({projectId: f.a.projectId, windowId});
     const editor = f.native(f.a.projectId), closed = f.hold(f.b.projectId);
     const before = await f.server.projectEntries.listRecent();
@@ -870,10 +872,10 @@ test('public project.create uses the same complete initialization without exposi
   const project = object(response.body.data), projectId = String(project.id), windowId = randomUUID();
   await f.server.projectEntries.acquire({projectId, windowId});
   const db = f.native(projectId);
-  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
-  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
-  assert.equal((await f.catalog()).newProjectFormatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
-  assert.equal((await f.server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT5_HISTORY_SCHEMA_VERSION);
+  assert.equal((await f.catalog()).newProjectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal((await f.server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
   const details = await f.json(projectRpcPath(projectId), {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({operation: 'project.get', input: {projectId}})});
   assert.equal(details.status, 200);
@@ -910,7 +912,7 @@ test('trusted recent preparation resolves a completely moved directory before lo
 });
 
 test('native open registers the original selected file, while missing and locked failures preserve recent records and locks', async t => {
-  const f = await fixture(t), donor = createServerProject(path.join(f.root, 'donor-app'), {name: 'Selected ordinary project'});
+  const f = await fixture(t), donor = createServerProject(path.join(f.root, 'donor-app'), {name: 'Selected ordinary project', projectFormat: FORMAT5_PROJECT_SCHEMA_VERSION});
   const selected = donor.store.projectFile, selectedId = donor.projectId;
   donor.store.close();
   const identity = lstatSync(selected, {bigint: true}), windowId = randomUUID();

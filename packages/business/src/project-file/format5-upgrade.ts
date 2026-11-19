@@ -23,6 +23,9 @@ import type {Format5ConversionAllocation, Format5ConversionPlan} from './format5
 import type {ProjectStore} from './store.ts';
 import {isProjectStore, openProjectStore} from './store.ts';
 import {readProjectContentStamp} from './content-stamp.ts';
+import {newTimelineRecord} from '../timeline-new-record.ts';
+import {timelineOutputPreset} from '../../../contracts/src/timeline-output-geometry.ts';
+import type {Format5LegacyTimeline} from './format5-conversion.ts';
 
 export type Format5UpgradeBoundary =
   | 'before-backup' | 'after-backup' | 'before-conversion'
@@ -95,7 +98,7 @@ function readHistoryPreview(historyFile: string, projectId: string, sourceProjec
  * is format 5 (then no confirmation is needed). */
 export function previewFormat5Upgrade(projectFile: string, projectId?: string, historyFile?: string): ProjectFormatUpgradePreview | null {
   const file = path.resolve(projectFile);
-  const identity = inspectProjectFormatReadOnly(file, {format5: true});
+  const identity = inspectProjectFormatReadOnly(file);
   if (projectId !== undefined && identity.projectId !== projectId) throw invalid();
   if (identity.formatVersion === 5) return null;
   if (identity.formatVersion !== 3 && identity.formatVersion !== 4) throw invalid();
@@ -117,10 +120,25 @@ function allocationFor(store: ProjectStore): Format5ConversionAllocation {
     anchorConflictPolicy: 'reject'};
 }
 function edgesCount(edges: number, nodes: number, clips: number): number {return edges + nodes + clips + 16;}
-function prepareUpgradeConversion(store: ProjectStore): PreparedFormat5Conversion {
+/** Reusable allocation for trusted copy/template conversions that run inside a
+ * caller-owned transaction. */
+export function createFormat5ConversionAllocation(store: ProjectStore) {return allocationFor(store);}
+/** Reviewed conversion preparation for a trusted writable source. A legacy
+ * project row without any saved timeline still upgrades: an empty current
+ * default geometry is written instead of inventing media or content. */
+export function prepareTrustedFormat5Conversion(store: ProjectStore): PreparedFormat5Conversion {
+  let emptyTimeline: Format5LegacyTimeline | undefined;
+  if (store.list('timelines', store.projectId).length === 0 && store.get('projects', store.projectId) !== undefined) {
+    const preset = timelineOutputPreset('portrait_1080');
+    if (preset) {
+      const value = newTimelineRecord(store.projectId, preset, () => new Date().toISOString());
+      const {subtitles: _subtitles, ...template} = value;
+      emptyTimeline = {...template, tracks: value.tracks.map(track => ({...track})), clips: []};
+    }
+  }
   let allocation = allocationFor(store);
   for (let attempt = 0; attempt < 4; attempt++) {
-    try {return prepareFormat5Conversion(store, allocation);}
+    try {return prepareFormat5Conversion(store, allocation, emptyTimeline ? {emptyTimeline} : {});}
     catch (error) {
       if (!(error instanceof AppError) || error.code !== 'FORMAT5_CONVERSION_ID_REQUIRED') throw error;
       allocation = {...allocation, sequenceRootId: randomUUID(), nodeIds: [...allocation.nodeIds, ...allocation.nodeIds],
@@ -130,6 +148,7 @@ function prepareUpgradeConversion(store: ProjectStore): PreparedFormat5Conversio
   }
   throw invalid('FORMAT5_CONVERSION_ID_REQUIRED');
 }
+const prepareUpgradeConversion = prepareTrustedFormat5Conversion;
 
 function observation(store: ProjectStore): Format5UpgradeObservation {
   return {projectVersion: Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version),
@@ -142,9 +161,9 @@ function observation(store: ProjectStore): Format5UpgradeObservation {
  * this kernel either as the old format or as the fully committed format 5. */
 export function upgradeProjectFormatTo5(options: Format5UpgradeOptions): Format5UpgradeResult {
   const projectFile = path.resolve(options.projectFile);
-  const inspected = inspectProjectFormatReadOnly(projectFile, {format5: true});
+  const inspected = inspectProjectFormatReadOnly(projectFile);
   if (inspected.formatVersion === 5) {
-    return {store: openProjectStore({projectFile, locate: options.locate, checkCopy: options.checkCopy, format5: true}), preview: null, backupId: null, plan: null};
+    return {store: openProjectStore({projectFile, locate: options.locate, checkCopy: options.checkCopy}), preview: null, backupId: null, plan: null};
   }
   const preview = previewFormat5Upgrade(projectFile, inspected.projectId,
     path.join(options.locate(inspected.projectId).localDir, PROJECT_HISTORY_FILE))!;
@@ -179,6 +198,6 @@ export function upgradeProjectFormatTo5(options: Format5UpgradeOptions): Format5
     });
     options.onUpgradeBoundary?.('after-commit', observation(legacy));
   } finally {legacy.close();}
-  const store = openProjectStore({projectFile, locate: options.locate, checkCopy: options.checkCopy, format5: true});
+  const store = openProjectStore({projectFile, locate: options.locate, checkCopy: options.checkCopy});
   return {store, preview, backupId, plan};
 }

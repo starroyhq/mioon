@@ -450,7 +450,7 @@ test('format-5 previs thumbnails are a derived cache written under scene-revisio
  // leaves the node and receipts untouched and creates no undo step.
  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-previs-format5-'));
  const projectId=randomUUID();
- const store=createProjectStore({projectId,projectFile:path.join(root,'project.mioon'),format5:true,
+ const store=createProjectStore({projectId,projectFile:path.join(root,'project.mioon'),targetFormat:5,
   locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})});
  const {openAppLibrary}=await import('../packages/business/src/app-db/index.ts');
  const {createProjectServiceApplication}=await import('../packages/business/src/project-service-application.ts');

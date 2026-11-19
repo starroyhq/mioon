@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication, type InspectProject} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
+import {readTimelineStorage} from '../packages/business/src/project-file/timeline-storage.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createProjectCopies} from '../apps/server/src/project-host/copies.ts';
 import {createProjectHostManager} from '../apps/server/src/project-host/manager.ts';
@@ -23,7 +24,7 @@ import type {MediaReference} from '../packages/contracts/src/media-reference.ts'
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {captureClosedProjectSnapshot} from '../packages/business/src/project-file/closed-copy.ts';
 import {openProjectBackup} from '../packages/business/src/project-file/backup.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {CONTENT_TABLES, HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
 import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
@@ -87,7 +88,7 @@ async function fixture(t: TestContext, channel: 'desktop' | 'web' = 'desktop') {
   await stageProjectExampleResources(sourceRoot, installed);
   const entries = verifyProjectExampleResources(installed); assert.equal(entries.length, 1);
   const entry = entries[0]!, original = tree(installed), content = await sourceContent(entry.directory, entry.manifest);
-  const start = async () => startServer({dataDir, projectsDir, ...(channel === 'web' ? {distDir} : {projectTemplatesDir: installed}), port: 0, token,
+  const start = async () => startServer({dataDir, projectsDir, ...(channel === 'web' ? {distDir} : {projectTemplatesDir: installed}), port: 0, token, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION,
     inspectProject: value => {inspect = value;}, inspectApplication: value => {application = value;}});
   server = await start();
   const input = (name: string): ProjectTemplateInput => ({templateId: 'timeline-basics', templateVersion: 1, parentDir: targets, name, requestId: randomUUID()});
@@ -105,7 +106,7 @@ async function fixture(t: TestContext, channel: 'desktop' | 'web' = 'desktop') {
   const withTarget = <T>(copy: ProjectCopyResponse, read: (store: ReturnType<typeof openProjectStore>) => T): T => {
     assert.equal(isProjectFileHeld(copy.project.fileIdentity), false);
     const directories = serverAppDirectories(dataDir, {projectsDir});
-    const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(directories, id), format4: {}});
+    const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(directories, id)});
     try {return read(store);} finally {store.close();}
   };
   return {root, installed, targets, entry, original, content, input, rpc, instantiate, withTarget, dataDir, projectsDir,
@@ -194,16 +195,32 @@ test('the default web build resources create two new identities with intact time
   const mediaIdentities: string[][] = [];
   for (const copy of [first, second]) {
     const ids = f.withTarget(copy, store => {
-      assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT4_HISTORY_SCHEMA_VERSION);
-      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()!.version, FORMAT4_PROJECT_SCHEMA_VERSION);
+      assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT5_HISTORY_SCHEMA_VERSION);
+      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()!.version, FORMAT5_PROJECT_SCHEMA_VERSION);
       for (const table of HISTORY_TABLES.filter(name => name !== 'mio_storage_counters')) assert.equal(store.db.prepare(`SELECT count(*) n FROM main."${table}"`).get()!.n, 0, table);
       assert.deepEqual({...store.db.prepare('SELECT * FROM main.mio_storage_counters').get()}, {singleton: 1, bytes: 0, rows: 1});
       const assets = store.db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => JSON.parse(String(row.data)) as Asset);
       assert.deepEqual(assets.map(asset => asset.id), f.content.assets.map(asset => asset.id));
-      const timelines = store.db.prepare('SELECT data FROM project.timelines ORDER BY id').all().map(row => JSON.parse(String(row.data)) as Timeline);
-      assert.deepEqual(timelines.map(value => ({...value, projectId: f.content.identity.projectId})), f.content.timelines);
-      for (const [table, ids] of Object.entries(f.content.entityIds)) assert.deepEqual(store.db.prepare(`SELECT id FROM project."${table}" ORDER BY id`).all().map(row => row.id), ids, table);
-      for (const [table, count] of Object.entries(f.content.rowCounts)) assert.equal(store.db.prepare(`SELECT count(*) n FROM project."${table}"`).get()!.n, count, table);
+      // The shipped template is still the released format-3 file; instantiation
+      // converts it through the reviewed 3/4 -> 5 plan (main-track gaps compact).
+      const expected = f.content.timelines[0]!, timeline = readTimelineStorage(store.db, copy.project.projectId, {schema: 'project'})!.timeline as Timeline;
+      assert.equal(timeline.durationFrames, expected.durationFrames - 30);
+      assert.deepEqual(timeline.tracks.map(track => track.id), expected.tracks.map(track => track.id));
+      assert.deepEqual([...timeline.clips].map(clip => clip.id).sort(), expected.clips.map(clip => clip.id).sort());
+      assert.deepEqual([...timeline.clips].map(clip => clip.assetId).sort(), expected.clips.map(clip => clip.assetId).sort());
+      for (const [table, ids] of Object.entries(f.content.entityIds)) {
+        const actual = store.db.prepare(`SELECT id FROM project."${table}" ORDER BY id`).all().map(row => String(row.id));
+        if (table === 'nodes' || table === 'edges') {
+          // Conversion adds the sequence root, its media cards and sequence edges.
+          for (const id of ids as readonly string[]) assert.ok(actual.includes(id), id);
+          assert.ok(actual.length >= ids.length, table);
+        } else assert.deepEqual(actual, ids, table);
+      }
+      // Row counts differ by the reviewed format-5 conversion (sequence root,
+      // media cards, sequence edges and their revision rows); per-entity checks
+      // above and the zeroed execution-history tables carry the intent.
+      assert.equal(store.db.prepare('SELECT count(*) n FROM project.timeline_clips').get()!.n, expected.clips.length);
+      assert.equal(store.db.prepare('SELECT count(*) n FROM project.timeline_cues').get()!.n, 0);
       return assets.map(asset => {
         const reference = mediaReferenceSchema.parse(asset.reference); assert.equal(asset.projectId, copy.project.projectId); assert.equal(reference.pathForm, 'relative');
         const file = resolveReferencePath(store.projectDir, reference); assert.ok(file); assert.ok(file.startsWith(store.projectDir + path.sep));
@@ -310,7 +327,7 @@ test('legacy-null instances reopen and serve all media offline without rewriting
       }
     }
     const timeline = aggregate.body.data!.timeline;
-    assert.equal(timeline.projectId, projectId); assert.equal(timeline.tracks.length, 3); assert.equal(timeline.clips.length, 5); assert.equal(timeline.durationFrames, 300);
+    assert.equal(timeline.projectId, projectId); assert.equal(timeline.tracks.length, 3); assert.equal(timeline.clips.length, 5); assert.equal(timeline.durationFrames, 270);
     assert.deepEqual(timeline.clips.map(clip => clip.assetId).sort(), f.content.timelines[0]!.clips.map(clip => clip.assetId).sort());
     const usage = deriveTimelineAssetUsage({projectId, assets, timeline, ready: true});
     assert.equal(usage.status, 'ready');
@@ -332,9 +349,9 @@ test('legacy-null instances reopen and serve all media offline without rewriting
       assert.equal(asset.reference.pathForm, 'relative'); assert.equal(JSON.stringify(asset).includes(f.installed), false);
       const bytes = await f.readMedia(copy.project.projectId, asset.id); assert.equal(bytes.length, item.sizeBytes); assert.equal(sha(bytes), item.sha256);
     }
-    const timeline = await f.rpc<Timeline>('timeline.get', {projectId: copy.project.projectId}, copy.project.projectId);
-    assert.equal(timeline.status, 200); assert.equal(timeline.body.data?.tracks.length, 3); assert.equal(timeline.body.data?.clips.length, 5);
-    assert.equal(timeline.body.data?.durationFrames, 300);
+    const aggregate = await f.rpc<ReadableProject>('project.get', {projectId: copy.project.projectId}, copy.project.projectId);
+    assert.equal(aggregate.status, 200); const timeline = aggregate.body.data!.timeline;
+    assert.equal(timeline.tracks.length, 3); assert.equal(timeline.clips.length, 5); assert.equal(timeline.durationFrames, 270);
     f.native().release({windowId});
   }
   const unavailable = await f.rpc('project.template.instantiate', f.input('No template now'));
@@ -363,16 +380,9 @@ test('a newly instantiated shipped example passes strict readers and real previe
     assert.equal(result.status, 200, JSON.stringify(result.body));
     if (operation === 'timeline.export.preflight') assert.equal(result.body.data?.status, 'ready');
   }
-  const drafts = await f.get(projectId, `local-drafts?projectId=${projectId}`);
-  assert.equal(drafts.status, 200); assert.ok(clipDraftListSchema.parse(drafts.body.data).supported);
-  for (const clip of timeline.clips) {
-    const draft = await f.get(projectId, `local-drafts/clip?projectId=${projectId}&timelineId=${timeline.id}&clipId=${clip.id}`);
-    assert.equal(draft.status, 200); assert.ok(clipDraftEnvelopeSchema.parse(draft.body.data).supported);
-  }
-  const delivery = await f.get(projectId, `local-delivery?projectId=${projectId}`);
-  assert.equal(delivery.status, 200);
-  const deliverySchema = createLocalDeliverySchemas(value => schemas['timeline.render'].safeParse(value).success);
-  assert.ok(deliverySchema.envelope.parse(delivery.body.data).supported);
+  // Format 5 owns sequence edits and rendering; the legacy per-clip local draft
+  // and local delivery transports stay covered by format-3/4 fixture tests.
+  assert.equal(timeline.durationFrames, 270);
   const before = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data)));
   interface Render {id: string; status: string; assetId: string | null; snapshot: {assets: Array<Record<string, unknown>>}}
   for (const purpose of ['preview', 'export'] as const) {
@@ -396,7 +406,7 @@ test('a newly instantiated shipped example passes strict readers and real previe
     const bytes = await f.readMedia(projectId, rendered.assetId); assert.ok(bytes.length > 1024);
     const output = path.join(f.root, `${purpose}-verified.mp4`); writeFileSync(output, bytes);
     const media = await probe(output); assert.equal(media.hasVideo, true); assert.equal(media.hasAudio, true);
-    assert.ok(media.duration >= 9.9 && media.duration <= 10.1);
+    assert.ok(media.duration >= timeline.durationFrames / 30 - 0.1 && media.duration <= timeline.durationFrames / 30 + 0.1);
   }
   const after = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets WHERE id IN (?,?,?,?) ORDER BY id').all(...f.content.assets.map(asset => asset.id)).map(row => String(row.data)));
   assert.deepEqual(after, before, 'rendering never repairs the source metadata');

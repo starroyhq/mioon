@@ -15,18 +15,18 @@ import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 import type {ProjectBackupsOptions} from '../apps/server/src/project-host/backups.ts';
 
-async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions, 'backup' | 'slowMs' | 'outsidePaths' | 'targetFormat'>> = {}) {
+async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions, 'backup' | 'slowMs' | 'outsidePaths' | 'targetFormat'>> & {sourceFormat?: 3 | 4 | 5; managerFormat?: 3 | 4 | 5} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'project-backups-'));
   const directories = serverAppDirectories(root), registry = createMemoryProjectRegistry();
   const warnings: string[] = [];
   const backups = createProjectBackups({directories, registry, identity: statProjectFileIdentity,
     assertProjectFile: createApplicationFileGuard(directories), onWarning: (_, code) => warnings.push(code), ...options});
   const log: string[] = [];
-  const manager = createProjectHostManager({directories, registry, hooks: [backups.hooks],
+  const manager = createProjectHostManager({directories, registry, hooks: [backups.hooks], ...(options.managerFormat === undefined ? {} : {targetFormat: options.managerFormat}),
     factory: async (): Promise<ProjectHostRuntime> => ({handle: async () => false, isBusy: () => false,
       interrupt: () => {log.push('interrupt');}, drain: async () => {log.push('drain');}, dispose: () => {log.push('dispose');}})});
   t.after(async () => {await manager.closeAll(); rmSync(root, {recursive: true, force: true});});
-  const project = await manager.create({name: 'Backup test'});
+  const project = await manager.create({name: 'Backup test'}, {format: options.sourceFormat ?? 5});
   const store = openProjectStore({projectFile: project.projectFile, locate: id => projectLocation(directories, id)});
   try {ensureProjectRow(store, {name: 'Backup test'});} finally {store.close();}
   return {root, directories, registry, backups, manager, project, warnings, log};
@@ -138,7 +138,7 @@ test('backup restores with a new ID and empty local records; request replay surv
 });
 
 test('trusted backup restore publishes a format 4 target without changing its format 3 backup', async t => {
-  const f = await setup(t, {targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION}), projectId = f.project.projectId;
+  const f = await setup(t, {targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION, sourceFormat: PROJECT_FILE_SCHEMA_VERSION, managerFormat: PROJECT_FILE_SCHEMA_VERSION}), projectId = f.project.projectId;
   const lease = await f.manager.acquire(projectId, 'window'); lease.release(); await f.manager.close(projectId);
   const backupId = (await f.backups.list({projectId})).backups[0]!.backupId;
   const backupFile = path.join(projectLocation(f.directories, projectId).localDir, 'backups', backupId, 'project.mioon');

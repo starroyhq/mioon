@@ -13,7 +13,7 @@ import {assertNoFormat4Restore,inspectProjectFileReadOnly,openClosedProjectSnaps
 import type {Format4Options} from './connection.ts';
 import {isHotJournal,isSuperJournalInUse,superJournalsIn} from './journals.ts';
 import {projectFileError,isSqliteBusy,isSqliteCorrupt} from './errors.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID,PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_HISTORY_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID,PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import {HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import {compareManifest,readSchemaManifest} from './schema/manifest-check.ts';
 import {historyManifestForVersion} from './schema/format-manifests.ts';
@@ -102,7 +102,7 @@ function validateHistory(db:DatabaseSync,schema:string,projectId:string,format4?
  const versions=db.prepare(`SELECT version FROM ${schema}.schema_version`).all();
  if(versions.length!==1||typeof versions[0].version!=='number')throw invalid('history');
  const version=versions[0].version;
- const maximum=format4?FORMAT4_HISTORY_SCHEMA_VERSION:HISTORY_SCHEMA_VERSION;
+ const maximum=format4?FORMAT4_HISTORY_SCHEMA_VERSION:FORMAT5_HISTORY_SCHEMA_VERSION;
  if(version>maximum)throw projectFileError('PROJECT_FORMAT_NEWER',{database:'history',reason:'format-newer',formatVersion:version,supportedFormatVersion:maximum});
  const expected=historyManifestForVersion(version)??HISTORY_UPGRADES.find(item=>item.from.version===version)?.from;
  if(!expected)throw invalid('history');

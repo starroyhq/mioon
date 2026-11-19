@@ -21,7 +21,7 @@ const sha = (letter: string): string => letter.repeat(64);
 
 function fixture(t: test.TestContext): ProjectStore {
   const rootDir = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mt-read-'));
-  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')})});
   t.after(() => {store.close(); rmSync(rootDir, {recursive: true, force: true});});
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
@@ -102,7 +102,7 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   const nativeTools = listAgentTaskTools(false, false);
   assert.equal(nativeTools.some(item => item.operation === 'sequence.inspect'), false);
   previsParameters(nativeTools, false);
-  const loaded = listAgentTaskToolsForChannel(true, {format5: true}).find(item => item.name === 'mioon_tools_load');
+  const loaded = listAgentTaskToolsForChannel(true, {}).find(item => item.name === 'mioon_tools_load');
   assert.ok(loaded);
   // MT-5: the generation-input projection is a bounded format-5 read tool only.
   const generationInputs = format5Tools.find(item => item.operation === 'sequence.generation-inputs.get');

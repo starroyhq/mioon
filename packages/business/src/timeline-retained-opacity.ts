@@ -6,7 +6,8 @@ import {OPACITY_ENVELOPE_PROFILE} from '../../contracts/src/timeline-opacity-env
 import {OPACITY_RENDER_CANDIDATE_PROFILE, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {validateTimelineColourRows} from './timeline-retained-colour.ts';
-import {readTimelineStorage} from './project-file/timeline-storage.ts';
+import {readTimelineStorage, timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {validateTimelineAudioRoleRows} from './timeline-retained-audio-role.ts';
 import {validateTimelineVolumeEnvelopeRows} from './timeline-retained-volume-envelope.ts';
 import {validateLutResourceRows} from './lut-resource-validation.ts';
@@ -22,6 +23,7 @@ const families = [
   ['timeline_requests', ['response']], ['edit_tasks', ['input']], ['exports', ['data']],
 ] as const;
 const forbiddenKeys = new Set(['opacityEnvelopeProfile', 'opacityEnvelopeProcessingProfile', 'opacityEnvelopeSha256']);
+const FORMAT5_ONLY_CLIP_KEYS = new Set(['sourceState', 'anchor', 'sequenceSource', 'segmentGroupId', 'dialogueRef', 'versionMode']);
 function invalid(): never {throw Object.assign(new Error('Workspace opacity evidence is invalid.'), {code: 'WORKSPACE_OPACITY_INVALID'});}
 function containsOpacity(value: unknown): boolean {
   const pending = [{value, depth: 0}]; let nodes = 0, found = false;
@@ -48,6 +50,8 @@ function projectRecord(record: Value): Value {
 }
 
 export function validateTimelineOpacityRows(db: DatabaseSync): void {
+  const storageSchema = timelineStorageSchema(db);
+  const format5 = timelineStorageFormat(db, storageSchema) === FORMAT5_PROJECT_SCHEMA_VERSION;
   const projections = new Map<string, string>();
   const names = new Set<unknown>();
   const relevant = new Set<string>(['projects', 'assets', ...families.map(([table]) => table)]);
@@ -76,7 +80,16 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
   }
   function captureRecord(value: unknown, projectId: unknown): Value {
     owner(projectId);
-    const captured = captureOpacityTimelineRecord(value, {projectId}).record;
+    let candidate: unknown = value;
+    if (format5 && object(value)) {
+      // The frozen opacity contract predates format 5: project its assembled
+      // record back to the shared legacy fields (envelopes stay unchanged).
+      const {mainTrack: _mainTrack, ...rest} = value;
+      candidate = {...rest, ...(Array.isArray(rest.clips)
+        ? {clips: rest.clips.map(clip => object(clip) ? Object.fromEntries(Object.entries(clip).filter(([key]) => !FORMAT5_ONLY_CLIP_KEYS.has(key))) : clip)}
+        : {})};
+    }
+    const captured = captureOpacityTimelineRecord(candidate, {projectId}).record;
     if (!object(captured)) invalid();
     sources(captured, projectId);
     return captured;
@@ -116,14 +129,26 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
         if (++cells > 80000 || typeof row.value !== 'string' || row.valid !== 1 || row.duplicates !== 0 || (bytes += Buffer.byteLength(row.value)) > 128 * 1024 * 1024) invalid();
         let parsed: unknown; try {parsed = JSON.parse(row.value);} catch {invalid();}
         if(table==='timeline_requests')parsed=projectRetainedTimelineReceipt(parsed,row.identity);
-        const hasOpacity = containsOpacity(parsed);
-        if (!hasOpacity && table !== 'timelines') continue;
         if (!object(parsed)) invalid();
+        // A format-5 project stores only the timeline header in `timelines.data`;
+        // the validated record is the shared assembled projection.
+        let recordValue = parsed;
+        if (table === 'timelines' && format5) {
+          const snapshot = readTimelineStorage(db, String(row.owner), {schema: storageSchema});
+          if (!snapshot?.format5 || !object(snapshot.timeline)) invalid();
+          recordValue = snapshot.timeline;
+        }
+        const hasOpacity = containsOpacity(recordValue);
+        if (!hasOpacity && table !== 'timelines') continue;
+        if (!object(recordValue)) invalid();
         let projection: Value;
         if (table === 'timelines') {
-          const captured = captureRecord(parsed, row.owner);
+          const captured = captureRecord(recordValue, row.owner);
           if (captured.id !== row.identity) invalid();
           timelines.set(String(row.owner), captured); projection = projectRecord(captured);
+          // Other retained-row validators receive this table's raw text and
+          // must see the same full projection, not the header-only bytes.
+          projections.set(row.value, JSON.stringify(projection));
         } else if (table === 'timeline_history') {
           owner(row.owner);
           if (!['tracks', 'clips', 'durationFrames'].every(key => own(parsed, key)) || Object.keys(parsed).some(key => !['tracks', 'clips', 'durationFrames', 'subtitles'].includes(key))) invalid();

@@ -17,7 +17,7 @@ import {projectFileError} from '../../packages/business/src/project-file/errors.
 import {foreignKeyCheck as kernelForeignKeyCheck} from '../../packages/business/src/project-file/cross-file/inspect.ts';
 import {relationTriggerStatements} from '../../packages/business/src/project-file/cross-file/install.ts';
 import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../../packages/business/src/project-file/schema/databases.ts';
 import {SCHEMA_MANIFEST} from '../../packages/business/src/project-file/schema/manifest.ts';
 import {openServerTestStore} from '../../packages/business/src/project-file/test-store.ts';
@@ -34,7 +34,7 @@ export {schemaObjects} from '../../packages/business/src/project-file/cross-file
 const exists = (file: string): boolean => lstatSync(file, {throwIfNoEntry: false}) !== undefined;
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 // Reopen exact test evidence without silently upgrading legacy projects.
-const preserveProjectFormat = (file: string) => inspectProjectFormatHeader(file, {}) === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+const preserveProjectFormat = (file: string) => inspectProjectFormatHeader(file) === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
 
 /** Pure pathname lookup. Test stores use project.mioon; the server's named
  * file is the sole .mioon in its project directory. Never guesses its name or
@@ -126,16 +126,17 @@ export function createServerProject(dataDir: string, options?: {name?: string; p
   const projectId = suppliedId === undefined ? randomUUID() : suppliedId;
   if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
   const name = options?.name ?? 'Test project';
-  const format4 = (options?.projectFormat ?? FORMAT4_PROJECT_SCHEMA_VERSION) === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+  const projectFormat = options?.projectFormat ?? FORMAT4_PROJECT_SCHEMA_VERSION;
+  const format4 = projectFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
   const directories = serverAppDirectories(path.resolve(dataDir));
   const shared = heldTestApplicationLibrary(directories.dataDir);
   const library = shared ?? openAppLibrary({dataDir: directories.dataDir});
   let store: ProjectStore | undefined;
   try {
     if (library.registry.get(projectId)) throw new Error('Project ID already exists');
-    const entry = createProjectFiles({name, projectId}, {directories, registry: library.registry, identity: library.projectFileIdentity, format4});
+    const entry = createProjectFiles({name, projectId}, {directories, registry: library.registry, identity: library.projectFileIdentity, format4, targetFormat: projectFormat});
     try {
-      store = openServerTestStore({projectFile: entry.projectFile, format4, locate: id => {
+      store = openServerTestStore({projectFile: entry.projectFile, ...(format4 ? {format4} : {}), locate: id => {
         if (id !== projectId) throw new TypeError('Created project ID does not match its registration');
         return projectLocation(directories, id);
       }, checkCopy: library.registry.checkCopy}, directories.dataDir);

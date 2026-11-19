@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,mkdirSync,copyFileSync,readFileSync,rmSync,chmodSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,copyFileSync,readFileSync,readdirSync,rmSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {startServer} from './helpers/test-server.ts';
@@ -17,7 +17,9 @@ import {projectEntryControlErrorSchema} from '../packages/contracts/src/project-
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectWindowOpenResult} from '../apps/desktop/src/project-window-protocol.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION,inspectProjectFormatReadOnly,openProjectStore} from '../packages/business/src/project-file/index.ts';
+import {projectLocation,serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
+import {readFormat4BackupManifest} from '../packages/business/src/project-file/format4-backup.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
@@ -26,8 +28,8 @@ const settle=async()=>{for(let index=0;index<8;index++)await new Promise<void>(r
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,openRecent?:(
  owner:ProjectEntryDesktopOwner,projectId:string,entryToken:string,remember:boolean)=>Promise<ProjectWindowOpenResult>,legacySource=false){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-desktop-')),dataDir=path.join(root,'app'),selected=path.join(root,'selected');mkdirSync(selected);
- const created=createServerProject(dataDir,{name:'Original',...(legacySource?{projectFormat:PROJECT_FILE_SCHEMA_VERSION}:{})}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
- const server=await startServer({dataDir,port:0,token:'synthetic-desktop-entry-token'}),backendId=randomUUID();
+ const created=createServerProject(dataDir,{name:'Original',projectFormat:legacySource?PROJECT_FILE_SCHEMA_VERSION:FORMAT5_PROJECT_SCHEMA_VERSION}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
+ const server=await startServer({dataDir,port:0,token:'synthetic-desktop-entry-token',projectFormatForTest:FORMAT5_PROJECT_SCHEMA_VERSION}),backendId=randomUUID();
  let client!:ReturnType<typeof createProjectEntryControlClient>;
  const broker=createProjectEntryControlBroker({backendId,control:wrap?.(server.projectEntries)??server.projectEntries,send:message=>queueMicrotask(()=>client.handle(message))});
  client=createProjectEntryControlClient({backendId,send:message=>queueMicrotask(()=>broker.handle(message))});
@@ -48,7 +50,7 @@ async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort
  const invoke=(channel:typeof PROJECT_ENTRY_DESKTOP_CHANNEL,input:unknown)=>{assert.equal(channel,PROJECT_ENTRY_DESKTOP_CHANNEL);return host.handle('owner',input);};
  const bridge=createProjectEntriesDesktopBridge(invoke,{on:(channel,listener)=>{assert.equal(channel,pendingChannel);listeners.add(listener);},removeListener:(channel,listener)=>{assert.equal(channel,pendingChannel);listeners.delete(listener);},context:async()=>owner()});
  t.after(async()=>{host.close();client.close();broker.close();await server.close();rmSync(root,{recursive:true,force:true});});
- return {root,selected,file,projectId,host,bridge,client,messages,adopted,readyRequired,probed,owner,revealed,admitted,notices,listeners,invoke,get settingsOpened(){return settingsOpened;},asEditor(){editor=true;},setFacts(file:string,value:ProjectLocationFacts){locationFacts.set(file,value);},
+ return {root,selected,file,projectId,server,dataDir,host,bridge,client,messages,adopted,readyRequired,probed,owner,revealed,admitted,notices,listeners,invoke,get settingsOpened(){return settingsOpened;},asEditor(){editor=true;},setFacts(file:string,value:ProjectLocationFacts){locationFacts.set(file,value);},
   replaceDocument(){contextId=randomUUID();},disable(){ready=false;},cancel(){directory=null;openFile=null;},setOpen(file:string){openFile=file;},closeOwner(){active=false;}};
 }
 
@@ -94,7 +96,7 @@ test('a native old-format selection stays read-only until the exact owner choose
  const bytes=readFileSync(f.file);
  const first=await f.bridge.openSelectedFile();if(first.status!=='upgrade-required')assert.fail('Expected format prompt');
  assert.equal(first.preview.projectVersion,PROJECT_FILE_SCHEMA_VERSION);
- assert.equal(first.preview.targetProjectVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.equal(first.preview.targetProjectVersion,FORMAT5_PROJECT_SCHEMA_VERSION);
  assert.equal(first.preview.projectId,f.projectId);
  assert.equal(f.adopted.length,0);
  assert.deepEqual(readFileSync(f.file),bytes);
@@ -121,6 +123,40 @@ test('a native old-format selection stays read-only until the exact owner choose
  await assert.rejects(f.bridge.resolveFormatUpgrade!({token:accepted.token,choice:'read-only'}),{code:'PROJECT_ENTRY_REQUEST_CONFLICT'});
  assert.equal(f.adopted.length,1);
  assert.equal(attempts.filter(input=>Boolean(input.formatUpgrade)).length,2);
+ // The opened project is the current format and the confirmed upgrade left an
+ // independently readable original-format backup.
+ const backupRoot=path.join(projectLocation(serverAppDirectories(f.dataDir),f.projectId).localDir,'format-upgrade-backups');
+ const backups=readdirSync(backupRoot);assert.equal(backups.length,1);
+ const manifest=readFormat4BackupManifest(backupRoot,backups[0]!);
+ assert.equal(manifest.projectVersion,PROJECT_FILE_SCHEMA_VERSION);
+ const backupProject=path.join(backupRoot,backups[0]!,'project.mioon');
+ assert.equal(inspectProjectFormatReadOnly(backupProject,{}).formatVersion,PROJECT_FILE_SCHEMA_VERSION);
+ const standalone=path.join(f.root,'standalone-backup.mioon'),standaloneLocal=path.join(f.root,'standalone-local');
+ mkdirSync(standaloneLocal,{recursive:true,mode:0o700});chmodSync(standaloneLocal,0o700);copyFileSync(backupProject,standalone);chmodSync(standalone,0o600);
+ copyFileSync(path.join(backupRoot,backups[0]!,'history.db'),path.join(standaloneLocal,'history.db'));
+ const restored=openProjectStore({projectFile:standalone,locate:()=>({localDir:standaloneLocal,cacheDir:path.join(f.root,'standalone-cache'),tempDir:path.join(f.root,'standalone-tmp')}),});
+ try{assert.equal((restored.get('projects',f.projectId) as {id:string}).id,f.projectId);}finally{restored.close();}
+ // The upgraded project edits through the unified sequence entry and undo restores it.
+ const token='synthetic-desktop-entry-token';
+ const rpc=async(operation:string,input:unknown)=>{const response=await fetch(f.server.url+'/api/projects/'+f.projectId+'/rpc',{method:'POST',
+   headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
+   return {status:response.status,body:await response.json() as {ok:boolean;data?:Record<string,unknown>;error?:{code:string}}};};
+ const before=await rpc('project.get',{projectId:f.projectId});assert.equal(before.status,200);
+ const nodeId=randomUUID();
+ const preview=await rpc('sequence.preview',{projectId:f.projectId,requestId:randomUUID(),origin:'user',
+   previsIntent:{side:'board',operation:{kind:'previs-create',nodeId,label:'升级后画布',position:{x:10,y:20}}}});
+ assert.equal(preview.status,200,JSON.stringify(preview.body));assert.ok(preview.body.data);
+ const committed=await rpc('sequence.commit',{projectId:f.projectId,envelope:preview.body.data.envelope,
+   expectedPlanDigest:preview.body.data.planDigest});
+ assert.equal(committed.status,200,JSON.stringify(committed.body)); const committedData=committed.body.data as {actionId:string};
+ const after=await rpc('project.get',{projectId:f.projectId});
+ assert.ok((after.body.data!.nodes as {id:string}[]).some(node=>node.id===nodeId));
+ const history=await rpc('sequence.history.get',{projectId:f.projectId});assert.equal(history.status,200);
+ const undone=await rpc('sequence.undo',{projectId:f.projectId,requestId:randomUUID(),
+   actionId:committedData.actionId,expected:{position:history.body.data!.position,revision:history.body.data!.revision}});
+ assert.equal(undone.status,200,JSON.stringify(undone.body));
+ const restoredView=await rpc('project.get',{projectId:f.projectId});
+ assert.equal((restoredView.body.data!.nodes as {id:string}[]).some(node=>node.id===nodeId),false);
 });
 
 test('native picker tickets bind the exact owner; creation is once and returns created without bypassing sealed window open',async t=>{

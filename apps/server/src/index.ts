@@ -19,8 +19,8 @@ import {mediaExecutable} from '@mioon/business/media-environment';
 import {inspectMediaTools} from '@mioon/business/media-tool-diagnostics';
 import {run as runMedia} from '@mioon/business/media-runtime';
 import {acquireWorkspaceLock} from '@mioon/business/workspace-lock';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, openProjectStore, recoverProjectFile} from '@mioon/business/project-file/index';
-import type {Format4Options} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, openProjectStore, recoverProjectFile} from '@mioon/business/project-file/index';
+import type {Format4Options, ProjectFileFormat} from '@mioon/business/project-file/index';
 import {createProviderCatalog} from '@mioon/business/provider-registry';
 import {listImageProfiles} from '@mioon/business/images';
 import {AppError} from '@mioon/contracts';
@@ -134,8 +134,9 @@ export interface ServerOptions {
   /** In-process shutdown fixture only; the default still performs the real
    * SQLite backup/copy. No request or environment can select this port. */
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
-  /** Keeps explicitly frozen format-3 test fixtures on their original host. */
-  projectFormatForTest?: typeof PROJECT_FILE_SCHEMA_VERSION;
+  /** Trusted test host target for fixed legacy fixtures; production always
+   * creates and upgrades to the current format. */
+  projectFormatForTest?: ProjectFileFormat;
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
   projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
   /** Main-owned OS trash and window admission, never supplied by HTTP/env. */
@@ -217,12 +218,12 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const backgroundTasks = background;
     const backgroundHttp = createBackgroundTaskHttp(backgroundTasks);
     const assertProjectFile = createApplicationFileGuard(directories);
-    const targetFormat = options.projectFormatForTest ?? FORMAT4_PROJECT_SCHEMA_VERSION;
+    const targetFormat: ProjectFileFormat = options.projectFormatForTest ?? FORMAT5_PROJECT_SCHEMA_VERSION;
     const format4: Format4Options | undefined = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
     const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest, targetFormat});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
-      format4, assertProjectFile,
+      format4, targetFormat, assertProjectFile,
       assertMutationAllowed: createProjectServiceApplication(appLibrary, shutdown.signal).assertMutationAllowed,
       hooks: [backups.hooks, backgroundTasks.hooks, {afterOpen: context => {
         try { opened.get(context.projectId)!.captureDailyVersion(); }
@@ -263,7 +264,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
     const createProject = createInitializedProject({manager, registry: appLibrary.registry, directories,
-      identity: appLibrary.projectFileIdentity, assertProjectFile, format4});
+      identity: appLibrary.projectFileIdentity, assertProjectFile, format4, targetFormat});
     const refreshSummaries = (): void => {
       for (const [id, runtime] of opened) {
         // A closing runtime can remain indexed while findMoved awaits I/O,
@@ -496,6 +497,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (res.destroyed || res.writableEnded) return;
         if (res.headersSent) { res.destroy(); return; }
         const status = typeof field(error, 'status') === 'number' ? field(error, 'status') as number : 500;
+        if (status === 500) console.error('TEMP_SERVER500', error);
         json(res, status, {ok: false, error: {code: field(error, 'code') || 'INTERNAL_ERROR', message: status !== 500 ? field(error, 'message') : '操作失败，请检查输入或后端状态', details: field(error, 'details') || {}, retryable: false}});
       }
     };

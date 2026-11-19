@@ -1,5 +1,5 @@
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
-import {lstatSync, mkdirSync, readdirSync, renameSync, rmSync, rmdirSync, unlinkSync} from 'node:fs';
+import {copyFileSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, rmdirSync, unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {ensurePrivateDirectory, validatePrivateDirectory} from '../../../../packages/contracts/src/private-storage.ts';
@@ -8,7 +8,7 @@ import type {ProjectCopyActionInput, ProjectCopyActionOperation, ProjectAdoptCop
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {copyProjectToNewFile} from '../../../../packages/business/src/project-file/copy.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import {inspectProjectFormatHeader} from '../../../../packages/business/src/project-file/connection.ts';
@@ -16,7 +16,10 @@ import {withLockedProjectCopy} from '../../../../packages/business/src/project-f
 import {createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, inspectCopiedProjectFile, openProjectBackup,
   publishProjectCopyDirectory, publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {initializeProjectCopyHistory, readProjectCopyHistory} from '../../../../packages/business/src/project-file/copy-history.ts';
+import {applyFormat5ConversionInside, prepareFormat5Conversion} from '../../../../packages/business/src/project-file/format5-conversion-store.ts';
+import {prepareTrustedFormat5Conversion} from '../../../../packages/business/src/project-file/format5-upgrade.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/store.ts';
+import type {ProjectStore} from '../../../../packages/business/src/project-file/store.ts';
 import {copyProjectVersionsToNewProjectInside} from '../../../../packages/business/src/project-versions/copy-to-project.ts';
 import {canonicalJson} from '../../../../packages/business/src/project-versions/document.ts';
 import {projectLocation} from './directories.ts';
@@ -213,6 +216,28 @@ export function createProjectCopyActions({manager, library, directories, assertP
     intent = save({...intent, phase: 'completed'}); cleanup(intent); return response;
   }
 
+  /** Trusted template/example instantiation is the only copy seam that promotes
+   * an old packaged source to the current format: promote an isolated copy of
+   * the source pair first, then run the ordinary same-format copy into the new
+   * identity (which keeps this action's content token and name binding). */
+  function promoteTemplateSourceToFormat5(sourceFile: string, intent: ActionIntent): ProjectStore {
+    const projectFile = path.join(work(intent), 'promoted-source', 'project.mioon');
+    ensurePrivateDirectory(path.dirname(projectFile), {create: true});
+    copyFileSync(sourceFile, projectFile);
+    const stamp = inspectCopiedProjectFile(projectFile);
+    const historyFile = path.join(path.dirname(projectFile), 'history.db');
+    const sourceProjectId = stamp.projectId;
+    initializeProjectCopyHistory(historyFile, sourceProjectId, stamp);
+    const locate = () => ({localDir: path.join(work(intent), 'promoted-source', 'records'),
+      cacheDir: path.join(work(intent), 'promoted-source', 'cache'), tempDir: path.join(work(intent), 'promoted-source', 'tmp')});
+    const store = openProjectStore({projectFile, locate, ...(stamp.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4: {}} : {})});
+    try {
+      const prepared = prepareTrustedFormat5Conversion(store);
+      store.tx(() => { applyFormat5ConversionInside(store, prepared); });
+      return store;
+    } catch (error) {store.close(); throw error;}
+  }
+
   async function build(raw: ActionIntent, sourceFile: string, sourceHistory: string | null, replace?: Replace): Promise<ProjectCopyResponse> {
     let intent = raw;
     const parent = intent.targetDirectory ? path.dirname(intent.targetDirectory) : path.dirname(intent.targetFile);
@@ -220,17 +245,37 @@ export function createProjectCopyActions({manager, library, directories, assertP
     intent = save({...intent, stageDirectory, stageDirectoryIdentity: copyIdentity(stageDirectory)}); await boundary('staging', intent);
     const template = intent.operation === 'project.template.instantiate' ? catalog.prepareAssets(intent.input.templateId, intent.input.templateVersion,
       {directory: stageDirectory, targetDirectory: intent.targetDirectory!, locale: intent.input.locale, assertMutationAllowed: assertAllowed}) : null;
-    const source = openProjectBackup(sourceFile);
+    const captured = openProjectBackup(sourceFile);
+    const promote = intent.operation === 'project.template.instantiate' && targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION
+      && captured.identity.formatVersion !== FORMAT5_PROJECT_SCHEMA_VERSION;
+    let copySource: ReturnType<typeof openProjectBackup> | ProjectStore = captured;
+    let promoted: ProjectStore | null = null;
+    let capturedClosed = false;
     let copied: Awaited<ReturnType<typeof copyProjectToNewFile>>;
     try {
-      copied = await copyProjectToNewFile(source, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
+      if (promote) {
+        // The captured source is a backup-format snapshot; first rebuild it as a
+        // project-format file, then promote that isolated pair to format 5.
+        const bridge = path.join(work(intent), 'promote-input.mioon');
+        await copyProjectToNewFile(captured, {projectFile: bridge, sourceProjectDir: path.dirname(intent.sourceFile),
+          targetProjectDir: path.dirname(intent.targetFile), projectId: randomUUID(), contentToken: randomBytes(16).toString('hex'),
+          targetFormat: captured.identity.formatVersion, publish: (from, to) => publishProjectCopyFile(from, to)});
+        captured.close(); capturedClosed = true;
+        promoted = promoteTemplateSourceToFormat5(bridge, intent);
+        copySource = promoted;
+      }
+      const copiedResult = await copyProjectToNewFile(copySource, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
         targetProjectDir: path.dirname(intent.targetFile), projectId: intent.projectId, contentToken: intent.contentToken,
-        expectedSource: {projectId: intent.sourceProjectId, ...intent.sourceStamp!}, clearProcessRevisions: true,
+        ...(promote ? {} : {expectedSource: {projectId: intent.sourceProjectId, ...intent.sourceStamp!}}), clearProcessRevisions: true,
         ...(targetFormat === undefined ? {} : {targetFormat}),
         ...('name' in intent.input ? {projectName: intent.input.name} : {}),
         ...(template ? {referenceTargets: template.referenceTargets, templatePresentation: template.presentation} : {}),
         publish: (from, to) => publishProjectCopyFile(from, to)});
-    } finally {source.close();}
+      copied = copiedResult;
+    } finally {
+      if (promoted) promoted.close();
+      if (!capturedClosed) captured.close();
+    }
     assertAllowed();
     ensurePrivateDirectory(localStage(intent), {create: true}); initializeProjectCopyHistory(historyStage(intent), intent.projectId, copied);
     const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir: localStage(intent), cacheDir: path.join(work(intent), 'cache'), tempDir: path.join(work(intent), 'tmp')}),
@@ -241,7 +286,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
       if (sourceHistory) versions = readProjectCopyHistory(sourceHistory, previous => store.tx(() => copyProjectVersionsToNewProjectInside(previous, store.db,
         {sourceProjectId: intent.sourceProjectId, projectId: intent.projectId, sourceProjectDir: path.dirname(intent.sourceFile), targetProjectDir: path.dirname(intent.targetFile)})).versions);
     } finally {store.close();}
-    syncCopiedFile(historyStage(intent)); syncCopiedDirectory(localStage(intent));
+    syncCopiedFile(stageFile(intent)); syncCopiedFile(historyStage(intent)); syncCopiedDirectory(localStage(intent));
     const fileIdentity = copyIdentity(stageFile(intent));
     const response = projectCopyResponseSchema.parse({requestId: intent.input.requestId, sourceProjectId: intent.sourceProjectId,
       project: {projectId: intent.projectId, projectFile: intent.targetFile, fileIdentity, name: copied.name ?? 'Project', lastOpenedAt: null, summary: null},

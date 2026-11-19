@@ -10,8 +10,8 @@ import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_HISTORY_FILE} from '../../../../packages/contracts/src/project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
-import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, openProjectStore, previewFormat5Upgrade, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence, sameContentStamp, upgradeProjectFormatTo5} from '../../../../packages/business/src/project-file/index.ts';
-import type {Format4Options, Format4UpgradePreview, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
+import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, openProjectStore, previewFormat5Upgrade, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence, sameContentStamp, upgradeProjectFormatTo5} from '../../../../packages/business/src/project-file/index.ts';
+import type {Format4Options, Format4UpgradePreview, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectFileFormat, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import {previewClosedProjectFormatUpgrade} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import type {ProjectFormatUpgradePreview} from '../../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectLocation} from './directories.ts';
@@ -82,6 +82,9 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   readonly openStore?: (options: OpenProjectConnectionOptions) => ProjectStore;
   /** Trusted host capability. Each in-place upgrade still requires a matching preview. */
   readonly format4?: Format4Options;
+  /** Writable target format. Defaults to format 4 when a legacy format-4
+   * capability is supplied by tests, otherwise the current format. */
+  readonly targetFormat?: ProjectFileFormat;
   readonly assertProjectFile?: (file: string) => void;
   /** Exceptions from it are ignored. */
   readonly onEvent?: (event: ProjectHostEvent) => void;
@@ -107,6 +110,7 @@ export interface CreateProjectPorts {
   readonly registry: ProjectRegistryPort;
   readonly identity: ProjectFileIdentityPort;
   readonly format4?: Format4Options;
+  readonly targetFormat?: ProjectFileFormat;
 }
 
 export interface RestoreResult<Runtime extends ProjectHostRuntime> {
@@ -139,7 +143,7 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * projects always use the live host state. */
   listForCatalog(inspect: InspectCatalog): Promise<readonly ListedProject[]>;
   /** Creates and registers a project file; does not open it. */
-  create(input: CreateProjectInput): Promise<RecentProject>;
+  create(input: CreateProjectInput, options?: {readonly format?: ProjectFileFormat}): Promise<RecentProject>;
   /** Opens a file by path: the host of the same file (by file identity) if it
    * is open; otherwise the file is opened and registered, or its registration
    * moved to this path. Kernel errors pass through unchanged. */
@@ -214,12 +218,12 @@ function nameFromFile(projectFile: string): string {
  * helper createServerProject. Without projectFile the folder is claimed by
  * claimProjectFolder; a chosen `.mioon` that exists is PROJECT_FILE_EXISTS.
  * Whatever this call created is removed again when a later step fails. */
-export function createProjectFiles(input: CreateProjectInput, {directories, registry, identity, format4}: CreateProjectPorts): RecentProject {
+export function createProjectFiles(input: CreateProjectInput, {directories, registry, identity, format4, targetFormat}: CreateProjectPorts): RecentProject {
   const {name, projectId} = input;
   if (typeof name !== 'string' || projectNameProblem(name) !== null) throw invalid('项目名称无效');
   if (projectId !== undefined && registry.get(projectId)) throw invalid('项目 ID 已登记');
   registry.assertCanRegister?.();
-  const create = (file: string): string => createProjectFile(file, {format4, projectId});
+  const create = (file: string): string => createProjectFile(file, {format4, projectId, ...(targetFormat === undefined ? {} : {targetFormat})});
   let projectFile: string;
   let folder: string | null = null;
   let id: string;
@@ -313,6 +317,7 @@ class RetryOpen extends Error {
 
 export function createProjectHostManager<Runtime extends ProjectHostRuntime = ProjectHostRuntime>(options: ProjectHostManagerOptions<Runtime>): ProjectHostManager<Runtime> {
   const {directories, registry, factory, format4, onEvent, assertProjectFile} = options;
+  const targetFormat: ProjectFileFormat = options.targetFormat ?? (format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION);
   const identity = options.identity ?? statProjectFileIdentity;
   const taskIndex = options.taskIndex ?? createMemoryBackgroundTaskIndex();
   const hooks = options.hooks ?? [];
@@ -378,13 +383,21 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }};
   };
   const preflightLegacy = (file: string, projectId: string, location: ProjectLocation, expected?: ProjectFormatUpgradePreview): void => {
-    if (expected?.targetProjectVersion === 5) {
+    if (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION) {
+      const version = inspectProjectFormatHeader(file);
+      if (version === FORMAT5_PROJECT_SCHEMA_VERSION) return;
+      if (version > FORMAT5_PROJECT_SCHEMA_VERSION) throw new AppError('PROJECT_FORMAT_NEWER', '项目由更新版本的 Mioon 创建。', 409,
+        {database: 'project', reason: 'format-newer', formatVersion: version, supportedFormatVersion: FORMAT5_PROJECT_SCHEMA_VERSION});
       const preview = previewFormat5Upgrade(file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
       if (!preview) return;
-      if (!upgradeMatches(preview, expected)) {
-        throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
-      }
+      if (!expected || !upgradeMatches(preview, expected)) throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
       writeAllowed();
+      return;
+    }
+    if (targetFormat !== FORMAT4_PROJECT_SCHEMA_VERSION) {
+      const version = inspectProjectFormatHeader(file);
+      if (version !== targetFormat) throw new AppError('PROJECT_FORMAT_NEWER', '项目由更新版本的 Mioon 创建。', 409,
+        {database: 'project', reason: 'format-newer', formatVersion: version, supportedFormatVersion: targetFormat});
       return;
     }
     if (!format4 || inspectProjectFormatHeader(file, format4) !== PROJECT_FILE_SCHEMA_VERSION) return;
@@ -398,13 +411,19 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
    * kernel's confirmation/backup transaction, released profiles use openStore. */
   const kernelOpen = (projectFile: string, location: (projectId: string) => ProjectLocation,
     checkCopy: ProjectCopyCheck, expected?: ProjectFormatUpgradePreview): ProjectStore => {
-    if (expected?.targetProjectVersion === 5) {
-      return upgradeProjectFormatTo5({projectFile, locate: location, checkCopy, approveUpgrade: preview => {
-        if (!upgradeMatches(preview, expected)) return false;
-        writeAllowed();
-        return true;
-      }}).store;
+    if (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION) {
+      const preview = expected?.targetProjectVersion === 5 ? expected : previewFormat5Upgrade(projectFile);
+      if (preview) {
+        if (!expected || !upgradeMatches(preview, expected)) throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
+        return upgradeProjectFormatTo5({projectFile, locate: location, checkCopy, approveUpgrade: value => {
+          if (!upgradeMatches(value, expected!)) return false;
+          writeAllowed();
+          return true;
+        }}).store;
+      }
+      return openStore({projectFile, locate: location, checkCopy});
     }
+    if (expected?.targetProjectVersion === 5) throw new AppError('PROJECT_FORMAT_NEWER', '项目格式超出当前目标格式。', 409);
     return openStore({projectFile, locate: location, format4: formatAdmission(expected), checkCopy});
   };
   const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
@@ -1016,9 +1035,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }
   }
 
-  async function create(input: CreateProjectInput): Promise<RecentProject> {
+  async function create(input: CreateProjectInput, createOptions?: {readonly format?: ProjectFileFormat}): Promise<RecentProject> {
     assertRunning();
-    return createProjectFiles(input, {directories, registry, identity, format4});
+    return createProjectFiles(input, {directories, registry, identity, format4,
+      targetFormat: createOptions?.format ?? targetFormat});
   }
 
   async function close(projectId: string): Promise<void> {

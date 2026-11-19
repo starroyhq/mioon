@@ -11,11 +11,11 @@ const [mode, root, sourceFormat, stopAt, marker] = process.argv.slice(2);
 assert.ok(root && marker && (sourceFormat === '3' || sourceFormat === '4'));
 const {projectFile, location} = releaseProjectPaths(root);
 if (mode === 'observe') {
-  const recovered = recoverProjectFile(projectFile, {format5: true});
+  const recovered = recoverProjectFile(projectFile, {});
   assert.ok(recovered.state === 'clean' || recovered.state === 'recovered');
-  const observed = inspectProjectFormatReadOnly(projectFile, {format5: true});
+  const observed = inspectProjectFormatReadOnly(projectFile);
   const store = openProjectStore({projectFile, locate: () => location,
-    ...(observed.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? {format5: true} : observed.formatVersion === 4 ? {format4: {}} : {})});
+    ...(observed.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? {} : observed.formatVersion === 4 ? {format4: {}} : {})});
   try {writeFileSync(marker, JSON.stringify({recovered: recovered.state, snapshot: format5KernelSnapshot(store)}), {flag: 'wx'});}
   finally {store.close();}
 } else {

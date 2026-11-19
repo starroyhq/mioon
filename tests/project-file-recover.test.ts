@@ -19,7 +19,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createProjectStore, openProjectStore, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, projectFileRecoveryForHeld, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
 import type {ProjectLocation} from '../packages/business/src/project-file/index.ts';
 import {isHotJournal} from '../packages/business/src/project-file/journals.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {addCrashProject, crashPad, readCrashRows, writeCrashRows} from './helpers/project-file-crash-data.ts';
 import {createNodeProjectCatalogClient, createProjectCatalogClient} from '../apps/server/src/project-catalog-client.ts';
 import {catalogFileGeneration} from '../apps/server/src/project-catalog-scan.ts';
@@ -237,7 +237,7 @@ test('a hot journal beside a read-only project file is reported as read-only, an
   }
 });
 
-test('default recovery rejects a newer header before isolated replay and leaves a real candidate hot journal intact', {skip: process.platform === 'win32'}, async t => {
+test('default recovery accepts a current header and rejects a future header before isolated replay and leaves a real candidate hot journal intact', {skip: process.platform === 'win32'}, async t => {
   const project = newProject(t, true), journal = project.projectFile + '-journal';
   const writer = await holdInChild(t, project, 'mid-transaction', true);
   await killed(writer);
@@ -246,16 +246,17 @@ test('default recovery rejects a newer header before isolated replay and leaves 
   const copy = t.mock.method(fs, 'copyFileSync');
   syncBuiltinESMExports();
   const newer = (version: number) => ({code: 'PROJECT_FORMAT_NEWER', details: {
-    database: 'project', reason: 'format-newer', formatVersion: version, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION,
+    database: 'project', reason: 'format-newer', formatVersion: version, supportedFormatVersion: FORMAT5_PROJECT_SCHEMA_VERSION,
   }});
   try {
-    assert.throws(() => recoverProjectFile(project.projectFile), newer(FORMAT4_PROJECT_SCHEMA_VERSION));
+    // The default profile now accepts every released format, including the
+    // format this legacy fixture uses; recovery still runs only after the check.
     assert.equal(copy.mock.callCount(), 0);
     assert.deepEqual([fileState(project.projectFile), fileState(journal)], before);
   } finally {copy.mock.restore();syncBuiltinESMExports();}
-  assert.deepEqual(recoverProjectFile(project.projectFile, {}), {state: 'recovered'});
+  assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'recovered'});
   const db = new DatabaseSync(project.projectFile);
-  const future = FORMAT4_PROJECT_SCHEMA_VERSION + 1;
+  const future = FORMAT5_PROJECT_SCHEMA_VERSION + 1;
   try {db.exec(`PRAGMA user_version=${future}`);} finally {db.close();}
   writeFileSync(journal, Buffer.concat([JOURNAL_MAGIC, Buffer.alloc(504, 1)]));
   assert.throws(() => recoverProjectFile(project.projectFile), newer(future));
@@ -302,11 +303,11 @@ test('the catalog child reports legacy, current and newer headers for the active
   const files = projects.flatMap(project => [project.projectFile, project.historyFile, path.join(project.cacheDir, 'cache.db')]);
   const before = files.map(fileState);
   const inputs = projects.map(project => catalogInput(project.projectFile));
-  const inMode = async (format4: boolean) => (await client.scan(inputs.map(input => ({...input, ...(format4 ? {format4: true} : {})}))))
+  const inMode = async (format4: boolean) => (await client.scan(inputs.map(input => ({...input, ...(format4 ? {targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION} : {})}))))
     .map(({format}) => format?.status);
   assert.deepEqual(await inMode(false), ['current', 'newer', 'newer', undefined, undefined]);
   assert.deepEqual(await inMode(true), ['upgrade-required', 'current', 'newer', undefined, undefined]);
-  assert.equal((await client.scan([{...inputs[0]!, format4: true, checkHeader: false}]))[0]?.format, undefined);
+  assert.equal((await client.scan([{...inputs[0]!, targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION, checkHeader: false}]))[0]?.format, undefined);
   assert.deepEqual(files.map(fileState), before);
 });
 
@@ -320,7 +321,7 @@ test('the format 4 catalog child leaves a real hot legacy journal and its projec
   const files = [project.projectFile, journal, project.historyFile, historyJournal, path.join(project.cacheDir, 'cache.db')];
   const before = files.map(fileState);
   const input = catalogInput(project.projectFile);
-  assert.deepEqual(await client.scan([{...input, format4: true}]), [{
+  assert.deepEqual(await client.scan([{...input, targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION}]), [{
     recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
     format: {generation: input.generation, status: 'upgrade-required'},
   }]);
@@ -334,7 +335,7 @@ for (const format4 of [false, true]) test(`catalog recovery validates the observ
   const writer = await holdInChild(t, project, 'mid-transaction', format4);
   await killed(writer);
   assert.equal(isHotJournal(journal), true);
-  const input = {...catalogInput(project.projectFile), ...(format4 ? {format4: true as const} : {})};
+  const input = {...catalogInput(project.projectFile), ...(format4 ? {targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION} : {})};
   const before = [fileState(project.projectFile), fileState(journal)];
   assert.deepEqual(await client.scan([{...input, journalGeneration: null}]), [{recovery: 'changed'}]);
   assert.deepEqual([fileState(project.projectFile), fileState(journal)], before);

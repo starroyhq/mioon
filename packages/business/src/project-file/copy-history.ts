@@ -6,7 +6,7 @@ import type {ContentStamp} from '../../../contracts/src/project-file.ts';
 import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {isProjectFileHeld} from './held-files.ts';
-import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION} from './schema/databases.ts';
+import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {projectFileError} from './errors.ts';
 
@@ -19,7 +19,8 @@ export function initializeProjectCopyHistory(file: string, projectId: string, st
   const db = new DatabaseSync(file);
   try {
     db.exec('PRAGMA foreign_keys=ON; BEGIN');
-    const version = stamp.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
+    const version = stamp.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_HISTORY_SCHEMA_VERSION
+      : stamp.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
     buildDatabase(db, 'history', 'main', undefined, version);
     db.prepare('INSERT INTO history_state(singleton,projectId,seenContentSequence,seenContentToken) VALUES(1,?,?,?)')
       .run(projectId, stamp.contentSequence, stamp.contentToken);

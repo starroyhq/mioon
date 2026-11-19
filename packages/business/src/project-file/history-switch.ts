@@ -17,7 +17,7 @@ import {clearProjectProcessRevisions} from './schema/history-upgrades.ts';
 import {isProjectStore, openStagedProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
 import type {Format4Options, ProjectLocation} from './connection.ts';
-import {assertNoFormat4Restore, inspectProjectFormatReadOnly, recoverProjectFile} from './connection.ts';
+import {assertNoFormat4Restore, inspectProjectFormatHeader, inspectProjectFormatReadOnly, recoverProjectFile} from './connection.ts';
 import {projectFileError} from './errors.ts';
 import {readProjectContentStamp} from './content-stamp.ts';
 import {syncCopiedDirectory, syncCopiedFile} from './backup.ts';
@@ -170,7 +170,12 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
   checkProject(options, intent);
   // This entry runs before the normal opener. Preserve the same format gate
   // even for a prepared switch: replacing the file with an old/forged format
-  // must not clear a pointer or rename any local record first.
+  // must not clear a pointer or rename any local record first. Check admission
+  // first so a legacy host rejects without recovering or rewriting the pair.
+  const headerVersion = inspectProjectFormatHeader(options.projectFile);
+  if (headerVersion === FORMAT4_PROJECT_SCHEMA_VERSION && !options.format4) throw projectFileError('PROJECT_FORMAT_NEWER',
+    {database: 'project', reason: 'format-newer', projectId: intent.input.projectId,
+      formatVersion: headerVersion, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
   const recovery = recoverProjectFile(options.projectFile, options.format4);
   if (recovery.state === 'invalid' || recovery.state === 'locked' || recovery.state === 'missing' || recovery.state === 'open-here' || recovery.state === 'access-denied') throw failure('项目文件暂不能安全完成本机记录切换，已保留所有文件。');
   const project = inspectProjectFormatReadOnly(options.projectFile, options.format4);

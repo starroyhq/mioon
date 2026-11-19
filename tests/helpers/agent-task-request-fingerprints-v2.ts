@@ -100,7 +100,7 @@ export function reopenFingerprintProject(root: string, format: FingerprintProjec
     tempDir: path.join(root, ...TEST_STORE_LAYOUT.tempDir),
   };
   const store = openServerTestStore({projectFile, locate: () => location,
-    ...(format === 'format5' ? {format5: true} : format === 'format4' ? {format4: {}} : {})},
+    ...(format === 'format5' ? {} : format === 'format4' ? {format4: {}} : {})},
     path.join(root, TEST_STORE_DIRECTORY, 'app'));
   try {
     const [projectVersion, historyVersion] = format === 'format5' ?
@@ -115,7 +115,7 @@ export function reopenFingerprintProject(root: string, format: FingerprintProjec
 async function createFingerprintProject(root: string, format: FingerprintProjectFormat): Promise<() => void> {
   const projectFile = path.join(root, ...TEST_STORE_LAYOUT.projectFile);
   if (format === 'format5') {
-    createProjectFile(projectFile, {projectId, format5: true});
+    createProjectFile(projectFile, {projectId, targetFormat: 5});
     return () => {};
   }
   if (format === 'format4') {

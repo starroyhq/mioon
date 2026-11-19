@@ -22,7 +22,7 @@ const sha = (letter: string): string => letter.repeat(64);
  * (preview is the separate read-only confirmation step). */
 test('K1 TSb track edits stay inside the local p95 and history budget', t => {
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-tsb-perf-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(directory, 'records'), cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'temp')})});
   t.after(() => {store.close(); rmSync(directory, {recursive: true, force: true});});
   const projectId = store.projectId;

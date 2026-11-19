@@ -14,7 +14,7 @@ const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `20000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 function fixture(t: test.TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-format5-fence-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const timeline: Format5Timeline = {id: id(5), projectId: store.projectId, revision: 1, width: 720, height: 1280, fps: 30,

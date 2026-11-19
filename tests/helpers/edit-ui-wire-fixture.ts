@@ -22,7 +22,7 @@ const sha = (letter: string): string => letter.repeat(64);
 export async function createEditUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
   library: ReturnType<typeof openAppLibrary>; projectId: string; root: string}> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-edit-ui-wire-'));
-  const store = createProjectStore({projectId: WIRE_IDS.project, projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: WIRE_IDS.project, projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const projectId = store.projectId;
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>

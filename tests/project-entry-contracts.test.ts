@@ -46,10 +46,11 @@ test('a cover belongs to this exact project summary and uses the cache-only appl
 
 test('catalog identity is strict, project IDs are unique, and the complete B1 registry fits', () => {
   const value = catalog();
-  for (const patch of [{version: 2}, {newProjectFormatVersion: 5}, {newProjectFormatVersion: '4'}, {newProjectFormatVersion: null}, {appLibraryScope: 'A'.repeat(64)}, {appLibraryScope: 'a'.repeat(63)}, {instanceId: 'not-an-instance'},
+  for (const patch of [{version: 2}, {newProjectFormatVersion: 2}, {newProjectFormatVersion: '4'}, {newProjectFormatVersion: null}, {appLibraryScope: 'A'.repeat(64)}, {appLibraryScope: 'a'.repeat(63)}, {instanceId: 'not-an-instance'},
     {scope: 'desktop'}, {mode: 'all'}, {candidates: []}, {nextCursor: null}, {registered: [entry(), entry()]}]) {
     assert.equal(projectEntriesResponseSchema.safeParse({...value, ...patch}).success, false);
   }
+  assert.equal(projectEntriesResponseSchema.safeParse({...value, newProjectFormatVersion: 5}).success, true);
   const registered = Array.from({length: PROJECT_ENTRY_LIMITS.maxEntries}, (_unused, index) => entry({project: project({projectId: id(index + 1)})}));
   assert.equal(projectEntriesResponseSchema.parse(catalog(registered)).registered.length, 8192);
   assert.equal(projectEntriesResponseSchema.safeParse(catalog([...registered, entry({project: project({projectId: id(8193)})})])).success, false);

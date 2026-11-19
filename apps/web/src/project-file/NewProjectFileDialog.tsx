@@ -64,18 +64,18 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
   const frozen = interactionBlocked || creating || state.kind === 'unknown' || state.kind === 'created';
   const createFolder = folderMode === 'always' || folderMode === 'choose' && values.createFolder;
   const problem = projectNameProblem(values.name);
-  const showProjectOptions = newProjectFormatVersion !== 4;
+  const showProjectOptions = (newProjectFormatVersion ?? 3) < 4;
   const locationReady = location.status === undefined || location.status === 'ready';
   const canSubmit = problem === null && (!showProjectOptions || values.description.length <= NEW_PROJECT_DESCRIPTION_MAX_LENGTH) && !frozen &&
     locationReady && !location.risks?.some(risk => risk.kind === 'network');
   const editable = (): boolean => !current.current.interactionBlocked && current.current.open && ['editing', 'error'].includes(current.current.state.kind);
   const change = (patch: Partial<NewProjectFileValues>): void => {if (editable()) current.current.onChange(patch);};
   const changeProjectOptions = (patch: Partial<NewProjectFileValues>): void => {
-    if (current.current.newProjectFormatVersion !== 4) change(patch);
+    if ((current.current.newProjectFormatVersion ?? 3) < 4) change(patch);
   };
   const submit = (): void => {
     const next = current.current;
-    if (!editable() || projectNameProblem(next.values.name) !== null || next.newProjectFormatVersion !== 4 && next.values.description.length > NEW_PROJECT_DESCRIPTION_MAX_LENGTH ||
+    if (!editable() || projectNameProblem(next.values.name) !== null || (next.newProjectFormatVersion ?? 3) < 4 && next.values.description.length > NEW_PROJECT_DESCRIPTION_MAX_LENGTH ||
       next.location.status !== undefined && next.location.status !== 'ready' || next.location.risks?.some(risk => risk.kind === 'network')) return;
     next.onSubmit();
   };

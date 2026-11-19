@@ -12,7 +12,7 @@ import {createServerProject} from './helpers/project-database.ts';
 import {createProjectEntryControlClient,createProjectEntryControlBroker,safeProjectEntryControlError} from '../apps/desktop/src/project-entry-control.ts';
 import {PROJECT_ENTRY_CONTROL_LIMITS} from '../packages/contracts/src/project-entry-control.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
-import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,openStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
+import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,openStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary,isAppLibraryHeld} from '../packages/business/src/app-db/index.ts';
 import type {NativeAssetMediaPort} from '../packages/contracts/src/asset-media-native.ts';
 import {createProjectEntries} from '../apps/server/src/project-entries.ts';
@@ -21,11 +21,11 @@ import type {ProjectRegistryPort} from '../apps/server/src/project-host/ports.ts
 
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,onReply?:(message:unknown,deliver:()=>void)=>void,{legacyHost=false}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-control-')),dataDir=path.join(root,'app'),parent=path.join(root,'selected');mkdirSync(parent);
- const projectFormat=legacyHost?PROJECT_FILE_SCHEMA_VERSION:FORMAT4_PROJECT_SCHEMA_VERSION;
+ const projectFormat=legacyHost?PROJECT_FILE_SCHEMA_VERSION:FORMAT5_PROJECT_SCHEMA_VERSION;
  const created=createServerProject(dataDir,{name:'Original',projectFormat}),projectId=created.projectId,file=created.store.projectFile;created.store.close();
  let inspect!:InspectProject;
  const server=await startServer({dataDir,port:0,token:'synthetic-project-entry-control-token',localDraftChannel:'production',inspectProject:read=>{inspect=read;},
-  ...(legacyHost?{projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION}:{})}),backendId=randomUUID(),sent:unknown[]=[];
+  ...(legacyHost?{projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION}:{projectFormatForTest:FORMAT5_PROJECT_SCHEMA_VERSION})}),backendId=randomUUID(),sent:unknown[]=[];
  let client!:ReturnType<typeof createProjectEntryControlClient>;
  const broker=createProjectEntryControlBroker({backendId,control:wrap?.(server.projectEntries)??server.projectEntries,send:message=>{const deliver=()=>queueMicrotask(()=>client.handle(message));if(onReply)onReply(message,deliver);else deliver();}});
  client=createProjectEntryControlClient({backendId,send:message=>{sent.push(message);queueMicrotask(()=>broker.handle(message));}});

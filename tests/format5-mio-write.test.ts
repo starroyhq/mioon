@@ -25,7 +25,7 @@ const sha = (letter: string): string => letter.repeat(64);
 
 export function fixture(t: test.TestContext): ProjectStore {
   const rootDir = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mt-read-'));
-  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')})});
   t.after(() => {store.close(); rmSync(rootDir, {recursive: true, force: true});});
   const mediaBytes = Buffer.from('format5-mio-fixture-media');

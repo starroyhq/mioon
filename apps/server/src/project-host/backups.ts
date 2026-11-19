@@ -13,6 +13,7 @@ import {legacyProjectBackupIndexSchema,legacyProjectBackupIntentSchema,projectBa
 import type {ProjectBackupEntry} from '../../../../packages/contracts/src/project-backup-records.ts';
 import {createProjectBackup, openProjectBackup, inspectCopiedProjectFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {copyProjectBackup} from '../../../../packages/business/src/project-file/copy.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {transferCopiedProjectConfirmations} from './copy-outside-confirmations.ts';
 import type {CopyOutsidePaths} from './copy-outside-confirmations.ts';
@@ -48,7 +49,7 @@ export interface ProjectBackupsOptions {
   readonly onWarning?: (projectId: string, code: string) => void;
 }
 
-export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, openBackup = openProjectBackup, targetFormat, slowMs = 10_000,
+export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, openBackup = openProjectBackup, targetFormat = FORMAT5_PROJECT_SCHEMA_VERSION, slowMs = 10_000,
   onWarning = (projectId, code) => console.warn('Project backup:', projectId, code)}: ProjectBackupsOptions) {
   const queues = new Map<string, Promise<unknown>>();
   const statuses = new Map<string, Status>();
