@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
+import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5AnchorSchema, format5DialogueRefSchema, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
@@ -237,6 +237,36 @@ export interface SequenceEditTrackIntent {
   readonly operation: SequenceEditTrackOperation;
 }
 
+/** FR-B subtitle structure: one action may add, update and remove cues; every
+ * resulting cue keeps the format-5 anchor rule (a main-track clip owns it). */
+export interface SequenceEditSubtitleCueInput {
+  readonly id: string;
+  readonly text: string;
+  readonly startFrame: number;
+  readonly durationFrames: number;
+  readonly anchor?: unknown;
+  readonly dialogueRef?: unknown;
+}
+export interface SequenceEditSubtitlePatch {
+  readonly text?: string;
+  readonly startFrame?: number;
+  readonly durationFrames?: number;
+  readonly anchor?: unknown;
+  readonly dialogueRef?: unknown;
+}
+export type SequenceEditSubtitleEdit =
+  | {readonly kind: 'add'; readonly cue: SequenceEditSubtitleCueInput}
+  | {readonly kind: 'update'; readonly cueId: string; readonly patch: SequenceEditSubtitlePatch}
+  | {readonly kind: 'remove'; readonly cueId: string};
+export interface SequenceEditSubtitlesOperation {
+  readonly kind: 'subtitles';
+  readonly edits: readonly SequenceEditSubtitleEdit[];
+}
+export interface SequenceEditSubtitlesIntent {
+  readonly side: 'timeline';
+  readonly operation: SequenceEditSubtitlesOperation;
+}
+
 /** The side a plan operation belongs to. Board edits and projections are CS,
  * track edits are TS. */
 export function sequenceEditIntentSide(operation: {readonly kind: string}): SequenceEditSide {
@@ -294,11 +324,13 @@ export function sequenceEditTrackOperationName(operation: SequenceEditTrackOpera
   return operation.edit.kind === 'add' ? 'timeline.track.add' : 'timeline.track.update';
 }
 
-export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' | 'propertiesIntent' | 'referenceIntent' | 'trackIntent'>): string {
+export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
+  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent'>): string {
   if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
+  if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
   return sequenceEditOperationName(envelope.intents);
 }
 
@@ -422,6 +454,8 @@ export interface SequenceEditEnvelope {
   readonly referenceIntent?: SequenceEditReferenceIntent;
   /** FR-A clip property patch; exactly one intent family is present. */
   readonly propertiesIntent?: SequenceEditClipPropertiesIntent;
+  /** FR-B subtitle cue structure; exactly one of the intent families. */
+  readonly subtitlesIntent?: SequenceEditSubtitlesIntent;
   /** FR-D track add/update; exactly one intent family is present. */
   readonly trackIntent?: SequenceEditTrackIntent;
   readonly baseline: SequenceEditBaseline;
@@ -564,6 +598,29 @@ export const sequenceEditTrackIntentSchema = z.object({
 }).strict();
 const trackIntentSchema = sequenceEditTrackIntentSchema;
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
+const subtitleCueInputSchema = z.object({
+  id: uuidSchema, text: z.string().max(256), startFrame: z.number().int().safe().min(0).max(FORMAT5_LIMITS.durationFrames),
+  durationFrames: z.number().int().safe().min(1).max(FORMAT5_LIMITS.durationFrames),
+  anchor: format5AnchorSchema.optional(), dialogueRef: format5DialogueRefSchema.optional(),
+}).strict();
+const subtitlePatchSchema = z.object({
+  text: z.string().max(256).optional(),
+  startFrame: z.number().int().safe().min(0).max(FORMAT5_LIMITS.durationFrames).optional(),
+  durationFrames: z.number().int().safe().min(1).max(FORMAT5_LIMITS.durationFrames).optional(),
+  anchor: format5AnchorSchema.optional(), dialogueRef: format5DialogueRefSchema.optional(),
+}).strict().refine(value => Object.keys(value).length > 0, 'At least one subtitle field is required');
+export const sequenceEditSubtitlesIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.object({kind: z.literal('subtitles'),
+    edits: z.array(z.discriminatedUnion('kind', [
+      z.object({kind: z.literal('add'), cue: subtitleCueInputSchema}).strict(),
+      z.object({kind: z.literal('update'), cueId: uuidSchema, patch: subtitlePatchSchema}).strict(),
+      z.object({kind: z.literal('remove'), cueId: uuidSchema}).strict(),
+    ])).min(1).max(100)
+      .refine(list => new Set(list.map(edit => edit.kind === 'add' ? edit.cue.id : edit.cueId)).size === list.length,
+        'Each subtitle cue may appear once')}).strict(),
+}).strict();
+const subtitlesIntentSchema = sequenceEditSubtitlesIntentSchema;
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
@@ -574,15 +631,33 @@ export const sequenceEditEnvelopeSchema = z.object({
   subjectIntent: subjectIntentSchema.optional(),
   referenceIntent: referenceIntentSchema.optional(),
   propertiesIntent: propertiesIntentSchema.optional(),
+  subtitlesIntent: subtitlesIntentSchema.optional(),
   trackIntent: trackIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
   const hasReference = value.referenceIntent !== undefined;
   const hasProperties = value.propertiesIntent !== undefined;
+  const hasSubtitles = value.subtitlesIntent !== undefined;
   const hasTrack = value.trackIntent !== undefined;
-  if ([hasSubject, hasReference, hasProperties, hasTrack].filter(Boolean).length > 1) {
-    context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries one intent family'});
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasTrack].filter(Boolean).length
+    + (value.intents.length > 0 ? 1 : 0);
+  if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
+  if (hasSubtitles) {
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subtitle action is timeline-origin'});
+    const edited = value.subtitlesIntent!.operation.edits.flatMap(edit => edit.kind === 'add' ? [edit.cue.id] : [edit.cueId]);
+    const impacted = new Set(value.impact.subtitleCueIds);
+    if (edited.some(id => !impacted.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Subtitle impact must list every edited cue'});
+    return;
+  }
+  if (hasTrack) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A track action carries no CS/TS intent'});
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A track action is timeline-origin'});
+    const edit = value.trackIntent!.operation.edit;
+    if (!(value.impact.trackIds ?? []).includes(edit.trackId)) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Track impact must list the added or edited track'});
+    return;
   }
   if (hasReference) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A reference action carries no CS/TS intent'});
@@ -697,6 +772,14 @@ export function applySequenceEditBaselineChange(
 /** Timeline half of a patch. Entity arrays use the frozen K5a clip/cue shapes;
  * `removed*Ids` are the rows to delete; `baseline` is the three-state delta that
  * the transaction applies to the stored "last synced" row. */
+export type SequenceEditSubtitleProfile = {readonly profileId: string; readonly basisPresetId?: string};
+/** Three-state subtitle header change: edits that only touch cues keep the
+ * profile (`unchanged`), the first cue may create it (`set`), and undo of that
+ * creation removes it (`absent`). Omitted means `unchanged`. */
+export type SequenceEditSubtitleProfileChange =
+  | { readonly kind: 'unchanged' }
+  | { readonly kind: 'set'; readonly value: SequenceEditSubtitleProfile }
+  | { readonly kind: 'absent' };
 export interface SequenceEditTimelineDelta {
   readonly clips: readonly Format5Clip[];
   readonly cues: readonly Format5Cue[];
@@ -706,6 +789,7 @@ export interface SequenceEditTimelineDelta {
    * every pre-FR-D patch and every clip/board action still parses unchanged. */
   readonly tracks?: ReadonlyArray<Format5Timeline['tracks'][number]>;
   readonly baseline: SequenceEditBaselineChange;
+  readonly subtitles?: SequenceEditSubtitleProfileChange;
 }
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
@@ -764,6 +848,12 @@ const timelineDeltaSchema = z.object({
   removedCueIds: idListSchema(FORMAT5_LIMITS.subtitleCues),
   tracks: z.array(z.record(z.unknown())).max(FORMAT5_LIMITS.tracks).optional(),
   baseline: baselineChangeSchema,
+  subtitles: z.union([
+    z.object({kind: z.literal('unchanged')}).strict(),
+    z.object({kind: z.literal('absent')}).strict(),
+    z.object({kind: z.literal('set'), value: z.object({profileId: z.string().min(1).max(120),
+      basisPresetId: z.string().min(1).max(120).optional()}).strict()}).strict(),
+  ]).optional(),
 }).strict();
 const stateDeltaSchema = z.object({board: boardDeltaSchema, timeline: timelineDeltaSchema}).strict();
 export const sequenceEditHistoryEntrySchema = z.object({
@@ -1055,6 +1145,10 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   missing/wrong-track clip, a value outside the frozen clip schema (transform
  *   keyframes, transition fit, gain/fades/envelope/colour/audio role), or the
  *   same clip twice. Nothing is written; the caller re-previews.
+ * - `SEQUENCE_EDIT_SUBTITLE_INVALID`: a subtitle edit names a missing cue or an
+ *   existing cue id again, the text/interval is outside the frozen subtitle
+ *   schema, the anchor clip does not own the cue start, or cues overlap. Nothing
+ *   is written; the caller re-previews.
  * - `SEQUENCE_EDIT_REFERENCE_INVALID`: a material reference action names a
  *   missing/archived/foreign source or shot, a role that the source type cannot
  *   provide, a subject-card connector (which belongs to the SB binding family),
@@ -1066,7 +1160,8 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', 'SEQUENCE_EDIT_HISTORY_CONFLICT', 'SEQUENCE_EDIT_PATCH_INVALID',
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
-  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID',
+  'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
+  'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID',
 ] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

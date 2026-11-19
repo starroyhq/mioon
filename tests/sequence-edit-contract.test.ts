@@ -284,6 +284,28 @@ test('subject binding intents validate the mode/version pair and stay board-only
     'the allocated edge must target the created binding shot');
 });
 
+test('subtitle intents carry one timeline action with cue impact and unique identifiers', () => {
+  const cueA = '10000000-0000-4000-8000-000000000070';
+  const cueB = '10000000-0000-4000-8000-000000000071';
+  const subtitles = (edits: unknown[], overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope =>
+    envelope({intents: [], originSide: 'timeline',
+      subtitlesIntent: {side: 'timeline', operation: {kind: 'subtitles', edits}} as never,
+      impact: {...envelope().impact, subtitleCueIds: [cueA]}, ...overrides});
+  const add = {kind: 'add', cue: {id: cueA, text: 'Caption', startFrame: 0, durationFrames: 10}};
+  assert.equal(isSequenceEditEnvelope(subtitles([add])), true);
+  assert.equal(sequenceEditEnvelopeOperationName(subtitles([add])), 'timeline.subtitle.edit');
+  const rejected: unknown[] = [
+    subtitles([add], {intents: [intent(connect)]}),
+    subtitles([add], {originSide: 'board'}),
+    subtitles([{kind: 'add', cue: {id: cueB, text: 'Other', startFrame: 20, durationFrames: 10}}]),
+    subtitles([{kind: 'update', cueId: cueA, patch: {}}]),
+    subtitles([{kind: 'add', cue: {id: cueA, text: 'One', startFrame: 0, durationFrames: 10}},
+      {kind: 'add', cue: {id: cueA, text: 'Two', startFrame: 20, durationFrames: 10}}]),
+  ];
+  for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
+    JSON.stringify(candidate).slice(0, 160));
+});
+
 const referenceEdgeId = uuid('94'), referenceSource = uuid('14');
 const referenceIntent = (operation: ReferenceEdgeOperation): SequenceEditReferenceIntent => ({side: 'board', operation});
 function referenceEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
