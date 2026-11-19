@@ -36,9 +36,12 @@ export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
   'tests/desktop-async-secrets.test.ts', // 40%
   'tests/export-settings-capabilities.test.ts', // 70%
   'tests/export-settings-media.test.ts', // 66%; timed out while sharing CPUs
+  'tests/format5-timeline-sync-b-performance.test.ts', // p95 budget flaked while sharing CPUs (PR #295 run, 2026-11-19 baseline rounds)
+  'tests/format5-timeline-sync-performance.test.ts', // p95 budget flaked while sharing CPUs (PR #294 first run, 2026-11-19 baseline rounds)
   'tests/http-file-shutdown.test.ts', // 83%; timed out while sharing CPUs
   'tests/inspection-wire.test.ts', // 35%
   'tests/mock-renderer-capability-fences.test.ts', // 61%
+  'tests/project-format5-performance.test.ts', // p95 budget flaked while sharing CPUs (PR #294 first run, 2026-11-19 baseline rounds)
   'tests/races.test.ts', // 62%; timed out while sharing CPUs
   'tests/sequence-edit-performance.test.ts', // K1 p95 221/279 ms while sharing CPUs in run 44345117309 (budget 200)
   'tests/server-worker-shutdown.test.ts', // 67%

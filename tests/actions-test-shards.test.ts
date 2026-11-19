@@ -257,6 +257,18 @@ test('the committed timing table parses and covers most of the full catalog', as
   const timings = parseTestTimings(await readFile(path.join(root, TIMINGS_FILE), 'utf8'));
   const full = await discoverTests(root, {suite: 'full', platform: 'linux'});
   assert.ok(full.filter(file => timings.has(file)).length >= full.length * 0.9, 'refresh the table with .github/scripts/test-timings.ts');
+  // An exclusive file weighs its full recorded time; an unrecorded one would
+  // silently fall back to the median and unbalance the partition.
+  for (const file of EXCLUSIVE_TEST_FILES) assert.ok(timings.has(file), `record the alone timing for exclusive file ${file}`);
+});
+test('the format 5 performance budgets stay in the exclusive phase', () => {
+  // These tests measure in-lock latency; sharing a shard's CPUs made their p95
+  // budgets flake in CI, so the reviewed exclusive list must keep all three.
+  for (const file of [
+    'tests/format5-timeline-sync-b-performance.test.ts',
+    'tests/format5-timeline-sync-performance.test.ts',
+    'tests/project-format5-performance.test.ts',
+  ]) assert.ok(EXCLUSIVE_TEST_FILES.includes(file as never), `${file} must run alone in its shard`);
 });
 test('CI timings refresh the table by median without losing unmeasured or keeping deleted files', () => {
   const previous = table({'tests/a.test.ts': 5, 'tests/b.test.ts': 6, 'tests/gone.test.ts': 7});
