@@ -180,12 +180,16 @@ const cssColorToHex = (color: string | undefined): string => {
   return '#' + parts.slice(0, 3).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('');
 };
 
-/** The caption band is painted by the OS with the color the page reported; the
- * two pixels beside its left edge must therefore be the same rendered color. */
-function bandColorDelta(png: Buffer, facts: TitleBarFacts): number {
+/** The caption band is painted by the OS with the color the page reported.
+ * Compare both the system band pixel and the page pixel beside it with that
+ * exact reported color: this is the feature under test and does not depend on
+ * fractional-scale rounding of the band's CSS boundary. */
+function bandColorDelta(png: Buffer, facts: TitleBarFacts, reported: string): number {
   const image = nativeImage.createFromBuffer(png);
   const size = image.getSize(), bitmap = image.toBitmap();
   assert.ok(size.width > 0 && size.height > 0 && bitmap.length === size.width * size.height * 4, 'The screenshot bitmap is not RGBA');
+  const hex = cssColorToHex(reported);
+  const target = /^#[0-9a-f]{6}$/u.test(hex) ? [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16)) : null;
   const scaleX = size.width / facts.innerWidth, scaleY = size.height / facts.innerHeight;
   const xInside = Math.round((facts.overlay.right + 8) * scaleX);
   const xOutside = Math.round((facts.overlay.right - 8) * scaleX);
@@ -196,7 +200,11 @@ function bandColorDelta(png: Buffer, facts: TitleBarFacts): number {
     return [bitmap[offset]!, bitmap[offset + 1]!, bitmap[offset + 2]!];
   };
   const inside = pixel(xInside), outside = pixel(xOutside);
-  return Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!));
+  if (target === null) {
+    return Math.max(Math.abs(inside[0]! - outside[0]!), Math.abs(inside[1]! - outside[1]!), Math.abs(inside[2]! - outside[2]!));
+  }
+  const delta = (actual: number[]): number => Math.max(...actual.map((channel, index) => Math.abs(channel - target[index]!)));
+  return Math.max(delta(inside), delta(outside));
 }
 
 async function workbenchReady(window: BrowserWindow): Promise<void> {
@@ -294,6 +302,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, 
     assert.ok(Math.abs(facts.devicePixelRatio - scale) < 0.02, `Device scale factor ${facts.devicePixelRatio} differs from ${scale}`);
     assert.equal(window.isMaximized(), maximized);
     phase = 'capture';
+    let pageColor = 'none';
     try {
       const page = await window.webContents.executeJavaScript(`(() => {
         const overlay = navigator.windowControlsOverlay;
@@ -302,7 +311,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, 
           visible: overlay ? overlay.visible === true : false, bandRight: rect ? rect.right : 0};
       })()`) as {bridge: boolean; frame: string; visible: boolean; bandRight: number};
       const diagnostics = windowsTitleBarDiagnostics(window);
-      const pageColor = await window.webContents.executeJavaScript(pageBandColorScript) as string;
+      pageColor = await window.webContents.executeJavaScript(pageBandColorScript) as string;
       diag = ` bridge=${page.bridge ? 1 : 0} frame=${page.frame} visible=${page.visible ? 1 : 0} events=${diagnostics?.received ?? 0} page=${pageColor} received=${cssColorToHex(diagnostics?.lastReceived)} applied=${cssColorToHex(diagnostics?.applied)} error=${diagnostics?.error === undefined ? 'none' : diagnostics.error.replace(/[^A-Za-z0-9 =:._#-]/gu, '_')}`;
     } catch { diag = ' diagnostics=unavailable'; }
     let png: Buffer | undefined, source: 'window' | 'content' = 'window', bandDelta = 0;
@@ -321,7 +330,7 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, backendUrl, 
       png = shot.png; source = shot.source;
       captured = png;
       phase = 'verify-band';
-      bandDelta = bandColorDelta(png, facts);
+      bandDelta = bandColorDelta(png, facts, pageColor);
       capturedMismatch = bandDelta;
       if (bandDelta <= WINDOWS_TITLEBAR_BAND_COLOR_TOLERANCE) break;
     }
