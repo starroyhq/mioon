@@ -135,7 +135,7 @@ function subjectCardCommand(operation: import('../../contracts/src/sequence-edit
   }
 }
 
-export function createFormat5SequenceEditService(store: ProjectStore): {
+export function createFormat5SequenceEditService(store: ProjectStore, options: {readonly clipboardOwner?: object} = {}): {
   preview(input: any): unknown;
   commit(input: any): unknown;
   history(input: {projectId: string}): unknown;
@@ -218,7 +218,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     const context = readSequenceEditContext(store as never);
     const state = historyState(store);
     const content = readProjectContentStamp(store.db).contentSequence;
-    const prepared = previewSequenceBoardAction(store, intents, allocationOf(input));
+    const prepared = previewSequenceBoardAction(store, intents, allocationOf(input), options.clipboardOwner);
     if (prepared.ok === false) return failure(prepared.code, prepared.ids);
     const envelope: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
@@ -301,7 +301,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
       return result.receipt;
     }
     if (intents.some(boardIntent)) {
-      const receipt = applySequenceEdit(store, envelope);
+      const receipt = applySequenceEdit(store, envelope, () => {}, options.clipboardOwner);
       return receipt;
     }
     throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '没有可执行的 intent。', 409);

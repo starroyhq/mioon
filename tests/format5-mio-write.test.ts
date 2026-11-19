@@ -52,8 +52,8 @@ function fixture(t: test.TestContext): ProjectStore {
     store.put('assets', {id: imageAsset, projectId, name: 'i.png', mimeType: 'image/png', duration: null, sha256: sha('b')});
     store.put('jobs', {id: id(71), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: shotA, createdAt: at, updatedAt: at});
     store.put('versions', {id: versionA, projectId, jobId: id(71), shotId: shotA, number: 1, assetId: assetA, sha256: sha('a'), createdAt: at});
-    store.put('shots', {id: shotA, projectId, title: '镜头 A', orderIndex: 0, selectedVersionId: versionA, duration: 2, createdAt: at, updatedAt: at});
-    store.put('shots', {id: shotB, projectId, title: '镜头 B', orderIndex: 1, selectedVersionId: null, duration: 1, createdAt: at, updatedAt: at});
+    store.put('shots', {id: shotA, projectId, title: '镜头 A', orderIndex: 0, selectedVersionId: versionA, duration: 2, revision: 1, createdAt: at, updatedAt: at});
+    store.put('shots', {id: shotB, projectId, title: '镜头 B', orderIndex: 1, selectedVersionId: null, duration: 1, revision: 1, createdAt: at, updatedAt: at});
     store.put('nodes', node(root, 'sequence_root', {name: 'Film'}));
     store.put('nodes', node(image, 'image', {assetId: imageAsset}));
     store.put('edges', {id: id(80), projectId, kind: 'sequence', source: root, target: shotA, createdAt: at});
@@ -244,6 +244,34 @@ test('Mio dialogue schema is bounded and refuses generated envelope fields', () 
   assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'字'.repeat(82)}]}),false);
   assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'update',lineId:projectId}]}),false);
   assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[]}),false);
+});
+
+test('Mio board management actions build the same unified envelope', t => {
+  const store=fixture(t);
+  const created=previewMioSequenceAction(store,projectId,req(40),{kind:'board-node-create',type:'text',
+    name:'Note',position:{x:10,y:20},text:'hello'});
+  assert.equal(created.envelope.origin,'mio');
+  const createIntent=created.envelope.intents[0]!.operation as {kind:string;nodeType?:string;text?:string};
+  assert.equal(createIntent.kind,'board.node.create');
+  assert.equal(createIntent.nodeType,'text');
+  commitMioSequenceAction(store,created);
+  const updated=previewMioSequenceAction(store,projectId,req(41),{kind:'board-shot-update',shotId:shotA,
+    expectedRevision:1,patch:{title:'Renamed shot'}});
+  assert.equal((updated.envelope.intents[0]!.operation as {kind:string}).kind,'board.shot.update');
+  commitMioSequenceAction(store,updated);
+  const nodeId=JSON.parse(String((store.db.prepare("SELECT data FROM project.nodes WHERE json_extract(data,'$.type')='text'").get() as {data:string}).data)).id as string;
+  const nodeUpdate=previewMioSequenceAction(store,projectId,req(42),{kind:'board-node-update',nodeId,expectedRevision:1,
+    patch:{name:'Note 2'}});
+  commitMioSequenceAction(store,nodeUpdate);
+  const deleted=previewMioSequenceAction(store,projectId,req(43),{kind:'delete-node',nodeId:shotB});
+  commitMioSequenceAction(store,deleted);
+  const restored=previewMioSequenceAction(store,projectId,req(44),{kind:'board-restore',targets:[{kind:'shot',id:shotB}]});
+  commitMioSequenceAction(store,restored);
+  assert.equal((store.db.prepare('SELECT archivedAt FROM project.shots WHERE id=?').get(shotB) as {archivedAt:string|null}).archivedAt,null);
+  const duplicate=previewMioSequenceAction(store,projectId,req(45),{kind:'board-duplicate',targets:[{kind:'shot',id:shotA}]});
+  commitMioSequenceAction(store,duplicate);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-node-create',type:'text',name:'X',
+    position:{x:0,y:0}}).success,true);
 });
 
 test('FR-D track add/update are Mio sequence actions with one-step undo', t => {
