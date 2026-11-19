@@ -565,3 +565,18 @@ test('the properties pane withholds a subject the project has not loaded', () =>
     assert.equal(tree.some((node: ElementNode) => typeof node.props?.onClick === 'function'), false);
   }
 });
+
+test('subject cards advertise drag only when the format-5 board owns a drop target', async () => {
+  const h = harness('SubjectLibrary.tsx');
+  const options = { ...context(), read: async () => envelope([subject()]), save: async () => null };
+  h.renderWithSubjects(options);
+  await flush();
+  const passive = h.renderWithSubjects(options);
+  const passiveCard = byId(passive, `subject-card-${subjectId}`)!;
+  assert.equal(passiveCard.props.draggable, false, 'format 3/4 must not offer a drop that does not exist');
+  const board = h.renderWithSubjects(options, { dragToBoard: true });
+  const boardCard = byId(board, `subject-card-${subjectId}`)!;
+  assert.equal(boardCard.props.draggable, true);
+  assert.equal(typeof boardCard.props.onDragStart, 'function');
+  h.unmount();
+});
