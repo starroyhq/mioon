@@ -2,7 +2,7 @@
  * card summary, board version choice, generation subject inputs, subject-card
  * links/deletion and the archive list. All writes are callbacks owned by the
  * workbench's unified RPC session. */
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {providerDisplayName} from '../creation-i18n.ts';
@@ -35,6 +35,7 @@ export interface BoardInspectorProps {
   readonly selectedNodeId: string | null;
   readonly versions: readonly Row[];
   readonly shots: readonly Row[];
+  readonly nodes: readonly Row[];
   readonly busy?: boolean;
   readonly onSelectVersion: (nodeId: string, versionId: string | null) => void;
   readonly onDelete: (nodeId: string) => void;
@@ -44,6 +45,7 @@ export interface BoardInspectorProps {
   readonly onDetachBinding: (binding: BoardBinding) => void;
   readonly onRestoreBinding: (binding: BoardBinding) => void;
   readonly onDeleteSubjectCard: (nodeId: string, subjectId: string) => void;
+  readonly onUpdateNode: (nodeId: string, patch: {name?: string; text?: string}, expectedRevision: number) => void;
   /** RI-b: exact generation service of this shot plus its live input projection. */
   readonly providers?: readonly GenerationProvider[];
   readonly generationOptions?: BoardGenerationOptions;
@@ -58,8 +60,21 @@ interface DeleteRequest {readonly nodeId: string; readonly subjectId: string}
 
 export default function BoardInspector(props: BoardInspectorProps): React.ReactElement {
   const {t, formatNumber} = useI18n();
-  const [confirm, setConfirm] = useState<DeleteRequest | null>(null);
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
+  const [confirm, setConfirm] = useState<DeleteRequest | null>(null);
+  const [nodeName, setNodeName] = useState('');
+  const [nodeText, setNodeText] = useState('');
+  const editableNode = selected && (selected.kind === 'text' || selected.kind === 'image' || selected.kind === 'video'
+    || selected.kind === 'audio' || selected.kind === 'previs') ? selected : null;
+  const nodeRow = editableNode ? props.nodes.find(node => node.id === editableNode.id) : undefined;
+  const nodeRevision = nodeRow && Number.isSafeInteger(nodeRow.revision) ? Number(nodeRow.revision) : null;
+  useEffect(() => {
+    if (!editableNode) {setNodeName(''); setNodeText(''); return;}
+    setNodeName(editableNode.name);
+    setNodeText(String((nodeRow?.text ?? '')));
+  }, [editableNode?.id, nodeRow?.revision]);
+  const nodeDirty = Boolean(editableNode && nodeRevision !== null
+    && (nodeName !== editableNode.name || editableNode.kind === 'text' && nodeText !== String(nodeRow?.text ?? '')));
   const film = props.board.projection.films.find(item => item.id === props.activeFilmId) ?? props.board.projection.films[0] ?? null;
   const shotVersions = selected?.kind === 'shot' ? props.versions.filter(version => version.shotId === selected.id) : [];
   const shot = selected?.kind === 'shot' ? props.shots.find(item => item.id === selected.id) : undefined;
@@ -193,6 +208,24 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
           ? <p>{film ? t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'),
             duration: film.durationFrames === null ? t('boardUi.durationUnknown') : t('boardUi.seconds', {seconds: formatNumber((film.durationFrames ?? 0) / 30, {maximumFractionDigits: 2})})}) : ''}</p>
           : <p data-testid="board-inspector-kind">{t(`boardUi.kind.${selected.kind}`)}</p>}
+        {editableNode && <section data-testid="board-inspector-node-edit" className="board-inspector-node-edit">
+          <h4>{t('inspector.nodeName')}</h4>
+          <input aria-label={t('inspector.nodeName')} data-testid="board-node-name" maxLength={150}
+            value={nodeName} disabled={props.busy || nodeRevision === null}
+            onChange={event => setNodeName(event.target.value)}/>
+          {editableNode.kind === 'text' && <>
+            <h4>{t('inspector.textContent')}</h4>
+            <textarea aria-label={t('inspector.textContent')} data-testid="board-node-text" rows={6} maxLength={5000}
+              value={nodeText} disabled={props.busy || nodeRevision === null}
+              onChange={event => setNodeText(event.target.value)}/>
+          </>}
+          <button type="button" data-testid="board-node-save" disabled={!nodeDirty || props.busy || nodeRevision === null}
+            onClick={() => {
+              if (!editableNode || nodeRevision === null || !nodeDirty) return;
+              props.onUpdateNode(editableNode.id, {name: nodeName.trim() || editableNode.name,
+                ...(editableNode.kind === 'text' ? {text: nodeText} : {})}, nodeRevision);
+            }}>{t('inspector.saveNode')}</button>
+        </section>}
         {selected.kind === 'shot' && generationPanel}
         {selected.kind === 'shot' && <section data-testid="board-inspector-versions">
           <h4>{t('boardUi.inspector.versions')}</h4>
