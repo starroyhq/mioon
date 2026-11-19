@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="d60ee5c64733989d4b748151061991e56ecf84faa36b219eaecc1cba889a6407";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="62ae913bc0226faf105a27e0e92381a6207d5eaa33961949719e62abc8dd5668";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1920,7 +1920,15 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  },
  "sequence.history.get": {
   "type": "object",
-  "properties": {},
+  "properties": {
+   "origin": {
+    "type": "string",
+    "enum": [
+     "user",
+     "mio"
+    ]
+   }
+  },
   "required": [],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
@@ -1951,6 +1959,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "revision"
     ],
     "additionalProperties": false
+   },
+   "origin": {
+    "type": "string",
+    "enum": [
+     "user",
+     "mio"
+    ]
    }
   },
   "required": [
@@ -1986,6 +2001,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "revision"
     ],
     "additionalProperties": false
+   },
+   "origin": {
+    "type": "string",
+    "enum": [
+     "user",
+     "mio"
+    ]
    }
   },
   "required": [
@@ -8871,6 +8893,129 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.tool.edit": {
   "type": "object",
   "anyOf": [
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "board-root-create"
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "position": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "number",
+        "minimum": -1000000,
+        "maximum": 1000000
+       },
+       "y": {
+        "type": "number",
+        "minimum": -1000000,
+        "maximum": 1000000
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "kind",
+     "name",
+     "position"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "board-shot-append"
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "position": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "number",
+        "minimum": -1000000,
+        "maximum": 1000000
+       },
+       "y": {
+        "type": "number",
+        "minimum": -1000000,
+        "maximum": 1000000
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "kind",
+     "name"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "board-layout-move"
+     },
+     "moves": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "nodeId": {
+         "type": "string",
+         "format": "uuid"
+        },
+        "x": {
+         "type": "number",
+         "minimum": -1000000,
+         "maximum": 1000000
+        },
+        "y": {
+         "type": "number",
+         "minimum": -1000000,
+         "maximum": 1000000
+        }
+       },
+       "required": [
+        "nodeId",
+        "x",
+        "y"
+       ],
+       "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 50
+     }
+    },
+    "required": [
+     "kind",
+     "moves"
+    ],
+    "additionalProperties": false
+   },
    {
     "type": "object",
     "properties": {
