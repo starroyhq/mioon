@@ -203,7 +203,7 @@ import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
 import EditUiNoticeBar from './edit-ui/EditUiNotice.tsx';
 import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
-import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import { retainClipInspector, retainClipWorkbench } from './clip-inspector-retention.ts';
 import SubtitleInspector from './SubtitleInspector.tsx';
@@ -2828,7 +2828,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // D5 minimal guard: a Mio action is not part of the user undo stack. Keep
     // it intact and tell the user to undo it from Mio until MT-4 adds the
     // separate cursor/conflict rules. Redo has no such constraint.
-    if (direction === 'undo' && view.undo?.origin === 'mio') {
+    if (direction === 'undo' && format5UserUndoBlocked(view)) {
       notify(t('editUi.error.mioUndoBlocked'), 'warning');
       return null;
     }

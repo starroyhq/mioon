@@ -31,6 +31,9 @@ export interface SequenceHistoryView {
   readonly undo: HistoryActionView | null; readonly redo: HistoryActionView | null;
 }
 export type SequenceRpc = (operation: string, input: unknown) => Promise<unknown>;
+/** D5 minimal user-undo protection: a Mio action at the top is not part of the
+ * user Ctrl+Z stack. MT-4 adds the separate cursor/conflict rules. */
+export const format5UserUndoBlocked = (view: SequenceHistoryView | null): boolean => view?.undo?.origin === 'mio';
 
 const uuid = (): string => globalThis.crypto?.randomUUID?.() ??
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
