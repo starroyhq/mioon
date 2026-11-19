@@ -13,6 +13,8 @@ interface Options<W extends Window> {
  /** Only an authenticated backend port may supply authoritative preferences. */
  readPreferences():Promise<unknown>;
  isCurrent():boolean;getWindows():readonly W[];ownsWindow(window:W):boolean;
+ /** Native chrome (for example the Windows caption overlay) mirrors the fill. */
+ onBackground?(window:W,background:string):void;
 }
 /** Also usable by backend-before-start tool/progress windows. A cache miss
  * follows the current OS appearance rather than a saved preference default. */

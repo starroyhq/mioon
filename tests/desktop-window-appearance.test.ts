@@ -31,6 +31,7 @@ test('cold native fill uses only an independent same-library cache and never old
  const before=readFileSync(f.file),files=readdirSync(f.root);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);assert.equal(f.calls(),1);assert.deepEqual(readFileSync(f.file),before);assert.deepEqual(readdirSync(f.root),files);
  assert.deepEqual(f.windows[1].colors,[]);assert.deepEqual(f.windows[2].colors,[]);assert.equal(readFileSync(f.db,'utf8'),'synthetic application identity');
  pending.resolve(response('dark'));await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);assert.equal(f.cache.read()?.theme,'dark');
+ assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);
 });
 test('a cache miss follows OS color and does not write until authenticated preferences succeed',async t=>{
  const pending=Promise.withResolvers<unknown>(),f=fixture(t,{read:()=>pending.promise});f.nativeTheme.shouldUseDarkColors=false;

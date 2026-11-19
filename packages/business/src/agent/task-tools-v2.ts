@@ -106,7 +106,7 @@ const readOperations=[
  // no project content, so it shares the read-only tier with its readers.
  'scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
- 'timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
+ 'sequence.inspect','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
 ] as const;
 const reversibleOperations=[
@@ -245,7 +245,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  if(assetKind){add(assetKind,input.assetId);if(Array.isArray(input.assetIds))for(const id of input.assetIds)add(assetKind,id);}
  return [...references.values()];
 }
-export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
+export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string;unavailableReason?:string}
 export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation;canvasCopy?:MioCanvasCopyPreparation}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
@@ -554,7 +554,7 @@ const previsWrite=(operation:string):boolean=>operation==='previs.create'||opera
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect').map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -568,9 +568,11 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
 /** Diagnostics retain their reviewed byte-level catalog. Conversation tools
  * expose AGENTS.md authority only through the host approval protocol. */
-export const listAgentTaskTools=(frameTransaction=false):AgentTaskToolDefinition[]=>{
+import {AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS,FORMAT5_UNAVAILABLE_OPERATIONS} from './task-tool-groups-v2.ts';
+import {isFormat5Project} from '../sequence-edit.ts';
+export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
-  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
+  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
   if(frameTransaction&&tool.operation.startsWith('previs.thumbnail.'))return {...tool,parameters:AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS[tool.operation]};
   if(frameTransaction&&tool.operation===FRAME_SET){
    const parameters=tool.parameters as {properties:Value};
@@ -585,6 +587,10 @@ export const listAgentTaskTools=(frameTransaction=false):AgentTaskToolDefinition
   {type:'object',properties:{source:{const:'project_file'},path:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes},name:{type:'string',minLength:1,maxLength:200}},required:['source','path'],additionalProperties:false},
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
+ if(format5){
+  definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
+  for(const tool of definitions){const reason=FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation];if(reason!==undefined)tool.unavailableReason=reason;}
+ }
  if(frameTransaction)for(const operation of mioCanvasCopyOperations){
   definitions.push({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='canvas.copy.snapshot'?'复制当前画板的明确选区，返回本窗口内可粘贴的快照句柄。':operation==='canvas.paste'?'把本窗口复制快照粘贴到指定视口内，可以整体撤销。':'为当前明确选区创建副本，可以整体撤销。',
    parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk:operation==='canvas.copy.snapshot'?'read_only':'local_reversible',receipt:'atomic canvas step',recovery:'inspect retained completion; never repeat unknown paste',undo:operation==='canvas.copy.snapshot'?'unavailable':'single canvas compensation'});
@@ -620,18 +626,19 @@ function withoutMockGeneration(tool:AgentTaskToolDefinition):AgentTaskToolDefini
  return tool;
 }
 
-export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=false,frameTransaction=false}:{diagnostic?:boolean;frameTransaction?:boolean}={}):AgentTaskToolDefinition[]{
- const tools=diagnostic?listDiagnosticAgentTaskTools():listAgentTaskTools(frameTransaction);
+export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=false,frameTransaction=false,format5=false}:{diagnostic?:boolean;frameTransaction?:boolean;format5?:boolean}={}):AgentTaskToolDefinition[]{
+ const tools=diagnostic?listDiagnosticAgentTaskTools():listAgentTaskTools(frameTransaction,format5);
  return mockAllowed?tools:tools.map(withoutMockGeneration);
 }
 
 export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia,projectImport}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;projectImport?:MioProjectImportPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
  const frameProject=usesTimelineFrameTransaction(store.db);
+ const format5=isFormat5Project(store);
  const canvasCopy=frameProject&&isProjectStore(store)?createMioCanvasCopy(store):null;
- const catalogProfile=frameProject?'format4':'native';
+ const catalogProfile=format5?'format5':frameProject?'format4':'native';
  const {generationAvailability}=services;
- const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject});
+ const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject,format5});
  const diagnosticList=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
  function generationServiceIssue({operation,input}:PreparedAgentTaskTool):typeof GENERATION_SERVICE_UNAVAILABLE|'IMAGE_SETTINGS_SELECTION_REQUIRED'|undefined{
   if(operation!=='generation.submit'&&operation!=='image.generate')return;
@@ -752,6 +759,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   return agentTaskParameterFeedback({operation,input,capabilities});
  }
  function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester}):PreparedAgentTaskTool{
+ if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   operation=taskToolOperation(operation);
   if(operation==='asset.import'){
    const parsed=mioAssetImportInputSchema.safeParse(input);

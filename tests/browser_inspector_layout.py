@@ -26,7 +26,16 @@ MAC_ELECTRON_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                    'Chrome/152.0.0.0 Electron/44.7.0 Safari/537.36')
 
 
-def check_topbar(page, state, height, inset, mode, scale=1):
+def _css_color_to_hex(color):
+    """The page reports #rrggbb; computed styles serialize as rgb(...)."""
+    match = re.match(r'rgba?\(([^)]*)\)', color)
+    if not match:
+        return color
+    parts = [part for part in re.split(r'[,\s/]+', match.group(1).strip()) if part]
+    return '#' + ''.join(f'{round(float(part)):02x}' for part in parts[:3])
+
+
+def check_topbar(page, state, height, inset, mode, scale=1, trailing=None):
     bar = page.locator('.workbench-topbar')
     required = ['.brand', '[data-testid="project-switcher"]',
                 '[data-testid="workspace-canvas"]', '[data-testid="workspace-editing"]',
@@ -48,6 +57,7 @@ def check_topbar(page, state, height, inset, mode, scale=1):
         });
         return {
             bar: bounds(bar), padding: parseFloat(getComputedStyle(bar).paddingLeft),
+            paddingRight: parseFloat(getComputedStyle(bar).paddingRight),
             brand: bounds(bar.querySelector('.brand')),
             groups: ['.brand', '[data-testid="project-switcher"]',
                      '.workbench-topbar-mode', '.topbar-actions'].map(selector => ({
@@ -62,6 +72,8 @@ def check_topbar(page, state, height, inset, mode, scale=1):
     box = measurement['bar']
     assert abs(box['height'] - height) < 0.05, (state, measurement)
     assert abs(measurement['padding'] - inset) < 0.01, (state, measurement)
+    if trailing is not None:
+        assert abs(measurement['paddingRight'] - trailing) < 0.01, (state, measurement)
     assert abs(measurement['brand']['left'] - box['left'] - inset * scale) < 0.05, (state, measurement)
     for group in measurement['groups']:
         bounds = group['bounds']
@@ -74,14 +86,17 @@ def check_topbar(page, state, height, inset, mode, scale=1):
         assert overlap <= 0.01, f"{state}: {one['name']} and {other['name']} overlap by {overlap:.3f}px"
     center = box['top'] + box['height'] / 2
     differences = []
+    right_limit = box['right'] - (trailing or 0) + 0.01
     for control in measurement['controls']:
         control_box = control['bounds']
+        assert control_box['right'] <= right_limit, (state, control, right_limit)
         delta = abs(control_box['top'] + control_box['height'] / 2 - center)
         differences.append(delta)
         assert delta < 1, f"{state}: {control['name']} differs from the topbar center by {delta:.3f}px"
     assert len(differences) >= len(required), (state, measurement)
     print(f'{state}: {len(differences)} visible controls, largest center difference '
-          f'{max(differences):.3f}px, leading inset {measurement["padding"]:.2f}px')
+          f'{max(differences):.3f}px, leading inset {measurement["padding"]:.2f}px, '
+          f'trailing inset {measurement["paddingRight"]:.2f}px')
 
 
 def check_topbar_scale_controls(page, metadata):
@@ -122,22 +137,39 @@ def check_topbar_scale_controls(page, metadata):
             check_topbar(page, label + ' restored', chrome['topbarHeight'] * scale, chrome['leadingInset'], mode, scale)
 
 
+WINDOWS_WCO_CONTROL_WIDTH = 138
+WINDOWS_WCO_SCRIPT = '''Object.defineProperty(navigator, 'windowControlsOverlay', {configurable: true, value: {
+  visible: true,
+  getTitlebarAreaRect: () => ({x: 0, y: 0, width: Math.max(0, window.innerWidth - %d), height: 44,
+    right: Math.max(0, window.innerWidth - %d), bottom: 44}),
+  addEventListener() {},
+  removeEventListener() {},
+}});''' % (WINDOWS_WCO_CONTROL_WIDTH, WINDOWS_WCO_CONTROL_WIDTH)
+
+
 def check_topbar_hosts(browser, metadata, token, fixture_rpc):
     chrome = metadata['windowChrome']
     assert chrome['leadingInset'] == (chrome['position']['x'] - chrome['controlOutset']
                                       + chrome['controlGroupWidth'] + chrome['gap'])
     origin = metadata['origin']
     hosts = [
-        ('macOS desktop', MAC_ELECTRON_UA, True),
+        ('macOS desktop', MAC_ELECTRON_UA, 'mac'),
         ('Windows desktop', MAC_ELECTRON_UA.replace('Macintosh; Intel Mac OS X 10_15_7',
-                                                 'Windows NT 10.0; Win64; x64'), False),
+                                                 'Windows NT 10.0; Win64; x64'), 'windows'),
         ('Linux desktop', MAC_ELECTRON_UA.replace('Macintosh; Intel Mac OS X 10_15_7',
-                                               'X11; Linux x86_64'), False),
-        ('ordinary browser', MAC_ELECTRON_UA.replace(' Electron/44.7.0', ''), False),
+                                               'X11; Linux x86_64'), 'linux'),
+        ('ordinary browser', MAC_ELECTRON_UA.replace(' Electron/44.7.0', ''), 'browser'),
     ]
-    for host, user_agent, mac in hosts:
+    for host, user_agent, kind in hosts:
         context = browser.new_context(viewport={'width': 1440, 'height': 900}, user_agent=user_agent,
                                       locale='zh-CN', reduced_motion='reduce', service_workers='block')
+        if kind == 'windows':
+            context.add_init_script(WINDOWS_WCO_SCRIPT)
+            # The preload bridge is absent in a plain browser context; capture the
+            # page-reported caption band color instead of painting it natively.
+            context.add_init_script("""window.__mioonWindowChrome = {setTitleBarColor(color) {
+                (window.__mioonTitleBarColors || (window.__mioonTitleBarColors = [])).push(color);
+            }};""")
         try:
             context.add_init_script("""localStorage.setItem('mioon.app-language.v1', JSON.stringify({version: 1, preference: 'zh-Hans'}))""")
             assert context.request.post(origin + '/api/login', data={'token': token}).ok, 'Topbar fixture login failed'
@@ -149,26 +181,92 @@ def check_topbar_hosts(browser, metadata, token, fixture_rpc):
             page.get_by_role('button', name=re.compile('^打开.*' + metadata['name'])).click()
             expect(page.get_by_test_id('workbench')).to_be_visible()
             frame = page.locator('html')
-            if mac:
+            if kind == 'mac':
                 expect(frame).to_have_attribute('data-desktop-frame', 'mac-inset')
+            elif kind == 'windows':
+                expect(frame).to_have_attribute('data-desktop-frame', 'win-overlay')
             else:
                 expect(frame).not_to_have_attribute('data-desktop-frame', 'mac-inset')
-            sizes = [(1440, 900), (1050, 680), (800, 680), (1050, 480)] if mac else [(1440, 900)]
+                expect(frame).not_to_have_attribute('data-desktop-frame', 'win-overlay')
+            sizes = [(1440, 900), (1050, 680), (800, 680), (1050, 480)] if kind == 'mac' else (
+                [(1440, 900), (1050, 680)] if kind == 'windows' else [(1440, 900)])
             for width, height in sizes:
                 page.set_viewport_size({'width': width, 'height': height})
-                if mac and (width <= 800 or height == 480):
+                if kind == 'mac' and (width <= 800 or height == 480):
                     expect(page.get_by_test_id('workbench')).to_have_attribute('data-narrow', 'true')
                 for mode in ('canvas', 'editing'):
                     page.get_by_test_id('workspace-' + mode).click()
                     label = f'{host} {width}x{height} {mode}'
-                    check_topbar(page, label, chrome['topbarHeight'] if mac else 44,
-                                 chrome['leadingInset'] if mac else 12, mode)
-                    if mac:
+                    if kind == 'mac':
+                        check_topbar(page, label, chrome['topbarHeight'], chrome['leadingInset'], mode)
+                    elif kind == 'windows':
+                        # The renderer reserves exactly the live overlay width at
+                        # both window sizes; the mock reports a constant band.
+                        check_topbar(page, label, 44, 12, mode, trailing=WINDOWS_WCO_CONTROL_WIDTH)
+                    else:
+                        check_topbar(page, label, 44, 12, mode)
+                    if kind == 'mac':
                         page.evaluate("document.documentElement.dataset.desktopFullscreen = 'true'")
                         check_topbar(page, label + ' fullscreen', chrome['topbarHeight'], chrome['gap'], mode)
                         page.evaluate("document.documentElement.dataset.desktopFullscreen = 'false'")
                         check_topbar(page, label + ' restored', chrome['topbarHeight'], chrome['leadingInset'], mode)
-            if mac:
+            if kind == 'windows':
+                page.set_viewport_size({'width': 1440, 'height': 900})
+                page.get_by_test_id('workspace-canvas').click()
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and not page.evaluate("(window.__mioonTitleBarColors || []).length > 0"):
+                    time.sleep(0.05)
+                assert page.evaluate("(window.__mioonTitleBarColors || []).length > 0"), 'The page never reported a caption band color'
+                expected = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
+                reported = page.evaluate("(window.__mioonTitleBarColors || []).slice(-1)[0]")
+                assert reported == expected, f'Windows caption band color {reported!r} must match the top bar {expected!r}'
+
+                def choose_theme(label):
+                    page.get_by_test_id('global-settings-open').click()
+                    appearance = page.get_by_test_id('settings-appearance')
+                    expect(appearance).to_be_visible()
+                    appearance.get_by_test_id('appearance-theme').get_by_text(label, exact=True).click()
+                    with page.expect_response(lambda response: response.request.method == 'PUT'
+                                              and response.url.endswith('/api/ui-preferences')) as saved:
+                        appearance.get_by_test_id('appearance-save').click()
+                    assert saved.value.ok, 'The appearance preference did not save'
+                    page.get_by_test_id('settings-center-close').click()
+                    expect(page.get_by_test_id('web-settings-dialog')).to_be_hidden()
+
+                def latest_reported_after(count):
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        page.evaluate("window.dispatchEvent(new Event('resize'))")
+                        colors = page.evaluate("(window.__mioonTitleBarColors || [])")
+                        expected_color = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
+                        if len(colors) > count and colors[-1] == expected_color:
+                            return colors[-1]
+                        time.sleep(0.05)
+                    assert False, ('A theme change must report the settled caption band color',
+                                   page.evaluate("window.__mioonTitleBarColors"),
+                                   page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
+
+                count = page.evaluate("(window.__mioonTitleBarColors || []).length")
+                choose_theme('浅色')
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and page.evaluate("document.documentElement.dataset.theme") != 'light':
+                    time.sleep(0.05)
+                assert page.evaluate("document.documentElement.dataset.theme") == 'light'
+                reported_light = latest_reported_after(count)
+                expected_light = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
+                assert reported_light == expected_light, (reported_light, expected_light)
+                assert reported_light != reported, 'A theme change must repaint the caption band color'
+                count = page.evaluate("(window.__mioonTitleBarColors || []).length")
+                choose_theme('深色')
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and page.evaluate("document.documentElement.dataset.theme") != 'dark':
+                    time.sleep(0.05)
+                reported_dark = latest_reported_after(count)
+                expected_dark = _css_color_to_hex(page.evaluate("getComputedStyle(document.querySelector('.workbench-topbar')).backgroundColor"))
+                assert reported_dark == expected_dark, (reported_dark, expected_dark)
+                assert reported_dark != reported_light
+                print(f'Windows caption band color: {reported!r} (dark) -> {reported_light!r} (light) -> {reported_dark!r} (restored dark)')
+            if kind == 'mac':
                 check_topbar_scale_controls(page, metadata)
             assert not errors, f'{host} page errors: {errors}'
         finally:

@@ -147,8 +147,10 @@ const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRo
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 import {sequenceEditRpcSchemas} from './sequence-edit-rpc.ts';
+import {sequenceInspectionSchemas} from './sequence-inspection.ts';
 export const schemas={
 ...sequenceEditRpcSchemas,
+...sequenceInspectionSchemas,
 ...exportControlSchemas,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
@@ -337,6 +339,7 @@ Object.assign(descriptions,{
  'timeline.format.get':'只读查询当前时间线输出规格、版本与初始设置资格；不创建时间线',
  'timeline.format.set':'仅为初始空白时间线显式设置竖屏、横屏或方屏720规格，固定30fps；项目与时间线双版本校验，精确请求重放，不进入撤销历史',
  'timeline.get':'读取持久化30fps多轨时间线；旧项目首次读取时仅创建空轨道',
+ 'sequence.inspect':'按根有界分页只读格式5顺序链、片段组、实际/画板版本、状态/锚、游离节点和差异；同一快照游标续页，不写画板、时间线、回执或历史',
  'sequence.preview':'只读预览一条格式5主轨/画板同步命令，返回共享动作envelope和计划摘要；不写画板、时间线、回执或历史条目，首次可能创建统一历史游标',
  'sequence.commit':'只提交与预览计划摘要一致的共享格式5同步envelope；一个事务写画板、时间线、基线、回执和历史，稳定请求重放不重复写',
  'sequence.history.get':'只读查询格式5统一编辑历史的游标和当前撤销/重做动作摘要；不创建时间线、不写回执',

@@ -1,10 +1,13 @@
 name: macOS media toolchain
 
-# Manual macOS media verification lane. It installs Homebrew ffmpeg@7 (the
-# versioned FFmpeg 7.1.5 formula that matches the desktop application and the
-# Linux CI toolchain), re-hashes the cached bottle on every cache hit, records
-# the capability evidence and runs the reviewed media group with that
-# toolchain. Linux keeps using the prepared toolchain from checks.yml.
+# Manual macOS media verification lanes. The first installs Homebrew ffmpeg@7
+# (the versioned FFmpeg 7.1.5 formula that matches the desktop application and
+# the Linux CI toolchain), re-hashes the cached bottle on every cache hit,
+# records the capability evidence and runs the reviewed media group. The second
+# is the FFmpeg 9 comparison: it installs the floating Homebrew ffmpeg-full,
+# requires the alpha-mode behavior probe, and runs the same reviewed media group
+# plus the premultiplied-overlay tests. Linux keeps using the prepared toolchain
+# from checks.yml; neither job is a required pull-request check.
 on:
   workflow_dispatch:
 
@@ -71,5 +74,80 @@ jobs:
         with:
           name: macos-media-toolchain-evidence
           path: artifacts/macos-media-environment/
+          retention-days: 14
+          if-no-files-found: warn
+
+  media-ffmpeg9:
+    name: macOS media group (FFmpeg 9 comparison)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout selected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the floating Homebrew ffmpeg-full
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          set -euo pipefail
+          if ! brew list --versions ffmpeg-full >/dev/null 2>&1; then brew install ffmpeg-full; fi
+          mioon_media_prefix="$(brew --prefix ffmpeg-full)"
+          printf 'MIOON_FFMPEG_PATH=%s/bin/ffmpeg\nMIOON_FFPROBE_PATH=%s/bin/ffprobe\n' "$mioon_media_prefix" "$mioon_media_prefix" >> "$GITHUB_ENV"
+          printf '%s/bin\n' "$mioon_media_prefix" >> "$GITHUB_PATH"
+
+      - name: Probe installed media capabilities (FFmpeg 9)
+        run: node .github/scripts/media-environment.ts --platform=darwin --output=artifacts/macos-media-ffmpeg9/media.json
+
+      - name: Require the alpha-mode behavior evidence
+        shell: bash
+        run: |
+          node -e "const probe = JSON.parse(require('node:fs').readFileSync('artifacts/macos-media-ffmpeg9/media.json', 'utf8')); if (probe.alphaOverlayProbe?.variant !== 'alpha-mode-tag') { console.error('the FFmpeg 9 comparison must exercise alpha-mode-tag'); process.exit(1); }"
+
+      - name: Record media toolchain evidence (FFmpeg 9)
+        run: node .github/scripts/macos-media-toolchain.ts evidence --cache=unavailable --media=artifacts/macos-media-ffmpeg9/media.json --output=artifacts/macos-media-ffmpeg9/toolchain.json
+
+      - name: Run the premultiplied overlay media tests (FFmpeg 9)
+        run: node --test tests/timeline-image-media.test.ts tests/timeline-image-filter.test.ts
+
+      - name: Run the reviewed macOS media group (FFmpeg 9)
+        run: node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap
+
+      - name: Write safe diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts/macos-media-ffmpeg9
+          {
+            node --version
+            pnpm --version
+            ffmpeg -version | head -n 1
+          } > artifacts/macos-media-ffmpeg9/status.log 2>&1 || true
+          cat artifacts/macos-media-ffmpeg9/status.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload FFmpeg 9 media evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: macos-media-ffmpeg9-evidence
+          path: artifacts/macos-media-ffmpeg9/
           retention-days: 14
           if-no-files-found: warn

@@ -18,6 +18,7 @@ const probe = {
   capabilities: {filters: {drawtext: true, subtitles: true, zscale: true, loudnorm: true, ebur128: true},
     encoders: {libx264: true, aac: true, libwebp: true, libwebp_anim: true}},
   cliCapabilities: {filterArgumentFromFile: true, complexFilterArgumentFromFile: true, fpsModePassthrough: true, pngEncode: true, pngDecode: true},
+  alphaOverlayProbe: {ok: true, variant: 'alpha-mode-tag', filterSupported: true, expected: [89, 83, 172], observed: [89, 83, 172]},
 };
 
 async function fixture(t: TestContext) {
@@ -78,6 +79,7 @@ test('capability evidence combines the bottle identity, cache state and tool byt
   assert.equal(tools.ffprobe!.path, ffprobe);
   assert.deepEqual(written.capabilities, probe.capabilities);
   assert.deepEqual(written.cliCapabilities, probe.cliCapabilities);
+  assert.deepEqual(written.alphaOverlayProbe, probe.alphaOverlayProbe);
   assert.equal(written.platform, 'darwin');
   assert.equal(written.schema, 1);
 });
@@ -92,6 +94,10 @@ test('capability evidence fails closed on a missing capability or a failed probe
   await writeProbe({...probe, ...toolPaths, ok: false});
   await assert.rejects(writeToolchainEvidence({bottleSha: sha, cacheState: 'hit', mediaFile: media, output}), {code: 'MEDIA_PROBE_NOT_SUCCESSFUL'});
   await writeProbe({...probe, ...toolPaths, cliCapabilities: {pngEncode: false}});
+  await assert.rejects(writeToolchainEvidence({bottleSha: sha, cacheState: 'hit', mediaFile: media, output}), {code: 'MEDIA_CAPABILITY_MISSING'});
+  await writeProbe({...probe, ...toolPaths, alphaOverlayProbe: {...probe.alphaOverlayProbe, observed: [57, 67, 124]}});
+  await assert.rejects(writeToolchainEvidence({bottleSha: sha, cacheState: 'hit', mediaFile: media, output}), {code: 'MEDIA_CAPABILITY_MISSING'});
+  await writeProbe({...probe, ...toolPaths, alphaOverlayProbe: undefined});
   await assert.rejects(writeToolchainEvidence({bottleSha: sha, cacheState: 'hit', mediaFile: media, output}), {code: 'MEDIA_CAPABILITY_MISSING'});
   await writeProbe({...probe, ...toolPaths});
   await assert.rejects(writeToolchainEvidence({bottleSha: sha, cacheState: 'bogus' as never, mediaFile: media, output}), {code: 'INVALID_CACHE_STATE'});
@@ -139,4 +145,15 @@ test('the macOS media workflow uses the cached, re-verified toolchain and upload
   assert.match(workflow, /name: macos-media-toolchain-evidence/);
   assert.match(workflow, /path: artifacts\/macos-media-environment\//);
   assert.match(workflow, /concurrency:\r?\n  group: macos-media-toolchain-\$\{\{ github\.ref \}\}\r?\n  cancel-in-progress: false/);
+  // FFmpeg 9 comparison lane: floating ffmpeg-full, behavior evidence required,
+  // same reviewed media group, separate artifact.
+  assert.match(workflow, /media-ffmpeg9:/);
+  assert.match(workflow, /brew install ffmpeg-full/);
+  assert.match(workflow, /brew --prefix ffmpeg-full/);
+  assert.match(workflow, /media-environment\.ts --platform=darwin --output=artifacts\/macos-media-ffmpeg9\/media\.json/);
+  assert.match(workflow, /probe\.alphaOverlayProbe\?\.variant !== 'alpha-mode-tag'/);
+  assert.match(workflow, /macos-media-toolchain\.ts evidence --cache=unavailable/);
+  assert.match(workflow, /node --test tests\/timeline-image-media\.test\.ts tests\/timeline-image-filter\.test\.ts/);
+  assert.match(workflow, /node scripts\/tooling\.ts test --suite=macos-media --concurrency=2 --reporter=tap[\s\S]*Run the reviewed macOS media group \(FFmpeg 9\)|Run the reviewed macOS media group \(FFmpeg 9\)[\s\S]*node scripts\/tooling\.ts test --suite=macos-media --concurrency=2 --reporter=tap/);
+  assert.match(workflow, /name: macos-media-ffmpeg9-evidence/);
 });

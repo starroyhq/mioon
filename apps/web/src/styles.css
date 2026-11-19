@@ -524,6 +524,16 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 /* Dialogs and menus can open over the top bar; a drag region beneath them must not swallow their clicks. */
 :root[data-desktop-frame="mac-inset"] :is([data-slot$="-overlay"], [data-slot$="-content"]) { -webkit-app-region: no-drag; }
 
+/* Desktop host on Windows: the native title bar is hidden and the system draws
+   its caption buttons as an overlay (apps/desktop/src/window-chrome.ts). The top
+   bar reserves exactly the overlay width the window controls overlay reports,
+   keeps a normal leading padding (there are no traffic lights) and drags. */
+:root[data-desktop-frame="win-overlay"] { --win-titlebar-trailing: 0px; --win-titlebar-gap: var(--wb-space-3); }
+:root[data-desktop-frame="win-overlay"] .workbench .topbar { padding-right: var(--win-titlebar-trailing); -webkit-app-region: drag; }
+:root[data-desktop-frame="win-overlay"] .topbar :is(a, button, input, select, textarea, [role="tablist"], [role="button"], [tabindex]:not([tabindex="-1"])) { -webkit-app-region: no-drag; }
+/* Dialogs and menus can open over the top bar; a drag region beneath them must not swallow their clicks. */
+:root[data-desktop-frame="win-overlay"] :is([data-slot$="-overlay"], [data-slot$="-content"]) { -webkit-app-region: no-drag; }
+
 /* Library: a compact header and cards (thumbnail beside the name; marks, usage and actions take one row each)
    so the list shows more than one asset in the default editing layout. The narrow single-panel layout keeps its grid. */
 .dock-workbench:not(.dock-narrow) .asset-panel-heading { height: 42px; }
@@ -726,5 +736,31 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
   gap: var(--mac-titlebar-gap);
 }
 :root[data-desktop-frame="mac-inset"] .shell-redesign .workbench-topbar .project-trigger > span {
+  display: block;
+}
+/* The Windows overlay shares the one-row workbench top bar layout; only the
+   trailing window control band differs from the macOS traffic-light inset. */
+:root[data-desktop-frame="win-overlay"] .shell-redesign .workbench-topbar {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--win-titlebar-gap);
+  row-gap: 0;
+  padding-block: 0;
+  padding-right: var(--win-titlebar-trailing);
+}
+:root[data-desktop-frame="win-overlay"] .shell-redesign .workbench-topbar > * {
+  grid-row: 1;
+  grid-column: auto;
+  align-self: center;
+}
+:root[data-desktop-frame="win-overlay"] .workbench-topbar-project,
+:root[data-desktop-frame="win-overlay"] .workbench-topbar-mode,
+:root[data-desktop-frame="win-overlay"] .shell-redesign .workbench-topbar .topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--win-titlebar-gap);
+}
+:root[data-desktop-frame="win-overlay"] .shell-redesign .workbench-topbar .project-trigger > span {
   display: block;
 }
