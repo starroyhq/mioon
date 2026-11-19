@@ -189,3 +189,33 @@ test('write actions are bounded and reject generated ids supplied as envelopes',
   assert.equal(agentTaskToolCatalogProfile(tools),'format5');
   assert.equal(listAgentTaskTools(false,false).some(tool=>tool.operation==='sequence.tool.edit'),false);
 });
+
+test('Mio board management actions build the same unified envelope', t => {
+  const store=fixture(t);
+  const created=previewMioSequenceAction(store,projectId,req(40),{kind:'board-node-create',type:'text',
+    name:'Note',position:{x:10,y:20},text:'hello'});
+  assert.equal(created.envelope.origin,'mio');
+  const createIntent=created.envelope.intents[0]!.operation as {kind:string;nodeType?:string;text?:string};
+  assert.equal(createIntent.kind,'board.node.create');
+  assert.equal(createIntent.nodeType,'text');
+  commitMioSequenceAction(store,created);
+  const updated=previewMioSequenceAction(store,projectId,req(41),{kind:'board-shot-update',shotId:shotA,
+    patch:{title:'Renamed shot'}});
+  assert.equal((updated.envelope.intents[0]!.operation as {kind:string}).kind,'board.shot.update');
+  commitMioSequenceAction(store,updated);
+  const nodeId=JSON.parse(String((store.db.prepare("SELECT data FROM project.nodes WHERE json_extract(data,'$.type')='text'").get() as {data:string}).data)).id as string;
+  const nodeUpdate=previewMioSequenceAction(store,projectId,req(42),{kind:'board-node-update',nodeId,patch:{name:'Note 2'}});
+  commitMioSequenceAction(store,nodeUpdate);
+  const archived=previewMioSequenceAction(store,projectId,req(43),{kind:'board-archive',targets:[{kind:'shot',id:shotB}]});
+  commitMioSequenceAction(store,archived);
+  const row=store.db.prepare('SELECT archivedAt FROM project.shots WHERE id=?').get(shotB) as {archivedAt:string|null};
+  assert.equal(typeof row.archivedAt,'string');
+  const restored=previewMioSequenceAction(store,projectId,req(44),{kind:'board-restore',targets:[{kind:'shot',id:shotB}]});
+  commitMioSequenceAction(store,restored);
+  assert.equal((store.db.prepare('SELECT archivedAt FROM project.shots WHERE id=?').get(shotB) as {archivedAt:string|null}).archivedAt,null);
+  const duplicate=previewMioSequenceAction(store,projectId,req(45),{kind:'board-duplicate',targets:[{kind:'shot',id:shotA}]});
+  commitMioSequenceAction(store,duplicate);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-node-create',type:'text',name:'X',
+    position:{x:0,y:0}}).success,true);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-archive',targets:[]}).success,false);
+});

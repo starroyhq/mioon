@@ -1883,6 +1883,18 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (owner !== currentProject.current || state.project?.id !== owner) return;
     const aspectRatio = (state.timelineFrameTransaction === true ? timelineOutputRatio(state.timeline) : null) ?? '9:16';
     const position = chooseCanvasPosition([...state.shots, ...state.nodes] as never[], { x: 350 + (count % 3) * 330, y: Math.floor(count / 3) * 430 + 80 });
+    if (state.projectFormatVersion === 5) {
+      const nodeId = globalThis.crypto.randomUUID();
+      markBusy(owner, 'shot-create', true);
+      try {
+        const outcome = await format5BoardSession().run({side: 'board', operation: {kind: 'board.shot.append',
+          nodeId, name: t('projects.default.shot', { number: String(count + 1).padStart(2, '0') }), position}} as never);
+        await refresh(owner);
+        if (!outcome.ok) { notify(outcome.code, 'error'); return; }
+        if (await inspect(nodeId)) revealCanvas(nodeId);
+      } finally { markBusy(owner, 'shot-create', false); }
+      return;
+    }
     const shot = await run('shot-create', 'shot.create', { projectId: owner, title: t('projects.default.shot', { number: String(count + 1).padStart(2, '0') }), prompt: '', duration: 2, aspectRatio, referenceAssetIds: [], position });
     if (shot && await inspect((shot as {id: string}).id)) revealCanvas((shot as {id: string}).id);
   }
@@ -1896,6 +1908,21 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const base = state.shots.length, firstImage = state.assets.find(a => a.mimeType.startsWith('image/'));
     const aspectRatio = (state.timelineFrameTransaction === true ? timelineOutputRatio(state.timeline) : null) ?? '9:16';
     let done = 0;
+    if (state.projectFormatVersion === 5) {
+      try {
+        for (const [i, title] of [t('projects.default.establish'), t('projects.default.develop'), t('projects.default.resolve')].entries()) {
+          if (!isCurrent(captured)) return;
+          const outcome = await format5BoardSession().run({side: 'board', operation: {kind: 'board.shot.append',
+            nodeId: globalThis.crypto.randomUUID(), name: `${String(base + i + 1).padStart(2, '0')} · ${title}`,
+            position: {x: 100 + i * 340, y: 130}}} as never);
+          if (!outcome.ok) { if (isCurrent(captured)) notify(outcome.code, 'error'); return; }
+          done++;
+        }
+        const next = await refresh(projectId) as AppData | null;
+        if (isCurrent(captured) && next) { const first = next.shots.find(shot => shot.orderIndex === base); if (first && await inspect(first.id)) revealCanvas(); notify(msg('projects.structureReady')); }
+      } finally { markBusy(projectId, 'structure', false); }
+      return;
+    }
     try {
       for (const [i, title] of [t('projects.default.establish'), t('projects.default.develop'), t('projects.default.resolve')].entries()) {
         if (!isCurrent(captured)) return;
@@ -1914,7 +1941,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (type !== 'text' && !asset) { asset = state.assets.find(a => a.mimeType.startsWith(`${type}/`)); if (!asset) { notify(msg(type === 'image' ? 'assets.importImageFirst' : type === 'audio' ? 'assets.importAudioFirst' : 'assets.importVideoFirst'), 'warning'); fileInput.current?.click(); return; } }
     const saved = viewRef.current!.canvas.viewport;
     const location = dropPosition || (workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 });
-    const node = await run('node-create', 'node.create', { projectId: state.project!.id, type, label: type === 'text' ? t('projects.default.note') : asset!.name, ...(type === 'text' ? { text: '' } : { assetId: asset!.id }), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) });
+    const position = chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location);
+    if (state.projectFormatVersion === 5) {
+      const nodeId = globalThis.crypto.randomUUID();
+      const outcome = await format5BoardSession().run({side: 'board', operation: {kind: 'board.node.create',
+        nodeId, nodeType: type as 'image' | 'video' | 'audio' | 'text',
+        name: type === 'text' ? t('projects.default.note') : asset!.name, position,
+        ...(type === 'text' ? {text: ''} : {assetId: asset!.id})}} as never);
+      if (!outcome.ok) { notify(outcome.code, 'error'); return; }
+      await refresh(state.project!.id);
+      if (await inspect(nodeId)) revealCanvas(nodeId);
+      return;
+    }
+    const node = await run('node-create', 'node.create', { projectId: state.project!.id, type, label: type === 'text' ? t('projects.default.note') : asset!.name, ...(type === 'text' ? { text: '' } : { assetId: asset!.id }), position });
     if (node && await inspect((node as {id: string}).id)) revealCanvas((node as {id: string}).id);
   }
   // Previs nodes have their own exact-replay create: one stable requestId,
@@ -2118,13 +2157,42 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   async function saveShot(shotId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> {
     if (referenceWorkBlocked()) return null;
+    if (dataRef.current.projectFormatVersion === 5) {
+      const allowed: Record<string, unknown> = {};
+      for (const key of ['title', 'prompt', 'duration', 'aspectRatio', 'position'] as const) if (patch[key] !== undefined) allowed[key] = patch[key];
+      const outcome = await format5BoardSession().run({side: 'board', operation: {kind: 'board.shot.update',
+        shotId, patch: allowed}} as never);
+      if (!outcome.ok) { notify(outcome.code, 'error'); return null; }
+      await refresh(currentProject.current);
+      return dataRef.current.shots.find(shot => shot.id === shotId) ?? null;
+    }
     return run(`save:${shotId}`, 'shot.update', { shotId, expectedRevision, patch }, msg('projects.shotSaved'), { returnAfterNavigation: true });
   }
-  async function saveNode(nodeId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> { return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, msg('projects.nodeSaved'), { returnAfterNavigation: true }); }
+  async function saveNode(nodeId: string, expectedRevision: number, patch: Record<string, unknown>): Promise<unknown> {
+    if (dataRef.current.projectFormatVersion === 5) {
+      const allowed: Record<string, unknown> = {};
+      if (typeof patch.name === 'string') allowed.name = patch.name;
+      else if (typeof patch.label === 'string') allowed.name = patch.label;
+      if (typeof patch.text === 'string') allowed.text = patch.text;
+      if (patch.position !== undefined) allowed.position = patch.position;
+      const outcome = await format5BoardSession().run({side: 'board', operation: {kind: 'board.node.update',
+        nodeId, patch: allowed}} as never);
+      if (!outcome.ok) { notify(outcome.code, 'error'); return null; }
+      await refresh(currentProject.current);
+      return dataRef.current.nodes.find(node => node.id === nodeId) ?? null;
+    }
+    return run(`save:${nodeId}`, 'node.update', { nodeId, expectedRevision, patch }, msg('projects.nodeSaved'), { returnAfterNavigation: true });
+  }
   async function savePosition(_: React.MouseEvent, node: FlowNode): Promise<void> {
     const snapshot = dataRef.current;
     const record = snapshot.shots.find(s => s.id === node.id) || snapshot.nodes.find(n => n.id === node.id);
-    if (record) await run(`position:${node.id}`, snapshot.shots.some(s => s.id === node.id) ? 'shot.update' : 'node.update', { [snapshot.shots.some(s => s.id === node.id) ? 'shotId' : 'nodeId']: record.id, expectedRevision: record.revision, patch: { position: node.position } });
+    if (record && snapshot.projectFormatVersion === 5) {
+      const outcome = await format5BoardSession().run({side: 'board', operation: snapshot.shots.some(s => s.id === node.id)
+        ? {kind: 'board.shot.update', shotId: record.id, patch: {position: node.position}}
+        : {kind: 'board.node.update', nodeId: record.id, patch: {position: node.position}}} as never);
+      if (!outcome.ok) notify(outcome.code, 'error');
+      else await refresh(currentProject.current);
+    } else if (record) await run(`position:${node.id}`, snapshot.shots.some(s => s.id === node.id) ? 'shot.update' : 'node.update', { [snapshot.shots.some(s => s.id === node.id) ? 'shotId' : 'nodeId']: record.id, expectedRevision: record.revision, patch: { position: node.position } });
     dragging.current = false;
   }
   function referenceWorkBlocked(): boolean {
@@ -3692,6 +3760,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const active = new Set(dataRef.current!.canvasEditBase?.targets.filter(target => target.kind !== 'edge').map(target => target.id));
       if (targets.every(target => active.has(target.id))) applyCanvasCardSelection(new Set(targets.map(target => target.id)), null);
     },
+    format5: () => dataRef.current.projectFormatVersion === 5,
+    sequenceRun: intent => format5BoardSession().run(intent as never),
     onArchived: targets => {
       const removed = new Set(targets.map(target => target.id));
       setCanvasGroup(group => group?.scope === canvasEditingScope ? {

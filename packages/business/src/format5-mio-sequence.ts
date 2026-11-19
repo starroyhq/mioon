@@ -67,6 +67,20 @@ function boardIntent(action: MioSequenceAction): SequenceEditIntent {
       nodeId: randomUUID(), name: action.name, ...(action.position ? {position: action.position} : {})}} as SequenceEditIntent;
     case 'board-layout-move': return {side: 'board', operation: {kind: 'board.layout.move',
       moves: action.moves.map(move => ({nodeId: move.nodeId, x: move.x, y: move.y}))}} as SequenceEditIntent;
+    case 'board-node-create': return {side: 'board', operation: {kind: 'board.node.create',
+      nodeId: randomUUID(), nodeType: action.type, name: action.name, position: action.position,
+      ...(action.assetId === undefined ? {} : {assetId: action.assetId}),
+      ...(action.text === undefined ? {} : {text: action.text})}} as SequenceEditIntent;
+    case 'board-shot-update': return {side: 'board', operation: {kind: 'board.shot.update',
+      shotId: action.shotId, patch: action.patch}} as SequenceEditIntent;
+    case 'board-node-update': return {side: 'board', operation: {kind: 'board.node.update',
+      nodeId: action.nodeId, patch: action.patch}} as SequenceEditIntent;
+    case 'board-archive': return {side: 'board', operation: {kind: 'board.archive',
+      items: action.targets}} as SequenceEditIntent;
+    case 'board-restore': return {side: 'board', operation: {kind: 'board.restore',
+      items: action.targets}} as SequenceEditIntent;
+    case 'board-duplicate': return {side: 'board', operation: {kind: 'board.duplicate',
+      items: action.targets, ...(action.viewport ? {viewport: action.viewport} : {})}} as SequenceEditIntent;
     case 'connect': return {side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId: action.fromId, toId: action.toId}}};
     case 'disconnect': return {side: 'board', operation: {kind: 'board', edit: {kind: 'disconnect', fromId: action.fromId, toId: action.toId}}};
     case 'insert': return {side: 'board', operation: {kind: 'board', edit: {kind: 'insert', fromId: action.fromId, toId: action.toId, nodeId: action.nodeId}}};
@@ -128,7 +142,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   }
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
-  else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move'].includes(action.kind)) request.intents = [boardIntent(action)];
+  else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
+  'board-node-create', 'board-shot-update', 'board-node-update', 'board-archive', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
