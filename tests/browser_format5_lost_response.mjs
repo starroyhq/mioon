@@ -2,8 +2,10 @@
  * real format-5 kernel and the real project service over HTTP, mounts the
  * production session/notice/unconfirmed bar plus the production
  * `createRequestOutcomeClient`, then drives the page with Playwright. The only
- * failure injection is the fixture transport: `lost-after-write` runs the real
- * commit and then destroys the socket, `lost-before-write` destroys it first.
+ * failure injection lives in the fixture acceptance script
+ * (`tests/fixtures/format5-lost-response/acceptance.py`, browser network layer):
+ * `lost-after-write` forwards the real commit via `route.fetch()` and then
+ * aborts the browser response, `lost-before-write` aborts without forwarding.
  * The receipt route always uses the production request-outcome handler. */
 import {createServer} from 'node:http';
 import {mkdtemp, readdir, rm, stat} from 'node:fs/promises';
