@@ -196,6 +196,119 @@ napi_value write(napi_env env,napi_callback_info info){return guarded(env,[&]{au
 });}
 napi_value remove(napi_env env,napi_callback_info info){return guarded(env,[&]{auto values=args(env,info,2);auto opt=options(env,values[0],values[1]);check(!opt.directory);User user;auto tree=walk(opt.path,user,&opt.root,false,false,true,DELETE,opt.maxBytes);if(tree.missing)return undefined(env);FILE_DISPOSITION_INFO disposition{TRUE};check(SetFileInformationByHandle(tree.leaf(),FileDispositionInfo,&disposition,sizeof(disposition)));return undefined(env);});}
 napi_value temporary(napi_env env,napi_callback_info info){return guarded(env,[&]{auto values=args(env,info,2);auto parent=canonical(text(env,values[0]));auto prefix=text(env,values[1]);check(prefix.size()<=80&&std::all_of(prefix.begin(),prefix.end(),[](wchar_t c){return (c>=L'a'&&c<=L'z')||(c>=L'A'&&c<=L'Z')||(c>=L'0'&&c<=L'9')||c==L'.'||c==L'-';}),"INVALID_PATH");User user;auto pinned=walk(parent,user,nullptr,true,false,false,0,0);auto target=canonical(parent.value+L"\\"+randomName(prefix));Security security(user);check(CreateDirectoryW(target.value.c_str(),&security.attributes));auto created=walk(target,user,&target,true,false,false,0,0);napi_value result;check(napi_create_string_utf16(env,reinterpret_cast<const char16_t*>(target.value.data()),target.value.size(),&result)==napi_ok);return result;});}
+
+// Read-only project-location facts. The caller cannot supply a volume handle,
+// filesystem name or sync-root list: only the probed path crosses this
+// boundary and only fixed enums/booleans and the OS filesystem name return.
+#ifndef FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+#define FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000
+#endif
+#ifndef FILE_ATTRIBUTE_RECALL_ON_OPEN
+#define FILE_ATTRIBUTE_RECALL_ON_OPEN 0x00040000
+#endif
+std::string utf8Text(const std::wstring& value){
+  if(value.empty())return {};
+  int size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
+  check(size>0&&size<=1024,"IO_ERROR");std::string result(static_cast<size_t>(size),'\0');
+  check(WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr)==size,"IO_ERROR");
+  return result;
+}
+std::wstring ordinaryPath(std::wstring value){
+  if(value.rfind(L"\\\\?\\UNC\\",0)==0)return L"\\\\"+value.substr(8);
+  if(value.rfind(L"\\\\?\\",0)==0)return value.substr(4);
+  return value;
+}
+std::wstring extendedPath(const std::wstring& value){
+  if(value.rfind(L"\\\\?\\",0)==0)return value;
+  if(value.rfind(L"\\\\",0)==0)return L"\\\\?\\UNC\\"+value.substr(2);
+  return value.size()>=260?L"\\\\?\\"+value:value;
+}
+bool pathUnder(const std::wstring& path,const std::wstring& root){
+  if(root.empty()||path.size()<root.size())return false;
+  if(!equal(path.substr(0,root.size()),root))return false;
+  return path.size()==root.size()||path[root.size()]==L'\\';
+}
+bool underSyncRoot(const std::wstring& path){
+  HKEY manager=nullptr;
+  if(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager",0,KEY_READ|KEY_WOW64_64KEY,&manager)!=ERROR_SUCCESS)return false;
+  struct KeyCloser{HKEY key;~KeyCloser(){if(key)RegCloseKey(key);}} managerCloser{manager};
+  for(DWORD index=0;index<64;index++){
+    wchar_t name[256];DWORD length=256;auto result=RegEnumKeyExW(manager,index,name,&length,nullptr,nullptr,nullptr,nullptr);
+    if(result==ERROR_NO_MORE_ITEMS)break;
+    if(result!=ERROR_SUCCESS||length==0||length>=256)return false;
+    HKEY roots=nullptr;
+    if(RegOpenKeyExW(manager,(std::wstring(name)+L"\\UserSyncRoots").c_str(),0,KEY_READ|KEY_WOW64_64KEY,&roots)!=ERROR_SUCCESS)continue;
+    KeyCloser rootsCloser{roots};
+    for(DWORD valueIndex=0;valueIndex<16;valueIndex++){
+      wchar_t valueName[256];DWORD nameLength=256,type=0,bytes=0;
+      if(RegEnumValueW(roots,valueIndex,valueName,&nameLength,nullptr,&type,nullptr,&bytes)!=ERROR_SUCCESS)break;
+      if((type!=REG_SZ&&type!=REG_EXPAND_SZ)||bytes<sizeof(wchar_t)||bytes>4096)continue;
+      std::vector<BYTE> data(static_cast<size_t>(bytes)+sizeof(wchar_t),0);DWORD dataBytes=bytes;nameLength=256;
+      if(RegQueryValueExW(roots,valueName,nullptr,&type,data.data(),&dataBytes)!=ERROR_SUCCESS)continue;
+      if((type!=REG_SZ&&type!=REG_EXPAND_SZ)||dataBytes<sizeof(wchar_t))continue;
+      std::wstring value(reinterpret_cast<const wchar_t*>(data.data()),dataBytes/sizeof(wchar_t));
+      while(!value.empty()&&value.back()==L'\0')value.pop_back();
+      while(value.size()>3&&value.back()==L'\\')value.pop_back();
+      if(!pathUnder(path,ordinaryPath(value)))continue;
+      return true;
+    }
+  }
+  return false;
+}
+napi_value booleanValue(napi_env env,bool value){napi_value result;check(napi_create_boolean(env,value,&result)==napi_ok);return result;}
+napi_value projectVolumeFacts(napi_env env,napi_callback_info info){return guarded(env,[&]{
+  auto values=args(env,info,1);
+  auto raw=ordinaryPath(text(env,values[0]));
+  check(!raw.empty()&&raw.size()<32760,"INVALID_PATH");
+  for(wchar_t c:raw)check(c>=L' '&&c!=L'\0',"INVALID_PATH");
+  const bool unc=raw.size()>=2&&raw[0]==L'\\'&&raw[1]==L'\\';
+  if(!unc)check(raw.size()>=3&&((raw[0]>=L'A'&&raw[0]<=L'Z')||(raw[0]>=L'a'&&raw[0]<=L'z'))&&raw[1]==L':'&&raw[2]==L'\\',"INVALID_PATH");
+  std::wstring root;
+  wchar_t volumeRoot[32768];
+  if(GetVolumePathNameW(extendedPath(raw).c_str(),volumeRoot,32768))root=volumeRoot;
+  else if(GetVolumePathNameW(raw.c_str(),volumeRoot,32768))root=volumeRoot;
+  else if(unc){auto second=raw.find(L'\\',2);check(second!=std::wstring::npos&&second>2,"INVALID_PATH");root=raw.substr(0,second);}
+  else root=raw.substr(0,3);
+  while(root.size()>3&&root.back()==L'\\')root.pop_back();
+  const UINT drive=GetDriveTypeW((root+(unc?L"\\":L"")).c_str());
+  wchar_t fileSystem[261]{};DWORD serial=0,maximumComponent=0,flags=0;
+  if(root.back()!=L'\\')root+=L'\\';
+  check(GetVolumeInformationW(root.c_str(),nullptr,0,&serial,&maximumComponent,&flags,fileSystem,261)!=0,"IO_ERROR");
+  for(size_t index=0;fileSystem[index];index++)check(fileSystem[index]>=L' ',"IO_ERROR");
+  const bool remote=unc||drive==DRIVE_REMOTE;
+  const bool volumeReadOnly=(flags&FILE_READ_ONLY_VOLUME)!=0||drive==DRIVE_CDROM;
+  const bool permissionBits=(flags&FILE_PERSISTENT_ACLS)!=0;
+  // Walk to the nearest existing ancestor; hydration never happens here.
+  std::wstring probe=extendedPath(raw);DWORD attributes=INVALID_FILE_ATTRIBUTES;
+  for(int attempt=0;attempt<64;attempt++){
+    attributes=GetFileAttributesW(probe.c_str());
+    if(attributes!=INVALID_FILE_ATTRIBUTES)break;
+    auto separator=probe.find_last_of(L'\\');
+    if(separator==std::wstring::npos)break;
+    if(probe.rfind(L"\\\\?\\UNC\\",0)==0){
+      if(separator<=7)break;
+      probe=probe.substr(0,separator);
+    }else if(probe.rfind(L"\\\\?\\",0)==0){
+      if(separator<=5)break;
+      probe=probe.substr(0,separator);
+    }else{
+      if(separator<2)break;
+      probe=probe.substr(0,separator);
+      if(probe.size()==2)probe+=L'\\';
+      if(probe.size()>=260)probe=extendedPath(probe);
+    }
+  }
+  check(attributes!=INVALID_FILE_ATTRIBUTES,"IO_ERROR");
+  const bool placeholder=(attributes&(FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS|FILE_ATTRIBUTE_RECALL_ON_OPEN|FILE_ATTRIBUTE_OFFLINE))!=0;
+  napi_value result;check(napi_create_object(env,&result)==napi_ok);
+  set(env,result,"fileSystem",stringValue(env,utf8Text(fileSystem)));
+  set(env,result,"isLocal",booleanValue(env,!remote));
+  set(env,result,"volumeReadOnly",booleanValue(env,volumeReadOnly));
+  set(env,result,"permissionBits",booleanValue(env,permissionBits));
+  set(env,result,"cloudSyncRoot",booleanValue(env,underSyncRoot(raw)));
+  set(env,result,"placeholder",booleanValue(env,placeholder));
+  return result;
+});}
 #include "managed-io.inc"
 } // namespace
 #endif
@@ -214,7 +327,8 @@ napi_value initialize(napi_env env,napi_value exports){
     {"createManagedDirectory",nullptr,createManagedDirectory,nullptr,nullptr,nullptr,napi_default,nullptr},
     {"syncManagedDirectory",nullptr,syncManagedDirectory,nullptr,nullptr,nullptr,napi_default,nullptr},
     {"renameManaged",nullptr,renameManaged,nullptr,nullptr,nullptr,napi_default,nullptr},
-    {"removeManaged",nullptr,removeManaged,nullptr,nullptr,nullptr,napi_default,nullptr}
+    {"removeManaged",nullptr,removeManaged,nullptr,nullptr,nullptr,napi_default,nullptr},
+    {"projectVolumeFacts",nullptr,projectVolumeFacts,nullptr,nullptr,nullptr,napi_default,nullptr}
   };
   napi_define_properties(env,exports,sizeof(methods)/sizeof(methods[0]),methods);napi_value version;napi_create_int32(env,1,&version);napi_set_named_property(env,exports,"apiVersion",version);
 #else

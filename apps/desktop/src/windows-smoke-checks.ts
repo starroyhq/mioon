@@ -2,9 +2,10 @@
 // is accepted from outside the application; reports contain no local paths.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {access, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {App, BrowserWindow, Session, WebPreferences} from 'electron';
+import {BrowserWindow as BrowserWindowRuntime} from 'electron';
 import {validateManagedFile} from '@mioon/contracts/private-storage';
 import {verifyProjectExampleResources} from '../../../packages/business/src/project-example-resources.ts';
 import {createDesktopSecretCodec} from './secret-store.ts';
@@ -13,6 +14,7 @@ import type {DesktopPaths} from './config.ts';
 import type {BackendReady} from './supervisor.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 import {probeDesktopProjectLocation} from './project-location-probe.ts';
+import {projectLocationDecision} from './project-location-policy.ts';
 
 interface SmokeCheck {name:string;status:'passed'|'blocked';code?:string}
 interface InspectableContents {getLastWebPreferences():WebPreferences|null|undefined}
@@ -34,8 +36,87 @@ const record=(value:unknown):Record<string,unknown>=>{
 export const WINDOWS_SMOKE_PHASES=Object.freeze(['startup','smoke','packaged-development-identity','bundled-utility-node-sqlite',
  'launcher-ui-ready','renderer-sandbox-and-origin','secure-memory-cookie','loopback-rpc-and-anonymous-denial',
  'renderer-network-window-permission-fences','private-discovery-acl','configured-windows-media-tools',
- 'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','write-report'] as const);
+ 'dpapi-app-scoped-roundtrip','packaged-example-resources','native-project-location','native-project-core-flows','write-report'] as const);
 
+interface CoreFlowOptions {app:App;session:Session|null;ready:BackendReady|null;smokeRoot:string;projectId:null}
+const waitUntil=async(check:()=>Promise<boolean>,timeoutMs:number,message:string):Promise<void>=>{
+ const deadline=Date.now()+timeoutMs;
+ while(Date.now()<deadline){if(await check())return;await new Promise(resolve=>setTimeout(resolve,100));}
+ throw new Error(message);
+};
+const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+/** Desktop project core flows over the same loopback API and native bridges the
+ * UI uses. Native location dialogs cannot be automated, so creation uses the
+ * fixed template entry with an explicit retained parent directory; everything
+ * after it (open, close, reopen) goes through the trusted desktop host. */
+async function runProjectCoreFlows({app,session,ready,smokeRoot}:CoreFlowOptions):Promise<void>{
+ assert.ok(session&&ready);
+ const request=async(address:string,operation:string,input:unknown):Promise<unknown>=>{
+  const response=await session.fetch(new URL(address,ready.url).href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,input})});
+  const payload=record(await response.json());
+  if(!response.ok||payload.ok!==true)throw new Error('Windows project core flow request failed');
+  return payload.data;
+ };
+ const projectAddress=(projectId:string)=>`/api/projects/${projectId}/rpc`;
+ const createdAt=record(await request('/api/rpc','project.template.instantiate',{templateId:'timeline-basics',templateVersion:1,parentDir:smokeRoot,name:'W2 Smoke',requestId:randomUUID()}));
+ const project=record(createdAt.project),projectId=String(project.projectId),projectFile=String(project.projectFile);
+ assert.ok(/^[0-9a-f-]{36}$/u.test(projectId));assert.equal(path.basename(projectFile),'W2 Smoke.mioon');assert.equal(path.dirname(projectFile),path.join(smokeRoot,'W2 Smoke'));
+ assert.equal(record(record(await request(projectAddress(projectId),'project.get',{projectId})).project).name,'W2 Smoke');
+ await access(projectFile);
+ const renamed=record(await request('/api/rpc','project.rename',{requestId:randomUUID(),projectId,
+  expectedRevision:Number(record(record(await request(projectAddress(projectId),'project.get',{projectId})).project).revision),name:'W2 Smoke Renamed'}));
+ assert.equal(renamed.name,'W2 Smoke Renamed');
+ const example=path.join(process.resourcesPath,'examples','timeline-basics','media','overlay-star.png');
+ const image=await readFile(example);
+ const asset=record(await request(projectAddress(projectId),'asset.import',{projectId,name:'smoke-import.png',mimeType:'image/png',dataBase64:image.toString('base64')}));
+ assert.equal(asset.name,'smoke-import.png');assert.equal(asset.mimeType,'image/png');
+ const state=record(await request(projectAddress(projectId),'project.get',{projectId}));
+ const timeline=record(state.timeline),exportIdValue=record(await request(projectAddress(projectId),'timeline.render',{projectId,
+  expectedRevision:Number(timeline.revision),requestId:randomUUID(),purpose:'export',exportRange:{startFrame:0,endFrame:60}}));
+ const exportId=String(exportIdValue.id);
+ assert.ok(/^[0-9a-f-]{36}$/u.test(exportId));
+ const deadline=Date.now()+180000;
+ for(;;){
+  const activity=record(await request(projectAddress(projectId),'export.activity.get',{projectId,exportId}));
+  const stage=String(activity.stage);
+  if(stage==='complete')break;
+  if(stage==='failed'||stage==='cancelled')throw new Error('Windows project export did not complete');
+  if(Date.now()>deadline)throw new Error('Windows project export timed out');
+  await sleep(500);
+ }
+ const output=record(await request(projectAddress(projectId),'export.output.get',{projectId,exportId}));
+ const outputFile=String(output.fileLocation),outputSize=Number(output.sizeBytes);
+ assert.ok(path.isAbsolute(outputFile));assert.ok(Number.isSafeInteger(outputSize)&&outputSize>1024);
+ assert.equal((await stat(outputFile)).size,outputSize);assert.match(String(output.sha256),/^[0-9a-f]{64}$/u);
+ const bridgeOpen=async():Promise<BrowserWindow>=>{
+  const launcher=getWindowForSmoke(app);assert.ok(launcher&&!launcher.isDestroyed());
+  const result=record(await launcher.webContents.executeJavaScript(`(async()=>{const recent=await window.__mioonProjectEntries.listRecent();
+   const entry=recent.registered.find(value=>value.project.projectId===${JSON.stringify(projectId)});if(!entry)return {status:'missing'};
+   const opened=await window.__mioonProjectEntries.openRecent({projectId:${JSON.stringify(projectId)},remember:false,entryToken:crypto.randomUUID()});
+   return {status:opened.status,projectId:opened.projectId??null};})()`,true));
+  assert.equal(result.status,'opened');assert.equal(result.projectId,projectId);
+  const expectedUrl=new URL(`/?project=${projectId}`,ready.url).href;
+  await waitUntil(async()=>BrowserWindowRuntime.getAllWindows().some(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl),30000,'The project window did not open');
+  const editor=BrowserWindowRuntime.getAllWindows().find(window=>!window.isDestroyed()&&window.webContents.getURL()===expectedUrl)!;
+  await waitUntil(async()=>Boolean(await editor.webContents.executeJavaScript(`Boolean(document.querySelector('[data-testid="workbench"]'))`,true).catch(()=>false)),60000,'The project workbench did not become ready');
+  return editor;
+ };
+ const closeEditor=async(editor:BrowserWindow):Promise<void>=>{const closed=new Promise<void>(resolve=>{if(editor.isDestroyed())return resolve();editor.once('closed',()=>resolve());});editor.close();await closed;};
+ let editor=await bridgeOpen();
+ await closeEditor(editor);
+ editor=await bridgeOpen();
+ await closeEditor(editor);
+ clearSmokeWorkspace(projectFile);
+}
+function getWindowForSmoke(app:App):BrowserWindow|null{
+ const windows=BrowserWindowRuntime.getAllWindows().filter(window=>!window.isDestroyed());
+ return windows.find(window=>window.webContents.getURL().endsWith('/'))??windows[0]??null;
+}
+function clearSmokeWorkspace(projectFile:string):void{
+ // The desktop window has closed; the surrounding disposable Documents folder
+ // is removed by the caller, never a user-chosen project.
+ try{void rm(path.dirname(projectFile),{recursive:true,force:true});}catch{/* Best effort after a passing flow. */}
+}
 /** The hard gate is packaged launch/security, not complete Windows support.
  * Unavailable project and live-provider flows remain explicit blocked entries.
  * Progress and failure evidence contain fixed names only; never raw errors. */
@@ -128,15 +209,33 @@ export async function runWindowsSmoke({app,getWindow,getSession,getReady,paths,r
   verifyProjectExampleResources(path.join(process.resourcesPath,'examples'));
   passed('packaged-example-resources');
   await mark('native-project-location');
-  let locationAvailable=false;
+  // Real volume facts for the actual project location used by the core flows.
+  const documents=app.getPath('documents'),smokeRoot=path.join(documents,'Mioon Windows Smoke '+randomUUID());
+  await mkdir(smokeRoot,{recursive:false});
   try{
-   await probeDesktopProjectLocation({path:paths.userData,purpose:'create',isDirectory:true});
-   locationAvailable=true;passed('native-project-location');
+   const facts=await probeDesktopProjectLocation({path:smokeRoot,purpose:'create',isDirectory:true});
+   assert.equal(facts.fileSystem.toLowerCase(),'ntfs');
+   assert.equal(facts.isLocal,true);assert.equal(facts.volumeReadOnly,false);assert.equal(facts.permissionBits,true);
+   assert.equal(facts.cloud,'not-reported');
+   assert.deepEqual(projectLocationDecision(facts),{kind:'admit'});
+   // Windows path details are rejected by the same probe before any file work.
+   for(const [file,reason] of [[path.join(smokeRoot,'CON'),'reserved-name'],[path.join(smokeRoot,'trailing.'),'trailing-dot-or-space'],
+    [path.join(smokeRoot,'bad<name'),'invalid-character'],['\\.\pipe\mioon','device-path']] as const){
+    await probeDesktopProjectLocation({path:file,purpose:'create',isDirectory:false}).then(()=>assert.fail('malformed project path was accepted'),
+     error=>{const value=record(error);assert.equal(value.code,'PROJECT_LOCATION_INVALID');assert.equal(record(value.details).reason,reason);});
+   }
+   const network=await probeDesktopProjectLocation({path:path.join(smokeRoot,'film.mioon'),purpose:'open',isDirectory:false},{
+    readWindowsVolume:async()=>({fileSystem:'SMB',isLocal:false,volumeReadOnly:false,permissionBits:true,cloudSyncRoot:false,placeholder:false})});
+   assert.deepEqual(projectLocationDecision(network),{kind:'reject'});
+   passed('native-project-location');
   }catch(error){
-   assert.equal(record(error).code,'PROJECT_LOCATION_INVALID');
-   blocked('native-project-location','PROJECT_LOCATION_INVALID');
+   try{await rm(smokeRoot,{recursive:true,force:true});}catch{/* Best effort only after a failed probe. */}
+   throw error;
   }
-  blocked('native-project-core-flows',locationAvailable?'WINDOWS_PROJECT_CORE_FLOWS_NOT_VERIFIED':'WINDOWS_PROJECT_LOCATION_UNAVAILABLE');
+  await mark('native-project-core-flows');
+  await runProjectCoreFlows({app,session:getSession(),ready:getReady(),smokeRoot,projectId:null});
+  passed('native-project-core-flows');
+  try{await rm(smokeRoot,{recursive:true,force:true});}catch{/* The runner is disposable; cleanup never hides a passing flow. */}
   blocked('live-mio-and-generation','LIVE_CREDENTIALS_NOT_CONFIGURED');
   await mark('write-report');
   await mkdir(path.dirname(output),{recursive:true});

@@ -24,11 +24,10 @@ function metadata() {
 }
 const names = ['packaged-development-identity', 'bundled-utility-node-sqlite', 'renderer-sandbox-and-origin', 'secure-memory-cookie',
   'loopback-rpc-and-anonymous-denial', 'renderer-network-window-permission-fences', 'private-discovery-acl',
-  'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'launcher-ui-ready'];
+  'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'launcher-ui-ready',
+  'native-project-location', 'native-project-core-flows'];
 function report() {
   const checks: Array<{name: string; status: string; code?: string}> = [...names.map(name => ({name, status: 'passed'})),
-    {name: 'native-project-location', status: 'blocked', code: 'PROJECT_LOCATION_INVALID'},
-    {name: 'native-project-core-flows', status: 'blocked', code: 'WINDOWS_PROJECT_LOCATION_UNAVAILABLE'},
     {name: 'live-mio-and-generation', status: 'blocked', code: 'LIVE_CREDENTIALS_NOT_CONFIGURED'}];
   return {schemaVersion: 1, scope: 'windows-development-launch', ok: true, channel: 'development', platform: 'win32', arch: 'x64',
     isPackaged: true, appVersion: '0.2.0', runtime: {node: '24.21.0', electron: '44.7.0'},
@@ -180,16 +179,17 @@ test('embedded ASAR identity is bounded and refuses production, unknown identiti
   assert.equal(result.ok, false); assert.equal(absent.calls.length, 0);
 });
 
-test('report validation requires all eleven hard checks and preserves known blocked work as blocked', () => {
+test('report validation requires all thirteen hard checks and preserves the live-provider block', () => {
   const value = report(), validated = validateWindowsLaunchReport(value, expected);
   assert.deepEqual(validated, value); assert.notEqual(validated, value); assert.notEqual(validated.runtime, value.runtime);
-  assert.equal(validated.checks.filter(check => check.status === 'passed').length, 11);
-  assert.deepEqual(validated.checks.filter(check => check.status === 'blocked').map(check => check.code),
-    ['PROJECT_LOCATION_INVALID', 'WINDOWS_PROJECT_LOCATION_UNAVAILABLE', 'LIVE_CREDENTIALS_NOT_CONFIGURED']);
-  const probePassed = report();
-  probePassed.checks[11] = {name: 'native-project-location', status: 'passed'};
-  probePassed.checks[12].code = 'WINDOWS_PROJECT_CORE_FLOWS_NOT_VERIFIED';
-  assert.equal(validateWindowsLaunchReport(probePassed, expected).checks[11].status, 'passed');
+  assert.equal(validated.checks.filter(check => check.status === 'passed').length, 13);
+  assert.deepEqual(validated.checks.filter(check => check.status === 'blocked').map(check => check.code), ['LIVE_CREDENTIALS_NOT_CONFIGURED']);
+  // Both former known blockers are hard gates now: a passing report cannot omit
+  // either, and a blocked shape for them is no longer an accepted report.
+  const missing = report(); missing.checks = missing.checks.filter(check => check.name !== 'native-project-core-flows');
+  assert.throws(() => validateWindowsLaunchReport(missing, expected), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_REPORT_INVALID');
+  const blockedAgain = report(); blockedAgain.checks[12] = {name: 'native-project-core-flows', status: 'blocked', code: 'WINDOWS_PROJECT_LOCATION_UNAVAILABLE'};
+  assert.throws(() => validateWindowsLaunchReport(blockedAgain, expected), error => smokeFailureCode(error) === 'WINDOWS_SMOKE_REPORT_INVALID');
 });
 
 test('foreign identity, partial or duplicate checks, secrets, unknown fields, arbitrary codes and forged passing blockers are rejected', () => {

@@ -14,11 +14,9 @@ const requiredChecks = [
   'packaged-development-identity', 'bundled-utility-node-sqlite', 'renderer-sandbox-and-origin',
   'secure-memory-cookie', 'loopback-rpc-and-anonymous-denial', 'renderer-network-window-permission-fences',
   'private-discovery-acl', 'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip',
-  'packaged-example-resources', 'launcher-ui-ready',
+  'packaged-example-resources', 'launcher-ui-ready', 'native-project-location', 'native-project-core-flows',
 ] as const;
 const blockedCodes: Readonly<Record<string, readonly string[]>> = {
-  'native-project-location': ['PROJECT_LOCATION_INVALID'],
-  'native-project-core-flows': ['WINDOWS_PROJECT_LOCATION_UNAVAILABLE', 'WINDOWS_PROJECT_CORE_FLOWS_NOT_VERIFIED'],
   'live-mio-and-generation': ['LIVE_CREDENTIALS_NOT_CONFIGURED'],
 };
 const failureCodes = [
@@ -49,7 +47,8 @@ interface FailureReport {schemaVersion: 1; scope: 'windows-development-launch'; 
 export const WINDOWS_SMOKE_PHASES: readonly string[] = Object.freeze(['startup', 'smoke', 'packaged-development-identity',
   'bundled-utility-node-sqlite', 'launcher-ui-ready', 'renderer-sandbox-and-origin', 'secure-memory-cookie',
   'loopback-rpc-and-anonymous-denial', 'renderer-network-window-permission-fences', 'private-discovery-acl',
-  'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'native-project-location', 'write-report']);
+  'configured-windows-media-tools', 'dpapi-app-scoped-roundtrip', 'packaged-example-resources', 'native-project-location',
+  'native-project-core-flows', 'write-report']);
 const fixedName = (value: unknown, keys: readonly string[]): string | undefined => {
   if (!record(value) || !exactKeys(value, keys) || value.schemaVersion !== 1 || value.scope !== 'windows-development-launch') return undefined;
   const name = value[keys[keys.length - 1]!];
@@ -112,7 +111,7 @@ export function validateWindowsLaunchReport(value: unknown, expected: {appVersio
     if (!record(item) || typeof item.name !== 'string' || seen.has(item.name)) fail('WINDOWS_SMOKE_REPORT_INVALID');
     const required = requiredChecks.some(name => name === item.name), optional = Object.hasOwn(blockedCodes, item.name);
     if (!required && !optional) fail('WINDOWS_SMOKE_REPORT_INVALID');
-    if (item.status === 'passed' && (required || item.name === 'native-project-location') && exactKeys(item, ['name', 'status'])) checks.push({name: item.name, status: 'passed'});
+    if (item.status === 'passed' && required && exactKeys(item, ['name', 'status'])) checks.push({name: item.name, status: 'passed'});
     else if (item.status === 'blocked' && optional && exactKeys(item, ['name', 'status', 'code']) && typeof item.code === 'string' && blockedCodes[item.name].includes(item.code)) checks.push({name: item.name, status: 'blocked', code: item.code});
     else fail('WINDOWS_SMOKE_REPORT_INVALID');
     seen.add(item.name);

@@ -31,6 +31,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
+import { createWindowsProjectVolumeReader } from '../../../packages/node-host/src/windows-project-volume.ts';
 import type {DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
 import desktopIdentity from '../identity.ts';
 import { BackendSupervisor } from './supervisor.ts';
@@ -79,7 +80,8 @@ import { createProjectEntryDesktopHost } from './project-entry-desktop-host.ts';
 import type {ProjectEntryDesktopOwner,ProjectEntryLocationAdmission} from './project-entry-desktop-host.ts';
 import { PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT } from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
-import { probeDesktopProjectLocation } from './project-location-probe.ts';
+import { configureDesktopWindowsProjectVolume, probeDesktopProjectLocation } from './project-location-probe.ts';
+import { projectLocationDecision } from './project-location-policy.ts';
 import {createProjectLocationHelp} from './project-location-help.ts';
 import {createAssetRelinkHost} from './asset-relink-host.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../../../packages/contracts/src/asset-media-native.ts';
@@ -179,7 +181,16 @@ if (productionChannelRejected) {
     app.commandLine.appendSwitch('class', identity.appId);
   }
   // Register the shipped Windows ACL helper before any storage access.
-  try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
+  try {
+    const nativeStorage = initializeDesktopPrivateStorage(privateStorageHelperFile(app));
+    // The shipped helper also answers read-only volume facts for project
+    // location admission. A helper without that reviewed entry keeps the
+    // project-location probe closed rather than guessing from path strings.
+    if (nativeStorage && process.platform === 'win32' && typeof nativeStorage.projectVolumeFacts === 'function') {
+      configureDesktopWindowsProjectVolume(createWindowsProjectVolumeReader(nativeStorage));
+    }
+    paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel);
+  }
   catch (error) { startupStorageError = error; }
 }
 const appearanceCache = !startupStorageError ? createDesktopAppearanceCache({root:paths.userData,dataRoot:paths.dataDir,appId:identity.appId,channel:identity.channel}) : null;
@@ -777,9 +788,10 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     };
     const admit=async(owner:ProjectEntryDesktopOwner<BrowserWindow>,facts:ProjectLocationFacts):Promise<boolean>=>{
       if(!owner.isCurrent())return false;
-      if(!facts.isLocal||facts.volumeReadOnly){await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationRejected'),buttons:[nt('native.acknowledge')]});return false;}
-      if(facts.cloud==='known-icloud'||facts.cloud==='known-file-provider'||!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'){
-        const detail=[facts.cloud==='known-icloud'?nt('native.projectLocationICloud'):facts.cloud==='known-file-provider'?nt('native.projectLocationSync'):null,!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'?nt('native.projectLocationPermissions'):null].filter(Boolean).join('\n\n');
+      const decision=projectLocationDecision(facts);
+      if(decision.kind==='reject'){await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationRejected'),buttons:[nt('native.acknowledge')]});return false;}
+      if(decision.kind==='warning'){
+        const detail=[decision.cloud?(facts.cloud==='known-icloud'?nt('native.projectLocationICloud'):nt('native.projectLocationSync')):null,decision.permissions?nt('native.projectLocationPermissions'):null].filter(Boolean).join('\n\n');
         await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationWarning'),detail,buttons:[nt('native.acknowledge')]});return owner.isCurrent();
       }
       return true;
