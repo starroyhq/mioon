@@ -26,6 +26,7 @@ export const MIO_DEFERRED_OPERATIONS=Object.freeze({
  'sequence.preview':'UI-E2 的格式5剪辑接线入口，等 MT 卡定义受信工具后开放',
  'sequence.commit':'UI-E2 的格式5剪辑提交入口，等 MT 卡定义受信工具后开放',
  'sequence.history.get':'统一历史读取，等 MT 卡定义有界只读工具后开放',
+ 'sequence.board.get':'画板只读投影，等 MT 卡定义有界只读工具后开放',
  'sequence.undo':'等 MT 卡确定统一历史与Mio动作撤销边界后开放',
  'sequence.redo':'等 MT 卡确定统一历史与Mio动作重做边界后开放',
  'timeline.redo':'等 P5 确定画板与剪辑统一撤销，本卡不开放',

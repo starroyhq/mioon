@@ -44,20 +44,21 @@ export function BoardFloatingLabel() {
   return <span className="board-floating-label" data-testid="board-floating-label">{t('boardUi.floating')}</span>;
 }
 
-export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLocateNode, onAddShot}: {
+export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLocateNode, onAddShot, synced = true}: {
   film: Film;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedNodeId?: string | null;
   onLocateNode: (nodeId: string) => void;
   onAddShot: () => void;
+  synced?: boolean;
 }) {
   const {t, formatNumber} = useI18n();
   const durationLabel = useBoardDuration();
   const listId = useId();
   return <section className="board-film-strip" data-testid="board-film-strip" aria-label={film.name}>
     <header><strong>{film.name}</strong><span>{t('boardUi.shotCount', {count: film.shotCount})}</span><span>·</span>
-      <span>{durationLabel(film.durationFrames)}</span><span>·</span><span>{t('boardUi.synced')}</span>
+      <span>{durationLabel(film.durationFrames)}</span><span>·</span><span data-testid="board-film-sync" data-synced={synced ? 'true' : 'false'}>{t(synced ? 'boardUi.synced' : 'boardUi.outOfSync')}</span>
       <button type="button" className="board-strip-toggle" data-testid="board-film-strip-toggle" aria-expanded={open} aria-controls={listId}
         aria-label={t(open ? 'boardUi.collapse' : 'boardUi.expand')} title={t(open ? 'boardUi.collapse' : 'boardUi.expand')} onClick={() => onOpenChange(!open)}>
         <span aria-hidden="true">{open ? '⌄' : '⌃'}</span>

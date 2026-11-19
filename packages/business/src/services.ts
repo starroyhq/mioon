@@ -716,6 +716,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...sequenceInspection.handlers,
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
+  'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
   ...references.handlers,
   ...localMutations.handlers,
   ...projectHome.handlers,

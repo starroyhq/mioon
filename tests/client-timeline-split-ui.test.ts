@@ -74,7 +74,7 @@ test('shared split button renders accessible target, frame, shortcut and disable
  assert.match(execFileSync(process.execPath,['--input-type=module'],{env: testEnv(), input:script,cwd:root,encoding:'utf8',timeout:30000}),/verified/);
 });
 test('App rechecks current view and current aggregate before the shared durable mutation',()=>{
- const app=readFileSync(path.join(root,'apps/web/src/App.tsx'),'utf8');assert.match(app,/selectedClipId: propertiesPage === 'subtitle' \? null : viewRef\.current!\.editing\.selectedClipId, playhead: playbackClock\.getSnapshot\(\) \?\? timelineAudioPreviewPosition\(audioPreview, viewRef\.current!\.editing\.playhead\), mode: viewRef\.current!\.activeMode/);assert.match(app,/if \(!latest\.canSplit\) return null/);assert.match(app,/mutateTimeline\('timeline\.clip\.split', \{ clipId: latest\.clipId, atFrame: latest\.atFrame \}\)/);assert.match(app,/if \(viewRef\.current!\.activeMode !== 'editing'\) return/);
+ const app=readFileSync(path.join(root,'apps/web/src/App.tsx'),'utf8');assert.match(app,/selectedClipId: propertiesPage === 'subtitle' \? null : viewRef\.current!\.editing\.selectedClipId, playhead: playbackClock\.getSnapshot\(\) \?\? timelineAudioPreviewPosition\(audioPreview, viewRef\.current!\.editing\.playhead\), mode: viewRef\.current!\.activeMode/);assert.match(app,/if \(!latest\.canSplit\) return null/);assert.match(app,/mutateTimeline\('timeline\.clip\.split', \{ clipId: latest\.clipId, atFrame: latest\.atFrame \}\)/);assert.match(app,/const boardHistory = mode === 'canvas' && dataRef\.current\?\.projectFormatVersion === 5/);assert.match(app,/if \(mode !== 'editing' && !boardHistory\) return/);
 });
 
 

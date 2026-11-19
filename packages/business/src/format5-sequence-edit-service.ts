@@ -10,8 +10,8 @@
  */
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
-import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditHistoryCursor, SequenceEditIntent,
-  SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditHistoryCursor, SequenceEditImpact,
+  SequenceEditIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
 import {isSequenceEditEnvelope} from '../../contracts/src/sequence-edit.ts';
 import {sequenceEditInputDigest} from './format5-editor-history.ts';
 import type {SequenceSyncCommand} from '../../contracts/src/sequence-sync.ts';
@@ -19,9 +19,9 @@ import {sequenceEditIntentPayloadSchema} from '../../contracts/src/sequence-edit
 import {assertProjectStore} from './store-runtime.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {
-  applySequenceEdit, createSequenceEditing, planSequenceEditIntents, readSequenceEditContext,
+  applySequenceEdit, createSequenceEditing, planSequenceEditIntents, previewSequenceBoardAction, readSequenceEditContext,
 } from './sequence-edit.ts';
-import {previewSequenceSync, runSequenceSync} from './format5-sequence-sync.ts';
+import {previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './format5-sequence-sync.ts';
 import {
   buildSubjectBindingEnvelope, planSubjectBindingAction,
 } from './format5-subject-binding.ts';
@@ -30,6 +30,8 @@ import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
+import {isBoardIntentOperation} from '../../contracts/src/sequence-edit.ts';
 
 type Row = Record<string, any>;
 const uuid = (value: unknown): value is string => typeof value === 'string' &&
@@ -91,7 +93,8 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
 }
 const timelineIntent = (intent: SequenceEditIntent): boolean =>
   intent.operation.kind === 'track' || intent.operation.kind === 'sync-board' || intent.operation.kind === 'board-version';
-const boardIntent = (intent: SequenceEditIntent): boolean => intent.operation.kind === 'board';
+const boardIntent = (intent: SequenceEditIntent): boolean => intent.operation.kind === 'board'
+  || isBoardIntentOperation(intent.operation);
 
 function subjectCommand(intent: SequenceEditSubjectIntent): {
   readonly kind: 'create' | 'set-mode' | 'detach' | 'restore'; readonly bindingId: string;
@@ -115,6 +118,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
   preview(input: any): unknown;
   commit(input: any): unknown;
   history(input: {projectId: string}): unknown;
+  board(input: {projectId: string}): unknown;
   undo(input: any): unknown;
   redo(input: any): unknown;
 } {
@@ -150,36 +154,21 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
 
   function boardPreview(input: any, intents: SequenceEditIntent[]): unknown {
     const context = readSequenceEditContext(store as never);
-    const allocation = allocationOf(input);
     const state = historyState(store);
     const content = readProjectContentStamp(store.db).contentSequence;
-    const planned = planSequenceEditIntents({
-      board: context.board, filmId: context.rootNodeId, media: context.media, clips: context.clips,
-      anchored: context.anchored,
-    } as never, intents, allocation as never);
-    if (!('ok' in planned) || planned.ok === false) return failure(String((planned as any).code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID'),
-      ((planned as any).ids as string[]) ?? []);
-    const plan = planned.plan as any;
-    const impact = {
-      nodeIds: [...new Set<any>([...plan.changes.nodes.map((change: any) => change.after?.id ?? change.before?.id),
-        ...plan.changes.media.map((change: any) => change.after?.nodeId ?? change.before?.nodeId)].filter(uuid))],
-      edgeIds: [...new Set<any>(plan.changes.edges.map((change: any) => change.after?.fromId ?? change.before?.fromId).filter(uuid))],
-      mainTrackClipIds: [...new Set<any>(plan.changes.clips.map((change: any) => change.after?.id ?? change.before?.id).filter(uuid))],
-      otherTrackItemIds: [...new Set<any>(plan.changes.anchored.map((change: any) => change.after?.id ?? change.before?.id).filter(uuid))],
-      subtitleCueIds: [],
-    };
-    const originSide = intents[0]!.side;
+    const prepared = previewSequenceBoardAction(store, intents, allocationOf(input));
+    if (prepared.ok === false) return failure(prepared.code, prepared.ids);
     const envelope: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
-      actionId: input.actionId ?? randomUUID(), requestId: input.requestId, originSide,
+      actionId: input.actionId ?? randomUUID(), requestId: input.requestId, originSide: intents[0]!.side,
       filmId: context.rootNodeId, intents, ...(input.origin ? {origin: input.origin} : {}),
       baseline: {contentRevision: content, timelineRevision: context.timeline.revision,
         syncRevision: context.syncRevision, historyPosition: state.position,
         historyRevision: state.revision, targets: []},
-      impact, allocation,
+      impact: prepared.impact, allocation: prepared.allocation,
     };
     if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
-    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: prepared.warnings};
   }
 
   function preview(input: any): unknown {
@@ -234,9 +223,40 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     requireFormat5(store);
     return coordinator.call('sequence.history.get', input);
   }
+  function board(input: {projectId: string}): unknown {
+    projectCheck(store, input.projectId);
+    requireFormat5(store);
+    const context = readSequenceSyncContext(store);
+    const chain = deriveFilmChains(context.board).chains.find(item => item.filmId === context.rootNodeId);
+    const chainNodeIds = chain?.nodeIds ?? [];
+    const mainTrackId = context.timeline.mainTrack.trackId;
+    const trackNodeIds: string[] = [];
+    for (const clip of [...context.timeline.clips].filter(item => item.trackId === mainTrackId)
+      .sort((left, right) => left.startFrame - right.startFrame || left.id.localeCompare(right.id))) {
+      const nodeId = clip.sequenceSource?.nodeId;
+      if (typeof nodeId === 'string' && trackNodeIds.at(-1) !== nodeId) trackNodeIds.push(nodeId);
+    }
+    const positionOf = (row: Row | undefined): {x: number; y: number} | null => {
+      const value = row?.position;
+      return value !== null && typeof value === 'object' && Number.isFinite((value as Row).x) && Number.isFinite((value as Row).y)
+        ? {x: Number((value as Row).x), y: Number((value as Row).y)} : null;
+    };
+    const nameOf = (row: Row, kind: 'shot' | 'node'): string => {
+      const value = kind === 'shot' ? row.title : row.name ?? row.label ?? row.text;
+      return typeof value === 'string' && value ? value : kind === 'shot' ? 'Shot' : 'Node';
+    };
+    const archived = [
+      ...[...context.archivedShots].map(([id, row]) => ({id, kind: 'shot' as const, name: nameOf(row, 'shot'), position: positionOf(row)})),
+      ...[...context.archivedNodes].map(([id, row]) => ({id, kind: 'node' as const, name: nameOf(row, 'node'), position: positionOf(row)})),
+    ].sort((left, right) => left.id.localeCompare(right.id));
+    return {projectId: store.projectId, timelineRevision: context.timeline.revision,
+      syncRevision: context.syncRevision,
+      inSync: chainNodeIds.length === trackNodeIds.length && chainNodeIds.every((id, index) => id === trackNodeIds[index]),
+      archived};
+  }
   function undo(input: any): unknown { return coordinator.call('sequence.undo', input); }
   function redo(input: any): unknown { return coordinator.call('sequence.redo', input); }
-  return {preview, commit, history, undo, redo};
+  return {preview, commit, history, board, undo, redo};
 }
 
 /** Read-only projection for UI-B2/UI-E2 mounting. */

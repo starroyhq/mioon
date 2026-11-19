@@ -3,20 +3,22 @@ import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
+import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {ChainSyncBaseline, TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
 import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import {format5SyncBaselineSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {
-  applySequenceEditBaselineChange, isSequenceEditIntentSequence, sequenceEditEnvelopeOperationName, sequenceEditOperationName,
+  applySequenceEditBaselineChange, isBoardIntentOperation, isSequenceEditIntentSequence, sequenceEditEnvelopeOperationName,
+  sequenceEditOperationName,
 } from '../../contracts/src/sequence-edit.ts';
 import type {
   BoardSeamProjectionPort, SequenceEditAffectedCounts, SequenceEditAllocation, SequenceEditBaselineChange,
   SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope, SequenceEditHistoryCommand,
   SequenceEditHistoryEntry, SequenceEditHistoryView, SequenceEditIntent, SequenceEditPatch, SequenceEditReceipt,
   SequenceEditStateDelta, SequenceEditTimelineDelta, SequenceEditTimelineCommit, SequenceEditTransactionFailure,
-  SequenceEditTransactionRequest,
+  SequenceEditTransactionRequest, BoardIntentOperation,
 } from '../../contracts/src/sequence-edit.ts';
 import {
   isSequenceEditingOperation, isSequenceEditingWrite, sequenceEditingResponses, sequenceEditingSchemas,
@@ -201,11 +203,12 @@ const planChanged = (plan: SuccessfulPlan): boolean => plan.changes.nodes.length
 const planTimelineChanged = (plan: SuccessfulPlan): boolean =>
   plan.changes.clips.length + plan.changes.anchored.length + plan.changes.media.length > 0;
 
-function referencedNodeIds(envelope: SequenceEditEnvelope): Set<string> {
+function referencedNodeIds(envelope: {readonly intents: readonly SequenceEditIntent[]}): Set<string> {
   const ids = new Set<string>();
   const add = (value: unknown): void => {if (isUuid(value)) ids.add(value);};
   for (const intent of envelope.intents) {
     const operation = intent.operation;
+    if (isBoardIntentOperation(operation)) continue;
     if (operation.kind === 'board') {
       if (operation.edit.kind === 'delete') add(operation.edit.nodeId);
       else {add(operation.edit.fromId); add(operation.edit.toId);}
@@ -220,7 +223,7 @@ function referencedNodeIds(envelope: SequenceEditEnvelope): Set<string> {
   return ids;
 }
 
-function validateOperation(intent: {readonly operation: ChainSyncOperation}): void {
+function validateOperation(intent: {readonly operation: SequenceEditIntent['operation']}): void {
   const parsed = sequenceEditOperationSchema.safeParse(intent.operation);
   if (!parsed.success) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '画板顺序链操作参数无效。', [], {issues: parsed.error.issues});
 }
@@ -242,6 +245,9 @@ export function planSequenceEditIntents(state: ChainSyncState, intents: readonly
   let current = state;
   let finalPlan: SuccessfulPlan | undefined;
   for (const intent of intents) {
+    if (isBoardIntentOperation(intent.operation)) {
+      return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: []};
+    }
     const plan = planChainSync(current, withAllocation(intent.operation, allocation));
     if (!plan.ok) {
       const ids: string[] = [];
@@ -253,6 +259,202 @@ export function planSequenceEditIntents(state: ChainSyncState, intents: readonly
     finalPlan = plan;
   }
   return {ok: true, plan: finalPlan!, state: current};
+}
+
+
+// ---------------------------------------------------------------------------
+// UI-B2 board-only intents: root creation, chain-tail shot append, layout move
+// ---------------------------------------------------------------------------
+
+export interface BoardCreationRows {
+  readonly shots: ReadonlyMap<string, Row>;
+  readonly nodes: ReadonlyMap<string, Row>;
+  readonly media: readonly ChainSyncMedia[];
+  readonly chainNodes: readonly ChainNode[];
+}
+export interface BoardLayoutMove {readonly nodeId: string; readonly position: {readonly x: number; readonly y: number}}
+export interface BoardActionPreparation {
+  readonly restored: ReadonlyMap<string, Row>;
+  readonly created: BoardCreationRows;
+  readonly layoutMoves: readonly BoardLayoutMove[];
+  readonly planIntents: readonly SequenceEditIntent[];
+  /** Allocation including ids this preview had to allocate for new rows. */
+  readonly allocation: SequenceEditAllocation;
+}
+type MutableAllocation = {clips: {nodeId: string; clipId: string}[]; nodes: {fromNodeId: string; nodeId: string}[];
+  splitClips: {clipId: string; rightClipId: string}[]; edges: {id: string; fromId: string; toId: string}[]};
+const cloneAllocation = (allocation: SequenceEditAllocation): MutableAllocation => ({
+  clips: [...allocation.clips], nodes: [...allocation.nodes], splitClips: [...allocation.splitClips], edges: [...allocation.edges],
+});
+const rowPosition = (row: Row | undefined): {x: number; y: number} => {
+  const value = row?.position;
+  return value !== null && typeof value === 'object' && Number.isFinite((value as Row).x) && Number.isFinite((value as Row).y)
+    ? {x: Number((value as Row).x), y: Number((value as Row).y)} : {x: 0, y: 0};
+};
+function activeFilmTail(board: ChainBoard, filmId: string): string {
+  const chain = deriveFilmChains(board).chains.find(item => item.filmId === filmId);
+  const nodes = chain?.nodeIds ?? [];
+  return nodes.length ? nodes[nodes.length - 1]! : filmId;
+}
+function boardIntentPreparation(context: EditContext, intents: readonly SequenceEditIntent[],
+  allocationInput: SequenceEditAllocation): BoardActionPreparation {
+  const allocation = cloneAllocation(allocationInput);
+  const createdShots = new Map<string, Row>();
+  const createdNodes = new Map<string, Row>();
+  const createdMedia: ChainSyncMedia[] = [];
+  const createdChainNodes: ChainNode[] = [];
+  const layoutMoves: BoardLayoutMove[] = [];
+  const planIntents: SequenceEditIntent[] = [];
+  const at = now();
+  const liveIds = new Set([...context.rows.shots.keys(), ...context.rows.nodes.keys(),
+    ...[...context.archived.keys()].map(key => key.slice(key.indexOf(':') + 1))]);
+  for (const intent of intents) {
+    const operation = intent.operation;
+    if (!isBoardIntentOperation(operation)) {planIntents.push(intent); continue;}
+    if (operation.kind === 'board.root.create') {
+      if (liveIds.has(operation.nodeId)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '新成片根的 ID 已被占用。', [operation.nodeId]);
+      liveIds.add(operation.nodeId);
+      createdNodes.set(operation.nodeId, {id: operation.nodeId, projectId: context.projectId, type: 'sequence_root',
+        name: operation.name, position: {x: operation.position.x, y: operation.position.y}, createdAt: at});
+      createdChainNodes.push({id: operation.nodeId, kind: 'film'});
+      continue;
+    }
+    if (operation.kind === 'board.shot.append') {
+      if (liveIds.has(operation.nodeId)) fail('SEQUENCE_EDIT_CONTRACT_INVALID', '新镜头节点的 ID 已被占用。', [operation.nodeId]);
+      liveIds.add(operation.nodeId);
+      const maxOrder = [...context.rows.shots.values()].reduce((maximum, row) =>
+        Math.max(maximum, Number.isSafeInteger(row.orderIndex) ? Number(row.orderIndex) : -1), -1);
+      const tail = activeFilmTail(context.board, context.rootNodeId);
+      const position = operation.position ?? (() => {
+        const tailRow = context.rows.shots.get(tail) ?? context.rows.nodes.get(tail);
+        const point = rowPosition(tailRow);
+        return {x: point.x + 290, y: point.y};
+      })();
+      const shot: Row = {id: operation.nodeId, projectId: context.projectId, title: operation.name,
+        orderIndex: maxOrder + 1, position: {x: position.x, y: position.y}, selectedVersionId: null,
+        duration: 4, revision: 1, createdAt: at, updatedAt: at};
+      createdShots.set(operation.nodeId, shot);
+      createdChainNodes.push({id: operation.nodeId, kind: 'shot'});
+      createdMedia.push({nodeId: operation.nodeId, selectedVersion: null, durationFrames: 120});
+      if (!allocation.clips.some(item => item.nodeId === operation.nodeId)) {
+        allocation.clips.push({nodeId: operation.nodeId, clipId: randomUUID()});
+      }
+      if (!allocation.edges.some(item => item.fromId === tail && item.toId === operation.nodeId)) {
+        allocation.edges.push({id: randomUUID(), fromId: tail, toId: operation.nodeId});
+      }
+      planIntents.push({side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId: tail, toId: operation.nodeId}}});
+      continue;
+    }
+    for (const move of operation.moves) {
+      if (!context.rows.shots.has(move.nodeId) && !context.rows.nodes.has(move.nodeId)) {
+        fail('SEQUENCE_EDIT_CONTRACT_INVALID', '布局移动的目标不在画板中。', [move.nodeId]);
+      }
+      const previous = layoutMoves.findIndex(item => item.nodeId === move.nodeId);
+      const normalized: BoardLayoutMove = {nodeId: move.nodeId, position: {x: move.x, y: move.y}};
+      if (previous >= 0) (layoutMoves as BoardLayoutMove[])[previous] = normalized; else layoutMoves.push(normalized);
+    }
+  }
+  const restored = new Map<string, Row>();
+  const restoredChain: ChainNode[] = [];
+  for (const id of referencedNodeIds({intents})) {
+    const archived = context.archived.get(`shot:${id}`) ?? context.archived.get(`node:${id}`);
+    if (!archived) continue;
+    restored.set(id, archived);
+    const kind = context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(archived.type));
+    restoredChain.push({id, kind});
+    if ((kind === 'shot' || kind === 'image' || kind === 'video')
+      && !context.media.some(item => item.nodeId === id) && !createdMedia.some(item => item.nodeId === id)) {
+      createdMedia.push({nodeId: id, selectedVersion: null, durationFrames: 120});
+    }
+  }
+  // Preview allocates identities for any new sequence edge and for a playable
+  // node that enters the main track without a clip. The exact ids travel in the
+  // envelope, so preview and commit plan one identical identity set.
+  const boardNodes = new Map<string, ChainNode>([...context.board.nodes.map(node => [node.id, node] as const),
+    ...[...restoredChain, ...createdChainNodes].map(node => [node.id, node] as const)]);
+  let plannedEdges = [...context.board.edges];
+  const ensureEdge = (fromId: string, toId: string): void => {
+    if (plannedEdges.some(edge => edge.fromId === fromId && edge.toId === toId)) return;
+    plannedEdges.push({fromId, toId});
+    if (allocation.edges.some(edge => edge.fromId === fromId && edge.toId === toId)) return;
+    allocation.edges.push({id: randomUUID(), fromId, toId});
+  };
+  for (const intent of intents) {
+    const operation = intent.operation;
+    if (operation.kind !== 'board') continue;
+    const edit = operation.edit;
+    if (edit.kind === 'connect') ensureEdge(edit.fromId, edit.toId);
+    else if (edit.kind === 'disconnect') plannedEdges = plannedEdges.filter(edge => !(edge.fromId === edit.fromId && edge.toId === edit.toId));
+    else if (edit.kind === 'delete') plannedEdges = plannedEdges.filter(edge => edge.fromId !== edit.nodeId && edge.toId !== edit.nodeId);
+    else if (edit.kind === 'insert') {
+      plannedEdges = plannedEdges.filter(edge => !(edge.fromId === edit.fromId && edge.toId === edit.toId)
+        && edge.fromId !== edit.nodeId && edge.toId !== edit.nodeId);
+      ensureEdge(edit.fromId, edit.nodeId);
+      ensureEdge(edit.nodeId, edit.toId);
+    }
+  }
+  // A reconnected segment brings its downstream chain back to the main track;
+  // every playable node that lacks a clip identity needs one for the plan.
+  const chain = deriveFilmChains({nodes: [...boardNodes.values()], edges: plannedEdges})
+    .chains.find(item => item.filmId === context.rootNodeId)?.nodeIds ?? [];
+  for (const nodeId of chain) {
+    const kind = boardNodes.get(nodeId)?.kind;
+    if (kind !== 'shot' && kind !== 'image' && kind !== 'video') continue;
+    if (context.clips.some(clip => clip.nodeId === nodeId) || allocation.clips.some(clip => clip.nodeId === nodeId)) continue;
+    allocation.clips.push({nodeId, clipId: randomUUID()});
+  }
+  return {restored, created: {shots: createdShots, nodes: createdNodes, media: createdMedia, chainNodes: [...restoredChain, ...createdChainNodes]},
+    layoutMoves, planIntents, allocation};
+}
+
+/** One read-only preview of board intents for `sequence.preview`. The shared
+ * transaction later re-reads and re-plans the same envelope. */
+export function previewSequenceBoardAction(store: ProjectStore, intents: readonly SequenceEditIntent[],
+  allocationInput: SequenceEditAllocation): {readonly ok: true; readonly allocation: SequenceEditAllocation;
+    readonly impact: {readonly nodeIds: readonly string[]; readonly edgeIds: readonly string[];
+      readonly mainTrackClipIds: readonly string[]; readonly otherTrackItemIds: readonly string[];
+      readonly subtitleCueIds: readonly string[]}; readonly warnings: readonly ChainSyncWarning[]}
+  | {readonly ok: false; readonly code: string; readonly ids: readonly string[]} {
+  const context = readSequenceEditContext(store);
+  let preparation: BoardActionPreparation;
+  try {preparation = boardIntentPreparation(context, intents, allocationInput);}
+  catch (error) {
+    if (error instanceof AppError) return {ok: false, code: error.code, ids: ((error.details as Row | undefined)?.ids as string[] | undefined) ?? []};
+    throw error;
+  }
+  const initialBoard: ChainBoard = {nodes: [...context.board.nodes, ...preparation.created.chainNodes].sort((left, right) =>
+    left.id < right.id ? -1 : left.id > right.id ? 1 : 0), edges: context.board.edges};
+  const initialMedia = [...context.media, ...preparation.created.media];
+  let state: ChainSyncState = {board: initialBoard, filmId: context.rootNodeId, media: initialMedia,
+    clips: context.clips, anchored: context.anchored};
+  let plan: SuccessfulPlan | undefined;
+  const warnings: ChainSyncWarning[] = [];
+  for (const intent of preparation.planIntents) {
+    if (isBoardIntentOperation(intent.operation)) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: []};
+    const planned = planSequenceEditIntents(state, [intent], preparation.allocation);
+    if (!planned.ok) return {ok: false, code: planned.code, ids: planned.ids};
+    state = planned.state;
+    plan = planned.plan;
+    warnings.push(...plan.warnings);
+  }
+  const deleted = new Set<string>();
+  const boardDeltas = planBoardDeltas(context, {intents, allocation: preparation.allocation} as SequenceEditEnvelope,
+    state.board, state.media, preparation.restored, deleted, new Map(), preparation.created, preparation.layoutMoves);
+  const nodeIds = new Set<string>();
+  for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind !== 'edge') nodeIds.add(entity.id);
+  const edgeIds = new Set<string>();
+  for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind === 'edge') edgeIds.add(entity.id);
+  const mainTrackClipIds = new Set<string>();
+  for (const item of preparation.allocation.clips) mainTrackClipIds.add(item.clipId);
+  const otherTrackItemIds = new Set<string>();
+  if (plan) {
+    const delta = plan.changes.clips;
+    for (const change of delta) if (change.after) mainTrackClipIds.add(change.after.id);
+    for (const change of plan.changes.anchored) if (change.after) otherTrackItemIds.add(change.after.id);
+  }
+  return {ok: true, allocation: preparation.allocation, warnings,
+    impact: {nodeIds: [...nodeIds], edgeIds: [...edgeIds], mainTrackClipIds: [...mainTrackClipIds],
+      otherTrackItemIds: [...otherTrackItemIds], subtitleCueIds: []}};
 }
 
 // ---------------------------------------------------------------------------
@@ -313,11 +515,13 @@ function archiveMark(row: Row): ArchiveMark {
  * the same record so one undo restores the whole step. */
 function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, finalBoard: ChainBoard,
   finalMedia: readonly ChainSyncMedia[], restored: ReadonlyMap<string, Row>, deleted: ReadonlySet<string>,
-  copied: ReadonlyMap<string, CopyNode>): BoardDeltas {
+  copied: ReadonlyMap<string, CopyNode>, created: BoardCreationRows = {shots: new Map(), nodes: new Map(), media: [], chainNodes: []},
+  layoutMoves: readonly BoardLayoutMove[] = []): BoardDeltas {
   const at = now();
   const archiveBatchId = randomUUID();
   const beforeRows = new Map([...context.rows.shots, ...context.rows.nodes, ...context.rows.edges]);
   const afterRows = new Map(beforeRows);
+  for (const row of [...created.shots.values(), ...created.nodes.values()]) afterRows.set(String(row.id), row);
   const change = new Map<string, {kind: SequenceEditBoardEntity['kind']; before: Row; after: Row}>();
   const addChange = (kind: SequenceEditBoardEntity['kind'], id: string, before: Row, after: Row): void => {
     if (stable(before) !== stable(after)) change.set(`${kind}:${id}`, {kind, before, after});
@@ -342,6 +546,24 @@ function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, f
     const kind: SequenceEditBoardEntity['kind'] = copy.sourceTable === 'shots' ? 'shot' : 'node';
     change.set(`${kind}:${id}`, {kind, before: copy.after, after: copy.after, ...{newRecord: true} as Row});
     afterRows.set(id, copy.after);
+  }
+  for (const row of [...created.shots.values(), ...created.nodes.values()]) {
+    const id = String(row.id);
+    const kind: SequenceEditBoardEntity['kind'] = created.shots.has(id) ? 'shot' : 'node';
+    change.set(`${kind}:${id}`, {kind, before: row, after: row, ...{newRecord: true} as Row});
+  }
+  for (const move of layoutMoves) {
+    const row = afterRows.get(move.nodeId);
+    if (!row) continue;
+    const current = row.position as Row | undefined;
+    const same = current !== null && typeof current === 'object'
+      && Number(current.x) === move.position.x && Number(current.y) === move.position.y;
+    if (same) continue;
+    const kind: SequenceEditBoardEntity['kind'] = context.rows.shots.has(move.nodeId) ? 'shot' : 'node';
+    const next = {...row, position: {x: move.position.x, y: move.position.y},
+      ...(typeof row.updatedAt === 'string' ? {updatedAt: at} : {})};
+    addChange(kind, move.nodeId, row, next);
+    afterRows.set(move.nodeId, next);
   }
   for (const node of finalBoard.nodes) {
     if (copied.has(node.id)) continue;
@@ -624,37 +846,34 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     const operation = sequenceEditEnvelopeOperationName(envelope);
     const requestDigest = inputDigest;
     const allocatedCopyIds = new Set(envelope.allocation.nodes.map(item => item.nodeId));
-    const referenced = referencedNodeIds(envelope);
-    const restored = new Map<string, Row>();
-    const addedNodes: ChainNode[] = [];
-    for (const id of referenced) {
-      const archived = context.archived.get(`shot:${id}`) ?? context.archived.get(`node:${id}`);
-      if (!archived) continue;
-      restored.set(id, archived);
-      const kind = context.archived.has(`shot:${id}`) ? 'shot' as const : format5ChainNodeKind(String(archived.type));
-      addedNodes.push({id, kind});
-    }
-    const initialBoard: ChainBoard = {nodes: [...context.board.nodes, ...addedNodes].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0), edges: context.board.edges};
-    const restoredMedia = [...context.media];
-    for (const node of addedNodes) {
-      if (restoredMedia.some(item => item.nodeId === node.id)) continue;
-      if (node.kind === 'shot' || node.kind === 'image' || node.kind === 'video') {
-        restoredMedia.push({nodeId: node.id, selectedVersion: null, durationFrames: 120});
-      }
-    }
-    let state: ChainSyncState = {board: initialBoard, filmId: context.rootNodeId, media: restoredMedia,
-      clips: context.clips, anchored: context.anchored};
-    let stateBeforeFinal = state;
+    // UI-B2 board-only intents (root create / chain-tail shot append / layout
+    // move) are normalized into graph rows and the same SA plan pipeline before
+    // the shared board delta is written.
+    const preparation = boardIntentPreparation(context, envelope.intents, envelope.allocation);
+    const planEnvelope: SequenceEditEnvelope = {...envelope, allocation: preparation.allocation};
+    const restored = new Map(preparation.restored);
+    const creation = preparation.created;
+    const layoutMoves = preparation.layoutMoves;
+    const planIntents = preparation.planIntents;
+    let state: ChainSyncState;
+    let stateBeforeFinal: ChainSyncState;
     let timelineChanged = false;
-    let plan!: SuccessfulPlan;
-    for (let index = 0; index < envelope.intents.length; index++) {
-      const planned = planSequenceEditIntents(state, [envelope.intents[index]!], envelope.allocation);
+    let plan: SuccessfulPlan | undefined;
+    {
+      const initialBoard: ChainBoard = {nodes: [...context.board.nodes, ...creation.chainNodes]
+        .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0), edges: context.board.edges};
+      state = {board: initialBoard, filmId: context.rootNodeId, media: [...context.media, ...creation.media],
+        clips: context.clips, anchored: context.anchored};
+      stateBeforeFinal = state;
+    }
+    for (const intent of planIntents) {
+      const planned = planSequenceEditIntents(state, [intent], planEnvelope.allocation);
       if (!planned.ok) return {receipt: writeSequenceEditFailure(store, envelope, planned.code as never),
         failure: {code: planned.code, ids: planned.ids}};
       stateBeforeFinal = state;
       state = planned.state;
       plan = planned.plan;
-      if (planTimelineChanged(plan)) timelineChanged = true;
+      if (planTimelineChanged(planned.plan)) timelineChanged = true;
     }
     const copiedNodes = new Map<string, CopyNode>();
     for (const item of envelope.allocation.nodes) {
@@ -676,8 +895,10 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     for (const intent of envelope.intents) {
       if (intent.operation.kind === 'board' && intent.operation.edit.kind === 'delete') deleted.add(intent.operation.edit.nodeId);
     }
-    const boardDeltas = planBoardDeltas(context, envelope, state.board, state.media, restored, deleted, copiedNodes);
-    const changed = boardDeltas.nodes + boardDeltas.edges > 0 || timelineChanged || restored.size > 0 || copiedNodes.size > 0;
+    const boardDeltas = planBoardDeltas(context, planEnvelope, state.board, state.media, restored, deleted, copiedNodes,
+      creation, layoutMoves);
+    const changed = boardDeltas.nodes + boardDeltas.edges > 0 || timelineChanged || restored.size > 0 || copiedNodes.size > 0
+      || creation.shots.size > 0 || creation.nodes.size > 0 || layoutMoves.length > 0;
     if (!changed) {
       // A legal request whose live projection already matches the intent only
       // stores a not_applied receipt; no history row or cursor revision moves.
@@ -687,7 +908,10 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     let appliedTimelineRevision: number | undefined;
     let appliedSyncRevision: number | undefined;
     if (timelineChanged) {
-      const result = createMainTrackProjectionPort(store, () => syncContext).projectMainTrack({envelope, state: stateBeforeFinal, plan});
+      const projectionShots = creation.shots.size || creation.nodes.size
+        ? new Map([...syncContext.shots, ...creation.shots]) : syncContext.shots;
+      const projectionContext = projectionShots === syncContext.shots ? syncContext : {...syncContext, shots: projectionShots};
+      const result = createMainTrackProjectionPort(store, () => projectionContext).projectMainTrack({envelope: planEnvelope, state: stateBeforeFinal, plan: plan!});
       if (!result.ok) {
         return {receipt: writeSequenceEditFailure(store, envelope, result.code), failure: {code: result.code, ids: result.ids}};
       }

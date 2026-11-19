@@ -849,6 +849,12 @@ export const operationMessages = {
     "en": "Read-only read of the format-5 unified history cursor and current undo/redo action summaries; creates no timeline and writes no receipt",
     "ja": "フォーマット5の統合編集履歴のカーソルと現在の元に戻す/やり直すアクション概要を読み取り専用で取得します。タイムラインを作成せず、回執も書き込みません"
   },
+  "operation.sequence.board.get": {
+    "zh-Hans": "只读读取格式5画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执",
+    "zh-Hant": "唯讀讀取格式5畫板掛載投影：時間軸與同步修訂、目前成片鏈是否與主軌一致、可恢復的封存畫板列；不規劃、不寫回執",
+    "en": "Read-only board mounting projection for format-5 projects: timeline and sync revisions, whether the active film chain still matches the main track, and archived board rows UI can restore; never plans or writes",
+    "ja": "フォーマット5画板のマウント投影を読み取り専用で取得します。タイムラインと同期リビジョン、現在の完成映像チェーンがメイントラックと一致するか、復元可能なアーカイブ済み画板行を返し、計画や書き込みは行いません"
+  },
   "operation.sequence.undo": {
     "zh-Hans": "按格式5统一历史游标撤销一个已保存动作；仅当动作、位置和修订仍匹配时写回原逆补丁并推进业务修订",
     "zh-Hant": "依格式5統一歷史游標復原一個已儲存動作；僅當動作、位置和修訂仍符合時寫回原逆向補丁並推進業務修訂",
