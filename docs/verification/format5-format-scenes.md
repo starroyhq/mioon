@@ -22,11 +22,11 @@
 
 ## MT-5 状态
 
-- 本 PR 完成本卡画幅/切开的 Mio 工具。
-- 字幕 `subtitlesIntent` 的 Mio 工具需要 C 的 FR-B #314 合入（当前 main 没有该 intent）；SB-b 主体卡需要 B #316 合入。二者未在本 PR 硬编码另一分支合同，留到合入后的小 MT-5 PR。
+- 本 PR 完成本卡画幅/切开的 Mio 工具；合入 FR-B #314 后，字幕增改删也作为 `mioon_sequence_edit` 的 `subtitles` 动作开放（cue ID 仍由服务器生成）。
+- SB-b 主体卡需要 B #316 合入；未在本 PR 硬编码另一分支合同，留到合入后的小 MT-5 PR。
 
 ## 检查
 
 - `tests/format5-mio-write.test.ts` 8/8：格式切换+冻结 layout+header 撤销、D5、画板、既有写工具边界。
-- 五指守卫、typecheck、tool schema/schema manifest `--check`、三格式指纹、三格式 `mio_entries` 重建、合同/写栅栏/TS/UI 回归本地通过；格式 5 指纹重生成 90/99 变化（format-set/split-at-scenes schema 与工具描述），格式 3/4 逐字节不变。
+- 五指守卫、typecheck、tool schema/schema manifest `--check`、三格式指纹、三格式 `mio_entries` 重建、合同/写栅栏/TS/UI 回归本地通过；格式 5 指纹重生成 90/99 变化（format-set/split-at-scenes/subtitles schema 与工具描述），格式 3/4 逐字节不变。
 - 场景切开的完整存储夹具需要真实 scene task 状态机；本 PR 未加该集成测试，已由合同/planner 静态路径和 CI 其余回归覆盖（见报告遗留）。

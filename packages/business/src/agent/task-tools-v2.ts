@@ -596,7 +596,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
  if(format5){
-  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'按已检查的目标执行一个有界格式 5 序列动作：连接/断开/插入/删除节点、重排/移除/切开片段、跟随/锁定版本、切开后复制挪动、主体绑定三态、引用线连接/改角色/断开（素材、预演、音频）、片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称）、画板根/镜头创建和有界布局移动、画幅切换、按场景切开。服务器生成并预览 envelope，展示影响后按审批提交；模型不提供 envelope、分配 ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'按已检查的目标执行一个有界格式 5 序列动作：连接/断开/插入/删除节点、重排/移除/切开片段、跟随/锁定版本、切开后复制挪动、主体绑定三态、引用线连接/改角色/断开（素材、预演、音频）、片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称）、画板根/镜头创建和有界布局移动、画幅切换、按场景切开、字幕增改删。服务器生成并预览 envelope，展示影响后按审批提交；模型不提供 envelope、分配 ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
@@ -800,6 +800,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
    if(action.kind==='board-layout-move')for(const move of action.moves)add(before[key('shot',move.nodeId)]?'shot':'node',move.nodeId);
    if(action.kind==='split-at-scenes')add('timeline_clip',action.clipId);
+   if(action.kind==='subtitles')for(const edit of action.edits)if(edit.kind!=='add')add('timeline_subtitle',edit.cueId);
    if(action.kind==='subject-binding'){
     if(action.edit.kind==='create'){add('shot',action.edit.shotId);add('subject',action.edit.subjectId);}
     else add('subject_binding',action.edit.bindingId);
@@ -810,7 +811,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties',
-    'format-set','split-at-scenes','board-root-create','board-shot-append','board-layout-move',
+    'format-set','split-at-scenes','subtitles','board-root-create','board-shot-append','board-layout-move',
     'reference-attach','reference-set-role','reference-detach'].includes(action.kind);
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,
      ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};

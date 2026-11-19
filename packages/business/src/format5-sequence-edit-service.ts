@@ -30,6 +30,7 @@ import {
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
 import {previewTimelineFormat, runTimelineFormatSync} from './format5-format-set.ts';
+import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
@@ -211,6 +212,8 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     if (input.formatIntent) return previewTimelineFormat(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       formatIntent: input.formatIntent as never});
+    if (input.subtitlesIntent) return previewSubtitleEdits(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), subtitlesIntent: input.subtitlesIntent as never});
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});
@@ -240,6 +243,11 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     if (envelope.formatIntent) {
       const result = runTimelineFormatSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 画幅没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
+    if (envelope.subtitlesIntent) {
+      const result = runSubtitleEditsSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 字幕编辑没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
     if (envelope.propertiesIntent) {

@@ -862,10 +862,15 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
   const durationFrames = [...[...clips.values()].map(clip => clip.startFrame + clip.durationFrames),
     ...[...cues.values()].map(cue => cue.startFrame + cue.durationFrames)]
     .reduce((maximum, value) => Math.max(maximum, value), 0);
+  const subtitleChange = delta.subtitles ?? {kind: 'unchanged' as const};
+  const subtitleProfile = subtitleChange.kind === 'unchanged'
+    ? (current.subtitles ? {profileId: current.subtitles.profileId,
+      ...(current.subtitles.basisPresetId !== undefined ? {basisPresetId: current.subtitles.basisPresetId} : {})} : null)
+    : subtitleChange.kind === 'absent' ? null : subtitleChange.value;
   const header = delta.header?.kind === 'set' ? delta.header.value : null;
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
     ...(header ? {fps: header.fps, width: header.width, height: header.height} : {}),
-    clips: [...clips.values()], subtitles: current.subtitles ? {...current.subtitles, cues: [...cues.values()]} : undefined};
+    clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
   // Validate the rows against the frame the patch asks for: an undo restores
   // the old header together with clips that intentionally have no layout.
   const planState = header && state.header

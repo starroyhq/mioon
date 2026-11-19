@@ -128,6 +128,9 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     request.referenceIntent = reference.referenceIntent;
     request.allocation = reference.allocation;
   }
+  else if (action.kind === 'subtitles') request.subtitlesIntent = {side: 'timeline', operation: {kind: 'subtitles',
+    edits: action.edits.map(edit => edit.kind === 'add' ? {kind: 'add' as const, cue: {...edit.cue, id: randomUUID()}}
+      : edit)}};
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
