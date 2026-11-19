@@ -64,6 +64,7 @@ import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
+import {format5GenerationSource,planFormat5GenerationInputs} from './format5-reference-inputs.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
@@ -511,6 +512,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(!isRecord(shot))throw new AppError('NOT_FOUND','找不到记录',404);
   const archiveAware=hasCanvasArchives(db);
   if(archiveAware){assertGenerationShotOwnership(db,shot);assertCanvasTargetActive(db,'shots',shot.id);}
+  const format5Project=isProjectStore(store)&&isFormat5Project(store);
+  // Format 5 generation inputs come from the board reference lines; a client
+  // supplied explicit manifest would bypass the unified sequence transaction.
+  if(format5Project&&!retrySnapshot&&(input.videoInput!==undefined||input.subjectVersionId!==undefined))
+   throw new AppError('UNSUPPORTED_OPERATION','格式 5 的生成输入由画板引用线决定，请使用统一序列入口。',409,{use:'sequence.preview/commit'});
   if(!retrySnapshot)check(shot,input.expectedRevision);
   if(!archiveAware&&(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined||input.connectionId))assertGenerationShotOwnership(db,shot);
   assertMockAllowed(input.providerId);
@@ -533,10 +539,20 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     referenceConnections=[];
     source={...shot,subjectReference,referenceAssetIds:[version.assetId],referenceConnections,referenceBindings:[{role:'subject_reference',assetId:version.assetId,sha256:version.sha256}]};
    }
-  }else referenceConnections=source.videoInput!==undefined?(retrySnapshot?property(retrySnapshot,'referenceConnections'):[]):(retrySnapshot?property(retrySnapshot,'referenceConnections'):undefined)??(!retrySnapshot?references.snapshot(shot as never):[]);
+  }else referenceConnections=source.videoInput!==undefined?(retrySnapshot?property(retrySnapshot,'referenceConnections'):[]):format5Project?(retrySnapshot?property(retrySnapshot,'referenceConnections')??[]:[]):(retrySnapshot?property(retrySnapshot,'referenceConnections'):undefined)??(!retrySnapshot?references.snapshot(shot as never):[]);
   const executionBinding=retrySnapshot?readVideoBinding(retrySnapshot):input.connectionId?videoSettings?.select(input.connectionId,input.configurationRevision!,input.modelEntryId!):null;
   if(input.connectionId&&!executionBinding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
   if(executionBinding)source={...source,executionBinding};
+  // RI-a: a new format-5 generation reads the live board reference lines and
+  // freezes the actual request; a retry keeps the original snapshot untouched.
+  let format5Input: ReturnType<typeof format5GenerationSource>|null=null;
+  if(format5Project&&!retrySnapshot&&executionBinding){
+   const plan=planFormat5GenerationInputs(store,shot.id,{binding:executionBinding});
+   format5Input=format5GenerationSource(plan,executionBinding);
+   source={...source,referenceAssetIds:[...format5Input.referenceAssetIds],lastFrameAssetId:format5Input.lastFrameAssetId,
+    ...(format5Input.videoInput?{videoInput:format5Input.videoInput}:{})};
+   referenceConnections=[];
+  }
   const ratio=retrySnapshot?undefined:resolveGenerationAspect(input,shot);
   if(ratio&&ratio!=='adaptive')source={...source,aspectRatio:ratio};
   let parameters:unknown=(retrySnapshot?property(retrySnapshot,'parameters'):undefined)||{...(isRecord(shot.parameters)?shot.parameters:{}),...input.parameters};
@@ -550,7 +566,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    parameters={...recordValue(parameters),aspectRatio:ratio};
   }
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph,ratio?{input,ratio}:undefined);
-  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters};
+  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input};
  });
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
   assertApplicationMutationAllowed();assertMutationAllowed?.();
@@ -560,8 +576,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    for(const [id,raw] of referenceBasis)if(JSON.stringify(required('assets',id))!==raw)throw new AppError('REFERENCE_CHANGED','确认后的素材引用已改变，请重新确认',409);
   });
   assertSubjectGenerationRequestVacant(db,input);
-  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters}=prepareJobDraft(input,retrySnapshot);
-  const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:source.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
+  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input}=prepareJobDraft(input,retrySnapshot);
+  const format5Snapshot=format5Input?{format5ReferenceInputs:format5Input.freeze,
+   ...(format5Input.freeze.mode==='references'?{referenceAssetIds:[...format5Input.referenceAssetIds],lastFrameAssetId:null}
+    :format5Input.freeze.actual.lastFrameAssetId===null?{lastFrameAssetId:null}:{})}:{};
+  const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:source.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{}),...format5Snapshot};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
   recordOutputLocale(db,job.id,requestHash,outputLocale);

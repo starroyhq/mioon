@@ -13,13 +13,14 @@ import {
   isSequenceEditInputDigest, isSequenceEditIntentSequence, isSequenceEditRequestId, isSequenceEditUuid,
   sequenceEditEnvelopeOperationName, sequenceEditEnvelopeSchema, sequenceEditHistoryEntrySchema,
   sequenceEditImpactCount, sequenceEditIntentOperationName, sequenceEditIntentSide, sequenceEditOperationName,
-  sequenceEditReceiptSchema, sequenceEditSubjectIntentSchema, sequenceEditSubjectOperationName, sequenceEditUtf8Bytes,
+  sequenceEditReceiptSchema, sequenceEditReferenceIntentSchema, sequenceEditReferenceOperationName,
+  sequenceEditSubjectIntentSchema, sequenceEditSubjectOperationName, sequenceEditUtf8Bytes,
 } from '../packages/contracts/src/sequence-edit.ts';
 import type {
   BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditBaselineChange, SequenceEditEnvelope,
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
-  SubjectBindingOperation,
+  ReferenceEdgeOperation, SequenceEditReferenceIntent, SubjectBindingOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -133,15 +134,29 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [detachBinding, 'subject.binding.detach'],
     [restoreBinding, 'subject.binding.restore'],
   ];
+  const referenceSamples: Array<[ReferenceEdgeOperation, string]> = [
+    [{kind: 'reference-edge', edit: {kind: 'attach', edgeId: uuid('94'), shotId: shotA,
+      sourceNodeId: uuid('14'), role: 'first_frame'}}, 'reference.attach'],
+    [{kind: 'reference-edge', edit: {kind: 'set-role', edgeId: uuid('94'), shotId: shotA,
+      role: 'reference_image'}}, 'reference.role.set'],
+    [{kind: 'reference-edge', edit: {kind: 'detach', edgeId: uuid('94'), shotId: shotA}}, 'reference.detach'],
+  ];
   assert.equal(subjectSamples.length, 4);
-  assert.equal(samples.length + subjectSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
+  assert.equal(referenceSamples.length, 3);
+  assert.equal(samples.length + subjectSamples.length + referenceSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');
     assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
     assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
   }
+  for (const [operation, name] of referenceSamples) {
+    assert.equal(sequenceEditReferenceOperationName(operation), name);
+    assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
+    assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
+  }
   assert.equal(sequenceEditEnvelopeOperationName(subjectEnvelope()), 'subject.binding.create');
+  assert.equal(sequenceEditEnvelopeOperationName(referenceEnvelope()), 'reference.attach');
   assert.equal(sequenceEditEnvelopeOperationName(envelope()), 'board.connect');
   for (const [operation, name] of samples) {
     assert.equal(sequenceEditIntentOperationName(operation), name);
@@ -250,6 +265,50 @@ test('subject binding intents validate the mode/version pair and stay board-only
   assert.equal(isSequenceEditEnvelope(subjectEnvelope({allocation: {clips: [], nodes: [], splitClips: [],
     edges: [{id: uuid('93'), fromId: uuid('13'), toId: shotB}]}})), false,
     'the allocated edge must target the created binding shot');
+});
+
+const referenceEdgeId = uuid('94'), referenceSource = uuid('14');
+const referenceIntent = (operation: ReferenceEdgeOperation): SequenceEditReferenceIntent => ({side: 'board', operation});
+function referenceEnvelope(overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope {
+  return envelope({intents: [], referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'attach',
+    edgeId: referenceEdgeId, shotId: shotA, sourceNodeId: referenceSource, role: 'first_frame'}}),
+    impact: {...envelope().impact, nodeIds: [shotA], edgeIds: [referenceEdgeId]},
+    baseline: {...envelope().baseline, targets: []},
+    allocation: {clips: [], nodes: [], splitClips: [],
+      edges: [{id: referenceEdgeId, fromId: referenceSource, toId: shotA}]},
+    ...overrides});
+}
+
+test('reference edge intents stay board-only and require the pre-allocated material edge', () => {
+  assert.equal(isSequenceEditEnvelope(referenceEnvelope()), true);
+  for (const operation of [
+    {kind: 'reference-edge', edit: {kind: 'set-role', edgeId: referenceEdgeId, shotId: shotA, role: 'reference_image'}},
+    {kind: 'reference-edge', edit: {kind: 'detach', edgeId: referenceEdgeId, shotId: shotA}},
+  ] as ReferenceEdgeOperation[]) {
+    assert.equal(sequenceEditReferenceIntentSchema.safeParse(referenceIntent(operation)).success, true);
+    assert.equal(isSequenceEditEnvelope(referenceEnvelope({referenceIntent: referenceIntent(operation),
+      impact: {...envelope().impact, nodeIds: [shotA], edgeIds: [referenceEdgeId]}})), true);
+  }
+  const rejected: unknown[] = [
+    // A reference action carries no CS/TS intent and is board-origin.
+    referenceEnvelope({intents: [intent(connect)]}),
+    referenceEnvelope({originSide: 'timeline'}),
+    // Attach requires its allocated edge for retry identity.
+    referenceEnvelope({allocation: {clips: [], nodes: [], splitClips: [], edges: []}}),
+    // The allocated edge must match the attach source and shot.
+    referenceEnvelope({allocation: {clips: [], nodes: [], splitClips: [],
+      edges: [{id: referenceEdgeId, fromId: referenceSource, toId: shotB}]}}),
+    // One intent family only: reference and subject intents never mix.
+    referenceEnvelope({subjectIntent: subjectIntent(createBinding)}),
+    // Role changes and detaches must list their edge impact.
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'detach',
+      edgeId: referenceEdgeId, shotId: shotA}}), impact: {...envelope().impact, nodeIds: [shotA]}}),
+    // A malformed role never enters the contract.
+    referenceEnvelope({referenceIntent: referenceIntent({kind: 'reference-edge', edit: {kind: 'set-role',
+      edgeId: referenceEdgeId, shotId: shotA, role: 'not_a_role' as never}})}),
+  ];
+  for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
+    JSON.stringify(candidate).slice(0, 160));
 });
 
 test('clip property intents carry one timeline action with bounded patches and clip impact', () => {
