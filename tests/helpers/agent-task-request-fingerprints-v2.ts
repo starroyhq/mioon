@@ -12,13 +12,14 @@ import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/p
 import {openServerTestStore} from '../../packages/business/src/project-file/test-store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {createProjectFile, openClosedProjectSnapshotConnection} from '../../packages/business/src/project-file/connection.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import {assertProjectStore} from '../../packages/business/src/store-runtime.ts';
 import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
+import {createFormat5SequenceEditService} from '../../packages/business/src/format5-sequence-edit-service.ts';
 import {AGENT_TASK_CONVERSATION_TOOLS, AGENT_TASK_TOOLS_LOAD_NAME} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import type {AgentTaskRuntimeOptions} from '../../packages/business/src/agent/task-runtime-v2.ts';
@@ -41,7 +42,7 @@ export const FINGERPRINT_SCENARIOS = [
 export const OFFICIAL_FINGERPRINT_SCENARIOS = ['official_single_reply', 'official_read_edit_roundtrip'] as const;
 export const FINGERPRINT_PRELOAD_SCENARIOS = ['read_edit_roundtrip', 'conflict_reread', 'tool_failure_retry', 'official_read_edit_roundtrip'] as const;
 export type FingerprintScenario = typeof FINGERPRINT_SCENARIOS[number] | typeof OFFICIAL_FINGERPRINT_SCENARIOS[number];
-export const FINGERPRINT_FORMATS = ['format4', 'format3'] as const;
+export const FINGERPRINT_FORMATS = ['format4', 'format3', 'format5'] as const;
 export type FingerprintProjectFormat = typeof FINGERPRINT_FORMATS[number];
 export interface TaskRequestFingerprint {
   scenario: FingerprintScenario;
@@ -77,10 +78,18 @@ export interface TaskRequestFingerprintHarness {
 const fingerprintFixtures = {
   format3: new URL('../fixtures/agent-task-request-fingerprints-v2.json', import.meta.url),
   format4: new URL('../fixtures/agent-task-format4-request-fingerprints-v2.json', import.meta.url),
+  format5: new URL('../fixtures/agent-task-format5-request-fingerprints-v2.json', import.meta.url),
 };
 const projectId = '00000000-0000-4000-8000-000000000001';
 const shotId = '00000000-0000-4000-8000-000000000002';
 const uploadId = '00000000-0000-4000-8000-000000000003';
+const format5 = Object.freeze({root:'00000000-0000-4000-8000-000000000011', version:'00000000-0000-4000-8000-000000000012',
+  asset:'00000000-0000-4000-8000-000000000013', job:'00000000-0000-4000-8000-000000000014',
+  clip:'00000000-0000-4000-8000-000000000015', track:'00000000-0000-4000-8000-000000000016',
+  group:'00000000-0000-4000-8000-000000000017', timeline:'00000000-0000-4000-8000-000000000018',
+  baseline:{version:1, board:[{nodeId:shotId,kind:'shot',selectedVersionId:null}],
+    track:[{nodeId:shotId,segmentGroupId:'00000000-0000-4000-8000-000000000017',clipId:'00000000-0000-4000-8000-000000000015',
+      kind:'shot',versionMode:'follow',appliedVersionId:'00000000-0000-4000-8000-000000000012'}]}});
 const fixtureTime = '2026-10-27T00:00:00.000Z';
 
 export function reopenFingerprintProject(root: string, format: FingerprintProjectFormat): ProjectStore {
@@ -90,10 +99,12 @@ export function reopenFingerprintProject(root: string, format: FingerprintProjec
     cacheDir: path.join(root, ...TEST_STORE_LAYOUT.cacheDir),
     tempDir: path.join(root, ...TEST_STORE_LAYOUT.tempDir),
   };
-  const store = openServerTestStore({projectFile, locate: () => location, ...(format === 'format4' ? {format4: {}} : {})},
+  const store = openServerTestStore({projectFile, locate: () => location,
+    ...(format === 'format5' ? {format5: true} : format === 'format4' ? {format4: {}} : {})},
     path.join(root, TEST_STORE_DIRECTORY, 'app'));
   try {
-    const [projectVersion, historyVersion] = format === 'format4' ?
+    const [projectVersion, historyVersion] = format === 'format5' ?
+      [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION] : format === 'format4' ?
       [FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION] : [PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION];
     assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version, projectVersion);
     assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, historyVersion);
@@ -103,6 +114,10 @@ export function reopenFingerprintProject(root: string, format: FingerprintProjec
 
 async function createFingerprintProject(root: string, format: FingerprintProjectFormat): Promise<() => void> {
   const projectFile = path.join(root, ...TEST_STORE_LAYOUT.projectFile);
+  if (format === 'format5') {
+    createProjectFile(projectFile, {projectId, format5: true});
+    return () => {};
+  }
   if (format === 'format4') {
     createProjectFile(projectFile, {projectId, format4: {}});
     return () => {};
@@ -220,6 +235,21 @@ function assertCanvasLoaded(snapshot: AgentTaskSnapshot): void {
   assert.equal(loads[0]!.status, 'completed');
   assert.deepEqual(object(loads[0]!.result).names, ['mioon_shot_update']);
 }
+const sequenceEditCall = (arguments_: AgentTaskJson, id: string) => call('mioon_sequence_edit', arguments_, id);
+function sequenceSetMode(mode: 'follow' | 'locked', id: string): AgentTaskToolCall {
+ return sequenceEditCall({kind: 'set-mode', clipId: format5.clip, mode, versionId: format5.version}, id);
+}
+/** A real user edit between Mio turns; it advances the clip target revision so
+ * the approved stale Mio remove must fail closed with TARGET_CHANGED. */
+function saveUserSequenceEdit(f: Fixture): void {
+ const service = createFormat5SequenceEditService(f.store), requestId = `user-format5-${randomUUID()}`;
+ const preview = service.preview({projectId, requestId, origin: 'user', propertiesIntent: {side: 'timeline',
+   operation: {kind: 'clip-properties', edits: [{clipId: format5.clip, patch: {name: 'User property edit'}}]}}}) as Record<string, unknown>;
+ assert.ok(typeof preview.planDigest === 'string');
+ const receipt = service.commit({projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest}) as Record<string, unknown>;
+ assert.equal(receipt.status, 'applied');
+ assert.equal((f.store.get('timelines', format5.timeline) as {clips?: {id: string; name?: string}[]}).clips?.find(clip => clip.id === format5.clip)?.name, 'User property edit');
+}
 async function fixture(protocol: AgentProtocol, official = false, harness: TaskRequestFingerprintHarness = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));
   // The fixed request seed is also the real kernel file identity, not a
@@ -236,7 +266,35 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   // Seed complete, fixed domain rows. Runtime/journal/control UUIDs remain
   // genuine; they must never accidentally become part of these request bodies.
   store.put('projects', {id: projectId, name: 'Fingerprint project', description: '', revision: 1, createdAt: fixtureTime, updatedAt: fixtureTime});
-  store.put('shots', {id: shotId, projectId, title: 'First shot', prompt: 'Original prompt', referenceAssetIds: [],
+  if (format === 'format5') {
+    // One fixed, fully wired format-5 film: root chain node, a shot with one
+    // applied version, and one main-track clip. This is real project content so
+    // sequence.inspect/sequence.tool.edit go through the production services.
+    store.tx(() => {
+      store.put('shots', {id: shotId, projectId, title: 'First shot', orderIndex: 0, selectedVersionId: null,
+        duration: 1, createdAt: fixtureTime, updatedAt: fixtureTime});
+      store.put('assets', {id: format5.asset, projectId, name: 'take.mp4', mimeType: 'video/mp4', duration: 1, sha256: 'a'.repeat(64)});
+      store.put('jobs', {id: format5.job, projectId, status: 'succeeded', phase: 'done', providerId: 'mock',
+        model: 'mock', shotId, createdAt: fixtureTime, updatedAt: fixtureTime});
+      store.put('versions', {id: format5.version, projectId, jobId: format5.job, shotId, number: 1,
+        assetId: format5.asset, sha256: 'a'.repeat(64), createdAt: fixtureTime});
+      store.put('nodes', {id: format5.root, projectId, type: 'sequence_root', name: 'Film',
+        position: {x: 0, y: 0}, createdAt: fixtureTime});
+      store.put('edges', {id: '00000000-0000-4000-8000-000000000019', projectId, kind: 'sequence',
+        source: format5.root, target: shotId, createdAt: fixtureTime});
+      store.put('timelines', {id: format5.timeline, projectId, revision: 1, width: 720, height: 1280, fps: 30,
+        durationFrames: 30, createdAt: fixtureTime, updatedAt: fixtureTime,
+        mainTrack: {trackId: format5.track, sequenceNodeId: format5.root},
+        tracks: [{id: format5.track, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
+        clips: [{id: format5.clip, trackId: format5.track, name: 'A', startFrame: 0, durationFrames: 30,
+          sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1,
+          assetId: format5.asset, versionId: format5.version, shotId,
+          sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotId,
+            segmentGroupId: format5.group, versionMode: 'follow'}}]});
+      store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
+        .run(format5.timeline, projectId, format5.root, 1, JSON.stringify(format5.baseline));
+    });
+  } else store.put('shots', {id: shotId, projectId, title: 'First shot', prompt: 'Original prompt', referenceAssetIds: [],
     aspectRatio: '9:16', duration: 2, parameters: {}, position: {x: 80, y: 100}, orderIndex: 0, revision: 1,
     selectedVersionId: null, createdAt: fixtureTime, updatedAt: fixtureTime});
   const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
@@ -304,7 +362,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
       return uploadId;
     },
     async close(verify?: () => void | Promise<void>) {try {for (const value of runtimes) value.close(); await Promise.all(runtimes.map(value => value.drain())); tools.dispose(); await services.drain(); await settings.close(); ports?.close(); store.close(); await verify?.(); verifySource();} finally {rmSync(root, {recursive: true, force: true});}},
-    root, intents,
+    format, root, intents,
   };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -334,14 +392,28 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
     const locales: Partial<Record<FingerprintScenario, AgentTaskLocale>> = {single_reply_ja: 'ja', single_reply_en: 'en', single_reply_zh_hant: 'zh-Hant'};
     await finish(f, undefined, {locale: locales[scenario] ?? 'zh-Hans'});
   } else if (scenario === 'read_edit_roundtrip') {
-    f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol,
-      index === 1 ? [call('mioon_project_inspect')] : index === 2 ? [call('mioon_shot_update', {
-        shotId, expectedRevision: 1, patch: {prompt: 'Updated prompt'},
-      }, 'call_edit')] : [], index < 3 ? 'Inspect then edit.' : 'Edit complete.')};}));
-    const done = await finish(f, 'Read the project, then update the first shot prompt.');
-    assertCanvasLoaded(done);
-    assert.equal(done.changes.length, 1);
-    assert.equal(object(f.store.get('shots', shotId)).prompt, 'Updated prompt');
+    if (f.format === 'format5') {
+      // Four requests, same shape as the canvas workflow: read the project,
+      // read the sequence, make one bounded Mio write, then finish.
+      f.setScript(async function* (index) {yield {type: 'done', output: output(protocol,
+        index === 1 ? [call('mioon_project_inspect', {}, 'call_read_project')] : index === 2 ? [call('mioon_sequence_inspect', {}, 'call_read_sequence')] :
+        index === 3 ? [sequenceSetMode('locked', 'call_edit')] : [],
+        index < 4 ? 'Inspect then edit the sequence.' : 'Edit complete.')};});
+      const done = await finish(f, 'Read the project and sequence, then lock the first clip.');
+      assert.equal(done.changes.length, 1);
+      const timeline = f.store.get('timelines', format5.timeline) as {clips: {id: string; sequenceSource?: {versionMode?: string}}[]};
+      assert.equal(timeline.clips.find(clip => clip.id === format5.clip)?.sequenceSource?.versionMode, 'locked');
+      assert.equal(done.steps.filter(step => step.kind === 'tool' && step.toolCall?.name === 'mioon_sequence_edit').length, 1);
+    } else {
+      f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol,
+        index === 1 ? [call('mioon_project_inspect')] : index === 2 ? [call('mioon_shot_update', {
+          shotId, expectedRevision: 1, patch: {prompt: 'Updated prompt'},
+        }, 'call_edit')] : [], index < 3 ? 'Inspect then edit.' : 'Edit complete.')};}));
+      const done = await finish(f, 'Read the project, then update the first shot prompt.');
+      assertCanvasLoaded(done);
+      assert.equal(done.changes.length, 1);
+      assert.equal(object(f.store.get('shots', shotId)).prompt, 'Updated prompt');
+    }
   } else if (scenario === 'note_during_reply') {
     const entered = gate(), release = gate();
     f.setScript(async function* (index) {
@@ -359,42 +431,85 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
       assert.match(f.requests[1]!, /NOTE_KEEP_THE_ORIGINAL_COLOUR/u);
     } finally {release.resolve();}
   } else if (scenario === 'conflict_reread') {
-    // X4: the user saves while the second request is in flight. The stale call is
-    // handed back with the saved value, and the reread edit applies.
-    f.setScript(withCanvasLoad(protocol, async function* (index) {
-      if (index === 1) await f.services.call('shot.update', {shotId, expectedRevision: 1, patch: {prompt: 'User prompt'}});
-      yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
-        shotId, expectedRevision: 1, patch: {prompt: 'Stale AI prompt'},
-      }, 'call_edit_stale')] : index === 2 ? [call('mioon_shot_update', {
-        shotId, expectedRevision: 2, patch: {prompt: 'User prompt, refined'},
-      }, 'call_edit_reread')] : [])};
-    }));
-    const done = await finish(f);
-    assertCanvasLoaded(done);
-    const stale = done.steps.find(value => value.toolCall?.id === 'call_edit_stale');
-    assert.equal(stale?.status, 'rejected');
-    assert.equal(stale?.error?.code, 'TARGET_CHANGED');
-    assert.match(f.requests[2]!, /TARGET_CHANGED/u);
-    assert.match(f.requests[2]!, /User prompt/u);
-    assert.match(f.requests[3]!, /User prompt, refined/u);
-    assert.equal(done.changes.length, 1);
-    assert.deepEqual(done.run.skippedTargets, []);
-    assert.equal(object(f.store.get('shots', shotId)).prompt, 'User prompt, refined');
+    if (f.format === 'format5') {
+      // The Mio remove requires approval. While it waits, a real user edit
+      // advances the clip target; approving the stale remove must fail closed
+      // with TARGET_CHANGED, and the reread set-mode then applies.
+      f.setScript(async function* (index) {yield {type: 'done', output: output(protocol,
+        index === 1 ? [call('mioon_project_inspect', {}, 'call_read_project')] : index === 2 ? [call('mioon_sequence_edit', {
+          kind: 'remove', clipId: format5.clip,
+        }, 'call_edit_stale')] : index === 3 ? [sequenceSetMode('locked', 'call_edit_reread')] : [],
+        index < 4 ? 'Inspect then conditionally edit.' : 'Reread edit complete.')};});
+      const sent = await f.send();
+      const waiting = await f.settle(sent.run.id);
+      assert.equal(waiting.run.status, 'awaiting_approval');
+      const stale = waiting.steps.find(step => step.toolCall?.id === 'call_edit_stale');
+      assert.ok(stale); assert.equal(stale.status, 'awaiting_approval');
+      saveUserSequenceEdit(f);
+      await assert.rejects(f.action(waiting, 'approve', {stepId: stale.id}), {code: 'AGENT_TASK_TARGET_CHANGED', handedBack: true});
+      const done = await f.settle(waiting.run.id);
+      const rejected = done.steps.find(value => value.toolCall?.id === 'call_edit_stale');
+      assert.equal(rejected?.status, 'rejected');
+      assert.equal(rejected?.error?.code, 'TARGET_CHANGED');
+      assert.match(f.requests[2]!, /TARGET_CHANGED/u);
+      assert.match(f.requests[3]!, /User property edit/u);
+      assert.equal(done.changes.length, 1);
+      assert.deepEqual(done.run.skippedTargets, []);
+      assert.equal((f.store.get('timelines', format5.timeline) as {clips: {id: string; name?: string}[]}).clips
+        .find(clip => clip.id === format5.clip)?.name, 'User property edit');
+    } else {
+      // X4: the user saves while the second request is in flight. The stale call is
+      // handed back with the saved value, and the reread edit applies.
+      f.setScript(withCanvasLoad(protocol, async function* (index) {
+        if (index === 1) await f.services.call('shot.update', {shotId, expectedRevision: 1, patch: {prompt: 'User prompt'}});
+        yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
+          shotId, expectedRevision: 1, patch: {prompt: 'Stale AI prompt'},
+        }, 'call_edit_stale')] : index === 2 ? [call('mioon_shot_update', {
+          shotId, expectedRevision: 2, patch: {prompt: 'User prompt, refined'},
+        }, 'call_edit_reread')] : [])};
+      }));
+      const done = await finish(f);
+      assertCanvasLoaded(done);
+      const stale = done.steps.find(value => value.toolCall?.id === 'call_edit_stale');
+      assert.equal(stale?.status, 'rejected');
+      assert.equal(stale?.error?.code, 'TARGET_CHANGED');
+      assert.match(f.requests[2]!, /TARGET_CHANGED/u);
+      assert.match(f.requests[2]!, /User prompt/u);
+      assert.match(f.requests[3]!, /User prompt, refined/u);
+      assert.equal(done.changes.length, 1);
+      assert.deepEqual(done.run.skippedTargets, []);
+      assert.equal(object(f.store.get('shots', shotId)).prompt, 'User prompt, refined');
+    }
   } else if (scenario === 'tool_failure_retry') {
-    f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
-      shotId, expectedRevision: 1, patch: {duration: -1},
-    }, 'call_invalid_edit')] : index === 2 ? [call('mioon_shot_update', {
-      shotId, expectedRevision: 1, patch: {prompt: 'Retry edit'},
-    }, 'call_retry_edit')] : [])};}));
-    const sent = await f.send(), failed = await f.settle(sent.run.id);
-    assert.equal(failed.run.status, 'failed');
-    assert.equal(failed.steps.at(-1)?.error?.code, 'VALIDATION_ERROR');
-    await f.action(failed, 'retry', {stepId: failed.steps.at(-1)!.id});
-    const done = await f.settle(sent.run.id);
-    assertCanvasLoaded(done);
-    assert.equal(done.run.status, 'completed');
-    assert.match(f.requests[2]!, /VALIDATION_ERROR/u);
-    assert.equal(done.changes.length, 1);
+    if (f.format === 'format5') {
+      f.setScript(async function* (index) {yield {type: 'done', output: output(protocol,
+        index === 1 ? [call('mioon_project_inspect', {}, 'call_read_project')] : index === 2 ? [sequenceEditCall({kind: 'split', clipId: format5.clip, offsetFrames: 0}, 'call_invalid_edit')] :
+        index === 3 ? [sequenceSetMode('follow', 'call_retry_edit')] : [],
+        index < 4 ? 'Inspect then retry.' : 'Retry complete.')};});
+      const sent = await f.send(), failed = await f.settle(sent.run.id);
+      assert.equal(failed.run.status, 'failed');
+      assert.equal(failed.steps.at(-1)?.error?.code, 'VALIDATION_ERROR');
+      await f.action(failed, 'retry', {stepId: failed.steps.at(-1)!.id});
+      const done = await f.settle(sent.run.id);
+      assert.equal(done.run.status, 'completed');
+      assert.match(f.requests[2]!, /VALIDATION_ERROR/u);
+      assert.equal(done.changes.length, 1);
+    } else {
+      f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
+        shotId, expectedRevision: 1, patch: {duration: -1},
+      }, 'call_invalid_edit')] : index === 2 ? [call('mioon_shot_update', {
+        shotId, expectedRevision: 1, patch: {prompt: 'Retry edit'},
+      }, 'call_retry_edit')] : [])};}));
+      const sent = await f.send(), failed = await f.settle(sent.run.id);
+      assert.equal(failed.run.status, 'failed');
+      assert.equal(failed.steps.at(-1)?.error?.code, 'VALIDATION_ERROR');
+      await f.action(failed, 'retry', {stepId: failed.steps.at(-1)!.id});
+      const done = await f.settle(sent.run.id);
+      assertCanvasLoaded(done);
+      assert.equal(done.run.status, 'completed');
+      assert.match(f.requests[2]!, /VALIDATION_ERROR/u);
+      assert.equal(done.changes.length, 1);
+    }
   } else if (scenario === 'unknown_discard_resume') {
     const entered = gate(), release = gate();
     f.setScript(async function* (index) {
@@ -448,14 +563,24 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
       return !AGENT_TASK_CONVERSATION_TOOLS.includes(String(name));
     }));
   } else if (scenario === 'diagnostic_catalog') {
-    f.setScript(async function* () {yield {type: 'done', output: output(protocol, [call('mioon_shot_update', {
-      shotId, expectedRevision: 1, patch: {prompt: 'Diagnostic must never execute'},
-    }, 'call_catalog_edit')], 'Synthetic catalog diagnostic.')};});
-    const done = await finish(f, 'Synthetic catalog diagnostic.', {diagnostic: {profile: 'catalog', toolNames: ['mioon_shot_update']}});
-    const tools = object(JSON.parse(f.requests[0]!)).tools;
-    assert.ok(Array.isArray(tools)); assert.equal(tools.length, 1);
-    assert.equal(done.steps.filter(value => value.kind === 'tool').length, 0);
-    assert.equal(object(f.store.get('shots', shotId)).prompt, 'Original prompt');
+    if (f.format === 'format5') {
+      const before = f.store.get('timelines', format5.timeline) as {revision?: number};
+      f.setScript(async function* () {yield {type: 'done', output: output(protocol, [sequenceSetMode('locked', 'call_catalog_edit')], 'Synthetic catalog diagnostic.')};});
+      const done = await finish(f, 'Synthetic catalog diagnostic.', {diagnostic: {profile: 'catalog', toolNames: ['mioon_sequence_edit']}});
+      const tools = object(JSON.parse(f.requests[0]!)).tools;
+      assert.ok(Array.isArray(tools)); assert.equal(tools.length, 1);
+      assert.equal(done.steps.filter(value => value.kind === 'tool').length, 0);
+      assert.equal((f.store.get('timelines', format5.timeline) as {revision?: number}).revision, before.revision);
+    } else {
+      f.setScript(async function* () {yield {type: 'done', output: output(protocol, [call('mioon_shot_update', {
+        shotId, expectedRevision: 1, patch: {prompt: 'Diagnostic must never execute'},
+      }, 'call_catalog_edit')], 'Synthetic catalog diagnostic.')};});
+      const done = await finish(f, 'Synthetic catalog diagnostic.', {diagnostic: {profile: 'catalog', toolNames: ['mioon_shot_update']}});
+      const tools = object(JSON.parse(f.requests[0]!)).tools;
+      assert.ok(Array.isArray(tools)); assert.equal(tools.length, 1);
+      assert.equal(done.steps.filter(value => value.kind === 'tool').length, 0);
+      assert.equal(object(f.store.get('shots', shotId)).prompt, 'Original prompt');
+    }
   } else {
     throw new Error(`Unknown fingerprint scenario: ${scenario}`);
   }
@@ -512,8 +637,8 @@ export function readTaskRequestFingerprintFixture(format: FingerprintProjectForm
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const update = process.argv[2], format = process.argv[3] ?? 'format4';
-  assert.ok(update === '--update' && (format === 'format3' || format === 'format4') && process.argv.length <= 4,
-    'Usage: node tests/helpers/agent-task-request-fingerprints-v2.ts --update [format4|format3]');
+  assert.ok(update === '--update' && (format === 'format3' || format === 'format4' || format === 'format5') && process.argv.length <= 4,
+    'Usage: node tests/helpers/agent-task-request-fingerprints-v2.ts --update [format4|format3|format5]');
   const requests = await collectTaskRequestFingerprints({format});
   const file: TaskRequestFingerprintFile = {formatVersion: 1,
     note: 'Reviewed raw runtime request bytes. Review scenario and request changes before explicitly regenerating with node tests/helpers/agent-task-request-fingerprints-v2.ts --update. No real model or provider is contacted.', requests};
