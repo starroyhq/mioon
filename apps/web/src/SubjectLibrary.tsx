@@ -15,6 +15,7 @@ import type { UseSubjectsResult } from './use-subjects.ts';
 import './subjects.css';
 import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
 import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
+import {dragSubject} from './board-ui/subject-drag.ts';
 
 export interface SubjectAssetView { id?: string; projectId?: string; name?: string; mimeType?: string; [key: string]: unknown }
 export interface SubjectVersionLike { id?: string; assetId?: string; projectId?: string | null; number?: number; width?: number; height?: number }
@@ -95,7 +96,7 @@ export default function SubjectLibrary({ subjects, assets = [], blocked = false,
       {view.list.phase === 'loading' && <p role="status">{t('subjects.library.loading')}</p>}
       {view.list.phase === 'error' && <p className="subject-warning" role="alert">{renderMessage(view.list.error)}</p>}
       {view.list.phase === 'ready' && !visible.length && <p className="subject-empty">{view.list.items.length ? t('subjects.library.noMatches') : t('subjects.library.empty')}</p>}
-      <div className="subject-cards">{visible.map(subject => <Button variant="ghost" key={subject.id} className={`subject-card ${highlighted === subject.id ? 'selected' : ''}`} data-testid={`subject-card-${subject.id}`} aria-pressed={highlighted === subject.id} disabled={!interaction.visible || view.list.phase !== 'ready'} onClick={() => admit(() => onInspectSubject ? onInspectSubject(subject.id) : control.selectSubject(subject.id, scope))}><SubjectImage version={subject.headVersion} assets={assets} label={subject.name} /><span className="subject-card-text"><span className="subject-card-title"><strong>{subject.name}</strong><small>{renderMessage(subjectKindDescriptor(subject.kind))}</small></span><small>{t('subjects.library.defaultVersion', { number: subject.headVersion.number })}</small></span></Button>)}</div>
+      <div className="subject-cards">{visible.map(subject => <Button variant="ghost" key={subject.id} className={`subject-card ${highlighted === subject.id ? 'selected' : ''}`} data-testid={`subject-card-${subject.id}`} aria-pressed={highlighted === subject.id} draggable={!disabled} onDragStart={event => {if (disabled) {event.preventDefault(); return;} dragSubject(event.nativeEvent, subject.id);}} disabled={!interaction.visible || view.list.phase !== 'ready'} onClick={() => admit(() => onInspectSubject ? onInspectSubject(subject.id) : control.selectSubject(subject.id, scope))}><SubjectImage version={subject.headVersion} assets={assets} label={subject.name} /><span className="subject-card-text"><span className="subject-card-title"><strong>{subject.name}</strong><small>{renderMessage(subjectKindDescriptor(subject.kind))}</small></span><small>{t('subjects.library.defaultVersion', { number: subject.headVersion.number })}</small></span></Button>)}</div>
       {paged && <SubjectPager entry={state.list} disabled={!interaction.visible || !scope || state.list.phase === 'loading'} onPage={direction => admit(() => control.subjectPage(direction, scope))} />}
     </div></ScrollArea>
   </section>;

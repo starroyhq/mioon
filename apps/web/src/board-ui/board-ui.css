@@ -90,3 +90,26 @@
 .board-inspector-delete:hover {border-color:var(--wb-danger,#d9534f);}
 .board-inspector-sync {display:flex;justify-content:space-between;margin-top:14px;padding-top:10px;border-top:1px solid var(--wb-line);font-size:10px;color:var(--wb-muted);}
 .board-inspector-sync[data-synced="false"] span:first-child {color:var(--wb-warning,#d9a441);}
+
+/* SB-b subject cards, bindings and destructive confirmation. */
+.board-ui-live-subject-picker {position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:7;width:280px;max-height:320px;overflow:auto;padding:10px;border:1px solid var(--board-line);border-radius:8px;background:var(--board-panel);box-shadow:0 12px 32px #0008;color:var(--board-text);font-size:11px;}
+.board-ui-live-subject-picker header {display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.board-ui-live-subject-picker header button {border:0;background:transparent;color:var(--board-soft);font-size:16px;}
+.board-ui-live-subject-picker ul {margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;}
+.board-ui-live-subject-picker li {display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.board-ui-live-subject-picker li button {border:1px solid var(--board-line);border-radius:4px;background:transparent;color:var(--board-text);font-size:10px;padding:2px 7px;}
+.board-binding-list {margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;}
+.board-binding-row {display:flex;flex-direction:column;gap:5px;padding:6px 0;border-bottom:1px solid var(--wb-line);}
+.board-binding-main {display:flex;align-items:center;gap:8px;}
+.board-binding-role {padding:1px 5px;border:1px solid var(--wb-line);border-radius:4px;color:var(--wb-muted);font-size:9px;}
+.board-binding-actions {display:flex;flex-wrap:wrap;gap:4px;}
+.board-binding-actions button {min-height:24px;padding:2px 6px;font-size:9px;}
+.board-danger-actions {display:flex;gap:6px;margin-top:14px;}
+.board-danger-actions button {border-color:color-mix(in srgb, var(--wb-danger,#d9534f) 55%, var(--wb-line));color:var(--wb-text);}
+.board-confirm-backdrop {position:fixed;inset:0;z-index:120;display:grid;place-items:center;background:#0008;}
+.board-confirm-dialog {width:380px;max-width:calc(100vw - 40px);padding:18px;border:1px solid var(--wb-line-strong);border-radius:10px;background:var(--wb-panel);box-shadow:0 18px 48px #000a;color:var(--wb-text);}
+.board-confirm-dialog h3 {margin:0 0 8px;font-size:14px;}
+.board-confirm-dialog p {margin:0 0 8px;color:var(--wb-soft);font-size:11px;line-height:1.6;}
+.board-confirm-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+.board-confirm-actions button {min-height:28px;padding:4px 12px;border:1px solid var(--wb-line);border-radius:5px;background:transparent;color:var(--wb-text);font-size:11px;}
+.board-confirm-actions button:last-child {border-color:var(--wb-danger,#d9534f);}

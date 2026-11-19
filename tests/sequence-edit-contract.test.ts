@@ -19,7 +19,7 @@ import type {
   BoardSeamProjectionPort, MainTrackProjectionPort, SequenceEditBaselineChange, SequenceEditEnvelope,
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
-  SubjectBindingOperation,
+  SubjectBindingOperation, SubjectEditOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -127,13 +127,16 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
   ];
-  const subjectSamples: Array<[SubjectBindingOperation, string]> = [
+  const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
     [lockBinding, 'subject.binding.set-mode'],
     [detachBinding, 'subject.binding.detach'],
     [restoreBinding, 'subject.binding.restore'],
+    [{kind: 'subject.card.create', nodeId: nodeA, subjectId: uuid('60'), position: {x: 0, y: 0}}, 'subject.card.create'],
+    [{kind: 'subject.card.delete', nodeId: nodeA}, 'subject.card.delete'],
+    [{kind: 'subject.delete', subjectId: uuid('60')}, 'subject.delete'],
   ];
-  assert.equal(subjectSamples.length, 4);
+  assert.equal(subjectSamples.length, 7);
   assert.equal(samples.length + subjectSamples.length, SEQUENCE_EDIT_OPERATIONS.length);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
