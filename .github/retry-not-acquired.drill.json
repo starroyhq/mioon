@@ -1,6 +1,0 @@
-[
-  {"run_id": 44538781015, "attempt": 1, "expect": "rerun"},
-  {"run_id": 44558848999, "attempt": 1, "expect": "rerun"},
-  {"run_id": 44579814075, "attempt": 1, "expect": "skip-real-failure"},
-  {"run_id": 44563973483, "attempt": 1, "expect": "skip-mixed"}
-]

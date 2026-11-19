@@ -23,7 +23,7 @@ function queued(id: number, name: string, overrides: Partial<RunJob> = {}): RunJ
     runner_name: '', steps: [], check_run_url: `https://api.github.com/repos/starroyhq/mioon/check-runs/${id}`, ...overrides});
 }
 function gate(): RunJob {return job(99, AGGREGATE_GATE_JOB, {conclusion: 'failure'});}
-function classify(jobs: RunJob[], attempt = 1, annotations = new Map<number, readonly string[]>()) {
+function classify(jobs: RunJob[], attempt = 1, annotations: ReadonlyMap<number, readonly string[]> = new Map()) {
   return classifyRunAttempt({runId: 1, attempt, jobs, annotations});
 }
 function withMessages(jobs: RunJob[]): ReadonlyMap<number, readonly string[]> {
@@ -91,7 +91,7 @@ test('the drill summary records the verdict, expectation and that the rerun API 
 test('the drill workflow is manual-only, has the approved permission and never calls a rerun endpoint', async () => {
   const workflow = await readFile(path.join(root, '.github/workflows/retry-not-acquired.yml'), 'utf8');
   assert.match(workflow, /^on:\r?\n  workflow_dispatch:\r?\n    inputs:\r?\n      run_id:/m);
-  assert.doesNotMatch(workflow, /^  workflow_run:|^  pull_request:/m, 'the drill workflow must not react to other workflows or PRs');
+  assert.doesNotMatch(workflow, /^  (push|workflow_run|pull_request):/m, 'the drill may only be started manually');
   assert.match(workflow, /permissions:\r?\n  actions: write\r?\n  contents: read/);
   assert.match(workflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.match(workflow, /retry-not-acquired\.ts --run-id="\$\{\{ inputs\.run_id \}\}"/);

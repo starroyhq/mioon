@@ -2,9 +2,8 @@ name: Retry not-acquired drill
 
 # Drill phase of the "job was not acquired" retry plan. The workflow only
 # classifies real runs and records the evidence; it never calls a rerun API.
-# workflow_dispatch only works once the workflow exists on the default branch,
-# so the PR branch carries a temporary push trigger for the drill itself. The
-# trigger is removed before review; the drill run stays linked in the PR.
+# It stays manual until the coordinator approves the drill results; the
+# automatic workflow_run trigger is a separate, later change.
 on:
   workflow_dispatch:
     inputs:
@@ -12,8 +11,6 @@ on:
         description: Workflow run id to classify
         required: true
         type: string
-  push:
-    branches: [howard/ci-retry-drill]
 
 permissions:
   actions: write
@@ -45,8 +42,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == 'push' ]]; then
-            node .github/scripts/retry-not-acquired.ts --drill-file=.github/retry-not-acquired.drill.json
-          else
-            node .github/scripts/retry-not-acquired.ts --run-id="${{ inputs.run_id }}" --attempt=1
-          fi
+          node .github/scripts/retry-not-acquired.ts --run-id="${{ inputs.run_id }}" --attempt=1

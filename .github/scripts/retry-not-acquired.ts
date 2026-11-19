@@ -169,6 +169,7 @@ async function main(args: readonly string[]): Promise<number> {
     classifications.push(classification);
     const summary = renderSummary(classification, entry.expect);
     await appendSummary(summary + '\n');
+    process.stdout.write(summary + '\n');
     process.stdout.write(JSON.stringify(classification) + '\n');
   }
   return classifications.length ? 0 : 2;
