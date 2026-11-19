@@ -110,7 +110,7 @@ export interface TimelineProps {
   removalBlocked?: boolean;
   onTrackAdd: (kind: string) => unknown;
   onTrackUpdate: (trackId: string, patch: Record<string, unknown>) => unknown;
-  onSeed: () => unknown;
+  onSeed?: (() => unknown) | undefined;
   onRender: (purpose: string) => unknown;
   onSeek: (frame: number) => unknown;
   playhead: number;
@@ -323,7 +323,7 @@ export default function Timeline({ onRegisterMenuRemoval, onMenuStateChange, loc
           {preview?.trackId === track.id && <><div className={`timeline-drop-preview ${preview.valid ? '' : 'invalid'}`} data-testid="timeline-drop-preview" data-start-frame={preview.startFrame} data-duration-frames={preview.durationFrames} data-valid={preview.valid} style={{ left: preview.startFrame * pxFrame, width: Math.max(8, preview.durationFrames * pxFrame) }}><span>{preview.startFrame} → {preview.startFrame + preview.durationFrames}f</span></div>{preview.snap && <div className={`timeline-snap-guide ${preview.valid ? '' : 'invalid'}`} data-testid="timeline-snap-guide" data-snap-frame={preview.snap.frame} style={{ left: preview.snap.frame * pxFrame }}><span>{renderMessage(preview.snap.labelMessage as DisplayMessage)} · {preview.snap.frame}f</span></div>}</>}
           {!timeline!.clips.some(c => c.trackId === track.id) && <span className="track-drop-hint">{t(track.kind === 'audio' ? 'timeline.view.dropAudio' : 'timeline.view.dropVisual')}</span>}<TimelineTrackPlayhead clock={bodyClock} playhead={playhead} pixelsPerFrame={pxFrame} /></div></div>)}
         {editUiProjection && editUiProjection.mainTrackId !== null && <EditUiAnchorLayer projection={editUiProjection} timelineRevision={timeline?.revision ?? 0} pixelsPerFrame={pxFrame} />}
-        {!timeline?.clips?.length && <div className="timeline-empty edit-timeline-empty"><Icon name="download" size={24} /><div><strong>{t('edit.empty.title')}</strong></div>{canSeed && <Button variant="outline" disabled={busy} onClick={onSeed}>{t('timeline.view.seed')}</Button>}</div>}
+        {!timeline?.clips?.length && <div className="timeline-empty edit-timeline-empty"><Icon name="download" size={24} /><div><strong>{t('edit.empty.title')}</strong></div>{canSeed && onSeed && <Button variant="outline" disabled={busy} onClick={onSeed}>{t('timeline.view.seed')}</Button>}</div>}
       </div></div></div><footer className={`timeline-footnote ${preview && !preview.valid ? 'invalid' : ''}`}><span data-testid="timeline-drop-status" role="status" aria-live="polite">{preview ? t('timeline.view.dropStatus', { action: t(preview.valid ? (preview.unchanged ? 'timeline.view.positionUnchanged' : 'timeline.view.releaseToDrop') : 'timeline.view.cannotDrop'), start: preview.startFrame, end: preview.startFrame + preview.durationFrames, reason: renderMessage(preview.reasonMessage as DisplayMessage) || (preview.altKey ? t('timeline.view.altNoSnap') : preview.snap ? `${renderMessage(preview.snap.labelMessage)} ${preview.snap.frame}f` : snappingEnabled ? t('timeline.view.outsideSnap') : t('timeline.view.snapDisabled')), note: 'noteMessage' in preview && preview.noteMessage && preview.known ? ` · ${renderMessage(preview.noteMessage as DisplayMessage)}` : '' }) : null}</span><span>{t('timeline.view.clipCount', {duration: displayTimelineFrame(duration, fps, preferences.timecodeFormat), count: timeline?.clips?.length || 0})}</span></footer>
     </CollapsibleContent>
   </Collapsible>;
