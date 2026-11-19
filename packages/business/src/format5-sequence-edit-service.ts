@@ -11,7 +11,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditHistoryCursor, SequenceEditImpact,
-  SequenceEditIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+  SequenceEditIntent, SequenceEditReferenceIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
 import {isSequenceEditEnvelope} from '../../contracts/src/sequence-edit.ts';
 import {sequenceEditInputDigest} from './format5-editor-history.ts';
 import type {SequenceSyncCommand} from '../../contracts/src/sequence-sync.ts';
@@ -25,6 +25,9 @@ import {previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './f
 import {
   buildSubjectBindingEnvelope, planSubjectBindingAction,
 } from './format5-subject-binding.ts';
+import {
+  buildReferenceEdgeEnvelope, planReferenceEdgeAction,
+} from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
 import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
@@ -143,6 +146,33 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   }
 
+  function referencePreview(input: any): unknown {
+    const intent = input.referenceIntent as SequenceEditReferenceIntent;
+    const edit: any = intent.operation.edit;
+    const state = historyState(store);
+    const allocation = allocationOf(input);
+    const edgeId = edit.kind === 'attach'
+      ? (allocation.edges.find(edge => edge.id === edit.edgeId && edge.toId === edit.shotId)?.id
+        ?? allocation.edges.find(edge => edge.toId === edit.shotId)?.id
+        ?? randomUUID())
+      : edit.edgeId;
+    const command = edit.kind === 'attach'
+      ? {kind: 'attach' as const, edgeId, shotId: edit.shotId, sourceNodeId: edit.sourceNodeId,
+        ...(edit.role ? {role: edit.role} : {})}
+      : edit.kind === 'set-role'
+        ? {kind: 'set-role' as const, edgeId, shotId: edit.shotId, role: edit.role}
+        : {kind: 'detach' as const, edgeId, shotId: edit.shotId};
+    const envelope: SequenceEditEnvelope = {...buildReferenceEdgeEnvelope(store, command, {
+      requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
+      historyPosition: state.position, historyRevision: state.revision}), ...(input.origin ? {origin: input.origin} : {})};
+    try { planReferenceEdgeAction(store, envelope); }
+    catch (error) {
+      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
+      throw error;
+    }
+    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+  }
+
   function timelinePreview(input: any, intents: SequenceEditIntent[]): unknown {
     if (intents.length !== 1) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
     const command = commandFromIntent(intents[0]!);
@@ -183,6 +213,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});
     if (input.subjectIntent) return subjectPreview(input);
+    if (input.referenceIntent) return referencePreview(input);
     const intents = (input.intents ?? []) as SequenceEditIntent[];
     if (intents.length === 0) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
     for (const intent of intents) {
@@ -214,7 +245,7 @@ export function createFormat5SequenceEditService(store: ProjectStore): {
       if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
-    if (envelope.subjectIntent || intents.some(timelineIntent)) {
+    if (envelope.subjectIntent || envelope.referenceIntent || intents.some(timelineIntent)) {
       const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});
       return result.receipt;

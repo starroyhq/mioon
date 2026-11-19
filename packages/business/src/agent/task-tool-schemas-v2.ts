@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="b88cd9a3296469ce3892562d38dfd5a5063b368c45b20b8eb6ec4588e3727d66";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="97101fdf219b97ca12426ed60af945f1882883f94862322935ae0b863e6c6104";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -886,6 +886,139 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "referenceIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "board"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "reference-edge"
+       },
+       "edit": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "attach"
+           },
+           "edgeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "sourceNodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "role": {
+            "type": "string",
+            "enum": [
+             "first_frame",
+             "last_frame",
+             "reference_image",
+             "subject_reference",
+             "style_reference",
+             "composition",
+             "reference_audio",
+             "reference_video"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "edgeId",
+           "shotId",
+           "sourceNodeId"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "set-role"
+           },
+           "edgeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "role": {
+            "type": "string",
+            "enum": [
+             "first_frame",
+             "last_frame",
+             "reference_image",
+             "subject_reference",
+             "style_reference",
+             "composition",
+             "reference_audio",
+             "reference_video"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "edgeId",
+           "shotId",
+           "role"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "detach"
+           },
+           "edgeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           }
+          },
+          "required": [
+           "kind",
+           "edgeId",
+           "shotId"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "edit"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "propertiesIntent": {
     "type": "object",
     "properties": {
@@ -1529,6 +1662,139 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "bindingId",
              "bindingMode",
              "subjectVersionId"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "edit"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "referenceIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "board"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "reference-edge"
+         },
+         "edit": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "attach"
+             },
+             "edgeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "sourceNodeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "first_frame",
+               "last_frame",
+               "reference_image",
+               "subject_reference",
+               "style_reference",
+               "composition",
+               "reference_audio",
+               "reference_video"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "edgeId",
+             "shotId",
+             "sourceNodeId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "set-role"
+             },
+             "edgeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "role": {
+              "type": "string",
+              "enum": [
+               "first_frame",
+               "last_frame",
+               "reference_image",
+               "subject_reference",
+               "style_reference",
+               "composition",
+               "reference_audio",
+               "reference_video"
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "edgeId",
+             "shotId",
+             "role"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "detach"
+             },
+             "edgeId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "shotId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             }
+            },
+            "required": [
+             "kind",
+             "edgeId",
+             "shotId"
             ],
             "additionalProperties": false
            }
@@ -9601,6 +9867,102 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "edit"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-attach"
+     },
+     "sourceNodeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "first_frame",
+       "last_frame",
+       "reference_image",
+       "composition",
+       "reference_audio",
+       "reference_video",
+       "subject_reference",
+       "style_reference"
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "sourceNodeId",
+     "shotId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-set-role"
+     },
+     "edgeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "first_frame",
+       "last_frame",
+       "reference_image",
+       "composition",
+       "reference_audio",
+       "reference_video",
+       "subject_reference",
+       "style_reference"
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "edgeId",
+     "shotId",
+     "role"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-detach"
+     },
+     "edgeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "edgeId",
+     "shotId"
     ],
     "additionalProperties": false
    },

@@ -32,6 +32,15 @@ export interface SequenceInspectionSegment {
     readonly anchor?: {readonly clipId: string; readonly offsetFrames: number} | null;
   }[];
   readonly inSync: boolean;
+  /** RI-a: material reference lines attached to this shot, capped per segment;
+   * subject bindings are listed separately as SB evidence. */
+  readonly references?: readonly {
+    readonly edgeId: string;
+    readonly role: string;
+    readonly assetId: string;
+    readonly sourceNodeId: string;
+  }[];
+  readonly referenceCount?: number;
 }
 export interface SequenceInspectionDiff {
   readonly kind: 'board' | 'track' | 'anchor';
