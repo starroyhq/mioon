@@ -11,6 +11,9 @@ export interface BoardUiNode {
   readonly durationFrames?: number | null;
   readonly status?: BoardGenerationStatus;
   readonly thumbnailUrl?: string | null;
+  /** SB-b: the retained subject row behind a `subject` card. */
+  readonly subjectId?: string;
+  readonly subjectKind?: 'character' | 'product' | 'location' | 'look';
 }
 
 export interface BoardFilmItem {

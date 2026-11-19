@@ -238,6 +238,7 @@ const stateDelta = (board: SequenceEditBoardDelta): SequenceEditStateDelta => ({
 export function planSubjectBindingAction(store: ProjectStore, envelope: SequenceEditEnvelope): SubjectBindingPlan {
   const intent = envelope.subjectIntent;
   if (!intent || envelope.intents.length !== 0) invalid('主体动作必须且只能携带一个 subject intent');
+  if (intent.operation.kind !== 'subject-binding') invalid('主体卡动作由主体卡领域处理');
   const edit = intent.operation.edit;
   const target = (bindingId: string): void => {
     if (!envelope.baseline.targets.some(item => item.kind === 'subject_binding' && item.id === bindingId
@@ -312,7 +313,9 @@ export function planSubjectBindingAction(store: ProjectStore, envelope: Sequence
 /** Stable action operation name for one envelope. */
 export function subjectBindingOperationName(envelope: SequenceEditEnvelope): string {
   if (!envelope.subjectIntent) throw new TypeError('Not a subject binding envelope');
-  const edit = envelope.subjectIntent.operation.edit;
+  const operation = envelope.subjectIntent.operation;
+  if (operation.kind !== 'subject-binding') throw new TypeError('Not a subject binding intent');
+  const edit = operation.edit;
   return `subject.binding.${edit.kind === 'set-mode' ? 'set-mode' : edit.kind}`;
 }
 

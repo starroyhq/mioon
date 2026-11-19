@@ -19,6 +19,7 @@ export const BOARD_IDS = {
   assetA: id(10), assetB: id(11), imageAsset: id(12), assetV2: id(13), versionA: id(20), versionB: id(21), versionA2: id(22),
   jobA: id(70), jobB: id(71), jobV2: id(72), clipA: id(30), clipB: id(31), imageClip: id(32), groupA: id(40), groupB: id(41),
   groupImage: id(42), timeline: id(50), edge1: id(80), edge2: id(81), edge3: id(82), referenceEdge: id(83),
+  subjectCharacter: id(90), subjectLook: id(91), subjectCharacterVersion: id(92), subjectLookVersion: id(93),
 } as const;
 const sha = (letter: string): string => letter.repeat(64);
 export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
@@ -58,6 +59,22 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('assets', {id: BOARD_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 4, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetV2, projectId, name: '镜头A v2.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('d'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10});
+    const subjectVersionData = (versionId: string, subjectId: string): string => JSON.stringify({id: versionId,
+      projectId, subjectId, number: 1, assetId: BOARD_IDS.imageAsset, sha256: 'c'.repeat(64), mimeType: 'image/png',
+      width: 1080, height: 1920, createdAt: at,
+      provenance: {kind: 'user-import', versionId: null, shotId: null, jobId: null}});
+    store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
+      VALUES(?,?,?,?,?,?,?,?)`).run(BOARD_IDS.subjectCharacter, projectId, 'character', '阿琦', 1,
+      BOARD_IDS.subjectCharacterVersion, at, at);
+    store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
+      VALUES(?,?,?,?,?,?,?,?)`).run(BOARD_IDS.subjectLook, projectId, 'look', '霓虹', 1,
+      BOARD_IDS.subjectLookVersion, at, at);
+    store.db.prepare(`INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)`)
+      .run(BOARD_IDS.subjectCharacterVersion, projectId, BOARD_IDS.subjectCharacter, 1, BOARD_IDS.imageAsset,
+        subjectVersionData(BOARD_IDS.subjectCharacterVersion, BOARD_IDS.subjectCharacter));
+    store.db.prepare(`INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)`)
+      .run(BOARD_IDS.subjectLookVersion, projectId, BOARD_IDS.subjectLook, 1, BOARD_IDS.imageAsset,
+        subjectVersionData(BOARD_IDS.subjectLookVersion, BOARD_IDS.subjectLook));
     store.put('jobs', {id: BOARD_IDS.jobA, projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: BOARD_IDS.shotA, createdAt: at, updatedAt: at});
     store.put('jobs', {id: BOARD_IDS.jobB, projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: BOARD_IDS.shotB, createdAt: at, updatedAt: at});
     store.put('jobs', {id: BOARD_IDS.jobV2, projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: BOARD_IDS.shotA, createdAt: at, updatedAt: at});
