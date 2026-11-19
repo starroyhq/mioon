@@ -64,8 +64,8 @@
 
 ## 检查与结果
 
-- `tests/format5-dialogue.test.ts`（13 项）：两侧一致、ID 唯一、切开跟随、删行/撤销、
-  游离/接回/归档/复制、普通字幕不动、超长/帧不足/重叠拒绝、noop、精确重放。
+- `tests/format5-dialogue.test.ts`（14 项）：两侧一致、ID 唯一、切开跟随、删行/撤销、
+  游离/接回/归档/复制、普通字幕不动、超长/帧不足/重叠拒绝、noop、精确重放、未挂靠 cue 不被后续同步自动挂上。
 - `tests/format5-dialogue-performance.test.ts`：500 镜头 + 500 台词/字幕 + 1,000 锚定段，
   单次台词编辑共享事务本机 p95 约 41 ms（预算 100 ms；Linux CI 断言代码路径 p95 ≤200 ms）。
 - `tests/sequence-edit-contract.test.ts`：dialogueIntent 正反例与历史补丁兼容。

@@ -228,16 +228,19 @@ export function projectFormat5DialogueCues(input: Format5DialogueProjectionInput
         && current.startFrame >= spanStart && current.startFrame + current.durationFrames <= spanEnd;
       if (valid) continue;
       const previous = input.previousCues.get(cue.id);
-      const previousOwner = previous?.anchor?.clipId;
-      // A cue detached in this action because its owner vanished or was trimmed
-      // keeps its absolute frame (plan §2.3: release the anchor in place).
-      if (previousOwner !== undefined && previousOwner !== null
-        && input.previousMainShotIds.has(shot.shotId) && !reentering) {
-        if (current.anchor !== null) {
-          next.set(cue.id, {...current, anchor: null});
-          changed.add(cue.id);
+      if (!reentering && previous !== undefined) {
+        // An already detached cue stays unanchored in place: `null` means "do not
+        // attach again by later gap filling" (plan §2.3). A cue that lost its
+        // owner or moved out of range in THIS action releases the anchor in place
+        // as well; neither is silently re-anchored elsewhere.
+        const previousWasDetached = (previous.anchor ?? null) === null;
+        if (previousWasDetached || (previous.anchor !== null && previous.anchor !== undefined)) {
+          if (current.anchor !== null) {
+            next.set(cue.id, {...current, anchor: null});
+            changed.add(cue.id);
+          }
+          continue;
         }
-        continue;
       }
       pending.push({lineId: line.id, cue: current});
     }

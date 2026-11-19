@@ -307,6 +307,26 @@ test('splitting a shot keeps cue ids and transfers the anchor by the subtitle st
   }
 });
 
+test('a detached cue stays unanchored on later unrelated syncs', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  const cue = cueFor(store, shotA, line1)!;
+  // Detach it in place (a trim/owner edit would leave exactly this state).
+  store.tx(() => {
+    const record = timeline(store);
+    const target = record.subtitles!.cues.find(item => item.id === cue.id)!;
+    target.anchor = null;
+    store.put('timelines', record);
+  });
+  runSync(store, {kind: 'clip-version', clipId: clipA, versionId: versionA, mode: 'locked'});
+  const after = cues(store).find(item => item.id === cue.id)!;
+  assert.equal(after.anchor, null, 'a later sync does not silently attach a detached cue');
+  assert.equal(after.startFrame, cue.startFrame);
+  assert.equal(after.text, '第一句改');
+});
+
 test('a floating shot keeps its cue in place and re-attaching reuses the same cue', t => {
   const store = fixture(t);
   // Connect the floating shot C at the chain tail: its line is projected.
