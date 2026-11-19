@@ -37,11 +37,14 @@ export interface SequenceHistoryView {
   readonly redoAvailable?: boolean;
   readonly undoConflict?: boolean;
   readonly redoConflict?: boolean;
+  readonly undoBlockedBy?: 'user' | 'mio' | null;
+  readonly redoBlockedBy?: 'user' | 'mio' | null;
 }
 export type SequenceRpc = (operation: string, input: unknown) => Promise<unknown>;
 /** D5 minimal user-undo protection: a Mio action at the top is not part of the
  * user Ctrl+Z stack. MT-4 adds the separate cursor/conflict rules. */
-export const format5UserUndoBlocked = (view: SequenceHistoryView | null): boolean => view?.undo?.origin === 'mio';
+export const format5UserUndoBlocked = (view: SequenceHistoryView | null): boolean =>
+  view?.undo?.origin === 'mio' || view?.undoBlockedBy === 'mio';
 
 const uuid = (): string => globalThis.crypto?.randomUUID?.() ??
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
@@ -263,23 +266,23 @@ export class Format5EditSession {
   async history(): Promise<SequenceHistoryView | null> {
     const projectId = this.projectId();
     if (!projectId) return null;
-    try {return await this.endpoint('sequence.history.get')({projectId}) as SequenceHistoryView;}
+    try {return await this.endpoint('sequence.history.get')({projectId, origin: 'user'}) as SequenceHistoryView;}
     catch {return null;}
   }
   async undo(view: SequenceHistoryView): Promise<SequenceOutcome> {
     const projectId = this.projectId();
-    if (!projectId || !view.undo) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
+    if (!projectId || !view.undo || view.undoConflict === true) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
       return commitOutcome(await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('undo'),
-        actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}));
+        origin: 'user', actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}}));
     } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
   }
   async redo(view: SequenceHistoryView): Promise<SequenceOutcome> {
     const projectId = this.projectId();
-    if (!projectId || !view.redo) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
+    if (!projectId || !view.redo || view.redoConflict === true) return {ok: false, code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'};
     try {
       return commitOutcome(await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('redo'),
-        actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}));
+        origin: 'user', actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}}));
     } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
   }
 }
