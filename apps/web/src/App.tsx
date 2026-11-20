@@ -3015,8 +3015,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   } as unknown as Parameters<typeof useTimelineLoudnessApply>[0]);
   timelineLoudnessApplyRef.current = timelineLoudnessApply;
   const effectivePlayhead = timelineAudioPreviewPosition(audioPreview, playhead);
-  const effectivePlayheadRef = useRef(effectivePlayhead);
-  effectivePlayheadRef.current = effectivePlayhead;
   const seekTimelineSound = (frame: number) => seekTimelineAudioPreview(audioPreview, frame, setPlayhead);
   function exportSamplePeakContext(): Record<string, unknown> {
     const workspaceScope = editorSession.current;
@@ -3027,6 +3025,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       visible: workbenchReady && showDelivery && showExports,
       exports: dataRef.current!.exports, assets: dataRef.current!.assets.filter(asset => projectMedia.canRead(asset)) };
   }
+  const effectivePlayheadRef = useRef(effectivePlayhead);
+  effectivePlayheadRef.current = effectivePlayhead;
   const exportSamplePeak = useExportSamplePeak({ context: exportSamplePeakContext(), getContext: exportSamplePeakContext,
     isRenderRecord: isTimelineRenderRecord,
     read: (input: Record<string, unknown>, options?: Parameters<typeof rpc>[2]) => rpc('timeline.export.samplePeak', input, options as never), onUnauthorized: () => setAuth(false) } as unknown as Parameters<typeof useExportSamplePeak>[0]) as unknown as ExportSamplePeakRuntime;
