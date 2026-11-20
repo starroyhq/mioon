@@ -1,0 +1,5 @@
+.shot-dialogue { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); }
+.shot-dialogue-heading { display: flex; align-items: baseline; gap: 8px; }
+.shot-dialogue-text { resize: vertical; min-height: 68px; font: inherit; line-height: 1.5; }
+.shot-dialogue-actions { display: flex; align-items: center; gap: 8px; }
+.shot-dialogue-cues { margin: 0; }

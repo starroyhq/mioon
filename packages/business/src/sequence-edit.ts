@@ -28,8 +28,9 @@ import {
 import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
 import {
   applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, applySubjectBindingWrite,
-  createMainTrackProjectionPort, readSequenceSyncContext,
+  createMainTrackProjectionPort, previewMainTrackProjection, readSequenceSyncContext,
 } from './format5-sequence-sync.ts';
+import {copyFormat5ShotDialogue} from './format5-dialogue-projection.ts';
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
@@ -650,7 +651,20 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
   const boardDeltas = planBoardDeltas(context, {intents, allocation: preparation.allocation} as SequenceEditEnvelope,
     state.board, state.media, preparation.restored, preparation.deleted, new Map(), preparation.created,
     preparation.layoutMoves, preparation.directChanges);
-  const nodeIds = new Set<string>();
+  // Project the same main track the commit will write so the preview impact
+  // lists the cues (and the user sees dialogue/anchor conflicts before confirm).
+  const projectedShotRows = new Map<string, Row>();
+  for (const [id, row] of preparation.created.shots) projectedShotRows.set(id, row);
+  for (const [id] of preparation.restored) {
+    if (!context.archived.has(`shot:${id}`)) continue;
+    projectedShotRows.set(id, preparation.restored.get(id)!);
+  }
+  let projectedCueIds: string[] = [];
+  if (plan) {
+    const projection = previewMainTrackProjection(store, plan, projectedShotRows);
+    if (projection.ok === false) return {ok: false, code: projection.code, ids: projection.ids};
+    projectedCueIds = [...new Set([...projection.projection.changedCueIds, ...projection.projection.removedCueIds])].sort();
+  }  const nodeIds = new Set<string>();
   for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind !== 'edge') nodeIds.add(entity.id);
   const edgeIds = new Set<string>();
   for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind === 'edge') edgeIds.add(entity.id);
@@ -664,7 +678,7 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
   }
   return {ok: true, allocation: preparation.allocation, warnings: [...preparation.warnings, ...warnings] as unknown as readonly ChainSyncWarning[],
     impact: {nodeIds: [...nodeIds], edgeIds: [...edgeIds], mainTrackClipIds: [...mainTrackClipIds],
-      otherTrackItemIds: [...otherTrackItemIds], subtitleCueIds: []}};
+      otherTrackItemIds: [...otherTrackItemIds], subtitleCueIds: projectedCueIds}};
 }
 
 // ---------------------------------------------------------------------------
@@ -689,7 +703,10 @@ function copyNodeRow(context: EditContext, sourceNodeId: string, newNodeId: stri
   const sourceTable: CanvasTable | null = shotRow ? 'shots' : nodeRow ? 'nodes' : null;
   if (!sourceTable) return null;
   const before = (shotRow ?? nodeRow)!;
-  const after = {...before, id: newNodeId, projectId: context.projectId, createdAt: now(), updatedAt: now()};
+  const base = {...before, id: newNodeId, projectId: context.projectId, createdAt: now(), updatedAt: now()};
+  // Copying a shot generates fresh dialogue line ids (plan §2.4); cue ids are
+  // derived from them so the copy never collides with the source lines.
+  const after = sourceTable === 'shots' ? copyFormat5ShotDialogue(base, newNodeId) : base;
   return {fromNodeId: sourceNodeId, sourceTable, before, after};
 }
 
@@ -851,17 +868,39 @@ function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, f
   return {before: {writes: beforeWrites, removals: beforeRemovals}, after: {writes: afterWrites, removals: afterRemovals}, nodes, edges};
 }
 
+function boardEntityRank(kind: SequenceEditBoardEntity['kind'], direction: 'write' | 'remove'): number {
+  // Adoption rows reference a shot; edges reference nodes. Delete children before
+  // their owners and insert owners before children on every forward/undo apply.
+  if (kind === 'adoption') return direction === 'remove' ? 0 : 4;
+  if (kind === 'edge') return direction === 'remove' ? 1 : 3;
+  if (kind === 'shot') return direction === 'remove' ? 2 : 2;
+  if (kind === 'node') return direction === 'remove' ? 3 : 1;
+  return direction === 'remove' ? 0 : 5;
+}
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mode: 'forward' | 'restore'): void {
   let subjectTouched = false;
-  for (const entity of delta.removals) {
+  for (const entity of [...delta.removals].sort((left, right) => boardEntityRank(left.kind, 'remove') - boardEntityRank(right.kind, 'remove'))) {
     if (entity.kind === 'subject_binding') {
       fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '主体绑定是墓碑，不能删除。', [entity.id]);
+    }
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      const removed = store.db.prepare('DELETE FROM project.shot_version_adoptions WHERE projectId=? AND shotId=? AND versionId=?')
+        .run(store.projectId, String(data.shotId), String(data.versionId));
+      if (mode === 'restore' && Number(removed.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
+      continue;
     }
     const table = tableOf(entity.kind);
     const removed = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
     if (mode === 'restore' && Number(removed.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
   }
-  for (const entity of delta.writes) {
+  for (const entity of [...delta.writes].sort((left, right) => boardEntityRank(left.kind, 'write') - boardEntityRank(right.kind, 'write'))) {
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      store.db.prepare('INSERT OR IGNORE INTO project.shot_version_adoptions(projectId,shotId,versionId,createdAt) VALUES(?,?,?,?)')
+        .run(store.projectId, String(data.shotId), String(data.versionId), String(data.createdAt ?? now()));
+      continue;
+    }
     if (entity.kind === 'subject_binding') {
       applySubjectBindingWrite(store, entity.data as Row);
       subjectTouched = true;
@@ -891,6 +930,13 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mod
 
 function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): boolean {
   for (const entity of delta.writes) {
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      const current = store.db.prepare('SELECT 1 AS found FROM project.shot_version_adoptions WHERE projectId=? AND shotId=? AND versionId=?')
+        .get(store.projectId, String(data.shotId), String(data.versionId));
+      if (!current) return false;
+      continue;
+    }
     if (entity.kind === 'subject_binding') {
       const data = entity.data as Row;
       const current = store.db.prepare(`SELECT bindingMode,subjectVersionId,shotId,subjectId,role
@@ -907,6 +953,12 @@ function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): 
   }
   for (const entity of delta.removals) {
     if (entity.kind === 'subject_binding') return false;
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      if (store.db.prepare('SELECT 1 AS found FROM project.shot_version_adoptions WHERE projectId=? AND shotId=? AND versionId=?')
+        .get(store.projectId, String(data.shotId), String(data.versionId))) return false;
+      continue;
+    }
     if (store.db.prepare(`SELECT 1 FROM project.${tableOf(entity.kind)} WHERE id=? AND projectId=?`)
       .get(entity.id, store.projectId) !== undefined) return false;
   }
@@ -918,7 +970,19 @@ function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): 
 // ---------------------------------------------------------------------------
 
 function emptyTimelineDelta(baseline: SequenceEditBaselineChange): SequenceEditTimelineDelta {
-  return {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline};
+  return {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline, subtitles: {kind: 'unchanged'}};
+}
+/** Reverse three-state profile change for the before half of a patch. */
+function beforeSubtitleChange(before: Format5Timeline,
+  after: SequenceEditTimelineDelta['subtitles']): SequenceEditTimelineDelta['subtitles'] {
+  const change = after ?? {kind: 'unchanged'};
+  if (change.kind === 'set') return before.subtitles ? {kind: 'unchanged'} : {kind: 'absent'};
+  if (change.kind === 'absent') return before.subtitles ? {
+    kind: 'set',
+    value: {profileId: before.subtitles.profileId,
+      ...(before.subtitles.basisPresetId === undefined ? {} : {basisPresetId: before.subtitles.basisPresetId})},
+  } : {kind: 'unchanged'};
+  return {kind: 'unchanged'};
 }
 function timelineDeltaChanged(delta: SequenceEditTimelineDelta): boolean {
   return delta.clips.length > 0 || delta.cues.length > 0 || delta.removedClipIds.length > 0
@@ -953,8 +1017,9 @@ function buildTimelinePatch(before: Format5Timeline, after: Format5Timeline | nu
   }
   return {
     before: {clips: beforeClips, cues: beforeCues, removedClipIds: beforeRemovedClips, removedCueIds: beforeRemovedCues,
-      baseline: beforeBaselineValue(beforeBaseline, baseline)},
-    after: {clips: afterClips, cues: afterCues, removedClipIds: afterRemovedClips, removedCueIds: afterRemovedCues, baseline},
+      baseline: beforeBaselineValue(beforeBaseline, baseline), subtitles: {kind: 'unchanged'}},
+    after: {clips: afterClips, cues: afterCues, removedClipIds: afterRemovedClips, removedCueIds: afterRemovedCues,
+      baseline, subtitles: {kind: 'unchanged'}},
   };
 }
 
@@ -973,6 +1038,7 @@ function timelinePatchFromCommit(before: Format5Timeline, delta: SequenceEditTim
       removedClipIds: [...afterClipIds].filter(id => !oldClips.has(id)),
       removedCueIds: [...afterCueIds].filter(id => !oldCues.has(id)),
       baseline: beforeBaselineValue(beforeBaseline, delta.baseline),
+      subtitles: beforeSubtitleChange(before, delta.subtitles),
     },
     after: delta,
   };
@@ -1143,8 +1209,11 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     let appliedTimelineRevision: number | undefined;
     let appliedSyncRevision: number | undefined;
     if (timelineChanged) {
-      const projectionShots = creation.shots.size || creation.nodes.size
-        ? new Map([...syncContext.shots, ...creation.shots]) : syncContext.shots;
+      const extraShotRows = new Map<string, Row>([...creation.shots]);
+      for (const [id, copy] of copiedNodes) if (copy.sourceTable === 'shots') extraShotRows.set(id, copy.after);
+      for (const [id, row] of restored) if (context.archived.has(`shot:${id}`)) extraShotRows.set(id, row);
+      const projectionShots = extraShotRows.size || creation.nodes.size
+        ? new Map([...syncContext.shots, ...extraShotRows]) : syncContext.shots;
       const projectionContext = projectionShots === syncContext.shots ? syncContext : {...syncContext, shots: projectionShots};
       const result = createMainTrackProjectionPort(store, () => projectionContext).projectMainTrack({envelope: planEnvelope, state: stateBeforeFinal, plan: plan!});
       if (!result.ok) {

@@ -13,24 +13,29 @@
  *    `shots.referenceAssetIds` / `shots.lastFrameAssetId` projection inside the
  *    same transaction (P5 §2.1); format-5 generation itself reads the edges.
  *
- * 2. Generation input planning. Board references and active subject bindings
- *    are matched against one exact video input profile (GR support matrix):
- *    first/last frames, ordered multi-reference images (with a primary image),
- *    previs composition and reference audio. Inputs the selected service does
- *    not accept are reported with a stable reason instead of being silently
- *    dropped; the caller records the actual request shape and freezes the
- *    assets, hashes, subject versions and roles into the job snapshot (and
- *    therefore the immutable generation version provenance). Late board
- *    changes only affect the next job.
+ * 2. Generation input planning. Board references, active subject bindings and
+ *    the subjects one connected previs scene names are matched against one
+ *    exact video input profile (GR support matrix): first/last frames, ordered
+ *    multi-reference images (with a primary image), previs composition,
+ *    reference audio and the mannequin/prop subject references of a previs
+ *    scene (a look subject is a style reference, everything else is a subject
+ *    reference, each one counted once with the shot's direct binding winning).
+ *    Inputs the selected service does not accept are reported with a stable
+ *    reason instead of being silently dropped; the caller records the actual
+ *    request shape and freezes the assets, hashes, subject versions and roles
+ *    into the job snapshot (and therefore the immutable generation version
+ *    provenance). Late board changes only affect the next job.
  */
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {Format5Edge} from '../../contracts/src/project-format5.ts';
-import {format5EdgeSchema} from '../../contracts/src/project-format5.ts';
+import {FORMAT5_INPUT_LIMITS, format5EdgeSchema} from '../../contracts/src/project-format5.ts';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../contracts/src/board-sequence.ts';
 import {FRAME_REFERENCE_ROLES, REFERENCE_SOURCE_ROLES, defaultReferenceRole, referenceRoleAllowed} from '../../contracts/src/board-sequence.ts';
 import type {SequenceGenerationInputEntryView, SequenceGenerationInputMode, SequenceGenerationInputStatus,
   SequenceGenerationInputView} from '../../contracts/src/sequence-inspection.ts';
+import type {PrevisNodeRecord} from '../../contracts/src/previs.ts';
+import {PREVIS_LIMITS, isPrevisNodeRecord} from '../../contracts/src/previs.ts';
 import type {
   ReferenceEdgeOperation, SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope,
   SequenceEditExpectedTarget, SequenceEditImpact, SequenceEditStateDelta, SequenceEditTimelineDelta,
@@ -47,6 +52,8 @@ import {canvasActiveEdgeCondition, isCanvasArchived} from './canvas-active.ts';
 import {readGenerationAsset} from './generation-inputs.ts';
 import {readPrevisOutputSource} from './previs-output-ownership.ts';
 import {resolveGenerationSubjectInputs} from './format5-subject-binding.ts';
+import {resolvePrevisSceneSubjects} from './format5-previs.ts';
+import {format5DialogueView, planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 
 type Row = Record<string, any>;
 type ReferenceEdge = Extract<Format5Edge, {readonly kind: 'reference'}>;
@@ -232,7 +239,7 @@ function compareReferenceEdges(left: ReferenceEdge, right: ReferenceEdge): numbe
   return leftOrder - rightOrder || left.id.localeCompare(right.id);
 }
 
-const REFERENCE_EDGE_LIMIT = 48;
+const REFERENCE_EDGE_LIMIT = FORMAT5_INPUT_LIMITS.referenceEdgesPerShot;
 const FRAME_ROLES = new Set<ChainReferenceRole>(FRAME_REFERENCE_ROLES);
 
 function assertRoleCardinality(store: ProjectStore, shotId: string, role: ChainReferenceRole,
@@ -491,7 +498,7 @@ export function planReferenceEdgeAction(store: ProjectStore, envelope: SequenceE
 // ---------------------------------------------------------------------------
 
 export interface Format5ReferenceCandidate {
-  readonly source: 'edge' | 'subject';
+  readonly source: 'edge' | 'subject' | 'previs';
   readonly edgeId?: string;
   readonly bindingId?: string;
   readonly sourceNodeId?: string;
@@ -519,15 +526,70 @@ export interface Format5ReferenceCandidateSet {
   readonly candidates: readonly Format5ReferenceCandidate[];
 }
 
+/** A connected previs node whose scene names figure/prop subjects: the node is
+ * the source of both the material line and of those subject references. */
+interface PrevisSceneSource {
+  readonly nodeId: string;
+  /** Resolved previs card label; the row label appends the subject name. */
+  readonly label: string;
+  readonly record: PrevisNodeRecord;
+}
+
+/** Collection cap of previs scene subjects for one shot. One scene holds at
+ * most 8 figures and 24 props, so a single connected previs node fits; a second
+ * connected node only contributes what is left. This keeps the frozen job
+ * snapshot (copied into the immutable version provenance) bounded even on an
+ * extreme board. */
+const PREVIS_SCENE_SUBJECT_INPUT_LIMIT = FORMAT5_INPUT_LIMITS.previsSceneSubjects;
+
+/** Subjects a previs scene names, in figure-then-prop order. A subject already
+ * bound directly to the shot is skipped entirely (its direct binding owns the
+ * mode, version and role); repeats across elements or connected scenes keep the
+ * first occurrence only. */
+function previsSceneSubjectCandidates(store: ProjectStore, sources: readonly PrevisSceneSource[],
+  directSubjectIds: ReadonlySet<string>): readonly Format5ReferenceCandidate[] {
+  const candidates: Format5ReferenceCandidate[] = [];
+  const seen = new Set(directSubjectIds);
+  for (const source of sources) {
+    if (candidates.length >= PREVIS_SCENE_SUBJECT_INPUT_LIMIT) break;
+    for (const reference of resolvePrevisSceneSubjects(store, source.record.scene)) {
+      if (candidates.length >= PREVIS_SCENE_SUBJECT_INPUT_LIMIT) break;
+      if (seen.has(reference.subjectId)) continue;
+      seen.add(reference.subjectId);
+      const subject = store.db.prepare('SELECT name,kind FROM project.subjects WHERE id=? AND projectId=?')
+        .get(reference.subjectId, store.projectId) as Row | undefined;
+      if (!subject) referenceInvalid('主体不存在或不属于当前项目', {subjectId: reference.subjectId});
+      const subjectName = typeof subject.name === 'string' && subject.name ? subject.name : reference.subjectId;
+      const version = store.db.prepare('SELECT assetId,number FROM project.subject_versions WHERE id=? AND projectId=?')
+        .get(reference.subjectVersionId, store.projectId) as Row | undefined;
+      if (!version || !isUuid(version.assetId)) referenceInvalid('主体版本缺少素材', {subjectVersionId: reference.subjectVersionId});
+      const asset = assetMetadata(store, String(version.assetId), 'image/');
+      candidates.push({source: 'previs', sourceNodeId: source.nodeId,
+        role: subject.kind === 'look' ? 'style_reference' : 'subject_reference', sourceKind: 'subject',
+        subjectId: reference.subjectId, subjectVersionId: reference.subjectVersionId, bindingMode: reference.mode,
+        orderIndex: 0, label: `${source.label} · ${subjectName}`,
+        ...(Number.isSafeInteger(version.number) ? {subjectVersionNumber: Number(version.number)} : {}),
+        assetId: asset.assetId, sha256: asset.sha256, mimeType: asset.mimeType,
+        ...(asset.sizeBytes !== undefined ? {sizeBytes: asset.sizeBytes} : {}),
+        ...(asset.width !== undefined ? {width: asset.width, height: asset.height} : {}),
+        ...(asset.durationSeconds !== undefined ? {durationSeconds: asset.durationSeconds} : {})});
+    }
+  }
+  return candidates;
+}
+
 /** Resolve every live board reference for one shot into addressable candidates.
- * Ordered by the persisted edge order, then subject bindings by binding id. */
+ * Families are concatenated and numbered densely from 0: material reference
+ * edges in persisted order, then active subject bindings by binding id, then the
+ * figure/prop subjects named by any connected previs scene. */
 export function readFormat5ShotReferenceCandidates(store: ProjectStore,
   shotIds: readonly string[]): readonly Format5ReferenceCandidateSet[] {
   if (!format5ReferenceInputs(store)) throw new TypeError('Reference inputs require an admitted format-5 project');
   const result: Format5ReferenceCandidateSet[] = [];
   for (const shotId of [...new Set(shotIds)]) {
     const shot = liveShot(store, shotId);
-    const candidates: Format5ReferenceCandidate[] = [];
+    const edgeCandidates: Format5ReferenceCandidate[] = [];
+    const previsSources: PrevisSceneSource[] = [];
     for (const edge of readShotReferenceEdges(store, shotId)) {
       const nodeId = edge.source;
       const node = liveNode(store, nodeId);
@@ -538,14 +600,21 @@ export function readFormat5ShotReferenceCandidates(store: ProjectStore,
         : assetMetadata(store, edge.sourceAssetId, `${kind}/`);
       const nodeLabel = typeof node.label === 'string' && node.label ? node.label
         : typeof node.name === 'string' && node.name ? node.name : '';
-      candidates.push({source: 'edge', edgeId: edge.id, sourceNodeId: nodeId, role: edge.role, sourceKind: kind,
-        orderIndex: edge.orderIndex ?? Number.MAX_SAFE_INTEGER, label: nodeLabel || resolved.assetName || nodeId,
-        assetId: resolved.assetId, sha256: resolved.sha256, mimeType: resolved.mimeType,
+      const label = nodeLabel || resolved.assetName || nodeId;
+      if (kind === 'previs') {
+        if (!isPrevisNodeRecord(node)) referenceInvalid('预演节点记录无法验证', {nodeId});
+        if (!previsSources.some(source => source.nodeId === nodeId)) previsSources.push({nodeId, label, record: node});
+      }
+      edgeCandidates.push({source: 'edge', edgeId: edge.id, sourceNodeId: nodeId, role: edge.role, sourceKind: kind,
+        orderIndex: 0, label, assetId: resolved.assetId, sha256: resolved.sha256, mimeType: resolved.mimeType,
         ...(resolved.sizeBytes !== undefined ? {sizeBytes: resolved.sizeBytes} : {}),
         ...(resolved.width !== undefined ? {width: resolved.width, height: resolved.height} : {}),
         ...(resolved.durationSeconds !== undefined ? {durationSeconds: resolved.durationSeconds} : {})});
     }
+    const bindingCandidates: Format5ReferenceCandidate[] = [];
+    const directSubjectIds = new Set<string>();
     for (const binding of resolveGenerationSubjectInputs(store, [shotId])) {
+      directSubjectIds.add(binding.subjectId);
       const version = (store.db.prepare('SELECT assetId,number FROM project.subject_versions WHERE id=? AND projectId=?')
         .get(binding.subjectVersionId, store.projectId) as Row | undefined);
       if (!version || !isUuid(version.assetId)) referenceInvalid('主体版本缺少素材', {bindingId: binding.bindingId});
@@ -553,17 +622,18 @@ export function readFormat5ShotReferenceCandidates(store: ProjectStore,
         .get(binding.subjectId, store.projectId) as Row | undefined;
       const subjectName = typeof subject?.name === 'string' && subject.name ? subject.name : binding.subjectId;
       const asset = assetMetadata(store, String(version.assetId), 'image/');
-      candidates.push({source: 'subject', bindingId: binding.bindingId, role: binding.role === 'style' ? 'style_reference' : 'subject_reference',
+      bindingCandidates.push({source: 'subject', bindingId: binding.bindingId, role: binding.role === 'style' ? 'style_reference' : 'subject_reference',
         sourceKind: 'subject', subjectId: binding.subjectId, subjectVersionId: binding.subjectVersionId,
-        bindingMode: binding.mode, orderIndex: Number.MAX_SAFE_INTEGER,
+        bindingMode: binding.mode, orderIndex: 0,
         label: subjectName, ...(Number.isSafeInteger(version.number) ? {subjectVersionNumber: Number(version.number)} : {}),
         assetId: asset.assetId, sha256: asset.sha256, mimeType: asset.mimeType,
         ...(asset.sizeBytes !== undefined ? {sizeBytes: asset.sizeBytes} : {}),
         ...(asset.width !== undefined ? {width: asset.width, height: asset.height} : {}),
         ...(asset.durationSeconds !== undefined ? {durationSeconds: asset.durationSeconds} : {})});
     }
-    candidates.sort((left, right) => left.orderIndex - right.orderIndex
-      || (left.edgeId ?? left.bindingId ?? '').localeCompare(right.edgeId ?? right.bindingId ?? ''));
+    const candidates = [...edgeCandidates, ...bindingCandidates,
+      ...previsSceneSubjectCandidates(store, previsSources, directSubjectIds)]
+      .map((candidate, orderIndex) => ({...candidate, orderIndex}));
     result.push({shotId, shotRevision: Number(shot.revision ?? 0), candidates});
   }
   return result;
@@ -668,8 +738,10 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
     const maxImages = binding ? Number(videoInputProfile(binding).inputs.roles.reference_image?.max ?? 0) : Number.MAX_SAFE_INTEGER;
     const primaryId = options.primaryReferenceId;
     const ordered = [...referenceCandidates].sort((left, right) => {
-      const leftPrimary = (left.edgeId ?? left.bindingId) === primaryId ? 0 : 1;
-      const rightPrimary = (right.edgeId ?? right.bindingId) === primaryId ? 0 : 1;
+      // Only an explicitly chosen id is a primary match; previs scene subjects
+      // carry no edge/binding id and must keep their dense board order.
+      const leftPrimary = primaryId !== undefined && (left.edgeId ?? left.bindingId) === primaryId ? 0 : 1;
+      const rightPrimary = primaryId !== undefined && (right.edgeId ?? right.bindingId) === primaryId ? 0 : 1;
       return leftPrimary - rightPrimary || left.orderIndex - right.orderIndex
         || (left.edgeId ?? left.bindingId ?? '').localeCompare(right.edgeId ?? right.bindingId ?? '');
     });
@@ -736,7 +808,7 @@ export interface Format5ReferenceInputFreeze {
   readonly profileId: string;
   readonly profileVersion: string;
   readonly entries: readonly {
-    readonly source: 'edge' | 'subject';
+    readonly source: 'edge' | 'subject' | 'previs';
     readonly edgeId?: string;
     readonly bindingId?: string;
     readonly sourceNodeId?: string;
@@ -821,8 +893,9 @@ function freezeOf(plan: Format5GenerationInputPlan, binding: VideoExecutionBindi
   };
 }
 
-/** Frozen plan a job snapshot stores. Kept bounded (≤48 reference lines) because
- * it is copied into the immutable generation version provenance. */
+/** Frozen plan a job snapshot stores. Kept bounded (≤48 reference lines, ≤8
+ * subject bindings and ≤32 previs scene subjects) because it is copied into the
+ * immutable generation version provenance. */
 export function readFrozenFormat5GenerationInputs(snapshot: unknown): Format5ReferenceInputFreeze | null {
   if (snapshot === null || typeof snapshot !== 'object') return null;
   const value = (snapshot as Row).format5ReferenceInputs;
@@ -845,6 +918,8 @@ export interface ReadFormat5GenerationInputOptions {
   readonly binding?: VideoExecutionBinding;
   /** Explicit primary image chosen in the panel (edge or binding id). */
   readonly primaryReferenceId?: string;
+  /** Current "生成声音" switch; omitted reports the service default. */
+  readonly generateAudio?: boolean;
 }
 
 /** Live generation-input projection shared by the board property panel and the
@@ -873,6 +948,16 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     orderIndex: entry.orderIndex,
     ...(primaryEdgeId !== null && entry.edgeId === primaryEdgeId ? {primary: true} : {}),
   }));
+  const shotRow = store.db.prepare('SELECT data FROM project.shots WHERE id=? AND projectId=?')
+    .get(shotId, store.projectId) as {data?: unknown} | undefined;
+  let basePrompt = '';
+  try {
+    const data = typeof shotRow?.data === 'string' ? JSON.parse(shotRow.data) as Row : {};
+    basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
+  } catch { basePrompt = ''; }
+  const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
+    {...(options.binding ? {binding: options.binding} : {}), basePrompt,
+     ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})}));
   return {
     projectId: store.projectId,
     shotId,
@@ -885,5 +970,6 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     usedCount: plan.entries.filter(entry => entry.status === 'used').length,
     unsupportedCount: plan.unsupported,
     primaryEdgeId,
+    dialogue,
   };
 }

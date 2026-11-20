@@ -19,7 +19,7 @@ export function atempoChain(rate) {
 export function atempoFilter(chain) {
   return chain.map(factor => `atempo=${factor.toFixed(6).replace(/0+$/u, '').replace(/\.$/u, '')}`).join(',');
 }
-function runFfmpeg(ffmpeg, filter, inputSamples) {
+export function runFfmpeg(ffmpeg, filter, inputSamples) {
   const result = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'f32le', '-ar', String(SAMPLE_RATE),
     '-ac', String(CHANNELS), '-i', 'pipe:0', '-af', filter, '-f', 'f32le', '-ar', String(SAMPLE_RATE),
     '-ac', String(CHANNELS), 'pipe:1'], {input: toBuffer(inputSamples), maxBuffer: 1024 * 1024 * 1024, timeout: 120_000});
@@ -91,7 +91,7 @@ function interpolate(samples, position, channel) {
     + (-p0 + 3 * p1 - 3 * p2 + p3) * fraction * fraction * fraction);
 }
 
-function resampleToLength(samples, targetFrames) {
+export function resampleToLength(samples, targetFrames) {
   const sourceFrames = samples.length / 2;
   const output = new Float32Array(targetFrames * 2);
   if (sourceFrames === 0) return output;
@@ -107,9 +107,11 @@ function resampleToLength(samples, targetFrames) {
 }
 
 /** Chunked curve time-stretch: each output chunk is mapped through SP-M to a
- * source window with context, stretched with an atempo chain, trimmed to the
- * exact chunk length and overlap-added with short crossfades. */
-export function stretchCurveChunked(ffmpeg, material, bundle, options = {}) {
+ * source window with context, stretched by `stretchProcessor` (one chunk at a
+ * time), trimmed to the exact chunk length and overlap-added with short
+ * crossfades. The processor receives the source window and the exact target
+ * sample count for that window. */
+export function stretchCurveChunkedWith(stretchProcessor, material, bundle, options = {}) {
   const chunkFrames = options.chunkFrames ?? 30;
   const contextFrames = options.contextFrames ?? 8;
   const overlapFrames = options.overlapFrames ?? 2;
@@ -133,9 +135,7 @@ export function stretchCurveChunked(ffmpeg, material, bundle, options = {}) {
     const rightContextSamples = Math.round((contextEnd - coreEnd) * SAMPLES_PER_FRAME);
     const targetTotalSamples = coreSamples + leftContextSamples + rightContextSamples;
     const ratio = Math.min(10, Math.max(0.1, (input.length / 2) / Math.max(1, targetTotalSamples)));
-    const chain = atempoChain(ratio);
-    const processedRaw = runFfmpeg(ffmpeg, atempoFilter(chain), input);
-    const processed = resampleToLength(processedRaw, targetTotalSamples);
+    const processed = stretchProcessor(input, targetTotalSamples, ratio);
     const processedFrames = processed.length / 2;
     const core = new Float32Array(coreSamples * 2);
     const offset = Math.min(Math.max(0, leftContextSamples), Math.max(0, processedFrames - 1));
@@ -159,6 +159,14 @@ export function stretchCurveChunked(ffmpeg, material, bundle, options = {}) {
     chunkStart += hopFrames;
   }
   return {samples: output, naturalFrames: bundle.totalSamples, boundaries, chunkCount};
+}
+
+/** SP-E0 atempo curve driver. */
+export function stretchCurveChunked(ffmpeg, material, bundle, options = {}) {
+  return stretchCurveChunkedWith((input, targetTotalSamples, ratio) => {
+    const chain = atempoChain(ratio);
+    return resampleToLength(runFfmpeg(ffmpeg, atempoFilter(chain), input), targetTotalSamples);
+  }, material, bundle, options);
 }
 
 /** Boundary click metric: largest first difference in a ±window around each

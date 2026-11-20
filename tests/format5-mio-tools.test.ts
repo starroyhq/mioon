@@ -8,6 +8,10 @@ import type {ProjectStore} from '../packages/business/src/project-file/store.ts'
 import {createSequenceInspectionService} from '../packages/business/src/format5-sequence-inspection.ts';
 import {agentTaskToolCatalogProfile, FORMAT5_UNAVAILABLE_OPERATIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/business/src/agent/task-tools-v2.ts';
+import {MIO_SEQUENCE_ACTION_COUNT, MIO_SEQUENCE_GROUP_OPERATIONS, mioSequenceActionKindsForOperation, mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
+import {FORMAT5_INPUT_LIMITS} from '../packages/contracts/src/project-format5.ts';
+import {SEQUENCE_GENERATION_INPUT_LIMITS} from '../packages/contracts/src/sequence-inspection.ts';
+import {AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
@@ -76,32 +80,69 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.ok(tool);
   assert.equal(tool.risk, 'read_only');
   assert.equal(agentTaskToolCatalogProfile(format5Tools), 'format5');
-  assert.equal(format5Tools.some(item => item.operation === 'timeline.seed' && item.unavailableReason !== undefined), true);
-  assert.equal(format5Tools.some(item => item.operation === 'timeline.shots.append' && item.unavailableReason !== undefined), true);
+  // C+A: the format-5 directory no longer lists legacy entries the gate rejects;
+  // the reviewed unavailable table stays for parity and discovery reasons.
+  assert.equal(format5Tools.some(item => item.operation === 'timeline.seed'), false);
+  assert.equal(format5Tools.some(item => item.operation === 'timeline.shots.append'), false);
+  assert.equal(format5Tools.some(item => item.operation === 'previs.scene.set'), false);
+  assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['timeline.seed']!, /sequence\.preview\/commit/);
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['shot.reorder']!, /明确链顺序/);
-  // G line: the format-5 previs scene tool is the only projection that accepts
-  // mannequin/prop subject references; formats 3/4 keep the frozen shape.
+  // G line: the previs scene projection inside the loadable previs group is the
+  // only one that accepts mannequin/prop subject references.
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /previs-scene-set/);
   assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.create'] !== undefined, true);
   // The previs thumbnail is a rebuildable cache written outside the unified
   // history (scene-revision CAS), so its existing tool stays available.
   assert.equal(FORMAT5_UNAVAILABLE_OPERATIONS['previs.thumbnail.set'], undefined);
-  // The existing tool (no new tool, no schema change) stays in the format-5
-  // catalog and is callable there; only unavailable tools carry a reason.
   assert.equal(format5Tools.some(item => item.operation === 'previs.thumbnail.set'), true);
-  assert.equal(format5Tools.some(item => item.operation === 'previs.thumbnail.set' && item.unavailableReason !== undefined), false);
-  assert.equal(format5Tools.some(item => item.operation === 'previs.thumbnail.get' && item.unavailableReason !== undefined), false);
-  const previsParameters = (tools: readonly {operation: string; parameters: unknown}[], subject: boolean): void => {
-    const parameters = tools.find(item => item.operation === 'previs.scene.set')!.parameters as {
-      properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}},
-        props: {items: {properties: Record<string, unknown>}}}}}};
-    assert.equal('subject' in parameters.properties.scene.properties.figures.items.properties, subject);
-    assert.equal('subject' in parameters.properties.scene.properties.props.items.properties, subject);
+  const previsSceneParameters = (parameters: unknown): {figure: Record<string, unknown>; prop: Record<string, unknown>} => {
+    const branches = (parameters as {anyOf: {properties: {kind: {const: string}; scene: {properties: {
+      figures: {items: {properties: Record<string, unknown>}}; props: {items: {properties: Record<string, unknown>}}}}}}[]}).anyOf;
+    const branch = branches.find(item => item.properties.kind.const === 'previs-scene-set');
+    assert.ok(branch);
+    return {figure: branch.properties.scene.properties.figures.items.properties,
+      prop: branch.properties.scene.properties.props.items.properties};
   };
-  previsParameters(format5Tools, true);
+  const previsGroup = format5Tools.find(item => item.operation === 'sequence.tool.previs');
+  assert.ok(previsGroup);
+  assert.equal('subject' in previsSceneParameters(previsGroup.parameters).figure, true);
+  assert.equal('subject' in previsSceneParameters(previsGroup.parameters).prop, true);
   const nativeTools = listAgentTaskTools(false, false);
   assert.equal(nativeTools.some(item => item.operation === 'sequence.inspect'), false);
-  previsParameters(nativeTools, false);
+  const nativePrevis = nativeTools.find(item => item.operation === 'previs.scene.set')!.parameters as {
+    properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}}}}}};
+  assert.equal('subject' in nativePrevis.properties.scene.properties.figures.items.properties, false);
+  // C+A: the core sequence tool keeps only the nine high-frequency actions; ED's
+  // insert-asset rides the on-demand timeline group.
+  const actionKinds = (operation: string): string[] => [...mioSequenceActionKindsForOperation(
+    operation as Parameters<typeof mioSequenceActionKindsForOperation>[0])];
+  assert.deepEqual(actionKinds('sequence.tool.edit').sort(), ['connect', 'copy-move', 'delete-node', 'disconnect',
+    'insert', 'remove', 'reorder', 'set-mode', 'split']);
+  assert.equal(actionKinds('sequence.tool.edit').includes('board-shot-append'), false);
+  assert.deepEqual(actionKinds('sequence.tool.board').sort(), ['board-duplicate', 'board-layout-move',
+    'board-node-create', 'board-node-update', 'board-restore', 'board-root-create', 'board-shot-append',
+    'board-shot-update']);
+  assert.deepEqual(actionKinds('sequence.tool.reference'), ['reference-attach', 'reference-set-role',
+    'reference-detach', 'reference-reorder']);
+  assert.deepEqual(actionKinds('sequence.tool.subject').sort(), ['subject-binding', 'subject-card-create',
+    'subject-card-delete']);
+  assert.deepEqual(actionKinds('sequence.tool.previs').sort(), ['previs-create', 'previs-scene-set']);
+  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'insert-asset', 'split-at-scenes',
+    'subtitles', 'track-add', 'track-update']);
+  assert.deepEqual(actionKinds('sequence.tool.clip'), ['clip-properties']);
+  // Every bounded action lives in exactly one tool.
+  const uniqueKinds = new Set(MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)));
+  assert.equal(uniqueKinds.size, MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)).length);
+  assert.equal(uniqueKinds.size, MIO_SEQUENCE_ACTION_COUNT);
+  assert.equal(uniqueKinds.size, 34);
+  const groupTools = format5Tools.filter(item => item.operation.startsWith('sequence.tool.')
+    && item.operation !== 'sequence.tool.edit' && item.operation !== 'sequence.tool.undo');
+  assert.deepEqual(groupTools.map(item => item.name).sort(), ['mioon_sequence_board_edit',
+    'mioon_sequence_clip_edit', 'mioon_sequence_previs_edit', 'mioon_sequence_reference_edit',
+    'mioon_sequence_subject_edit', 'mioon_sequence_timeline_edit']);
+  assert.ok(groupTools.every(item => item.risk === 'local_reversible'));
+  assert.equal(format5Tools.filter(item => item.risk !== 'read_only' && item.operation.startsWith('sequence.tool.')).length, 8);
+  assert.equal(nativeTools.some(item => item.operation.startsWith('sequence.tool.')), false);
   const loaded = listAgentTaskToolsForChannel(true, {format5: true}).find(item => item.name === 'mioon_tools_load');
   assert.ok(loaded);
   // MT-5: the generation-input projection is a bounded format-5 read tool only.
@@ -115,9 +156,27 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.equal(generationParameters.additionalProperties, false);
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.create']!, /previs-create/);
   assert.match(FORMAT5_UNAVAILABLE_OPERATIONS['previs.scene.set']!, /previs-scene-set/);
-  // MT-5 opens every new bound action from the one sequence tool instead of
-  // adding a second write surface.
-  assert.equal(format5Tools.filter(item => item.risk !== 'read_only' && item.operation.startsWith('sequence.tool.')).length, 2);
+  // The format-5 loader enum lists the loadable group tools and still omits
+  // every reviewed-unavailable legacy entry.
+  const loadParameters = loaded.parameters as {properties: {names: {items: {enum: string[]}; maxItems: number}}};
+  const loadNames = loadParameters.properties.names.items.enum;
+  for (const name of groupTools.map(item => item.name)) assert.ok(loadNames.includes(name), name);
+  assert.equal(loadNames.includes('mioon_sequence_edit'), false);
+  for (const operation of Object.keys(FORMAT5_UNAVAILABLE_OPERATIONS)) {
+    const unavailableName = `mioon_${operation.replaceAll('.', '_')}`;
+    assert.equal(loadNames.includes(unavailableName), false, operation);
+  }
+  assert.equal(loadParameters.properties.names.maxItems, loadNames.length);
+  // One shot's read-only projection is bounded by the three service-side caps.
+  assert.deepEqual(Object.values(FORMAT5_INPUT_LIMITS), [48, 8, 32]);
+  assert.equal(FORMAT5_INPUT_LIMITS.previsSceneSubjects, 32);
+  assert.equal(SEQUENCE_GENERATION_INPUT_LIMITS.entries, 88);
+  assert.equal(generationInputs?.description.includes(`最多 ${SEQUENCE_GENERATION_INPUT_LIMITS.entries} 条`), true);
+  // The loader description tells the model which group holds which domain.
+  for (const name of groupTools.map(item => item.name)) {
+    assert.ok(AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS['zh-Hans'].includes(name), name);
+  }
+  assert.ok(AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS['zh-Hans'].includes('台词'));
 });
 
 test('sequence inspection pages the chain against one frozen snapshot', t => {

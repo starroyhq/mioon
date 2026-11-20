@@ -36,6 +36,8 @@ export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
   'tests/desktop-async-secrets.test.ts', // 40%
   'tests/export-settings-capabilities.test.ts', // 70%
   'tests/export-settings-media.test.ts', // 66%; timed out while sharing CPUs
+  'tests/format5-dialogue-performance.test.ts', // K1 dialogue p95 212.9 ms > 200 ms budget in PR #328 CI; 40.8 ms locally
+  'tests/format5-format-scenes-performance.test.ts', // K1 format/scene wall-clock budgets in the same family
   'tests/format5-timeline-sync-b-performance.test.ts', // p95 budget flaked while sharing CPUs (PR #295 run, 2026-11-19 baseline rounds)
   'tests/format5-timeline-sync-performance.test.ts', // p95 budget flaked while sharing CPUs (PR #294 first run, 2026-11-19 baseline rounds)
   'tests/http-file-shutdown.test.ts', // 83%; timed out while sharing CPUs
@@ -76,8 +78,22 @@ export function parseShardArguments(args: readonly string[]): ShardOptions {
   if (concurrency < 1 || concurrency > 4) fail('INVALID_SHARD_CONCURRENCY');
   return {index, count, concurrency};
 }
+/** JSON.parse keeps the last value of a duplicated key, so a merge that leaves
+ * two entries for one test would silently change the shard weights. The
+ * committed table is checked textually for duplicates before parsing. */
+export function duplicateTimingKeys(text: string): string[] {
+  const counts = new Map<string, number>();
+  for (const match of text.matchAll(/^\s*"(tests\/[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts))"\s*:/gm)) {
+    const file = match[1]!;
+    counts.set(file, (counts.get(file) ?? 0) + 1);
+  }
+  return [...counts].filter(([, count]) => count > 1).map(([file]) => file).sort();
+}
+
 /** Validates the recorded timing table; a malformed table fails the shard instead of silently unbalancing it. */
 export function parseTestTimings(text: string): TestTimings {
+  const duplicates = duplicateTimingKeys(text);
+  if (duplicates.length) fail(`DUPLICATE_TEST_TIMING_KEYS:${duplicates.join(',')}`);
   let value: unknown;
   try {value = JSON.parse(text);} catch {fail('INVALID_TEST_TIMINGS');}
   const files = value !== null && typeof value === 'object' && (value as {schema?: unknown}).schema === 1 ? (value as {files?: unknown}).files : undefined;

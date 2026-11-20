@@ -78,6 +78,15 @@ export function format5MoveCommand(clipId: string, beforeClipId: string | null, 
 export function format5MoveOffTrackCommand(clipId: string, trackId: string, startFrame: number, copyNodeId?: string): SequenceSyncCommand {
   return {kind: 'clip-move-off-track', clipId, trackId, startFrame, ...(copyNodeId ? {copyNodeId} : {})};
 }
+/** ED: put one library asset on a track. `trackId: null` means the main track;
+ * the server allocates the board node/clip identities and expands the envelope. */
+export function format5InsertAssetCommand(assetId: string, trackId: string | null, startFrame: number): SequenceSyncCommand {
+  return {kind: 'insert-asset', assetId, trackId, startFrame};
+}
+/** ED: paste the copied clip at the playhead; the server allocates every new id. */
+export function format5PasteClipCommand(clipId: string, startFrame: number): SequenceSyncCommand {
+  return {kind: 'paste-clip', clipId, startFrame};
+}
 
 /** Exact clip patch -> one TS command. Only the fields UI-E2 owns are mapped;
  * anything else is reported as unsupported instead of silently writing it. */
@@ -330,6 +339,30 @@ export class Format5EditSession {
       try {
         preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('split-scenes'),
           intents: [sequenceSyncIntent({kind: 'clip-split-scenes', assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
+      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      const response = preview as SequencePreviewResponse;
+      if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      const pending = {envelope: response.envelope, planDigest: response.planDigest};
+      this.pending = pending;
+      return await this.commitPending(pending);
+    } finally {this.inFlight = false;}
+  }
+
+  /** UI-E3: one FR-A properties / FR-B subtitles action through the same
+   * preview + lost-response commit handshake as every other format-5 write. */
+  async runPayload(payload: Readonly<Record<string, unknown>>): Promise<SequenceOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: SequencePreviewResponse | SequenceFailure;
+      try {
+        preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('panel-preview'),
+          ...payload}) as SequencePreviewResponse | SequenceFailure;
       } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
       const response = preview as SequencePreviewResponse;

@@ -38,6 +38,7 @@ import {previewTimelineFormat, runTimelineFormatSync} from './format5-format-set
 import {previewTrack, runTrackSync} from './format5-tracks.ts';
 import {previewPrevisAction} from './format5-previs.ts';
 import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
+import {previewDialogueAction, runDialogueAction} from './format5-dialogue.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
@@ -88,7 +89,13 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
         segmentGroupId: edit.clip.splitGroupId ?? edit.clip.id, startFrame: edit.clip.startFrame,
         durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
         versionId: edit.clip.versionId, locked: edit.clip.versionLocked},
-      beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {})};
+      beforeClipId: edit.beforeClipId, ...(edit.nodeKind ? {nodeKind: edit.nodeKind} : {}),
+      ...(edit.nodeAssetId ? {nodeAssetId: edit.nodeAssetId} : {}),
+      ...(edit.nodeName ? {nodeName: edit.nodeName} : {}),
+      ...(edit.copyFromClipId ? {copyFromClipId: edit.copyFromClipId} : {})};
+    case 'insert-asset': return {kind: 'insert-asset', assetId: edit.assetId, trackId: edit.trackId,
+      startFrame: edit.startFrame};
+    case 'paste-clip': return {kind: 'paste-clip', clipId: edit.clipId, startFrame: edit.startFrame};
     case 'split-at-scenes': return {kind: 'clip-split-scenes', assetId: edit.assetId, resultId: edit.resultId};
     case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
       rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};
@@ -248,6 +255,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     if (input.subtitlesIntent) return previewSubtitleEdits(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       subtitlesIntent: input.subtitlesIntent as never});
+    if (input.dialogueIntent) return previewDialogueAction(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      dialogueIntent: input.dialogueIntent as never});
     if (input.trackIntent) return previewTrack(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       trackIntent: input.trackIntent as never});
@@ -285,6 +295,11 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     if (envelope.subtitlesIntent) {
       const result = runSubtitleEditsSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 字幕编辑没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
+    if (envelope.dialogueIntent) {
+      const result = runDialogueAction(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 台词没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
     if (envelope.trackIntent) {

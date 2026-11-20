@@ -14,9 +14,9 @@ import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {readSequenceSyncContext} from './format5-sequence-sync.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
-import type {BoardIntentOperation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditPrevisIntent,
-  SequenceEditReceipt, SequenceEditReferenceIntent, SequenceEditSubjectIntent,
-  SequenceEditTrackIntent} from '../../contracts/src/sequence-edit.ts';
+import type {BoardIntentOperation, SequenceEditDialogueEdit, SequenceEditDialogueIntent, SequenceEditEnvelope,
+  SequenceEditIntent, SequenceEditPrevisIntent, SequenceEditReceipt, SequenceEditReferenceIntent,
+  SequenceEditSubjectIntent, SequenceEditTrackIntent} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, any>;
@@ -91,6 +91,26 @@ function boardIntent(action: MioSequenceAction): SequenceEditIntent {
     default: throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '不是画板动作。', 409);
   }
 }
+/** DL-a: one shot's dialogue lines as the shared contract intent. The model
+ * names text/lines from `sequence.inspect`; line ids for new lines are generated
+ * here so a model never supplies row identities. */
+function dialogueIntent(action: Extract<MioSequenceAction, {kind: 'dialogue'}>): SequenceEditDialogueIntent {
+  const edits: SequenceEditDialogueEdit[] = action.edits.map(edit => {
+    switch (edit.kind) {
+      case 'add': return {kind: 'add' as const, shotId: action.shotId,
+        line: {id: randomUUID(), text: edit.text,
+          ...(edit.speakerSubjectId !== undefined && edit.speakerSubjectId !== null ? {speakerSubjectId: edit.speakerSubjectId} : {})},
+        ...(edit.beforeLineId === undefined ? {} : {beforeLineId: edit.beforeLineId})};
+      case 'update': return {kind: 'update' as const, shotId: action.shotId, lineId: edit.lineId,
+        ...(edit.text === undefined ? {} : {text: edit.text}),
+        ...(edit.speakerSubjectId === undefined ? {} : {speakerSubjectId: edit.speakerSubjectId})};
+      case 'remove': return {kind: 'remove' as const, shotId: action.shotId, lineId: edit.lineId};
+      case 'reorder': return {kind: 'reorder' as const, shotId: action.shotId, lineIds: edit.lineIds};
+    }
+  });
+  return {side: 'board', operation: {kind: 'dialogue', edits}};
+}
+
 /** A deterministic free board spot for an object the model did not place: to
  * the right of every live shot/node, on the second row the board already uses
  * for auxiliary cards. Kept inside the contract's coordinate range. */
@@ -179,6 +199,7 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'subtitles') request.subtitlesIntent = {side: 'timeline', operation: {kind: 'subtitles',
     edits: action.edits.map(edit => edit.kind === 'add' ? {kind: 'add' as const, cue: {...edit.cue, id: randomUUID()}}
       : edit)}};
+  else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
@@ -190,6 +211,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     operation: {kind: 'track-structure', edit: {kind: 'update', trackId: action.trackId, patch: action.patch}}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
     'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
+  else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
+    assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {

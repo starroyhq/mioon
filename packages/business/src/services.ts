@@ -65,6 +65,7 @@ import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {format5GenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
+import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
@@ -546,6 +547,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // RI-a: a new format-5 generation reads the live board reference lines and
   // freezes the actual request; a retry keeps the original snapshot untouched.
   let format5Input: ReturnType<typeof format5GenerationSource>|null=null;
+  let format5Dialogue: ReturnType<typeof planFormat5DialogueGeneration>|null=null;
   if(format5Project&&!retrySnapshot&&executionBinding){
    const plan=planFormat5GenerationInputs(store,shot.id,{binding:executionBinding});
    format5Input=format5GenerationSource(plan,executionBinding);
@@ -565,8 +567,25 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     throw new AppError('UNSUPPORTED_PARAMETERS','本次生成参数的画幅与已选择的来源不一致');
    parameters={...recordValue(parameters),aspectRatio:ratio};
   }
+  // DL-b: the shot's dialogue lines join the exact outgoing prompt. A service
+  // without a reviewed speaking capability sends no dialogue; a prompt that
+  // would exceed the model limit rejects the whole generation (no truncation).
+  if(format5Project&&!retrySnapshot&&executionBinding){
+   // The explicit "生成声音" switch wins; without it the shot's dialogue already
+   // opened it in the shared UI default, and the same default is applied here so
+   // Mio-initiated generations agree with the checkbox.
+   const requestedGenerateAudio=executionBinding.model.audio==='optional'&&isRecord(parameters)&&typeof parameters.generateAudio==='boolean'
+    ?parameters.generateAudio:undefined;
+   format5Dialogue=planFormat5DialogueGeneration(store,shot.id,{binding:executionBinding,
+    basePrompt:typeof shot.prompt==='string'?shot.prompt:'',
+    ...(requestedGenerateAudio!==undefined?{generateAudio:requestedGenerateAudio}:{})});
+   assertFormat5DialogueSubmittable(format5Dialogue);
+   if(format5Dialogue.status==='used'&&format5Dialogue.lines.length>0)
+    source={...source,prompt:format5Dialogue.prompt};
+   if(format5Dialogue.audioRequest)parameters={...recordValue(parameters),...format5Dialogue.audioRequest};
+  }
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph,ratio?{input,ratio}:undefined);
-  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input};
+  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input,format5Dialogue};
  });
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
   assertApplicationMutationAllowed();assertMutationAllowed?.();
@@ -576,10 +595,15 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    for(const [id,raw] of referenceBasis)if(JSON.stringify(required('assets',id))!==raw)throw new AppError('REFERENCE_CHANGED','确认后的素材引用已改变，请重新确认',409);
   });
   assertSubjectGenerationRequestVacant(db,input);
-  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input}=prepareJobDraft(input,retrySnapshot);
-  const format5Snapshot=format5Input?{format5ReferenceInputs:format5Input.freeze,
+  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input,format5Dialogue}=prepareJobDraft(input,retrySnapshot);
+  const format5InputSnapshot=format5Input?{format5ReferenceInputs:format5Input.freeze,
    ...(format5Input.freeze.mode==='references'?{referenceAssetIds:[...format5Input.referenceAssetIds],lastFrameAssetId:null}
     :format5Input.freeze.actual.lastFrameAssetId===null?{lastFrameAssetId:null}:{})}:{};
+  // The frozen dialogue prompt is the raw text the adapter sends; a retry keeps
+  // this snapshot untouched and never re-composes after the shot changed.
+  const format5DialogueSnapshot=format5Dialogue?{format5Dialogue:freezeFormat5Dialogue(format5Dialogue),
+   ...(format5Dialogue.status==='used'&&format5Dialogue.lines.length>0?{prompt:format5Dialogue.prompt}:{})}:{};
+  const format5Snapshot={...format5InputSnapshot,...format5DialogueSnapshot};
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:source.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{}),...format5Snapshot};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
@@ -751,7 +775,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
      throw new AppError('VALIDATION_ERROR','生成服务选择不完整。',400);
    const binding=videoSettings?.select(connectionId,configurationRevision,modelEntryId);
    if(!binding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
-   return readFormat5GenerationInputView(store,shotId,{binding});
+   const generateAudio=typeof input.generateAudio==='boolean'?input.generateAudio:undefined;
+   return readFormat5GenerationInputView(store,shotId,{binding,
+    ...(generateAudio!==undefined?{generateAudio}:{})});
   },
   ...references.handlers,
   ...localMutations.handlers,

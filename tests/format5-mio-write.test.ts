@@ -8,6 +8,7 @@ import type {ProjectStore} from '../packages/business/src/project-file/store.ts'
 import {createSequenceInspectionService} from '../packages/business/src/format5-sequence-inspection.ts';
 import {agentTaskToolCatalogProfile, FORMAT5_UNAVAILABLE_OPERATIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskTools, listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/business/src/agent/task-tools-v2.ts';
+import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
@@ -131,6 +132,28 @@ test('Mio write actions preview and commit the server-built envelope with origin
   const undone=applyMioSequenceUndo(store,undo);
   assert.equal(undone.status,'applied');
   assert.equal(readSequenceEditHistory(store,'mio').undo,null);
+});
+
+test('Mio puts one library asset into the main track with server-expanded ids and one undo step', t => {
+  const store = fixture(t);
+  const clipsBefore = store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number;
+  const nodesBefore = store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number;
+  const plan = previewMioSequenceAction(store, projectId, req(20), {kind: 'insert-asset', assetId: imageAsset, trackId: video, startFrame: 0});
+  assert.equal(plan.envelope.origin, 'mio');
+  assert.equal(plan.envelope.intents[0]!.operation.kind, 'track');
+  const edit = (plan.envelope.intents[0]!.operation as {kind: 'track'; edit: {kind: string; nodeAssetId?: string}}).edit;
+  assert.equal(edit.kind, 'add');
+  assert.equal(edit.nodeAssetId, imageAsset);
+  assert.ok(plan.envelope.allocation.clips.length >= 1, 'server allocates the node and clip ids');
+  const receipt = commitMioSequenceAction(store, plan);
+  assert.equal(receipt.status, 'applied');
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number, clipsBefore + 1);
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number, nodesBefore + 1);
+  assert.equal(readSequenceEditHistory(store, 'mio').undo?.operation, 'timeline.clip.add');
+  const undo = prepareMioSequenceUndo(store, projectId, req(21), receipt.actionId);
+  assert.equal(applyMioSequenceUndo(store, undo).status, 'applied');
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number, clipsBefore);
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number, nodesBefore);
 });
 
 test('Mio undo refuses a user-origin action and a stale cursor', t => {
@@ -268,15 +291,74 @@ test('write actions are bounded and reject generated ids supplied as envelopes',
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root}).success,true);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'connect',fromId:projectId,toId:root,envelope:{}}).success,false);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'split',clipId:projectId,offsetFrames:0}).success,false);
-  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-shot-append',name:'New shot'}).success,true);
-  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1,y:2}]}).success,true);
-  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1_000_001,y:2}]}).success,false);
-  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'split-at-scenes',assetId:projectId,resultId:projectId}).success,true);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-shot-append',name:'New shot'}).success,false);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.board'].safeParse({kind:'board-shot-append',name:'New shot'}).success,true);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.board'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1,y:2}]}).success,true);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.board'].safeParse({kind:'board-layout-move',moves:[{nodeId:projectId,x:1_000_001,y:2}]}).success,false);
+  assert.equal(mioSequenceEditSchemas['sequence.tool.timeline'].safeParse({kind:'split-at-scenes',assetId:projectId,resultId:projectId}).success,true);
   const tools=listAgentTaskTools(false,true);
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.edit'&&tool.risk==='local_reversible'));
   assert.ok(tools.some(tool=>tool.operation==='sequence.tool.undo'));
   assert.equal(agentTaskToolCatalogProfile(tools),'format5');
   assert.equal(listAgentTaskTools(false,false).some(tool=>tool.operation==='sequence.tool.edit'),false);
+});
+
+test('Mio dialogue action writes the shot lines and projects their cues in one Mio step', t => {
+  const store=fixture(t);
+  const plan=previewMioSequenceAction(store,projectId,req(8),{kind:'dialogue',shotId:shotA,edits:[
+    {kind:'add',text:'你好'},{kind:'add',text:'走吧'}]});
+  assert.equal(plan.envelope.origin,'mio');
+  const intent=(plan.envelope as any).dialogueIntent;
+  assert.equal(intent.operation.kind,'dialogue');
+  assert.equal(intent.operation.edits.length,2);
+  assert.ok(intent.operation.edits.every((edit:any)=>typeof edit.line.id==='string'),'the service allocates new line ids');
+  assert.ok(plan.summary.counts.other>=2,'the projected cues show up in the bounded impact');
+  const receipt=commitMioSequenceAction(store,plan);
+  assert.equal(receipt.status,'applied');
+  let shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['你好','走吧']);
+  const projected=()=>((store.get('timelines',timelineId) as any).subtitles?.cues??[])
+    .filter((cue:any)=>cue.dialogueRef?.shotId===shotA);
+  assert.equal(projected().length,2,'each line projects to a real cue');
+  // Update one line through its inspected id: the cue text follows.
+  const update=previewMioSequenceAction(store,projectId,req(9),{kind:'dialogue',shotId:shotA,
+    edits:[{kind:'update',lineId:shot.dialogue[0].id,text:'你好啊'}]});
+  commitMioSequenceAction(store,update);
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['你好啊','走吧']);
+  assert.equal((projected().find((cue:any)=>cue.dialogueRef.lineId===shot.dialogue[0].id) as any).text,'你好啊');
+  // Reorder through the inspected ids.
+  const reorder=previewMioSequenceAction(store,projectId,req(10),{kind:'dialogue',shotId:shotA,
+    edits:[{kind:'reorder',lineIds:[shot.dialogue[1].id,shot.dialogue[0].id]}]});
+  commitMioSequenceAction(store,reorder);
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['走吧','你好啊']);
+  // One Mio undo restores the shot lines and their cues.
+  const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(11)));
+  assert.equal(undone.status,'applied');
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['你好啊','走吧']);
+  // Removing a line removes its cue; the reader exposes the remaining lines.
+  const remove=previewMioSequenceAction(store,projectId,req(12),{kind:'dialogue',shotId:shotA,
+    edits:[{kind:'remove',lineId:shot.dialogue[0].id}]});
+  commitMioSequenceAction(store,remove);
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['走吧']);
+  assert.equal(projected().length,1);
+  const page=createSequenceInspectionService(store).handlers['sequence.inspect']({projectId}) as any;
+  const segment=page.items.find((item:any)=>item.nodeId===shotA);
+  assert.deepEqual(segment.dialogue.map((line:any)=>line.text),['走吧']);
+});
+
+test('Mio dialogue schema is bounded and refuses generated envelope fields', () => {
+  const parse=(input:unknown)=>mioSequenceEditSchemas['sequence.tool.timeline'].safeParse(input).success;
+  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'dialogue',shotId:projectId,
+    edits:[{kind:'add',text:'你好'}]}).success,false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'你好'}]}),true);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'你好',lineId:projectId}]}),false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'字'.repeat(82)}]}),false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'update',lineId:projectId}]}),false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[]}),false);
 });
 
 test('MT-5 reference reorder sets the primary image as one Mio action and undoes it', t => {
@@ -377,7 +459,7 @@ test('MT-5 exposes the bounded generation-input read tool and the new approval t
     properties: Record<string, unknown>};
   assert.deepEqual(parameters.required, ['shotId']);
   assert.equal(parameters.additionalProperties, false);
-  assert.deepEqual(Object.keys(parameters.properties).sort(), ['configurationRevision', 'connectionId', 'modelEntryId', 'shotId']);
+  assert.deepEqual(Object.keys(parameters.properties).sort(), ['configurationRevision', 'connectionId', 'generateAudio', 'modelEntryId', 'shotId']);
   assert.equal(listAgentTaskTools(false, false).some(tool => tool.operation === 'sequence.generation-inputs.get'), false);
   // The shared public schema still enforces the exact video-connection triple.
   assert.equal(schemas['sequence.generation-inputs.get'].safeParse({projectId, shotId: shotA}).success, true);
@@ -388,24 +470,29 @@ test('MT-5 exposes the bounded generation-input read tool and the new approval t
   // Approval tiers: writes that change the board surface wait for approval.
   const tools = createAgentTaskTools({store, services: {generationAvailability: {
     mockAllowed: true, video: () => true, image: () => true, imageSelectionRequired: () => false}} as never});
-  const prepare = (input: unknown) => tools.prepare({projectId, operation: 'sequence.tool.edit',
+  const prepare = (input: unknown, operation = 'sequence.tool.edit') => tools.prepare({projectId, operation,
     input: input as never});
-  const reference = prepare({kind: 'reference-attach', sourceNodeId: image, shotId: shotA, role: 'reference_image'});
+  // The core tool no longer carries the domain groups' parameters.
+  assert.throws(() => prepare({kind: 'board-shot-append', name: 'x'}), {code: 'VALIDATION_ERROR'});
+  assert.throws(() => prepare({kind: 'connect', fromId: shotA, toId: shotB}, 'sequence.tool.board'),
+    {code: 'VALIDATION_ERROR'});
+  const reference = prepare({kind: 'reference-attach', sourceNodeId: image, shotId: shotA, role: 'reference_image'},
+    'sequence.tool.reference');
   commitMioSequenceAction(store, reference.sequence!.plan as never);
   assert.equal(prepare({kind: 'reference-reorder', shotId: shotA,
-    edgeIds: materialEdges(store, shotA).map(edge => edge.id)}).forceApproval, true);
-  assert.equal(prepare({kind: 'subject-card-create', subjectId}).forceApproval, true);
-  const cardPlan = prepare({kind: 'subject-card-create', subjectId});
+    edgeIds: materialEdges(store, shotA).map(edge => edge.id)}, 'sequence.tool.reference').forceApproval, true);
+  assert.equal(prepare({kind: 'subject-card-create', subjectId}, 'sequence.tool.subject').forceApproval, true);
+  const cardPlan = prepare({kind: 'subject-card-create', subjectId}, 'sequence.tool.subject');
   commitMioSequenceAction(store, cardPlan.sequence!.plan as never);
   const cardId = (store.db.prepare(`SELECT id FROM project.nodes WHERE projectId=? AND archivedAt IS NULL
     AND json_valid(data) AND json_extract(data,'$.type')='subject_card'`).get(projectId) as any).id as string;
-  assert.equal(prepare({kind: 'subject-card-delete', nodeId: cardId}).forceApproval, true);
-  assert.equal(prepare({kind: 'previs-create', label: '预演 2'}).forceApproval, true);
-  const previsPlan = prepare({kind: 'previs-create', label: '预演 3'});
+  assert.equal(prepare({kind: 'subject-card-delete', nodeId: cardId}, 'sequence.tool.subject').forceApproval, true);
+  assert.equal(prepare({kind: 'previs-create', label: '预演 2'}, 'sequence.tool.previs').forceApproval, true);
+  const previsPlan = prepare({kind: 'previs-create', label: '预演 3'}, 'sequence.tool.previs');
   commitMioSequenceAction(store, previsPlan.sequence!.plan as never);
   const previsId = previsNode(store)[0]!.id;
   assert.notEqual(prepare({kind: 'previs-scene-set', nodeId: previsId, expectedSceneRevision: 1,
-    scene: defaultPrevisScene()}).forceApproval, true);
+    scene: defaultPrevisScene()}, 'sequence.tool.previs').forceApproval, true);
   // The read tool prepares as an observation without mutation targets.
   const read = tools.prepare({projectId, operation: 'sequence.generation-inputs.get', input: {shotId: shotA}});
   assert.equal(read.risk, 'read_only');
@@ -436,9 +523,8 @@ test('Mio board management actions build the same unified envelope', t => {
   assert.equal((store.db.prepare('SELECT archivedAt FROM project.shots WHERE id=?').get(shotB) as {archivedAt:string|null}).archivedAt,null);
   const duplicate=previewMioSequenceAction(store,projectId,req(45),{kind:'board-duplicate',targets:[{kind:'shot',id:shotA}]});
   commitMioSequenceAction(store,duplicate);
-  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-node-create',type:'text',name:'X',
+  assert.equal(mioSequenceEditSchemas['sequence.tool.board'].safeParse({kind:'board-node-create',type:'text',name:'X',
     position:{x:0,y:0}}).success,true);
-
 });
 
 test('FR-D track add/update are Mio sequence actions with one-step undo', t => {
@@ -461,4 +547,36 @@ test('FR-D track add/update are Mio sequence actions with one-step undo', t => {
     patch: {muted: true}});
   assert.equal(commitMioSequenceAction(store, update).operation, 'timeline.track.update');
   assert.equal((store.get('timelines', timelineId) as any).tracks.find((track: any) => track.id === audio).muted, true);
+});
+
+test('MT-6: a loaded domain group exposes its action with approval and Mio undo', t => {
+  const store = fixture(t);
+  const tools = createAgentTaskTools({store, services: {generationAvailability: {
+    mockAllowed: true, video: () => true, image: () => true, imageSelectionRequired: () => false}} as never});
+  const catalog = tools.list();
+  const core = selectTaskModelTools(catalog);
+  assert.equal(core.some(tool => tool.name === 'mioon_sequence_edit'), true);
+  assert.equal(core.some(tool => tool.name === 'mioon_sequence_board_edit'), false);
+  const loadStep = (names: string[]) => ({kind: 'tool' as const, status: 'completed' as const,
+    toolCall: {name: 'mioon_tools_load', arguments: {names}}, result: {names}});
+  const loaded = selectTaskModelTools(catalog, undefined, {steps: [loadStep(['mioon_sequence_board_edit'])] as never});
+  assert.equal(loaded.some(tool => tool.name === 'mioon_sequence_board_edit'), true);
+  // The loaded action goes through preview -> approval -> commit -> Mio undo.
+  const prepared = tools.prepare({projectId, operation: 'sequence.tool.board',
+    input: {kind: 'board-shot-append', name: 'Mio 加载后新增'}});
+  assert.equal(prepared.forceApproval, true);
+  const commitReceipt = commitMioSequenceAction(store, prepared.sequence!.plan as never);
+  assert.equal(commitReceipt.status, 'applied');
+  const countAdded = (): number => (store.db.prepare(`SELECT count(*) AS n FROM project.shots WHERE json_extract(data,'$.title')=?`).get('Mio 加载后新增') as {n: number}).n;
+  assert.equal(countAdded(), 1);
+  assert.equal(readSequenceEditHistory(store, 'mio').undo?.actionId, commitReceipt.actionId);
+  const undo = prepareMioSequenceUndo(store, projectId, req(90), commitReceipt.actionId);
+  assert.equal(applyMioSequenceUndo(store, undo).status, 'applied');
+  assert.equal(countAdded(), 0);
+  // A group tool is not visible before its load receipt, while the loaded
+  // receipt exposes exactly that tool for the next request.
+  const visible = (steps: unknown[]) => selectTaskModelTools(catalog, undefined, {steps: steps as never})
+    .map(tool => tool.name);
+  assert.equal(visible([]).includes('mioon_sequence_reference_edit'), false);
+  assert.equal(visible([loadStep(['mioon_sequence_reference_edit'])]).includes('mioon_sequence_reference_edit'), true);
 });

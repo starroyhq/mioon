@@ -10,3 +10,17 @@ html,body,#root{height:100%;margin:0;background:#0b0c0e;}
 .board-fixture-subjects h4 {margin:0 0 4px;font-size:10px;color:#a3a7af;text-transform:uppercase;letter-spacing:.8px;}
 .board-fixture-subject {display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid #2e3138;border-radius:5px;background:#1b1d21;cursor:grab;font-size:11px;}
 .board-fixture-subject small {color:#a3a7af;font-size:10px;}
+
+.board-fixture-assets {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  z-index: 30;
+  width: 300px;
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--border, #3a3a3a);
+  border-radius: 10px;
+  background: var(--panel, #1d1d1f);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 40%);
+}

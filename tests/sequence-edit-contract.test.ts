@@ -156,6 +156,7 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'trim', clipId: clipA, durationFrames: 20}}, 'timeline.clip.trim'],
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
     [{kind: 'track', edit: {kind: 'split-at-scenes', assetId: shotA, resultId: nodeA}}, 'timeline.clip.splitAtScenes'],
+    [{kind: 'track', edit: {kind: 'paste-clip', clipId: clipA, startFrame: 0}}, 'timeline.clip.paste'],
   ];
   const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
@@ -447,6 +448,56 @@ test('clip property intents carry one timeline action with bounded patches and c
   ];
   for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
     JSON.stringify(candidate).slice(0, 160));
+});
+
+test('dialogue intents edit one shot line family and carry the projected cue impact', () => {
+  const lineId = uuid('50'), cueId = uuid('51');
+  const dialogue = (edits: unknown[], overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope =>
+    envelope({intents: [], originSide: 'board',
+      dialogueIntent: {side: 'board', operation: {kind: 'dialogue', edits}} as never,
+      impact: {...envelope().impact, nodeIds: [shotA], subtitleCueIds: [cueId]},
+      baseline: {...envelope().baseline, targets: [{kind: 'shot', id: shotA, revision: 1},
+        {kind: 'cue', id: cueId, revision: 1}]},
+      ...overrides});
+  const update = {kind: 'update', shotId: shotA, lineId, text: '第一句'};
+  assert.equal(isSequenceEditEnvelope(dialogue([update])), true);
+  assert.equal(sequenceEditEnvelopeOperationName(dialogue([update])), 'board.dialogue.update');
+  assert.equal(sequenceEditOperationName([]), '');
+  const timelineSide = (edits: unknown[], overrides: Partial<SequenceEditEnvelope> = {}): SequenceEditEnvelope =>
+    dialogue(edits, {originSide: 'timeline',
+      dialogueIntent: {side: 'timeline', operation: {kind: 'dialogue', edits}} as never,
+      impact: {...envelope().impact, nodeIds: [], subtitleCueIds: [cueId]}, ...overrides});
+  assert.equal(isSequenceEditEnvelope(timelineSide([{kind: 'set-text-by-cue', cueId, text: '剪辑侧'}])), true);
+  assert.equal(sequenceEditEnvelopeOperationName(timelineSide([{kind: 'set-text-by-cue', cueId, text: '剪辑侧'}])),
+    'timeline.dialogue.text');
+  const rejected: unknown[] = [
+    // two intent families at once
+    dialogue([update], {intents: [intent(connect)]}),
+    // the intent side must equal the envelope origin side
+    dialogue([{kind: 'set-text-by-cue', cueId, text: '剪辑侧'}]),
+    timelineSide([update]),
+    // every edited shot must appear in the impact
+    dialogue([{kind: 'update', shotId: shotB, lineId, text: '另一句'}]),
+    // the timeline-side edit must appear in the cue impact
+    timelineSide([{kind: 'set-text-by-cue', cueId: uuid('52'), text: '剪辑侧'}]),
+    // empty text, too-long text and malformed payloads
+    dialogue([{kind: 'update', shotId: shotA, lineId, text: ''}]),
+    dialogue([{kind: 'update', shotId: shotA, lineId, text: '字'.repeat(21)}]),
+    dialogue([{kind: 'update', shotId: shotA, lineId}]),
+    dialogue([{kind: 'add', shotId: shotA, line: {id: lineId, text: '一句'}, extra: true}]),
+    dialogue([{kind: 'reorder', shotId: shotA, lineIds: [lineId, lineId]}]),
+    // a line cannot be both updated and removed in one action
+    dialogue([update, {kind: 'remove', shotId: shotA, lineId}]),
+    dialogue([]),
+  ];
+  for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
+    JSON.stringify(candidate).slice(0, 200));
+  // A timeline patch without a subtitles field still parses (pre-DL patches).
+  assert.equal(sequenceEditHistoryEntrySchema.safeParse({
+    actionId, projectId, epoch, position: 1, operation: 'board.dialogue.update', origin: 'user',
+    beforePatch: JSON.parse(JSON.stringify(emptyDelta)), afterPatch: JSON.parse(JSON.stringify(emptyDelta)),
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }).success, true);
 });
 
 test('a subject binding row is a board entity: mixed patches invert and stay in one history entry', () => {

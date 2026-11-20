@@ -15,7 +15,15 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 - 修改导出基准脚本的 PR，在同一个 macOS arm64 检查中使用应用固定下载的 FFmpeg，分别用 PR 基线和当前实现导出合成时间线。运行摘要记录耗时、CPU、进程树 RSS 和负载，并核对输出 SHA-256；不上传成片
 - source、媒体准备、macOS 合并 job 和 Windows portable job 并行运行，八个 full 分片等待媒体准备，全部使用相同冻结源码 SHA；总检查要求 source、媒体准备、八个 full 分片、macOS 合并 job 和 Windows portable job 全部成功。PR 不接触 Apple 签名凭据
 
-完整测试使用现有 tooling 的环境清理和真实生成关闭策略，每个文件仍是独立进程；Ubuntu 运行机有 4 个 vCPU，每个 job 同时跑 3 个测试文件。并行执行会争用 CPU，文件耗时也随运行机波动。时限余量不足的测试文件列在 `.github/scripts/test-shard.ts` 的 `EXCLUSIVE_TEST_FILES`，每个分片先在空闲的运行机上单独跑本片的这些文件，再并行跑其余文件。入选标准：串行 CI 耗时达到自身声明时限三分之一的测试所在的文件，或共用 CPU 时因其他原因（如信号送达竞态、固定操作预算）在 CI 中失败过的文件；每项注明依据。不对失败的测试自动重跑。八个 Linux 测试 job 各限时 60 分钟，source job 限时 20 分钟。测试 job 不重复执行工作流检查和应用构建，也不依赖 source job 的暂存产物；保留现有测试选择、断言和 FFmpeg 自身的阶段期限。分片从 full 权威列表自动分配：按 `.github/test-timings.json` 记录的每文件耗时，从最长的文件开始，依次放进当前累计耗时最少的分片，使各片大致同时结束；表里没有的新测试按已记录耗时的中位数估算，没有耗时表时退回按名称轮流分配。结果只取决于测试列表和提交的耗时表。先校验并集完整且互不重叠，再逐文件启动 Node 测试进程；新测试会自动进入，不维护排除名单。每片随覆盖证明上传本次各文件的实际耗时（`timings.json`）。测试增删或耗时明显变化后，用 `gh run download <运行 ID> --pattern 'checks-linux-*-coverage' --dir <目录>` 下载，再运行 `node .github/scripts/test-timings.ts <目录>` 刷新耗时表并提交；本次没测到的文件保留原值，已删除的测试会被移除；单独运行的文件记录在 `timings-alone.json`，一并读取。矩阵保持 `fail-fast: false`，八个分片全部成功才允许总检查通过。每片记录源码 SHA、全集哈希、耗时表哈希、选中文件和预计耗时，便于核查覆盖范围。失败不会被自动忽略；日志和诊断报告分别标明执行范围。本地 macOS 缺失的媒体滤镜是否在 Ubuntu 已解决，以实际能力检查和测试结果为准
+### 未分到机器时自动重跑
+
+`.github/workflows/retry-not-acquired.yml` 只处理 GitHub 托管 runner 容量不足导致的「作业从未被分配机器」：`CI` 工作流失败完成后触发，先分类再决定是否重跑。
+
+- 只有 `run_attempt === 1`、且每个非聚合失败 job 都满足「没有 steps、没有 runner、注解含 `The job was not acquired by Runner of type hosted even after multiple attempts`」时才调用 `rerun-failed-jobs`；混合真实失败、真实测试失败、非首次 attempt、注解缺失或拿不准一律不重跑（fail-closed）。
+- 手动 `workflow_dispatch` 是只读演练（`actions: read`），自动路径才给 `actions: write`；两条路径都显式检出 `main`、不使用 PR 代码，run id 通过环境变量传入并在脚本里校验为纯数字。
+- 每次判定（verdict、理由、是否调用重跑及结果）都写 step summary，便于事后核对。自动重跑每个 run 最多一次（attempt 检查），不会掩盖容量外的问题。
+
+完整测试使用现有 tooling 的环境清理和真实生成关闭策略，每个文件仍是独立进程；Ubuntu 运行机有 4 个 vCPU，每个 job 同时跑 3 个测试文件。并行执行会争用 CPU，文件耗时也随运行机波动。时限余量不足的测试文件列在 `.github/scripts/test-shard.ts` 的 `EXCLUSIVE_TEST_FILES`，每个分片先在空闲的运行机上单独跑本片的这些文件，再并行跑其余文件。入选标准：串行 CI 耗时达到自身声明时限三分之一的测试所在的文件，或共用 CPU 时因其他原因（如信号送达竞态、固定操作预算）在 CI 中失败过的文件；每项注明依据。不对失败的测试自动重跑。八个 Linux 测试 job 各限时 60 分钟，source job 限时 20 分钟。测试 job 不重复执行工作流检查和应用构建，也不依赖 source job 的暂存产物；保留现有测试选择、断言和 FFmpeg 自身的阶段期限。分片从 full 权威列表自动分配：按 `.github/test-timings.json` 记录的每文件耗时，从最长的文件开始，依次放进当前累计耗时最少的分片，使各片大致同时结束；表里没有的新测试按已记录耗时的中位数估算，没有耗时表时退回按名称轮流分配。结果只取决于测试列表和提交的耗时表。先校验并集完整且互不重叠，再逐文件启动 Node 测试进程；新测试会自动进入，不维护排除名单。每片随覆盖证明上传本次各文件的实际耗时（`timings.json`）。计时表按文本逐行检查重复键：合并若留下同一个测试的两行，`JSON.parse` 会静默保留最后一个，分片权重会被悄悄改掉，所以分片在解析前先按文本拒绝重复键。测试增删或耗时明显变化后，用 `gh run download <运行 ID> --pattern 'checks-linux-*-coverage' --dir <目录>` 下载，再运行 `node .github/scripts/test-timings.ts <目录>` 刷新耗时表并提交；本次没测到的文件保留原值，已删除的测试会被移除；单独运行的文件记录在 `timings-alone.json`，一并读取。矩阵保持 `fail-fast: false`，八个分片全部成功才允许总检查通过。每片记录源码 SHA、全集哈希、耗时表哈希、选中文件和预计耗时，便于核查覆盖范围。失败不会被自动忽略；日志和诊断报告分别标明执行范围。本地 macOS 缺失的媒体滤镜是否在 Ubuntu 已解决，以实际能力检查和测试结果为准
 
 每个文件从进程启动开始单独计时，期限为计时表记录的三倍再加 2 分钟，最短 10 分钟。没有记录的文件用 35 分钟。h1e 报告测试曾在共享阶段用 332.51 秒正常完成，两次触发原 300 秒期限后改为单独运行。当前最长记录 933.12 秒对应约 48 分 39 秒期限。超时会终止该文件的进程组，日志记录仓库相对路径、已运行时长和最多 12 行输出。分片继续调度剩余文件，最终返回失败。超时文件的耗时不进入计时产物。
 

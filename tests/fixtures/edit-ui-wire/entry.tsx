@@ -9,6 +9,7 @@ import '../../../apps/web/src/styles.css';
 import '../../../apps/web/src/edit-ui/edit-ui.css';
 import './fixture.css';
 import Timeline from '../../../apps/web/src/Timeline.tsx';
+import ShotDialogue from '../../../apps/web/src/ShotDialogue.tsx';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import {timelineHistoryState} from '../../../apps/web/src/timeline-history.ts';
 import {timelineSplitState} from '../../../apps/web/src/timeline-split.ts';
@@ -19,12 +20,15 @@ import type {EditUiNotice} from '../../../apps/web/src/edit-ui/EditUiNotice.tsx'
 import ShotVersionBar from '../../../apps/web/src/edit-ui/ShotVersionBar.tsx';
 import type {EditUiInspectorSequence} from '../../../apps/web/src/edit-ui/status.tsx';
 import {
-  Format5EditSession, format5CommandErrorMessageKey, format5InspectorSequence, format5MoveCommand,
-  format5MoveOffTrackCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand,
+  Format5EditSession, format5CommandErrorMessageKey, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand,
+  format5MoveOffTrackCommand, format5PasteClipCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand,
   format5VersionCommand,
 } from '../../../apps/web/src/edit-ui/session.ts';
 import type {SequenceHistoryView} from '../../../apps/web/src/edit-ui/session.ts';
 import type {SequenceSyncCommand} from '../../../packages/contracts/src/sequence-sync.ts';
+import {
+  format5ClipInspectorEdit, format5ClipPropertyEdit, format5PropertiesIntent, format5SubtitleEdit,
+} from '../../../apps/web/src/edit-ui/format5-panel-edits.ts';
 
 type Row = Record<string, any>;
 interface WireData {project: Row; timeline: Row; shots: readonly Row[]; versions: readonly Row[]; assets: readonly Row[]; projectFormatVersion: 5}
@@ -38,7 +42,12 @@ const rpc = async (operation: string, input: unknown): Promise<any> => {
 const projectId = '90000000-0000-4000-8000-000000000001';
 const mainTrackId = '90000000-0000-4000-8000-000000000060';
 const track2Id = '90000000-0000-4000-8000-000000000061';
+const audioTrackId = '90000000-0000-4000-8000-000000000062';
+const imageAssetId = '90000000-0000-4000-8000-000000000012';
+const videoAssetId = '90000000-0000-4000-8000-000000000011';
+const audioAssetId = '90000000-0000-4000-8000-000000000013';
 const imageClipId = '90000000-0000-4000-8000-000000000033';
+const shotAId = '90000000-0000-4000-8000-000000000003';
 
 function historySource(data: WireData | null, history: SequenceHistoryView | null) {
   if (!data || !history) return null;
@@ -58,13 +67,16 @@ function Harness(): React.ReactElement {
   const [notice, setNotice] = useState<EditUiNotice | null>(null);
   const [noticeActionId, setNoticeActionId] = useState<string | null>(null);
   const [copyRequest, setCopyRequest] = useState<EditUiCopyMoveRequest | null>(null);
+  const clipboard = useRef<string | null>(null);
+  const [clipboardReady, setClipboardReady] = useState(false);
   const [exportIssues, setExportIssues] = useState<readonly {code: string; clipId: string}[]>([]);
   const [lastOperation, setLastOperation] = useState('');
   const [lastError, setLastError] = useState('');
+  const [lastUndo, setLastUndo] = useState('');
   const session = useRef(new Format5EditSession(rpc, () => projectId));
   const busy = useRef(false);
   const stateRef = useRef<Row>({});
-  stateRef.current = {data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError};
+  stateRef.current = {data, history, selectedClipId, playhead, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError, lastUndo};
 
   const refresh = async (): Promise<void> => {
     const project = await rpc('project.get', {projectId}) as WireData;
@@ -81,10 +93,12 @@ function Harness(): React.ReactElement {
       event.preventDefault();
       const run = async (): Promise<void> => {
         const view = await rpc('sequence.history.get', {projectId}) as SequenceHistoryView;
+        const target = event.shiftKey ? view.redo : view.undo;
         const result = event.shiftKey ? await session.current.redo(view) : await session.current.undo(view);
         setLastOperation(event.shiftKey ? 'redo' : 'undo');
+        setLastUndo(`${target?.operation ?? 'none'}:${result.ok ? 'ok' : result.code}`);
         if (!result.ok) setLastError(result.code);
-        await refresh();
+        try {await refresh();} catch (error) {setLastError(`refresh:${(error as {code?: string}).code ?? 'error'}`);}
       };
       void run();
     };
@@ -92,7 +106,7 @@ function Harness(): React.ReactElement {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  useEffect(() => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};}, [data, history, selectedClipId, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError]);
+  useEffect(() => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};}, [data, history, selectedClipId, playhead, notice, noticeActionId, copyRequest, exportIssues, lastOperation, lastError, lastUndo]);
   const timeline = data?.timeline ?? null;
   const projection = useMemo(() => data ? format5Projection(timeline as never, data.shots as never, data.versions as never) : null,
     [data, timeline]);
@@ -122,6 +136,99 @@ function Harness(): React.ReactElement {
     try {return await applyOutcome(command, await session.current.run(command));}
     finally {busy.current = false;}
   };
+  // UI-E3: the production mapping/session entry the panels use, exposed for the
+  // headless flow. Each call is one preview/commit with the real kernel.
+  const panelClipId = '90000000-0000-4000-8000-000000000030';
+  const panelResult = async (label: string, payload: Record<string, unknown>): Promise<Row> => {
+    const result = await session.current.runPayload(payload) as Row;
+    setLastOperation(label);
+    setLastError(result.ok ? '' : String(result.code ?? 'UNKNOWN'));
+    if (result.ok) {
+      setNotice({id: `wire-panel-${Date.now()}`, message: t('editUi.notice.propertiesSaved', {name: '面板'})});
+      setNoticeActionId(String(result.actionId ?? ''));
+    }
+    await refresh();
+    return {ok: result.ok, ...(result.ok ? {actionId: result.actionId} : {code: result.code})};
+  };
+  const panelSubtitle = async (label: string, operation: string, input: Row, newCueId: string): Promise<Row> => {
+    const built = format5SubtitleEdit({scope: 'wire', projectId, timelineId: data?.timeline?.id ?? '',
+      selection: 0, serial: 0, operation, input, previousIds: []} as never, newCueId);
+    if (!built.intent) {setLastOperation(label); setLastError(String(built.unsupported ?? 'payload')); return {ok: false, code: built.unsupported};}
+    const result = await panelResult(label, {subtitlesIntent: built.intent});
+    return {...result, cueId: newCueId};
+  };
+  useEffect(() => {
+    if (!data) return;
+    const clip = data.timeline.clips.find((item: Row) => item.id === panelClipId);
+    const properties = (label: string, patch: Row): Promise<Row> =>
+      panelResult(label, {propertiesIntent: format5PropertiesIntent(panelClipId, patch)});
+    const property = (label: string, key: 'transform' | 'transition', value: unknown): Promise<Row> => {
+      const mapped = clip ? format5ClipPropertyEdit(panelClipId, key, value, Number(clip.durationFrames)) : {unsupported: true as const};
+      if ('unsupported' in mapped) {setLastOperation(label); setLastError('unsupported'); return Promise.resolve({ok: false, code: 'unsupported'});}
+      return panelResult(label, {propertiesIntent: mapped});
+    };
+    (window as any).__panel = {
+      rename: () => properties('panel-rename', {name: '改名镜头'}),
+      props: () => properties('panel-props', {gain: 0.5, fadeInFrames: 3}),
+      colour: () => properties('panel-colour', {colour: {profileId: 'mioon-rec709-sdr-clip-v1', source: null, look: null}}),
+      transform: () => property('panel-transform', 'transform', {profileId: 'mioon-clip-transform-v1',
+        keyframes: [{frame: 0, x: 5, y: 0, scale: 1}], rotation: 0, crop: {left: 0, top: 0, right: 0, bottom: 0}}),
+      // The transition lives on the incoming clip of a cut (A2, not the head A).
+      transition: () => {
+        const incoming = data.timeline.clips.find((item: Row) => item.id === '90000000-0000-4000-8000-000000000031');
+        const mapped = incoming ? format5ClipPropertyEdit(incoming.id, 'transition',
+          {profileId: 'mioon-clip-transition-v1', kind: 'dissolve', durationFrames: 8}, Number(incoming.durationFrames)) : {unsupported: true as const};
+        if ('unsupported' in mapped) return Promise.resolve({ok: false, code: 'unsupported'});
+        return panelResult('panel-transition', {propertiesIntent: mapped});
+      },
+      history: () => rpc('sequence.history.get', {projectId}),
+      clearTransition: (clipId: string) => {
+        const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
+        const mapped = clip ? format5ClipPropertyEdit(clipId, 'transition', null, Number(clip.durationFrames)) : {unsupported: true as const};
+        if ('unsupported' in mapped) return Promise.resolve({ok: false, code: 'unsupported'});
+        return panelResult('panel-transition-clear', {propertiesIntent: mapped});
+      },
+      format: async (presetId: string) => {
+        const result = await session.current.format(presetId) as Row;
+        setLastOperation('panel-format');
+        setLastError(result.ok ? '' : String(result.code ?? 'UNKNOWN'));
+        await refresh();
+        return {ok: result.ok, ...(result.ok ? {} : {code: result.code})};
+      },
+      applyGains: (gains: readonly {clipId: string; gain: number}[]) =>
+        panelResult('panel-loudness-gains', {propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties',
+          edits: gains.map(item => ({clipId: item.clipId, patch: {gain: item.gain}}))}}}),
+      audioRole: (clipId: string, role: string) =>
+        panelResult('panel-audio-role', {propertiesIntent: format5PropertiesIntent(clipId, {audioRole: role})}),
+      envelope: (clipId: string) =>
+        panelResult('panel-volume-envelope', {propertiesIntent: format5PropertiesIntent(clipId,
+          {volumeEnvelope: {profileId: 'mioon-clip-linear-attenuation-v1', points: [{frame: 0, multiplier: 1}, {frame: 20, multiplier: 0.5}]}})}),
+      project: () => rpc('project.get', {projectId}),
+      cues: () => ((((window as any).__wireState?.data || {}).timeline || {}).subtitles || {}).cues || [],
+      unsupportedRect: () => {
+        if (!clip) return {kind: 'unsupported', reason: 'field', fields: ['rect']};
+        const edit = format5ClipInspectorEdit(clip as Row, {...clip, rect: {x: 1, y: 1, width: 10, height: 10}},
+          data.timeline.clips as Row[], mainTrackId);
+        setLastOperation('panel-unsupported');
+        setLastError(edit.kind === 'properties' ? '' : 'unsupported');
+        return edit as unknown as Row;
+      },
+      addSubtitle: (text: string, startFrame: number, durationFrames: number) =>
+        panelSubtitle('panel-subtitle-add', 'timeline.subtitle.add', {text, startFrame, durationFrames}, crypto.randomUUID()),
+      updateSubtitle: (cueId: string, text: string) =>
+        panelSubtitle('panel-subtitle-update', 'timeline.subtitle.update', {cueId, patch: {text}}, 'unused'),
+      removeSubtitle: (cueId: string) =>
+        panelSubtitle('panel-subtitle-remove', 'timeline.subtitle.remove', {cueId}, 'unused'),
+      double: async () => {
+        const payload = {propertiesIntent: format5PropertiesIntent(panelClipId, {gain: 0.7})};
+        const results = await Promise.all([session.current.runPayload(payload), session.current.runPayload(payload)]);
+        setLastOperation('panel-double');
+        await refresh();
+        return results.map(result => result.ok ? 'applied' : String(result.code));
+      },
+    };
+  }, [data, t]);
+
   const removeSelected = async (): Promise<void> => {if (selectedClipId) await run(format5RemoveCommand(selectedClipId));};
   const splitSelected = async (): Promise<void> => {
     const clip = data?.timeline.clips.find((item: Row) => item.id === selectedClipId);
@@ -169,6 +276,47 @@ function Harness(): React.ReactElement {
     } finally {busy.current = false;}
   };
   const cancelCopy = (): void => {session.current.cancelCopy(); setCopyRequest(null); setLastOperation('copy-cancelled');};
+  const insertAsset = async (assetId: string, trackId: string | null, startFrame: number): Promise<void> => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const result = await session.current.run(format5InsertAssetCommand(assetId, trackId, startFrame));
+      setLastError(result.ok ? '' : result.code);
+      if (result.ok) {
+        setNotice({id: `wire-${Date.now()}`, message: `已添加素材`}); setNoticeActionId(result.actionId ?? null);
+        await refresh();
+      }
+      setLastOperation('insert-asset');
+    } finally {busy.current = false;}
+  };
+  const copySelectedClip = (): void => {
+    if (!selectedClipId) return;
+    clipboard.current = selectedClipId; setClipboardReady(true); setLastOperation('copy-clip');
+  };
+  const pasteClip = async (): Promise<void> => {
+    if (busy.current || !clipboard.current) return;
+    busy.current = true;
+    try {
+      const result = await session.current.run(format5PasteClipCommand(clipboard.current, playhead));
+      setLastError(result.ok ? '' : result.code);
+      if (result.ok) {setNotice({id: `wire-${Date.now()}`, message: '已粘贴片段'}); setNoticeActionId(result.actionId ?? null); await refresh();}
+      setLastOperation('paste-clip');
+    } finally {busy.current = false;}
+  };
+  const dialogueShot = (data?.shots as Row[] | undefined)?.find(shot => shot.id === shotAId) ?? null;
+  const dialogueCueMarks = useMemo(() => {
+    const marks = new Map<string, {shotName?: string}>();
+    const counts = new Map<string, number>();
+    const titles = new Map(((data?.shots as Row[] | undefined) ?? []).map(shot => [String(shot.id), String(shot.title ?? '')]));
+    for (const cue of ((data?.timeline as Row | undefined)?.subtitles?.cues as Row[] | undefined) ?? []) {
+      const ref = cue.dialogueRef as Row | null | undefined;
+      if (typeof ref?.shotId !== 'string') continue;
+      const shotName = titles.get(ref.shotId) || undefined;
+      marks.set(String(cue.id), shotName ? {shotName} : {});
+      counts.set(ref.shotId, (counts.get(ref.shotId) ?? 0) + 1);
+    }
+    return {marks, counts};
+  }, [data]);
   const sequenceFor = (clipId: string | undefined): EditUiInspectorSequence | null => {
     if (!data || !clipId) return null;
     return format5InspectorSequence(timeline as never, data.shots as never, data.versions as never, clipId, {});
@@ -198,6 +346,17 @@ function Harness(): React.ReactElement {
       <button type="button" data-testid="wire-split" onClick={() => {void splitSelected();}}>切开</button>
       <button type="button" data-testid="wire-trim" onClick={() => {void trimSelected();}}>修剪</button>
       <button type="button" data-testid="wire-move-copy" onClick={() => {void moveSelected();}}>移到 V2</button>
+      <button type="button" data-testid="wire-insert-start" onClick={() => {void insertAsset(imageAssetId, null, 0);}}>素材到开头</button>
+      <button type="button" data-testid="wire-insert-mid" onClick={() => {void insertAsset(videoAssetId, null, 45);}}>素材到中间</button>
+      <button type="button" data-testid="wire-insert-end" onClick={() => {void insertAsset(imageAssetId, null, 150);}}>素材到末尾</button>
+      <button type="button" data-testid="wire-insert-v2" onClick={() => {void insertAsset(videoAssetId, track2Id, 10);}}>素材到 V2</button>
+      <button type="button" data-testid="wire-insert-audio" onClick={() => {void insertAsset(audioAssetId, audioTrackId, 5);}}>素材到音频轨</button>
+      <button type="button" data-testid="wire-copy" onClick={() => {copySelectedClip();}}>复制</button>
+      <button type="button" data-testid="wire-copy-v2" onClick={() => {const v2 = data?.timeline.clips.find((item: Row) => item.trackId === track2Id); if (v2) {clipboard.current = v2.id; setClipboardReady(true); setLastOperation('copy-clip');}}}>复制 V2 片段</button>
+      <button type="button" data-testid="wire-paste" onClick={() => {void pasteClip();}}>粘贴</button>
+      <button type="button" data-testid="wire-playhead-60" onClick={() => setPlayhead(60)}>播放头 60</button>
+      <button type="button" data-testid="wire-playhead-70" onClick={() => setPlayhead(70)}>播放头 70</button>
+      <button type="button" data-testid="wire-playhead-120" onClick={() => setPlayhead(120)}>播放头 120</button>
       <button type="button" data-testid="wire-delete" onClick={() => {void removeSelected();}}>删除</button>
       <button type="button" data-testid="wire-undo" onClick={() => {void undoNotice();}}>撤销条</button>
       <button type="button" data-testid="wire-export" onClick={() => {void exportCheck();}}>导出检查</button>
@@ -210,7 +369,7 @@ function Harness(): React.ReactElement {
         await session.current.redo(view); setLastOperation('redo'); await refresh();
       })();}}>Shift+Cmd+Z</button>
       <span className="wire-state" data-testid="wire-state" data-operation={lastOperation} data-error={lastError}
-        data-clips={data.timeline.clips.length} data-position={history?.position ?? -1}>{lastOperation || 'ready'}{lastError ? ` · ${lastError}` : ''}</span>
+        data-clips={data.timeline.clips.length} data-position={history?.position ?? -1} data-playhead={playhead}>{lastOperation || 'ready'}{lastError ? ` · ${lastError}` : ''}</span>
     </header>
     <div className="wire-main">
       <section className="wire-canvas">
@@ -218,7 +377,15 @@ function Harness(): React.ReactElement {
           historyState={historyState!} splitState={splitState!} onHistory={() => undefined} onSplit={() => {void splitSelected();}}
           onSelectClip={id => {setSelectedClipId(id); setPlayhead(timeline!.clips.find((item: Row) => item.id === id)?.startFrame ?? 0);}}
           selectedClipId={selectedClipId} selectedCueId={null} onSelectSubtitle={() => undefined}
-          onAddSubtitle={() => undefined} onAddAsset={() => undefined} onMoveClip={(clipId: string, trackId: string, startFrame: number) => {void (async () => {
+          onAddSubtitle={() => undefined} onAddAsset={(assetId: string, trackId: string, startFrame: number) => {void insertAsset(assetId, trackId === mainTrackId ? null : trackId, startFrame);}} onPasteClipboard={() => {void pasteClip();}} clipboardPasteAvailable={clipboardReady}
+          onAddTransition={((clipId: string, transition: never) => {void (async () => {
+            const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
+            const mapped = clip ? format5ClipPropertyEdit(clipId, 'transition', transition, Number(clip.durationFrames)) : {unsupported: true as const};
+            if ('unsupported' in mapped) {setLastOperation('panel-transition-add'); setLastError('unsupported'); return;}
+            const result = await panelResult('panel-transition-add', {propertiesIntent: mapped});
+            if (result.ok) setSelectedClipId(clipId);
+          })();}) as never}
+          onMoveClip={(clipId: string, trackId: string, startFrame: number) => {void (async () => {
             setSelectedClipId(clipId);
             const clip = data.timeline.clips.find((item: Row) => item.id === clipId);
             if (!clip) return;
@@ -237,9 +404,12 @@ function Harness(): React.ReactElement {
           onRippleRemove={(clipId: string) => {setSelectedClipId(clipId); void run(format5RemoveCommand(clipId));}}
           onTrackAdd={() => undefined} onTrackUpdate={() => undefined} onSeed={() => undefined} onRender={() => undefined}
           onSeek={setPlayhead} playhead={playhead} collapsed={false} onCollapse={() => undefined} busy={false}
+          dialogueCues={dialogueCueMarks.marks}
           viewState={{pixelsPerSecond: 60, scrollLeft: 0, scrollTop: 0, snappingEnabled: true}} />
       </section>
       <aside className="wire-inspector">
+        {dialogueShot && <ShotDialogue shot={dialogueShot as never} subjectNames={{}} projectId={projectId}
+          cueCount={dialogueCueMarks.counts.get(shotAId) ?? 0} rpc={rpc} onApplied={() => {void refresh();}} />}
         {selectedSequence ? <ShotVersionBar sequence={{...selectedSequence,
           onRevealShot: () => setLastOperation('reveal'),
           onVersionChoice: choice => {void (async () => {

@@ -7,6 +7,8 @@ import {
   AGGREGATE_GATE_JOB,
   NOT_ACQUIRED_ANNOTATION,
   classifyRunAttempt,
+  maybeRerun,
+  parsePositiveInteger,
   renderSummary,
 } from '../.github/scripts/retry-not-acquired.ts';
 import type {RetryClassification, RunJob} from '../.github/scripts/retry-not-acquired.ts';
@@ -77,28 +79,72 @@ test('aggregate gate failures alone or a clean run are not retried', () => {
   assert.equal(classify([job(1, 'Linux source checks and build', {conclusion: 'success'})], 1).verdict, 'skip-no-failure');
 });
 
-test('the drill summary records the verdict, expectation and that the rerun API was not called', () => {
+test('the summary records the verdict, expectation and whether the rerun API was called', () => {
   const jobs = [queued(1, 'macOS portable source checks'), gate()];
   const classification: RetryClassification = classify(jobs, 1, withMessages(jobs));
-  const summary = renderSummary(classification, 'rerun');
-  assert.match(summary, /verdict: \*\*rerun\*\*/);
-  assert.match(summary, /expected: \*\*rerun\*\* \(PASS\)/);
-  assert.match(summary, /rerun API: \*\*not called\*\* \(drill only\)/);
-  const mismatch = renderSummary({...classification, verdict: 'skip-mixed'}, 'rerun');
-  assert.match(mismatch, /\(MISMATCH\)/);
+  const manual = renderSummary(classification, {execute: false, outcome: {called: false}});
+  assert.match(manual, /verdict: \*\*rerun\*\*/);
+  assert.match(manual, /rerun API: \*\*not called\*\* \(manual read-only drill\)/);
+  const autoSkip = renderSummary({...classification, verdict: 'skip-mixed'}, {execute: true, outcome: {called: false}});
+  assert.match(autoSkip, /rerun API: \*\*not called\*\* \(skip-mixed\)/);
+  const autoCalled = renderSummary(classification, {execute: true, outcome: {called: true}});
+  assert.match(autoCalled, /rerun API: \*\*called\*\* \(rerun-failed-jobs accepted\)/);
+  const failed = renderSummary(classification, {execute: true, outcome: {called: false, error: 'RERUN_FAILED_500'}});
+  assert.match(failed, /rerun API: \*\*failed\*\* \(RERUN_FAILED_500\)/);
+  assert.match(renderSummary(classification, {execute: false, outcome: {called: false}, expected: 'rerun'}), /\(PASS\)/);
+  assert.match(renderSummary({...classification, verdict: 'skip-mixed'}, {execute: false, outcome: {called: false}, expected: 'rerun'}), /\(MISMATCH\)/);
 });
 
-test('the drill workflow is manual-only, has the approved permission and never calls a rerun endpoint', async () => {
+test('run ids arrive as validated environment values, never through shell interpolation', () => {
+  assert.equal(parsePositiveInteger('RETRY_RUN_ID', '44558848999'), 44558848999);
+  assert.equal(parsePositiveInteger('RETRY_RUN_ATTEMPT', '1'), 1);
+  for (const raw of [undefined, '', '0', '-1', '1.5', '123abc', ' 42', '99999999999999999999999']) {
+    assert.throws(() => parsePositiveInteger('RETRY_RUN_ID', raw), /INVALID_RETRY_RUN_ID/);
+  }
+});
+
+test('the rerun API is only called for a rerun verdict in execute mode', async () => {
+  const classification = {...classify([queued(1, 'macOS desktop test group'), gate()], 1, new Map([[1, notAcquiredMessage]])), runId: 42};
+  const calls: number[] = [];
+  const rerunFailedJobs = async (_repository: string, runId: number) => {calls.push(runId);};
+  assert.deepEqual(await maybeRerun(classification, {execute: false, repository: 'starroyhq/mioon', rerunFailedJobs}), {called: false});
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await maybeRerun({...classification, verdict: 'skip-mixed'}, {execute: true, repository: 'starroyhq/mioon', rerunFailedJobs}), {called: false});
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await maybeRerun(classification, {execute: true, repository: 'starroyhq/mioon', rerunFailedJobs}), {called: true});
+  assert.deepEqual(calls, [42]);
+  const failed = await maybeRerun(classification, {execute: true, repository: 'starroyhq/mioon',
+    rerunFailedJobs: async () => {throw new Error('RERUN_FAILED_500');}});
+  assert.deepEqual(failed, {called: false, error: 'RERUN_FAILED_500'});
+});
+
+function workflowJob(workflow: string, name: string): string {
+  const value = new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:\\r?\\n|(?![\\s\\S]))`, 'm').exec(workflow)?.[1];
+  assert.ok(value, `the ${name} job must exist`);
+  return value;
+}
+
+test('the workflow separates manual read-only and automatic write permissions', async () => {
   const workflow = await readFile(path.join(root, '.github/workflows/retry-not-acquired.yml'), 'utf8');
-  assert.match(workflow, /^on:\r?\n  workflow_dispatch:\r?\n    inputs:\r?\n      run_id:/m);
-  assert.doesNotMatch(workflow, /^  (push|workflow_run|pull_request):/m, 'the drill may only be started manually');
-  assert.match(workflow, /permissions:\r?\n  actions: write\r?\n  contents: read/);
-  assert.match(workflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
-  assert.match(workflow, /retry-not-acquired\.ts --run-id="\$\{\{ inputs\.run_id \}\}"/);
-  assert.match(workflow, /persist-credentials: false/);
-  assert.doesNotMatch(workflow, /rerun-failed-jobs|rerun-failed/);
-  const script = await readFile(path.join(root, '.github/scripts/retry-not-acquired.ts'), 'utf8');
-  assert.match(script, /never calls a rerun API/);
-  assert.doesNotMatch(script, /rerun-failed-jobs/);
+  assert.match(workflow, /^name: Retry not-acquired runs$/m);
+  assert.match(workflow, /^on:\r?\n  workflow_run:\r?\n    workflows: \[CI\]\r?\n    types: \[completed\]\r?\n  workflow_dispatch:/m);
+  assert.doesNotMatch(workflow, /^  (push|pull_request):/m, 'only CI completion and manual dispatch may trigger the retry');
+  assert.doesNotMatch(workflow, /^permissions:/m, 'permissions are scoped per job, not to the whole workflow');
+  const drill = workflowJob(workflow, 'drill'), auto = workflowJob(workflow, 'auto');
+  assert.match(drill, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(drill, /permissions:\r?\n      actions: read\r?\n      contents: read/);
+  assert.match(auto, /if: >-\r?\n      github\.event_name == 'workflow_run' &&\r?\n      github\.event\.workflow_run\.conclusion == 'failure' &&\r?\n      github\.event\.workflow_run\.run_attempt == 1/);
+  assert.match(auto, /permissions:\r?\n      actions: write\r?\n      contents: read/);
+  for (const job of [drill, auto]) {
+    assert.match(job, /ref: main/);
+    assert.match(job, /persist-credentials: false/);
+    for (const match of job.matchAll(/^\s+run: (.+)$/gm)) assert.doesNotMatch(match[1]!, /\$\{\{/u, 'run ids must not be interpolated into the shell command');
+  }
+  assert.match(drill, /RETRY_RUN_ID: \$\{\{ inputs\.run_id \}\}/);
+  assert.match(drill, /RETRY_RUN_ATTEMPT: '1'/);
+  assert.match(auto, /RETRY_RUN_ID: \$\{\{ github\.event\.workflow_run\.id \}\}/);
+  assert.match(auto, /RETRY_RUN_ATTEMPT: \$\{\{ github\.event\.workflow_run\.run_attempt \}\}/);
+  assert.match(drill, /run: node \.github\/scripts\/retry-not-acquired\.ts$/m);
+  assert.match(auto, /run: node \.github\/scripts\/retry-not-acquired\.ts --execute$/m);
   assert.equal(NOT_ACQUIRED_ANNOTATION, 'The job was not acquired by Runner of type hosted even after multiple attempts');
 });

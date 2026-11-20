@@ -1,10 +1,17 @@
-name: Retry not-acquired drill
+name: Retry not-acquired runs
 
-# Drill phase of the "job was not acquired" retry plan. The workflow only
-# classifies real runs and records the evidence; it never calls a rerun API.
-# It stays manual until the coordinator approves the drill results; the
-# automatic workflow_run trigger is a separate, later change.
+# The automatic retry is limited to GitHub's "job was not acquired" capacity
+# failure. The classifier runs first and only calls rerun-failed-jobs when every
+# failed non-aggregate job was never assigned a runner and the run attempt is 1;
+# mixed runs, real failures and anything unattributable stay failed.
+#
+# The manual path is a read-only drill (permissions: actions: read). Only the
+# automatic workflow_run path gets actions: write. Both paths check out the
+# default branch and run the reviewed classifier from main, never PR code.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
@@ -12,24 +19,24 @@ on:
         required: true
         type: string
 
-permissions:
-  actions: write
-  contents: read
-
 concurrency:
-  group: retry-not-acquired-${{ github.event.inputs.run_id || github.run_id }}
+  group: retry-not-acquired-${{ github.event.workflow_run.id || inputs.run_id }}
   cancel-in-progress: false
 
 jobs:
-  classify:
-    name: Classify not-acquired run (dry run)
+  drill:
+    name: Classify not-acquired run (manual, read-only)
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      actions: read
+      contents: read
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - name: Checkout the selected revision
+      - name: Checkout the default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.ref }}
+          ref: main
           persist-credentials: false
 
       - name: Setup Node.js
@@ -40,6 +47,36 @@ jobs:
       - name: Classify without rerunning
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          node .github/scripts/retry-not-acquired.ts --run-id="${{ inputs.run_id }}" --attempt=1
+          RETRY_RUN_ID: ${{ inputs.run_id }}
+          RETRY_RUN_ATTEMPT: '1'
+        run: node .github/scripts/retry-not-acquired.ts
+
+  auto:
+    name: Retry run that never acquired a runner
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt == 1
+    permissions:
+      actions: write
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+
+      - name: Classify and retry only never-acquired runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RETRY_RUN_ID: ${{ github.event.workflow_run.id }}
+          RETRY_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: node .github/scripts/retry-not-acquired.ts --execute

@@ -1,16 +1,20 @@
-/** Classification for the "job was not acquired" retry plan.
+/**
+ * Classification and retry for the "job was not acquired" retry plan.
  *
- * Drill phase: this script only classifies real workflow runs and writes the
- * evidence. It never calls a rerun API; the automatic rerun path stays disabled
- * until the coordinator approves the drill results.
+ * The manual `workflow_dispatch` path only classifies and writes evidence
+ * (read-only token). The automatic `workflow_run` path may call
+ * `rerun-failed-jobs`, but only for a run whose `run_attempt` is 1 and where
+ * every non-aggregate failed job was never assigned a runner (no steps, no
+ * runner name) and its check-run annotation carries GitHub's "not acquired"
+ * message. A mixed run (queue failures plus real failures), a real test
+ * failure, a second attempt or anything the classifier cannot attribute is
+ * never retried.
  *
- * The plan only retries a run when `run_attempt === 1` and every non-aggregate
- * failed job was never assigned a runner (no steps, no runner name) and its
- * check-run annotation carries GitHub's "not acquired" message. A mixed run
- * (queue failures plus real failures), a real test failure, a second attempt or
- * anything the classifier cannot attribute is never retried.
+ * The run id and attempt arrive through validated environment variables, never
+ * through shell interpolation, and this file always runs from the default
+ * branch checkout.
  */
-import {appendFile, readFile} from 'node:fs/promises';
+import {appendFile} from 'node:fs/promises';
 
 export const NOT_ACQUIRED_ANNOTATION = 'The job was not acquired by Runner of type hosted even after multiple attempts';
 export const AGGREGATE_GATE_JOB = 'CI';
@@ -122,9 +126,20 @@ export async function classifyRealRun(repository: string, runId: number, attempt
   return classifyRunAttempt({runId, attempt, jobs, annotations});
 }
 
-export function renderSummary(classification: RetryClassification, expected?: string): string {
+export interface RerunOutcome {
+  readonly called: boolean;
+  readonly error?: string;
+}
+
+export interface SummaryOptions {
+  readonly execute: boolean;
+  readonly outcome: RerunOutcome;
+  readonly expected?: string;
+}
+
+export function renderSummary(classification: RetryClassification, {execute, outcome, expected}: SummaryOptions): string {
   const lines = [
-    `### retry-not-acquired drill: run ${classification.runId} attempt ${classification.attempt}`,
+    `### retry-not-acquired: run ${classification.runId} attempt ${classification.attempt}`,
     '',
     `- verdict: **${classification.verdict}**`,
     `- reason: ${classification.reason}`,
@@ -134,8 +149,37 @@ export function renderSummary(classification: RetryClassification, expected?: st
     `- aggregate gate failures: ${classification.gateFailures.length ? classification.gateFailures.join(', ') : '(none)'}`,
   ];
   if (expected) lines.push(`- expected: **${expected}** (${classification.verdict === expected ? 'PASS' : 'MISMATCH'})`);
-  lines.push('- rerun API: **not called** (drill only)');
+  const rerun = outcome.called
+    ? '**called** (rerun-failed-jobs accepted)'
+    : outcome.error
+      ? `**failed** (${outcome.error})`
+      : execute
+        ? `**not called** (${classification.verdict})`
+        : '**not called** (manual read-only drill)';
+  lines.push(`- rerun API: ${rerun}`);
   return lines.join('\n') + '\n';
+}
+
+export async function maybeRerun(classification: RetryClassification, {execute, repository, rerunFailedJobs}: {
+  readonly execute: boolean;
+  readonly repository: string;
+  readonly rerunFailedJobs: (repository: string, runId: number) => Promise<void>;
+}): Promise<RerunOutcome> {
+  if (!execute || classification.verdict !== 'rerun') return {called: false};
+  try {
+    await rerunFailedJobs(repository, classification.runId);
+    return {called: true};
+  } catch (error) {
+    return {called: false, error: error instanceof Error ? error.message : 'RERUN_FAILED'};
+  }
+}
+
+/** Digits-only validation for ids that arrive through the environment. */
+export function parsePositiveInteger(name: string, raw: string | undefined): number {
+  if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) throw new Error(`INVALID_${name}`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) throw new Error(`INVALID_${name}`);
+  return value;
 }
 
 function repositoryFromEnvironment(): string {
@@ -144,7 +188,18 @@ function repositoryFromEnvironment(): string {
   return repository;
 }
 
-interface DrillEntry {readonly run_id: number; readonly attempt: number; readonly expect?: string}
+async function rerunFailedJobs(repository: string, runId: number): Promise<void> {
+  const response = await fetch(`https://api.github.com/repos/${repository}/actions/runs/${runId}/rerun-failed-jobs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${requireToken()}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Length': '0',
+    },
+  });
+  if (response.status !== 201) throw new Error(`RERUN_FAILED_${response.status}`);
+}
 
 async function appendSummary(text: string): Promise<void> {
   const target = process.env.GITHUB_STEP_SUMMARY;
@@ -152,27 +207,18 @@ async function appendSummary(text: string): Promise<void> {
 }
 
 async function main(args: readonly string[]): Promise<number> {
-  const values = new Map<string, string>();
-  for (const arg of args) {
-    const match = /^--([a-z][a-z-]*)=(.+)$/u.exec(arg);
-    if (match) values.set(match[1]!, match[2]!);
-  }
+  const execute = args.includes('--execute');
   const repository = repositoryFromEnvironment();
-  const drillFile = values.get('drill-file');
-  const entries: DrillEntry[] = drillFile
-    ? JSON.parse(await readFile(drillFile, 'utf8')) as DrillEntry[]
-    : [{run_id: Number(values.get('run-id')), attempt: Number(values.get('attempt') ?? '1')}];
-  if (!entries.length || entries.some(entry => !Number.isSafeInteger(entry.run_id) || !Number.isSafeInteger(entry.attempt))) throw new Error('INVALID_DRILL_INPUT');
-  const classifications = [];
-  for (const entry of entries) {
-    const classification = await classifyRealRun(repository, entry.run_id, entry.attempt);
-    classifications.push(classification);
-    const summary = renderSummary(classification, entry.expect);
-    await appendSummary(summary + '\n');
-    process.stdout.write(summary + '\n');
-    process.stdout.write(JSON.stringify(classification) + '\n');
-  }
-  return classifications.length ? 0 : 2;
+  const runId = parsePositiveInteger('RETRY_RUN_ID', process.env.RETRY_RUN_ID);
+  const attempt = parsePositiveInteger('RETRY_RUN_ATTEMPT', process.env.RETRY_RUN_ATTEMPT);
+  const classification = await classifyRealRun(repository, runId, attempt);
+  const outcome = await maybeRerun(classification, {execute, repository, rerunFailedJobs});
+  const summary = renderSummary(classification, {execute, outcome});
+  await appendSummary(summary + '\n');
+  process.stdout.write(summary + '\n');
+  process.stdout.write(JSON.stringify({...classification, rerun: outcome}) + '\n');
+  if (outcome.error) throw new Error(outcome.error);
+  return 0;
 }
 
 if (process.argv[1]?.endsWith('retry-not-acquired.ts')) {
