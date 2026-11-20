@@ -969,6 +969,30 @@ const timelineCoreMessages = {
     "en": "Paste",
     "ja": "貼り付け"
   },
+  "timeline.menu.generateAtEnd": {
+    "zh-Hans": "在末尾生成镜头",
+    "zh-Hant": "在末尾生成鏡頭",
+    "en": "Generate shot at end",
+    "ja": "末尾にショットを生成"
+  },
+  "timeline.menu.generateHere": {
+    "zh-Hans": "在这里生成镜头",
+    "zh-Hant": "在這裡生成鏡頭",
+    "en": "Generate shot here",
+    "ja": "ここにショットを生成"
+  },
+  "timeline.generate.newShotTitle": {
+    "zh-Hans": "新镜头",
+    "zh-Hant": "新鏡頭",
+    "en": "New shot",
+    "ja": "新しいショット"
+  },
+  "timeline.generate.failedHint": {
+    "zh-Hans": "生成失败，可以重新生成",
+    "zh-Hant": "生成失敗，可以重新生成",
+    "en": "Generation failed; you can generate again",
+    "ja": "生成に失敗しました。もう一度生成できます"
+  },
   "timeline.view.region": {
     "zh-Hans": "04 多轨时间线",
     "zh-Hant": "04 多軌時間軸",
