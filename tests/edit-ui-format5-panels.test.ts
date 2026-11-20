@@ -107,6 +107,15 @@ test('rejected shared actions map to one reason and expose affected ids', () => 
   assert.equal(translate('en', 'editUi.error.FORMAT5_EDIT_MIXED'), 'Save property and structural changes separately.');
 });
 
+test('format-5 clip selection does not pass a loudness provider that can dereference undefined', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  // clipLoudnessContext() deliberately returns undefined for format 5. Passing
+  // that function through as the provider makes the truthy guard render the
+  // observation panel, which then reads executionScope from undefined.
+  assert.ok(app.includes('loudnessContext={format5 ? undefined : clipLoudnessContext as never}'));
+  assert.match(app, /if \(dataRef\.current\?\.projectFormatVersion === 5\) return undefined;/u);
+});
+
 test('the production shell routes format-5 panel edits through the shared entry', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   for (const fragment of [
@@ -115,7 +124,7 @@ test('the production shell routes format-5 panel edits through the shared entry'
     "runPayload(payload)", 'format5RunPayload({subtitlesIntent: built.intent}', 'async function saveFormat5Subtitle(intent: SubtitleIntent)',
     'format5ClipPropertyEdit(clipId, \'transform\'', 'format5ClipPropertyEdit(clipId, \'transition\'',
     'timelineCrossfadeEnvelopes(outgoing as never, incoming as never)',
-    'loudnessContext={clipLoudnessContext as never}',
+    'loudnessContext={format5 ? undefined : clipLoudnessContext as never}',
     "function clipLoudnessContext(): TimelineClipLoudnessContext | undefined",
     'if (dataRef.current?.projectFormatVersion === 5) return undefined;',
     'submit: format5 ? saveFormat5Subtitle : saveSubtitle',
