@@ -53,6 +53,10 @@ export interface BoardUiLiveProps {
   readonly onAssetDrop?: (assetId: string, position: {x: number; y: number}) => void;
   /** FR-C2: pan this newly-created card into view. */
   readonly revealNodeId?: string | null;
+  /** Previs creation is the same exact-replay intent formats 3/4 use. */
+  readonly onAddPrevis?: () => void;
+  readonly addingPrevis?: boolean;
+  readonly previsDisabled?: boolean;
 }
 
 function messageOf(t: ReturnType<typeof useI18n>['t'], code: string): string {
@@ -249,6 +253,9 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
       <button type="button" data-testid="board-ui-add-root" disabled={busy} onClick={addRoot}>{t('boardUi.addRoot')}</button>
       <button type="button" data-testid="board-ui-add-subject" disabled={busy} aria-expanded={subjectPicker}
         onClick={() => setSubjectPicker(open => !open)}>{t('boardUi.addSubject')}</button>
+      {props.onAddPrevis && <button type="button" data-testid="board-ui-add-previs"
+        aria-label={t('previs.toolbar.add')} disabled={busy || props.previsDisabled || props.addingPrevis}
+        onClick={props.onAddPrevis}>{t('previs.toolbar.add')}</button>}
       <button type="button" data-testid="board-ui-archive" disabled={busy} aria-expanded={archiveOpen}
         onClick={() => setArchiveOpen(open => !open)}>{t('boardUi.archiveCount', {count: archived.length})}</button>
     </div>

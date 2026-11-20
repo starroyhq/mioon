@@ -228,3 +228,9 @@ button.board-input-footer > span {overflow:hidden;text-overflow:ellipsis;white-s
 .board-shot-generate {background:#f2f2f2;color:#121212;border:1px solid transparent;min-height:36px;}
 .board-shot-generate:hover:not(:disabled),.board-shot-generate:focus-visible {background:#fff;color:#0b0b0b;}
 .board-shot-generate:disabled {background:#f2f2f2;color:#7a7a7e;opacity:.55;cursor:default;}
+
+/* WT-3-01: the service footer sits directly below the input list; keep an open
+ * row menu above its pointer box so every entry remains clickable. */
+.board-input-list {position:relative;z-index:2;}
+.board-input-menu {z-index:50;}
+.board-detached-inputs,.board-shot-duration-row,.board-service-picker {position:relative;z-index:1;}

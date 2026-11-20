@@ -17,7 +17,10 @@ import {projectLiveBoard, boardDeleteIntent, boardNodeCreateIntent, boardNodeUpd
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
 import {readGenerationProviderDirectory} from '../../../apps/web/src/video-provider-directory.ts';
+import {createPrevisNode} from '../../../apps/web/src/previs/previs-create.ts';
+import {createPrevisEditorRpc} from '../../../apps/web/src/previs/previs-format5-rpc.ts';
 import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
+import {format5GenerationInputService} from '../../../apps/web/src/board-ui/generation-input-request.ts';
 import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
 import {referenceAttachRequest, referenceDetachRequest, referenceReorderRequest, referenceRoleRequest} from '../../../apps/web/src/board-ui/inputs.ts';
 import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
@@ -56,6 +59,10 @@ function Harness(): React.ReactElement {
   const [reduced, setReduced] = useState(false);
   const [openedNode, setOpenedNode] = useState<string | null>(null);
   const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
+  const [mockProviderInstalled, setMockProviderInstalled] = useState(false);
+  const activeProviders = useMemo<readonly GenerationProvider[]>(() => mockProviderInstalled
+    ? [...providers, {id: 'mock', name: 'Mock · simulated motion', models: ['mock-motion-v1'],
+      mock: true, configured: true, enabled: true, status: 'available'}] : providers, [providers, mockProviderInstalled]);
   const [generationOptions, setGenerationOptions] = useState<Record<string, Record<string, unknown>>>({});
   const [inputs, setInputs] = useState<SequenceGenerationInputView | null>(null);
   const [inspectorTab, setInspectorTab] = useState<'settings' | 'versions'>('settings');
@@ -122,19 +129,32 @@ function Harness(): React.ReactElement {
     } finally {setBusy(false);}
   }, [data, refresh]);
 
+  const addPrevis = useCallback(async (): Promise<void> => {
+    const requestId = uuid();
+    setBusy(true);
+    try {
+      const previsRpc = createPrevisEditorRpc({rpc: (operation, input) => rpc(operation, input),
+        format5: true, projectId: () => projectId, requestId: () => requestId});
+      const outcome = await createPrevisNode({projectId, label: t('previs.node.defaultLabel'),
+        position: freeBoardPosition()}, {rpc: previsRpc, requestId: () => requestId});
+      await refresh();
+      if (outcome.status !== 'created') return;
+      setSelectedNodeId(outcome.node.id);
+      setRevealNodeId(outcome.node.id);
+      setNotice({id: outcome.node.id, message: t('previs.node.defaultLabel')});
+    } finally {setBusy(false);}
+  }, [refresh, t]);
   useEffect(() => {
     const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
     if (!shot) {setInputs(null); return;}
-    const selection = generationSelection(providers, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
+    const selection = generationSelection(activeProviders, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
     const provider = selection.provider;
-    const request = {projectId, shotId: shot.id, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision)
-      && selection.modelEntryId ? {connectionId: provider.connectionId,
-        configurationRevision: Number(provider.configurationRevision), modelEntryId: selection.modelEntryId} : {})};
+    const request = {projectId, shotId: shot.id, ...format5GenerationInputService(provider, selection)};
     let cancelled = false;
     void rpc('sequence.generation-inputs.get', request).then(value => {if (!cancelled) setInputs(value as SequenceGenerationInputView);})
       .catch(() => {if (!cancelled) setInputs(null);});
     return () => {cancelled = true;};
-  }, [data, providers, generationOptions, selectedNodeId]);
+  }, [data, activeProviders, generationOptions, selectedNodeId]);
   useEffect(() => {
     const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     const update = (): void => setReduced(query?.matches === true);
@@ -259,6 +279,7 @@ function Harness(): React.ReactElement {
     // through the same handlers/components the buttons use.
     (window as any).__boardWireActions = {
       setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
+      installMockProvider: () => setMockProviderInstalled(true),
       setInspectorTab: (tab: string) => setInspectorTab(tab === 'versions' ? 'versions' : 'settings'),
       clearSelection: () => setSelectedNodeId(null),
       updateShot: (shotId: string, patch: Record<string, unknown>, expectedRevision: number) => updateShot(shotId, patch as never, expectedRevision),
@@ -330,7 +351,8 @@ function Harness(): React.ReactElement {
         runSubject={runSubject} inputs={inputs}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
         notice={notice} reduceMotion={reduced} busy={busy}
-        onAssetDrop={(assetId, position) => {void dropAssetOnBoard(assetId, position);}} revealNodeId={revealNodeId}/>
+        onAssetDrop={(assetId, position) => {void dropAssetOnBoard(assetId, position);}} revealNodeId={revealNodeId}
+        onAddPrevis={() => {void addPrevis();}} addingPrevis={busy}/>
     </main>
     <aside className="board-fixture-inspector">
       <BoardInspector board={projection} activeFilmId={activeFilmId} mount={mount} selectedNodeId={selectedNodeId}
