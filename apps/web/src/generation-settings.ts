@@ -521,6 +521,22 @@ export function videoConnectionProviders(value: unknown): GenerationProvider[] {
   });
 }
 
+/** DL-b: does this shot carry dialogue lines? Speaker names are resolved on the
+ * server; the UI only needs presence to default the service's native sound. */
+export function shotHasDialogue(shot: GenerationShot): boolean {
+  const dialogue = (shot as { dialogue?: unknown }).dialogue;
+  return Array.isArray(dialogue) && dialogue.length > 0;
+}
+
+/** DL-b: optional native-sound services default the "生成声音" switch on for a
+ * shot with dialogue. An explicit user choice (already in `parameters`) wins.
+ * Shared by the current shot property panel and the B selected-shot panel. */
+export function defaultGenerateAudio(shot: GenerationShot, model: { audio?: string } | null | undefined,
+  parameters: Record<string, unknown>): Record<string, unknown> {
+  if (model?.audio === 'optional' && parameters.generateAudio === undefined && shotHasDialogue(shot)) parameters.generateAudio = true;
+  return parameters;
+}
+
 /** New connection-only controls stay in the current selection, outside legacy shot data. */
 export function generationParameters(shot: GenerationShot, provider: GenerationProvider | null | undefined, options: Record<string, unknown> = {}): Record<string, unknown> {
   if (!provider?.connectionId) return { ...(shot.parameters || {}) };
@@ -529,6 +545,7 @@ export function generationParameters(shot: GenerationShot, provider: GenerationP
   const model = provider.videoModel as import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry | undefined;
   if (wan?.defaults && model) return resolveWanGenerationParameters(model, wan.defaults, shot, overrides);
   const parameters: Record<string, unknown> = { ...(shot.parameters || {}), ...overrides };
+  defaultGenerateAudio(shot, model, parameters);
   const seedance = seedanceGenerationCapabilities(provider);
   if (seedance && model) {
     // The generation follows the saved shot until the user picks another

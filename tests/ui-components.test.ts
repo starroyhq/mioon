@@ -309,6 +309,12 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /clipboardPasteAvailable=\{format5ClipboardReady\}/);
   assert.match(app, /key === 'v'/);
   assert.match(timelineSource, /timeline-menu-paste/);
+  assert.match(app, /onUpdateShot=\{format5BoardUpdateShot\} onGenerateShot=\{format5GenerateShot\}/);
+  assert.match(app, /dialogueSubjects=\{format5DialogueSubjects\}/);
+  assert.match(app, /dialogueCueCount=/);
+  assert.match(app, /onDialogueApplied=/);
+  assert.match(app, /workbench-panel-detail/);
+  assert.match(app, /data-testid="board-inspector-header-shot"/);
   assert.doesNotMatch(app, /subjectDragToBoard=\{format5\}/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);
