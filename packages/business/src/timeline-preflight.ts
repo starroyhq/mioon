@@ -7,7 +7,7 @@ import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/cont
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
 import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
-import {validateTimeline,validateSavedTimeline} from './timeline-inputs.ts';
+import {validateTimeline,validateSavedTimeline,freezeTimelineSnapshot} from './timeline-inputs.ts';
 import {terminateMediaProcesses} from './media-processes.ts';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
@@ -18,6 +18,7 @@ import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {readFormat5RenderProjection} from './format5-timeline-render.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelinePreflightSnapshot,TimelinePreflightSnapshotAsset} from './timeline-sources.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -93,6 +94,11 @@ function classify(error: unknown): [string,string]{
  */
 export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
+  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const projection=readFormat5RenderProjection(store as never);
+   if(!projection)return {timeline:null,snapshot:null};
+   return {timeline:projection.legacy,snapshot:freezeTimelineSnapshot(projection.legacy,projection.assets,input.exportSettings,input) as TimelinePreflightSnapshot};
+  }
   const read=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
   if(read.snapshot)assertTransitionImageBudget(read.snapshot as never);
