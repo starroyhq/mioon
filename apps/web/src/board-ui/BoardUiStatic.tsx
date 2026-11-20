@@ -1,4 +1,4 @@
-import React, {memo, useCallback, useMemo, useRef, useState} from 'react';
+import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Background, BackgroundVariant, ReactFlow, ReactFlowProvider, useReactFlow} from '@xyflow/react';
 import type {Node, NodeChange, NodeProps} from '@xyflow/react';
 import type {ChainReferenceRole} from '../../../../packages/contracts/src/board-sequence.ts';
@@ -50,6 +50,13 @@ export interface BoardUiStaticProps {
   readonly virtualize?: boolean;
   /** SB-b: drop a subject from the library at the flow position. */
   readonly onSubjectDrop?: (subjectId: string, position: {readonly x: number; readonly y: number}) => void;
+  /** FR-C2: drop one asset-library card onto the board. */
+  readonly onAssetDrop?: (assetId: string, position: {readonly x: number; readonly y: number}) => void;
+  /** FR-C2: blank-canvas context menu position in flow and screen coordinates. */
+  readonly onPaneContextMenu?: (position: {readonly x: number; readonly y: number},
+    screen: {readonly x: number; readonly y: number}) => void;
+  /** FR-C2: pan this newly-created card into view after an add. */
+  readonly revealNodeId?: string | null;
   /** RI-b: reference lines the selected service cannot use, so the connector
    * shows the same state as the property panel (empty while no service is
    * selected). */
@@ -89,11 +96,20 @@ const BoardCardView = memo(function BoardCardView({data, selected}: NodeProps<Ca
   </article>;
 });
 const nodeTypes = {'board-card': BoardCardView};
+// Keep in sync with Timeline.tsx ASSET_DRAG; board-ui must not import the whole editor.
+const ASSET_DRAG_MIME = 'application/x-workbench-asset';
 
 function BoardUiCanvas(props: BoardUiStaticProps) {
   const {projection, nodes, edges, reduceMotion = false} = props;
   const {t} = useI18n();
   const flow = useReactFlow<CardNode, BoardSequenceEdge | BoardReferenceEdge>();
+  useEffect(() => {
+    if (!props.revealNodeId) return;
+    const flowNode = flowNodes.find(node => node.id === props.revealNodeId);
+    if (!flowNode) return;
+    flow.setCenter(flowNode.position.x + 130, flowNode.position.y + 132,
+      {zoom: Math.max(0.55, Math.min(1, flow.getZoom())), duration: 250});
+  }, [props.revealNodeId]);
   const [drag, setDrag] = useState<BoardPortEndpoint | null>(null);
   const [selection, setSelection] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
@@ -187,13 +203,21 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   const selected = selectedId ? byId.get(selectedId) : null;
   return <div className={`board-ui-static${props.showInspector === false ? ' board-ui-no-inspector' : ''}`} data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') {setDrag(null); props.onSelectEdge?.(null);}}}>
     <div className="board-ui-canvas" data-testid="board-ui-canvas"
-      onDragOver={event => {if (event.dataTransfer.types.includes(SUBJECT_DRAG)) {event.preventDefault(); event.dataTransfer.dropEffect = 'copy';}}}
+      onDragOver={event => {if (event.dataTransfer.types.includes(SUBJECT_DRAG) || event.dataTransfer.types.includes(ASSET_DRAG_MIME)) {
+        event.preventDefault(); event.dataTransfer.dropEffect = 'copy';}}}
       onDrop={event => {
         const subjectId = droppedSubject(event.nativeEvent);
-        if (!subjectId || !props.onSubjectDrop) return;
-        event.preventDefault(); event.stopPropagation();
-        const position = flow.screenToFlowPosition({x: event.clientX, y: event.clientY});
-        props.onSubjectDrop(subjectId, position);
+        if (subjectId && props.onSubjectDrop) {
+          event.preventDefault(); event.stopPropagation();
+          const position = flow.screenToFlowPosition({x: event.clientX, y: event.clientY});
+          props.onSubjectDrop(subjectId, position);
+          return;
+        }
+        const assetId = event.dataTransfer.getData(ASSET_DRAG_MIME);
+        if (assetId && props.onAssetDrop) {
+          event.preventDefault(); event.stopPropagation();
+          props.onAssetDrop(assetId, flow.screenToFlowPosition({x: event.clientX, y: event.clientY}));
+        }
       }}>
       <ReactFlow<CardNode, BoardSequenceEdge | BoardReferenceEdge> nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={boardEdgeTypes}
         proOptions={{hideAttribution: true}}
@@ -201,6 +225,10 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
         onNodesChange={positionsChanged} onNodeClick={(_, node) => {props.onSelectEdge?.(null); select(node.id);}}
         onNodeDragStop={flushMoves} onEdgeClick={(_, edge) => props.onSelectEdge?.(edge.id)}
         onPaneClick={() => {select(null); props.onSelectEdge?.(null);}}
+        onPaneContextMenu={event => {
+          const position = flow.screenToFlowPosition({x: event.clientX, y: event.clientY});
+          props.onPaneContextMenu?.(position, {x: event.clientX, y: event.clientY});
+        }}
         onConnectStart={(_, start) => {
           const node = start.nodeId ? byId.get(start.nodeId) : null;
           const port = node && boardPorts(node.kind).find(value => value.id === start.handleId);
