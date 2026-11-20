@@ -121,7 +121,8 @@ function freeBoardPosition(store: ProjectStore): {x: number; y: number} {
     if (value === null || typeof value !== 'object' || !Number.isFinite((value as Row).x)) return maximum;
     return Math.max(maximum, Number((value as Row).x));
   }, 0);
-  return {x: Math.min(1_000_000, right + 340), y: 120};}
+  return {x: Math.min(1_000_000, right + 340), y: 120};
+}
 function referenceRequest(action: MioSequenceAction): {referenceIntent: SequenceEditReferenceIntent; allocation: {edges: {id: string; fromId: string; toId: string}[]}} {
   switch (action.kind) {
     case 'reference-attach': {

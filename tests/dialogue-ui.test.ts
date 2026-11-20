@@ -9,7 +9,7 @@ import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-interface PanelInputs {shot?: {id: string; dialogue?: readonly {id: string; text: string; speakerSubjectId?: string}[]}; cueCount?: number}
+interface PanelInputs {shot?: {id: string; dialogue?: readonly {id: string; text: string; speakerSubjectId?: string}[]}; cueCount?: number; status?: null | {status: 'used' | 'unsupported' | 'rejected'; lineCount: number; reason?: string; promptCodeUnits: number; maxPromptCodeUnits: number}}
 interface Scenes {panel(locale: Locale, inputs?: PanelInputs): string}
 let scenes: Promise<Scenes> | undefined;
 function fixture(): Promise<Scenes> {
@@ -28,7 +28,8 @@ function fixture(): Promise<Scenes> {
         return renderToStaticMarkup(language(locale,<ShotDialogue
           shot={inputs.shot === undefined ? shot : inputs.shot}
           subjectNames={names} projectId={'80000000-0000-4000-8000-000000000009'}
-          cueCount={inputs.cueCount === undefined ? 2 : inputs.cueCount} rpc={rpc} onApplied={()=>{}}/>));
+          cueCount={inputs.cueCount === undefined ? 2 : inputs.cueCount}
+          dialogueStatus={inputs.status ?? null} rpc={rpc} onApplied={()=>{}}/>));
       }`;
     const result = await build({stdin: {contents: entry, loader: 'tsx', resolveDir: path.join(root, 'apps/web')}, bundle: true,
       platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: {'.css': 'empty'},
@@ -81,4 +82,23 @@ test('the production shell mounts the dialogue panel and subtitle dialogue marks
   const lane = read('apps/web/src/SubtitleLane.tsx');
   assert.match(lane, /subtitle-dialogue-mark/u);
   assert.match(lane, /dialogueCues\?\.get\(cue\.id\)/u);
+});
+
+test('the dialogue panel shows the service status only when it explains this shot', async () => {
+  const {panel} = await fixture();
+  const unsupported = panel('zh-Hans', {status: {status: 'unsupported', lineCount: 2, reason: 'SERVICE_DOES_NOT_SPEAK',
+    promptCodeUnits: 12, maxPromptCodeUnits: 1000}});
+  assert.match(unsupported, /当前服务不支持/u, 'a selected service without native sound is marked');
+  const rejected = panel('zh-Hans', {status: {status: 'rejected', lineCount: 2, reason: 'PROMPT_TOO_LONG',
+    promptCodeUnits: 1200, maxPromptCodeUnits: 1000}});
+  assert.match(rejected, /台词加进提示词后超出这个服务的上限/u);
+  assert.doesNotMatch(rejected, /不会截断/u, 'the reason is stated without reassurance copy');
+  const noService = panel('zh-Hans', {status: {status: 'unsupported', lineCount: 2, reason: 'SERVICE_NOT_SELECTED',
+    promptCodeUnits: 12, maxPromptCodeUnits: 0}});
+  assert.doesNotMatch(noService, /当前服务不支持/u, 'no service selected shows no unsupported marker');
+  const audioOff = panel('zh-Hans', {status: {status: 'unsupported', lineCount: 2, reason: 'AUDIO_OFF',
+    promptCodeUnits: 12, maxPromptCodeUnits: 5000}});
+  assert.doesNotMatch(audioOff, /当前服务不支持/u, 'muted by the user is not a service limitation');
+  const used = panel('zh-Hans', {status: {status: 'used', lineCount: 2, promptCodeUnits: 40, maxPromptCodeUnits: 5000}});
+  assert.doesNotMatch(used, /当前服务不支持|超出这个服务的上限/u);
 });
