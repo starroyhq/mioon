@@ -61,7 +61,7 @@ export function fixture(t: test.TestContext): ProjectStore {
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'MT read fixture', createdAt: at, updatedAt: at, revision: 1});
     store.put('assets', {id: assetA, projectId, name: 'a.mp4', mimeType: 'video/mp4', duration: 2, sha256: mediaSha,
-      sizeBytes: mediaBytes.length, reference: mediaRef, referenceRevision: 1});
+      sizeBytes: mediaBytes.length, reference: mediaRef, referenceRevision: 1, hasAudio: true, hasVideo: true});
     store.put('assets', {id: imageAsset, projectId, name: 'i.png', mimeType: 'image/png', duration: null, sha256: mediaSha,
       sizeBytes: mediaBytes.length, reference: imageRef, referenceRevision: 1});
     store.put('jobs', {id: id(71), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: shotA,
@@ -557,4 +557,66 @@ test('MT-6: a loaded domain group exposes its action with approval and Mio undo'
     .map(tool => tool.name);
   assert.equal(visible([]).includes('mioon_sequence_reference_edit'), false);
   assert.equal(visible([loadStep(['mioon_sequence_reference_edit'])]).includes('mioon_sequence_reference_edit'), true);
+});
+
+test('Mio mutes a clip through the loaded clip-properties group and undoes it', t => {
+  const store = fixture(t);
+  const plan = previewMioSequenceAction(store, projectId, req(100), {kind: 'clip-properties',
+    edits: [{clipId: clipA, patch: {muted: true}}]});
+  assert.equal(plan.envelope.origin, 'mio');
+  assert.equal((plan.envelope as any).propertiesIntent.operation.kind, 'clip-properties');
+  const receipt = commitMioSequenceAction(store, plan);
+  assert.equal(receipt.status, 'applied');
+  assert.equal(receipt.operation, 'timeline.clip.set-properties');
+  assert.equal((store.get('timelines', timelineId) as any).clips.find((clip: any) => clip.id === clipA).muted, true);
+  const undone = applyMioSequenceUndo(store, prepareMioSequenceUndo(store, projectId, req(101), receipt.actionId));
+  assert.equal(undone.status, 'applied');
+  assert.equal(Object.hasOwn((store.get('timelines', timelineId) as any).clips.find((clip: any) => clip.id === clipA), 'muted'), false);
+});
+
+test('Mio separates a clip sound through the loaded timeline group and undoes one step', t => {
+  const store = fixture(t);
+  const plan = previewMioSequenceAction(store, projectId, req(102), {kind: 'separate-sound', clipId: clipA});
+  assert.equal(plan.envelope.origin, 'mio');
+  assert.equal(plan.envelope.originSide, 'timeline');
+  const operation = (plan.envelope as any).soundIntent.operation;
+  assert.equal(operation.kind, 'separate-sound');
+  assert.ok(operation.audioClipId && operation.audioTrackId);
+  const receipt = commitMioSequenceAction(store, plan);
+  assert.equal(receipt.status, 'applied');
+  assert.equal(receipt.operation, 'timeline.clip.separateSound');
+  const timeline = store.get('timelines', timelineId) as any;
+  const source = timeline.clips.find((clip: any) => clip.id === clipA);
+  const sound = timeline.clips.find((clip: any) => clip.id === operation.audioClipId);
+  assert.equal(source.muted, true);
+  assert.equal(sound.soundOnly, true);
+  assert.equal(sound.assetId, source.assetId);
+  assert.deepEqual(sound.anchor, {clipId: clipA, offsetFrames: 0});
+  assert.equal(sound.trackId, operation.audioTrackId);
+  const undone = applyMioSequenceUndo(store, prepareMioSequenceUndo(store, projectId, req(103), receipt.actionId));
+  assert.equal(undone.status, 'applied');
+  const restored = store.get('timelines', timelineId) as any;
+  assert.equal(restored.clips.some((clip: any) => clip.id === operation.audioClipId), false);
+  assert.equal(Object.hasOwn(restored.clips.find((clip: any) => clip.id === clipA), 'muted'), false);
+});
+
+test('the format-5 catalog exposes save-as-audio with the asset tier and approval', t => {
+  const store = fixture(t);
+  const format5Tools = listAgentTaskTools(false, true);
+  const tool = format5Tools.find(item => item.operation === 'clip.audio.export');
+  assert.ok(tool, 'the format-5 catalog must expose clip.audio.export');
+  assert.equal(tool!.name, 'mioon_clip_audio_export');
+  assert.equal(tool!.risk, 'local_irreversible');
+  assert.equal(listAgentTaskTools(false, false).some(item => item.operation === 'clip.audio.export'), false,
+    'format 3/4 catalogs never expose the format-5 asset task');
+  const tools = createAgentTaskTools({store, services: {generationAvailability: {
+    mockAllowed: true, video: () => true, image: () => true, imageSelectionRequired: () => false}} as never});
+  const prepared = tools.prepare({projectId, operation: 'clip.audio.export', input: {clipId: clipA}});
+  assert.equal(prepared.risk, 'local_irreversible');
+  assert.equal(prepared.forceApproval, true);
+  assert.equal(prepared.operation, 'clip.audio.export');
+  assert.ok(prepared.input.requestId === undefined || typeof prepared.input.requestId === 'string');
+  // MCP derives its tool list from the shared public schemas.
+  assert.ok(schemas['clip.audio.export']);
+  assert.ok(schemas['clip.audio.export.get']);
 });

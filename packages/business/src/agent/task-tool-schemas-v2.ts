@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="2e3ca5dc08cd1d04e064c7f45c81bf89fe7de4e9b7ae994ec40814707c7db12b";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="5d9f45a5aaa61ac9ebb91e33e6608427f9f2d0f4db0e6d36492601463e697840";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1525,6 +1525,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "type": "string",
              "minLength": 1,
              "maxLength": 200
+            },
+            "muted": {
+             "type": "boolean"
             }
            },
            "additionalProperties": false
@@ -2599,6 +2602,60 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "soundIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "separate-sound"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "audioClipId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "audioTrackId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "createdTrackId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+       },
+       "trackName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 150
+       }
+      },
+      "required": [
+       "kind",
+       "clipId"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "formatIntent": {
     "type": "object",
     "properties": {
@@ -3265,6 +3322,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "string",
                "minLength": 1,
                "maxLength": 200
+              },
+              "muted": {
+               "type": "boolean"
               }
              },
              "additionalProperties": false
@@ -4339,6 +4399,60 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "soundIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "separate-sound"
+         },
+         "clipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "audioClipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "audioTrackId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "createdTrackId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+         },
+         "trackName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+         }
+        },
+        "required": [
+         "kind",
+         "clipId"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "formatIntent": {
       "type": "object",
       "properties": {
@@ -4837,6 +4951,43 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
  "export.output.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "clip.audio.export": {
+  "type": "object",
+  "properties": {
+   "clipId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "outputLocale": {
+    "type": "string",
+    "enum": [
+     "zh-Hans",
+     "zh-Hant",
+     "en",
+     "ja"
+    ]
+   }
+  },
+  "required": [
+   "clipId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "clip.audio.export.get": {
   "type": "object",
   "properties": {
    "exportId": {
@@ -13453,6 +13604,24 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "separate-sound"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "track-add"
      },
      "trackKind": {
@@ -13562,6 +13731,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "type": "string",
            "minLength": 1,
            "maxLength": 200
+          },
+          "muted": {
+           "type": "boolean"
           }
          },
          "additionalProperties": false

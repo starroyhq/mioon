@@ -201,6 +201,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
+  else if (action.kind === 'separate-sound') request.soundIntent = {side: 'timeline',
+    operation: {kind: 'separate-sound', clipId: action.clipId}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
     operation: {kind: 'timeline-format', presetId: action.presetId}};
   else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',

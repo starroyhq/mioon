@@ -128,11 +128,15 @@ const irreversibleOperations=[
  'scene.cuts.save','scene.shots.undo','scene.task.cancel','subject.variants.undo','previs.thumbnail.set','project.version.save',
  'frame.task.cancelQueued','image.task.cancelQueued','task.disposition.archiveCompleted',
  'frame.extract','scene.shots.create','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render','previs.create',
+ // FR-G «save clip sound» publishes a new project asset; its local task record
+ // and portable source provenance remain reviewable after the step.
+ 'clip.audio.export',
 ] as const;
 const paidOperations=['generation.submit','image.generate','subject.variants.retry'] as const;
 const parityConfirmOperations=new Set<string>([
  'scene.cuts.save','scene.shots.undo','scene.task.cancel','subject.variants.undo','previs.thumbnail.set','project.version.save',
  'frame.task.cancelQueued','image.task.cancelQueued','task.disposition.archiveCompleted','subject.variants.retry',
+ 'clip.audio.export',
 ]);
 const forbiddenOperations=[
  'workspace.settings.get','workspace.settings.set',
@@ -140,6 +144,9 @@ const forbiddenOperations=[
  'project.backup.list','project.backup.inspect','project.backup.restore','project.backup.status',
  'project.version.restore',
  'export.cancel','export.output.get','task.disposition.markFailed',
+ // FR-G: the task record is already observed through export.get/task.wait; a
+ // separate Mio tool would add surface without new authority.
+ 'clip.audio.export.get',
  'job.retry','job.cancel','job.reconcile','frame.task.recoverResult','image.task.recoverResult','image.task.observeRemote','image.review.prepare','timeline.get','timeline.undo','timeline.redo',
  // Starting a new variant batch remains a separate reviewed entry.
  'subject.variants.create',
@@ -567,7 +574,7 @@ const previsWrite=(operation:string):boolean=>operation==='previs.create'||opera
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get').map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export').map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -615,9 +622,12 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_subject_edit',operation:'sequence.tool.subject',description:'按需加载的格式 5 主体动作：主体绑定创建/跟随锁定/断开/恢复、主体卡建卡/删卡。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.subject'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_previs_edit',operation:'sequence.tool.previs',description:'按需加载的格式 5 预演动作：预演节点新建、预演场景保存（人偶/道具可带主体）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.previs'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
-  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的格式 5 时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的格式 5 时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、分离声音。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_clip_edit',operation:'sequence.tool.clip',description:'按需加载的格式 5 片段属性动作：变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.clip'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
+  // FR-G: one format-5 clip's current sound becomes a new project audio asset.
+  // Local background task: observe with task.wait (kind export) or export.get.
+  definitions.push({name:'mioon_clip_audio_export',operation:'clip.audio.export',description:'把格式 5 片段当前范围的声音另存为一个新的音频素材：源声音是 AAC 时直接拷贝，其他编码按导出音频设置转成 AAC。后台本地任务，可在任务中心查看进度、取消；完成后用 task.wait（kind 为 export）等结果并在素材库查看新素材。原素材和片段不变，不联网、不调用模型、不付费。',parameters:AGENT_TASK_TOOL_SCHEMAS['clip.audio.export'],risk:'local_irreversible',receipt:'durable local task record with portable source provenance',recovery:'read the original request/task row; never start a second task for the same request',undo:'unavailable; retry a failed task under a new request id'});
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_generation_inputs_get',operation:'sequence.generation-inputs.get',description:`只读查看一个镜头在当前生成服务下的实际生成输入：模式、每条引用线的角色/来源/顺序/主体版本、服务不支持的原因、主图和用到几项；最多 ${SEQUENCE_GENERATION_INPUT_LIMITS.entries} 条。connectionId/configurationRevision/modelEntryId 必须三个一起给，省略表示还没选服务。不写项目、任务、回执或历史。`,parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.generation-inputs.get'],risk:'read_only',receipt:'observation',recovery:'read the projection again after the board or service selection changes',undo:'unavailable'});
@@ -844,7 +854,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
-   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue',
+   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue','separate-sound',
     'format-set','split-at-scenes','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
