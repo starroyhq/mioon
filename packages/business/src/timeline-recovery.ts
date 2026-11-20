@@ -10,11 +10,14 @@ import {readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_PROOF_CODES,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_TRANSFORM_OPERATION,TIMELINE_CLIP_TRANSFORM_PROOF_CODES,TIMELINE_CLIP_TRANSFORM_RESPONSE_BYTES,TIMELINE_CLIP_TRANSITION_OPERATION,TIMELINE_CLIP_TRANSITION_PROOF_CODES,TIMELINE_CLIP_TRANSITION_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
-import {readTimelineStorage} from './project-file/timeline-storage.ts';
+import {readTimelineStorage,timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {canvasActiveCondition} from './canvas-active.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {validateSavedTimeline} from './timeline-inputs.ts';
 import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
+import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 
@@ -163,6 +166,19 @@ export function readTimelineReceipt(db: DatabaseSync,input: TimelineRecoveryInpu
 // Reads preserve stored JSON exactly. Each source gets the existing bounded
 // ownership reader independently, rather than imposing the inspection-wide
 // budget on a valid 100-clip edit, history entry or frozen export.
+/** Format-5 native rows are projected to the renderer-facing legacy shape for
+ * recovery readers that predate the sequence file. Format-5-only fields cannot
+ * be reinterpreted by the Format-3/4 validator. */
+function format5TimelineProjection(timeline: Record<string, unknown>): TimelineRecord {
+ const {mainTrack:_mainTrack,clips,subtitles,dialogue:_dialogue,...header}=timeline;
+ const rows=Array.isArray(clips)?clips:[];
+ return {...header,clips:rows.map(clip=>{const source=clip as Record<string, unknown>;
+  const {sourceState:_state,sequenceSource:_sequence,anchor:_anchor,...legacy}=source;return legacy as unknown as TimelineClipRecord;}),
+  ...(object(subtitles)?{subtitles:{profileId:String((subtitles as Record<string,unknown>).profileId),
+   ...(Object.hasOwn(subtitles as Record<string,unknown>,'basisPresetId')?{basisPresetId:(subtitles as Record<string,unknown>).basisPresetId}:{}),
+   cues:(Array.isArray((subtitles as Record<string,unknown>).cues)?(subtitles as Record<string,unknown>).cues as Record<string,unknown>[]:[]).map(cue=>{
+    const {anchor:_cueAnchor,dialogueRef:_dialogueRef,...legacy}=cue;return legacy as unknown as TimelineSubtitleCueRecord;})}}:{})} as unknown as TimelineRecord;
+}
 export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineRecoveryInput): TimelineRecoveryBoundary{
  const guarded=<T>(fn: ()=>T): T=>{try{return fn();}catch(error){if((error as {code?: unknown}).code==='INSPECTION_UNAVAILABLE')unavailable();throw error;}};
  const graph=(): OwnedMediaGraph=>guarded(()=>createOwnedMediaGraphReader(db,input.projectId) as unknown as OwnedMediaGraph);
@@ -193,6 +209,9 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return assets;
  }
  function validate(timeline: TimelineRecord): TimelineRecord{
+  if(timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT5_PROJECT_SCHEMA_VERSION&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
+   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});if(issue)invalidTimeline();return timeline;
+  }
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   const assets=sources(timeline);
@@ -206,6 +225,9 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return timeline;
  }
  function validateReadonly(timeline: TimelineRecord): TimelineRecord{
+  if(timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT5_PROJECT_SCHEMA_VERSION&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
+   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});if(issue)invalidTimeline();return timeline;
+  }
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
@@ -217,6 +239,16 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(legacyMissingProject&&!db.prepare('SELECT 1 FROM projects WHERE id=?').get(input.projectId))
    throw new AppError('NOT_FOUND','找不到记录',404,{id:input.projectId});
   graph(); // Validate the current project before any aggregate/CAS disclosure.
+  if(timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const timeline=readFormat5TimelineRecord(db,'project');
+   if(!timeline)return null;
+   if(timeline.projectId!==input.projectId)unavailable();
+   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});
+   if(issue)invalidTimeline();
+   // Drafts and loudness read the renderer-facing projection; export admission
+   // has its own ticket boundary and never calls this reader for format 5.
+   return format5TimelineProjection(timeline as unknown as Record<string,unknown>);
+  }
   const stored=readTimelineStorage(db,input.projectId);
   if(!stored)return null;
   const timeline=stored.timeline as TimelineRecord;
