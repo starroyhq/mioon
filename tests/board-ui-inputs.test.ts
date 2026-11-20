@@ -93,6 +93,9 @@ test('the property panel shows the resolved mode, used inputs, primary image and
   for (const locale of LOCALES) {
     const html = render.inspector(locale, 'full');
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.title')), locale);
+    assert.ok(html.includes(translate(locale, 'boardUi.inspector.shotHeading', {number: '01', title: '霓虹街头'})), locale);
+    assert.match(html, /class="board-shot-heading"/);
+    assert.match(html, /class="board-shot-duration-row"/);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.mode.references')), locale);
     assert.ok(html.includes(translate(locale, 'boardUi.inputs.used', {count: 3})), locale);
     assert.match(html, /data-service="selected"/);

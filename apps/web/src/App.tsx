@@ -212,7 +212,6 @@ import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
-import {pendingFormat5GenerationFollows} from './board-ui/generation-follow.ts';
 import {boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent, projectLiveBoard,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardDeleteOperation} from './board-ui/live.ts';
@@ -2356,24 +2355,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // second undo stack.
   const format5BoardSessionRef = useRef<BoardUiSession | null>(null);
   const [format5BoardMount, setFormat5BoardMount] = useState<BoardMountView | null>(null);
-  const format5FollowHandled = useRef<Set<string>>(new Set());
   const [format5RevealNodeId, setFormat5RevealNodeId] = useState<string | null>(null);
   const [format5BoardBusy, setFormat5BoardBusy] = useState(false);
   // RI-b: live generation-input projection of the selected shot under the
   // selected exact video connection; the board and property panel share it.
   const [format5Inputs, setFormat5Inputs] = useState<SequenceGenerationInputView | null>(null);
-  useEffect(() => {
-    if (!format5) return;
-    const mainTrackId = (data.timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId;
-    const clips = mainTrackId ? (data.timeline?.clips ?? []).filter(clip => clip.trackId === mainTrackId) : [];
-    const pending = pendingFormat5GenerationFollows(data.jobs, data.shots, clips, format5FollowHandled.current);
-    for (const item of pending) {
-      format5FollowHandled.current.add(item.key);
-      const name = data.shots.find(shot => shot.id === item.shotId)?.title ?? item.shotId;
-      void format5BoardRun(boardVersionIntent(item.shotId, item.versionId),
-        t('boardUi.notice.version', {name}));
-    }
-  }, [format5, data.jobs, data.shots, data.timeline?.clips, (data.timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId]);
   function format5BoardSession(): BoardUiSession {
     format5BoardSessionRef.current ??= new BoardUiSession(rpc, () => currentProject.current, format5LostDeps());
     return format5BoardSessionRef.current;
@@ -2389,6 +2375,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }) : null, [format5, data.shots, data.nodes, data.edges, data.versions, data.assets, data.jobs, data.timeline?.clips,
     format5BoardMount?.subjects, timeline, format5ThumbnailFor]);
   const format5ActiveFilmId = ((timeline as unknown as {mainTrack?: {sequenceNodeId?: string}} | null)?.mainTrack?.sequenceNodeId) ?? null;
+
   async function format5LoadBoard(): Promise<BoardMountView | null> {
     if (!format5 || !currentProject.current || dataRef.current.projectFormatVersion !== 5) return null;
     const view = await format5BoardSession().board();
@@ -3929,6 +3916,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return index < 0 ? focus : { ...focus, target: { ...focus.target, name: t('agent.follow.shot', { number: String(index + 1).padStart(2, '0') }) } };
   }, [mioFollow, data, sortedShots, mioFollowTargetExists, t]);
   const chosenShot = data.shots.find(s => s.id === selectedId);
+  const format5HeaderShotNumber = useMemo(() => {
+    if (!format5 || !chosenShot) return null;
+    const film = format5BoardProjection?.projection.films.find(item => item.id === format5ActiveFilmId)
+      ?? format5BoardProjection?.projection.films[0];
+    const ids = film?.items.filter(item => item.kind === 'shot').map(item => item.nodeId) ?? [];
+    const index = ids.includes(chosenShot.id) ? ids.indexOf(chosenShot.id) : sortedShots.findIndex(shot => shot.id === chosenShot.id);
+    return index >= 0 ? String(index + 1).padStart(2, '0') : null;
+  }, [format5, chosenShot, format5BoardProjection, format5ActiveFilmId, sortedShots]);
   const chosenNode = data.nodes.find(n => n.id === selectedId);
   const chosenClip = timeline?.clips.find(c => c.id === selectedClipId);
   const liveClipInspector = chosenClip ? { key: `${data.project?.id}:${chosenClip.id}:${inspectorEpoch}`, scope: `${currentProject.current}:${projectEpoch.current}:${inspectorEpoch}`, projectId: currentProject.current, clip: chosenClip, timeline, asset: data.assets.find(a => a.id === chosenClip.assetId),   collaboration: agentEditingProof(currentProject.current || '', 'timeline_clip', chosenClip.id) } : null;
@@ -4894,7 +4889,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       { id: 'agent', label: t('redesign.shell.agent'), icon: 'agent', selected: rightDockTab === 'agent', onClick: () => showCompactInspector('agent'), focusSelector: '[data-testid=right-dock-tab-agent]' },
     ]} />)}
     <PanelBoundary name="inspector" className={panelOverlay === 'inspector' ? 'panel-overlay' : ''} visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
-    <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><WorkbenchPanelHeader collapseLabel={t('shell.collapseInspector')} collapseTestId="toggle-inspector"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={false} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} /></WorkbenchPanelHeader><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy={workspaceMode === "canvas" && tab === "versions" ? "right-dock-versions-tab" : "right-dock-properties-tab"} visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{subjectPanel ? <div className="inspector-container">{subjectPanel}</div> : workspaceMode === 'canvas' ? <div className="inspector-container">
+    <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><WorkbenchPanelHeader collapseLabel={t('shell.collapseInspector')} collapseTestId="toggle-inspector"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={false} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} />{format5 && workspaceMode === 'canvas' && chosenShot ? <span className="workbench-panel-detail" data-testid="board-inspector-header-shot">{format5HeaderShotNumber ?? '01'} {chosenShot.title}</span> : null}</WorkbenchPanelHeader><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy={workspaceMode === "canvas" && tab === "versions" ? "right-dock-versions-tab" : "right-dock-properties-tab"} visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{subjectPanel ? <div className="inspector-container">{subjectPanel}</div> : workspaceMode === 'canvas' ? <div className="inspector-container">
     {format5 && format5BoardProjection ? <BoardInspector board={format5BoardProjection} activeFilmId={format5ActiveFilmId} mount={format5BoardMount}
       selectedNodeId={selectedId || null} versions={data.versions} shots={data.shots} nodes={data.nodes} busy={format5BoardBusy}
       activeTab={workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'settings'}

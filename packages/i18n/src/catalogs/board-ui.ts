@@ -39,6 +39,7 @@ export const boardUiMessages = {
   'boardUi.archiveEmpty': {'zh-Hans':'没有已删除的对象','zh-Hant':'沒有已刪除的物件',en:'Nothing deleted',ja:'削除済みのオブジェクトはありません'},
   'boardUi.referenceReadonly': {'zh-Hans':'引用连线由后续功能提供。','zh-Hant':'引用連線由後續功能提供。',en:'Reference links arrive in a later update.',ja:'参照リンクは今後の更新で追加されます。'},
   'boardUi.versionNumber': {'zh-Hans':'V{number}','zh-Hant':'V{number}',en:'V{number}',ja:'V{number}'},
+  'boardUi.inspector.shotHeading': {'zh-Hans':'镜头 {number} · {title}','zh-Hant':'鏡頭 {number} · {title}',en:'Shot {number} · {title}',ja:'ショット {number} · {title}'},
   'boardUi.inspector.shotTitle': {'zh-Hans':'标题','zh-Hant':'標題',en:'Title',ja:'タイトル'},
   'boardUi.inspector.description': {'zh-Hans':'描述','zh-Hant':'描述',en:'Description',ja:'説明'},
   'boardUi.inspector.descriptionPlaceholder': {'zh-Hans':'写这个镜头要发生什么…','zh-Hant':'寫這個鏡頭要發生什麼…',en:'Describe what happens in this shot…',ja:'このショットで何が起きるかを書く…'},

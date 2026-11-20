@@ -617,7 +617,7 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     rev = int(next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == shot_a))
     page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {title: '外部改的标题'}, revision)", [shot_a, rev])
     page.wait_for_function("() => window.__boardWireState.shots.some(shot => shot.id === '70000000-0000-4000-8000-000000000003' && shot.title === '外部改的标题')", timeout=15000)
-    expect(page.get_by_test_id('board-inspector-shot-title')).to_have_text('外部改的标题')
+    expect(page.get_by_test_id('board-inspector-shot-title')).to_contain_text('外部改的标题')
     log('GB an untouched shot draft follows an external revision change')
 
     # A dirty draft keeps its start revision: save reports a conflict and never

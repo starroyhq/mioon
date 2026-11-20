@@ -209,3 +209,22 @@ button.board-input-footer:disabled {cursor:default;opacity:.7;}
 .board-service-menu small {color:var(--wb-muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .board-input-row.is-static .board-input-button {cursor:default;opacity:.88;}
 .board-input-row.is-static .board-input-button:hover {background:transparent;}
+
+/* GP re-review: 21-10 title row, inline duration, embedded dialogue and primary generate. */
+.board-shot-properties {display:flex;flex-direction:column;gap:12px;}
+.board-shot-heading {display:flex;align-items:center;gap:6px;min-width:0;color:var(--wb-text);}
+.board-shot-heading > svg {flex:none;color:var(--wb-muted);}
+.board-shot-title-row .board-shot-title-button {border:0;background:transparent;padding:0;font-size:13px;font-weight:600;color:var(--wb-text);}
+.board-shot-title-row .board-shot-title-button:hover {color:var(--wb-text);text-decoration:underline;text-underline-offset:3px;}
+.board-shot-title-input {min-width:0;flex:1;}
+.board-shot-duration-row {display:flex;align-items:center;gap:8px;color:var(--wb-muted);font-size:10px;}
+.board-shot-duration-label {flex:none;}
+.board-shot-duration-select {flex:1;min-width:0;}
+.board-inspector-selection .board-shot-properties .shot-dialogue {padding:0;border-top:0;gap:6px;}
+.board-inspector-selection .board-shot-properties .shot-dialogue .shot-dialogue-text {min-height:68px;}
+button.board-input-footer {display:flex;align-items:center;gap:6px;}
+button.board-input-footer > svg {flex:none;}
+button.board-input-footer > span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-shot-generate {background:#f2f2f2;color:#121212;border:1px solid transparent;min-height:36px;}
+.board-shot-generate:hover:not(:disabled),.board-shot-generate:focus-visible {background:#fff;color:#0b0b0b;}
+.board-shot-generate:disabled {background:#f2f2f2;color:#7a7a7e;opacity:.55;cursor:default;}

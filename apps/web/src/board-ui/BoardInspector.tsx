@@ -20,6 +20,8 @@ import type {SequenceGenerationInputEntryView, SequenceGenerationInputView} from
 import {generationModeKeys, isPrimaryCandidate, referenceRoleKey, referenceRoleOptions, sourceKindIcons,
   unsupportedReasonKey} from './inputs.ts';
 import ShotDialogue from '../ShotDialogue.tsx';
+import {reconcileShotDraft} from './shot-draft.ts';
+import type {ShotDraftState} from './shot-draft.ts';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
 import Icon from '../icons.tsx';
 
@@ -95,6 +97,10 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const nodeRevision = nodeRow && Number.isSafeInteger(nodeRow.revision) ? Number(nodeRow.revision) : null;
   const shot = selected?.kind === 'shot' ? props.shots.find(item => item.id === selected.id) : undefined;
   const shotRevision = shot && Number.isSafeInteger(shot.revision) ? Number(shot.revision) : null;
+  const filmShotIds = (props.board.projection.films.find(film => film.id === props.activeFilmId)
+    ?? props.board.projection.films[0])?.items.filter(item => item.kind === 'shot').map(item => item.nodeId) ?? [];
+  const shotIndex = shot ? (filmShotIds.includes(shot.id) ? filmShotIds.indexOf(shot.id) : props.shots.findIndex(item => item.id === shot.id)) : -1;
+  const shotNumber = shotIndex >= 0 ? String(shotIndex + 1).padStart(2, '0') : null;
   useEffect(() => {
     if (!editableNode) {setNodeName(''); setNodeText(''); return;}
     setNodeName(editableNode.name);
@@ -104,18 +110,18 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     setInputMenu(null); setServiceMenu(false); setTitleEditing(false);
     if (!shot || shotRevision === null) {setTitle(''); setPrompt(''); setDuration(4); setShotError(''); setShotSaved(false);
       draftRevision.current = null; lastShotId.current = null; return;}
-    const sameShot = lastShotId.current === shot.id;
-    // 21-10 / format 3-4 draft rule: an untouched draft follows the row's new
-    // value; a dirty draft keeps its text and the revision editing started on,
-    // so the save returns a conflict instead of overwriting another writer.
-    if (!sameShot || !dirtyRef.current) {
-      setTitle(String(shot.title ?? ''));
-      setPrompt(String(shot.prompt ?? ''));
-      setDuration(Number.isSafeInteger(shot.duration) ? Number(shot.duration) : 4);
-      setShotError(''); setShotSaved(false);
-      draftRevision.current = shotRevision;
-    }
-    lastShotId.current = shot.id;
+    const previous: ShotDraftState | null = lastShotId.current === null ? null : {
+      shotId: lastShotId.current, revision: draftRevision.current,
+      values: {title, prompt, duration}, dirty: dirtyRef.current};
+    const next = reconcileShotDraft(previous, {id: shot.id, revision: shotRevision,
+      title: shot.title, prompt: shot.prompt, duration: shot.duration});
+    if (next.values.title !== title) setTitle(next.values.title);
+    if (next.values.prompt !== prompt) setPrompt(next.values.prompt);
+    if (next.values.duration !== duration) setDuration(next.values.duration);
+    if (next.revision !== draftRevision.current || next.values.title !== title || next.values.prompt !== prompt
+      || next.values.duration !== duration) {setShotError(''); setShotSaved(false);}
+    draftRevision.current = next.revision;
+    lastShotId.current = next.shotId;
   }, [shot?.id, shotRevision]);
   const nodeDirty = Boolean(editableNode && nodeRevision !== null
     && (nodeName !== editableNode.name || editableNode.kind === 'text' && nodeText !== String(nodeRow?.text ?? '')));
@@ -244,24 +250,26 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
             onClick={() => props.onRestoreBinding(binding)}>{t('boardUi.inspector.restoreBinding')}</button>
         </div>)}
       </section>}
-      <label className="board-shot-duration">{t('boardUi.inspector.duration')}
-        <WorkbenchSelect data-testid="board-shot-duration" value={String(duration)}
+      <div className="board-shot-duration-row">
+        <span className="board-shot-duration-label">{t('boardUi.inspector.duration')}</span>
+        <WorkbenchSelect className="board-shot-duration-select" data-testid="board-shot-duration" value={String(duration)}
           disabled={props.busy || shotRevision === null}
           onChange={event => {setDuration(Number(event.target.value)); setShotSaved(false);}}>
           {Array.from({length: 20}, (_, index) => index + 1).map(seconds =>
             <option key={seconds} value={seconds}>{t('boardUi.inspector.durationSeconds', {seconds})}</option>)}
         </WorkbenchSelect>
-      </label>
+      </div>
       <div className="board-service-picker">
         <button type="button" className="board-input-footer" data-testid="board-input-footer"
           data-mode={inputs.mode} data-service={hasService ? 'selected' : 'missing'}
           aria-haspopup="menu" aria-expanded={serviceMenu}
           disabled={props.busy || !props.onGenerationOptionsChange}
           onClick={() => setServiceMenu(open => !open)}>
-          {hasService
+          <Icon name="sparkle" size={12}/>
+          <span>{hasService
             ? [serviceLabel, t(generationModeKeys[inputs.mode] as never),
                 ...(inputs.usedCount > 0 ? [t('boardUi.inputs.used', {count: inputs.usedCount})] : [])].join(' · ')
-            : t('boardUi.inputs.serviceMissing')}
+            : t('boardUi.inputs.serviceMissing')}</span>
         </button>
         {serviceMenu && <div className="board-service-menu" role="menu" data-testid="board-service-menu">
           {generationProviders.flatMap(provider => {
@@ -310,22 +318,27 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     if (result.ok) {setShotError(''); setShotSaved(true);} else if (result.code) setShotError(result.code);
   };
   const shotTitleRow = selected?.kind === 'shot' && <div className="board-shot-title-row">
-    {titleEditing
-      ? <input className="board-shot-title-input" data-testid="board-shot-title" autoFocus maxLength={150}
-          value={title} disabled={props.busy || shotRevision === null}
-          aria-label={t('boardUi.inspector.shotTitle')}
-          onChange={event => {setTitle(event.target.value); setShotSaved(false);}}
-          onBlur={() => setTitleEditing(false)}
-          onKeyDown={event => {if (event.key === 'Enter' || event.key === 'Escape') {event.preventDefault();
-            if (event.key === 'Escape' && shot) setTitle(String(shot.title ?? ''));
-            setTitleEditing(false);}}}/>
-      : <button type="button" className="board-shot-title-button" data-testid="board-inspector-shot-title"
-          onClick={() => setTitleEditing(true)}>{shot?.title ?? selected.name}</button>}
+    <div className="board-shot-heading">
+      <Icon name="film" size={15}/>
+      {titleEditing
+        ? <input className="board-shot-title-input" data-testid="board-shot-title" autoFocus maxLength={150}
+            value={title} disabled={props.busy || shotRevision === null}
+            aria-label={t('boardUi.inspector.shotTitle')}
+            onChange={event => {setTitle(event.target.value); setShotSaved(false);}}
+            onBlur={() => setTitleEditing(false)}
+            onKeyDown={event => {if (event.key === 'Enter' || event.key === 'Escape') {event.preventDefault();
+              if (event.key === 'Escape' && shot) setTitle(String(shot.title ?? ''));
+              setTitleEditing(false);}}}/>
+        : <button type="button" className="board-shot-title-button" data-testid="board-inspector-shot-title"
+            onClick={() => setTitleEditing(true)}>{shotNumber && shot
+              ? t('boardUi.inspector.shotHeading', {number: shotNumber, title: shot.title ?? ''})
+              : shot?.title ?? selected.name}</button>}
+    </div>
     {props.onOpenInEditing && <button type="button" className="board-shot-open-editing"
       data-testid="board-inspector-open-editing" onClick={() => props.onOpenInEditing!(selected.id)}>
       {t('boardUi.inspector.openInEditing')}</button>}
   </div>;
-  const shotProperties = selected?.kind === 'shot' ? <>
+  const shotProperties = selected?.kind === 'shot' ? <div className="board-shot-properties" data-testid="board-shot-properties">
     <section className="board-shot-fields" data-testid="board-shot-fields">
       <label>{t('boardUi.inspector.description')}
         <textarea data-testid="board-shot-prompt" rows={4} maxLength={5000} value={prompt}
@@ -355,7 +368,7 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>
       <Icon name="sparkle" size={15}/>{t('boardUi.inspector.generate')}
     </button>
-  </> : null;
+  </div> : null;
   return <aside className="inspector board-inspector" data-testid="board-inspector" aria-label={t('shell.properties')}>
     {!selected ? <>
       <BoardFilmOverview overview={props.board.projection.overview}/>
