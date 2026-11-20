@@ -2,6 +2,7 @@ import {assertProjectStore} from './store-runtime.ts';
 import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
 import {createFormat5ExportTicket,format5ExportBlockersFromTimeline,recheckFormat5ExportTicket} from './format5-timeline-export.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
@@ -80,6 +81,21 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   const timeline=createTimelineRecoveryBoundary(store.db,input).read();
   return timeline?{timeline:timeline as unknown as TimelineRecord,delivery:resolveTimelineExportDelivery(timeline as never,input.exportSettings) as unknown}:null;
  }
+ async function format5Capabilities(input: TimelineRecoveryInput,options: AdmissionOptions,
+  report: TimelineExportCapabilityReport): Promise<TimelineExportCapabilityReport>{
+  const range=input.exportRange!==null&&typeof input.exportRange==='object'&&!Array.isArray(input.exportRange)
+   ?{startFrame:Number((input.exportRange as Record<string,unknown>).startFrame),endFrame:Number((input.exportRange as Record<string,unknown>).endFrame)}:null;
+  const ticket=createFormat5ExportTicket(store as never,range);
+  const timeline=readFormat5TimelineRecord(store.db,'project');
+  report.timelineId=ticket.timelineId;report.timelineRevision=ticket.timelineRevision;
+  report.delivery=timeline?resolveTimelineExportDelivery(timeline as never,input.exportSettings):null;
+  if(ticket.timelineRevision!==input.expectedRevision){report.status='stale';report.issues=[issue('EXPORT_CAPABILITY_STALE')];return report;}
+  if(ticket.blockers.length){report.status='blocked';report.issues=[issue(ticket.blockers[0]!.code as string)];return report;}
+  const result=await inspectOwned(report.delivery,options) as InspectResult;
+  const recheck=recheckFormat5ExportTicket(store as never,ticket);
+  if(!recheck.ok){report.status='stale';report.issues=[issue('EXPORT_CAPABILITY_STALE')];return report;}
+  report.status=result.status as string;report.issues=result.status==='available'?[]:[issue(result.code as string)];return report;
+ }
  async function capabilities(input: TimelineRecoveryInput,options: AdmissionOptions={}): Promise<TimelineExportCapabilityReport>{
   assertProjectStore(store);
   // Direct service users get the same strict syntax boundary as RPC callers.
@@ -87,6 +103,8 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   checkpoint(options.signal);checkpoint(ownerSignal);
   const report: TimelineExportCapabilityReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision as number,exportSettings:input.exportSettings,
    delivery:null,checkedAt:new Date().toISOString(),status:'blocked',issues:[]};
+  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION)
+   return format5Capabilities(input,options,report);
   let initial;
   try{initial=read(input);}catch(error){
    const failure=error as {code?: string};

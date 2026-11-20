@@ -209,10 +209,11 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
+import {format5GenerationInputService} from './board-ui/generation-input-request.ts';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
 import {boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent, projectLiveBoard,
@@ -2004,7 +2005,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     markBusy(projectId, 'previs-create', true);
     try {
       const saved = viewRef.current!.canvas.viewport;
-      const location = workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 };
+      // The format-5 board owns its viewport; place the new card by the live
+      // board positions and let the same allocation step avoid overlap.
+      const boardPositions = Object.values(format5BoardProjection?.positions ?? {});
+      const location = state.projectFormatVersion === 5
+        ? (boardPositions.length ? { x: boardPositions.reduce((sum, point) => sum + point.x, 0) / boardPositions.length,
+          y: Math.max(...boardPositions.map(point => point.y)) + 320 } : { x: 100, y: 100 })
+        : workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 };
       // Format 5 writes the node through the unified sequence entry; formats 3/4
       // keep the legacy RPC unchanged (the adapter is a pass-through there).
       const previsRpc = createPrevisEditorRpc({ rpc: (operation, input) => rpc(operation, input),
@@ -2012,7 +2019,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const outcome = await createPrevisNode({ projectId, label: t('previs.node.defaultLabel'), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) }, { rpc: previsRpc, requestId });
       if (currentProject.current === projectId) await refresh(projectId);
       if (!isCurrent(captured)) return;
-      if (outcome.status === 'created') { if (await inspect(outcome.node.id)) revealCanvas(outcome.node.id); }
+      if (outcome.status === 'created') {
+        if (await inspect(outcome.node.id)) {
+          if (state.projectFormatVersion === 5) setFormat5RevealNodeId(outcome.node.id);
+          else revealCanvas(outcome.node.id);
+        }
+      }
       else if (outcome.status === 'unknown') notify(msg('previs.create.unknown'), 'warning');
       else notify(msg(outcome.code === 'PREVIS_CAPACITY' ? 'previs.create.limit' : 'previs.create.failed'), 'error');
     } finally { markBusy(projectId, 'previs-create', false); }
@@ -2538,9 +2550,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // DL-b: pass the switch the user sees so the panel projection reports the
     // same used/AUDIO_OFF dialogue state as the request that would be sent.
     const parameters = generationParameters(shot as never, provider, generationOptionsRef.current[shotId] ?? {});
-    return {shotId, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision) && selection.modelEntryId
-      ? {connectionId: provider.connectionId, configurationRevision: Number(provider.configurationRevision),
-        modelEntryId: selection.modelEntryId} : {}),
+    return {shotId, ...format5GenerationInputService(provider, selection),
       ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
   };
   const format5InputShotId = format5 && workspaceMode === 'editing' && editingGenerateShotId ? editingGenerateShotId : selectedId;
@@ -2984,11 +2994,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     await renderTimeline('export', checked.binding, undefined, true);
   }
   function clipLoudnessContext(): TimelineClipLoudnessContext | undefined {
-    // Format 5 measures and applies loudness through the unified entry; the
-    // observation card is a format-3/4(旧路径) tool and stays hidden until its
-    // analysis write is routed (UI-E3 report leftover). Read the persisted
-    // format instead of the render closure so the source seam stays evaluable.
-    if (dataRef.current?.projectFormatVersion === 5) return undefined;
     const saved = dataRef.current!.timeline, workspaceScope = editorSession.current, editing = viewRef.current!.editing;
     const clip = saved?.clips.find(item => item.id === editing.selectedClipId);
     const readable = !clip?.assetId || projectMedia.canRead(dataRef.current!.assets.find(asset => asset.id === clip.assetId));
@@ -3873,14 +3878,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (dataRef.current.projectFormatVersion === 5) {
       const result = await format5Session().splitAtScenes(assetId, resultId);
       if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return;}
+      // A format-5 split is one structural batch with one history step, so it
+      // closes the detection dialog and keeps only the undo bar like every
+      // other format-5 edit. Format 3/4 keep the dialog and their toast below.
+      setSceneTarget(null);
       if (result.resolvedFromReceipt) {
-        notify(t('editUi.notice.resultApplied'));
+        setFormat5Notice({id: `format5-scene-split-${Date.now()}`, message: t('editUi.notice.resultApplied')});
+        setFormat5NoticeActionId(null);
         await refresh(currentProject.current); await format5RefreshHistory();
         return;
       }
-      const sceneSplit = result.receipt?.sceneSplit;
-      const count = sceneSplit?.split.length ?? 0, skipped = sceneSplit?.skipped.length ?? 0;
-      notify(skipped ? msg('scene.split.doneSkipped', { count, skipped }) : msg('scene.split.done', { count }));
+      const notice = format5SceneSplitNotice(result.receipt?.sceneSplit);
+      setFormat5Notice({id: result.actionId ?? `format5-scene-split-${Date.now()}`, message: renderMessage(msg(notice.key, notice.params))});
+      setFormat5NoticeActionId(result.actionId);
       await refresh(currentProject.current); await format5RefreshHistory();
       return;
     }
@@ -4997,7 +5007,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
       <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
-          onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+          onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}
+          onAddPrevis={() => { void addPrevis(); }} addingPrevis={Boolean(busy['previs-create'])} previsDisabled={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
         draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
           ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)

@@ -43,6 +43,7 @@ import type {OperationName} from '@mioon/contracts';
 import {generationServiceUnavailable,isMockGenerationProvider,normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
+import {FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,FORMAT5_MOCK_INPUT_CONNECTION_ID,FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID} from '../../contracts/src/sequence-inspection.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
 import {getWan30Capability,isWan30Binding,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
@@ -65,6 +66,7 @@ import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {format5GenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
+import type {Format5LegacyGenerationService} from './format5-reference-inputs.ts';
 import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
@@ -775,6 +777,20 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    const modelEntryId=stringValue(input.modelEntryId);
    if(connectionId===undefined&&configurationRevision===undefined&&modelEntryId===undefined)
      return readFormat5GenerationInputView(store,shotId);
+   // The built-in Mock provider has no configured video connection; the client
+   // still needs the same live projection/footer as any selected service.
+   if(connectionId===FORMAT5_MOCK_INPUT_CONNECTION_ID&&configurationRevision===FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION
+     &&modelEntryId===FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID){
+    // Mock has no configured video connection, but its reviewed capability is
+    // fixed and local; the read-only projection does not need provider I/O.
+    const legacyService: Format5LegacyGenerationService = {providerId:'mock', modelId:'mock-motion-v1',
+      modelName:'Mock · simulated motion', profileId:'mock:mock-motion-v1:v3', profileVersion:'mioon-input-profiles/3',
+      roles:{first_frame:{implemented:true},last_frame:{implemented:false},
+        reference_image:{implemented:false,max:0},subject_reference:{implemented:false},
+        reference_audio:{implemented:false,max:0}}};
+    const generateAudio=typeof input.generateAudio==='boolean'?input.generateAudio:undefined;
+    return readFormat5GenerationInputView(store,shotId,{legacyService,...(generateAudio!==undefined?{generateAudio}:{})});
+   }
    if(!connectionId||configurationRevision===undefined||!modelEntryId)
      throw new AppError('VALIDATION_ERROR','生成服务选择不完整。',400);
    const binding=videoSettings?.select(connectionId,configurationRevision,modelEntryId);

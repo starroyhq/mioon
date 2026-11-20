@@ -61,18 +61,14 @@ before(async () => {
 });
 test('actual SSR card is discoverable, opt-in, saved-only and has no target/gain suggestion/apply controls', () => {
   assert.match(rendered.idle, /<section[^>]*data-testid="timeline-clip-loudness"/); assert.doesNotMatch(rendered.idle, /<details[^>]* open|<input|role="dialog"/);
-  assert.match(rendered.idle, /最长 60 秒/); assert.match(rendered.idle, /不会自动裁短或替换范围/);
-  assert.doesNotMatch(rendered.idle, /不是整片混音或已导出文件|不修改音量|未实现逐段响度统一/);
-  assert.doesNotMatch(rendered.idle, /报告仅临时显示|估算真峰值不保证混音或 AAC 编码后的峰值/);
+  assert.doesNotMatch(rendered.idle, /最长 60 秒|不会自动裁短或替换范围/);
+  assert.doesNotMatch(rendered.idle, /clip-audio-help|<details/);
   assert.doesNotMatch(rendered.idle.match(/<button[^>]*data-testid="clip-loudness-analyze"[^>]*>/)![0], /\sdisabled(?:=|\s|>)/);
   assert.doesNotMatch(rendered.idle, /data-testid="[^"]*(?:apply|target|candidate)/);
 });
-test('measured report displays existing units/status and exact saved ranges/gain/fades/profile', () => {
-  assert.match(rendered.ready, /-20.00 LUFS/); assert.match(rendered.ready, /-4.44 dBTP/); assert.match(rendered.ready, /-6.02 dBFS/);
-  assert.match(rendered.ready, /\[17, 47\)/); assert.match(rendered.ready, /\[6, 36\)/); assert.match(rendered.ready, /\[0, 30\)/);
-  assert.match(rendered.ready, /增益 ×0.75/); assert.match(rendered.ready, /淡入 3 帧，淡出 4 帧/);
-  assert.match(rendered.ready, /isolated_clip_post_gain_fades_pre_mix/); assert.match(rendered.ready, /bs1770-5-48k-stereo-fir4x-v1/);
-  assert.match(rendered.ready, /timeline-isolated-clip-float-v1/); assert.match(rendered.ready, /48000 个样本帧/); assert.match(rendered.ready, /-30.00 LUFS/); assert.match(rendered.ready, /7/);
+test('measured report keeps the units and status without a persistent technical block', () => {
+  assert.match(rendered.ready, /-20.00 LUFS/); assert.match(rendered.ready, /-4.44 dBTP/);
+  assert.doesNotMatch(rendered.ready, /clip-audio-help|<details|isolated_clip_post_gain_fades_pre_mix|bs1770-5-48k-stereo-fir4x-v1|timeline-isolated-clip-float-v1|48000 个样本帧/);
   assert.match(rendered.silent, /数字静音/); assert.match(rendered.silent, /−∞ dBTP/); assert.doesNotMatch(rendered.silent, /NaN|Infinity/);
   assert.match(rendered.tooShort, /短于 400 毫秒/); assert.match(rendered.belowGate, /门限/);
   for (const name of ['tooShort', 'belowGate']) { assert.doesNotMatch(rendered[name], /-20.00 LUFS|NaN|Infinity/); assert.match(rendered[name], /-4.44 dBTP/); }
@@ -109,7 +105,7 @@ test('actual host binds selected saved clip and shared RPC; comparison/source ov
   const app = source('App.tsx'), inspector = source('TimelineInspector.tsx'), api = source('api.ts');
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current!.assets, editing.selectedClipId\)/);
   assert.match(app, /clipLoudnessEpoch.current\+\+/); assert.match(app, /!previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen/);
-  assert.match(app, /loudnessContext=\{format5 \? undefined : clipLoudnessContext(?: as never)?\}/); // format 5 has no loudness provider assert.doesNotMatch(app, /loudnessInvocation|expectedWorkspaceOrigin/);
+  assert.match(app, /loudnessContext=\{clipLoudnessContext(?: as never)?\}/); assert.doesNotMatch(app, /loudnessInvocation|expectedWorkspaceOrigin/);
   assert.match(inspector, /<ClipAudioControls[^>]*\/>/); assert.match(inspector, /\{loudnessContext && <ClipLoudnessObservation/);
   assert.match(inspector, /clipLoudnessDraftContext\(pass\(scopedContext\(\)\) as never, draftController\.getState\(\), visible\)/);
   assert.match(inspector, /rpc\('timeline.clip.loudness', input, options\)/);

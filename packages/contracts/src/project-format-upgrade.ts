@@ -45,7 +45,7 @@ export const projectFormatReadOnlyViewSchema = z.object({
   projectId: projectIdSchema,
   name: text,
   description: z.string().max(2000),
-  projectVersion: z.literal(3),
+  projectVersion: z.union([z.literal(3), z.literal(4)]),
   shots: z.array(z.object({id: projectIdSchema, title: text, orderIndex: revision, duration: z.number().nonnegative(), versionCount: revision}).strict()).max(count),
   nodes: z.array(z.object({id: projectIdSchema, label: text, type: z.enum(['text', 'image', 'video', 'audio', 'previs'])}).strict()).max(count),
   timeline: z.object({
