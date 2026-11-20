@@ -14,6 +14,7 @@ import shutil
 import sys
 import traceback
 import urllib.request
+import uuid
 from pathlib import Path
 
 from playwright.sync_api import expect, sync_playwright
@@ -66,12 +67,14 @@ def main() -> int:
         return [items.nth(index).get_attribute('data-testid') for index in range(items.count())]
 
     def dismiss_toast(page):
-        toast = page.get_by_test_id('global-toast')
-        if toast.count():
-            button = toast.get_by_role('button')
-            if button.count():
-                button.first.click(force=True)
-        page.wait_for_timeout(600)
+        # Board notices can queue while earlier actions settle; close every one
+        # that arrives so the 21-08/21-09 evidence has no stale toast.
+        for _ in range(10):
+            toast = page.get_by_test_id('global-toast')
+            if not toast.count():
+                return
+            toast.locator('button').last.click(force=True)
+            page.wait_for_timeout(400)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=executable, headless=True, chromium_sandbox=True)
@@ -89,6 +92,17 @@ def main() -> int:
             format_version = rpc('project.get', {'projectId': project}, project).get('projectFormatVersion')
             assert format_version == 5, f'acceptance needs a format-5 project, got {format_version!r}'
             log('format-5 project available')
+            # Seed the three shots through the same sequence preview/commit RPC
+            # the board uses; this keeps the evidence free of transient board toasts.
+            for index in range(3):
+                node = str(uuid.uuid4())
+                preview = rpc('sequence.preview', {'projectId': project, 'requestId': f'seed-{node}',
+                    'intents': [{'side': 'board', 'operation': {'kind': 'board.shot.append', 'nodeId': node,
+                        'name': f'镜头 {index + 1}'}}]}, project)
+                assert rpc('sequence.commit', {'projectId': project, 'envelope': preview['envelope'],
+                    'expectedPlanDigest': preview['planDigest']}, project)['status'] == 'applied'
+            seeded = rpc('project.get', {'projectId': project}, project)
+            assert len(seeded['shots']) == 3, len(seeded['shots'])
             page.goto(base + '/')
             page.locator('input[type="password"]').fill(token)
             page.get_by_role('button', name='进入工作台', exact=True).click()
@@ -99,14 +113,10 @@ def main() -> int:
             page.get_by_test_id('pf-card-open-' + project).click(force=True)
             page.wait_for_timeout(4000)
             expect(page.get_by_test_id('workbench')).to_be_visible(timeout=20000)
-            add = page.get_by_test_id('board-ui-add-shot')
-            for _ in range(3):
-                add.click(force=True)
-                page.wait_for_timeout(1000)
-            dismiss_toast(page)
-            log('format-5 board has three shots')
+            log('format-5 project seeded with three shots')
             page.get_by_test_id('workspace-editing').click(force=True)
             page.wait_for_timeout(2500)
+            page.wait_for_timeout(1200)
             dismiss_toast(page)
             log('editing timeline mounted')
             main_track = page.locator('.timeline-track[data-main-track="true"]')
@@ -123,7 +133,7 @@ def main() -> int:
             log('main-track end offers 在末尾生成镜头', items=items)
             page.get_by_test_id('timeline-menu-generate').click(force=True)
             expect(page.get_by_test_id('editing-generate-panel')).to_be_visible(timeout=20000)
-            capture(page, '21-09-new-shot-generate-panel.png')
+            dismiss_toast(page)
             assert page.locator('.timeline-clip.selected').count() == 1
             state = rpc('project.get', {'projectId': project}, project)
             new_clip = max(state['timeline']['clips'], key=lambda clip: clip['startFrame'] + clip['durationFrames'])
@@ -137,16 +147,18 @@ def main() -> int:
             if not job or job.get('status') not in ('failed', 'cancelled', 'submission_unknown'):
                 assert '生成失败' not in panel_text, panel_text
             log('fresh placeholder does not show a failure without a failed job')
-            # Duration follows the panel: one resize intent, one history step.
+            capture(page, '21-09-new-shot-generate-panel.png')
+            # Duration follows the panel: one resize intent, one history step. Do it
+            # immediately: a mock job may finish within a few seconds.
             duration = page.get_by_test_id('editing-generate-duration')
             duration.click(force=True)
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(400)
             options = page.get_by_role('option')
             for index in range(options.count()):
                 if options.nth(index).inner_text().strip().startswith('2'):
                     options.nth(index).click(force=True)
                     break
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(2000)
             state = rpc('project.get', {'projectId': project}, project)
             resized = next(clip for clip in state['timeline']['clips'] if clip['id'] == new_clip['id'])
             assert resized['durationFrames'] == 60, resized['durationFrames']
@@ -155,7 +167,7 @@ def main() -> int:
             capture(page, '21-09-panel-duration-2s.png')
             log('duration 4->2 s resized the placeholder in one history step')
             # Other video tracks offer 在这里生成镜头 only inside a main-track shot; audio tracks never do.
-            page.get_by_role('button', name='轨道').click(force=True)
+            page.get_by_role('button', name='轨道', exact=True).click(force=True)
             page.wait_for_timeout(500)
             page.get_by_test_id('add-video-track').click(force=True)
             page.wait_for_timeout(1500)
@@ -170,7 +182,7 @@ def main() -> int:
             capture(page, '21-08-generate-entry-menu-overlay.png')
             page.keyboard.press('Escape')
             log('overlay track offers 在这里生成镜头 inside a main shot')
-            page.get_by_role('button', name='轨道').click(force=True)
+            page.get_by_role('button', name='轨道', exact=True).click(force=True)
             page.wait_for_timeout(500)
             page.get_by_test_id('add-audio-track').click(force=True)
             page.wait_for_timeout(1500)
