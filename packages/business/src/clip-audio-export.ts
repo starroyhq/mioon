@@ -191,6 +191,21 @@ function failureOf(error: unknown): {code: string; message: string; retryable: b
   return {code: code || 'CLIP_AUDIO_ENCODE_FAILED', message, retryable: true};
 }
 
+/** FFmpeg `-progress` reports `out_time_ms` in microseconds: its historical name
+ * is misleading and `out_time_us` carries the same microsecond value. Read
+ * either key so the reported elapsed time is never mistaken for milliseconds. */
+export function clipAudioProgressMicroseconds(line: string): number | null {
+  const match = /^out_time_(?:us|ms)=(\d+)$/u.exec(line);
+  return match ? Number(match[1]) : null;
+}
+
+/** Bounded integer percentage of the frozen clip duration for one elapsed
+ * microsecond reading; 99 is the ceiling while the task is still encoding. */
+export function clipAudioEncodeProgress(outTimeMicroseconds: number, totalMs: number): number {
+  if (!Number.isFinite(outTimeMicroseconds) || outTimeMicroseconds < 0 || !Number.isFinite(totalMs) || totalMs <= 0) return 0;
+  return Math.max(0, Math.min(99, Math.floor(outTimeMicroseconds / 1000 / totalMs * 100)));
+}
+
 /** One accepted task. Re-verifies source bytes, extracts/copies the sound,
  * verifies the produced file, publishes it and registers the asset. The export
  * row is only marked succeeded in the publication registration transaction. */
@@ -229,9 +244,9 @@ export async function runClipAudioExport(store: ProjectStore, record: ClipAudioE
         const lines = pending.split(/\r?\n/u);
         pending = lines.pop() ?? '';
         for (const line of lines) {
-          const match = /^out_time_ms=(\d+)$/u.exec(line);
-          if (!match) continue;
-          const progress = Math.max(0, Math.min(99, Math.floor(Number(match[1]) / totalMs * 100)));
+          const microseconds = clipAudioProgressMicroseconds(line);
+          if (microseconds === null) continue;
+          const progress = clipAudioEncodeProgress(microseconds, totalMs);
           if (progress > lastReported) {lastReported = progress; save({progress});}
         }
       }});

@@ -106,6 +106,25 @@ test('all muted/image edges remain decoder restart boundaries and fades retain t
   assert.deepEqual(f.calls.opens.at(-1), {sourceInFrame: 75, frameCount: 75, trimStartFrame: 0});
 });
 
+test('continuous playback voices exclude muted clips and their decoders stay closed', async (t: TestContext) => {
+  const f = await fixture(t, {durationFrames: 120});
+  const first = f.snapshot.timeline.clips[0];
+  Object.assign(first, {durationFrames: 60, muted: true});
+  const second = {...first, id: randomUUID(), startFrame: 60};
+  delete (second as {muted?: boolean}).muted;
+  f.snapshot.timeline.clips.push(second);
+  const plan = await f.service.handlers['timeline.audioPreview.continuousPlan'](f.input);
+  const muted = await f.consume({...f.block, planHash: plan.planHash, sequence: 1, blockStartFrame: 0});
+  assert.equal(muted.pcm.length, 60 * 12800);
+  assert.equal(muted.pcm.readFloatLE(8), 0, 'the muted clip stays silent');
+  assert.equal(f.calls.opens.length, 0, 'the muted clip never opened a decoder');
+  const audible = await f.consume({...f.block, planHash: plan.planHash, sequence: 2, blockStartFrame: 60});
+  assert.notEqual(audible.pcm.readFloatLE(8), 0, 'the unmuted clip keeps playing');
+  assert.equal(f.calls.opens.length, 1, 'only the unmuted clip opened a decoder');
+  assert.deepEqual(f.calls.opens[0], {sourceInFrame: 0, frameCount: 60, trimStartFrame: 0});
+  assert.equal(f.calls.active, 0);
+});
+
 test('reverse clip UUIDs at a same-track boundary never replace an unconsumed cursor or repeat a segment', async (t: TestContext) => {
   const f = await fixture(t, {durationFrames: 150}), first = f.snapshot.timeline.clips[0];
   Object.assign(first, {id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', durationFrames: 75});

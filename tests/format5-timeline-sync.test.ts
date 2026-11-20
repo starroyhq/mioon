@@ -423,6 +423,20 @@ test('separate-sound refuses silent sources, placeholders, audio clips and forma
   assert.equal(preview(clipImage).code, 'SEQUENCE_EDIT_SOUND_INVALID');   // image
   assert.equal(preview(clipAudio).code, 'SEQUENCE_EDIT_SOUND_INVALID');   // audio-track clip
   assert.equal(state(store).entries, 0);
+  // A ready video clip whose probed media has no audio stream is refused too.
+  const silentStore = fixture(t);
+  const silentTimeline = readFormat5TimelineRecord(silentStore.db, 'project')!;
+  const silentClip = silentTimeline.clips.find(clip => clip.id === clipB)! as unknown as Record<string, unknown>;
+  Object.assign(silentClip, {sourceState: 'ready', assetId: assetB, versionId: versionB, shotId: shotB});
+  delete silentClip.jobId;
+  silentStore.tx(() => {
+    silentStore.put('shots', {...(silentStore.get('shots', shotB) as Record<string, unknown>), selectedVersionId: versionB});
+    silentStore.put('timelines', {...silentTimeline, revision: silentTimeline.revision + 1});
+  });
+  const silentPreview = createFormat5SequenceEditService(silentStore).preview({projectId: silentStore.projectId,
+    requestId: 'separate-silent-video', soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipB}}}) as {ok: false; code: string};
+  assert.equal(silentPreview.code, 'SEQUENCE_EDIT_SOUND_INVALID');
+  assert.equal(state(silentStore).entries, 0);
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-sound-f4-'));
   const format4 = createProjectStore({projectId: id(91), projectFile: path.join(root, 'project.mioon'), format4: {},
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});

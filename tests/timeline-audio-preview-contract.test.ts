@@ -11,7 +11,7 @@ import {timelineCompositionSegments} from '../packages/contracts/src/timeline-se
 
 import type {NegativePreviewPlan, Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {AudioPreviewPlan} from '../packages/contracts/src/timeline-audio-preview.ts';
-interface Snapshot {timeline: {id: string; projectId: string; revision: number; fps: number; durationFrames: number; tracks: {id: string; kind: string; orderIndex: number; hidden: boolean; muted: boolean}[]; clips: {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; fadeInFrames?: number; fadeOutFrames?: number; filter?: string}[]}; assets: {id: string; projectId: string; sha256: string; sizeBytes: number; mimeType: string; duration: number; hasAudio?: boolean | null; path?: string}[]}
+interface Snapshot {timeline: {id: string; projectId: string; revision: number; fps: number; durationFrames: number; tracks: {id: string; kind: string; orderIndex: number; hidden: boolean; muted: boolean}[]; clips: {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; fadeInFrames?: number; fadeOutFrames?: number; filter?: string; muted?: boolean; soundOnly?: boolean}[]}; assets: {id: string; projectId: string; sha256: string; sizeBytes: number; mimeType: string; duration: number; hasAudio?: boolean | null; path?: string}[]}
 const id=(n: number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const hash=(text: string)=>createHash('sha256').update(text).digest('hex');
 const clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value)) as T;
@@ -97,6 +97,22 @@ test('retains original clip clock/fades while mapping just its trimmed intersect
   assert.equal(audioPreviewEnvelopeAtSample(voice,350*1600-1),0);
   assert.deepEqual(deriveTimelineAudioSamples(voice,350),{startSample:0,endSample:1_440_000,durationSamples:1_440_000,
     sourceInSample:160000,offsetSamples:560000,sourceSample:720000,fadeInSamples:720000,fadeOutSamples:720000,fadeOutStartSample:720000});
+});
+
+test('saved audition skips muted clips and admits video sources only in the sound-only form',()=>{
+  const f=fixture({trackCount:2}),videoAssetId=id(4);
+  const [firstTrack,secondTrack]=f.snapshot.timeline.tracks;
+  f.snapshot.timeline.clips[0]={...f.snapshot.timeline.clips[0],trackId:firstTrack.id,muted:true};
+  f.snapshot.assets.push({id:videoAssetId,projectId:id(1),sha256:'b'.repeat(64),sizeBytes:2000,mimeType:'video/mp4',duration:600,hasAudio:true});
+  f.snapshot.timeline.clips.push({id:id(31),trackId:secondTrack.id,assetId:videoAssetId,startFrame:0,
+    durationFrames:900,sourceInFrame:0,gain:1,soundOnly:true});
+  const plan=planOf(f);
+  assert.deepEqual(plan.sources.map(source=>[source.clipId,source.assetId]),[[id(31),videoAssetId]]);
+  assert.deepEqual(plan.voices.map(voice=>voice.clipId),[id(31)]);
+  // Without the explicit sound-only flag the same video source is refused.
+  const plain=clone(f.snapshot);
+  delete plain.timeline.clips[1].soundOnly;
+  throwsCode(()=>buildAudioPreviewPlan(f.input,plain,hash),'AUDIO_PREVIEW_INVALID_SNAPSHOT');
 });
 
 test('zero gain and track mute silence, hidden video remains audible, known silent media stays silent',()=>{
