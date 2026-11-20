@@ -98,7 +98,7 @@ function Harness(): React.ReactElement {
       const outcome = await session.current.run(boardNodeCreateIntent(nodeId, nodeType, String(asset.name ?? '素材'),
         freeBoardPosition(), {assetId: String(asset.id)}));
       if (!outcome.ok) return;
-      setNotice({id: outcome.actionId, message: `Added ${String(asset.name ?? '')}`});
+      setNotice({id: outcome.actionId ?? 'board-applied', message: `Added ${String(asset.name ?? '')}`});
       await refresh();
       setSelectedNodeId(nodeId); setRevealNodeId(nodeId);
     } finally {setBusy(false);}
@@ -115,7 +115,7 @@ function Harness(): React.ReactElement {
       const outcome = await session.current.run(boardNodeCreateIntent(nodeId, nodeType, String(asset.name ?? '素材'),
         position, {assetId: String(asset.id)}));
       if (!outcome.ok) return;
-      setNotice({id: outcome.actionId, message: `Added ${String(asset.name ?? '')}`});
+      setNotice({id: outcome.actionId ?? 'board-applied', message: `Added ${String(asset.name ?? '')}`});
       await refresh();
       setSelectedNodeId(nodeId); setRevealNodeId(nodeId);
     } finally {setBusy(false);}
