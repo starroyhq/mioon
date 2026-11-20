@@ -18,7 +18,7 @@ import {createTaskUsageCollector} from './task-usage-v2.ts';
 import {chatUsageRequest} from './chat-usage-profile.ts';
 import type {TaskModelUsage} from './task-usage-v2.ts';
 import {applyTaskAnthropicCaching} from './task-cache-v2.ts';
-import {AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
 import {agentTaskSkillInstructions} from './task-skills-v2.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
@@ -81,19 +81,24 @@ const explanationInstructions:Readonly<Record<AgentTaskLocale,string>>=Object.fr
 /** Presentation metadata belongs only to the internal model wire schema. The
  * original domain/RPC schema stays strict and never receives this field. */
 const objectCompositions=['anyOf','oneOf','allOf'] as const;
-function explainedToolParameters(parameters:unknown,locale:AgentTaskLocale,depth=0):Record<string,unknown>{
+/** Format-5 requests use a compact `_mio_step` declaration: the field keeps its
+ * type and limits, while the long explanation text lives once in the system
+ * instruction instead of on every object branch. Formats 3/4 keep the reviewed
+ * full text byte-for-byte. */
+function explainedToolParameters(parameters:unknown,locale:AgentTaskLocale,depth=0,compactExplanations=false):Record<string,unknown>{
   if(depth>32||!object(parameters)||parameters.type!=='object'||['$ref','not','if','then','else','unevaluatedProperties','dependentSchemas'].some(key=>Object.hasOwn(parameters,key)))fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   const projected={...parameters};let recognized=false;
   if(Object.hasOwn(parameters,'properties')){
     if(!object(parameters.properties)||Object.hasOwn(parameters.properties,explanationField))fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
-    projected.properties={...parameters.properties,[explanationField]:{type:'string',minLength:1,maxLength:40,description:explanationInstructions[locale]}};recognized=true;
+    projected.properties={...parameters.properties,[explanationField]:{type:'string',minLength:1,maxLength:40,
+      ...(compactExplanations?{}:{description:explanationInstructions[locale]})}};recognized=true;
   }
   // image.generate is a strict object union, rather than an object with root
   // properties. Add metadata to each object branch without merging alternatives
   // or touching nested business schemas. Unrecognized constraints fail closed.
   for(const key of objectCompositions)if(Object.hasOwn(parameters,key)){
     const branches=parameters[key];if(!Array.isArray(branches)||!branches.length)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
-    projected[key]=branches.map(branch=>explainedToolParameters(branch,locale,depth+1));recognized=true;
+    projected[key]=branches.map(branch=>explainedToolParameters(branch,locale,depth+1,compactExplanations));recognized=true;
   }
   if(!recognized)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');return projected;
 }
@@ -262,7 +267,8 @@ function requireTaskToolProtocol(configuration:AgentConfiguration,toolCount:numb
     }
   }
 }
-export function buildTaskModelRequest(configuration:AgentConfiguration,history:AgentTaskJson[],definitions:readonly TaskToolDefinition[],selfPort?:number,options:{toolLoading?:boolean}={}):string {
+export interface TaskModelRequestOptions {readonly toolLoading?:boolean; /** Format-5-only wire compaction; formats 3/4 never set it. */ readonly format5?:boolean}
+export function buildTaskModelRequest(configuration:AgentConfiguration,history:AgentTaskJson[],definitions:readonly TaskToolDefinition[],selfPort?:number,options:TaskModelRequestOptions={}):string {
   validateAgentGatewayConfiguration(configuration,{selfPort});
   requireTaskToolProtocol(configuration,definitions.length);
   if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)throw agentChatLimitError('history_bytes');
@@ -275,7 +281,9 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
   const skills=definitions.some(tool=>tool.name===AGENT_TASK_SKILL_READ_TOOL)?` ${agentTaskSkillInstructions(locale)}`:'';
   const goals=definitions.some(tool=>tool.name===AGENT_TASK_GOAL_SET_TOOL)?` ${goalInstructions[locale]}`:'';
   const instruction=`${instructions[locale]} ${explanationInstructions[locale]}${options.toolLoading?` ${toolLoadingInstructions[locale]}`:''}${skills}${goals}`;
-  const wireTools=definitions.map(tool=>({name:tool.name,description:tool.name===AGENT_TASK_TOOLS_LOAD_NAME?AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS[locale]:tool.description,parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters),locale)}));
+  const wireTools=definitions.map(tool=>({name:tool.name,description:tool.name===AGENT_TASK_TOOLS_LOAD_NAME
+      ?(options.format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS[locale]:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS[locale]):tool.description,
+    parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters),locale,0,options.format5===true)}));
   // The host marker is local journal metadata, not an extra model-facing system
   // message. All protocols receive the same authoritative root instruction.
   const modelHistory=object(history[0])&&history[0].role==='system'&&history[0].content===languageContext[locale]&&Object.keys(history[0]).length===2?history.slice(1):history;
@@ -307,7 +315,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
  * the output limit and the rest of this request: instructions, tool catalog
  * and protocol fields, measured with the same builder around a one-character
  * user message. The rest grows as tool groups load. */
-export function taskModelHistoryBudget(configuration:AgentConfiguration,definitions:readonly TaskToolDefinition[],locale:AgentTaskLocale,selfPort?:number,options:{toolLoading?:boolean}={}):Readonly<TaskHistoryBudget> {
+export function taskModelHistoryBudget(configuration:AgentConfiguration,definitions:readonly TaskToolDefinition[],locale:AgentTaskLocale,selfPort?:number,options:TaskModelRequestOptions={}):Readonly<TaskHistoryBudget> {
   const limits=agentModelTokenLimits(configuration);
   if(limits.contextTokens===null)return TASK_DEFAULT_HISTORY_BUDGET;
   const probe:AgentTaskJson[]=[taskResponseLanguageContext(locale),{role:'user',content:'.'}];

@@ -2,6 +2,7 @@
  * A page is bound to one frozen snapshot id; continuing with a cursor from a
  * different snapshot is rejected so the model never stitches mismatched reads. */
 import {z} from 'zod';
+import {FORMAT5_INPUT_LIMITS} from './project-format5.ts';
 import type {ChainReferenceRole} from './board-sequence.ts';
 
 const uuid = z.string().uuid();
@@ -71,7 +72,10 @@ export interface SequenceInspectionPage {
 // Live generation-input projection (RI-b property panel)
 // ---------------------------------------------------------------------------
 
-export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({entries: 64});
+export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({
+  entries: FORMAT5_INPUT_LIMITS.referenceEdgesPerShot + FORMAT5_INPUT_LIMITS.subjectBindingsPerShot
+    + FORMAT5_INPUT_LIMITS.previsSceneSubjects,
+});
 export const sequenceGenerationInputSchemas = Object.freeze({
   'sequence.generation-inputs.get': z.object({
     projectId: uuid, shotId: uuid,
