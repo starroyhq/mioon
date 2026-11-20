@@ -38,3 +38,107 @@ test('format-5 capability check accepts a saved timeline and blocks placeholders
   f.store.close();
   f.library.close();
 });
+
+import {execFileSync as execFile, spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {mkdtempSync, readFileSync, realpathSync, rmSync, statSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {createProjectStore} from '../packages/business/src/project-file/store.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
+
+const sha256=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
+const fixedAt='2026-01-01T00:00:00.000Z';
+const fid=(n:number)=>`99000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+
+test('format-5 capabilities, preflight and real render complete through the export worker', {timeout:180000}, async t => {
+  const ffmpegBin=process.env.MIOON_FFMPEG_PATH??'ffmpeg',ffprobeBin=process.env.MIOON_FFPROBE_PATH??'ffprobe';
+  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-format5-export-full-'));
+  const store=createProjectStore({projectId:fid(1),projectFile:path.join(root,'project.mioon'),format5:true,
+    locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})});
+  const library=openAppLibrary({dataDir:path.join(root,'app')});
+  const services=createServices(store,new Map(),{env:{},application:createProjectServiceApplication(library,undefined,{})});
+  t.after(async()=>{await services.drain();library.close();store.close();rmSync(root,{recursive:true,force:true});});
+  const projectId=store.projectId;
+  const media=(name:string,args:string[],mimeType:string,duration:number)=>{
+    const file=path.join(root,name);execFile(ffmpegBin,['-v','error','-y',...args,file]);
+    const bytes=readFileSync(file);return {file,bytes,sha256:sha256(bytes),sizeBytes:bytes.length,mimeType,duration};
+  };
+  const video=media('main.mp4',['-f','lavfi','-i','color=c=red:s=360x640:d=4:r=30','-pix_fmt','yuv420p'],'video/mp4',4);
+  const overlay=media('overlay.mp4',['-f','lavfi','-i','color=c=green:s=360x640:d=2:r=30','-pix_fmt','yuv420p'],'video/mp4',2);
+  const audio=media('audio.wav',['-f','lavfi','-i','sine=frequency=440:duration=4'],'audio/wav',4);
+  const refs=[] as {reference:unknown;referenceRevision:number;sha256:string;sizeBytes:number}[];
+  for(const item of [video,overlay,audio])refs.push(await referenceForPublishedMedia(store,item.file));
+  const [videoRef,overlayRef,audioRef]=refs;
+  const asset=(id:string,item:typeof video,ref:typeof videoRef,hasVideo:boolean,hasAudio:boolean)=>({id,projectId,name:path.basename(item.file),
+    mimeType:item.mimeType,duration:item.duration,sha256:ref.sha256,sizeBytes:ref.sizeBytes,reference:ref.reference,
+    referenceRevision:ref.referenceRevision,hasVideo,hasAudio,createdAt:fixedAt});
+  const shotA=fid(3),clipA=fid(30),overlayClip=fid(32),audioClip=fid(33),vTrack=fid(70),v2Track=fid(72),aTrack=fid(71),
+    timelineId=fid(50),rootNode=fid(2),mediaNode=fid(4),v1=fid(20),job=fid(90);
+  const versionSnapshot={shotId:shotA,title:'主镜头',prompt:'real media',referenceAssetIds:[],referenceAssets:[],referenceConnections:[],
+    aspectRatio:'9:16',duration:4,providerId:'mock',model:'mock-motion-v1',parameters:{}};
+  const timeline={id:timelineId,projectId,revision:1,width:720,height:1280,fps:30,durationFrames:120,createdAt:fixedAt,updatedAt:fixedAt,
+    mainTrack:{trackId:vTrack,sequenceNodeId:rootNode},
+    tracks:[{id:vTrack,name:'V1',kind:'video',orderIndex:0,hidden:false,muted:false},
+      {id:v2Track,name:'V2',kind:'video',orderIndex:1,hidden:false,muted:false},
+      {id:aTrack,name:'A1',kind:'audio',orderIndex:2,hidden:false,muted:false}],
+    clips:[
+      {id:clipA,trackId:vTrack,name:'主镜头',startFrame:0,durationFrames:120,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1,
+        assetId:fid(10),sourceState:'ready',
+        sequenceSource:{kind:'media',nodeId:mediaNode,segmentGroupId:fid(40)}},
+      {id:overlayClip,trackId:v2Track,name:'叠加',startFrame:30,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1,
+        assetId:fid(12),sourceState:'ready',anchor:{clipId:clipA,offsetFrames:30}},
+      {id:audioClip,trackId:aTrack,name:'声音',startFrame:0,durationFrames:120,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1,
+        assetId:fid(13),sourceState:'ready',anchor:{clipId:clipA,offsetFrames:0}},
+    ],
+    subtitles:{profileId:'bottom_cjk_v1',cues:[{id:fid(80),text:'字幕',startFrame:30,durationFrames:30,anchor:{clipId:clipA,offsetFrames:30}}]}};
+  const baseline={version:1,board:[{nodeId:mediaNode,kind:'media',assetId:fid(10)}],
+    track:[{nodeId:mediaNode,segmentGroupId:fid(40),clipId:clipA,kind:'media',assetId:fid(10)}]};
+  store.tx(()=>{
+    store.put('projects',{id:projectId,name:'Format 5 full export',createdAt:fixedAt,updatedAt:fixedAt,revision:1});
+    store.put('assets',asset(fid(10),video,videoRef,true,false));
+    store.put('assets',asset(fid(12),overlay,overlayRef,true,false));
+    store.put('assets',asset(fid(13),audio,audioRef,false,true));
+    store.put('nodes',{id:rootNode,projectId,type:'sequence_root',name:'成片',position:{x:0,y:0},createdAt:fixedAt});
+    store.put('nodes',{id:mediaNode,projectId,type:'video',assetId:fid(10),name:'主镜头',position:{x:0,y:0},createdAt:fixedAt});
+    store.put('edges',{id:fid(95),projectId,kind:'sequence',source:rootNode,target:mediaNode,createdAt:fixedAt});
+    store.put('timelines',timeline);
+    store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
+      .run(timelineId,projectId,rootNode,1,JSON.stringify(baseline));
+  });
+  for(const aid of [fid(10),fid(12),fid(13)])console.error('OWN',aid,Boolean(readOwnedTimelineAsset(store.db,projectId,aid)));
+  console.error('JOBROW',JSON.stringify((store.get('jobs',job) as any)));console.error('VERROW',JSON.stringify((store.get('versions',v1) as any)));console.error('ASSETROW',JSON.stringify((store.get('assets',fid(10)) as any)));
+  const settings={profileId:'mp4_h264_v1',resolution:'native',rateControl:{mode:'crf',quality:'standard'}};
+  const capability:any=await services.call('timeline.export.capabilities',{projectId,expectedRevision:1,exportSettings:settings});
+  assert.equal(capability.status,'available',JSON.stringify(capability));
+  const preflight:any=await services.call('timeline.export.preflight',{projectId,expectedRevision:1,exportSettings:settings});
+  if(!spawnSync(ffmpegBin,['-filters'],{encoding:'utf8'}).stdout.includes('drawtext')){
+    // Local Homebrew ffmpeg lacks libfreetype; CI's reviewed media toolchain has it.
+    assert.equal(preflight.status,'blocked');
+    assert.equal(preflight.issues[0]?.code,'SUBTITLE_RENDERER_UNAVAILABLE');
+    return;
+  }
+  assert.equal(preflight.status,'ready',JSON.stringify(preflight));
+  const accepted:any=await services.call('timeline.render',{projectId,expectedRevision:1,
+    requestId:`format5-render-${fid(99)}`,purpose:'export',exportSettings:settings});
+  assert.equal(accepted.status,'queued');
+  const worker=startWorker(store,services,new Map());
+  try{for(let i=0;i<120;i++){await worker.tick();const value:any=await services.call('export.get',{exportId:accepted.id});
+    if(['succeeded','failed'].includes(value.status))break;await new Promise(resolve=>setTimeout(resolve,50));}}
+  finally{await worker.stop();}
+  const done:any=await services.call('export.get',{exportId:accepted.id});
+  assert.equal(done.status,'succeeded',JSON.stringify(done.error));
+  assert.equal(typeof done.assetId,'string');
+  const outputAsset=store.get('assets',done.assetId) as any;
+  const outputFile=path.resolve(store.projectDir,outputAsset.reference.path);
+  assert.ok(statSync(outputFile).size>0);
+  const probe=JSON.parse(execFile(ffprobeBin,['-v','error','-show_entries','format=duration:stream=codec_type','-of','json',outputFile],{encoding:'utf8'}));
+  assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='video'));
+  assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='audio'));
+  assert.ok(Number(probe.format.duration)>3,'output duration follows the frozen 4s timeline');
+});
