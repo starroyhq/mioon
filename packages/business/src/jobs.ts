@@ -448,7 +448,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      // Format-5 edit-created shots adopt only while their placeholder and the
      // frozen shot revision still match. A late result records the version but
      // never rewrites a moved-on shot.
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(targetAllowed||!format5&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
       await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {
