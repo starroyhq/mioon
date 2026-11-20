@@ -1,6 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
 import {sequenceEditReceiptSchema} from '@mioon/contracts/sequence-edit';
+import {FORMAT5_LIMITS} from '../../contracts/src/project-format5.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts';
 
 /** Read-only union of the immutable request receipts a lost response can leave
@@ -21,7 +22,7 @@ export interface RequestOutcome {
   readonly code?: string | null;
 }
 
-export const REQUEST_OUTCOME_LIMITS = Object.freeze({requestIdChars: 200, requestIdBytes: 800, operationChars: 80, urlBytes: 2048, referenceResponseBytes: 128 * 1024, editorResponseBytes: 64 * 1024});
+export const REQUEST_OUTCOME_LIMITS = Object.freeze({requestIdChars: 200, requestIdBytes: 800, operationChars: 80, urlBytes: 2048, referenceResponseBytes: 128 * 1024, editorResponseBytes: FORMAT5_LIMITS.receiptResponseBytes});
 
 const PROJECT_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 const REQUEST_ID = /^[\x21-\x7e]{8,200}$/u;

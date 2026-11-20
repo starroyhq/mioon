@@ -294,7 +294,7 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.equal((app.match(/onSeed=\{format5 \? undefined :/g) ?? []).length, 2, 'format 5 hides both seed entries');
   assert.doesNotMatch(app, /onSeed=\{\(\) => mutateTimeline\('timeline\.seed'/);
   assert.match(app, /canSeed=\{format5 \? false : Boolean\(sortedShots/);
-  assert.match(app, /onAddTransition=\{format5 \? undefined : addTimelineTransition\}/);
+  assert.match(app, /onAddTransition=\{addTimelineTransition\}/, 'UI-E3 restores quick transition add for format 5');
   assert.equal((app.match(/onRippleRemove=\{format5 \? undefined :/g) ?? []).length, 2, 'timeline menu and inspector hide ripple removal');
   assert.match(app, /onCanvas=\{format5 \? undefined : addNode\} onTimeline=\{addTimelineAsset\}/);
   assert.match(app, /format5AddTimelineAsset/);

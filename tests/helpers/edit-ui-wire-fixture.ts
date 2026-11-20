@@ -62,7 +62,7 @@ export async function createEditUiWireFixture(): Promise<{store: ProjectStore; s
         assetId: WIRE_IDS.imageAsset}]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'UI-E2 无头夹具', createdAt: at, updatedAt: at, revision: 1});
-    store.put('assets', {id: WIRE_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, sha256: sha('a'), sizeBytes: 10});
+    store.put('assets', {id: WIRE_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, hasAudio: true, sha256: sha('a'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.imageAsset, projectId, name: '图片.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.audioAsset, projectId, name: '声音.wav', mimeType: 'audio/wav', duration: 2, sha256: sha('f'), sizeBytes: 10});
@@ -73,7 +73,8 @@ export async function createEditUiWireFixture(): Promise<{store: ProjectStore; s
     store.put('versions', {id: WIRE_IDS.versionB, projectId, jobId: id(72), shotId: WIRE_IDS.shotB, number: 2,
       assetId: WIRE_IDS.assetB, sha256: sha('b'), createdAt: at});
     const shots = [
-      {id: WIRE_IDS.shotA, projectId, title: '窗口剪影', orderIndex: 0, selectedVersionId: WIRE_IDS.versionA, duration: 2, createdAt: at, updatedAt: at},
+      {id: WIRE_IDS.shotA, projectId, title: '窗口剪影', orderIndex: 0, selectedVersionId: WIRE_IDS.versionA, duration: 2, createdAt: at, updatedAt: at,
+        dialogue: [{id: id(91), text: '我们回不去了。'}]},
       {id: WIRE_IDS.shotB, projectId, title: '占位镜头', orderIndex: 1, selectedVersionId: null, duration: 1, createdAt: at, updatedAt: at},
     ];
     for (const shot of shots) store.put('shots', shot);

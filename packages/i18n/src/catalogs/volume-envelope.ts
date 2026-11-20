@@ -42,6 +42,7 @@ export const volumeEnvelopeMessages = {
   "crossfade.blocked.locked": {"zh-Hans": "所在轨道已锁定", "zh-Hant": "所在軌道已鎖定", "en": "A track is locked", "ja": "トラックがロックされています"},
   "crossfade.saveFirst": {"zh-Hans": "请先保存或放弃当前修改，再交叉淡化", "zh-Hant": "請先儲存或放棄目前修改，再交叉淡化", "en": "Save or discard your changes before crossfading", "ja": "クロスフェードの前に、現在の変更を保存または破棄してください"},
   "crossfade.done": {"zh-Hans": "已交叉淡化 {frames} 帧", "zh-Hant": "已交叉淡化 {frames} 幀", "en": "Crossfaded over {frames} frames", "ja": "{frames} フレームをクロスフェードしました"},
+  "crossfade.failed.audio": {"zh-Hans": "两段都需要有声音", "zh-Hant": "兩段都需要有聲音", "en": "Both clips need audio", "ja": "両方のクリップに音声が必要です"},
   "crossfade.failed.geometry": {"zh-Hans": "两段已不能交叉淡化，请刷新后重试", "zh-Hant": "兩段已不能交叉淡化，請重新整理後再試", "en": "These clips can no longer crossfade. Refresh and try again", "ja": "この2つのクリップはもうクロスフェードできません。更新してからやり直してください"},
   "ducking.auto.title": {"zh-Hans": "按对白自动压低", "zh-Hant": "按對白自動壓低", "en": "Duck under dialogue", "ja": "台詞に合わせて自動ダッキング"},
   "ducking.auto.noTrack": {"zh-Hans": "这段下面的其他轨道上没有片段，无法按对白压低", "zh-Hant": "這段下方的其他軌道上沒有片段，無法按對白壓低", "en": "No other track has clips under this one, so there is no dialogue to follow", "ja": "このクリップの下にあるほかのトラックにクリップがないため、台詞に合わせられません"},
