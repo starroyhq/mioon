@@ -3015,6 +3015,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   } as unknown as Parameters<typeof useTimelineLoudnessApply>[0]);
   timelineLoudnessApplyRef.current = timelineLoudnessApply;
   const effectivePlayhead = timelineAudioPreviewPosition(audioPreview, playhead);
+  const effectivePlayheadRef = useRef(effectivePlayhead);
+  effectivePlayheadRef.current = effectivePlayhead;
   const seekTimelineSound = (frame: number) => seekTimelineAudioPreview(audioPreview, frame, setPlayhead);
   function exportSamplePeakContext(): Record<string, unknown> {
     const workspaceScope = editorSession.current;
@@ -3574,7 +3576,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const clipId = format5Clipboard.current;
     if (!clipId) return;
     const timelineNow = dataRef.current.timeline;
-    const frame = format5PasteStartFrame(playbackClock.getSnapshot(), viewRef.current?.editing.playhead, effectivePlayhead);
+    const frame = format5PasteStartFrame(playbackClock.getSnapshot(), effectivePlayheadRef.current, effectivePlayheadRef.current);
     if (!timelineNow) return;
     const before = new Set(timelineNow.clips.map(clip => clip.id));
     setFormat5SessionBusy(true);
