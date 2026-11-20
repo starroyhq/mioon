@@ -81,7 +81,7 @@ test('the nightly workflow runs on schedule plus manual dispatch with its own co
   const workflow = await readFile(path.join(root, '.github/workflows/macos-nightly.yml'), 'utf8');
   assert.match(workflow, /^name: macOS nightly full$/m);
   assert.match(workflow, /^on:\r?\n  schedule:\r?\n    - cron: '0 18 \* \* \*'\r?\n  workflow_dispatch:$/m);
-  assert.doesNotMatch(workflow, /^  (pull_request|workflow_run):/m, 'the nightly must not react to PRs or other workflows');
+  assert.doesNotMatch(workflow, /^  (push|pull_request|workflow_run):/m, 'the reviewed nightly is schedule + manual dispatch only');
   assert.match(workflow, /^permissions:\r?\n  contents: read$/m);
   assert.match(workflow, /^concurrency:\r?\n  group: macos-nightly\r?\n  cancel-in-progress: false$/m);
   const full = workflowJob(workflow, 'full');
