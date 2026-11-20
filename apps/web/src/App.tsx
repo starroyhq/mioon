@@ -3015,7 +3015,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   } as unknown as Parameters<typeof useTimelineLoudnessApply>[0]);
   timelineLoudnessApplyRef.current = timelineLoudnessApply;
   const effectivePlayhead = timelineAudioPreviewPosition(audioPreview, playhead);
-  const seekTimelineSound = (frame: number) => seekTimelineAudioPreview(audioPreview, frame, setPlayhead);
+  const seekTimelineSound = (frame: number) => {viewRef.current.editing.playhead = frame; seekTimelineAudioPreview(audioPreview, frame, setPlayhead);};
   function exportSamplePeakContext(): Record<string, unknown> {
     const workspaceScope = editorSession.current;
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
@@ -3025,8 +3025,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       visible: workbenchReady && showDelivery && showExports,
       exports: dataRef.current!.exports, assets: dataRef.current!.assets.filter(asset => projectMedia.canRead(asset)) };
   }
-  const effectivePlayheadRef = useRef(effectivePlayhead);
-  effectivePlayheadRef.current = effectivePlayhead;
   const exportSamplePeak = useExportSamplePeak({ context: exportSamplePeakContext(), getContext: exportSamplePeakContext,
     isRenderRecord: isTimelineRenderRecord,
     read: (input: Record<string, unknown>, options?: Parameters<typeof rpc>[2]) => rpc('timeline.export.samplePeak', input, options as never), onUnauthorized: () => setAuth(false) } as unknown as Parameters<typeof useExportSamplePeak>[0]) as unknown as ExportSamplePeakRuntime;
@@ -3576,7 +3574,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const clipId = format5Clipboard.current;
     if (!clipId) return;
     const timelineNow = dataRef.current.timeline;
-    const frame = format5PasteStartFrame(playbackClock.getSnapshot(), effectivePlayheadRef.current, effectivePlayheadRef.current);
+    const frame = format5PasteStartFrame(playbackClock.getSnapshot(), viewRef.current?.editing.playhead, effectivePlayhead);
     if (!timelineNow) return;
     const before = new Set(timelineNow.clips.map(clip => clip.id));
     setFormat5SessionBusy(true);
