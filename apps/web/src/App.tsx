@@ -207,7 +207,7 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
@@ -3823,14 +3823,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (dataRef.current.projectFormatVersion === 5) {
       const result = await format5Session().splitAtScenes(assetId, resultId);
       if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return;}
+      // A format-5 split is one structural batch with one history step, so it
+      // closes the detection dialog and keeps only the undo bar like every
+      // other format-5 edit. Format 3/4 keep the dialog and their toast below.
+      setSceneTarget(null);
       if (result.resolvedFromReceipt) {
-        notify(t('editUi.notice.resultApplied'));
+        setFormat5Notice({id: `format5-scene-split-${Date.now()}`, message: t('editUi.notice.resultApplied')});
+        setFormat5NoticeActionId(null);
         await refresh(currentProject.current); await format5RefreshHistory();
         return;
       }
-      const sceneSplit = result.receipt?.sceneSplit;
-      const count = sceneSplit?.split.length ?? 0, skipped = sceneSplit?.skipped.length ?? 0;
-      notify(skipped ? msg('scene.split.doneSkipped', { count, skipped }) : msg('scene.split.done', { count }));
+      const notice = format5SceneSplitNotice(result.receipt?.sceneSplit);
+      setFormat5Notice({id: result.actionId ?? `format5-scene-split-${Date.now()}`, message: renderMessage(msg(notice.key, notice.params))});
+      setFormat5NoticeActionId(result.actionId);
       await refresh(currentProject.current); await format5RefreshHistory();
       return;
     }
