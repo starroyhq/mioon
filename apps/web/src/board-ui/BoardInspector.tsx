@@ -361,7 +361,11 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     {generationPanel}
     {props.rpc && typeof shot?.projectId === 'string' && props.rpc && <ShotDialogue shot={shot as never}
       subjectNames={props.dialogueSubjects ?? {}} projectId={shot.projectId as string}
-      cueCount={props.dialogueCueCount ?? 0} disabled={props.busy || !props.onDialogueApplied}
+      cueCount={props.dialogueCueCount ?? 0}
+      // GP follow-up: the panel shows the same DL-b service status as the
+      // projection; a stale view for another shot never leaks a marker.
+      dialogueStatus={props.inputs && props.inputs.shotId === shot.id ? props.inputs.dialogue : null}
+      disabled={props.busy || !props.onDialogueApplied}
       rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}
     <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
       disabled={props.busy || !hasService || !props.onGenerateShot}

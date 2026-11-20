@@ -17,7 +17,7 @@ import {projectLiveBoard, boardDeleteIntent, boardNodeCreateIntent, boardNodeUpd
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
 import {readGenerationProviderDirectory} from '../../../apps/web/src/video-provider-directory.ts';
-import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
+import {generationParameters, generationSelection, shotWithGenerationParameters} from '../../../apps/web/src/generation-settings.ts';
 import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
 import {referenceAttachRequest, referenceDetachRequest, referenceReorderRequest, referenceRoleRequest} from '../../../apps/web/src/board-ui/inputs.ts';
 import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
@@ -125,11 +125,16 @@ function Harness(): React.ReactElement {
   useEffect(() => {
     const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
     if (!shot) {setInputs(null); return;}
-    const selection = generationSelection(providers, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
+    const options = (generationOptions[selectedNodeId!] ?? {}) as never;
+    const selection = generationSelection(providers, options, shot as never);
     const provider = selection.provider;
+    // Same projection input as App: the current 生成声音 switch, defaulted by the
+    // shared generationParameters layer for a shot with dialogue.
+    const parameters = generationParameters(shot as never, provider, options);
     const request = {projectId, shotId: shot.id, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision)
       && selection.modelEntryId ? {connectionId: provider.connectionId,
-        configurationRevision: Number(provider.configurationRevision), modelEntryId: selection.modelEntryId} : {})};
+        configurationRevision: Number(provider.configurationRevision), modelEntryId: selection.modelEntryId} : {}),
+      ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
     let cancelled = false;
     void rpc('sequence.generation-inputs.get', request).then(value => {if (!cancelled) setInputs(value as SequenceGenerationInputView);})
       .catch(() => {if (!cancelled) setInputs(null);});
@@ -218,16 +223,21 @@ function Harness(): React.ReactElement {
   }, [refresh, t]);
   const generateShot = useCallback((shotId: string): void => {
     const shot = data?.shots?.find((item: Row) => item.id === shotId);
-    const selection = shot ? generationSelection(providers, (generationOptions[shotId] ?? {}) as never, shot as never) : null;
+    const options = (generationOptions[shotId] ?? {}) as never;
+    const selection = shot ? generationSelection(providers, options, shot as never) : null;
     const provider = selection?.provider;
     if (!shot || !selection || !provider) return;
+    // Mirrors App.format5GenerateShot: the generated shot carries the shared
+    // parameter defaults (native sound for dialogue), never raw saved parameters.
+    const shotForGeneration = shotWithGenerationParameters(shot as never, provider, options);
     setBusy(true);
     void (async () => {
       try {
         try {
           await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
           providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
-            configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId} : {}),
+            configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
+            parameters: shotForGeneration.parameters} : {}),
             model: selection.model, ...(provider.id === 'mock' ? {parameters: {scenario: selection.scenario}} : {})});
         } catch (error) {
           (window as any).__boardWireGenerationError = String((error as Error)?.message ?? error);
@@ -309,9 +319,11 @@ function Harness(): React.ReactElement {
       timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync,
       subjects: mount?.subjects ?? [], bindings: mount?.bindings ?? [],
       shots: (data?.shots ?? []).map((shot: Row) => ({id: shot.id, title: shot.title, prompt: shot.prompt,
-        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId})),
+        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId,
+        dialogue: Array.isArray(shot.dialogue) ? shot.dialogue.map((line: Row) => ({id: line.id, text: line.text})) : []})),
       jobs: data?.jobs ?? [],
       inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+        dialogue: inputs.dialogue ?? null,
         entries: inputs.entries.map(entry => ({source: entry.source, status: entry.status, role: entry.role,
           edgeId: entry.edgeId, bindingId: entry.bindingId, reason: entry.reason ?? null,
           primary: entry.primary === true}))} : null,
