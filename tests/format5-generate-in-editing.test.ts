@@ -173,7 +173,7 @@ test('GE-a generates on another track as a free shot and replaces in place', asy
 
 
 test('GE-a Mio action previews and commits the same placeholder envelope', async () => {
-  assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind: 'generate',
+  assert.equal(mioSequenceEditSchemas['sequence.tool.timeline'].safeParse({kind: 'generate',
     placement: {kind: 'main', beforeClipId: null}, providerId: 'mock', model: 'mock-motion-v1', region: 'local',
     prompt: 'Synthetic', aspectRatio: '9:16', duration: 2}).success, true);
   const f = await createBoardUiWireFixture();

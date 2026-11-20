@@ -565,8 +565,8 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
   } else if (scenario === 'diagnostic_catalog') {
     if (f.format === 'format5') {
       const before = f.store.get('timelines', format5.timeline) as {revision?: number};
-      f.setScript(async function* () {yield {type: 'done', output: output(protocol, [sequenceSetMode('locked', 'call_catalog_edit')], 'Synthetic catalog diagnostic.')};});
-      const done = await finish(f, 'Synthetic catalog diagnostic.', {diagnostic: {profile: 'catalog', toolNames: ['mioon_sequence_edit']}});
+      f.setScript(async function* () {yield {type: 'done', output: output(protocol, [call('mioon_sequence_undo', {}, 'call_catalog_edit')], 'Synthetic catalog diagnostic.')};});
+      const done = await finish(f, 'Synthetic catalog diagnostic.', {diagnostic: {profile: 'catalog', toolNames: ['mioon_sequence_undo']}});
       const tools = object(JSON.parse(f.requests[0]!)).tools;
       assert.ok(Array.isArray(tools)); assert.equal(tools.length, 1);
       assert.equal(done.steps.filter(value => value.kind === 'tool').length, 0);
