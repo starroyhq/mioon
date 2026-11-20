@@ -2,6 +2,7 @@
  * A page is bound to one frozen snapshot id; continuing with a cursor from a
  * different snapshot is rejected so the model never stitches mismatched reads. */
 import {z} from 'zod';
+import {FORMAT5_INPUT_LIMITS} from './project-format5.ts';
 import type {ChainReferenceRole} from './board-sequence.ts';
 
 const uuid = z.string().uuid();
@@ -42,6 +43,11 @@ export interface SequenceInspectionSegment {
     readonly sourceNodeId: string;
   }[];
   readonly referenceCount?: number;
+  /** DL-a: the shot's ordered dialogue lines (its cue projection is validated by
+   * the kernel; the lines are the authoritative text). */
+  readonly dialogue?: readonly {
+    readonly id: string; readonly text: string; readonly speakerSubjectId?: string;
+  }[];
 }
 export interface SequenceInspectionDiff {
   readonly kind: 'board' | 'track' | 'anchor';
@@ -66,7 +72,10 @@ export interface SequenceInspectionPage {
 // Live generation-input projection (RI-b property panel)
 // ---------------------------------------------------------------------------
 
-export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({entries: 64});
+export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({
+  entries: FORMAT5_INPUT_LIMITS.referenceEdgesPerShot + FORMAT5_INPUT_LIMITS.subjectBindingsPerShot
+    + FORMAT5_INPUT_LIMITS.previsSceneSubjects,
+});
 export const sequenceGenerationInputSchemas = Object.freeze({
   'sequence.generation-inputs.get': z.object({
     projectId: uuid, shotId: uuid,
@@ -89,7 +98,7 @@ export type SequenceGenerationInputStatus = 'used' | 'unsupported';
  * resolved (node/asset/subject name plus version) and `reason` is a stable code
  * the browser localizes; unknown roles never disappear from the list. */
 export interface SequenceGenerationInputEntryView {
-  readonly source: 'edge' | 'subject';
+  readonly source: 'edge' | 'subject' | 'previs';
   readonly edgeId?: string;
   readonly bindingId?: string;
   readonly sourceNodeId?: string;

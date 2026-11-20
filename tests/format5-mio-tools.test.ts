@@ -8,7 +8,9 @@ import type {ProjectStore} from '../packages/business/src/project-file/store.ts'
 import {createSequenceInspectionService} from '../packages/business/src/format5-sequence-inspection.ts';
 import {agentTaskToolCatalogProfile, FORMAT5_UNAVAILABLE_OPERATIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/business/src/agent/task-tools-v2.ts';
-import {MIO_SEQUENCE_GROUP_OPERATIONS, mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
+import {MIO_SEQUENCE_ACTION_COUNT, MIO_SEQUENCE_GROUP_OPERATIONS, mioSequenceActionKindsForOperation, mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
+import {FORMAT5_INPUT_LIMITS} from '../packages/contracts/src/project-format5.ts';
+import {SEQUENCE_GENERATION_INPUT_LIMITS} from '../packages/contracts/src/sequence-inspection.ts';
 import {AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
@@ -111,9 +113,8 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
     properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}}}}}};
   assert.equal('subject' in nativePrevis.properties.scene.properties.figures.items.properties, false);
   // C+A: the core sequence tool keeps only the nine high-frequency actions.
-  const actionKinds = (operation: string): string[] => ((mioSequenceEditSchemas as unknown as Record<string,
-    {options?: {shape: {kind: {value: string}}}[]} | undefined>)[operation]?.options ?? [])
-    .map(branch => branch.shape.kind.value);
+  const actionKinds = (operation: string): string[] => [...mioSequenceActionKindsForOperation(
+    operation as Parameters<typeof mioSequenceActionKindsForOperation>[0])];
   assert.deepEqual(actionKinds('sequence.tool.edit').sort(), ['connect', 'copy-move', 'delete-node', 'disconnect',
     'insert', 'remove', 'reorder', 'set-mode', 'split']);
   assert.equal(actionKinds('sequence.tool.edit').includes('board-shot-append'), false);
@@ -125,13 +126,14 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.deepEqual(actionKinds('sequence.tool.subject').sort(), ['subject-binding', 'subject-card-create',
     'subject-card-delete']);
   assert.deepEqual(actionKinds('sequence.tool.previs').sort(), ['previs-create', 'previs-scene-set']);
-  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['format-set', 'split-at-scenes', 'subtitles',
-    'track-add', 'track-update']);
+  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'split-at-scenes',
+    'subtitles', 'track-add', 'track-update']);
   assert.deepEqual(actionKinds('sequence.tool.clip'), ['clip-properties']);
   // Every bounded action lives in exactly one tool.
   const uniqueKinds = new Set(MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)));
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)).length);
-  assert.equal(uniqueKinds.size, 32);
+  assert.equal(uniqueKinds.size, MIO_SEQUENCE_ACTION_COUNT);
+  assert.equal(uniqueKinds.size, 33);
   const groupTools = format5Tools.filter(item => item.operation.startsWith('sequence.tool.')
     && item.operation !== 'sequence.tool.edit' && item.operation !== 'sequence.tool.undo');
   assert.deepEqual(groupTools.map(item => item.name).sort(), ['mioon_sequence_board_edit',
@@ -164,10 +166,16 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
     assert.equal(loadNames.includes(unavailableName), false, operation);
   }
   assert.equal(loadParameters.properties.names.maxItems, loadNames.length);
+  // One shot's read-only projection is bounded by the three service-side caps.
+  assert.deepEqual(Object.values(FORMAT5_INPUT_LIMITS), [48, 8, 32]);
+  assert.equal(FORMAT5_INPUT_LIMITS.previsSceneSubjects, 32);
+  assert.equal(SEQUENCE_GENERATION_INPUT_LIMITS.entries, 88);
+  assert.equal(generationInputs?.description.includes(`最多 ${SEQUENCE_GENERATION_INPUT_LIMITS.entries} 条`), true);
   // The loader description tells the model which group holds which domain.
   for (const name of groupTools.map(item => item.name)) {
     assert.ok(AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS['zh-Hans'].includes(name), name);
   }
+  assert.ok(AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS['zh-Hans'].includes('台词'));
 });
 
 test('sequence inspection pages the chain against one frozen snapshot', t => {

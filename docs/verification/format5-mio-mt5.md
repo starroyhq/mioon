@@ -14,7 +14,7 @@ MT-5 把 #322 之后仍然只有界面入口的格式 5 写动作补进 `mioon_s
 
 ## 新只读工具
 
-- `mioon_sequence_generation_inputs_get`（格式 5 core）：对应公共只读操作 `sequence.generation-inputs.get`，查看一个镜头在实际生成服务下的模式、每条引用线的角色/来源/顺序/主体版本、不支持原因、主图和用到几项；输出上界 64 条。`connectionId`/`configurationRevision`/`modelEntryId` 三个一起给，省略表示还没选服务。
+- `mioon_sequence_generation_inputs_get`（格式 5 core）：对应公共只读操作 `sequence.generation-inputs.get`，查看一个镜头在实际生成服务下的模式、每条引用线的角色/来源/顺序/主体版本、不支持原因、主图和用到几项；输出上界由一镜头的 48 条引用线 + 8 个主体绑定 + 32 个预演主体算成 88 条。`connectionId`/`configurationRevision`/`modelEntryId` 三个一起给，省略表示还没选服务。
 - 从 `MIO_DEFERRED_OPERATIONS` 移除 `sequence.generation-inputs.get`；同时清掉两个已开放工具留下的过期条目（`sequence.inspect`、`sequence.board.get`），`agent-task-operation-parity-v2` 的目录改为合并原生/格式 4 与格式 5 两套工具再审计。
 
 ## MT-6 补充（后续卡）

@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="fca8f49ce8d0039acc81726e3b73cecf5aab2c3b65b2f75adc1b8a5b8a289e41";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="2e3ca5dc08cd1d04e064c7f45c81bf89fe7de4e9b7ae994ec40814707c7db12b";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -2290,6 +2290,206 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "dialogueIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "enum": [
+       "board",
+       "timeline"
+      ]
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "dialogue"
+       },
+       "edits": {
+        "type": "array",
+        "items": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "add"
+            },
+            "shotId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "line": {
+             "type": "object",
+             "properties": {
+              "id": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "text": {
+               "type": "string"
+              },
+              "speakerSubjectId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              }
+             },
+             "required": [
+              "id",
+              "text"
+             ],
+             "additionalProperties": false
+            },
+            "beforeLineId": {
+             "anyOf": [
+              {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              {
+               "type": "null"
+              }
+             ]
+            }
+           },
+           "required": [
+            "kind",
+            "shotId",
+            "line"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "update"
+            },
+            "shotId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "lineId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "text": {
+             "type": "string"
+            },
+            "speakerSubjectId": {
+             "anyOf": [
+              {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              {
+               "type": "null"
+              }
+             ]
+            }
+           },
+           "required": [
+            "kind",
+            "shotId",
+            "lineId"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "remove"
+            },
+            "shotId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "lineId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            }
+           },
+           "required": [
+            "kind",
+            "shotId",
+            "lineId"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "reorder"
+            },
+            "shotId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "lineIds": {
+             "type": "array",
+             "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "maxItems": 1000
+            }
+           },
+           "required": [
+            "kind",
+            "shotId",
+            "lineIds"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "const": "set-text-by-cue"
+            },
+            "cueId": {
+             "type": "string",
+             "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "text": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "kind",
+            "cueId",
+            "text"
+           ],
+           "additionalProperties": false
+          }
+         ]
+        },
+        "minItems": 1,
+        "maxItems": 100
+       }
+      },
+      "required": [
+       "kind",
+       "edits"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "trackIntent": {
     "type": "object",
     "properties": {
@@ -3808,6 +4008,206 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "required": [
               "kind",
               "cueId"
+             ],
+             "additionalProperties": false
+            }
+           ]
+          },
+          "minItems": 1,
+          "maxItems": 100
+         }
+        },
+        "required": [
+         "kind",
+         "edits"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "dialogueIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "enum": [
+         "board",
+         "timeline"
+        ]
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "dialogue"
+         },
+         "edits": {
+          "type": "array",
+          "items": {
+           "anyOf": [
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "add"
+              },
+              "shotId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "line": {
+               "type": "object",
+               "properties": {
+                "id": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "text": {
+                 "type": "string"
+                },
+                "speakerSubjectId": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                }
+               },
+               "required": [
+                "id",
+                "text"
+               ],
+               "additionalProperties": false
+              },
+              "beforeLineId": {
+               "anyOf": [
+                {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              }
+             },
+             "required": [
+              "kind",
+              "shotId",
+              "line"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "update"
+              },
+              "shotId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "lineId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "text": {
+               "type": "string"
+              },
+              "speakerSubjectId": {
+               "anyOf": [
+                {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              }
+             },
+             "required": [
+              "kind",
+              "shotId",
+              "lineId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "remove"
+              },
+              "shotId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "lineId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              }
+             },
+             "required": [
+              "kind",
+              "shotId",
+              "lineId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "reorder"
+              },
+              "shotId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "lineIds": {
+               "type": "array",
+               "items": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "maxItems": 1000
+              }
+             },
+             "required": [
+              "kind",
+              "shotId",
+              "lineIds"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "set-text-by-cue"
+              },
+              "cueId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "text": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "kind",
+              "cueId",
+              "text"
              ],
              "additionalProperties": false
             }
@@ -12758,6 +13158,143 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  },
  "sequence.tool.timeline": {
   "anyOf": [
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "dialogue"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "edits": {
+      "type": "array",
+      "items": {
+       "anyOf": [
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "add"
+          },
+          "text": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 81
+          },
+          "speakerSubjectId": {
+           "anyOf": [
+            {
+             "type": "string",
+             "format": "uuid"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "beforeLineId": {
+           "type": "string",
+           "format": "uuid"
+          }
+         },
+         "required": [
+          "kind",
+          "text"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "update"
+          },
+          "lineId": {
+           "type": "string",
+           "format": "uuid"
+          },
+          "text": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 81
+          },
+          "speakerSubjectId": {
+           "anyOf": [
+            {
+             "type": "string",
+             "format": "uuid"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          }
+         },
+         "required": [
+          "kind",
+          "lineId"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "remove"
+          },
+          "lineId": {
+           "type": "string",
+           "format": "uuid"
+          }
+         },
+         "required": [
+          "kind",
+          "lineId"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "type": "string",
+           "const": "reorder"
+          },
+          "lineIds": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "format": "uuid"
+           },
+           "minItems": 1,
+           "maxItems": 100
+          }
+         },
+         "required": [
+          "kind",
+          "lineIds"
+         ],
+         "additionalProperties": false
+        }
+       ]
+      },
+      "minItems": 1,
+      "maxItems": 30
+     }
+    },
+    "required": [
+     "kind",
+     "shotId",
+     "edits"
+    ],
+    "additionalProperties": false
+   },
    {
     "type": "object",
     "properties": {

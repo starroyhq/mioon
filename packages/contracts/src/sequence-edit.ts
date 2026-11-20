@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5AnchorSchema, format5DialogueRefSchema, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
+import {getTimelineSubtitleTextIssue} from './timeline-subtitles.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
@@ -355,6 +356,67 @@ export interface SequenceEditSubtitlesIntent {
   readonly operation: SequenceEditSubtitlesOperation;
 }
 
+/**
+ * DL-a dialogue lines (plan §2.4): one shot's ordered `shot.data.dialogue`
+ * lines plus the subtitle cues they project to. A line lives on the shot, so
+ * its edits are board-side; a cue's text lives on the timeline, so the
+ * timeline-side edit addresses the cue and writes the same line through its
+ * `dialogueRef`. Both sides travel in one action so one undo restores the text
+ * on both sides.
+ *
+ * `add`/`remove`/`reorder` change lines only. Whenever a shot is on the main
+ * track, the cue projection runs in the same transaction: every valid line has
+ * exactly one real cue. The line identity is supplied by the caller; cue
+ * identity is derived from `(timelineId, shotId, lineId)` so a preview, retry,
+ * commit and undo/redo always reproduce the same row identity.
+ */
+export const SEQUENCE_EDIT_DIALOGUE_LIMITS = Object.freeze({
+  /** One shot's dialogue line count (format-5 subtitle capacity). */
+  lines: FORMAT5_LIMITS.subtitleCues,
+  /** Edits one action may carry (a whole dialogue panel save). */
+  edits: 100,
+});
+export interface SequenceEditDialogueLine {
+  readonly id: string;
+  readonly text: string;
+  readonly speakerSubjectId?: string;
+}
+export type SequenceEditDialogueEdit =
+  | {readonly kind: 'add'; readonly shotId: string; readonly line: SequenceEditDialogueLine;
+    readonly beforeLineId?: string | null}
+  | {readonly kind: 'update'; readonly shotId: string; readonly lineId: string;
+    readonly text?: string; readonly speakerSubjectId?: string | null}
+  | {readonly kind: 'remove'; readonly shotId: string; readonly lineId: string}
+  | {readonly kind: 'reorder'; readonly shotId: string; readonly lineIds: readonly string[]}
+  | {readonly kind: 'set-text-by-cue'; readonly cueId: string; readonly text: string};
+
+export interface SequenceEditDialogueOperation {
+  readonly kind: 'dialogue';
+  readonly edits: readonly SequenceEditDialogueEdit[];
+}
+/** Board edits change the shot's lines; `set-text-by-cue` is timeline-origin and
+ * writes the linked line through the cue. One action is one family. */
+export interface SequenceEditDialogueIntent {
+  readonly side: SequenceEditSide;
+  readonly operation: SequenceEditDialogueOperation;
+}
+
+/** Stable history-13 name of one dialogue edit. `board.`/`timeline.` prefixes
+ * let the shared undo routing report the original side. */
+export function sequenceEditDialogueEditName(edit: SequenceEditDialogueEdit): string {
+  switch (edit.kind) {
+    case 'add': return 'board.dialogue.add';
+    case 'update': return 'board.dialogue.update';
+    case 'remove': return 'board.dialogue.remove';
+    case 'reorder': return 'board.dialogue.reorder';
+    case 'set-text-by-cue': return 'timeline.dialogue.text';
+  }
+}
+/** Unique operation names in first-edit order, `+`-joined like compound intents. */
+export function sequenceEditDialogueOperationName(operation: SequenceEditDialogueOperation): string {
+  return [...new Set(operation.edits.map(sequenceEditDialogueEditName))].join('+');
+}
+
 /** The side a plan operation belongs to. Board edits and projections are CS,
  * track edits are TS. */
 export function sequenceEditIntentSide(operation: {readonly kind: string}): SequenceEditSide {
@@ -427,12 +489,12 @@ export function sequenceEditTrackOperationName(operation: SequenceEditTrackOpera
 }
 
 export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
-  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'previsIntent' | 'formatIntent'>): string {
-  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
+  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent'>): string {  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
   if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
+  if (envelope.dialogueIntent) return sequenceEditDialogueOperationName(envelope.dialogueIntent.operation);
   if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
   if (envelope.formatIntent) return 'timeline.format.set';
   return sequenceEditOperationName(envelope.intents);
@@ -568,9 +630,10 @@ export interface SequenceEditEnvelope {
   readonly previsIntent?: SequenceEditPrevisIntent;
   /** FR-B subtitle cue structure; exactly one of the intent families. */
   readonly subtitlesIntent?: SequenceEditSubtitlesIntent;
+  /** DL-a shot dialogue lines / linked cue text; one intent family per action. */
+  readonly dialogueIntent?: SequenceEditDialogueIntent;
   /** FR-B2 output-frame change; one intent family like properties. */
-  readonly formatIntent?: SequenceEditFormatIntent;
-  /** FR-D track add/update; exactly one intent family is present. */
+  readonly formatIntent?: SequenceEditFormatIntent;  /** FR-D track add/update; exactly one intent family is present. */
   readonly trackIntent?: SequenceEditTrackIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
@@ -759,6 +822,66 @@ export const sequenceEditSubtitlesIntentSchema = z.object({
         'Each subtitle cue may appear once')}).strict(),
 }).strict();
 const subtitlesIntentSchema = sequenceEditSubtitlesIntentSchema;
+const dialogueTextSchema = z.string().superRefine((value, context) => {
+  const issue = getTimelineSubtitleTextIssue(value);
+  if (issue) context.addIssue({code: z.ZodIssueCode.custom, message: issue.message});
+});
+const dialogueLineSchema = z.object({
+  id: uuidSchema, text: dialogueTextSchema, speakerSubjectId: uuidSchema.optional(),
+}).strict();
+const dialogueEditsSchema = z.array(z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('add'), shotId: uuidSchema, line: dialogueLineSchema,
+    beforeLineId: uuidSchema.nullable().optional()}).strict(),
+  z.object({kind: z.literal('update'), shotId: uuidSchema, lineId: uuidSchema,
+    text: dialogueTextSchema.optional(), speakerSubjectId: uuidSchema.nullable().optional()}).strict(),
+  z.object({kind: z.literal('remove'), shotId: uuidSchema, lineId: uuidSchema}).strict(),
+  z.object({kind: z.literal('reorder'), shotId: uuidSchema,
+    lineIds: z.array(uuidSchema).max(SEQUENCE_EDIT_DIALOGUE_LIMITS.lines)
+      .refine(list => new Set(list).size === list.length, 'Reordered line ids must be unique')}).strict(),
+  z.object({kind: z.literal('set-text-by-cue'), cueId: uuidSchema, text: dialogueTextSchema}).strict(),
+])).min(1).max(SEQUENCE_EDIT_DIALOGUE_LIMITS.edits).superRefine((edits, context) => {
+  for (const edit of edits) {
+    if (edit.kind === 'update' && edit.text === undefined && edit.speakerSubjectId === undefined) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A dialogue update needs at least one field'});
+    }
+  }
+});
+export const sequenceEditDialogueIntentSchema = z.object({
+  side: z.enum(SEQUENCE_EDIT_SIDES),
+  operation: z.object({kind: z.literal('dialogue'), edits: dialogueEditsSchema}).strict(),
+}).strict().superRefine((value, context) => {
+  const timelineEdits = value.operation.edits.filter(edit => edit.kind === 'set-text-by-cue');
+  if (timelineEdits.length !== 0 && timelineEdits.length !== value.operation.edits.length) {
+    context.addIssue({code: z.ZodIssueCode.custom, message: 'A dialogue action mixes board and timeline edits'});
+  }
+  const expected: SequenceEditSide = timelineEdits.length === 0 ? 'board' : 'timeline';
+  if (value.side !== expected) context.addIssue({code: z.ZodIssueCode.custom, message: 'The dialogue intent side does not match its edits'});
+  const addIds = new Set<string>(), updateIds = new Set<string>(), removeIds = new Set<string>();
+  const reordered = new Set<string>(), cueIds = new Set<string>();
+  for (const edit of value.operation.edits) {
+    if (edit.kind === 'add') {
+      if (addIds.has(edit.line.id)) context.addIssue({code: z.ZodIssueCode.custom, message: 'Duplicate dialogue line id'});
+      addIds.add(edit.line.id);
+    } else if (edit.kind === 'update') {
+      const key = `${edit.shotId}/${edit.lineId}`;
+      if (updateIds.has(key)) context.addIssue({code: z.ZodIssueCode.custom, message: 'A dialogue line may be updated once'});
+      updateIds.add(key);
+    } else if (edit.kind === 'remove') {
+      const key = `${edit.shotId}/${edit.lineId}`;
+      if (removeIds.has(key)) context.addIssue({code: z.ZodIssueCode.custom, message: 'A dialogue line may be removed once'});
+      removeIds.add(key);
+    } else if (edit.kind === 'reorder') {
+      if (reordered.has(edit.shotId)) context.addIssue({code: z.ZodIssueCode.custom, message: 'A shot may be reordered once'});
+      reordered.add(edit.shotId);
+    } else {
+      if (cueIds.has(edit.cueId)) context.addIssue({code: z.ZodIssueCode.custom, message: 'A cue may be edited once'});
+      cueIds.add(edit.cueId);
+    }
+  }
+  for (const key of updateIds) if (removeIds.has(key)) context.addIssue({code: z.ZodIssueCode.custom, message: 'A dialogue line may not be updated and removed'});
+});
+const dialogueIntentSchema = sequenceEditDialogueIntentSchema;
+
 export const sequenceEditEnvelopeSchema = z.object({
   contractVersion: z.literal(SEQUENCE_EDIT_CONTRACT_VERSION),
   projectId: uuidSchema, epoch: uuidSchema, actionId: uuidSchema, filmId: uuidSchema,
@@ -771,6 +894,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   propertiesIntent: propertiesIntentSchema.optional(),
   previsIntent: previsIntentSchema.optional(),
   subtitlesIntent: subtitlesIntentSchema.optional(),
+  dialogueIntent: dialogueIntentSchema.optional(),
   trackIntent: trackIntentSchema.optional(),
   formatIntent: formatIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
@@ -780,9 +904,10 @@ export const sequenceEditEnvelopeSchema = z.object({
   const hasProperties = value.propertiesIntent !== undefined;
   const hasPrevis = value.previsIntent !== undefined;
   const hasSubtitles = value.subtitlesIntent !== undefined;
-  const hasFormat = value.formatIntent !== undefined;
+  const hasDialogue = value.dialogueIntent !== undefined;
   const hasTrack = value.trackIntent !== undefined;
-  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasTrack, hasPrevis, hasFormat].filter(Boolean).length
+  const hasFormat = value.formatIntent !== undefined;
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat].filter(Boolean).length
     + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
   if (hasSubtitles) {
@@ -791,6 +916,23 @@ export const sequenceEditEnvelopeSchema = z.object({
     const impacted = new Set(value.impact.subtitleCueIds);
     if (edited.some(id => !impacted.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
       message: 'Subtitle impact must list every edited cue'});
+    return;
+  }
+  if (hasDialogue) {
+    const intent = value.dialogueIntent!;
+    if (intent.side !== value.originSide) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'A dialogue action must be planned from its own side'});
+    const shotIds = new Set<string>(), cueIds = new Set<string>();
+    for (const edit of intent.operation.edits) {
+      if (edit.kind === 'set-text-by-cue') cueIds.add(edit.cueId);
+      else shotIds.add(edit.shotId);
+    }
+    const impactedShots = new Set(value.impact.nodeIds);
+    if ([...shotIds].some(id => !impactedShots.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Dialogue impact must list every edited shot'});
+    const impactedCues = new Set(value.impact.subtitleCueIds);
+    if ([...cueIds].some(id => !impactedCues.has(id))) context.addIssue({code: z.ZodIssueCode.custom,
+      message: 'Dialogue impact must list the edited cue'});
     return;
   }
   if (hasFormat) {
@@ -1346,6 +1488,14 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   provide, a subject-card connector (which belongs to the SB binding family),
  *   a previs node without a verifiable published output, an edge that is not a
  *   material reference, or an edge identity already used by another owner.
+ * - `SEQUENCE_EDIT_DIALOGUE_INVALID`: a dialogue edit names a missing/archived
+ *   shot, a line that does not exist there, an unsupported subtitle text, a
+ *   speaker that is not a project subject, a line id that already exists, or a
+ *   cue whose `dialogueRef` does not resolve. Nothing is written.
+ * - `SEQUENCE_EDIT_DIALOGUE_CONFLICT`: the projected cues cannot be placed
+ *   legally (the shot span has too few free frames, or a plain subtitle occupies
+ *   every legal frame). The whole action is rejected with the affected ids; no
+ *   text is truncated and no ordinary cue is renamed or moved (P5 D7).
  */
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
@@ -1353,9 +1503,9 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_NOOP', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID',
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
-  'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE', 'TIMELINE_FORMAT_TIER_MISMATCH',
-  'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID',
-] as const);
+  'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID', 'SEQUENCE_EDIT_DIALOGUE_INVALID',
+  'SEQUENCE_EDIT_DIALOGUE_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
+  'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT',] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
 export type SequenceEditErrorCode = Format5ErrorCode | SequenceEditPlanFailureCode | SequenceEditNewErrorCode;

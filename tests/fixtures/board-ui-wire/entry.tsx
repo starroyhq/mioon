@@ -103,7 +103,7 @@ function Harness(): React.ReactElement {
     try {
       const outcome = await session.current.run(intent);
       if (outcome.ok && outcome.status === 'applied') {
-        setNotice({id: outcome.actionId, message});
+        setNotice({id: outcome.actionId ?? 'board-applied', message});
         await refresh();
       }
       return outcome;
@@ -114,7 +114,7 @@ function Harness(): React.ReactElement {
     setBusy(true);
     try {
       const outcome = await session.current.runSubject(operation, allocation);
-      if (outcome.ok && outcome.status === 'applied') {setNotice({id: outcome.actionId, message}); await refresh();}
+      if (outcome.ok && outcome.status === 'applied') {setNotice({id: outcome.actionId ?? 'board-applied', message}); await refresh();}
       return outcome;
     } finally {setBusy(false);}
   }, [refresh]);
@@ -150,7 +150,7 @@ function Harness(): React.ReactElement {
     try {
       const outcome = await session.current.run(request);
       if (outcome.ok && outcome.status === 'applied') {
-        setNotice({id: outcome.actionId, message});
+        setNotice({id: outcome.actionId ?? 'board-applied', message});
         await refresh();
       }
       return outcome;
@@ -162,7 +162,7 @@ function Harness(): React.ReactElement {
   const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
     void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
   }, [runReference, t]);
-  const detachInput = useCallback((entry: {source: 'edge' | 'subject'; edgeId?: string; bindingId?: string}, shotId: string): void => {
+  const detachInput = useCallback((entry: {source: 'edge' | 'subject' | 'previs'; edgeId?: string; bindingId?: string}, shotId: string): void => {
     if (entry.source === 'subject' && entry.bindingId) {
       void runSubject(subjectBindingDetachOperation(entry.bindingId), undefined, t('boardUi.notice.subjectDetached'));
       return;

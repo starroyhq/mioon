@@ -1,7 +1,11 @@
 import {ApiError} from './api.ts';
 import {projectApiPath} from '../../../packages/contracts/src/project-file.ts';
 
-export interface RequestOutcome {readonly applied: boolean;readonly operation: string|null}
+/** Format 3/4 receipts answer only `applied`/`operation`. A format-5 editor
+ * receipt may also prove its own status; `not_applied` is a definite
+ * conclusion, never equal to a missing receipt. */
+export interface RequestOutcome {readonly applied: boolean;readonly operation: string|null;
+  readonly status?: 'applied'|'not_applied';readonly code?: string|null}
 export interface RequestOutcomeReadInput {readonly projectId: string;readonly requestId: string}
 export interface RequestOutcomeReadOptions {readonly signal?: AbortSignal}
 export interface RequestOutcomeClient {read(input: RequestOutcomeReadInput,options?: RequestOutcomeReadOptions): Promise<RequestOutcome>}
@@ -30,6 +34,21 @@ export function createRequestOutcomeClient({fetcher = (...args: Parameters<typeo
       const data = payload.data;
       if (!isRecord(data) || typeof data.applied !== 'boolean' || !(data.operation === null || typeof data.operation === 'string'))
         throw protocol('Invalid request outcome response.');
+      const status = data.status, code = data.code;
+      if (status !== undefined && status !== 'applied' && status !== 'not_applied') throw protocol('Invalid request outcome response.');
+      if (code !== undefined && code !== null && (typeof code !== 'string' || code.length < 1 || code.length > 200))
+        throw protocol('Invalid request outcome response.');
+      if (status === 'applied') {
+        if (data.applied !== true || code !== null) throw protocol('Invalid request outcome response.');
+        return {applied: true,operation: data.operation,status: 'applied',code: null};
+      }
+      if (status === 'not_applied') {
+        if (data.applied !== false || typeof code !== 'string') throw protocol('Invalid request outcome response.');
+        return {applied: false,operation: data.operation,status: 'not_applied',code};
+      }
+      // A code without a status, or an applied conclusion without `status`,
+      // keeps the original two-field shape. Any extra field is a protocol error.
+      if (code !== undefined) throw protocol('Invalid request outcome response.');
       return {applied: data.applied,operation: data.operation};
     },
   };

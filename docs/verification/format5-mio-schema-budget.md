@@ -29,8 +29,10 @@ MT-6 按 C+A 把格式 5 单轮 Mio 请求从格式 4 的 225.6% 降到 110% 以
 | `mioon_sequence_reference_edit` | `sequence.tool.reference` | 素材引用线连接/改角色/断开/排序（第一条参考图是主图） |
 | `mioon_sequence_subject_edit` | `sequence.tool.subject` | 主体绑定三态、主体卡建卡/删卡 |
 | `mioon_sequence_previs_edit` | `sequence.tool.previs` | 预演节点新建、预演场景保存（人偶/道具可带主体） |
-| `mioon_sequence_timeline_edit` | `sequence.tool.timeline` | 画幅切换、按场景切开、字幕增改删、轨道增改 |
+| `mioon_sequence_timeline_edit` | `sequence.tool.timeline` | 画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改 |
 | `mioon_sequence_clip_edit` | `sequence.tool.clip` | 片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称） |
+
+台词（`dialogue`）放在时间线组：台词和字幕同属一段文字内容，共用时间线组不需要第 7 个组名。生成输入只读工具的上限由服务端三个实际上限算出：一镜头 48 条引用线 + 8 个主体绑定 + 32 个预演主体 = 88 条（`FORMAT5_INPUT_LIMITS`，`SEQUENCE_GENERATION_INPUT_LIMITS.entries` 与工具说明同源）。
 
 Mio 在修改前用 `mioon_tools_load` 按名字加载相应组，加载后的下一次回复即可调用；审批级别、`origin: mio` 和 D5 撤销与原来一致。`mioon_tools_load` 的格式 5 说明列出每组的一句话用途。`mioon_sequence_undo` 和三个只读格式 5 工具（`sequence.inspect`、`sequence.board.get`、`sequence.generation-inputs.get`）仍是 core。
 
@@ -39,7 +41,7 @@ Mio 在修改前用 `mioon_tools_load` 按名字加载相应组，加载后的�
 ## 四、指纹和体积结果
 
 - 格式 5 套件按授权重生成一次：99 条中 96 条变化，`diagnostic_text` 的 3 条不变（纯文本请求不带工具目录）。逐条旧/新字节、SHA-256、格式 4 对照和达标情况见卡笔记目录 `mt6-fingerprint-differences.md`。
-- `single_reply/chat_completions`：**59,518 → 24,469 字节**（格式 4 同场景 25,148；新值/格式 4 = 0.97，目标 1.10）。全部 99 条同场景比较的最大比值为 1.00，无一条超过 110%。
+- `single_reply/chat_completions`：**59,518 → 24,476 字节**（格式 4 同场景 25,148；新值/格式 4 = 0.97，目标 1.10）。全部 99 条同场景比较的最大比值为 1.00，无一条超过 110%。
 - `diagnostic_catalog` 场景的代表工具改为 `mioon_sequence_undo`：核心 sequence 工具现在覆盖多域，用单动作有界写工具更符合“诊断目录只暴露一个工具”的原意，并让该场景从 31,778 降到 1,463 字节（格式 4 同场景 2,980）。
 
 ## 五、兼容性

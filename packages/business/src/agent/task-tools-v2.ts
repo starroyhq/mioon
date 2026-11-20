@@ -584,6 +584,7 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
 import {AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS,FORMAT5_UNAVAILABLE_OPERATIONS} from './task-tool-groups-v2.ts';
 import {isFormat5Project} from '../sequence-edit.ts';
 import {MIO_SEQUENCE_GROUP_OPERATIONS,mioSequenceEditSchemas} from '../../../contracts/src/mio-sequence.ts';
+import {SEQUENCE_GENERATION_INPUT_LIMITS} from '../../../contracts/src/sequence-inspection.ts';
 import type {MioSequenceAction,MioSequenceGroupOperation} from '../../../contracts/src/mio-sequence.ts';
 import {previewMioSequenceAction,commitMioSequenceAction,prepareMioSequenceUndo,applyMioSequenceUndo} from '../format5-mio-sequence.ts';
 import {readFrozenFormat5GenerationInputs} from '../format5-reference-inputs.ts';
@@ -614,12 +615,12 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_subject_edit',operation:'sequence.tool.subject',description:'按需加载的格式 5 主体动作：主体绑定创建/跟随锁定/断开/恢复、主体卡建卡/删卡。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.subject'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_previs_edit',operation:'sequence.tool.previs',description:'按需加载的格式 5 预演动作：预演节点新建、预演场景保存（人偶/道具可带主体）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.previs'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
-  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的格式 5 时间线动作：画幅切换、按场景切开、字幕增改删、轨道增改。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的格式 5 时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_clip_edit',operation:'sequence.tool.clip',description:'按需加载的格式 5 片段属性动作：变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.clip'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
-  definitions.push({name:'mioon_sequence_generation_inputs_get',operation:'sequence.generation-inputs.get',description:'只读查看一个镜头在当前生成服务下的实际生成输入：模式、每条引用线的角色/来源/顺序/主体版本、服务不支持的原因、主图和用到几项；最多 64 条。connectionId/configurationRevision/modelEntryId 必须三个一起给，省略表示还没选服务。不写项目、任务、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.generation-inputs.get'],risk:'read_only',receipt:'observation',recovery:'read the projection again after the board or service selection changes',undo:'unavailable'});
+  definitions.push({name:'mioon_sequence_generation_inputs_get',operation:'sequence.generation-inputs.get',description:`只读查看一个镜头在当前生成服务下的实际生成输入：模式、每条引用线的角色/来源/顺序/主体版本、服务不支持的原因、主图和用到几项；最多 ${SEQUENCE_GENERATION_INPUT_LIMITS.entries} 条。connectionId/configurationRevision/modelEntryId 必须三个一起给，省略表示还没选服务。不写项目、任务、回执或历史。`,parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.generation-inputs.get'],risk:'read_only',receipt:'observation',recovery:'read the projection again after the board or service selection changes',undo:'unavailable'});
   // C+A: the format-5 directory no longer lists legacy entries that the gate
   // rejects. The reviewed unavailable table stays for parity and UI reasons.
   for(let index=definitions.length-1;index>=0;index--)if(FORMAT5_UNAVAILABLE_OPERATIONS[definitions[index]!.operation]!==undefined)definitions.splice(index,1);
@@ -827,6 +828,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='board-restore'||action.kind==='board-duplicate')
     for(const target of action.targets)add(target.kind,target.id);
    if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
+   if(action.kind==='dialogue')add('shot',action.shotId);
    if(action.kind==='board-layout-move')for(const move of action.moves)add(before[key('shot',move.nodeId)]?'shot':'node',move.nodeId);
    if(action.kind==='subtitles')for(const edit of action.edits)if(edit.kind!=='add')add('timeline_subtitle',edit.cueId);
    if(action.kind==='subject-binding'){
@@ -842,13 +844,12 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
-   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties',
+   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue',
     'format-set','split-at-scenes','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
     'subject-card-create','subject-card-delete','previs-create'].includes(action.kind);
-   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,
-     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
+   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
   if(!parsed.success)fail('VALIDATION_ERROR','序列撤销参数无效：actionId 可选；省略时撤销栈顶 Mio 动作');
