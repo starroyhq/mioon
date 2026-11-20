@@ -1877,20 +1877,20 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
  * the caller then only records the version as the late-result rule requires. */
 export function adoptFormat5GeneratedVersionInside(store: ProjectStore,
   job: {readonly id: string; readonly shotId: string; readonly projectId: string; readonly snapshot: Row},
-  version: Row): boolean {
+  version: Row, options: {readonly canReplace?: (clip: Format5Clip) => boolean} = {}): boolean {
   if (!format5(store) || job.projectId !== store.projectId) return false;
   const context = readSyncContext(store);
   const shot = context.shots.get(job.shotId);
-  // First ready version of any format-5 shot: only the frozen shot revision and
-  // an unselected shot may adopt it. A late result records the version and stops.
-  if (!shot || shot.selectedVersionId !== null || shot.revision !== job.snapshot.shotRevision) return false;
+  // First ready version of any format-5 shot: the shot must still be live and
+  // unselected. Title/prompt/dialogue edits while the job runs never block it.
+  if (!shot || shot.selectedVersionId !== null) return false;
   if (!context.assets.has(String(version.assetId))) return false;
   // Follow-mode main pieces and other-track placeholders keep their editing
   // parameters (start, duration, sourceInFrame, gain, rect, fades, anchor/group);
   // only the source identity changes from "not generated yet" to this version.
   const placeholders = context.timeline.clips.filter(clip => clip.sourceState === 'placeholder'
     && (clip.sequenceSource?.kind === 'shot' && clip.sequenceSource.nodeId === job.shotId
-      || clip.shotId === job.shotId));
+      || clip.shotId === job.shotId) && (options.canReplace?.(clip) ?? true));
   if (placeholders.length === 0) return false;
   const ready = placeholders.map(clip => ({...clip, assetId: String(version.assetId),
     versionId: String(version.id), jobId: job.id, shotId: job.shotId, sourceState: 'ready' as const} as Format5Clip));

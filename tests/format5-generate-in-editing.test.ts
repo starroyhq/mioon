@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {copyFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createFormat5ExportTicket, assertFormat5ExportAdmissible} from '../packages/business/src/format5-timeline-export.ts';
@@ -8,6 +11,10 @@ import {getFormat5TimelineIssue} from '../packages/contracts/src/project-format5
 import {adoptFormat5GeneratedVersionInside} from '../packages/business/src/format5-sequence-sync.ts';
 import {previewMioSequenceAction, commitMioSequenceAction} from '../packages/business/src/format5-mio-sequence.ts';
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
+import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
+import {createProviderRegistry, registerInputProfileWrapper} from '../packages/business/src/provider-registry.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
@@ -82,6 +89,8 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
     expected: {position: redoHistory.position, revision: redoHistory.revision}});
   const placementRedone = f.store.get('timelines', BOARD_IDS.timeline) as any;
   assert.equal(placementRedone.clips.find((item: any) => item.id === clipId).sourceState, 'placeholder');
+  // Editing the shot (revision/title) while the job runs must not block adoption.
+  f.store.put('shots', {...(f.store.get('shots', shotId) as any), revision: 2, title: '生成期间改过标题'});
   // First successful version: adopt it into the placeholder in the same transaction.
   const job = (f.store.list('jobs') as any[]).find(item => item.shotId === shotId)!;
   const beforeAdopt = f.store.get('timelines', BOARD_IDS.timeline) as any;
@@ -115,10 +124,14 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
   assert.equal(gained.clips.find((item: any) => item.id === clipId).gain, 0.25);
   assert.equal(gained.clips.filter((item: any) => item.trackId === gained.mainTrack.trackId
     && item.sequenceSource?.nodeId === shotId).length, 1);
-  // A late result on a shot whose revision moved on records nothing here.
-  f.store.put('shots', {...(f.store.get('shots', shotId) as any), revision: 2});
-  const revisedAdopt = f.store.tx(() => adoptFormat5GeneratedVersionInside(f.store, job, {id: versionId, assetId}));
-  assert.equal(revisedAdopt, false);
+  // A late result for a shot that already selected another version only records
+  // the version; the timeline is untouched.
+  const otherVersion = {...(f.store.get('versions', versionId) as any), id: randomUUID(), jobId: randomUUID()};
+  f.store.put('versions', otherVersion);
+  f.store.put('shots', {...(f.store.get('shots', shotId) as any), selectedVersionId: otherVersion.id});
+  const lateAdopt = f.store.tx(() => adoptFormat5GeneratedVersionInside(f.store, job, otherVersion));
+  assert.equal(lateAdopt, false);
+  f.store.put('shots', {...(f.store.get('shots', shotId) as any), selectedVersionId: null, revision: 1});
   // The same completion rule covers any format-5 shot with a follow placeholder,
   // not just shots created by edit generation. shotB's clipB is such a placeholder.
   f.store.put('shots', {...(f.store.get('shots', shotId) as any), revision: 1});
@@ -198,10 +211,18 @@ test('GE-a generates on another track as a free shot and replaces in place', asy
 
 
 test('GE-a Mio action previews and commits the same placeholder envelope', async () => {
+  const f = await createBoardUiWireFixture();
+  const tools = createAgentTaskTools({store: f.store, services: f.services});
+  const prepared = tools.prepare({projectId: f.projectId, operation: 'mioon_sequence_timeline_edit',
+    input: {kind: 'generate', placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB},
+      providerId: 'mock', model: 'mock-motion-v1', region: 'local', prompt: 'Paid confirmation lock',
+      aspectRatio: '9:16', duration: 2}});
+  assert.equal(prepared.risk, 'paid');
+  assert.equal(prepared.forceApproval, true);
+  tools.dispose();
   assert.equal(mioSequenceEditSchemas['sequence.tool.timeline'].safeParse({kind: 'generate',
     placement: {kind: 'main', beforeClipId: null}, providerId: 'mock', model: 'mock-motion-v1', region: 'local',
     prompt: 'Synthetic', aspectRatio: '9:16', duration: 2}).success, true);
-  const f = await createBoardUiWireFixture();
   const plan = previewMioSequenceAction(f.store, f.projectId, 'mio-generate-preview', {kind: 'generate',
     placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB}, title: 'Mio 剪辑生成',
     providerId: 'mock', model: 'mock-motion-v1', region: 'local', prompt: 'Mio synthetic', aspectRatio: '9:16', duration: 2});
@@ -250,6 +271,84 @@ test('GE-a cancellation leaves the placeholder and its exported range blocked', 
   }
   await services.drain();
   f.store.close();
+});
+
+
+
+test('GE-a real worker publishes a synthetic version into the placeholder', async (t) => {
+  const f = await createBoardUiWireFixture();
+  const registry = createProviderRegistry({db: f.store.db, root: f.root, env: {}});
+  for (const [id, provider] of registry) f.providers.set(id, provider);
+  const syntheticVideo = join(f.root, 'synthetic-generation.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=360x640:d=4:r=30',
+    '-pix_fmt', 'yuv420p', '-y', syntheticVideo]);
+  const baseMock = registry.get('mock')!;
+  const synthetic = registerInputProfileWrapper({
+    id: 'mock', capabilities: baseMock.capabilities,
+    validate: baseMock.validate?.bind(baseMock),
+    async submit() {return {providerJobId: `synthetic-${randomUUID()}`};},
+    async reconcile() {return null;},
+    async poll() {return {status: 'succeeded', progress: 100};},
+    async download(_providerJobId: string, destination: string) {copyFileSync(syntheticVideo, destination); return {};},
+    async cancel() {return {};},
+  }, baseMock);
+  f.providers.set('mock', synthetic);
+  const worker = startWorker(f.store, f.services, f.providers as never);
+  t.after(async () => {await worker.stop(); await f.services.drain?.(); f.store.close(); f.library.close();});
+  const shotId = randomUUID(), clipId = randomUUID(), requestId = randomUUID();
+  const preview = await f.services.call('sequence.preview', {projectId: f.projectId, requestId: `preview-${requestId}`,
+    generateIntent: {side: 'timeline', operation: {kind: 'generate-placeholder',
+      placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB},
+      settings: {requestId, providerId: 'mock', model: 'mock-motion-v1', region: 'local',
+        prompt: 'Real worker generation', aspectRatio: '9:16', duration: 4}, shotId, clipId, title: '真实生成镜头'}}}) as any;
+  await f.services.call('sequence.commit', {projectId: f.projectId, envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest});
+  const historyBefore = await f.services.call('sequence.history.get', {projectId: f.projectId}) as any;
+  const submitted = (f.store.list('jobs') as any[]).find(item => item.shotId === shotId)!;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    await worker.tick();
+    const job = (f.store.get('jobs', submitted.id) as any);
+    if (job?.status === 'succeeded' || job?.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const job = f.store.get('jobs', submitted.id) as any;
+  assert.equal(job.status, 'succeeded', JSON.stringify(job));
+  const timeline = f.store.get('timelines', BOARD_IDS.timeline) as any;
+  const clip = timeline.clips.find((item: any) => item.id === clipId);
+  assert.equal(clip.sourceState, 'ready');
+  assert.equal(clip.versionId, job.versionId);
+  const shot = f.store.get('shots', shotId) as any;
+  assert.equal(shot.selectedVersionId, job.versionId);
+  const historyAfter = await f.services.call('sequence.history.get', {projectId: f.projectId}) as any;
+  assert.equal(historyAfter.position, historyBefore.position, 'adoption adds no history entry');
+  assert.equal(historyAfter.undo?.actionId, historyBefore.undo?.actionId);
+  let undoError: any = null;
+  try { await f.services.call('sequence.undo', {projectId: f.projectId, requestId: `undo-adopted-${randomUUID()}`,
+    actionId: historyAfter.undo.actionId,
+    expected: {position: historyAfter.position, revision: historyAfter.revision}}); }
+  catch (error) { undoError = error; }
+  assert.equal(undoError?.code, 'SEQUENCE_EDIT_HISTORY_CONFLICT');
+  assert.equal(historyAfter.conflict, true);
+  // A Mio-initiated generation follows the same worker/adoption path.
+  const mioPlan = previewMioSequenceAction(f.store, f.projectId, `mio-${randomUUID()}`, {kind: 'generate',
+    placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB}, title: 'Mio 真实生成',
+    providerId: 'mock', model: 'mock-motion-v1', region: 'local', prompt: 'Mio real worker generation',
+    aspectRatio: '9:16', duration: 2});
+  commitMioSequenceAction(f.store, mioPlan, {generationSubmit: (input) => f.services.createGenerationJobInside(input as never)});
+  const mioClipId = mioPlan.envelope.allocation.clips[0]!.clipId;
+  const mioShotId = mioPlan.envelope.allocation.clips[0]!.nodeId;
+  const mioJob = (f.store.list('jobs') as any[]).find(item => item.shotId === mioShotId)!;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    await worker.tick();
+    const value = f.store.get('jobs', mioJob.id) as any;
+    if (value?.status === 'succeeded' || value?.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const mioDone = f.store.get('jobs', mioJob.id) as any;
+  assert.equal(mioDone.status, 'succeeded', JSON.stringify(mioDone));
+  const mioTimeline = f.store.get('timelines', BOARD_IDS.timeline) as any;
+  assert.equal(mioTimeline.clips.find((item: any) => item.id === mioClipId).sourceState, 'ready');
+  assert.equal((f.store.get('shots', mioShotId) as any).selectedVersionId, mioDone.versionId);
 });
 
 

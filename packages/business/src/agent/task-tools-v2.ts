@@ -851,7 +851,12 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
     'subject-card-create','subject-card-delete','previs-create','generate'].includes(action.kind);
-   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
+   // A generate action submits a paid provider call through the sequence tool;
+   // the step risk must be paid so the runtime requires the same per-call fee
+   // confirmation as generation.submit instead of the local-reversible path.
+   const risk:AgentTaskTier=action.kind==='generate'?'paid':'local_reversible';
+   return {projectId,operation,input:parsed.data as unknown as Value,risk,targets,before,
+     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
   if(!parsed.success)fail('VALIDATION_ERROR','序列撤销参数无效：actionId 可选；省略时撤销栈顶 Mio 动作');
