@@ -3368,7 +3368,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         && !hasOpenWorkbenchModal(document)) {
         const key = event.key.toLowerCase();
         if (key === 'c') {event.preventDefault(); format5CopyTimelineClip(); return;}
-        if (key === 'v') {event.preventDefault(); void format5PasteTimelineClip(); return;}
+        if (key === 'v') {if (!format5Clipboard.current) return; event.preventDefault(); void format5PasteTimelineClip(); return;}
       }
       // Electron owns these accelerators in desktop documents. Ctrl+Y remains
       // the existing Windows/Web alias; removal and Space stay local so native

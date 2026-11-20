@@ -19,8 +19,9 @@ export const WIRE_IDS = {
   timeline: id(50), edge1: id(80), edge2: id(81), edge3: id(82),
 } as const;
 const sha = (letter: string): string => letter.repeat(64);
-export async function createEditUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
+export async function createEditUiWireFixture(options: {width?: number; height?: number} = {}): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
   library: ReturnType<typeof openAppLibrary>; projectId: string; root: string}> {
+  const width = options.width ?? 720, height = options.height ?? 1280;
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-edit-ui-wire-'));
   const store = createProjectStore({projectId: WIRE_IDS.project, projectFile: path.join(root, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
@@ -34,21 +35,21 @@ export async function createEditUiWireFixture(): Promise<{store: ProjectStore; s
   ];
   const clips = [
     {id: WIRE_IDS.clipA, trackId: WIRE_IDS.video, name: '镜头 A 左', startFrame: 0, durationFrames: 30, sourceInFrame: 0,
-      rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: WIRE_IDS.assetA, versionId: WIRE_IDS.versionA,
+      rect: {x: 0, y: 0, width, height}, gain: 1, assetId: WIRE_IDS.assetA, versionId: WIRE_IDS.versionA,
       shotId: WIRE_IDS.shotA, sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: WIRE_IDS.shotA,
         segmentGroupId: WIRE_IDS.groupA, versionMode: 'follow'}},
     {id: WIRE_IDS.clipA2, trackId: WIRE_IDS.video, name: '镜头 A 右', startFrame: 30, durationFrames: 30, sourceInFrame: 30,
-      rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: WIRE_IDS.assetA, versionId: WIRE_IDS.versionA,
+      rect: {x: 0, y: 0, width, height}, gain: 1, assetId: WIRE_IDS.assetA, versionId: WIRE_IDS.versionA,
       shotId: WIRE_IDS.shotA, sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: WIRE_IDS.shotA,
         segmentGroupId: WIRE_IDS.groupA, versionMode: 'follow'}},
     {id: WIRE_IDS.clipB, trackId: WIRE_IDS.video, name: '占位镜头 B', startFrame: 60, durationFrames: 30, sourceInFrame: 0,
-      rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: null, versionId: null, jobId: null,
+      rect: {x: 0, y: 0, width, height}, gain: 1, assetId: null, versionId: null, jobId: null,
       sourceState: 'placeholder', sequenceSource: {kind: 'shot', nodeId: WIRE_IDS.shotB, segmentGroupId: WIRE_IDS.groupB, versionMode: 'follow'}},
     {id: WIRE_IDS.imageClip, trackId: WIRE_IDS.video, name: '图片', startFrame: 90, durationFrames: 60, sourceInFrame: 0,
-      rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: WIRE_IDS.imageAsset,
+      rect: {x: 0, y: 0, width, height}, gain: 1, assetId: WIRE_IDS.imageAsset,
       sourceState: 'ready', sequenceSource: {kind: 'media', nodeId: WIRE_IDS.imageNode, segmentGroupId: WIRE_IDS.groupImage}},
   ];
-  const timeline = {id: WIRE_IDS.timeline, projectId, revision: 1, width: 720, height: 1280, fps: 30, durationFrames: 150,
+  const timeline = {id: WIRE_IDS.timeline, projectId, revision: 1, width, height, fps: 30, durationFrames: 150,
     createdAt: at, updatedAt: at, mainTrack: {trackId: WIRE_IDS.video, sequenceNodeId: WIRE_IDS.root}, tracks, clips};
   const baseline = {version: 1,
     board: [{nodeId: WIRE_IDS.shotA, kind: 'shot', selectedVersionId: WIRE_IDS.versionA},

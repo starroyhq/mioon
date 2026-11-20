@@ -524,10 +524,10 @@ function planOverlayInsert(context: SyncContext, clip: Format5Clip, owner: Forma
   return attachMetadata(plan, {nodeRows: new Map(), shotRows: new Map(), adoptionRows: new Map(),
     nodeKinds: new Map(), clipNames: new Map(), extraOtherClips: [clip]});
 }
-function overlayClipForAsset(asset: Row, kind: 'image' | 'video' | 'audio', clipId: string, trackId: string,
-  startFrame: number, durationFrames: number, owner: Format5Clip): Format5Clip {
+function overlayClipForAsset(context: SyncContext, asset: Row, kind: 'image' | 'video' | 'audio', clipId: string,
+  trackId: string, startFrame: number, durationFrames: number, owner: Format5Clip): Format5Clip {
   return {id: clipId, trackId, name: assetName(asset, kind === 'audio' ? 'Audio' : kind), startFrame,
-    durationFrames, sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1,
+    durationFrames, sourceInFrame: 0, rect: {x: 0, y: 0, width: context.timeline.width, height: context.timeline.height}, gain: 1,
     assetId: String(asset.id), sourceState: 'ready',
     anchor: {clipId: owner.id, offsetFrames: startFrame - owner.startFrame}};
 }
@@ -566,7 +566,8 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
     if (node.kind === 'shot') {
       if (!copied) return failure('INVALID_MEDIA', [sourceNodeId]);
       const selected = source.versionId ?? null;
-      const shotRow = {...copied, id: edit.clip.nodeId, selectedVersionId: selected, createdAt: now(), updatedAt: now()};
+      const shotRow = {...copyFormat5ShotDialogue(copied, edit.clip.nodeId), id: edit.clip.nodeId,
+        selectedVersionId: selected, createdAt: now(), updatedAt: now()};
       const version = selected === null ? undefined : context.versions.get(selected);
       if (selected !== null && !version) return failure('INVALID_MEDIA', [selected]);
       const adoptionRow = version === undefined ? undefined : {id: randomUUID(), projectId: context.projectId,
@@ -617,7 +618,7 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
     const kind = assetKindOf(asset);
     if (kind === null) return failure('INVALID_MEDIA', [edit.assetId!]);
     if (track.kind === 'audio' ? kind !== 'audio' : kind === 'audio') return failure('INVALID_TRACK_TARGET', [edit.trackId]);
-    clip = overlayClipForAsset(asset, kind, edit.clipId, edit.trackId, edit.startFrame, edit.durationFrames, owner);
+    clip = overlayClipForAsset(context, asset, kind, edit.clipId, edit.trackId, edit.startFrame, edit.durationFrames, owner);
   }
   return planOverlayInsert(context, clip, owner);
 }

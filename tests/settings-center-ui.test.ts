@@ -538,7 +538,8 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
     busy: {}, timelinePending: false, clipDirty: false, subtitleDirty: false, online: true, auth: true, loading: false,
     propertiesPage: 'inspector', selectedClipId: 'clip', workspaceMode: 'editing',
     splitTimelineClip: () => calls.push('split'), changeTimelineHistory: (direction: unknown) => calls.push(direction),
-    dataRef: {current: {projectFormatVersion: 4}}, format5CopyTimelineClip: () => calls.push('copy'),
+    dataRef: {current: {projectFormatVersion: 4}}, format5Clipboard: {current: null},
+    canvasShortcutInText: () => false, format5CopyTimelineClip: () => calls.push('copy'),
     format5PasteTimelineClip: () => calls.push('paste'),
   };
   const stateStart = app.indexOf('  const getSplitStateAt = '), stateEnd = app.indexOf('  const splitState = ', stateStart);

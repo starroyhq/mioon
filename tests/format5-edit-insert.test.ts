@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
+import {format5CopiedDialogueLineId} from '../packages/business/src/format5-dialogue-projection.ts';
 import {createEditUiWireFixture} from './helpers/edit-ui-wire-fixture.ts';
 
 type Row = Record<string, any>;
@@ -122,4 +123,60 @@ test('format-5 insert asset and paste clip through one confirmable action each',
   assert.ok(overlays.every((clip: Row) => Boolean(clip.anchor?.clipId)));
   await undo();
   await undo();
+});
+
+test('overlay clips inherit the landscape timeline frame', async t => {
+  const f = await createEditUiWireFixture({width: 1920, height: 1080});
+  t.after(() => {f.store.close(); f.library.close();});
+  const call = async (operation: string, input: Row): Promise<Row> => await f.services.call(operation, input) as Row;
+  const requestId = `ui-${crypto.randomUUID()}`, actionId = crypto.randomUUID();
+  const preview = await call('sequence.preview', {projectId: f.projectId, requestId, actionId,
+    intents: [sequenceSyncIntent({kind: 'insert-asset', assetId: '90000000-0000-4000-8000-000000000011',
+      trackId: '90000000-0000-4000-8000-000000000061', startFrame: 10})]});
+  await call('sequence.commit', {projectId: f.projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest});
+  const project = await call('project.get', {projectId: f.projectId});
+  const overlay = project.timeline.clips.find((clip: Row) => clip.trackId === '90000000-0000-4000-8000-000000000061');
+  assert.deepEqual(overlay.rect, {x: 0, y: 0, width: 1920, height: 1080});
+});
+
+test('pasting a shot copies its dialogue with fresh line ids and projects both sides', async t => {
+  const f = await createEditUiWireFixture();
+  t.after(() => {f.store.close(); f.library.close();});
+  const call = async (operation: string, input: Row): Promise<Row> => await f.services.call(operation, input) as Row;
+  const requestId = `ui-${crypto.randomUUID()}`, actionId = crypto.randomUUID();
+  const preview = await call('sequence.preview', {projectId: f.projectId, requestId, actionId,
+    intents: [sequenceSyncIntent({kind: 'paste-clip', clipId: '90000000-0000-4000-8000-000000000030', startFrame: 60})]});
+  assert.ok(preview.envelope, JSON.stringify(preview));
+  const commit = await call('sequence.commit', {projectId: f.projectId, envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest});
+  assert.equal(commit.status, 'applied');
+  const project = await call('project.get', {projectId: f.projectId});
+  const sourceShot = project.shots.find((shot: Row) => shot.id === '90000000-0000-4000-8000-000000000003');
+  const pastedClip = project.timeline.clips.find((clip: Row) => ![
+    '90000000-0000-4000-8000-000000000030', '90000000-0000-4000-8000-000000000031',
+    '90000000-0000-4000-8000-000000000032', '90000000-0000-4000-8000-000000000033'].includes(clip.id)
+    && clip.trackId === '90000000-0000-4000-8000-000000000060');
+  assert.ok(pastedClip, 'pasted main clip exists');
+  const pastedShotId = pastedClip.sequenceSource.nodeId;
+  const copiedShot = project.shots.find((shot: Row) => shot.id === pastedShotId);
+  assert.ok(copiedShot, 'pasted shot exists');
+  assert.equal(sourceShot.dialogue[0].id, '90000000-0000-4000-8000-000000000091');
+  const expectedLineId = format5CopiedDialogueLineId(pastedShotId, 0);
+  assert.notEqual(expectedLineId, sourceShot.dialogue[0].id);
+  assert.deepEqual(copiedShot.dialogue, [{id: expectedLineId, text: sourceShot.dialogue[0].text}]);
+  const cues = project.timeline.subtitles?.cues ?? [];
+  const sourceCue = cues.find((cue: Row) => cue.dialogueRef?.shotId === '90000000-0000-4000-8000-000000000003');
+  const copiedCue = cues.find((cue: Row) => cue.dialogueRef?.shotId === pastedShotId);
+  assert.ok(sourceCue && copiedCue, JSON.stringify(cues));
+  assert.equal(sourceCue.dialogueRef.lineId, sourceShot.dialogue[0].id);
+  assert.equal(copiedCue.dialogueRef.lineId, expectedLineId);
+  assert.notEqual(sourceCue.id, copiedCue.id);
+  const view = await call('sequence.history.get', {projectId: f.projectId});
+  await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${crypto.randomUUID()}`,
+    actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}});
+  const undone = await call('project.get', {projectId: f.projectId});
+  assert.equal(undone.shots.some((shot: Row) => shot.id === pastedShotId), false);
+  assert.equal((undone.timeline.subtitles?.cues ?? []).length, 0, 'one undo removes the copied dialogue and cues');
+  const restoredSource = undone.shots.find((shot: Row) => shot.id === '90000000-0000-4000-8000-000000000003');
+  assert.equal(restoredSource.dialogue[0].id, '90000000-0000-4000-8000-000000000091');
 });

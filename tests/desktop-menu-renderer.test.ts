@@ -410,11 +410,11 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
   const calls: string[] = [], doc = {modal: false}, playbackClock = createTimelinePlaybackClock();
-  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', 'dataRef', 'format5CopyTimelineClip', 'format5PasteTimelineClip', `${code};return onKeyDown;`)(
-    desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, timelineSplitActionForKey,
+  const keyboard = (desktop: boolean, projectFormatVersion = 4, format5Clipboard = {current: null as string | null}) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'canvasShortcutInText', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip', `${code};return onKeyDown;`)(
+    desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, () => false, timelineSplitActionForKey,
     (frame: number) => ({canSplit: frame > 0 && frame < 60}), playbackClock, 30, () => calls.push('split'), timelineHistoryActionForKey,
     {canUndo: true, canRedo: true}, (direction: string) => calls.push(direction),
-    {current: {projectFormatVersion: 4}}, () => calls.push('copy'), () => calls.push('paste'),
+    {current: {projectFormatVersion}}, format5Clipboard, () => calls.push('copy'), () => calls.push('paste'),
   ) as (event: unknown) => void;
   const event = (key: string, patch = {}) => ({key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}, ...patch});
   const desktop = keyboard(true); desktop(event('z')); desktop(event('z', {shiftKey: true})); desktop(event('b')); assert.deepEqual(calls, []);
@@ -432,6 +432,13 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   const inside = event('b'); web(inside);
   assert.equal(inside.defaultPrevented, true);
   assert.deepEqual(calls, ['redo', 'undo', 'split', 'split']);
+  const clipboard = {current: null as string | null}, format5 = keyboard(false, 5, clipboard);
+  const emptyPaste = event('v'); format5(emptyPaste);
+  assert.equal(emptyPaste.defaultPrevented, false, 'an empty internal clipboard keeps the native paste');
+  clipboard.current = 'clip';
+  const acceptedPaste = event('v'); format5(acceptedPaste);
+  assert.equal(acceptedPaste.defaultPrevented, true);
+  assert.deepEqual(calls.slice(-1), ['paste']);
 });
 
 test('absent bridges remain Web and malformed desktop bridges never become a usable transport', async () => {
