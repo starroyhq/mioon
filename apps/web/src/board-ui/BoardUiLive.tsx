@@ -75,24 +75,21 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const call = useCallback(async (intent: SequenceEditIntent, noticeMessage: string): Promise<void> => {
     setErrorCode(null);
     const outcome = await props.run(intent, noticeMessage);
-    if (!outcome.ok) setErrorCode(outcome.code);
-    else if (outcome.status === 'not_applied') setErrorCode('SEQUENCE_EDIT_NOOP');
+    if (!outcome.ok) { if (!('unconfirmed' in outcome)) setErrorCode(outcome.code); }
   }, [props.run]);
   const edit = (intent: SequenceEditIntent, noticeMessage: string): void => { if (!busy) void call(intent, noticeMessage); };
   const subjectOp = useCallback(async (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string): Promise<void> => {
     setErrorCode(null);
     const outcome = await props.runSubject(operation, allocation, noticeMessage);
-    if (!outcome.ok) setErrorCode(outcome.code);
-    else if (outcome.status === 'not_applied') setErrorCode('SEQUENCE_EDIT_NOOP');
+    if (!outcome.ok) { if (!('unconfirmed' in outcome)) setErrorCode(outcome.code); }
   }, [props.runSubject]);
   const editSubject = (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string): void => { if (!busy) void subjectOp(operation, allocation, noticeMessage); };
   const referenceOp = useCallback(async (request: BoardEditRequest, noticeMessage: string): Promise<void> => {
     setErrorCode(null);
     const outcome = await props.runReference(request, noticeMessage);
-    if (!outcome.ok) setErrorCode(outcome.code);
-    else if (outcome.status === 'not_applied') setErrorCode('SEQUENCE_EDIT_NOOP');
+    if (!outcome.ok) { if (!('unconfirmed' in outcome)) setErrorCode(outcome.code); }
   }, [props.runReference]);
   const editReference = (request: BoardEditRequest, noticeMessage: string): void => {
     if (!busy) void referenceOp(request, noticeMessage);

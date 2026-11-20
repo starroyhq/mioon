@@ -12,6 +12,7 @@ interface Modules {
   renderBar(locale: Locale, mode: 'follow' | 'locked'): string;
   renderDialog(locale: Locale): string;
   renderNotice(locale: Locale): string;
+  renderUnconfirmed(locale: Locale): string;
   renderDetached(locale: Locale): string;
   renderSuffix(locale: Locale, kind: 'follow' | 'locked' | 'placeholder'): string;
   versionChoice(mode: 'follow' | 'locked'): {mode: string; versionId: string | null};
@@ -36,7 +37,7 @@ function modules(): Promise<Modules> {
       import {projectEditUi, editUiTrackBadge} from './src/edit-ui/projection.ts';
       import ShotVersionBar from './src/edit-ui/ShotVersionBar.tsx';
       import CopyMoveConfirmDialog, {editUiCopyMoveKeyAction} from './src/edit-ui/CopyMoveConfirmDialog.tsx';
-      import EditUiNoticeBar, {editUiNoticeReducer} from './src/edit-ui/EditUiNotice.tsx';
+      import EditUiNoticeBar, {editUiNoticeReducer, EditUiUnknownBar} from './src/edit-ui/EditUiNotice.tsx';
       import {EditUiDetachedAnchor} from './src/edit-ui/anchors.tsx';
       import {EditUiClipTitle, editUiVersionChoice, editUiVersionLabel, editUiTrackPickerLabel} from './src/edit-ui/status.tsx';
       import TimelineInspector from './src/TimelineInspector.tsx';
@@ -66,6 +67,9 @@ function modules(): Promise<Modules> {
       }
       export function renderDialog(locale) {
         return wrap(locale, <CopyMoveConfirmDialog request={COPY_MOVE_REQUEST} onConfirm={noop} onCancel={noop} />);
+      }
+      export function renderUnconfirmed(locale) {
+        return wrap(locale, <EditUiUnknownBar view={{projectId: 'p', requestId: 'preview-1'}} onRetry={noop} onAbandon={noop} />);
       }
       export function renderNotice(locale) {
         const message = '已从主轨移除 ' + REMOVED_SHOT_NAME;
@@ -227,4 +231,30 @@ test('a newer undo notice replaces the previous one and stale dismissals do not 
   state = ui.noticeReducer(state, {type: 'show', notice: first});
   state = ui.noticeReducer(state, {type: 'undo', id: 'notice-1'});
   assert.equal(state.notice, null);
+});
+
+test('the unconfirmed bar shows the status, one reason and the two actions in all four locales', async () => {
+  const ui = await modules();
+  const copy = {
+    'zh-Hans': ['结果未确认', '提交中断，没有收到结果。', '重试', '放弃'],
+    'zh-Hant': ['結果未確認', '提交中斷，沒有收到結果。', '重試', '放棄'],
+    en: ['Result unconfirmed', 'The submit was interrupted before a result came back.', 'Retry', 'Abandon'],
+    ja: ['結果未確定', '送信が中断され、結果を受け取れませんでした。', '再試行', '破棄'],
+  } as const;
+  for (const locale of LOCALES) {
+    const html = ui.renderUnconfirmed(locale);
+    for (const text of copy[locale]) assert.ok(html.includes(text), `${locale}: ${text}`);
+    assert.match(html, /data-testid="edit-ui-unconfirmed-bar"/u);
+    assert.match(html, /data-testid="edit-ui-unconfirmed-retry"/u);
+    assert.match(html, /data-testid="edit-ui-unconfirmed-abandon"/u);
+    assert.equal((html.match(/<button/gu) ?? []).length, 2, 'exactly the two recovery actions');
+  }
+});
+
+test('the unconfirmed bar has no dismiss control and no explanatory copy', async () => {
+  const ui = await modules();
+  const html = ui.renderUnconfirmed('zh-Hans');
+  assert.ok(!html.includes('edit-ui-notice-dismiss'), 'an unconfirmed result cannot be dismissed silently');
+  assert.ok(!/不会|不受影响|will not|not affected/u.test(html), 'no reassuring explanatory sentence');
+  assert.equal((html.match(/<button/gu) ?? []).length, 2);
 });

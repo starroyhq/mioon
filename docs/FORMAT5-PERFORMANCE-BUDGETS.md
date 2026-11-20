@@ -8,6 +8,7 @@
 | `tests/format5-timeline-sync-performance.test.ts` | 500 主轨 + 1,000 锚定段 + 500 字幕 | `runSequenceSync` 一次主轨/画板同步（读投影、SA plan、写实体、基线、一条历史） |
 | `tests/format5-timeline-sync-b-performance.test.ts` | 499 主轨 + 1,000 锚定段 + 500 字幕 | TSb track 命令 split/trim/remove/add 各一次同步 + undo |
 | `tests/sequence-edit-performance.test.ts` | 500 主轨 + 1,000 锚定段 + 500 字幕 | `sequence.edit` 一次板版本选择（投影、SA plan、写实体、基线、一条历史） |
+| `tests/format5-format-scenes-performance.test.ts` | 500 主轨 + 600 辅助段 + 100 段场景切开 + 500 字幕 | 画幅切换 15 次交替预设；按场景切开一次切 100 段（批量操作，预算单列为两倍） |
 
 ## 为什么把 COMMIT 拆出预算
 
@@ -23,6 +24,7 @@ JSON 序列化、GC）。补上 `attributedMs = begin+read+validate+write+termin
 
 因此：
 
+- **画幅切换**沿用统一预算；**按场景切开一次切 100 段，是批量操作，预算单列为两倍**（Linux 代码路径 p95 ≤400ms/单次 ≤800ms，macOS 含 COMMIT total p95 ≤200ms/单次 ≤400ms）。
 - **Linux CI** 断言「代码路径」= total − native COMMIT，含 BEGIN、事务预检、业务 body、terminal
   fence 与返回；沿用原预算，不放宽：p95 ≤200 ms、单次 ≤400 ms（各测试沿用自己原有的数字）。
 - **COMMIT** 单独统计 p50/p95/max，只进 diagnostic，不在 Linux CI 卡门槛。

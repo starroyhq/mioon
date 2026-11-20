@@ -293,7 +293,7 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.equal((app.match(/onSeed=\{format5 \? undefined :/g) ?? []).length, 2, 'format 5 hides both seed entries');
   assert.doesNotMatch(app, /onSeed=\{\(\) => mutateTimeline\('timeline\.seed'/);
   assert.match(app, /canSeed=\{format5 \? false : Boolean\(sortedShots/);
-  assert.match(app, /onAddTransition=\{format5 \? undefined : addTimelineTransition\}/);
+  assert.match(app, /onAddTransition=\{addTimelineTransition\}/, 'UI-E3 restores quick transition add for format 5');
   assert.equal((app.match(/onRippleRemove=\{format5 \? undefined :/g) ?? []).length, 2, 'timeline menu and inspector hide ripple removal');
   // FR-C2: format 5 re-shows the asset library's "add to board" entry through
   // board.node.create, while the timeline entry stays hidden.
@@ -358,4 +358,27 @@ test('legacy button reset does not override shared semantic foreground colors', 
   const css = readFileSync(resolve(root, 'apps/web/src/styles.css'), 'utf8');
   assert.match(css, /button:not\(\[data-slot\]\)\{color:inherit\}/);
   assert.doesNotMatch(css, /(?:^|})button\{[^}]*color:inherit/);
+});
+
+
+test('the format-5 unconfirmed bar is mounted for both canvas and editing workspaces', () => {
+  const app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
+  const editingBlock = app.indexOf("{workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name=\"timeline\"");
+  const bar = app.indexOf('<EditUiUnknownBar');
+  const nav = app.indexOf('<nav className="mobile-nav"');
+  assert.ok(editingBlock > 0, 'the editing-only block is present');
+  assert.ok(bar > editingBlock, 'the bar is mounted after the editing-only block, not inside it');
+  assert.ok(bar < nav, 'the bar is mounted before the mobile navigation');
+  const mainStageClose = app.lastIndexOf('</div>', bar);
+  assert.ok(mainStageClose > editingBlock && bar - mainStageClose < 400,
+    'the bar follows the main-stage closing tag so canvas and editing both see it');
+  assert.match(app, /import EditUiNoticeBar, \{EditUiUnknownBar\} from '\.\/edit-ui\/EditUiNotice\.tsx'/u);
+  assert.match(app, /\{format5 && format5Unresolved && format5Unresolved\.projectId === data\.project\?\.id && <EditUiUnknownBar/u);
+  assert.match(app, /onRetry=\{\(\) => \{ void format5RetryUnconfirmed\(\); \}\} onAbandon=\{format5AbandonUnconfirmed\}/u);
+  // Both sessions share exactly one tracker, and switching projects drops it.
+  assert.match(app, /new BoardUiSession\(rpc, \(\) => currentProject\.current, format5LostDeps\(\)\)/u);
+  assert.match(app, /new Format5EditSession\(rpc, \(\) => currentProject\.current, format5LostDeps\(\)\)/u);
+  assert.equal((app.match(/format5LostRef\.current!\.clear\(\)/gu) ?? []).length, 2);
+  assert.match(app, /readOutcome: \(input, options\) => requestOutcomeClientRef\.current!\.read\(input, options\)/u);
+  assert.match(app, /t\('editUi\.notice\.resultApplied'\)/u);
 });

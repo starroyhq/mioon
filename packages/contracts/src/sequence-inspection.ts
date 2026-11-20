@@ -42,6 +42,11 @@ export interface SequenceInspectionSegment {
     readonly sourceNodeId: string;
   }[];
   readonly referenceCount?: number;
+  /** DL-a: the shot's ordered dialogue lines (its cue projection is validated by
+   * the kernel; the lines are the authoritative text). */
+  readonly dialogue?: readonly {
+    readonly id: string; readonly text: string; readonly speakerSubjectId?: string;
+  }[];
 }
 export interface SequenceInspectionDiff {
   readonly kind: 'board' | 'track' | 'anchor';
@@ -89,7 +94,7 @@ export type SequenceGenerationInputStatus = 'used' | 'unsupported';
  * resolved (node/asset/subject name plus version) and `reason` is a stable code
  * the browser localizes; unknown roles never disappear from the list. */
 export interface SequenceGenerationInputEntryView {
-  readonly source: 'edge' | 'subject';
+  readonly source: 'edge' | 'subject' | 'previs';
   readonly edgeId?: string;
   readonly bindingId?: string;
   readonly sourceNodeId?: string;
