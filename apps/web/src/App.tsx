@@ -207,7 +207,7 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
@@ -3574,7 +3574,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const clipId = format5Clipboard.current;
     if (!clipId) return;
     const timelineNow = dataRef.current.timeline;
-    const frame = Math.max(0, Math.round(playbackClock.getSnapshot() ?? effectivePlayhead));
+    const frame = format5PasteStartFrame(playbackClock.getSnapshot(), viewRef.current?.editing.playhead, effectivePlayhead);
     if (!timelineNow) return;
     const before = new Set(timelineNow.clips.map(clip => clip.id));
     setFormat5SessionBusy(true);
