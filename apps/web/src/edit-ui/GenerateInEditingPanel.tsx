@@ -93,7 +93,6 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
     </section>
     {props.blockedReason && <p className="generate-in-editing-note" role="status">{props.blockedReason}</p>}
     <footer className="generate-in-editing-footer">
-      {props.jobStatus && <span className="generate-in-editing-status" data-testid="editing-generate-job-status">{props.jobStatus}</span>}
       <Button type="button" size="sm" className="button generate-button full" data-testid="editing-generate-submit"
         disabled={props.busy || !inputs?.service} onClick={() => void props.onGenerate()}>
         <Icon name="sparkle" size={16} />{t('boardUi.inspector.generate')}
