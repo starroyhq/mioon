@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {prepareFormat5Release} from './helpers/format5-release-fixture.ts';
 import {releaseProjectPaths} from './helpers/format4-release-fixture.ts';
 import {projectFormatReadOnlyViewSchema} from '../packages/contracts/src/project-format-upgrade.ts';
