@@ -169,6 +169,8 @@ export interface OrdinaryServices {
   imageSelectionRequired():boolean;
   video(providerId?:string,model?:string):boolean;
  }>;
+ /** Runs inside an already-open sequence-editing transaction (no nested tx). */
+ createGenerationJobInside: (input: GenerationSubmitInput)=>unknown;
  assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
@@ -568,7 +570,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph,ratio?{input,ratio}:undefined);
   return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input};
  });
- const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
+ const createGenerationJobInside=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>{
   assertApplicationMutationAllowed();assertMutationAllowed?.();
   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
   if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
@@ -586,9 +588,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   recordOutputLocale(db,job.id,requestHash,outputLocale);
   if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
   return job;
- });
+ };
+ const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
- const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths});
+ const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths,
+  generationSubmit: (input) => createGenerationJobInside(input as unknown as GenerationSubmitInput)});
  const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
@@ -1064,5 +1068,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

@@ -214,10 +214,14 @@ export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext
   }else if(Object.hasOwn(clip,'sequenceSource')||!format5AnchorSchema.safeParse(clip.anchor).success)
     return issue('FORMAT5_ANCHOR_INVALID','Other-track clips must carry an explicit anchor',[clip.id]);
   if(clip.sourceState==='placeholder'){
-    if(!main||!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
-        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
-        Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
-      return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+    if(main){
+      if(!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
+          clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
+          Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
+        return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+    }else if(!uuid(clip.shotId)||!format5AnchorSchema.safeParse(clip.anchor).success||
+        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||Object.hasOwn(clip,'sequenceSource'))
+      return issue('FORMAT5_PLACEHOLDER_INVALID','An other-track placeholder must reference its ungenerated shot and owner',[clip.id]);
   }else if(clip.sourceState!=='ready'||!uuid(clip.assetId)||
       ['versionId','shotId','jobId'].some(key=>Object.hasOwn(clip,key)&&!uuid(clip[key]))||
       main&&object(clip.sequenceSource)&&clip.sequenceSource.kind==='shot'&&!uuid(clip.versionId))

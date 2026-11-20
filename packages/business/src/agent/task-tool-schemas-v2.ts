@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="8e734208e3af0a2f73ceb3fce31dfc98b679710934e19118ee8ee6131d9b5d73";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="bc7b8ed595dace3b77c91f549af5f84d000355af1f6882666337bd27b9346e8d";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -2638,6 +2638,209 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "generateIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "generate-placeholder"
+         },
+         "placement": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "main"
+             },
+             "beforeClipId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "beforeClipId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "track"
+             },
+             "trackId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "startFrame": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 300000
+             }
+            },
+            "required": [
+             "kind",
+             "trackId",
+             "startFrame"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         },
+         "settings": {
+          "type": "object",
+          "properties": {
+           "providerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+           },
+           "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           },
+           "region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+           },
+           "prompt": {
+            "type": "string",
+            "maxLength": 5000
+           },
+           "aspectRatio": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+           },
+           "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+           },
+           "parameters": {
+            "type": "object",
+            "additionalProperties": {}
+           },
+           "connectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "configurationRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+           },
+           "modelEntryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           }
+          },
+          "required": [
+           "providerId",
+           "model",
+           "region",
+           "prompt",
+           "aspectRatio",
+           "duration"
+          ],
+          "additionalProperties": false
+         },
+         "shotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "clipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+         },
+         "position": {
+          "type": "object",
+          "properties": {
+           "x": {
+            "type": "number"
+           },
+           "y": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "x",
+           "y"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kind",
+         "placement",
+         "settings",
+         "shotId",
+         "clipId",
+         "title"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "generate-resize"
+         },
+         "shotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "duration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+         }
+        },
+        "required": [
+         "kind",
+         "shotId",
+         "duration"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "allocation": {
     "type": "object",
     "properties": {
@@ -4370,6 +4573,209 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "presetId"
         ],
         "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "generateIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "generate-placeholder"
+           },
+           "placement": {
+            "anyOf": [
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "main"
+               },
+               "beforeClipId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "beforeClipId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "track"
+               },
+               "trackId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 300000
+               }
+              },
+              "required": [
+               "kind",
+               "trackId",
+               "startFrame"
+              ],
+              "additionalProperties": false
+             }
+            ]
+           },
+           "settings": {
+            "type": "object",
+            "properties": {
+             "providerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+             },
+             "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+             },
+             "region": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+             },
+             "prompt": {
+              "type": "string",
+              "maxLength": 5000
+             },
+             "aspectRatio": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+             },
+             "duration": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+             },
+             "parameters": {
+              "type": "object",
+              "additionalProperties": {}
+             },
+             "connectionId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "configurationRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+             },
+             "modelEntryId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+             }
+            },
+            "required": [
+             "providerId",
+             "model",
+             "region",
+             "prompt",
+             "aspectRatio",
+             "duration"
+            ],
+            "additionalProperties": false
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "clipId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           },
+           "position": {
+            "type": "object",
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "placement",
+           "settings",
+           "shotId",
+           "clipId",
+           "title"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "generate-resize"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+           }
+          },
+          "required": [
+           "kind",
+           "shotId",
+           "duration"
+          ],
+          "additionalProperties": false
+         }
+        ]
        }
       },
       "required": [
@@ -13489,6 +13895,130 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "kind",
      "assetId",
      "resultId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "generate"
+     },
+     "placement": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "main"
+         },
+         "beforeClipId": {
+          "anyOf": [
+           {
+            "type": "string",
+            "format": "uuid"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "beforeClipId"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "track"
+         },
+         "trackId": {
+          "type": "string",
+          "format": "uuid"
+         },
+         "startFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300000
+         }
+        },
+        "required": [
+         "kind",
+         "trackId",
+         "startFrame"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     },
+     "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "providerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "region": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "prompt": {
+      "type": "string",
+      "maxLength": 5000
+     },
+     "aspectRatio": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "duration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60
+     },
+     "parameters": {
+      "type": "object",
+      "additionalProperties": {}
+     },
+     "connectionId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "configurationRevision": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "modelEntryId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     }
+    },
+    "required": [
+     "kind",
+     "placement",
+     "providerId",
+     "model",
+     "region",
+     "prompt",
+     "aspectRatio",
+     "duration"
     ],
     "additionalProperties": false
    },

@@ -819,6 +819,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='subject-card-create')add('subject',action.subjectId);
    if(action.kind==='subject-card-delete')add('node',action.nodeId);
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
+   if(action.kind==='generate'&&action.placement.kind==='main'&&action.placement.beforeClipId)add('timeline_clip',action.placement.beforeClipId);
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
@@ -826,7 +827,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     'format-set','split-at-scenes','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
-    'subject-card-create','subject-card-delete','previs-create'].includes(action.kind);
+    'subject-card-create','subject-card-delete','previs-create','generate'].includes(action.kind);
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
@@ -1051,7 +1052,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    context.beforeEffect();context.signal?.throwIfAborted();
    const receipt=prepared.sequence.action==='undo'
      ? applyMioSequenceUndo(store,prepared.sequence.plan as MioSequenceUndoPlan)
-     : commitMioSequenceAction(store,prepared.sequence.plan as MioSequencePlan);
+     : commitMioSequenceAction(store,prepared.sequence.plan as MioSequencePlan,{generationSubmit:services.createGenerationJobInside});
    const impact=receipt.affected;
    const result=json({action:prepared.sequence.action,status:receipt.status,
      affected:impact,history:{position:receipt.history.position,revision:receipt.history.revision},

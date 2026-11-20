@@ -100,7 +100,18 @@ export const mioSequenceActionSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('subtitles'), edits: z.array(subtitleEdit).min(1).max(100)}).strict(),
   z.object({kind: z.literal('format-set'),
     presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
-  z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),  z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
+  z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),
+  z.object({kind: z.literal('generate'),
+    placement: z.discriminatedUnion('kind', [
+      z.object({kind: z.literal('main'), beforeClipId: uuid.nullable()}).strict(),
+      z.object({kind: z.literal('track'), trackId: uuid, startFrame: z.number().int().min(0).max(300000)}).strict(),
+    ]),
+    title: z.string().min(1).max(200).optional(),
+    providerId: z.string().min(1).max(120), model: z.string().min(1).max(200), region: z.string().min(1).max(120),
+    prompt: z.string().max(5000), aspectRatio: z.string().min(1).max(40), duration: z.number().int().min(1).max(60),
+    parameters: z.record(z.unknown()).optional(),
+    connectionId: uuid.optional(), configurationRevision: z.number().int().min(1).optional(),
+    modelEntryId: z.string().min(1).max(200).optional()}).strict(),  z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
   z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
     name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),
     orderIndex: z.number().int().min(0).max(11).optional()}).strict()
