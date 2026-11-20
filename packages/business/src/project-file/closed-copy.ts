@@ -245,12 +245,16 @@ export function readClosedProjectForFormatUpgrade(file: string, projectId: strin
  let connection:ReturnType<typeof openClosedProjectSnapshotConnection>|undefined;
  try{
   const before=metadata(projectFile,'project');journals(projectFile,'project');
-  const inspected=inspectProjectFileReadOnly(projectFile);
+  // Format 4 is a released old format and has the same read-only preview
+  // semantics as format 3; format 5 is current and never belongs here.
+  const inspected=inspectProjectFileReadOnly(projectFile,{});
   if(inspected.projectId!==projectId||expected&&!sameContentStamp(inspected,expected))throw invalid('project','project-mismatch');
   connection=openClosedProjectSnapshotConnection({projectFile});
   const db=connection.db;db.exec('BEGIN');
   const identity=readCopiedProjectIdentity(db,PROJECT_FILE_APPLICATION_ID,Number(before.size));
-  if(identity.projectId!==projectId||identity.formatVersion!==PROJECT_FILE_SCHEMA_VERSION||!sameContentStamp(inspected,identity))throw invalid('project','metadata');
+  if(identity.projectId!==projectId
+    || identity.formatVersion!==PROJECT_FILE_SCHEMA_VERSION&&identity.formatVersion!==FORMAT4_PROJECT_SCHEMA_VERSION
+    ||!sameContentStamp(inspected,identity))throw invalid('project','metadata');
   const project=db.prepare(`SELECT json_extract(data,'$.name') AS name,json_extract(data,'$.description') AS description FROM projects WHERE id=?`).get(projectId);
   if(!project)throw invalid('project','metadata');
   const versionCounts=db.prepare(`SELECT json_extract(data,'$.shotId') AS id,count(*) AS count FROM versions WHERE projectId=? GROUP BY 1`).all(projectId);
