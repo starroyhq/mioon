@@ -7,6 +7,7 @@ import {
   dialogueEdits, dialoguePanelDirty, formatDialogueText, newDialogueLineId, parseDialogueText,
 } from './dialogue-panel-state.ts';
 import type {DialogueLineView} from './dialogue-panel-state.ts';
+import type {SequenceGenerationDialogueView} from '../../../packages/contracts/src/sequence-inspection.ts';
 import './shot-dialogue.css';
 
 /** DL-a shot properties dialogue panel (design 21-06).
@@ -21,6 +22,9 @@ export interface ShotDialogueProps {
   readonly projectId: string | null;
   /** Real subtitle cues currently linked to this shot (shown as panel status). */
   readonly cueCount?: number;
+  /** DL-b status for the currently selected generation service; null while no
+   * shot/dialogue projection is available. */
+  readonly dialogueStatus?: SequenceGenerationDialogueView | null;
   readonly disabled?: boolean;
   readonly rpc: (operation: string, input: unknown) => Promise<unknown>;
   readonly onApplied?: () => unknown;
@@ -48,7 +52,7 @@ interface CommitResponse {
 }
 
 export default function ShotDialogue({shot = null, subjectNames = {}, projectId, cueCount = 0,
-  disabled = false, rpc, onApplied}: ShotDialogueProps): React.ReactElement | null {
+  dialogueStatus = null, disabled = false, rpc, onApplied}: ShotDialogueProps): React.ReactElement | null {
   const {t} = useI18n();
   const lines = shot?.dialogue ?? [];
   const serialized = JSON.stringify(lines);
@@ -102,12 +106,24 @@ export default function ShotDialogue({shot = null, subjectNames = {}, projectId,
   }
 
   if (!shot) return null;
-  return <section className="shot-dialogue" data-testid="shot-dialogue" aria-busy={busy}>
-    <Label className="field-label" htmlFor="shot-dialogue-text">{t('dialogue.ui.title')}</Label>
+  // DL-b: a selected service that cannot speak shows the same unsupported marker
+  // as a generation-input row; a prompt that would exceed the limit shows why
+  // this generation would be rejected. No service selected shows neither.
+  const unsupported = dialogueStatus?.status === 'unsupported' && dialogueStatus.reason === 'SERVICE_DOES_NOT_SPEAK';
+  const promptTooLong = dialogueStatus?.status === 'rejected' && dialogueStatus.reason === 'PROMPT_TOO_LONG';
+  return <section className="shot-dialogue" data-testid="shot-dialogue" aria-busy={busy}
+    data-generation-dialogue={dialogueStatus?.status ?? 'unknown'}>
+    <div className="shot-dialogue-heading">
+      <Label className="field-label" htmlFor="shot-dialogue-text">{t('dialogue.ui.title')}</Label>
+      {unsupported && <span className="board-input-unsupported shot-dialogue-generation-unsupported"
+        data-testid="shot-dialogue-generation-unsupported">{t('dialogue.ui.generationUnsupported')}</span>}
+    </div>
     <Textarea id="shot-dialogue-text" data-testid="shot-dialogue-text" className="shot-dialogue-text"
       rows={Math.min(8, Math.max(3, draftLines.length + 1))} spellCheck={false}
       value={draft} disabled={blocked || busy} aria-label={t('dialogue.ui.title')}
       onChange={event => setDraft(event.target.value)} />
+    {promptTooLong && <p className="notice warning" role="status" data-testid="shot-dialogue-generation-rejected">
+      {t('dialogue.ui.generationPromptTooLong')}</p>}
     {error && <p className="notice warning" role="alert" data-testid="shot-dialogue-error">{error}</p>}
     {dirty && <div className="shot-dialogue-actions">
       <Button type="button" size="sm" data-testid="shot-dialogue-save" disabled={blocked || busy} onClick={() => { void save(); }}>

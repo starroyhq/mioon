@@ -11,7 +11,16 @@ import {TIMELINE_SUBTITLE_PROFILE_ID, TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} fro
 import type {TimelineClipRecord, TimelineRecord, TimelineTrackRecord} from './timeline-replacement.ts';
 import type {BoardSequenceErrorCode} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
+import {PREVIS_LIMITS} from './previs.ts';
 
+/** One shot's generation-input capacity: material reference lines, subject
+ * bindings and previs scene subjects. The read-only projection bound is their
+ * sum; the service-side planners read the same constants. */
+export const FORMAT5_INPUT_LIMITS = Object.freeze({
+  referenceEdgesPerShot: 48,
+  subjectBindingsPerShot: 8,
+  previsSceneSubjects: PREVIS_LIMITS.figures + PREVIS_LIMITS.props,
+});
 /** Editing and persistence limits. Export admission retains its own limits. */
 export const FORMAT5_LIMITS = Object.freeze({
   mainTrackClips:500, otherTrackClips:1000, subtitleCues:1000, tracks:12,
@@ -214,10 +223,14 @@ export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext
   }else if(Object.hasOwn(clip,'sequenceSource')||!format5AnchorSchema.safeParse(clip.anchor).success)
     return issue('FORMAT5_ANCHOR_INVALID','Other-track clips must carry an explicit anchor',[clip.id]);
   if(clip.sourceState==='placeholder'){
-    if(!main||!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
-        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
-        Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
-      return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+    if(main){
+      if(!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
+          clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
+          Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
+        return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+    }else if(!uuid(clip.shotId)||!format5AnchorSchema.safeParse(clip.anchor).success||
+        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||Object.hasOwn(clip,'sequenceSource'))
+      return issue('FORMAT5_PLACEHOLDER_INVALID','An other-track placeholder must reference its ungenerated shot and owner',[clip.id]);
   }else if(clip.sourceState!=='ready'||!uuid(clip.assetId)||
       ['versionId','shotId','jobId'].some(key=>Object.hasOwn(clip,key)&&!uuid(clip[key]))||
       main&&object(clip.sequenceSource)&&clip.sequenceSource.kind==='shot'&&!uuid(clip.versionId))

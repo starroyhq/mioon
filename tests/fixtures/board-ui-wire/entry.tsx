@@ -11,7 +11,8 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
-import {projectLiveBoard, boardDeleteIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent,
+import {assetKind, dragAsset} from '../../../apps/web/src/Timeline.tsx';
+import {projectLiveBoard, boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardCreateOperation, subjectCardDeleteOperation} from '../../../apps/web/src/board-ui/live.ts';
 import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
@@ -57,6 +58,8 @@ function Harness(): React.ReactElement {
   const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
   const [generationOptions, setGenerationOptions] = useState<Record<string, Record<string, unknown>>>({});
   const [inputs, setInputs] = useState<SequenceGenerationInputView | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<'settings' | 'versions'>('settings');
+  const [revealNodeId, setRevealNodeId] = useState<string | null>(null);
   const stateRef = useRef<Row>({});
   const session = useRef(new BoardUiSession(rpc, () => projectId));
   const refresh = useCallback(async (): Promise<void> => {
@@ -74,6 +77,51 @@ function Harness(): React.ReactElement {
     }
   }, []);
   useEffect(() => {void refresh();}, [refresh]);
+  const boardNodeType = (kind: string): 'image' | 'video' | 'audio' | null =>
+    kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null;
+  const freeBoardPosition = (): {x: number; y: number} => {
+    const positions = Object.values<{x: number; y: number}>((stateRef.current.positions ?? {}));
+    const xs = positions.map(point => point.x), ys = positions.map(point => point.y);
+    const center = {x: (Math.min(0, ...xs) + Math.max(0, ...xs)) / 2, y: (Math.min(0, ...ys) + Math.max(0, ...ys)) / 2};
+    for (let ring = 0; ring < 20; ring += 1) for (let dx = -ring; dx <= ring; dx += 1) for (let dy = -ring; dy <= ring; dy += 1) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+      const candidate = {x: center.x + dx * 310, y: center.y + dy * 300};
+      if (!positions.some(point => Math.abs(point.x - candidate.x) < 260 && Math.abs(point.y - candidate.y) < 264)) return candidate;
+    }
+    return {x: 100, y: 100};
+  };
+  const addAssetToBoard = useCallback(async (kind: string, asset: Row): Promise<void> => {
+    const nodeType = boardNodeType(kind);
+    if (!nodeType) return;
+    const nodeId = uuid();
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(boardNodeCreateIntent(nodeId, nodeType, String(asset.name ?? '素材'),
+        freeBoardPosition(), {assetId: String(asset.id)}));
+      if (!outcome.ok) return;
+      setNotice({id: outcome.actionId ?? 'board-applied', message: `Added ${String(asset.name ?? '')}`});
+      await refresh();
+      setSelectedNodeId(nodeId); setRevealNodeId(nodeId);
+    } finally {setBusy(false);}
+  }, [refresh]);
+  const dropAssetOnBoard = useCallback(async (assetId: string, position: {x: number; y: number}): Promise<void> => {
+    const asset = (data?.assets ?? []).find((item: Row) => item.id === assetId) as Row | undefined;
+    if (!asset) return;
+    const kind = String(asset.mimeType ?? '').split('/')[0] ?? '';
+    const nodeType = boardNodeType(kind);
+    if (!nodeType) return;
+    const nodeId = uuid();
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(boardNodeCreateIntent(nodeId, nodeType, String(asset.name ?? '素材'),
+        position, {assetId: String(asset.id)}));
+      if (!outcome.ok) return;
+      setNotice({id: outcome.actionId ?? 'board-applied', message: `Added ${String(asset.name ?? '')}`});
+      await refresh();
+      setSelectedNodeId(nodeId); setRevealNodeId(nodeId);
+    } finally {setBusy(false);}
+  }, [data, refresh]);
+
   useEffect(() => {
     const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
     if (!shot) {setInputs(null); return;}
@@ -159,6 +207,35 @@ function Harness(): React.ReactElement {
   const updateGenerationOptions = useCallback((shotId: string, options: Record<string, unknown>): void => {
     setGenerationOptions(current => ({...current, [shotId]: {...current[shotId], ...options}}));
   }, []);
+  const updateShot = useCallback(async (shotId: string, patch: {title?: string; prompt?: string; duration?: number},
+    expectedRevision: number): Promise<{ok: boolean; code?: string}> => {
+    setBusy(true);
+    try {
+      const outcome = await session.current.run(boardShotUpdateIntent(shotId, expectedRevision, patch));
+      if (outcome.ok && outcome.status === 'applied') {setNotice({id: outcome.actionId ?? shotId, message: t('projects.shotSaved')}); await refresh();}
+      return outcome.ok ? {ok: true} : {ok: false, code: outcome.code};
+    } finally {setBusy(false);}
+  }, [refresh, t]);
+  const generateShot = useCallback((shotId: string): void => {
+    const shot = data?.shots?.find((item: Row) => item.id === shotId);
+    const selection = shot ? generationSelection(providers, (generationOptions[shotId] ?? {}) as never, shot as never) : null;
+    const provider = selection?.provider;
+    if (!shot || !selection || !provider) return;
+    setBusy(true);
+    void (async () => {
+      try {
+        try {
+          await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
+          providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
+            configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId} : {}),
+            model: selection.model, ...(provider.id === 'mock' ? {parameters: {scenario: selection.scenario}} : {})});
+        } catch (error) {
+          (window as any).__boardWireGenerationError = String((error as Error)?.message ?? error);
+        }
+        await refresh();
+      } finally {setBusy(false);}
+    })();
+  }, [data, providers, generationOptions, refresh]);
   const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
     void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
   }, [runReference, t]);
@@ -182,11 +259,19 @@ function Harness(): React.ReactElement {
     // through the same handlers/components the buttons use.
     (window as any).__boardWireActions = {
       setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
+      setInspectorTab: (tab: string) => setInspectorTab(tab === 'versions' ? 'versions' : 'settings'),
+      clearSelection: () => setSelectedNodeId(null),
+      updateShot: (shotId: string, patch: Record<string, unknown>, expectedRevision: number) => updateShot(shotId, patch as never, expectedRevision),
+      externalUpdateShot: async (shotId: string, patch: Record<string, unknown>, expectedRevision: number) => {
+        await session.current.run(boardShotUpdateIntent(shotId, expectedRevision, patch as never));
+      },
+      setPrimary: (edgeId: string, shotId: string) => setPrimaryInput(edgeId, shotId),
+      detachInput: (entry: Record<string, unknown>, shotId: string) => detachInput(entry as never, shotId),
       changeRole: (edgeId: string, shotId: string, role: string) => {
         void runReference(referenceRoleRequest(edgeId, shotId, role as never), t('boardUi.notice.roleChanged'));
       },
     };
-  }, [updateGenerationOptions, runReference, t]);
+  }, [updateGenerationOptions, runReference, setPrimaryInput, detachInput, t]);
   const undoNotice = useCallback(async (actionId: string): Promise<boolean> => {
     const view = await session.current.history();
     if (!view?.undo || view.undo.actionId !== actionId) {setNotice(null); return false;}
@@ -223,26 +308,40 @@ function Harness(): React.ReactElement {
       floating: projection?.projection.floatingNodeIds ?? [], positions: projection?.positions ?? {},
       timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync,
       subjects: mount?.subjects ?? [], bindings: mount?.bindings ?? [],
+      shots: (data?.shots ?? []).map((shot: Row) => ({id: shot.id, title: shot.title, prompt: shot.prompt,
+        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId})),
+      jobs: data?.jobs ?? [],
       inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
-        entries: inputs.entries.map(entry => ({status: entry.status, role: entry.role, edgeId: entry.edgeId,
-          reason: entry.reason ?? null, primary: entry.primary === true}))} : null,
+        entries: inputs.entries.map(entry => ({source: entry.source, status: entry.status, role: entry.role,
+          edgeId: entry.edgeId, bindingId: entry.bindingId, reason: entry.reason ?? null,
+          primary: entry.primary === true}))} : null,
       providers: providers.map(provider => ({id: provider.id, connectionId: provider.connectionId ?? null}))};
     (window as any).__boardWireState = stateRef.current;
   }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers]);
   if (!projection) return <div className="board-fixture-loading">Loading…</div>;
   return <div className="board-fixture">
     <header className="board-fixture-head"><strong>Mioon · 画板</strong><span data-testid="fixture-format">格式 5</span>
-      <span data-testid="fixture-sync" data-synced={mount?.inSync ? 'true' : 'false'}>{t(mount?.inSync ? 'boardUi.synced' : 'boardUi.outOfSync')}</span></header>
+      <span data-testid="fixture-sync" data-synced={mount?.inSync ? 'true' : 'false'}>{t(mount?.inSync ? 'boardUi.synced' : 'boardUi.outOfSync')}</span>
+      <button type="button" data-testid="wire-tab-settings" onClick={() => setInspectorTab('settings')}>属性页</button>
+      <button type="button" data-testid="wire-tab-versions" onClick={() => setInspectorTab('versions')}>版本页</button></header>
     <main className="board-fixture-board" data-testid="board-fixture-board">
       <BoardUiLive board={projection} activeFilmId={activeFilmId} history={history} mount={mount}
         selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} runReference={runReference}
         runSubject={runSubject} inputs={inputs}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
-        notice={notice} reduceMotion={reduced} busy={busy}/>
+        notice={notice} reduceMotion={reduced} busy={busy}
+        onAssetDrop={(assetId, position) => {void dropAssetOnBoard(assetId, position);}} revealNodeId={revealNodeId}/>
     </main>
     <aside className="board-fixture-inspector">
       <BoardInspector board={projection} activeFilmId={activeFilmId} mount={mount} selectedNodeId={selectedNodeId}
         versions={data?.versions ?? []} shots={data?.shots ?? []} nodes={data?.nodes ?? []} busy={busy}
+        activeTab={inspectorTab}
+        dialogueSubjects={{}}
+        dialogueCueCount={((data?.timeline as Row | null)?.subtitles?.cues ?? [] as readonly Row[])
+          .filter((cue: Row) => (cue.dialogueRef as Row | null | undefined)?.shotId === (selectedNodeId ?? '')).length}
+        onDialogueApplied={() => {void refresh();}}
+        rpc={(operation, input) => rpc(operation, input)}
+        onUpdateShot={updateShot} onGenerateShot={generateShot}
         onSelectVersion={(nodeId, versionId) => {void run(boardVersionIntent(nodeId, versionId), t('boardUi.notice.version', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''}));}}
         onDelete={nodeId => {void run(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name: projection.nodes.find(node => node.id === nodeId)?.name ?? ''})); setSelectedNodeId(null);}}
         onOpenInEditing={nodeId => setOpenedNode(nodeId)}
@@ -253,6 +352,14 @@ function Harness(): React.ReactElement {
         providers={providers} generationOptions={generationOptions[selectedNodeId!]}
         inputs={inputs} onGenerationOptionsChange={updateGenerationOptions} onInputRoleChange={changeInputRole as never}
         onInputDetach={detachInput} onInputPrimary={setPrimaryInput}/>
+      <aside className="board-fixture-assets" data-testid="board-fixture-assets">
+        {(data?.assets ?? []).map((asset: Row) => <div key={asset.id} className="asset-card"
+          data-testid={`asset-card-${asset.id}`} draggable onDragStart={event => dragAsset(event.nativeEvent as unknown as Parameters<typeof dragAsset>[0], asset.id)}>
+          <strong>{asset.name}</strong>
+          <button type="button" data-testid={`asset-to-canvas-${asset.id}`}
+            onClick={() => {void addAssetToBoard(assetKind(asset as never), asset);}}>添加到画板</button>
+        </div>)}
+      </aside>
       <section className="board-fixture-subjects" data-testid="board-fixture-subjects">
         <h4>{t('boardUi.inspector.subjects')}</h4>
         {(mount?.subjects ?? []).map(subject => <div key={subject.id} className="board-fixture-subject"

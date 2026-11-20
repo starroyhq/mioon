@@ -29,7 +29,7 @@
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {Format5Edge} from '../../contracts/src/project-format5.ts';
-import {format5EdgeSchema} from '../../contracts/src/project-format5.ts';
+import {FORMAT5_INPUT_LIMITS, format5EdgeSchema} from '../../contracts/src/project-format5.ts';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../contracts/src/board-sequence.ts';
 import {FRAME_REFERENCE_ROLES, REFERENCE_SOURCE_ROLES, defaultReferenceRole, referenceRoleAllowed} from '../../contracts/src/board-sequence.ts';
 import type {SequenceGenerationInputEntryView, SequenceGenerationInputMode, SequenceGenerationInputStatus,
@@ -53,6 +53,7 @@ import {readGenerationAsset} from './generation-inputs.ts';
 import {readPrevisOutputSource} from './previs-output-ownership.ts';
 import {resolveGenerationSubjectInputs} from './format5-subject-binding.ts';
 import {resolvePrevisSceneSubjects} from './format5-previs.ts';
+import {format5DialogueView, planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 
 type Row = Record<string, any>;
 type ReferenceEdge = Extract<Format5Edge, {readonly kind: 'reference'}>;
@@ -238,7 +239,7 @@ function compareReferenceEdges(left: ReferenceEdge, right: ReferenceEdge): numbe
   return leftOrder - rightOrder || left.id.localeCompare(right.id);
 }
 
-const REFERENCE_EDGE_LIMIT = 48;
+const REFERENCE_EDGE_LIMIT = FORMAT5_INPUT_LIMITS.referenceEdgesPerShot;
 const FRAME_ROLES = new Set<ChainReferenceRole>(FRAME_REFERENCE_ROLES);
 
 function assertRoleCardinality(store: ProjectStore, shotId: string, role: ChainReferenceRole,
@@ -539,7 +540,7 @@ interface PrevisSceneSource {
  * connected node only contributes what is left. This keeps the frozen job
  * snapshot (copied into the immutable version provenance) bounded even on an
  * extreme board. */
-const PREVIS_SCENE_SUBJECT_INPUT_LIMIT = PREVIS_LIMITS.figures + PREVIS_LIMITS.props;
+const PREVIS_SCENE_SUBJECT_INPUT_LIMIT = FORMAT5_INPUT_LIMITS.previsSceneSubjects;
 
 /** Subjects a previs scene names, in figure-then-prop order. A subject already
  * bound directly to the shot is skipped entirely (its direct binding owns the
@@ -917,6 +918,8 @@ export interface ReadFormat5GenerationInputOptions {
   readonly binding?: VideoExecutionBinding;
   /** Explicit primary image chosen in the panel (edge or binding id). */
   readonly primaryReferenceId?: string;
+  /** Current "生成声音" switch; omitted reports the service default. */
+  readonly generateAudio?: boolean;
 }
 
 /** Live generation-input projection shared by the board property panel and the
@@ -945,6 +948,16 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     orderIndex: entry.orderIndex,
     ...(primaryEdgeId !== null && entry.edgeId === primaryEdgeId ? {primary: true} : {}),
   }));
+  const shotRow = store.db.prepare('SELECT data FROM project.shots WHERE id=? AND projectId=?')
+    .get(shotId, store.projectId) as {data?: unknown} | undefined;
+  let basePrompt = '';
+  try {
+    const data = typeof shotRow?.data === 'string' ? JSON.parse(shotRow.data) as Row : {};
+    basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
+  } catch { basePrompt = ''; }
+  const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
+    {...(options.binding ? {binding: options.binding} : {}), basePrompt,
+     ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})}));
   return {
     projectId: store.projectId,
     shotId,
@@ -957,5 +970,6 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     usedCount: plan.entries.filter(entry => entry.status === 'used').length,
     unsupportedCount: plan.unsupported,
     primaryEdgeId,
+    dialogue,
   };
 }

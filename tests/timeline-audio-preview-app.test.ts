@@ -38,7 +38,7 @@ assert.ok(ownerStart >= 0 && ownerEnd > ownerStart);
 const block = app.slice(ownerStart, ownerEnd) + app.slice(start, hookEnd) + app.slice(positionStart, end);
 assert.match(block, /const audioPreview = useTimelineAudioPreview/);
 assert.match(block, /const effectivePlayhead = timelineAudioPreviewPosition/);
-assert.match(block, /const seekTimelineSound = \(frame: number\) => seekTimelineAudioPreview/);
+assert.match(block, /const seekTimelineSound = \(frame: number\) => \{viewRef\.current\.editing\.playhead = frame; seekTimelineAudioPreview/);
 assert.doesNotMatch(block, /useTimelineLoudnessApply|readTimelineLoudnessRecoveryScope/);
 
 function harness() {

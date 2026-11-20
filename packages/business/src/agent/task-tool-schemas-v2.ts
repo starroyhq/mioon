@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="8e734208e3af0a2f73ceb3fce31dfc98b679710934e19118ee8ee6131d9b5d73";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="2fab0df4fbc0d723de76cdb6aab2a5e16628cc834c96cd4da23f657c80c02b80";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -912,12 +912,141 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                 "video",
                 "image"
                ]
+              },
+              "nodeAssetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "nodeName": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 150
+              },
+              "copyFromClipId": {
+               "type": "string",
+               "format": "uuid"
               }
              },
              "required": [
               "kind",
               "clip",
               "beforeClipId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "insert-asset"
+              },
+              "assetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "trackId": {
+               "anyOf": [
+                {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              }
+             },
+             "required": [
+              "kind",
+              "assetId",
+              "trackId",
+              "startFrame"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "paste-clip"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "startFrame"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "add-overlay"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "trackId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              },
+              "durationFrames": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991,
+               "exclusiveMinimum": 0
+              },
+              "sourceInFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              },
+              "name": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 200
+              },
+              "assetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "copyFromClipId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "trackId",
+              "startFrame",
+              "durationFrames",
+              "sourceInFrame",
+              "name"
              ],
              "additionalProperties": false
             },
@@ -2630,6 +2759,209 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "presetId"
       ],
       "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
+   "generateIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "generate-placeholder"
+         },
+         "placement": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "main"
+             },
+             "beforeClipId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "beforeClipId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "track"
+             },
+             "trackId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "startFrame": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 300000
+             }
+            },
+            "required": [
+             "kind",
+             "trackId",
+             "startFrame"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         },
+         "settings": {
+          "type": "object",
+          "properties": {
+           "providerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+           },
+           "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           },
+           "region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+           },
+           "prompt": {
+            "type": "string",
+            "maxLength": 5000
+           },
+           "aspectRatio": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+           },
+           "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+           },
+           "parameters": {
+            "type": "object",
+            "additionalProperties": {}
+           },
+           "connectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "configurationRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+           },
+           "modelEntryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           }
+          },
+          "required": [
+           "providerId",
+           "model",
+           "region",
+           "prompt",
+           "aspectRatio",
+           "duration"
+          ],
+          "additionalProperties": false
+         },
+         "shotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "clipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+         },
+         "position": {
+          "type": "object",
+          "properties": {
+           "x": {
+            "type": "number"
+           },
+           "y": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "x",
+           "y"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kind",
+         "placement",
+         "settings",
+         "shotId",
+         "clipId",
+         "title"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "generate-resize"
+         },
+         "shotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "duration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+         }
+        },
+        "required": [
+         "kind",
+         "shotId",
+         "duration"
+        ],
+        "additionalProperties": false
+       }
+      ]
      }
     },
     "required": [
@@ -4378,6 +4710,209 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "generateIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "generate-placeholder"
+           },
+           "placement": {
+            "anyOf": [
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "main"
+               },
+               "beforeClipId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "beforeClipId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "track"
+               },
+               "trackId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 300000
+               }
+              },
+              "required": [
+               "kind",
+               "trackId",
+               "startFrame"
+              ],
+              "additionalProperties": false
+             }
+            ]
+           },
+           "settings": {
+            "type": "object",
+            "properties": {
+             "providerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+             },
+             "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+             },
+             "region": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+             },
+             "prompt": {
+              "type": "string",
+              "maxLength": 5000
+             },
+             "aspectRatio": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+             },
+             "duration": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+             },
+             "parameters": {
+              "type": "object",
+              "additionalProperties": {}
+             },
+             "connectionId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "configurationRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+             },
+             "modelEntryId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+             }
+            },
+            "required": [
+             "providerId",
+             "model",
+             "region",
+             "prompt",
+             "aspectRatio",
+             "duration"
+            ],
+            "additionalProperties": false
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "clipId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           },
+           "position": {
+            "type": "object",
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "placement",
+           "settings",
+           "shotId",
+           "clipId",
+           "title"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "generate-resize"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+           }
+          },
+          "required": [
+           "kind",
+           "shotId",
+           "duration"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "baseline": {
       "type": "object",
       "properties": {
@@ -4800,6 +5335,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "modelEntryId": {
     "type": "string",
     "format": "uuid"
+   },
+   "generateAudio": {
+    "type": "boolean"
    }
   },
   "required": [
@@ -11693,6 +12231,241 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "connect"
+     },
+     "fromId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "toId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "fromId",
+     "toId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "disconnect"
+     },
+     "fromId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "toId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "fromId",
+     "toId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "insert"
+     },
+     "fromId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "toId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "nodeId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "fromId",
+     "toId",
+     "nodeId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "delete-node"
+     },
+     "nodeId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "nodeId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reorder"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "beforeClipId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "beforeClipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "remove"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "split"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "offsetFrames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18000
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "offsetFrames"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "set-mode"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "follow",
+       "locked"
+      ]
+     },
+     "versionId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "mode"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "copy-move"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "beforeClipId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "beforeClipId"
+    ],
+    "additionalProperties": false
+   }
+  ]
+ },
+ "sequence.tool.board": {
+  "anyOf": [
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "board-root-create"
      },
      "name": {
@@ -12106,205 +12879,44 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "targets"
     ],
     "additionalProperties": false
-   },
+   }
+  ]
+ },
+ "sequence.tool.reference": {
+  "anyOf": [
    {
     "type": "object",
     "properties": {
      "kind": {
       "type": "string",
-      "const": "connect"
+      "const": "reference-attach"
      },
-     "fromId": {
+     "sourceNodeId": {
       "type": "string",
       "format": "uuid"
      },
-     "toId": {
-      "type": "string",
-      "format": "uuid"
-     }
-    },
-    "required": [
-     "kind",
-     "fromId",
-     "toId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "disconnect"
-     },
-     "fromId": {
+     "shotId": {
       "type": "string",
       "format": "uuid"
      },
-     "toId": {
-      "type": "string",
-      "format": "uuid"
-     }
-    },
-    "required": [
-     "kind",
-     "fromId",
-     "toId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "insert"
-     },
-     "fromId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "toId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "nodeId": {
-      "type": "string",
-      "format": "uuid"
-     }
-    },
-    "required": [
-     "kind",
-     "fromId",
-     "toId",
-     "nodeId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "delete-node"
-     },
-     "nodeId": {
-      "type": "string",
-      "format": "uuid"
-     }
-    },
-    "required": [
-     "kind",
-     "nodeId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "reorder"
-     },
-     "clipId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "beforeClipId": {
-      "anyOf": [
-       {
-        "type": "string",
-        "format": "uuid"
-       },
-       {
-        "type": "null"
-       }
-      ]
-     }
-    },
-    "required": [
-     "kind",
-     "clipId",
-     "beforeClipId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "remove"
-     },
-     "clipId": {
-      "type": "string",
-      "format": "uuid"
-     }
-    },
-    "required": [
-     "kind",
-     "clipId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "split"
-     },
-     "clipId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "offsetFrames": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 18000
-     }
-    },
-    "required": [
-     "kind",
-     "clipId",
-     "offsetFrames"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "set-mode"
-     },
-     "clipId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "mode": {
+     "role": {
       "type": "string",
       "enum": [
-       "follow",
-       "locked"
-      ]
-     },
-     "versionId": {
-      "anyOf": [
-       {
-        "type": "string",
-        "format": "uuid"
-       },
-       {
-        "type": "null"
-       }
+       "first_frame",
+       "last_frame",
+       "reference_image",
+       "composition",
+       "reference_audio",
+       "reference_video",
+       "subject_reference",
+       "style_reference"
       ]
      }
     },
     "required": [
      "kind",
-     "clipId",
-     "mode"
+     "sourceNodeId",
+     "shotId"
     ],
     "additionalProperties": false
    },
@@ -12313,31 +12925,93 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
-      "const": "copy-move"
+      "const": "reference-set-role"
      },
-     "clipId": {
+     "edgeId": {
       "type": "string",
       "format": "uuid"
      },
-     "beforeClipId": {
-      "anyOf": [
-       {
-        "type": "string",
-        "format": "uuid"
-       },
-       {
-        "type": "null"
-       }
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "first_frame",
+       "last_frame",
+       "reference_image",
+       "composition",
+       "reference_audio",
+       "reference_video",
+       "subject_reference",
+       "style_reference"
       ]
      }
     },
     "required": [
      "kind",
-     "clipId",
-     "beforeClipId"
+     "edgeId",
+     "shotId",
+     "role"
     ],
     "additionalProperties": false
    },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-detach"
+     },
+     "edgeId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "edgeId",
+     "shotId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "reference-reorder"
+     },
+     "shotId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "edgeIds": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "minItems": 1,
+      "maxItems": 48
+     }
+    },
+    "required": [
+     "kind",
+     "shotId",
+     "edgeIds"
+    ],
+    "additionalProperties": false
+   }
+  ]
+ },
+ "sequence.tool.subject": {
+  "anyOf": [
    {
     "type": "object",
     "properties": {
@@ -12486,130 +13160,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
-      "const": "reference-attach"
-     },
-     "sourceNodeId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "shotId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "role": {
-      "type": "string",
-      "enum": [
-       "first_frame",
-       "last_frame",
-       "reference_image",
-       "composition",
-       "reference_audio",
-       "reference_video",
-       "subject_reference",
-       "style_reference"
-      ]
-     }
-    },
-    "required": [
-     "kind",
-     "sourceNodeId",
-     "shotId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "reference-set-role"
-     },
-     "edgeId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "shotId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "role": {
-      "type": "string",
-      "enum": [
-       "first_frame",
-       "last_frame",
-       "reference_image",
-       "composition",
-       "reference_audio",
-       "reference_video",
-       "subject_reference",
-       "style_reference"
-      ]
-     }
-    },
-    "required": [
-     "kind",
-     "edgeId",
-     "shotId",
-     "role"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "reference-detach"
-     },
-     "edgeId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "shotId": {
-      "type": "string",
-      "format": "uuid"
-     }
-    },
-    "required": [
-     "kind",
-     "edgeId",
-     "shotId"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "reference-reorder"
-     },
-     "shotId": {
-      "type": "string",
-      "format": "uuid"
-     },
-     "edgeIds": {
-      "type": "array",
-      "items": {
-       "type": "string",
-       "format": "uuid"
-      },
-      "minItems": 1,
-      "maxItems": 48
-     }
-    },
-    "required": [
-     "kind",
-     "shotId",
-     "edgeIds"
-    ],
-    "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
       "const": "subject-card-create"
      },
      "subjectId": {
@@ -12660,7 +13210,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "nodeId"
     ],
     "additionalProperties": false
-   },
+   }
+  ]
+ },
+ "sequence.tool.previs": {
+  "anyOf": [
    {
     "type": "object",
     "properties": {
@@ -13137,71 +13691,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "scene"
     ],
     "additionalProperties": false
-   },
-   {
-    "type": "object",
-    "properties": {
-     "kind": {
-      "type": "string",
-      "const": "clip-properties"
-     },
-     "edits": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "clipId": {
-         "type": "string",
-         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
-        },
-        "patch": {
-         "type": "object",
-         "properties": {
-          "transform": {},
-          "transition": {},
-          "gain": {
-           "type": "number",
-           "minimum": 0,
-           "maximum": 2
-          },
-          "fadeInFrames": {
-           "type": "integer",
-           "minimum": 0,
-           "maximum": 300000
-          },
-          "fadeOutFrames": {
-           "type": "integer",
-           "minimum": 0,
-           "maximum": 300000
-          },
-          "colour": {},
-          "audioRole": {},
-          "volumeEnvelope": {},
-          "name": {
-           "type": "string",
-           "minLength": 1,
-           "maxLength": 200
-          }
-         },
-         "additionalProperties": false
-        }
-       },
-       "required": [
-        "clipId",
-        "patch"
-       ],
-       "additionalProperties": false
-      },
-      "minItems": 1,
-      "maxItems": 100
-     }
-    },
-    "required": [
-     "kind",
-     "edits"
-    ],
-    "additionalProperties": false
-   },
+   }
+  ]
+ },
+ "sequence.tool.timeline": {
+  "anyOf": [
    {
     "type": "object",
     "properties": {
@@ -13497,6 +13991,166 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "generate"
+     },
+     "placement": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "main"
+         },
+         "beforeClipId": {
+          "anyOf": [
+           {
+            "type": "string",
+            "format": "uuid"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "beforeClipId"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "track"
+         },
+         "trackId": {
+          "type": "string",
+          "format": "uuid"
+         },
+         "startFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300000
+         }
+        },
+        "required": [
+         "kind",
+         "trackId",
+         "startFrame"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     },
+     "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "providerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "region": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "prompt": {
+      "type": "string",
+      "maxLength": 5000
+     },
+     "aspectRatio": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "duration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60
+     },
+     "parameters": {
+      "type": "object",
+      "additionalProperties": {}
+     },
+     "connectionId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "configurationRevision": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "modelEntryId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     }
+    },
+    "required": [
+     "kind",
+     "placement",
+     "providerId",
+     "model",
+     "region",
+     "prompt",
+     "aspectRatio",
+     "duration"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "insert-asset"
+     },
+     "assetId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "trackId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "startFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+     }
+    },
+    "required": [
+     "kind",
+     "assetId",
+     "trackId",
+     "startFrame"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "track-add"
      },
      "trackKind": {
@@ -13556,6 +14210,74 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "kind",
      "trackId",
      "patch"
+    ],
+    "additionalProperties": false
+   }
+  ]
+ },
+ "sequence.tool.clip": {
+  "anyOf": [
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "clip-properties"
+     },
+     "edits": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "clipId": {
+         "type": "string",
+         "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        },
+        "patch": {
+         "type": "object",
+         "properties": {
+          "transform": {},
+          "transition": {},
+          "gain": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 2
+          },
+          "fadeInFrames": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 300000
+          },
+          "fadeOutFrames": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 300000
+          },
+          "colour": {},
+          "audioRole": {},
+          "volumeEnvelope": {},
+          "name": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 200
+          }
+         },
+         "additionalProperties": false
+        }
+       },
+       "required": [
+        "clipId",
+        "patch"
+       ],
+       "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 100
+     }
+    },
+    "required": [
+     "kind",
+     "edits"
     ],
     "additionalProperties": false
    }
