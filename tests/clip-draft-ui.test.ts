@@ -280,7 +280,7 @@ test('HTTP adapter uses same-origin sidecar only and rejects malformed/unsupport
 test('recovery is embedded in the existing right inspector with explicit restore and local plaintext warning', () => {
   const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8');
   const view = readFileSync(new URL('../apps/web/src/ClipDraftRecovery.tsx', import.meta.url), 'utf8');
-  assert.match(inspector, /<ClipDraftRecovery state=\{state\}/); assert.match(view, /recovery\.clip\.shortDisclosure/); assert.match(i18n.translate('zh-Hans', 'recovery.clip.shortDisclosure'), /仅片段属性，本地明文；最后未确认输入可能丢失/);
+  assert.match(inspector, /<ClipDraftRecovery state=\{state\}/); assert.doesNotMatch(view, /recovery\.clip\.shortDisclosure|RecoveryStorageDetails/); assert.doesNotMatch(view, /本地明文|不会自动覆盖或重试/);
   assert.match(view, /recovery\.clip\.restore/); assert.equal(i18n.translate('zh-Hans', 'recovery.clip.restore'), '恢复到属性表单'); assert.doesNotMatch(view, /mutateTimeline|edit_tasks|role="dialog"/);
   assert.doesNotMatch(inspector, /setBaseRevision|same\(latest, baseline/);
   assert.match(inspector, /const removalBlocked = Boolean\(compositionPending \|\| busy \|\| dirty \|\| state.submitting \|\| state.candidate/);

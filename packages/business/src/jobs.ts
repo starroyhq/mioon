@@ -6,7 +6,7 @@ import {assertProjectStore} from './store-runtime.ts';
 import {isCanvasArchived} from './canvas-active.ts';
 import {createProjectBackgroundState,pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from './background-task-state.ts';
 import {registerExportActivity,isCancelledExport,exportStage,exportEncodingProgress} from './export-controls.ts';
-import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped,agentTaskTargetClaimed} from './agent/task-effects-v2.ts';
+import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline-colour-lut.ts';
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
@@ -439,13 +439,16 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      const asset={id:artifact?.assetId??randomUUID(),projectId:j!.projectId,name:generatedVideoAssetName(store.db,j!,String(property(j!.snapshot,'title'))),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:artifact?.versionId??randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
      const format5=projectOwner!==null&&projectOwner!==undefined&&Number(projectOwner.db.prepare('PRAGMA project.user_version').get()?.user_version)===5;
-     const shotClaimFree=!format5||!agentTaskTargetClaimed(store.db,j!.projectId,'shot',j!.shotId);
-     const adopted=format5&&projectOwner&&shotClaimFree?adoptFormat5GeneratedVersionInside(projectOwner,j!,version,
-       {canReplace:clip=>!agentTaskTargetClaimed(store.db,j!.projectId,'timeline_clip',clip.id)}):false;
+     // Format-5 adoption is a background mutation of the generated shot. It
+     // uses the same Mio target gate as the version selection below (one call
+     // records the skipped/conflict event); user-owned jobs have no binding and
+     // pass. A denied check leaves the placeholder and version untouched.
+     const targetAllowed=!format5||allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId});
+     const adopted=format5&&projectOwner&&targetAllowed?adoptFormat5GeneratedVersionInside(projectOwner,j!,version):false;
      // Format-5 edit-created shots adopt only while their placeholder and the
      // frozen shot revision still match. A late result records the version but
      // never rewrites a moved-on shot.
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?shotClaimFree:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
       await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {

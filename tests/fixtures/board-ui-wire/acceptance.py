@@ -70,7 +70,7 @@ def main() -> int:
                 run_subject_acceptance(page, log, capture, state, wait_position)
                 run_board_assets_acceptance(page, result, log, capture, state, wait_position)
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
-                run_gp_acceptance(page, log, capture, state)
+                run_gp_acceptance(page, log, capture, state, wait_position)
                 run_wt3_subject_creation_acceptance(page, log, capture, state)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
@@ -588,7 +588,7 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     capture(page, '21-01-subject-delete-card-undone.png')
 
 
-def run_gp_acceptance(page, log, capture, state) -> None:
+def run_gp_acceptance(page, log, capture, state, wait_position) -> None:
     """GP: 21-10 shot properties, draft save, conflicts, server-planned generation."""
     shot_a = '70000000-0000-4000-8000-000000000003'
     page.get_by_test_id(f'board-card-{shot_a}').click()
@@ -637,6 +637,18 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     capture(page, '21-10-shot-conflict.png')
     page.get_by_test_id('board-shot-discard').click()
 
+    # Mock is a selected service without a configured video connection: the
+    # footer and read-only projection must still report it.
+    page.evaluate("() => window.__boardWireActions.installMockProvider()")
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {providerId:'mock'})", [shot_a])
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'mock'", timeout=15000)
+    expect(page.get_by_test_id('board-input-footer')).to_have_attribute('data-service', 'selected')
+    expect(page.get_by_test_id('board-input-footer')).not_to_have_text('未选择生成服务')
+    assert int(state(page)['inputs']['usedCount']) >= 1
+    log('WT-3-01 Mock is reported by the live projection and footer',
+        footer=page.get_by_test_id('board-input-footer').inner_text())
+    capture(page, '21-10-mock-service.png')
+
     # Server-planned generation from the board: select the service through the
     # 21-10 footer itself, then generate without client input.
     before_cards = len(state(page)['cards'])
@@ -663,35 +675,100 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     log('GB board generation submits only the shot and selected service; server plans inputs', jobs=len(state(page)['jobs']))
     capture(page, '21-10-shot-generate.png')
 
+    # WT-1-07: the format-5 board creates a previs node through the same unified
+    # create intent as formats 3/4, offset from the existing cards, one undo step.
+    previous_cards = state(page)['cards']
+    before_cards = len(previous_cards)
+    previous_ids = {card['id'] for card in previous_cards}
+    position = int(state(page)['history']['position'])
+    expect(page.get_by_test_id('board-ui-add-previs')).to_be_visible()
+    page.get_by_test_id('board-ui-add-previs').click()
+    page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=before_cards, timeout=15000)
+    wait_position(page, position + 1)
+    cards = state(page)['cards']
+    new_previs = next(card for card in cards if card['id'] not in previous_ids)
+    assert new_previs['kind'] == 'previs', new_previs
+    positions = state(page)['positions']
+    assert all(positions[new_previs['id']] != positions[item['id']] for item in previous_cards if item['id'] in positions)
+    assert state(page)['history']['undo']['operation'] == 'previs.create', state(page)['history']
+    log('WT-1-07 board toolbar creates an offset previs node in one unified action', previs=new_previs['id'])
+    capture(page, '21-10-add-previs.png')
+    page.locator('body').press('Control+z')
+    page.wait_for_function("(position) => Number(document.querySelector('[data-testid=fixture-history-position]')?.textContent) === position",
+                           arg=position, timeout=15000)
+    page.wait_for_function("(id) => !window.__boardWireState.cards.some(card => card.id === id)", arg=new_previs['id'], timeout=15000)
+    log('WT-1-07 one undo removes the previs creation')
+
 
 def run_wt3_subject_creation_acceptance(page, log, capture, state) -> None:
-    """WT-3-02: import a project image and check the real subject panel lists it.
-    Format-5 subject creation itself is still behind the FR-0 legacy gate until
-    SB ships the unified subject-create intent, so the drag/bind half runs with
-    the fixture's retained subject and the same production board components."""
+    """WT-3-02 (product decision 11-21): the format-5 subject library creates a
+    subject and a second version without touching the board/timeline undo stack;
+    the board still binds it through the subject-card intent; generation freezes
+    the version the shot actually uses."""
     shot_a = '70000000-0000-4000-8000-000000000003'
+    history_before = int(state(page)['history']['position'])
     page.set_input_files('[data-testid=subject-import-input]', str(Path(__file__).parent / 'reference.png'))
     page.wait_for_function("(minimum) => (window.__boardWireState.assetCount ?? 0) > minimum", arg=5, timeout=15000)
-    page.get_by_test_id('subject-new').click()
-    expect(page.get_by_test_id('subject-name')).to_be_visible()
     page.wait_for_function("() => (window.__boardWireState.subjectImages ?? []).some(asset => asset.mimeType === 'image/png' && asset.id && !asset.id.startsWith('70000000'))", timeout=15000)
+    known_subjects = {subject['id'] for subject in state(page).get('subjectList', [])}
+    page.get_by_test_id('subject-new').click()
+    page.wait_for_selector('#subject-create-image', timeout=15000)
     page.get_by_test_id('subject-name').fill('走查主体甲')
     page.get_by_test_id('subject-create-image').click()
-    page.wait_for_timeout(700)
+    page.wait_for_timeout(500)
     options = page.locator('[role=option]').all_inner_texts()
     assert any('reference.png' in option for option in options), options
-    log('WT-3-02 the subject image chooser lists the imported project image', options=options)
-    capture(page, '21-12-subject-create-image-choice.png')
     page.get_by_role('option').filter(has_text='reference.png').first.click()
     page.get_by_test_id('subject-create').click()
-    page.wait_for_timeout(800)
-    gate = page.evaluate("() => window.__boardWireState.subjectGate ?? null")
-    assert gate in (None, 'UNSUPPORTED_OPERATION'), gate
-    log('WT-3-02 format 5 subject creation still reports the legacy gate when the panel sends it', gate=gate)
-    # The retained-subject half proves the board drag/bind path the walkthrough
-    # wanted to reach after creation.
-    subject_id = state(page)['subjectList'][0]['id']
-    expect(page.get_by_test_id(f'subject-card-{subject_id}')).to_be_visible()
+    page.wait_for_function("(known) => (window.__boardWireState.subjectList ?? []).some(subject => !known.includes(subject.id))",
+                           arg=sorted(known_subjects), timeout=15000)
+    created = next(subject for subject in state(page)['subjectList'] if subject['id'] not in known_subjects)
+    assert int(state(page)['history']['position']) == history_before, 'subject.create is not a board/timeline undo step'
+    log('WT-3-02 imports an image and creates a subject through the library panel', subjectId=created['id'])
+    capture(page, '21-12-subject-created.png')
+
+    # A second version appends retained evidence and becomes the new head. The
+    # production controller action is the same path the version form submits;
+    # the inspector form's AgentEditingBoundary needs the full workbench shell,
+    # which this board fixture does not mount.
+    known_images = {asset['id'] for asset in state(page).get('subjectImages', [])}
+    page.set_input_files('[data-testid=subject-import-input]', str(Path(__file__).parent / 'version2.png'))
+    page.wait_for_function("(known) => (window.__boardWireState.subjectImages ?? []).some(asset => asset.mimeType === 'image/png' && !known.includes(asset.id))",
+                           arg=sorted(known_images), timeout=15000)
+    version_asset = next(asset['id'] for asset in state(page)['subjectImages']
+                         if asset['mimeType'] == 'image/png' and asset['id'] not in known_images)
+    page.evaluate("([subjectId, assetId]) => window.__boardWireActions.subjectAddVersion(subjectId, assetId)",
+                  [created['id'], version_asset])
+    page.wait_for_function("""async (subjectId) => {
+      const response = await fetch('/rpc', {method: 'POST', headers: {'content-type': 'application/json'},
+        body: JSON.stringify({operation: 'subject.version.list', input: {projectId: '70000000-0000-4000-8000-000000000001',
+          subjectId, limit: 20}})});
+      const body = await response.json();
+      return body.ok && (body.data.items || []).length === 2;
+    }""", arg=created['id'], timeout=15000)
+    versions = page.evaluate("""async (subjectId) => {
+      const response = await fetch('/rpc', {method: 'POST', headers: {'content-type': 'application/json'},
+        body: JSON.stringify({operation: 'subject.version.list', input: {projectId: '70000000-0000-4000-8000-000000000001',
+          subjectId, limit: 20}})});
+      const body = await response.json();
+      return body.data.items;
+    }""", created['id'])
+    version_two = next(version for version in versions if version['number'] == 2)
+    assert int(state(page)['history']['position']) == history_before, 'subject.version.add is not a board/timeline undo step'
+    log('WT-3-02 appends the second subject version as retained evidence', version=version_two['id'], history=history_before)
+
+    # The board still owns putting the subject card on the canvas: a new shot
+    # takes the card and binds it through the unified subject intent.
+    cards_before = len(state(page)['cards'])
+    page.get_by_test_id('board-ui-add-shot').click()
+    page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=cards_before, timeout=15000)
+    new_shot = next(card['id'] for card in reversed(state(page)['cards']) if card['kind'] == 'shot')
+    page.get_by_test_id(f'board-card-{new_shot}').click()
+    shot_revision = next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == new_shot)
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {prompt: '雨停后的路口俯拍。', duration: 4, aspectRatio: '9:16'}, revision)",
+                  [new_shot, shot_revision])
+    page.wait_for_function("(shotId) => { const shot = window.__boardWireState.shots.find(item => item.id === shotId); return shot?.prompt === '雨停后的路口俯拍。' && shot?.duration === 4; }",
+                           arg=new_shot, timeout=15000)
     page.evaluate("""(subjectId) => {
       const card = document.querySelector(`[data-testid="subject-card-${subjectId}"]`);
       const canvas = document.querySelector('[data-testid=board-ui-canvas]');
@@ -703,21 +780,50 @@ def run_wt3_subject_creation_acceptance(page, log, capture, state) -> None:
         clientY: rect.top + rect.height * 0.55, dataTransfer}));
       canvas.dispatchEvent(new DragEvent('drop', {bubbles: true, clientX: rect.left + rect.width * 0.5,
         clientY: rect.top + rect.height * 0.55, dataTransfer}));
-    }""", subject_id)
+    }""", created['id'])
     page.wait_for_function("(subjectId) => window.__boardWireState.cards.some(card => card.kind === 'subject' && card.subjectId === subjectId)",
-                           arg=subject_id, timeout=15000)
-    card_id = next(card['id'] for card in state(page)['cards'] if card['kind'] == 'subject' and card['subjectId'] == subject_id)
+                           arg=created['id'], timeout=15000)
+    card_id = next(card['id'] for card in state(page)['cards']
+                   if card['kind'] == 'subject' and card['subjectId'] == created['id'])
     page.get_by_test_id(f'board-card-{card_id}').click()
     page.get_by_test_id(f'board-port-{card_id}-reference-out-top').focus()
     page.keyboard.press('Enter')
-    page.get_by_test_id(f'board-port-{shot_a}-reference-in-top').focus()
+    page.get_by_test_id(f'board-port-{new_shot}-reference-in-top').focus()
     page.keyboard.press('Enter')
     page.wait_for_function("(subjectId) => (window.__boardWireState.bindings ?? []).some(binding => binding.subjectId === subjectId)",
-                           arg=subject_id, timeout=15000)
-    binding = next(binding for binding in state(page)['bindings'] if binding['subjectId'] == subject_id)
-    assert binding['shotId'] == shot_a and binding['role'] in ('subject', 'style'), binding
-    log('WT-3-02 a subject card dropped on the board binds to the shot through the unified intent', binding=binding)
-    capture(page, '21-12-subject-binding.png')
+                           arg=created['id'], timeout=15000)
+    binding = next(binding for binding in state(page)['bindings'] if binding['subjectId'] == created['id'])
+    assert binding['shotId'] == new_shot, binding
+    log('WT-3-02 drops the subject card on the board and binds it to a shot', binding=binding)
+
+    # The generation input plan freezes the version this shot actually uses (V2).
+    page.get_by_test_id(f'board-card-{new_shot}').click()
+    expect(page.get_by_test_id('board-input-footer')).to_be_visible()
+    page.get_by_test_id('board-input-footer').click()
+    expect(page.get_by_test_id('board-service-menu')).to_be_visible()
+    page.locator('button[data-testid^="board-service-"]').filter(has_text='火山方舟').first.click()
+    page.wait_for_function("() => Boolean(window.__boardWireState.inputs?.service)", timeout=15000)
+    page.get_by_test_id('board-inspector-generate').click()
+    page.wait_for_function("(shotId) => (window.__boardWireState.jobs ?? []).some(job => job.shotId === shotId)",
+                           arg=new_shot, timeout=30000)
+    job_id = page.evaluate("(shotId) => window.__boardWireState.jobs.find(job => job.shotId === shotId).id", new_shot)
+    snapshot = page.evaluate("""async (jobId) => {
+      const response = await fetch('/rpc', {method: 'POST', headers: {'content-type': 'application/json'},
+        body: JSON.stringify({operation: 'job.get', input: {jobId}})});
+      const body = await response.json();
+      if (!body.ok) throw new Error((body.error && body.error.message) || 'job.get failed');
+      return body.data.snapshot;
+    }""", job_id)
+    freeze = snapshot['format5ReferenceInputs']
+    subject_entry = next(entry for entry in freeze['entries']
+                         if entry['source'] == 'subject' and entry.get('subjectId') == created['id'])
+    assert subject_entry['status'] == 'used', subject_entry
+    assert subject_entry['subjectVersionId'] == version_two['id'], subject_entry
+    if 'subjectVersionNumber' in subject_entry:
+        assert subject_entry['subjectVersionNumber'] == 2, subject_entry
+    log('WT-3-02 generation freezes the used subject version', version=version_two['id'],
+        frozen=subject_entry)
+    capture(page, '21-12-subject-version-freeze.png')
 
 
 if __name__ == '__main__':

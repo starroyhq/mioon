@@ -33,7 +33,6 @@ const EXPECTED: Readonly<Record<string, string>> = Object.freeze({
   'node.create': 'sequence.preview/commit', 'node.update': 'sequence.preview/commit',
   'reference.attach': 'sequence.preview/commit', 'reference.detach': 'sequence.preview/commit',
   'previs.create': 'sequence.preview/commit', 'previs.scene.set': 'sequence.preview/commit',
-  'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
   'subject.binding.set': 'sequence.preview/commit',
 });
 const READ_ONLY = ['timeline.inspect', 'timeline.format.get', 'timeline.clip.loudness', 'timeline.loudness.prepare',
@@ -60,6 +59,18 @@ test('every FR-0 legacy writer is gated once under format 5 and stays untouched 
       assert.equal(format5LegacyWriteUse(operation), null, operation);
       assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(world.store, operation), operation);
     }
+    // Product decision 11-21: the subject library's create and version-add are
+    // asset-library operations that write only subjects/subject_versions, never
+    // the board or the timeline, so format 5 keeps them open (and format 3/4 is
+    // unchanged). Binding a subject to a shot stays on the unified entry.
+    for (const operation of ['subject.create', 'subject.version.add']) {
+      assert.equal(format5LegacyWriteUse(operation), null, operation);
+      assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(world.store, operation), operation);
+      assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(format4, operation), `format 4 ${operation}`);
+    }
+    assert.equal(format5LegacyWriteUse('subject.binding.set'), 'sequence.preview/commit');
+    assert.throws(() => assertFormat5LegacyWriteAllowed(world.store, 'subject.binding.set'),
+      (error: {code?: string}) => error.code === 'UNSUPPORTED_OPERATION');
     // The previs thumbnail is a rebuildable cache, not a user edit: it writes
     // outside the unified history (scene-revision CAS) and is not gated.
     assert.equal(format5LegacyWriteUse('previs.thumbnail.set'), null);

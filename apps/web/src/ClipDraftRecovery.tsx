@@ -3,7 +3,6 @@ import { message } from '../../../packages/i18n/src/index.ts';
 import React, { useRef } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
-import RecoveryStorageDetails from './RecoveryStorageDetails.tsx';
 import type { ClipDraftController, ClipDraftState } from './clip-draft-state.ts';
 
 export default function ClipDraftRecovery({ state, controller, pending, onOpenRequests, disconnected = false }: { disconnected?: boolean; state: ClipDraftState; controller: ClipDraftController; pending: boolean; onOpenRequests?: () => void }) {
@@ -29,10 +28,8 @@ export default function ClipDraftRecovery({ state, controller, pending, onOpenRe
                 : state.dirty ? t('recovery.clip.dirty') : t('recovery.clip.ready');
   return <section className="notice" data-testid="clip-draft-recovery" aria-label={t('recovery.clip.label')}>
     <p role="status" data-testid="clip-draft-status">{status}</p>
-    <p className="input-hint">{t('recovery.clip.shortDisclosure')}</p>
-    <RecoveryStorageDetails domain="clip" />
-    {state.candidate && <div><Button type="button" size="sm" variant="outline" data-testid="restore-clip-draft" disabled={pending || state.dirty || state.submitting} onClick={() => controller.restore()}>{t('recovery.clip.restore')}</Button><Button type="button" size="sm" variant="ghost" data-testid="discard-stored-clip-draft" disabled={pending || state.submitting} onClick={() => { void controller.discardStored(); }}>{t('recovery.clip.discard')}</Button>{state.dirty && <p className="input-hint">{t('recovery.clip.newInput')}</p>}</div>}
-    {state.failure && <p className="input-hint" data-testid="clip-draft-failure-kind">{state.failure.kind === 'refused' ? t('recovery.clip.refused') : state.failure.kind === 'conflict' ? t('recovery.clip.conflict') : t('recovery.clip.unknown')} {t('recovery.clip.recheckOnly')}</p>}
+    {state.candidate && <div><Button type="button" size="sm" variant="outline" data-testid="restore-clip-draft" disabled={pending || state.dirty || state.submitting} onClick={() => controller.restore()}>{t('recovery.clip.restore')}</Button><Button type="button" size="sm" variant="ghost" data-testid="discard-stored-clip-draft" disabled={pending || state.submitting} onClick={() => { void controller.discardStored(); }}>{t('recovery.clip.discard')}</Button></div>}
+    {state.failure && <p className="input-hint" data-testid="clip-draft-failure-kind">{state.failure.kind === 'refused' ? t('recovery.clip.refused') : state.failure.kind === 'conflict' ? t('recovery.clip.conflict') : t('recovery.clip.unknown')}</p>}
     {state.error && <p role="alert">{renderMessage(state.errorDisplay) || t('recovery.notice.unconfirmed')}</p>}
     {(state.phase === 'error' || state.autosavePaused) && <Button type="button" size="sm" variant="ghost" data-testid="reload-clip-draft" disabled={pending || state.submitting} onClick={() => { void controller.load(); }}>{t('recovery.clip.recheck')}</Button>}
     {canOfferAbandon && <Button type="button" size="sm" variant="outline" data-testid="abandon-current-clip-input" data-retained-input-action="abandon" disabled={pending || !controller.canAbandon()} onClick={abandon}>{t('recovery.clip.abandon')}</Button>}
