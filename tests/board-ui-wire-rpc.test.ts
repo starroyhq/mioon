@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {sequenceEditRpcSchemas, sequenceBoardGetResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
 import {operationEffects, operationEffect} from '../packages/contracts/src/operation-effects.ts';
+import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 type Services = Awaited<ReturnType<typeof createBoardUiWireFixture>>['services'];
 async function boardFixture(t: test.TestContext) {
@@ -298,4 +300,67 @@ test('the generation-input view lists a bound subject with its name and version'
   assert.equal(subjectEntry.status, 'unsupported');
   assert.equal(subjectEntry.reason, 'SERVICE_NOT_SELECTED');
   assert.equal(view.primaryEdgeId, null);
+});
+
+
+test('the read-only generation-input projection carries previs scene subjects to the panel and Mio', async (t) => {
+  const f = await boardFixture(t);
+  const call = callOf(f.services);
+  // A saved previs scene with one follow character and one locked look subject.
+  const scene = defaultPrevisScene();
+  scene.figures[0]!.subject = {subjectId: BOARD_IDS.subjectCharacter};
+  scene.props.push({id: 'p1', kind: 'box', name: '', visible: true, position: [1, 0, 0] as [number, number, number],
+    rotation: 0, size: [0.5, 0.5, 0.5] as [number, number, number],
+    subject: {subjectId: BOARD_IDS.subjectLook, subjectVersionId: BOARD_IDS.subjectLookVersion}});
+  scene.keyframes = [{id: 'k1', name: '', camera: scene.camera, exports: []}];
+  scene.activeKeyframeId = 'k1';
+  const nodeId = randomUUID();
+  f.store.tx(() => f.store.put('nodes', {id: nodeId, projectId: f.projectId, type: 'previs', label: '机位预演',
+    text: '', position: {x: 0, y: 0}, revision: 2, sceneRevision: 2, scene, createdAt: '2026-01-01T00:00:00.000Z'}));
+  const bytes = png({width: 64, height: 96, rgba: false});
+  const published = await call('previs.output.publish', {projectId: f.projectId, nodeId, keyframeId: 'k1',
+    sceneRevision: 2, requestId: `previs-output-${randomUUID()}`, name: 'Previs.png',
+    sha256: createHash('sha256').update(bytes).digest('hex'), width: 64, height: 96,
+    dataBase64: bytes.toString('base64')});
+  assert.ok(published.asset.id);
+  await previewCommitRequest(call, f.projectId, {referenceIntent: {side: 'board',
+    operation: {kind: 'reference-edge', edit: {kind: 'attach', edgeId: randomUUID(), shotId: BOARD_IDS.shotB,
+      sourceNodeId: nodeId}}}});
+  const ark = (f.settings.list() as unknown as {configuration: {id: string; models: {id: string}[]}}[])
+    .find(view => view.configuration.id === BOARD_IDS.arkConnection)!;
+  const view = await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotB,
+    connectionId: BOARD_IDS.arkConnection, configurationRevision: 1, modelEntryId: ark.configuration.models[0]!.id});
+  assert.equal(view.mode, 'references');
+  assert.equal(view.service.providerId, 'ark');
+  assert.equal(view.unsupportedCount, 0);
+  // shotB already had one reference image and one audio line; the previs output
+  // line and its two scene subjects join the same used set.
+  assert.equal(view.usedCount, 5);
+  const previsEntries = view.entries.filter((entry: any) => entry.source === 'previs');
+  assert.equal(previsEntries.length, 2);
+  // The projection identifies a previs subject by its node, label, role and
+  // version (live names stay server-resolved; the browser never looks them up).
+  assert.deepEqual(previsEntries.map((entry: any) => entry.label), ['机位预演 · 阿琦', '机位预演 · 霓虹']);
+  assert.deepEqual(previsEntries.map((entry: any) => entry.role), ['subject_reference', 'style_reference']);
+  assert.deepEqual(previsEntries.map((entry: any) => entry.sourceNodeId), [nodeId, nodeId]);
+  const [character, look] = previsEntries;
+  assert.equal(character.sourceNodeId, nodeId);
+  assert.equal(character.sourceKind, 'subject');
+  assert.equal(character.role, 'subject_reference');
+  assert.equal(character.label, '机位预演 · 阿琦');
+  assert.equal(character.subjectVersionNumber, 1);
+  assert.equal(character.status, 'used');
+  assert.equal(character.appliedRole, 'reference_image');
+  assert.equal(character.orderIndex, 3);
+  assert.equal(look.role, 'style_reference');
+  assert.equal(look.label, '机位预演 · 霓虹');
+  assert.equal(look.status, 'used');
+  // The previs row cannot become the primary image: only a material edge owns it.
+  assert.ok(view.primaryEdgeId);
+  assert.ok(previsEntries.every((entry: any) => entry.primary === undefined && entry.edgeId === undefined));
+  // The UI and Mio read this exact projection: the same order and labels, no
+  // second filtering path in either consumer.
+  const again = await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotB});
+  assert.deepEqual(again.entries.map((entry: any) => [entry.source, entry.orderIndex, entry.label]),
+    view.entries.map((entry: any) => [entry.source, entry.orderIndex, entry.label]));
 });

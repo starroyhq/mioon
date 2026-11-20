@@ -3,7 +3,7 @@ import {after, before, test} from 'node:test';
 import {chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {upgradeProjectFormatTo5} from '../packages/business/src/project-file/index.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
 import {prepareFormat5Release} from './helpers/format5-release-fixture.ts';
@@ -12,9 +12,13 @@ import {prepareSequenceEditHistory, findSequenceEditReceipt} from '../packages/b
 import {runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {
-  buildReferenceEdgeEnvelope, planFormat5GenerationInputs, readFormat5GenerationInputView,
+  buildReferenceEdgeEnvelope, format5GenerationSource, planFormat5GenerationInputs, readFormat5GenerationInputView,
   readFormat5ShotReferenceCandidates, readShotReferenceEdges, resolveReferenceSource,
 } from '../packages/business/src/format5-reference-inputs.ts';
+import {createPrevisPublicationServices} from '../packages/business/src/previs-publication.ts';
+import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
+import type {PrevisFigure, PrevisProp, PrevisScene, PrevisSubjectReference} from '../packages/contracts/src/previs.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import {buildSubjectBindingEnvelope} from '../packages/business/src/format5-subject-binding.ts';
 import {createSequenceEditing} from '../packages/business/src/sequence-edit.ts';
 
@@ -98,6 +102,107 @@ function seed(f: ReturnType<typeof fixture>): Seeded {
   }
   return seeded;
 }
+
+interface OwnedSubjectVersion {readonly id: string; readonly number: number; readonly assetId: string; readonly sha256: string}
+interface OwnedSubject {readonly subjectId: string; readonly cardNodeId: string;
+  readonly kind: 'character' | 'product' | 'location' | 'look'; readonly name: string; readonly versions: OwnedSubjectVersion[]}
+
+function imageAssetRow(store: ProjectStore): {assetId: string; sha256: string} {
+  const assetId = randomUUID(), sha256 = createHash('sha256').update(assetId).digest('hex');
+  store.db.prepare('INSERT INTO project.assets(id,projectId,data) VALUES(?,?,?)').run(assetId, store.projectId,
+    JSON.stringify({id: assetId, projectId: store.projectId, sha256, mimeType: 'image/png', sizeBytes: 1024,
+      width: 1080, height: 1920, createdAt: timestamp}));
+  return {assetId, sha256};
+}
+
+function insertSubjectVersion(store: ProjectStore, subjectId: string, versionId: string, number: number,
+  asset: {assetId: string; sha256: string}): OwnedSubjectVersion {
+  store.db.prepare('INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)')
+    .run(versionId, store.projectId, subjectId, number, asset.assetId, JSON.stringify({id: versionId,
+      projectId: store.projectId, subjectId, number, assetId: asset.assetId, sha256: asset.sha256,
+      mimeType: 'image/png', width: 1080, height: 1920, createdAt: timestamp,
+      provenance: {kind: 'user-import', versionId: null, shotId: null, jobId: null}}));
+  return {id: versionId, number, assetId: asset.assetId, sha256: asset.sha256};
+}
+
+function createSubject(store: ProjectStore, kind: OwnedSubject['kind'], name: string): OwnedSubject {
+  const subjectId = randomUUID(), cardNodeId = randomUUID(), headVersionId = randomUUID();
+  const versions: OwnedSubjectVersion[] = [];
+  store.tx(() => {
+    store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
+      VALUES(?,?,?,?,?,?,?,?)`).run(subjectId, store.projectId, kind, name, 1, headVersionId, timestamp, timestamp);
+    versions.push(insertSubjectVersion(store, subjectId, headVersionId, 1, imageAssetRow(store)));
+    store.put('nodes', {id: cardNodeId, projectId: store.projectId, type: 'subject_card', subjectId,
+      position: {x: 10, y: 10}, createdAt: timestamp});
+  });
+  return {subjectId, cardNodeId, kind, name, versions};
+}
+
+/** Add a new head version; the follow references of that subject move to it. */
+function addSubjectVersion(store: ProjectStore, subject: OwnedSubject): OwnedSubjectVersion {
+  let version: OwnedSubjectVersion | null = null;
+  store.tx(() => {
+    const number = subject.versions.length + 1;
+    version = insertSubjectVersion(store, subject.subjectId, randomUUID(), number, imageAssetRow(store));
+    store.db.prepare('UPDATE project.subjects SET headVersionId=?, revision=? WHERE id=?')
+      .run(version.id, number, subject.subjectId);
+  });
+  assert.ok(version);
+  subject.versions.push(version);
+  return version;
+}
+
+function previsScene(options: {readonly figures?: readonly (PrevisSubjectReference | null)[];
+  readonly props?: readonly (PrevisSubjectReference | null)[]} = {}): PrevisScene {
+  const scene = defaultPrevisScene();
+  const figures = (options.figures ?? [null]).map((subject, index): PrevisFigure => ({id: `f${index + 1}`, name: '',
+    visible: true, position: [index * 0.5, 0, 0], rotation: 0, pose: 'stand', held: null,
+    ...(subject ? {subject} : {})}));
+  const props = (options.props ?? []).map((subject, index): PrevisProp => ({id: `p${index + 1}`, kind: 'box', name: '',
+    visible: true, position: [index * 0.5, 0, 1], rotation: 0, size: [0.5, 0.5, 0.5],
+    ...(subject ? {subject} : {})}));
+  return {...scene, figures, props, keyframes: [{id: 'k1', name: '', camera: scene.camera, exports: []}],
+    activeKeyframeId: 'k1'};
+}
+
+/** Write a valid previs node and publish one verifiable output image for it. */
+async function publishPrevis(store: ProjectStore, scene: PrevisScene, label: string):
+  Promise<{nodeId: string; outputAssetId: string}> {
+  const nodeId = randomUUID();
+  store.tx(() => store.put('nodes', {id: nodeId, projectId: store.projectId, type: 'previs', label, text: '',
+    position: {x: 120, y: 240}, revision: 1, sceneRevision: 1, scene, createdAt: timestamp}));
+  const bytes = png({width: 64, height: 96, rgba: false});
+  const publication = await createPrevisPublicationServices(store).handlers['previs.output.publish']({
+    projectId: store.projectId, nodeId, keyframeId: 'k1', sceneRevision: 1,
+    requestId: `previs-output-${randomUUID()}`, name: '预演画面.png',
+    sha256: createHash('sha256').update(bytes).digest('hex'), width: 64, height: 96,
+    dataBase64: bytes.toString('base64')}) as {asset: {id: string}};
+  return {nodeId, outputAssetId: publication.asset.id};
+}
+
+function attachNode(seeded: Seeded, sourceNodeId: string, role?: string): void {
+  const result = runSequenceSync(seeded.store,
+    command(seeded, 'attach', {sourceNodeId, ...(role ? {role} : {})}).envelope) as Record<string, any>;
+  assert.equal(result.ok, true, JSON.stringify(result));
+}
+
+const arkBinding = () => ({version: 1, connectionId: randomUUID(), configurationRevision: 1, providerId: 'ark',
+  region: 'cn-beijing', workspaceId: '', endpoint: 'https://ark.cn-beijing.volces.com/api/v3',
+  credentialRef: '00000000-0000-4000-8000-000000000000',
+  model: {id: randomUUID(), name: 'doubao-seedance-2-5-260628', modelId: 'doubao-seedance-2-5-260628',
+    templateId: 'ark-v3', enabled: true, archived: false, inputModes: ['text', 'image', 'frames', 'reference'],
+    aspectRatios: ['9:16', '16:9'], durationResolutionMap: [{duration: [4, 8], resolution: ['720p']}],
+    audio: 'off', seed: false},
+  outputHosts: ['output.example']}) as never;
+
+const wanBinding = () => ({version: 1, connectionId: randomUUID(), configurationRevision: 1, providerId: 'wan',
+  region: 'cn-beijing', workspaceId: '', endpoint: 'https://dashscope.aliyuncs.com/api/v1',
+  credentialRef: '00000000-0000-4000-8000-000000000001',
+  model: {id: randomUUID(), name: 'wan3.0-video', modelId: 'wan3.0-video', templateId: 'wan30-v1',
+    enabled: true, archived: false, inputModes: ['text', 'image', 'frames', 'reference'],
+    aspectRatios: ['9:16', '16:9'], durationResolutionMap: [{duration: [4, 8], resolution: ['720P']}],
+    audio: 'optional', seed: true},
+  outputHosts: ['output.example']}) as never;
 
 function action(store: ProjectStore) {
   const state = prepareSequenceEditHistory(store);
@@ -229,6 +334,7 @@ test('reference lines: first/last frames are exclusive, subject cards use subjec
     const [set] = readFormat5ShotReferenceCandidates(store, [seeded.shotId]);
     assert.equal(set!.candidates.length, 4);
     assert.deepEqual(set!.candidates.map(candidate => candidate.role), ['first_frame', 'last_frame', 'reference_audio', 'reference_video']);
+    assert.deepEqual(set!.candidates.map(candidate => candidate.orderIndex), [0, 1, 2, 3]);
     assert.equal(resolveReferenceSource(store, seeded.audio.nodeId).mimeType, 'audio/wav');
   } finally {
     store.close();
@@ -397,6 +503,193 @@ test('the generation-input view reports mode, resolved labels, subject versions,
       modelId: 'wan3.0-video', templateId: 'wan30-v1', inputModes: ['text', 'image', 'frames', 'reference']}} as never;
     const wanView = readFormat5GenerationInputView(store, seeded.shotId, {binding: wan});
     assert.ok(wanView.entries.some(entry => entry.role === 'reference_audio' && entry.status === 'unsupported'));
+  } finally {
+    store.close();
+  }
+});
+
+
+test('previs scene subjects enter generation inputs: follow and locked versions, look as style and the frozen plan', async () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const hero = createSubject(store, 'character', '阿璃');
+    const look = createSubject(store, 'look', '霓虹色');
+    const previs = await publishPrevis(store, previsScene({
+      figures: [{subjectId: hero.subjectId}],
+      props: [{subjectId: look.subjectId, subjectVersionId: look.versions[0]!.id}],
+    }), '街口');
+    attachNode(seeded, previs.nodeId);
+    const binding = arkBinding();
+    const plan = planFormat5GenerationInputs(store, seeded.shotId, {binding});
+    // The previs material line itself is unchanged: an edge composition input.
+    const sceneEntry = plan.entries.find(entry => entry.source === 'edge' && entry.sourceKind === 'previs')!;
+    assert.equal(sceneEntry.role, 'composition');
+    assert.equal(sceneEntry.label, '街口');
+    const subjects = plan.entries.filter(entry => entry.source === 'previs');
+    assert.deepEqual(subjects.map(entry => entry.subjectId), [hero.subjectId, look.subjectId]);
+    const [heroEntry, lookEntry] = subjects;
+    assert.equal(heroEntry!.source, 'previs');
+    assert.equal(heroEntry!.sourceNodeId, previs.nodeId);
+    assert.equal(heroEntry!.sourceKind, 'subject');
+    assert.equal(heroEntry!.role, 'subject_reference');
+    assert.equal(heroEntry!.bindingMode, 'follow');
+    assert.equal(heroEntry!.subjectVersionId, hero.versions[0]!.id);
+    assert.equal(heroEntry!.subjectVersionNumber, 1);
+    assert.equal(heroEntry!.assetId, hero.versions[0]!.assetId);
+    assert.equal(heroEntry!.label, '街口 · 阿璃');
+    assert.equal(heroEntry!.status, 'used');
+    assert.equal(lookEntry!.role, 'style_reference');
+    assert.equal(lookEntry!.bindingMode, 'locked');
+    assert.equal(lookEntry!.subjectVersionId, look.versions[0]!.id);
+    assert.equal(lookEntry!.label, '街口 · 霓虹色');
+    assert.equal(plan.mode, 'references');
+    assert.deepEqual(plan.entries.map(entry => entry.orderIndex), [0, 1, 2]);
+    assert.deepEqual(plan.images.map(image => image.assetId),
+      [previs.outputAssetId, hero.versions[0]!.assetId, look.versions[0]!.assetId]);
+    // The freeze carries the exact version each reference used.
+    const freeze = format5GenerationSource(plan, binding as never).freeze;
+    assert.deepEqual(freeze.entries.filter(entry => entry.source === 'previs').map(entry =>
+      ({role: entry.role, subjectId: entry.subjectId, subjectVersionId: entry.subjectVersionId,
+        bindingMode: entry.bindingMode, orderIndex: entry.orderIndex, sourceNodeId: entry.sourceNodeId})), [
+      {role: 'subject_reference', subjectId: hero.subjectId, subjectVersionId: hero.versions[0]!.id,
+        bindingMode: 'follow', orderIndex: 1, sourceNodeId: previs.nodeId},
+      {role: 'style_reference', subjectId: look.subjectId, subjectVersionId: look.versions[0]!.id,
+        bindingMode: 'locked', orderIndex: 2, sourceNodeId: previs.nodeId},
+    ]);
+    const frozenBytes = JSON.stringify(freeze);
+    // A follow reference reads the next head; a locked one keeps its version.
+    const heroV2 = addSubjectVersion(store, hero);
+    const lookV2 = addSubjectVersion(store, look);
+    const next = planFormat5GenerationInputs(store, seeded.shotId, {binding});
+    const nextHero = next.entries.find(entry => entry.source === 'previs' && entry.subjectId === hero.subjectId)!;
+    const nextLook = next.entries.find(entry => entry.source === 'previs' && entry.subjectId === look.subjectId)!;
+    assert.equal(nextHero.subjectVersionId, heroV2.id);
+    assert.equal(nextHero.assetId, heroV2.assetId);
+    assert.equal(nextHero.subjectVersionNumber, 2);
+    assert.equal(nextLook.subjectVersionId, look.versions[0]!.id);
+    assert.equal(nextLook.assetId, look.versions[0]!.assetId);
+    assert.equal(lookV2.id, look.versions[1]!.id);
+    assert.equal(JSON.stringify(freeze), frozenBytes);
+  } finally {
+    store.close();
+  }
+});
+
+test('a subject directly bound to the shot wins over the same subject named by a previs scene', async () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const hero = createSubject(store, 'character', '阿璃');
+    const heroV2 = addSubjectVersion(store, hero);
+    // Direct binding locked to v1 while the subject head already moved to v2.
+    const bindingId = randomUUID();
+    let state = prepareSequenceEditHistory(store);
+    const created = buildSubjectBindingEnvelope(store, {kind: 'create', bindingId, shotId: seeded.shotId,
+      subjectId: hero.subjectId, role: 'subject'}, {requestId: `ri-previs-direct-${randomUUID()}`, actionId: randomUUID(),
+      edgeId: randomUUID(), epoch: state.state.epoch, historyPosition: state.state.position, historyRevision: state.state.revision});
+    assert.equal((runSequenceSync(store, created) as Record<string, any>).ok, true);
+    state = prepareSequenceEditHistory(store);
+    const locked = buildSubjectBindingEnvelope(store, {kind: 'set-mode', bindingId, bindingMode: 'locked',
+      subjectVersionId: hero.versions[0]!.id}, {requestId: `ri-previs-lock-${randomUUID()}`, actionId: randomUUID(),
+      edgeId: randomUUID(), epoch: state.state.epoch, historyPosition: state.state.position, historyRevision: state.state.revision});
+    const lockedResult = runSequenceSync(store, locked) as Record<string, any>;
+    assert.equal(lockedResult.ok, true, JSON.stringify(lockedResult));
+    // The previs scene names the same subject twice (figure follow, prop locked v2).
+    const previs = await publishPrevis(store, previsScene({
+      figures: [{subjectId: hero.subjectId}],
+      props: [{subjectId: hero.subjectId, subjectVersionId: heroV2.id}],
+    }), '街口');
+    attachNode(seeded, previs.nodeId);
+    const plan = planFormat5GenerationInputs(store, seeded.shotId, {binding: arkBinding()});
+    const heroEntries = plan.entries.filter(entry => entry.subjectId === hero.subjectId);
+    assert.equal(heroEntries.length, 1);
+    const [direct] = heroEntries;
+    assert.equal(direct!.source, 'subject');
+    assert.equal(direct!.bindingId, bindingId);
+    assert.equal(direct!.bindingMode, 'locked');
+    assert.equal(direct!.subjectVersionId, hero.versions[0]!.id);
+    assert.equal(direct!.role, 'subject_reference');
+    assert.equal(plan.entries.some(entry => entry.source === 'previs' && entry.subjectId === hero.subjectId), false);
+    // Dense numbering: the composition edge is 0, the direct binding 1.
+    assert.deepEqual(plan.entries.map(entry => entry.orderIndex), [0, 1]);
+    const [set] = readFormat5ShotReferenceCandidates(store, [seeded.shotId]);
+    assert.deepEqual(set!.candidates.map(candidate => candidate.orderIndex), [0, 1]);
+    assert.equal(set!.candidates[1]!.subjectId, hero.subjectId);
+    assert.equal(set!.candidates[1]!.bindingId, bindingId);
+  } finally {
+    store.close();
+  }
+});
+
+test('previs scene subjects reuse the RI capacity, unsupported-service and exclusive-mode reasons', async () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const subjects = Array.from({length: 11}, (_, index) =>
+      createSubject(store, index < 8 ? 'character' : 'look', `主体 ${index + 1}`));
+    const previs = await publishPrevis(store, previsScene({
+      figures: subjects.slice(0, 8).map(subject => ({subjectId: subject.subjectId})),
+      props: subjects.slice(8).map(subject => ({subjectId: subject.subjectId, subjectVersionId: subject.versions[0]!.id})),
+    }), '街口');
+    attachNode(seeded, previs.nodeId);
+    // Wan 3.0 accepts at most 10 reference images: the last two previs rows are over capacity.
+    const capacity = planFormat5GenerationInputs(store, seeded.shotId, {binding: wanBinding()});
+    assert.equal(capacity.mode, 'references');
+    assert.equal(capacity.entries.filter(entry => entry.status === 'used').length, 10);
+    assert.equal(capacity.images.length, 10);
+    const over = capacity.entries.filter(entry => entry.reason === 'CAPACITY_EXCEEDED');
+    assert.equal(over.length, 2);
+    assert.ok(over.every(entry => entry.status === 'unsupported' && entry.source === 'previs'));
+    // A service without reference images reports the stable unsupported reason.
+    const noReference = arkBinding() as Record<string, any>;
+    const noReferencePlan = planFormat5GenerationInputs(store, seeded.shotId,
+      {binding: {...noReference, model: {...noReference.model, inputModes: ['text', 'image', 'frames']}} as never});
+    assert.ok(noReferencePlan.entries.filter(entry => entry.source === 'previs')
+      .every(entry => entry.status === 'unsupported' && entry.reason === 'UNSUPPORTED_REFERENCE_IMAGES'));
+    // Without a selected service every connected input stays visible and unsupported.
+    const unselected = planFormat5GenerationInputs(store, seeded.shotId);
+    assert.ok(unselected.entries.filter(entry => entry.source === 'previs')
+      .every(entry => entry.status === 'unsupported' && entry.reason === 'SERVICE_NOT_SELECTED'));
+    // Any previs reference role triggers the scene subjects: use the line as the first frame.
+    const previsEdge = readShotReferenceEdges(store, seeded.shotId)[0]!;
+    const roleChange = command(seeded, 'set-role', {edgeId: previsEdge.id, role: 'first_frame'});
+    assert.equal((runSequenceSync(store, roleChange.envelope) as Record<string, any>).ok, true);
+    attachNode(seeded, seeded.imageA.nodeId, 'last_frame');
+    const frames = planFormat5GenerationInputs(store, seeded.shotId, {binding: arkBinding()});
+    assert.equal(frames.mode, 'frames');
+    assert.equal(frames.entries.find(entry => entry.edgeId === previsEdge.id)!.appliedRole, 'first_frame');
+    const frameSubjects = frames.entries.filter(entry => entry.source === 'previs');
+    assert.equal(frameSubjects.length, 11);
+    assert.ok(frameSubjects.every(entry => entry.status === 'unsupported' && entry.reason === 'EXCLUSIVE_MODE'));
+  } finally {
+    store.close();
+  }
+});
+
+test('an archived previs node is ignored and an unverifiable previs output is not silently dropped', async () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const hero = createSubject(store, 'character', '阿璃');
+    const previs = await publishPrevis(store, previsScene({figures: [{subjectId: hero.subjectId}]}), '街口');
+    attachNode(seeded, previs.nodeId);
+    const binding = arkBinding();
+    assert.equal(planFormat5GenerationInputs(store, seeded.shotId, {binding})
+      .entries.filter(entry => entry.source === 'previs').length, 1);
+    // An archived endpoint hides the reference line: no candidate and no error.
+    const archiveBatchId = randomUUID();
+    store.tx(() => {store.db.prepare('UPDATE project.nodes SET archivedAt=?, archiveBatchId=?, archiveReason=? WHERE id=?')
+      .run(timestamp, archiveBatchId, 'user-delete', previs.nodeId);});
+    const archived = planFormat5GenerationInputs(store, seeded.shotId, {binding});
+    assert.equal(archived.mode, 'text');
+    assert.equal(archived.entries.length, 0);
+    // A live node without a verifiable published output keeps the RI error semantics.
+    store.tx(() => {store.db.prepare('UPDATE project.nodes SET archivedAt=NULL, archiveBatchId=NULL, archiveReason=NULL WHERE id=?')
+      .run(previs.nodeId);});
+    // Drop the published evidence outside the content fence: the read path must
+    // refuse a live previs line that has no verifiable output.
+    store.db.prepare('DELETE FROM project.assets WHERE id=?').run(previs.outputAssetId);
+    assert.throws(() => planFormat5GenerationInputs(store, seeded.shotId, {binding}), (error: unknown) => {
+      const value = error as {code?: unknown; details?: {reason?: unknown}};
+      return value.code === 'SEQUENCE_EDIT_REFERENCE_INVALID' && value.details?.reason === 'PREVIS_OUTPUT_REQUIRED';
+    });
   } finally {
     store.close();
   }

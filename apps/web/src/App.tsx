@@ -2499,7 +2499,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function format5InputRoleChange(edgeId: string, shotId: string, role: Parameters<typeof referenceRoleRequest>[2]): void {
     void format5ReferenceRun(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
   }
-  function format5InputDetach(entry: {source: 'edge' | 'subject'; edgeId?: string; bindingId?: string}, shotId: string): void {
+  function format5InputDetach(entry: {source: 'edge' | 'subject' | 'previs'; edgeId?: string; bindingId?: string}, shotId: string): void {
     const name = format5BoardProjection?.nodes.find(node => node.id === shotId)?.name ?? '';
     if (entry.source === 'subject' && entry.bindingId) {
       void format5BoardRunSubject(subjectBindingDetachOperation(entry.bindingId), undefined,
