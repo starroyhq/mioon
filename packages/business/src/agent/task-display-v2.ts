@@ -149,6 +149,12 @@ export function projectAgentTaskChangeDisplay(change:AgentTaskChange):AgentTaskD
 export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:TargetReader,includeCurrent=false):AgentTaskDisplay|undefined {
   if(!step.toolCall)return;
   const display:AgentTaskDisplay={operation:operation(step.toolCall.name),targets:[],targetCount:0,fields:[]},args=object(step.toolCall.arguments)?step.toolCall.arguments:{};
+  // GE-a2: a Mio timeline generate is a paid provider submission. Show the same
+  // title and service/model/ratio/duration/parameter card as generation.submit.
+  if(step.toolCall.name==='mioon_sequence_timeline_edit'&&args.kind==='generate'&&object(args.settings)){
+   display.operation='generation.submit';
+   appendFields(display,undefined,{},fields('generation.submit','shot',{...args.settings as Value,referenceAssetIds:[]}),true);
+  }
   let targets:Pick<AgentTaskTarget,'kind'|'id'>[]=[...(step.targets??[])];
   for(const [field,kind] of [['shotId','shot'],['clipId','timeline_clip'],['cueId','timeline_subtitle'],['trackId','timeline_track'],['assetId','asset'],['nodeId','node'],['jobId','job'],['exportId','export']] as const){const id=args[field];if(typeof id==='string'&&uuid.test(id)&&!targets.some(item=>item.kind===kind&&item.id===id))targets.push({kind,id});}
   // A creation has no saved target yet. Its parameter fields are operation-wide;
