@@ -918,6 +918,8 @@ export interface ReadFormat5GenerationInputOptions {
   readonly binding?: VideoExecutionBinding;
   /** Explicit primary image chosen in the panel (edge or binding id). */
   readonly primaryReferenceId?: string;
+  /** Current "生成声音" switch; omitted reports the service default. */
+  readonly generateAudio?: boolean;
 }
 
 /** Live generation-input projection shared by the board property panel and the
@@ -954,7 +956,8 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
   } catch { basePrompt = ''; }
   const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
-    {...(options.binding ? {binding: options.binding} : {}), basePrompt}));
+    {...(options.binding ? {binding: options.binding} : {}), basePrompt,
+     ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})}));
   return {
     projectId: store.projectId,
     shotId,

@@ -102,16 +102,37 @@ export function dialogueGenerationCapability(binding: Pick<VideoExecutionBinding
   return null;
 }
 
+/** Markup a line itself must not carry into the prompt: it would break the
+ * service's own dialogue delimiters. Sanitizing replaces them with a form the
+ * marker grammar cannot read as a delimiter; the frozen line still records the
+ * original text exactly. */
+export function sanitizeDialoguePromptPart(style: DialogueDeliveryStyle, value: string,
+  part: 'text' | 'speaker' = 'text'): string {
+  switch (style) {
+    case 'seedance-braces':
+      return value.replaceAll('{', '（').replaceAll('}', '）');
+    case 'wan-quotes':
+    case 'veo-speaker':
+      return value.replaceAll('“', '「').replaceAll('”', '」');
+    case 'minimax-d-tags':
+      return value.replace(/<\/?d>/giu, '').replaceAll('<', '＜').replaceAll('>', '＞');
+    case 'kling-speaker':
+      // The only structural marker is the full-width colon after the speaker.
+      return part === 'speaker' ? value.replaceAll('：', ':') : value;
+  }
+}
+
 /** One line exactly as the reviewed style writes it. A speaker name only comes
  * from a resolved subject; a line without one never invents a name. */
 export function formatDialoguePromptLine(style: DialogueDeliveryStyle, line: DialoguePromptLine): string {
-  const speaker = line.speakerName;
+  const speaker = line.speakerName === undefined ? undefined : sanitizeDialoguePromptPart(style, line.speakerName, 'speaker');
+  const text = sanitizeDialoguePromptPart(style, line.text, 'text');
   switch (style) {
-    case 'seedance-braces': return `{${speaker ? `${speaker}：` : ''}“${line.text}”}`;
-    case 'wan-quotes': return speaker ? `${speaker}：“${line.text}”` : `“${line.text}”`;
-    case 'minimax-d-tags': return speaker ? `${speaker}：<d>${line.text}</d>` : `<d>${line.text}</d>`;
-    case 'kling-speaker': return speaker ? `${speaker}：${line.text}` : line.text;
-    case 'veo-speaker': return speaker ? `${speaker}说：“${line.text}”` : `“${line.text}”`;
+    case 'seedance-braces': return `{${speaker ? `${speaker}：` : ''}“${text}”}`;
+    case 'wan-quotes': return speaker ? `${speaker}：“${text}”` : `“${text}”`;
+    case 'minimax-d-tags': return speaker ? `${speaker}：<d>${text}</d>` : `<d>${text}</d>`;
+    case 'kling-speaker': return speaker ? `${speaker}：${text}` : text;
+    case 'veo-speaker': return speaker ? `${speaker}说：“${text}”` : `“${text}”`;
   }
 }
 /** The marked lines in order, one per dialogue row. */

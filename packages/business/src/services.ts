@@ -571,14 +571,18 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // without a reviewed speaking capability sends no dialogue; a prompt that
   // would exceed the model limit rejects the whole generation (no truncation).
   if(format5Project&&!retrySnapshot&&executionBinding){
+   // The explicit "生成声音" switch wins; without it the shot's dialogue already
+   // opened it in the shared UI default, and the same default is applied here so
+   // Mio-initiated generations agree with the checkbox.
+   const requestedGenerateAudio=executionBinding.model.audio==='optional'&&isRecord(parameters)&&typeof parameters.generateAudio==='boolean'
+    ?parameters.generateAudio:undefined;
    format5Dialogue=planFormat5DialogueGeneration(store,shot.id,{binding:executionBinding,
-    basePrompt:typeof shot.prompt==='string'?shot.prompt:''});
+    basePrompt:typeof shot.prompt==='string'?shot.prompt:'',
+    ...(requestedGenerateAudio!==undefined?{generateAudio:requestedGenerateAudio}:{})});
    assertFormat5DialogueSubmittable(format5Dialogue);
-   if(format5Dialogue.status==='used'&&format5Dialogue.lines.length>0){
+   if(format5Dialogue.status==='used'&&format5Dialogue.lines.length>0)
     source={...source,prompt:format5Dialogue.prompt};
-    if(format5Dialogue.audioRequest)parameters={...recordValue(parameters),...format5Dialogue.audioRequest};
-    else parameters=recordValue(parameters);
-   }
+   if(format5Dialogue.audioRequest)parameters={...recordValue(parameters),...format5Dialogue.audioRequest};
   }
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph,ratio?{input,ratio}:undefined);
   return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input,format5Dialogue};
@@ -771,7 +775,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
      throw new AppError('VALIDATION_ERROR','生成服务选择不完整。',400);
    const binding=videoSettings?.select(connectionId,configurationRevision,modelEntryId);
    if(!binding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
-   return readFormat5GenerationInputView(store,shotId,{binding});
+   const generateAudio=typeof input.generateAudio==='boolean'?input.generateAudio:undefined;
+   return readFormat5GenerationInputView(store,shotId,{binding,
+    ...(generateAudio!==undefined?{generateAudio}:{})});
   },
   ...references.handlers,
   ...localMutations.handlers,

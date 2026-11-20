@@ -2477,19 +2477,24 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return generationSelection(providers, generationOptionsRef.current[shotId] ?? {}, shot as never);
   }
   const format5InputRequest = (shotId: string): {shotId: string; connectionId?: string;
-    configurationRevision?: number; modelEntryId?: string} => {
+    configurationRevision?: number; modelEntryId?: string; generateAudio?: boolean} => {
     const selection = format5GenerationSelection(shotId);
     const provider = selection.provider;
+    const shot = dataRef.current.shots.find(item => item.id === shotId) ?? {};
+    // DL-b: pass the switch the user sees so the panel projection reports the
+    // same used/AUDIO_OFF dialogue state as the request that would be sent.
+    const parameters = generationParameters(shot as never, provider, generationOptionsRef.current[shotId] ?? {});
     return {shotId, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision) && selection.modelEntryId
       ? {connectionId: provider.connectionId, configurationRevision: Number(provider.configurationRevision),
-        modelEntryId: selection.modelEntryId} : {})};
+        modelEntryId: selection.modelEntryId} : {}),
+      ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
   };
   const format5InputRequestKey = format5 && selectedId && data.shots.some(shot => shot.id === selectedId)
     ? JSON.stringify(format5InputRequest(selectedId)) : '';
   useEffect(() => {
     if (!format5 || !format5InputRequestKey) {setFormat5Inputs(null); return;}
     const request = JSON.parse(format5InputRequestKey) as {shotId: string; connectionId?: string;
-      configurationRevision?: number; modelEntryId?: string};
+      configurationRevision?: number; modelEntryId?: string; generateAudio?: boolean};
     let cancelled = false;
     void rpc('sequence.generation-inputs.get', {projectId: currentProject.current, ...request})
       .then(view => {if (!cancelled) setFormat5Inputs(view as SequenceGenerationInputView);})

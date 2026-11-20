@@ -28,6 +28,7 @@ type Row = Record<string, unknown>;
 export const FORMAT5_DIALOGUE_REASONS = Object.freeze({
   serviceNotSelected: 'SERVICE_NOT_SELECTED',
   serviceDoesNotSpeak: 'SERVICE_DOES_NOT_SPEAK',
+  audioOff: 'AUDIO_OFF',
   promptTooLong: 'PROMPT_TOO_LONG',
 } as const);
 export type Format5DialogueReason = typeof FORMAT5_DIALOGUE_REASONS[keyof typeof FORMAT5_DIALOGUE_REASONS];
@@ -55,6 +56,9 @@ export interface Format5DialoguePlan {
   readonly capability: DialogueGenerationCapability | null;
   /** The adapter's native-audio request field when this model needs one. */
   readonly audioRequest: {readonly generateAudio: true} | null;
+  /** The switch value this generation actually uses (explicit user choice or the
+   * dialogue default), recorded in the freeze even when no dialogue is sent. */
+  readonly generateAudio: boolean;
 }
 
 /** Frozen plan a job snapshot stores; immutable generation provenance. */
@@ -115,6 +119,8 @@ export interface PlanFormat5DialogueOptions {
   readonly binding?: VideoExecutionBinding;
   /** Saved shot prompt; the text the user already wrote for this shot. */
   readonly basePrompt: string;
+  /** Explicit request switch; omitted means the dialogue default. */
+  readonly generateAudio?: boolean;
 }
 
 export interface PlanDialogueGenerationInput {
@@ -124,6 +130,9 @@ export interface PlanDialogueGenerationInput {
   readonly lines: readonly Format5DialogueLineFreeze[];
   readonly basePrompt: string;
   readonly binding?: VideoExecutionBinding;
+  /** Explicit "生成声音" switch from the request; omitted means the service
+   * default (open when the shot has dialogue and the model's audio is optional). */
+  readonly generateAudio?: boolean;
 }
 
 /** Pure dialogue plan for one already-read shot. Never writes and never throws
@@ -135,7 +144,8 @@ export function planDialogueGeneration(input: PlanDialogueGenerationInput): Form
   if (!binding) {
     return {version: 1, shotId, shotRevision, binding: null, status: 'unsupported',
       reason: FORMAT5_DIALOGUE_REASONS.serviceNotSelected, lines, basePrompt, prompt: basePrompt,
-      promptCodeUnits: basePrompt.length, maxPromptCodeUnits: 0, capability: null, audioRequest: null};
+      promptCodeUnits: basePrompt.length, maxPromptCodeUnits: 0, capability: null, audioRequest: null,
+      generateAudio: false};
   }
   const capability = dialogueGenerationCapability(binding);
   const maxPromptCodeUnits = videoInputProfile(binding).prompt.maxCodeUnits;
@@ -144,21 +154,40 @@ export function planDialogueGeneration(input: PlanDialogueGenerationInput): Form
   if (!capability) {
     return {version: 1, shotId, shotRevision, binding: bindingFreeze, status: 'unsupported',
       reason: FORMAT5_DIALOGUE_REASONS.serviceDoesNotSpeak, lines, basePrompt, prompt: basePrompt,
-      promptCodeUnits: basePrompt.length, maxPromptCodeUnits, capability: null, audioRequest: null};
+      promptCodeUnits: basePrompt.length, maxPromptCodeUnits, capability: null, audioRequest: null,
+      generateAudio: false};
+  }
+  // The optional native-sound switch follows the explicit request first; without
+  // one the dialogue default opens it, so the UI checkbox and request agree.
+  const generateAudio = capability.audioMode === 'request-switch'
+    ? input.generateAudio ?? lines.length > 0
+    : capability.audioMode !== 'model-default' && capability.audioMode !== 'always-on' ? false : true;
+  // Only a shot that actually has lines loses dialogue when sound is off.
+  const audioOff = capability.audioMode === 'request-switch' && !generateAudio && lines.length > 0;
+  if (audioOff) {
+    // The user turned sound off: this generation sends no dialogue at all.
+    return {version: 1, shotId, shotRevision, binding: bindingFreeze, status: 'unsupported',
+      reason: FORMAT5_DIALOGUE_REASONS.audioOff, lines, basePrompt, prompt: basePrompt,
+      promptCodeUnits: basePrompt.length, maxPromptCodeUnits, capability, audioRequest: null,
+      generateAudio: false};
   }
   const promptLines: readonly DialoguePromptLine[] = lines;
-  const prompt = composeDialoguePrompt(basePrompt, promptLines, capability.style);
-  const promptCodeUnits = prompt.length;
-  if (promptCodeUnits > maxPromptCodeUnits) {
-    // The whole generation is rejected with a reason; dialogue is never truncated.
+  const composed = composeDialoguePrompt(basePrompt, promptLines, capability.style);
+  const baseFits = basePrompt.length <= maxPromptCodeUnits;
+  // Reject as dialogue-caused only when the original prompt fits and the added
+  // lines push it over. An over-long original prompt stays a prompt-validation
+  // error; without lines there is nothing to blame on the dialogue.
+  if (lines.length > 0 && baseFits && composed.length > maxPromptCodeUnits) {
     return {version: 1, shotId, shotRevision, binding: bindingFreeze, status: 'rejected',
-      reason: FORMAT5_DIALOGUE_REASONS.promptTooLong, lines, basePrompt, prompt, promptCodeUnits,
-      maxPromptCodeUnits, capability, audioRequest: null};
+      reason: FORMAT5_DIALOGUE_REASONS.promptTooLong, lines, basePrompt, prompt: composed,
+      promptCodeUnits: composed.length, maxPromptCodeUnits, capability, audioRequest: null,
+      generateAudio};
   }
+  const prompt = baseFits ? composed : basePrompt;
   return {version: 1, shotId, shotRevision, binding: bindingFreeze, status: 'used',
-    lines, basePrompt, prompt, promptCodeUnits, maxPromptCodeUnits, capability,
-    // The native-audio switch is only turned on when the shot actually has lines.
-    audioRequest: lines.length > 0 ? dialogueAudioRequest(capability) : null};
+    lines, basePrompt, prompt, promptCodeUnits: prompt.length, maxPromptCodeUnits, capability,
+    audioRequest: capability.audioMode === 'request-switch' && generateAudio ? dialogueAudioRequest(capability) : null,
+    generateAudio};
 }
 
 /** Read one format-5 shot, validate its dialogue rows and resolve speaker names;
@@ -175,7 +204,8 @@ export function planFormat5DialogueGeneration(store: ProjectStore, shotId: strin
     ...(line.speakerSubjectId && names.has(line.speakerSubjectId) ? {speakerName: names.get(line.speakerSubjectId)!} : {}),
   }));
   return planDialogueGeneration({shotId, shotRevision: shot.revision, lines,
-    basePrompt: options.basePrompt, ...(options.binding ? {binding: options.binding} : {})});
+    basePrompt: options.basePrompt, ...(options.binding ? {binding: options.binding} : {}),
+    ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})});
 }
 
 export function freezeFormat5Dialogue(plan: Format5DialoguePlan): Format5DialogueFreeze {
@@ -188,7 +218,7 @@ export function freezeFormat5Dialogue(plan: Format5DialoguePlan): Format5Dialogu
     ...(capability ? {style: capability.style, audioMode: capability.audioMode} : {}),
     lines: plan.lines, basePrompt: plan.basePrompt, prompt: plan.prompt,
     promptCodeUnits: plan.promptCodeUnits, maxPromptCodeUnits: plan.maxPromptCodeUnits,
-    generateAudio: Boolean(plan.audioRequest?.generateAudio)};
+    generateAudio: plan.generateAudio};
 }
 
 /** Frozen provenance from a job snapshot. Absent for format 3/4 jobs or format-5
@@ -213,7 +243,7 @@ export function format5DialogueView(plan: Format5DialoguePlan): SequenceGenerati
 export function assertFormat5DialogueSubmittable(plan: Format5DialoguePlan): void {
   if (plan.status !== 'rejected') return;
   throw new AppError('DIALOGUE_PROMPT_TOO_LONG',
-    '台词加进提示词后超出该服务的上限，本次生成已拒绝；不会截断台词。', 400,
+    '台词加进提示词后超出这个服务的上限。', 400,
     {shotId: plan.shotId, promptCodeUnits: plan.promptCodeUnits, maxPromptCodeUnits: plan.maxPromptCodeUnits,
       reason: FORMAT5_DIALOGUE_REASONS.promptTooLong});
 }

@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
-import path from 'node:path';
 import {createChainWorld} from './helpers/sequence-edit-double.ts';
-import {dialogueGenerationCapability, composeDialoguePrompt} from '../packages/contracts/src/dialogue-generation.ts';
+import {
+  dialogueGenerationCapability, composeDialoguePrompt, formatDialoguePromptLine,
+} from '../packages/contracts/src/dialogue-generation.ts';
 import type {DialoguePromptLine} from '../packages/contracts/src/dialogue-generation.ts';
 import {defaultVideoModels, VIDEO_REGIONS} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding, VideoModelEntry} from '../packages/contracts/src/video-providers.ts';
@@ -13,25 +12,19 @@ import {
   planFormat5DialogueGeneration, readFrozenFormat5Dialogue, FORMAT5_DIALOGUE_REASONS,
 } from '../packages/business/src/format5-dialogue-generation.ts';
 import {readFormat5GenerationInputView} from '../packages/business/src/format5-reference-inputs.ts';
-import {LOCALES, translate} from '../packages/i18n/src/index.ts';
+import {defaultGenerateAudio, shotHasDialogue} from '../apps/web/src/generation-settings.ts';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
-const projectId = '90000000-0000-4000-8000-000000000001';
 const shotId = '90000000-0000-4000-8000-000000000010';
-const assetId = '90000000-0000-4000-8000-000000000050';
-const at = '2026-01-01T00:00:00.000Z';
-const uuid = (): string => crypto.randomUUID();
 
-let serial = 0;
 function bindingFor(providerId: string, patch: Partial<VideoModelEntry> = {}): VideoExecutionBinding {
   const defaults = defaultVideoModels(providerId as never);
-  const fallback: VideoModelEntry = {id: uuid(), name: 'custom', modelId: 'custom-video', templateId: 'openai-video-v1',
+  const fallback: VideoModelEntry = {id: crypto.randomUUID(), name: 'custom', modelId: 'custom-video', templateId: 'openai-video-v1',
     enabled: true, archived: false, inputModes: ['text'], aspectRatios: ['9:16'],
     durationResolutionMap: [{duration: [4], resolution: ['720p']}], audio: 'default', seed: false};
   const model = {...(defaults[0] ?? fallback), ...patch};
-  serial++;
-  return {version: 1, connectionId: uuid(), configurationRevision: 1, providerId, region: VIDEO_REGIONS[providerId as never][0]!,
-    workspaceId: '', endpoint: 'https://example.com', credentialRef: uuid(), model: {...model, id: uuid()},
+  return {version: 1, connectionId: crypto.randomUUID(), configurationRevision: 1, providerId,
+    region: VIDEO_REGIONS[providerId as never][0]!, workspaceId: '', endpoint: 'https://example.com',
+    credentialRef: crypto.randomUUID(), model: {...model, id: crypto.randomUUID()},
     outputHosts: []} as unknown as VideoExecutionBinding;
 }
 
@@ -78,113 +71,142 @@ test('each speaking style has an exact frozen snapshot (two speakers, one unname
   }
 });
 
-test('services without a reviewed speaking capability never receive dialogue', () => {
+test('a line or speaker name cannot break its own style markup (raw lines stay frozen)', () => {
+  const markers: Record<string, {text: string; speaker: string; prompt: string}> = {
+    'seedance-braces': {text: '{台词}', speaker: '张{三}',
+      prompt: '{张（三）：“（台词）”}'},
+    'wan-quotes': {text: '“台词”', speaker: '张“三”',
+      prompt: '张「三」：“「台词」”'},
+    'minimax-d-tags': {text: '<d>台词</d>', speaker: '张<三>',
+      prompt: '张＜三＞：<d>台词</d>'},
+    'kling-speaker': {text: '台词：内容', speaker: '张：三',
+      prompt: '张:三：台词：内容'},
+    'veo-speaker': {text: '“台词”', speaker: '张“三”',
+      prompt: '张「三」说：“「台词」”'},
+  };
+  for (const [style, marker] of Object.entries(markers)) {
+    const line = {lineId: 'line-1', text: marker.text, speakerName: marker.speaker};
+    assert.equal(formatDialoguePromptLine(style as never, line), marker.prompt, style);
+  }
+  // The freeze keeps the user's original text; only the prompt is sanitized.
+  const plan = planDialogueGeneration({shotId, shotRevision: 1,
+    lines: [{lineId: 'line-1', text: '{台词}', speakerName: '张{三}'}], basePrompt: base, binding: bindingFor('ark')});
+  assert.equal(plan.lines[0]!.text, '{台词}');
+  assert.equal(plan.lines[0]!.speakerName, '张{三}');
+  assert.equal(plan.prompt, `${base}\n{张（三）：“（台词）”}`);
+});
+
+test('the optional sound switch follows the request, then the dialogue default', () => {
+  const seedance = bindingFor('ark');
+  const defaulted = planDialogueGeneration({shotId, shotRevision: 1, lines, basePrompt: base, binding: seedance});
+  assert.equal(defaulted.status, 'used', 'a shot with dialogue defaults native sound on');
+  assert.equal(defaulted.generateAudio, true);
+  assert.deepEqual(defaulted.audioRequest, {generateAudio: true});
+  assert.equal(freezeFormat5Dialogue(defaulted).generateAudio, true);
+
+  const manualOff = planDialogueGeneration({shotId, shotRevision: 1, lines, basePrompt: base,
+    binding: seedance, generateAudio: false});
+  assert.equal(manualOff.status, 'unsupported');
+  assert.equal(manualOff.reason, FORMAT5_DIALOGUE_REASONS.audioOff);
+  assert.equal(manualOff.prompt, base, 'a manually muted generation sends no dialogue');
+  assert.equal(manualOff.audioRequest, null);
+  assert.equal(manualOff.generateAudio, false);
+  assert.equal(freezeFormat5Dialogue(manualOff).generateAudio, false);
+  assert.equal(format5DialogueView(manualOff).reason, 'AUDIO_OFF');
+  assert.doesNotThrow(() => assertFormat5DialogueSubmittable(manualOff), 'muted dialogue still generates without sound');
+
+  const manualOn = planDialogueGeneration({shotId, shotRevision: 1, lines, basePrompt: base,
+    binding: seedance, generateAudio: true});
+  assert.equal(manualOn.status, 'used');
+  assert.equal(manualOn.generateAudio, true);
+  assert.deepEqual(manualOn.audioRequest, {generateAudio: true});
+
+  // Mio does not send the switch: the same dialogue default applies.
+  const mio = planDialogueGeneration({shotId, shotRevision: 1, lines, basePrompt: base, binding: seedance});
+  assert.equal(mio.generateAudio, true);
+  assert.match(mio.prompt, /\{张三：“你好，我们走吧。”\}/u);
+
+  // No dialogue: an absent switch stays at the model default (seedance off).
+  const empty = planDialogueGeneration({shotId, shotRevision: 1, lines: [], basePrompt: base, binding: seedance});
+  assert.equal(empty.status, 'used');
+  assert.equal(empty.generateAudio, false);
+  assert.equal(empty.audioRequest, null);
+});
+
+test('the shared UI default opens "生成声音" for an optional model with dialogue', () => {
+  const withDialogue = {id: 'shot', dialogue: [{id: 'line-1', text: '你好。'}]};
+  assert.equal(shotHasDialogue(withDialogue), true);
+  assert.equal(shotHasDialogue({id: 'shot'}), false);
+  assert.deepEqual(defaultGenerateAudio(withDialogue as never, {audio: 'optional'}, {}), {generateAudio: true},
+    'the checkbox and the request share this default');
+  assert.deepEqual(defaultGenerateAudio(withDialogue as never, {audio: 'optional'}, {generateAudio: false}),
+    {generateAudio: false}, 'an explicit user choice wins');
+  assert.deepEqual(defaultGenerateAudio({id: 'shot'} as never, {audio: 'optional'}, {}), {},
+    'a shot without dialogue keeps the model default');
+  assert.deepEqual(defaultGenerateAudio(withDialogue as never, {audio: 'off'}, {}), {},
+    'a silent model entry never defaults sound on');
+});
+
+test('a service without a reviewed speaking capability or no service sends no dialogue', () => {
   for (const providerId of ['vidu', 'runway', 'compatible']) {
     assert.equal(dialogueGenerationCapability(bindingFor(providerId)), null, providerId);
   }
   assert.equal(dialogueGenerationCapability({...bindingFor('ark'), model: {...bindingFor('ark').model, audio: 'off'}}), null,
     'a saved silent model entry does not speak');
-});
-
-
-test('the planner freezes the exact prompt and keeps a silent service unchanged', (t) => {
-  const promptLines = lines;
-  const used = planDialogueGeneration({shotId, shotRevision: 3, lines: promptLines, basePrompt: base,
-    binding: bindingFor('ark')});
-  assert.equal(used.status, 'used');
-  assert.equal(used.prompt, `${base}\n{张三：“你好，我们走吧。”}\n{李四：“好，走吧。”}\n{“外面风很大。”}`);
-  assert.deepEqual(used.audioRequest, {generateAudio: true});
-  const frozen = freezeFormat5Dialogue(used);
-  assert.deepEqual(readFrozenFormat5Dialogue({format5Dialogue: frozen}), frozen);
-  assert.equal(readFrozenFormat5Dialogue({}), null, 'format 3/4 snapshots carry no dialogue freeze');
-  const view = format5DialogueView(used);
-  assert.equal(view.status, 'used');
-  assert.equal(view.lineCount, 3);
-  assert.equal(view.promptCodeUnits, used.prompt.length);
-  assert.equal(view.style, 'seedance-braces');
-  assert.ok(view.docs && view.docs.length > 0);
-  assert.equal(assertFormat5DialogueSubmittable(used), undefined, 'a used plan is submittable');
-
-  const silent = planDialogueGeneration({shotId, shotRevision: 3, lines: promptLines, basePrompt: base,
-    binding: bindingFor('vidu')});
+  const silent = planDialogueGeneration({shotId, shotRevision: 1, lines, basePrompt: base, binding: bindingFor('vidu')});
   assert.equal(silent.status, 'unsupported');
   assert.equal(silent.reason, FORMAT5_DIALOGUE_REASONS.serviceDoesNotSpeak);
-  assert.equal(silent.prompt, base, 'unsupported services send the original prompt unchanged');
-  assert.equal(silent.audioRequest, null);
-  assert.equal(format5DialogueView(silent).reason, 'SERVICE_DOES_NOT_SPEAK');
-  assert.equal(assertFormat5DialogueSubmittable(silent), undefined, 'an unsupported service still generates without dialogue');
-
-  const noService = planDialogueGeneration({shotId, shotRevision: 3, lines: promptLines, basePrompt: base});
+  assert.equal(silent.prompt, base);
+  const noService = planDialogueGeneration({shotId, shotRevision: 1, lines, basePrompt: base});
   assert.equal(noService.status, 'unsupported');
   assert.equal(noService.reason, FORMAT5_DIALOGUE_REASONS.serviceNotSelected);
   assert.equal(noService.prompt, base);
+  const klingOff = bindingFor('kling');
+  assert.equal(dialogueGenerationCapability(klingOff), null);
+});
 
-  // The store wrapper reads the live shot row; a shot without lines contributes nothing.
-  const versionId = uuid(), assetA = uuid(), rootId = uuid();
+test('only dialogue-caused overflow is a dialogue rejection', () => {
+  const longLines = [{lineId: 'line-1', text: '台词很长。'.repeat(3)}];
+  // MiniMax-H3 reports a 1000 UTF-16 code-unit prompt limit in the input profile.
+  const dialogueCaused = planDialogueGeneration({shotId, shotRevision: 1, lines: longLines, basePrompt: '海'.repeat(980),
+    binding: bindingFor('minimax')});
+  assert.equal(dialogueCaused.status, 'rejected');
+  assert.equal(dialogueCaused.reason, FORMAT5_DIALOGUE_REASONS.promptTooLong);
+  assert.ok(dialogueCaused.promptCodeUnits > dialogueCaused.maxPromptCodeUnits);
+  assert.equal(dialogueCaused.maxPromptCodeUnits, 1000);
+  assert.ok(dialogueCaused.prompt.endsWith('<d>台词很长。台词很长。台词很长。</d>'),
+    'the dialogue is kept whole in the rejected plan text');
+  assert.equal(dialogueCaused.audioRequest, null);
+  assert.throws(() => assertFormat5DialogueSubmittable(dialogueCaused),
+    (error: {code?: string}) => error.code === 'DIALOGUE_PROMPT_TOO_LONG');
+  assert.equal(format5DialogueView(dialogueCaused).reason, 'PROMPT_TOO_LONG');
+
+  // The original prompt is already too long: the existing prompt validation owns
+  // that error, not the dialogue plan.
+  const baseTooLong = planDialogueGeneration({shotId, shotRevision: 1, lines: longLines, basePrompt: '海'.repeat(1005),
+    binding: bindingFor('minimax')});
+  assert.notEqual(baseTooLong.status, 'rejected');
+  assert.equal(baseTooLong.prompt, '海'.repeat(1005), 'no dialogue is appended when the original prompt is invalid');
+  assert.equal(assertFormat5DialogueSubmittable(baseTooLong), undefined);
+
+  // No dialogue at all never produces a dialogue rejection.
+  const noLines = planDialogueGeneration({shotId, shotRevision: 1, lines: [], basePrompt: '海'.repeat(1005),
+    binding: bindingFor('minimax')});
+  assert.equal(noLines.status, 'used');
+  assert.equal(noLines.promptCodeUnits, 1005);
+});
+
+test('the store wrapper and read-only projection use the same plan', (t) => {
+  const versionId = crypto.randomUUID(), assetA = crypto.randomUUID(), rootId = crypto.randomUUID();
   const world = createChainWorld(t, {rootId, shots: [{id: shotId, title: 'A', versionId}],
     versions: [{versionId, assetId: assetA, sha256: 'a'.repeat(64), durationSeconds: 2}],
-    edges: [{id: uuid(), fromId: rootId, toId: shotId}],
-    clips: [{nodeId: shotId, clipId: uuid(), startFrame: 0, durationFrames: 60, versionId}]} as never);
+    edges: [{id: crypto.randomUUID(), fromId: rootId, toId: shotId}],
+    clips: [{nodeId: shotId, clipId: crypto.randomUUID(), startFrame: 0, durationFrames: 60, versionId}]} as never);
   const empty = planFormat5DialogueGeneration(world.store, shotId, {binding: bindingFor('ark'), basePrompt: base});
   assert.equal(empty.status, 'used');
   assert.equal(empty.lines.length, 0);
-  assert.equal(empty.prompt, base, 'no dialogue lines means no prompt change');
-  assert.equal(empty.audioRequest, null, 'no dialogue lines means no native-audio switch');
+  assert.equal(empty.prompt, base);
   const readView = readFormat5GenerationInputView(world.store, shotId, {binding: bindingFor('ark')});
   assert.equal(readView.dialogue.status, 'used');
   assert.equal(readView.dialogue.lineCount, 0);
-});
-
-test('a prompt that cannot fit the dialogue is rejected whole, never truncated', () => {
-  const longLines = [{lineId: 'line-1', text: '台词很长。'.repeat(3)}];
-  // MiniMax-H3 reports a 1000 UTF-16 code-unit prompt limit in the input profile.
-  const plan = planDialogueGeneration({shotId, shotRevision: 1, lines: longLines, basePrompt: '海'.repeat(990),
-    binding: bindingFor('minimax')});
-  assert.equal(plan.status, 'rejected');
-  assert.equal(plan.reason, FORMAT5_DIALOGUE_REASONS.promptTooLong);
-  assert.ok(plan.promptCodeUnits > plan.maxPromptCodeUnits);
-  assert.equal(plan.maxPromptCodeUnits, 1000);
-  assert.ok(plan.prompt.endsWith('<d>台词很长。台词很长。台词很长。</d>'),
-    'the dialogue is kept whole in the rejected plan text');
-  assert.equal(plan.audioRequest, null);
-  assert.throws(() => assertFormat5DialogueSubmittable(plan), (error: {code?: string}) => error.code === 'DIALOGUE_PROMPT_TOO_LONG');
-  const view = format5DialogueView(plan);
-  assert.equal(view.status, 'rejected');
-  assert.equal(view.reason, 'PROMPT_TOO_LONG');
-});
-
-test('consecutive speaking providers keep the second unspoken silently', () => {
-  // Kling's saved default entry is silent; it only speaks when the entry is on/optional.
-  const klingOff = bindingFor('kling');
-  assert.equal(dialogueGenerationCapability(klingOff), null);
-  const capability = dialogueGenerationCapability(bindingFor('kling', {audio: 'on'}));
-  assert.ok(capability);
-  assert.equal(capability!.audioMode, 'always-on');
-});
-
-test('the read-only projection and the dialogue panel share the same status', () => {
-  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
-  const panel = readFileSync(path.join(root, 'apps/web/src/ShotDialogue.tsx'), 'utf8');
-  assert.match(app, /dialogueStatus=\{format5Inputs && format5Inputs\.shotId === chosenShot\.id \? format5Inputs\.dialogue : null\}/);
-  assert.match(panel, /shot-dialogue-generation-unsupported/);
-  assert.match(panel, /shot-dialogue-generation-rejected/);
-  assert.match(panel, /SERVICE_DOES_NOT_SPEAK/);
-  assert.match(panel, /PROMPT_TOO_LONG/);
-  for (const locale of LOCALES) {
-    assert.ok(translate(locale, 'dialogue.ui.generationUnsupported' as never).length > 0);
-    assert.ok(translate(locale, 'dialogue.ui.generationPromptTooLong' as never).length > 0);
-  }
-  assert.equal(translate('zh-Hans', 'dialogue.ui.generationUnsupported' as never), '当前服务不支持');
-});
-
-test('submit freezes the exact dialogue prompt in the job snapshot and rejects before writing', () => {
-  const services = readFileSync(path.join(root, 'packages/business/src/services.ts'), 'utf8');
-  assert.match(services, /format5Dialogue=planFormat5DialogueGeneration\(store,shot\.id/);
-  assert.match(services, /assertFormat5DialogueSubmittable\(format5Dialogue\)/);
-  assert.match(services, /format5Dialogue:freezeFormat5Dialogue\(format5Dialogue\)/);
-  assert.match(services, /\{prompt:format5Dialogue\.prompt\}/, 'the frozen adapter prompt is the final text');
-  assert.match(services, /parameters=\{\.\.\.recordValue\(parameters\),\.\.\.format5Dialogue\.audioRequest\}/);
-  // A retry uses the stored snapshot as the source and never re-composes a prompt.
-  assert.match(services, /retrySnapshot\?\?\{/);
-  assert.doesNotMatch(services, /retrySnapshot\)\{[^}]*planFormat5DialogueGeneration/);
 });

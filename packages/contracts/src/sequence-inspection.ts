@@ -2,6 +2,7 @@
  * A page is bound to one frozen snapshot id; continuing with a cursor from a
  * different snapshot is rejected so the model never stitches mismatched reads. */
 import {z} from 'zod';
+import type {DialogueAudioMode, DialogueDeliveryStyle} from './dialogue-generation.ts';
 import type {ChainReferenceRole} from './board-sequence.ts';
 
 const uuid = z.string().uuid();
@@ -77,6 +78,8 @@ export const sequenceGenerationInputSchemas = Object.freeze({
     projectId: uuid, shotId: uuid,
     connectionId: uuid.optional(), configurationRevision: z.number().int().positive().optional(),
     modelEntryId: uuid.optional(),
+    /** Current "生成声音" switch for this shot; omitted means the service default. */
+    generateAudio: z.boolean().optional(),
   }).strict().superRefine((value, context) => {
     const triple = [value.connectionId, value.configurationRevision, value.modelEntryId];
     const supplied = triple.filter(item => item !== undefined).length;
@@ -125,8 +128,8 @@ export interface SequenceGenerationDialogueView {
   readonly reason?: string;
   readonly promptCodeUnits: number;
   readonly maxPromptCodeUnits: number;
-  readonly style?: 'seedance-braces' | 'wan-quotes' | 'minimax-d-tags' | 'kling-speaker' | 'veo-speaker';
-  readonly audioMode?: 'always-on' | 'request-switch' | 'model-default';
+  readonly style?: DialogueDeliveryStyle;
+  readonly audioMode?: DialogueAudioMode;
   readonly docs?: readonly string[];
 }
 export interface SequenceGenerationInputView {
