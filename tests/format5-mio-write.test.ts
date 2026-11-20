@@ -134,6 +134,28 @@ test('Mio write actions preview and commit the server-built envelope with origin
   assert.equal(readSequenceEditHistory(store,'mio').undo,null);
 });
 
+test('Mio puts one library asset into the main track with server-expanded ids and one undo step', t => {
+  const store = fixture(t);
+  const clipsBefore = store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number;
+  const nodesBefore = store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number;
+  const plan = previewMioSequenceAction(store, projectId, req(20), {kind: 'insert-asset', assetId: imageAsset, trackId: video, startFrame: 0});
+  assert.equal(plan.envelope.origin, 'mio');
+  assert.equal(plan.envelope.intents[0]!.operation.kind, 'track');
+  const edit = (plan.envelope.intents[0]!.operation as {kind: 'track'; edit: {kind: string; nodeAssetId?: string}}).edit;
+  assert.equal(edit.kind, 'add');
+  assert.equal(edit.nodeAssetId, imageAsset);
+  assert.ok(plan.envelope.allocation.clips.length >= 1, 'server allocates the node and clip ids');
+  const receipt = commitMioSequenceAction(store, plan);
+  assert.equal(receipt.status, 'applied');
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number, clipsBefore + 1);
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number, nodesBefore + 1);
+  assert.equal(readSequenceEditHistory(store, 'mio').undo?.operation, 'timeline.clip.add');
+  const undo = prepareMioSequenceUndo(store, projectId, req(21), receipt.actionId);
+  assert.equal(applyMioSequenceUndo(store, undo).status, 'applied');
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number, clipsBefore);
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number, nodesBefore);
+});
+
 test('Mio undo refuses a user-origin action and a stale cursor', t => {
   const store=fixture(t);
   const service=createFormat5SequenceEditService(store);

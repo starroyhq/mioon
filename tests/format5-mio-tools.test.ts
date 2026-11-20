@@ -112,7 +112,8 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   const nativePrevis = nativeTools.find(item => item.operation === 'previs.scene.set')!.parameters as {
     properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}}}}}};
   assert.equal('subject' in nativePrevis.properties.scene.properties.figures.items.properties, false);
-  // C+A: the core sequence tool keeps only the nine high-frequency actions.
+  // C+A: the core sequence tool keeps only the nine high-frequency actions; ED's
+  // insert-asset rides the on-demand timeline group.
   const actionKinds = (operation: string): string[] => [...mioSequenceActionKindsForOperation(
     operation as Parameters<typeof mioSequenceActionKindsForOperation>[0])];
   assert.deepEqual(actionKinds('sequence.tool.edit').sort(), ['connect', 'copy-move', 'delete-node', 'disconnect',
@@ -126,14 +127,14 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.deepEqual(actionKinds('sequence.tool.subject').sort(), ['subject-binding', 'subject-card-create',
     'subject-card-delete']);
   assert.deepEqual(actionKinds('sequence.tool.previs').sort(), ['previs-create', 'previs-scene-set']);
-  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'split-at-scenes',
+  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'insert-asset', 'split-at-scenes',
     'subtitles', 'track-add', 'track-update']);
   assert.deepEqual(actionKinds('sequence.tool.clip'), ['clip-properties']);
   // Every bounded action lives in exactly one tool.
   const uniqueKinds = new Set(MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)));
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)).length);
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_ACTION_COUNT);
-  assert.equal(uniqueKinds.size, 33);
+  assert.equal(uniqueKinds.size, 34);
   const groupTools = format5Tools.filter(item => item.operation.startsWith('sequence.tool.')
     && item.operation !== 'sequence.tool.edit' && item.operation !== 'sequence.tool.undo');
   assert.deepEqual(groupTools.map(item => item.name).sort(), ['mioon_sequence_board_edit',
