@@ -34,8 +34,8 @@
       "scenario": "read_edit_roundtrip",
       "protocol": "chat_completions",
       "index": 4,
-      "bytes": 27401,
-      "sha256": "c92e878a8368c6321bdc6970f4731cf12c9a47215e79f3d312ef9eb3da8cc0a0"
+      "bytes": 30519,
+      "sha256": "a1faea3225159d023705f4ea13458c114a9b3954367185e2c8f5def5e06a08c2"
     },
     {
       "scenario": "note_during_reply",
@@ -76,8 +76,8 @@
       "scenario": "conflict_reread",
       "protocol": "chat_completions",
       "index": 4,
-      "bytes": 27637,
-      "sha256": "5d3eb835d2d9921f9775836b42b5a2a7eda290e7bafabb650229da822500073c"
+      "bytes": 30789,
+      "sha256": "04753cd7624987cc67c011c6a5b651347099d17d8d0a5ba808b4f63176491ecf"
     },
     {
       "scenario": "tool_failure_retry",
@@ -104,8 +104,8 @@
       "scenario": "tool_failure_retry",
       "protocol": "chat_completions",
       "index": 4,
-      "bytes": 26681,
-      "sha256": "f64197381c896e1274650726b46841d8117cc6659696564a9ba3f69117a11edc"
+      "bytes": 29357,
+      "sha256": "3293804e43fa56303eb617a010d6d5d005c115b5f1dac3546073e0ff1b41351e"
     },
     {
       "scenario": "unknown_discard_resume",
@@ -230,8 +230,8 @@
       "scenario": "read_edit_roundtrip",
       "protocol": "responses",
       "index": 4,
-      "bytes": 27360,
-      "sha256": "a3972cdd1d05d6a78a47f1e6530ce5be0dc1101a493825fe4c3897bbaca67811"
+      "bytes": 30478,
+      "sha256": "20d78cabbc90153a87910bdc6fb09553156eafb48f8dbe72e34a8c3646781c62"
     },
     {
       "scenario": "note_during_reply",
@@ -272,8 +272,8 @@
       "scenario": "conflict_reread",
       "protocol": "responses",
       "index": 4,
-      "bytes": 27596,
-      "sha256": "42a0b394ec023fe95c854dd665d84f72b23696cc6adbe90063405fbeb19e2299"
+      "bytes": 30748,
+      "sha256": "4bc3c6a2a13fb4afee49f6f59a0d23fba3e780f2729d2beb5bea87465a4161f3"
     },
     {
       "scenario": "tool_failure_retry",
@@ -300,8 +300,8 @@
       "scenario": "tool_failure_retry",
       "protocol": "responses",
       "index": 4,
-      "bytes": 26640,
-      "sha256": "48c93b903d10cb130a57c2a00a176ac135b8be18c9b264efa2d2f2173f997267"
+      "bytes": 29316,
+      "sha256": "40cb491695423d74b9e8f75c49d07beac8ea2acb5753b288e2f69fb8486a7126"
     },
     {
       "scenario": "unknown_discard_resume",
@@ -426,8 +426,8 @@
       "scenario": "read_edit_roundtrip",
       "protocol": "anthropic_messages",
       "index": 4,
-      "bytes": 26843,
-      "sha256": "a0a15a68d05d887b882814da32f5a657e786e33b2f3ce83a634d6a9b1e1fdd9e"
+      "bytes": 29961,
+      "sha256": "d02cd327bddea1bafc06f8032d8e0d7dd4f31076df5525d5943b3ad3b1ebc561"
     },
     {
       "scenario": "note_during_reply",
@@ -468,8 +468,8 @@
       "scenario": "conflict_reread",
       "protocol": "anthropic_messages",
       "index": 4,
-      "bytes": 27071,
-      "sha256": "9104bef6668757a07208fd5d81e52facd77c387e1c92068626d81c9fbb76b367"
+      "bytes": 30223,
+      "sha256": "2963d0a8974fc7f6d7e9b1da84b55f9988d32db0b6d5b341d39624d4f1ee15e7"
     },
     {
       "scenario": "tool_failure_retry",
@@ -496,8 +496,8 @@
       "scenario": "tool_failure_retry",
       "protocol": "anthropic_messages",
       "index": 4,
-      "bytes": 26113,
-      "sha256": "c90ad3992a887e9b81c20ed8ae7889835387ebdd5814faa13ccb4ceb665e6166"
+      "bytes": 28789,
+      "sha256": "c3fbdc59a6a58be4c110c097651feb9ea66c16727ae8887c11284800a0a8ed61"
     },
     {
       "scenario": "unknown_discard_resume",
@@ -622,8 +622,8 @@
       "scenario": "official_read_edit_roundtrip",
       "protocol": "chat_completions",
       "index": 4,
-      "bytes": 27862,
-      "sha256": "d9be61abfe9ae72f3b5298f0027ff1531da2e517d0b68a2d7c30778e2d991fb2"
+      "bytes": 30980,
+      "sha256": "af57ee60256202c5b9536d049c1dc9e4527ae696cd8c1aa203a3fb03c796a63a"
     },
     {
       "scenario": "official_single_reply",
@@ -657,8 +657,8 @@
       "scenario": "official_read_edit_roundtrip",
       "protocol": "responses",
       "index": 4,
-      "bytes": 27825,
-      "sha256": "9db764fc5cf33df98735594b23d6e5c149f915fb4cf8aeb3d17bbb5aa63a72ee"
+      "bytes": 30943,
+      "sha256": "82bd3f04a28e98c619d4ce8cef67234fc7309ab0a44f753675f11a7ad560c17a"
     },
     {
       "scenario": "official_single_reply",
@@ -692,8 +692,8 @@
       "scenario": "official_read_edit_roundtrip",
       "protocol": "anthropic_messages",
       "index": 4,
-      "bytes": 27117,
-      "sha256": "99e6cc315d9ae16c0ad20bfb0efa6f0de0e22fe792042f9aa158024c0fef90ac"
+      "bytes": 30235,
+      "sha256": "41809bc8053e90ddd3875a98917fe42525fcb32ea65ef1bacd24a93646fc332f"
     }
   ]
 }

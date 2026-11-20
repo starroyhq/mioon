@@ -107,6 +107,24 @@ test('rejected shared actions map to one reason and expose affected ids', () => 
   assert.equal(translate('en', 'editUi.error.FORMAT5_EDIT_MIXED'), 'Save property and structural changes separately.');
 });
 
+test('format-5 clip selection passes a loudness provider backed by a real context', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  assert.ok(app.includes('loudnessContext={clipLoudnessContext as never}'));
+  assert.doesNotMatch(app, /if \(dataRef\.current\?\.projectFormatVersion === 5\) return undefined;/u);
+  // The provider still has to build the saved identity rather than returning a
+  // bare execution scope, so the observation card never dereferences undefined.
+  assert.match(app, /savedClipLoudnessFields\(saved, dataRef\.current!\.assets, editing\.selectedClipId\)/u);
+});
+
+test('format-5 explicit forms and clip drags receive editing admission without a dead first gesture', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  // Adding a subtitle is an explicit edit; the form must not open locked behind a second Edit click.
+  assert.match(app, /<AgentEditingBoundary autoAcquire workspaceScope=\{editorSession\.current\|\|'unverified'\} disabled=\{false\} projectId=\{subtitles\.state\?\.projectId\}/u);
+  // The first clip drag used to be cancelled by a synchronous admission check that returned false.
+  assert.ok(app.includes("acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return true;"));
+  assert.doesNotMatch(app, /onAdmitClipDrag=\{clipId => \{.*?return false; \}\}/su);
+});
+
 test('the production shell routes format-5 panel edits through the shared entry', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   for (const fragment of [
@@ -117,7 +135,7 @@ test('the production shell routes format-5 panel edits through the shared entry'
     'timelineCrossfadeEnvelopes(outgoing as never, incoming as never)',
     'loudnessContext={clipLoudnessContext as never}',
     "function clipLoudnessContext(): TimelineClipLoudnessContext | undefined",
-    'if (dataRef.current?.projectFormatVersion === 5) return undefined;',
+
     'submit: format5 ? saveFormat5Subtitle : saveSubtitle',
   ]) assert.ok(app.includes(fragment), fragment);
   // The legacy RPC must not be reachable from the format-5 inspector save path.

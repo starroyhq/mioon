@@ -590,6 +590,13 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
  * Only Date is fixed; real IDs and temporary workspace paths stay unmodified. */
 export async function collectTaskRequestFingerprints(harness: TaskRequestFingerprintHarness = {}): Promise<TaskRequestFingerprint[]> {
   const fingerprints: TaskRequestFingerprint[] = [];
+  // Format-5 sequence tool results carry server-allocated action ids and
+  // history epochs. Normalize only those two audit UUIDs so request bytes stay
+  // deterministic; all other ids and payload bytes remain untouched.
+  const fingerprintBody=(format: FingerprintProjectFormat, body: string): string => format === 'format5'
+    ? body.replace(/(\\?"(?:requestId|inputDigest|actionId|epoch|requestHash)\\?":\\?")([0-9a-f-]{36}|[0-9a-f]{64})(\\?")/gu,
+      (_whole, before, value, after) => `${before}${String(value).length === 64 ? '0'.repeat(64) : '00000000-0000-4000-8000-000000000000'}${after}`)
+    : body;
   const protocols = harness.protocol === undefined ? FINGERPRINT_PROTOCOLS : [harness.protocol];
   assert.ok(protocols.every(protocol => FINGERPRINT_PROTOCOLS.some(value => value === protocol)));
   mock.timers.enable({apis: ['Date'], now: Date.parse(fixtureTime)});
@@ -600,8 +607,9 @@ export async function collectTaskRequestFingerprints(harness: TaskRequestFingerp
       try {
         await runScenario(f, protocol, scenario);
         assert.ok(f.requests.length > 0, `${protocol}/${scenario} must dispatch a model request`);
-        const records = f.requests.map((body, index) => ({scenario, protocol, index: index + 1,
-          bytes: Buffer.byteLength(body), sha256: createHash('sha256').update(body).digest('hex')}));
+        const records = f.requests.map((body, index) => {const normalized=fingerprintBody(f.format,body);
+          return {scenario, protocol, index: index + 1, bytes: Buffer.byteLength(normalized),
+            sha256: createHash('sha256').update(normalized).digest('hex')};});
         f.assertNoSyntheticSecret(JSON.stringify(records));
         fingerprints.push(...records);
         completed = true;

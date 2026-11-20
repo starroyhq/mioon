@@ -314,6 +314,13 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /dialogueCueCount=/);
   assert.match(app, /onDialogueApplied=/);
   assert.match(app, /workbench-panel-detail/);
+  assert.match(app, /onAddPrevis=\{\(\) => \{ void addPrevis\(\); \}\}/);
+  assert.match(app, /addingPrevis=\{Boolean\(busy\['previs-create'\]\)\}/);
+  const boardUiSource = readFileSync(new URL('../apps/web/src/board-ui/BoardUiLive.tsx', import.meta.url), 'utf8');
+  assert.match(boardUiSource, /data-testid="board-ui-add-previs"/);
+  assert.match(boardUiSource, /onAddPrevis\?/);
+  assert.match(boardUiSource, /t\('previs\.toolbar\.add'\)/);
+
   assert.match(app, /data-testid="board-inspector-header-shot"/);
   assert.doesNotMatch(app, /subjectDragToBoard=\{format5\}/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);

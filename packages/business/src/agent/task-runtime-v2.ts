@@ -585,7 +585,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const saved=journal.step(stepId);
           // Same-value mutations can advance a target without a visible Change.
           // Capture only these verified targets, inside the same domain commit.
-          if(accepted.targets.length)journal.updateStep(runId,stepId,{data:{...(record(saved.data)?saved.data:{}),executedTargets:json(accepted.targets.map(target=>({...target,revision:journal.targetRevision(accepted.projectId,target.kind,target.id)})))}});
+          const generated=(accepted.generatedTargets??[]).map(target=>{const row=target.kind==='shot'?store.get('shots',target.id):undefined;
+            return {...target,revision:journal.targetRevision(accepted.projectId,target.kind,target.id)||(record(row)&&Number(row.revision)||0)};});
+          if(accepted.targets.length||generated.length)journal.updateStep(runId,stepId,{data:{...(record(saved.data)?saved.data:{}),
+            executedTargets:json([...accepted.targets,...generated].map(target=>({...target,
+              revision:journal.targetRevision(accepted.projectId,target.kind,target.id)})))}});
         },
         appendChangesInside:changes=>{journal.appendChangesInside(runId,stepId,changes);}});
       if(closed)return null;
