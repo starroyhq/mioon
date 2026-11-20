@@ -76,8 +76,22 @@ export function parseShardArguments(args: readonly string[]): ShardOptions {
   if (concurrency < 1 || concurrency > 4) fail('INVALID_SHARD_CONCURRENCY');
   return {index, count, concurrency};
 }
+/** JSON.parse keeps the last value of a duplicated key, so a merge that leaves
+ * two entries for one test would silently change the shard weights. The
+ * committed table is checked textually for duplicates before parsing. */
+export function duplicateTimingKeys(text: string): string[] {
+  const counts = new Map<string, number>();
+  for (const match of text.matchAll(/^\s*"(tests\/[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts))"\s*:/gm)) {
+    const file = match[1]!;
+    counts.set(file, (counts.get(file) ?? 0) + 1);
+  }
+  return [...counts].filter(([, count]) => count > 1).map(([file]) => file).sort();
+}
+
 /** Validates the recorded timing table; a malformed table fails the shard instead of silently unbalancing it. */
 export function parseTestTimings(text: string): TestTimings {
+  const duplicates = duplicateTimingKeys(text);
+  if (duplicates.length) fail(`DUPLICATE_TEST_TIMING_KEYS:${duplicates.join(',')}`);
   let value: unknown;
   try {value = JSON.parse(text);} catch {fail('INVALID_TEST_TIMINGS');}
   const files = value !== null && typeof value === 'object' && (value as {schema?: unknown}).schema === 1 ? (value as {files?: unknown}).files : undefined;
