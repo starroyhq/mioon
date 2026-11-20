@@ -459,7 +459,7 @@ test('MT-5 exposes the bounded generation-input read tool and the new approval t
     properties: Record<string, unknown>};
   assert.deepEqual(parameters.required, ['shotId']);
   assert.equal(parameters.additionalProperties, false);
-  assert.deepEqual(Object.keys(parameters.properties).sort(), ['configurationRevision', 'connectionId', 'modelEntryId', 'shotId']);
+  assert.deepEqual(Object.keys(parameters.properties).sort(), ['configurationRevision', 'connectionId', 'generateAudio', 'modelEntryId', 'shotId']);
   assert.equal(listAgentTaskTools(false, false).some(tool => tool.operation === 'sequence.generation-inputs.get'), false);
   // The shared public schema still enforces the exact video-connection triple.
   assert.equal(schemas['sequence.generation-inputs.get'].safeParse({projectId, shotId: shotA}).success, true);
