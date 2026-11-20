@@ -3818,17 +3818,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (dataRef.current.projectFormatVersion === 5) {
       const result = await format5Session().splitAtScenes(assetId, resultId);
       if (!result.ok) {notify(t(format5CommandErrorMessageKey(result.code) as never), 'error'); return;}
+      // A format-5 split is one structural batch with one history step, so it
+      // closes the detection dialog and keeps only the undo bar like every
+      // other format-5 edit. Format 3/4 keep the dialog and their toast below.
+      setSceneTarget(null);
       if (result.resolvedFromReceipt) {
-        notify(t('editUi.notice.resultApplied'));
+        setFormat5Notice({id: `format5-scene-split-${Date.now()}`, message: t('editUi.notice.resultApplied')});
+        setFormat5NoticeActionId(null);
         await refresh(currentProject.current); await format5RefreshHistory();
         return;
       }
-      // One structural batch with one history step, so it also keeps one undo
-      // bar like every other format-5 edit. The detection dialog stays open and
-      // covers that bar, so the toast still carries the immediate result while
-      // the bar waits behind the dialog for its one-step undo.
       const notice = format5SceneSplitNotice(result.receipt?.sceneSplit);
-      notify(msg(notice.key, notice.params));
       setFormat5Notice({id: result.actionId ?? `format5-scene-split-${Date.now()}`, message: renderMessage(msg(notice.key, notice.params))});
       setFormat5NoticeActionId(result.actionId);
       await refresh(currentProject.current); await format5RefreshHistory();

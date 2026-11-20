@@ -85,6 +85,11 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
     def close_dialog(page) -> None:
         page.get_by_test_id('scene-dialog-close').click()
         page.wait_for_selector('[data-testid=scene-dialog]', state='detached', timeout=15000)
+    def assert_only_undo_bar(page) -> None:
+        # A successful format-5 split closes the detection dialog: the undo bar
+        # is the only result surface, never a dialog plus a duplicate toast/bar.
+        page.wait_for_selector('[data-testid=scene-dialog]', state='detached', timeout=15000)
+        page.get_by_test_id('edit-ui-notice-bar').wait_for(state='visible', timeout=15000)
     def dismiss_notice(page) -> None:
         dismiss = page.get_by_test_id('edit-ui-notice-dismiss')
         if dismiss.count() and dismiss.first.is_visible():
@@ -125,6 +130,7 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
             page.wait_for_function(
                 "() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'scene-split'"
                 " && document.querySelector('[data-testid=wire-state]')?.dataset.error === ''", timeout=30000)
+            assert_only_undo_bar(page)
             after_split_a = debug_state(page)
             pieces = [clip for clip in after_split_a['clips'] if clip['assetId'] == single]
             assert len(pieces) == 4, pieces
@@ -153,9 +159,14 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
             capture(page, 'g1-split-applied.png')
             log('A2 split matches the detected cuts and one preview/commit writes one history step',
                 split=scene_rows[0]['cutFrames'],
-                rightClipIds=[pair['rightClipId'] for pair in allocation], position=after_split_a['history']['position'])
+                rightClipIds=[pair['rightClipId'] for pair in allocation], position=after_split_a['history']['position'],
+                dialog='closed on success, only the undo bar remains')
 
-            # ---- A: no usable cut refuses without writing.
+            # ---- A: no usable cut refuses without writing. The dialog closed on
+            # success, so reopen the real library entry for the second attempt.
+            page.get_by_test_id(f'wire-asset-{single}').click(button='right')
+            page.get_by_test_id('asset-menu-detect-scenes').click()
+            page.wait_for_selector('[data-testid=scene-dialog][data-view=results]', timeout=30000)
             page.get_by_test_id('scene-split').click()
             wait_scene_message(page, NOTHING_TO_SPLIT)
             page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.error === 'NOTHING_TO_SPLIT'")
@@ -229,14 +240,19 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
             committed_ids = {clip['id'] for clip in after_b['clips']}
             for row in rows.values():
                 assert all(clip_id in committed_ids for clip_id in row['clipIds'][1:]), row
-            assert [{clip['id'] for clip in before_v2} <= {clip['id'] for clip in v2_clips}]
+            before_v2_ids = {clip['id'] for clip in before_v2}
+            after_v2_ids = {clip['id'] for clip in v2_clips}
+            assert before_v2_ids <= after_v2_ids, (before_v2_ids, after_v2_ids)
+            assert_only_undo_bar(page)
             capture(page, 'g2-multi-applied.png')
-            close_dialog(page)
+            # The dialog closed on success; the receipt panel keeps the skip
+            # reasons and the undo bar carries their count.
             capture(page, 'g2-skip-reasons.png')
             log('B1 two main-track pieces and the other track split, fade/no-cut rows carry their reason',
                 split=len(rows), skipped=[{'clipId': row['clipId'], 'reason': row['reason'], 'cutFrames': row.get('cutFrames')}
                                           for row in scene_split['sceneSplit']['skipped']],
-                notice=page.get_by_test_id('edit-ui-notice-message').text_content())
+                notice=page.get_by_test_id('edit-ui-notice-message').text_content(),
+                dialog='closed on success, only the undo bar remains')
             page.get_by_test_id('edit-ui-notice-undo').click()
             page.wait_for_selector('[data-testid=edit-ui-notice-bar]', state='detached', timeout=15000)
             page.wait_for_function(
@@ -283,6 +299,7 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
             wait_notice(page, SPLIT_DONE_ONE)
             page.wait_for_function(
                 "() => Number(document.querySelector('[data-testid=wire-state]')?.dataset.position) === 3", timeout=30000)
+            assert_only_undo_bar(page)
             after_c = debug_state(page)
             detect_pieces = [clip for clip in after_c['clips'] if clip['assetId'] == detect]
             assert len(detect_pieces) == 4 and [clip['sourceInFrame'] for clip in detect_pieces] == [0] + CUTS, detect_pieces

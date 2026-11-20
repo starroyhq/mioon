@@ -139,8 +139,13 @@ function Harness(): React.ReactElement {
       return;
     }
     setLastError('');
+    // Mirrors the app: a successful format-5 split closes the detection dialog
+    // and leaves only the undo bar; the toast the app used to add is gone.
+    setSceneTarget(null);
     if (result.resolvedFromReceipt) {
-      setSceneMessage(t('editUi.notice.resultApplied'));
+      const message = t('editUi.notice.resultApplied');
+      setNotice({id: `wire-scene-split-${Date.now()}`, message}); setNoticeActionId(null);
+      setSceneMessage(message);
       setSceneReceipt({resolvedFromReceipt: true, actionId: result.actionId});
       await refresh();
       return;
