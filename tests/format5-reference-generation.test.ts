@@ -5,7 +5,7 @@ import {chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync} from 'n
 import {mkdtemp, readFile, rm, realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {upgradeProjectFormatTo5} from '../packages/business/src/project-file/index.ts';
@@ -25,6 +25,8 @@ import {createProjectServiceApplication} from '../packages/business/src/project-
 import {buildReferenceEdgeEnvelope,readFrozenFormat5GenerationInputs} from '../packages/business/src/format5-reference-inputs.ts';
 import {prepareSequenceEditHistory} from '../packages/business/src/format5-editor-history.ts';
 import {runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
+import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
+import type {PrevisScene, PrevisSubjectReference} from '../packages/contracts/src/previs.ts';
 
 const json=(value:unknown)=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
 const TASK='format5-reference-task-1';
@@ -131,6 +133,69 @@ function reorder(f:Fixture,shotId:string,edgeIds:readonly string[]):void{
 
 const body=(call:{init:RequestInit})=>JSON.parse(String(call.init.body)) as Record<string,any>;
 
+function imageAssetOf(f:Fixture,nodeId:string):string{
+  const node=f.store.get('nodes',nodeId) as ServiceRow;
+  return String(node.assetId);
+}
+
+/** Format-5 subject rows are fixture evidence: legacy subject writes are gated
+ * behind the unified sequence entry, and previs subjects only need to resolve. */
+function createSubject(f:Fixture,kind:string,name:string,assetId:string):{subjectId:string;headVersionId:string}{
+  const {store}=f,subjectId=randomUUID(),headVersionId=randomUUID();
+  const version=(id:string,number:number,versionAssetId:string)=>
+    store.db.prepare('INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)')
+      .run(id,store.projectId,subjectId,number,versionAssetId,JSON.stringify({id,projectId:store.projectId,subjectId,number,
+        assetId:versionAssetId,sha256:'a'.repeat(64),mimeType:'image/png',width:360,height:640,createdAt:timestamp,
+        provenance:{kind:'user-import',versionId:null,shotId:null,jobId:null}}));
+  store.tx(()=>{
+    store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
+      VALUES(?,?,?,?,?,?,?,?)`).run(subjectId,store.projectId,kind,name,1,headVersionId,timestamp,timestamp);
+    version(headVersionId,1,assetId);
+  });
+  return {subjectId,headVersionId};
+}
+
+function addSubjectVersion(f:Fixture,subjectId:string,number:number,assetId:string):string{
+  const {store}=f,versionId=randomUUID();
+  store.tx(()=>{
+    store.db.prepare('INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)')
+      .run(versionId,store.projectId,subjectId,number,assetId,JSON.stringify({id:versionId,projectId:store.projectId,
+        subjectId,number,assetId,sha256:'a'.repeat(64),mimeType:'image/png',width:360,height:640,createdAt:timestamp,
+        provenance:{kind:'user-import',versionId:null,shotId:null,jobId:null}}));
+    store.db.prepare('UPDATE project.subjects SET headVersionId=?, revision=? WHERE id=?').run(versionId,number,subjectId);
+  });
+  return versionId;
+}
+
+/** A scene with one mannequin and optional prop subject references; a keyframe
+ * makes the scene publishable by the real previs output operation. */
+function previsScene(subjects:{figure?:PrevisSubjectReference;props?:readonly PrevisSubjectReference[]}):PrevisScene{
+  const scene=defaultPrevisScene();
+  const figures=[{...scene.figures[0]!,...(subjects.figure?{subject:subjects.figure}:{})}];
+  const props=(subjects.props??[]).map((subject,index)=>({id:`p${index+1}`,kind:'box' as const,name:'',visible:true,
+    position:[index*0.5,0,1] as [number,number,number],rotation:0,size:[0.5,0.5,0.5] as [number,number,number],subject}));
+  return {...scene,figures,props,keyframes:[{id:'k1',name:'',camera:scene.camera,exports:[]}],activeKeyframeId:'k1'};
+}
+
+async function seedPrevis(f:Fixture,scene:PrevisScene,label:string):Promise<{nodeId:string;outputAssetId:string}>{
+  const {store}=f,nodeId=randomUUID();
+  store.tx(()=>store.put('nodes',{id:nodeId,projectId:store.projectId,type:'previs',label,text:'',
+    position:{x:0,y:0},revision:1,sceneRevision:1,scene,createdAt:timestamp}));
+  const bytes=png({width:360,height:640,rgba:false});
+  const published=await f.services.call('previs.output.publish',{projectId:store.projectId,nodeId,keyframeId:'k1',
+    sceneRevision:1,requestId:`f5-previs-output-${randomUUID()}`,name:'Previs frame.png',
+    sha256:createHash('sha256').update(bytes).digest('hex'),width:360,height:640,
+    dataBase64:bytes.toString('base64')}) as ServiceRow;
+  return {nodeId,outputAssetId:String((published.asset as ServiceRow).id)};
+}
+
+async function submit(f:Fixture,seeded:Awaited<ReturnType<typeof seedMedia>>,requestId:string):Promise<JobRecord>{
+  const model=f.configuration.models[0]!;
+  return await f.services.call('generation.submit',{shotId:seeded.shotId,expectedRevision:Number(seeded.shot.revision),
+    requestId,providerId:'ark',model:model.modelId,connectionId:f.configuration.id,configurationRevision:1,
+    modelEntryId:model.id,parameters:{durationSeconds:4,resolution:'720p'}} as never) as JobRecord;
+}
+
 test('format 5 generation reads reference lines and submits one frozen multi-reference request',async t=>{
   const f=await fixture(t),seeded=await seedMedia(f);
   try{
@@ -191,6 +256,11 @@ test('format 5 generation reads reference lines and submits one frozen multi-ref
 
 test('format 5 first/last frames ride the saved-shot projection and freeze into the version provenance',async t=>{
   const f=await fixture(t),seeded=await seedMedia(f);
+  // A connected previs scene names one subject: it is frozen as evidence but a
+  // frames-mode request never sends it (both stay in the plan as unsupported).
+  const hero=createSubject(f,'character','阿璃',imageAssetOf(f,seeded.imageA));
+  const previs=await seedPrevis(f,previsScene({figure:{subjectId:hero.subjectId}}),'机位预演');
+  attach(f,seeded.shotId,previs.nodeId);
   attach(f,seeded.shotId,seeded.imageA,'first_frame');
   attach(f,seeded.shotId,seeded.imageB,'last_frame');
   const model=f.configuration.models[0]!;
@@ -215,9 +285,80 @@ test('format 5 first/last frames ride the saved-shot projection and freeze into 
   const published=f.job(job.id);assert.equal(published.status,'succeeded',JSON.stringify(published.error));
   const version=f.store.list('versions')[0] as ServiceRow;
   const versionFreeze=readFrozenFormat5GenerationInputs(version.snapshot)!;
+  // The immutable version provenance carries exactly the job's frozen plan.
+  assert.deepEqual(versionFreeze,freeze);
   assert.equal(versionFreeze.mode,'frames');
   assert.equal(versionFreeze.actual.lastFrameAssetId,freeze.actual.lastFrameAssetId);
+  const versionSubjects=versionFreeze.entries.filter(entry=>entry.source==='previs');
+  assert.equal(versionSubjects.length,1);
+  assert.equal(versionSubjects[0]!.subjectId,hero.subjectId);
+  assert.equal(versionSubjects[0]!.subjectVersionId,hero.headVersionId);
+  assert.equal(versionSubjects[0]!.role,'subject_reference');
+  assert.equal(versionSubjects[0]!.status,'unsupported');
+  assert.equal(versionSubjects[0]!.reason,'EXCLUSIVE_MODE');
   const sent=body(f.posts()[0]!);
   assert.equal((sent.content as Record<string,any>[]).filter(item=>item.type==='image_url').length,2);
   assert.equal(sent.ratio,'adaptive');
+});
+
+
+test('previs scene subjects freeze the version used at submit; later subject and scene changes only affect the next job',async t=>{
+  const f=await fixture(t),seeded=await seedMedia(f);
+  const character=createSubject(f,'character','阿璃',imageAssetOf(f,seeded.imageA));
+  const look=createSubject(f,'look','霓虹色',imageAssetOf(f,seeded.imageB));
+  const previs=await seedPrevis(f,previsScene({figure:{subjectId:character.subjectId},
+    props:[{subjectId:look.subjectId,subjectVersionId:look.headVersionId}]}),'机位预演');
+  const compositionEdgeId=attach(f,seeded.shotId,previs.nodeId);
+  assert.ok(compositionEdgeId);
+  const first=await submit(f,seeded,`f5-previs-submit-${randomUUID()}`);
+  const firstFreeze=readFrozenFormat5GenerationInputs(first.snapshot)!;
+  assert.equal(firstFreeze.mode,'references');
+  const firstSubjects=firstFreeze.entries.filter(entry=>entry.source==='previs');
+  assert.deepEqual(firstSubjects.map(entry=>entry.subjectId),[character.subjectId,look.subjectId]);
+  const firstCharacter=firstSubjects[0]!,firstLook=firstSubjects[1]!;
+  assert.equal(firstCharacter.role,'subject_reference');
+  assert.equal(firstCharacter.bindingMode,'follow');
+  assert.equal(firstCharacter.subjectVersionId,character.headVersionId);
+  assert.equal(firstCharacter.sourceNodeId,previs.nodeId);
+  assert.equal(firstLook.role,'style_reference');
+  assert.equal(firstLook.bindingMode,'locked');
+  assert.equal(firstLook.subjectVersionId,look.headVersionId);
+  assert.equal(firstFreeze.primaryReferenceId,compositionEdgeId);
+  assert.deepEqual(firstFreeze.actual.images.map(image=>image.assetId),
+    [previs.outputAssetId,imageAssetOf(f,seeded.imageA),imageAssetOf(f,seeded.imageB)]);
+  // Read the persisted row so byte comparisons use the stored snapshot form.
+  const firstSnapshot=JSON.stringify(f.job(first.id).snapshot);
+  // (a) A newer subject head changes only the next job's follow version.
+  const characterV2=addSubjectVersion(f,character.subjectId,2,imageAssetOf(f,seeded.imageC));
+  const second=await submit(f,seeded,`f5-previs-submit-${randomUUID()}`);
+  const secondFreeze=readFrozenFormat5GenerationInputs(second.snapshot)!;
+  const secondCharacter=secondFreeze.entries.find(entry=>entry.source==='previs'&&entry.subjectId===character.subjectId)!;
+  assert.equal(secondCharacter.subjectVersionId,characterV2);
+  assert.equal(secondFreeze.entries.find(entry=>entry.source==='previs'&&entry.subjectId===look.subjectId)!.subjectVersionId,look.headVersionId);
+  const secondSnapshot=JSON.stringify(f.job(second.id).snapshot);
+  assert.equal(JSON.stringify(f.job(first.id).snapshot),firstSnapshot);
+  // (b) Rewriting the saved previs scene changes the next job, never the old ones:
+  // the look subject leaves the prop and becomes a locked second figure while a
+  // new product subject enters through a prop.
+  const productAsset=await f.services.call('asset.import',{projectId:f.store.projectId,name:'Product.png',
+    mimeType:'image/png',dataBase64:png({width:360,height:640,rgba:false}).toString('base64')}) as ServiceRow;
+  const product=createSubject(f,'product','陶罐',String(productAsset.id));
+  const current=f.store.get('nodes',previs.nodeId) as ServiceRow;
+  const nextScene=previsScene({figure:{subjectId:character.subjectId},
+    props:[{subjectId:product.subjectId}]});
+  nextScene.figures.push({...nextScene.figures[0]!,id:'f2',position:[1.5,0,0] as [number,number,number],
+    subject:{subjectId:look.subjectId,subjectVersionId:look.headVersionId}});
+  f.store.tx(()=>f.store.put('nodes',{...current,revision:Number(current.revision)+1,
+    sceneRevision:Number(current.sceneRevision)+1,scene:nextScene}));
+  const third=await submit(f,seeded,`f5-previs-submit-${randomUUID()}`);
+  const thirdFreeze=readFrozenFormat5GenerationInputs(third.snapshot)!;
+  const thirdSubjects=thirdFreeze.entries.filter(entry=>entry.source==='previs');
+  // Figure-then-prop order; each subject once; the new scene's versions applied.
+  assert.deepEqual(thirdSubjects.map(entry=>entry.subjectId),[character.subjectId,look.subjectId,product.subjectId]);
+  assert.equal(thirdSubjects[0]!.subjectVersionId,characterV2);
+  assert.equal(thirdSubjects[1]!.subjectVersionId,look.headVersionId);
+  assert.equal(thirdSubjects[1]!.bindingMode,'locked');
+  assert.equal(thirdSubjects[2]!.bindingMode,'follow');
+  assert.equal(JSON.stringify(f.job(first.id).snapshot),firstSnapshot);
+  assert.equal(JSON.stringify(f.job(second.id).snapshot),secondSnapshot);
 });

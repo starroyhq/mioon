@@ -195,3 +195,17 @@
 .board-shot-dialogue p {margin:0;color:var(--wb-muted);font-size:11px;}
 .board-shot-generate {display:flex;align-items:center;justify-content:center;gap:7px;min-height:34px;border:0;border-radius:7px;background:var(--wb-accent,#e9e9e9);color:#151515;font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
 .board-shot-generate:disabled {opacity:.5;cursor:default;}
+
+/* GP review: 21-10 inline title, footer service picker, static previs rows. */
+.board-shot-title-button {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:var(--wb-text);font:inherit;font-size:13px;font-weight:600;text-align:start;padding:0;cursor:text;}
+.board-shot-title-input {min-width:0;flex:1;padding:3px 6px;border:1px solid var(--wb-accent-line);border-radius:5px;background:var(--wb-input,transparent);color:var(--wb-text);font:inherit;font-size:13px;font-weight:600;}
+.board-service-picker {position:relative;display:flex;flex-direction:column;}
+button.board-input-footer {display:block;width:100%;border:0;background:transparent;text-align:start;cursor:pointer;font:inherit;font-size:10px;color:var(--wb-muted);}
+button.board-input-footer:hover:not(:disabled),button.board-input-footer:focus-visible {color:var(--wb-text);}
+button.board-input-footer:disabled {cursor:default;opacity:.7;}
+.board-service-menu {position:absolute;bottom:calc(100% + 4px);left:0;right:0;z-index:30;max-height:260px;overflow:auto;padding:4px;border:1px solid var(--wb-line-strong,#4a4a4f);border-radius:8px;background:var(--wb-panel,#1d1d1f);box-shadow:0 10px 28px #0009;display:flex;flex-direction:column;}
+.board-service-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 8px;border:0;border-radius:5px;background:transparent;color:var(--wb-text);font:inherit;font-size:11px;text-align:start;cursor:pointer;}
+.board-service-menu button:hover:not(:disabled),.board-service-menu button:focus-visible {background:var(--wb-hover,#2c2c2e);}
+.board-service-menu small {color:var(--wb-muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-input-row.is-static .board-input-button {cursor:default;opacity:.88;}
+.board-input-row.is-static .board-input-button:hover {background:transparent;}

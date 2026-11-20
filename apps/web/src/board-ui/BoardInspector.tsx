@@ -7,7 +7,7 @@
  * status and the archive list are only shown when nothing is selected. Other
  * selections keep the UI-B2/SB/FR-C editors.
  */
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {providerDisplayName} from '../creation-i18n.ts';
@@ -19,8 +19,7 @@ import type {BoardBinding, BoardMountView} from './live-session.ts';
 import type {SequenceGenerationInputEntryView, SequenceGenerationInputView} from './inputs.ts';
 import {generationModeKeys, isPrimaryCandidate, referenceRoleKey, referenceRoleOptions, sourceKindIcons,
   unsupportedReasonKey} from './inputs.ts';
-import ProviderSettings from '../ProviderSettings.tsx';
-import type {ProviderSettingsChange} from '../ProviderSettings.tsx';
+import ShotDialogue from '../ShotDialogue.tsx';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
 import Icon from '../icons.tsx';
 
@@ -43,8 +42,11 @@ export interface BoardInspectorProps {
   readonly busy?: boolean;
   /** The right dock header tab for the canvas workspace. */
   readonly activeTab?: 'settings' | 'versions';
-  /** Dialogue lines read from subtitle cues linked to the selected shot (DL). */
-  readonly dialogueLines?: readonly string[];
+  /** DL-a dialogue panel inputs; the panel owns add/update/remove and cue status. */
+  readonly dialogueSubjects?: Readonly<Record<string, string>>;
+  readonly dialogueCueCount?: number;
+  readonly onDialogueApplied?: () => unknown;
+  readonly rpc?: (operation: string, input: unknown) => Promise<unknown>;
   readonly onSelectVersion: (nodeId: string, versionId: string | null) => void;
   readonly onDelete: (nodeId: string) => void;
   readonly onOpenInEditing?: ((nodeId: string) => void) | undefined;
@@ -82,6 +84,11 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const [duration, setDuration] = useState(4);
   const [shotError, setShotError] = useState('');
   const [shotSaved, setShotSaved] = useState(false);
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [serviceMenu, setServiceMenu] = useState(false);
+  const draftRevision = useRef<number | null>(null);
+  const lastShotId = useRef<string | null>(null);
+  const dirtyRef = useRef(false);
   const editableNode = selected && (selected.kind === 'text' || selected.kind === 'image' || selected.kind === 'video'
     || selected.kind === 'audio' || selected.kind === 'previs') ? selected : null;
   const nodeRow = editableNode ? props.nodes.find(node => node.id === editableNode.id) : undefined;
@@ -94,17 +101,27 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     setNodeText(String((nodeRow?.text ?? '')));
   }, [editableNode?.id, nodeRow?.revision]);
   useEffect(() => {
-    setInputMenu(null);
-    if (!shot) {setTitle(''); setPrompt(''); setDuration(4); setShotError(''); setShotSaved(false); return;}
-    setTitle(String(shot.title ?? ''));
-    setPrompt(String(shot.prompt ?? ''));
-    setDuration(Number.isSafeInteger(shot.duration) ? Number(shot.duration) : 4);
-    setShotError(''); setShotSaved(false);
-  }, [shot?.id]);
+    setInputMenu(null); setServiceMenu(false); setTitleEditing(false);
+    if (!shot || shotRevision === null) {setTitle(''); setPrompt(''); setDuration(4); setShotError(''); setShotSaved(false);
+      draftRevision.current = null; lastShotId.current = null; return;}
+    const sameShot = lastShotId.current === shot.id;
+    // 21-10 / format 3-4 draft rule: an untouched draft follows the row's new
+    // value; a dirty draft keeps its text and the revision editing started on,
+    // so the save returns a conflict instead of overwriting another writer.
+    if (!sameShot || !dirtyRef.current) {
+      setTitle(String(shot.title ?? ''));
+      setPrompt(String(shot.prompt ?? ''));
+      setDuration(Number.isSafeInteger(shot.duration) ? Number(shot.duration) : 4);
+      setShotError(''); setShotSaved(false);
+      draftRevision.current = shotRevision;
+    }
+    lastShotId.current = shot.id;
+  }, [shot?.id, shotRevision]);
   const nodeDirty = Boolean(editableNode && nodeRevision !== null
     && (nodeName !== editableNode.name || editableNode.kind === 'text' && nodeText !== String(nodeRow?.text ?? '')));
   const shotDirty = Boolean(shot && (title !== String(shot.title ?? '') || prompt !== String(shot.prompt ?? '')
     || duration !== Number(shot.duration ?? 4)));
+  dirtyRef.current = shotDirty;
   const film = props.board.projection.films.find(item => item.id === props.activeFilmId) ?? props.board.projection.films[0] ?? null;
   const shotVersions = selected?.kind === 'shot' ? props.versions.filter(version => version.shotId === selected.id) : [];
   const archived = props.mount?.archived ?? [];
@@ -140,22 +157,27 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     const roleOptions = material ? referenceRoleOptions(entry.sourceKind as ReferenceSourceKind) : [];
     const unsupported = hasService && entry.status === 'unsupported';
     const open = inputMenu?.key === key;
-    return <li key={key} className={`board-input-row${unsupported ? ' is-unsupported' : ''}${open ? ' is-open' : ''}`}
+    const previs = entry.source === 'previs';
+    const content = <>
+      <span className="board-input-icon" aria-hidden="true"><Icon name={sourceKindIcons[entry.sourceKind]} size={14}/></span>
+      <span className="board-input-role">{t(referenceRoleKey(entry.role) as never)}</span>
+      <span className="board-input-label" title={entry.label}>{entry.label}
+        {entry.subjectVersionNumber !== undefined && t('boardUi.inputs.subjectVersionSuffix' as never,
+          {version: formatNumber(entry.subjectVersionNumber)} as never)}
+        {entry.primary === true && <span className="board-input-primary">{t('boardUi.inputs.primary')}</span>}
+      </span>
+      {unsupported && <span className="board-input-unsupported" data-testid={`board-input-unsupported-${key}`}>
+        {t(unsupportedReasonKey(entry.reason) as never)}</span>}
+    </>;
+    return <li key={key} className={`board-input-row${unsupported ? ' is-unsupported' : ''}${open ? ' is-open' : ''}${previs ? ' is-static' : ''}`}
       data-testid={`board-input-${key}`} data-status={hasService ? entry.status : 'unknown'}>
-      <button type="button" className="board-input-button" disabled={props.busy}
-        aria-expanded={open} onClick={event => openInputMenu(event, entry)}>
-        <span className="board-input-icon" aria-hidden="true"><Icon name={sourceKindIcons[entry.sourceKind]} size={14}/></span>
-        <span className="board-input-role">{t(referenceRoleKey(entry.role) as never)}</span>
-        <span className="board-input-label" title={entry.label}>{entry.label}
-          {entry.subjectVersionNumber !== undefined && t('boardUi.inputs.subjectVersionSuffix' as never,
-            {version: formatNumber(entry.subjectVersionNumber)} as never)}
-          {entry.primary === true && <span className="board-input-primary">{t('boardUi.inputs.primary')}</span>}
-        </span>
-        {unsupported && <span className="board-input-unsupported" data-testid={`board-input-unsupported-${key}`}>
-          {t(unsupportedReasonKey(entry.reason) as never)}</span>}
-      </button>
-      {open && <div className="board-input-menu" role="menu" data-testid={`board-input-menu-${key}`}
-        onMouseLeave={() => setInputMenu(null)}>
+      {previs
+        // G's previs scene owns the figure/prop subject inside the previs
+        // editor; its generation-input row is evidence only and is not a menu.
+        ? <div className="board-input-button is-static" data-testid={`board-input-static-${key}`}>{content}</div>
+        : <button type="button" className="board-input-button" disabled={props.busy} aria-haspopup="menu"
+            aria-expanded={open} onClick={event => openInputMenu(event, entry)}>{content}</button>}
+      {!previs && open && <div className="board-input-menu" role="menu" data-testid={`board-input-menu-${key}`}>
         {material && roleOptions.map(role => <button type="button" key={role} role="menuitemradio"
           aria-checked={entry.role === role} disabled={props.busy}
           data-testid={`board-input-role-${key}-${role}`}
@@ -186,13 +208,27 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       </div>}
     </li>;
   };
+  useEffect(() => {
+    if (!inputMenu && !serviceMenu) return;
+    const close = (event: Event): void => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.board-input-menu, .board-service-menu, [data-testid="board-input-footer"]')) return;
+      setInputMenu(null); setServiceMenu(false);
+    };
+    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') {setInputMenu(null); setServiceMenu(false);} };
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', key);
+    return () => {document.removeEventListener('pointerdown', close, true); document.removeEventListener('keydown', key);};
+  }, [inputMenu, serviceMenu]);
+  const serviceChoice = (provider: GenerationProvider, model?: Record<string, unknown>): BoardGenerationOptions => ({
+    providerId: provider.id,
+    ...(provider.connectionId ? {connectionId: provider.connectionId,
+      configurationRevision: provider.configurationRevision} : {}),
+    ...(model ? {model: String(model.modelId ?? model.id ?? ''),
+      modelEntryId: String(model.modelEntryId ?? model.id ?? '')} : {})});
   const generationPanel = selected?.kind === 'shot' ? <section className="board-inspector-generation-inputs"
     data-testid="board-inspector-generation-inputs">
     <h4>{t('boardUi.inputs.title')}</h4>
-    {generationProviders.length > 0 && props.onGenerationOptionsChange && <ProviderSettings
-      providers={generationProviders} provider={generation?.provider ?? null} model={generation?.model ?? ''}
-      modelEntryId={generation?.modelEntryId}
-      onChange={(change: ProviderSettingsChange) => props.onGenerationOptionsChange?.(selected.id, {...generationOptions, ...change})}/>}
     {inputs ? <>
       {inputs.entries.length
         ? <ul className="board-input-list">{inputs.entries.map(inputRow)}</ul>
@@ -208,13 +244,40 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
             onClick={() => props.onRestoreBinding(binding)}>{t('boardUi.inspector.restoreBinding')}</button>
         </div>)}
       </section>}
-      <footer className="board-input-footer" data-testid="board-input-footer" data-mode={inputs.mode}
-        data-service={hasService ? 'selected' : 'missing'}>
-        {hasService
-          ? [serviceLabel, t(generationModeKeys[inputs.mode] as never),
-              ...(inputs.usedCount > 0 ? [t('boardUi.inputs.used', {count: inputs.usedCount})] : [])].join(' · ')
-          : t('boardUi.inputs.serviceMissing')}
-      </footer>
+      <label className="board-shot-duration">{t('boardUi.inspector.duration')}
+        <WorkbenchSelect data-testid="board-shot-duration" value={String(duration)}
+          disabled={props.busy || shotRevision === null}
+          onChange={event => {setDuration(Number(event.target.value)); setShotSaved(false);}}>
+          {Array.from({length: 20}, (_, index) => index + 1).map(seconds =>
+            <option key={seconds} value={seconds}>{t('boardUi.inspector.durationSeconds', {seconds})}</option>)}
+        </WorkbenchSelect>
+      </label>
+      <div className="board-service-picker">
+        <button type="button" className="board-input-footer" data-testid="board-input-footer"
+          data-mode={inputs.mode} data-service={hasService ? 'selected' : 'missing'}
+          aria-haspopup="menu" aria-expanded={serviceMenu}
+          disabled={props.busy || !props.onGenerationOptionsChange}
+          onClick={() => setServiceMenu(open => !open)}>
+          {hasService
+            ? [serviceLabel, t(generationModeKeys[inputs.mode] as never),
+                ...(inputs.usedCount > 0 ? [t('boardUi.inputs.used', {count: inputs.usedCount})] : [])].join(' · ')
+            : t('boardUi.inputs.serviceMissing')}
+        </button>
+        {serviceMenu && <div className="board-service-menu" role="menu" data-testid="board-service-menu">
+          {generationProviders.flatMap(provider => {
+            const models = (provider.models ?? []) as readonly Record<string, unknown>[];
+            return (models.length ? models : [undefined]).map((model, index) =>
+              <button type="button" role="menuitem" key={`${provider.id}:${index}`}
+                data-testid={`board-service-${provider.id}${model ? `-${String(model.modelEntryId ?? model.id ?? index)}` : ''}`}
+                disabled={props.busy}
+                onClick={() => {setServiceMenu(false);
+                  props.onGenerationOptionsChange?.(selected.id, serviceChoice(provider, model));}}>
+                <span>{providerDisplayName(provider, t)}</span>
+                {model && <small>{String(model.name ?? model.modelId ?? model.id ?? '')}</small>}
+              </button>);
+          })}
+        </div>}
+      </div>
     </> : <p className="board-input-empty" data-testid="board-input-loading">{t('boardUi.inputs.loading')}</p>}
   </section> : null;
   const subject = selected?.kind === 'subject' && selected.subjectId
@@ -241,22 +304,29 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     </section>
   </div>;
   const saveShot = async (): Promise<void> => {
-    if (!shot || shotRevision === null || !shotDirty || !props.onUpdateShot) return;
+    if (!shot || draftRevision.current === null || !shotDirty || !props.onUpdateShot) return;
     const result = await props.onUpdateShot(shot.id, {title: title.trim() || String(shot.title ?? ''),
-      prompt, duration}, shotRevision);
+      prompt, duration}, draftRevision.current);
     if (result.ok) {setShotError(''); setShotSaved(true);} else if (result.code) setShotError(result.code);
   };
   const shotTitleRow = selected?.kind === 'shot' && <div className="board-shot-title-row">
-    <h3 data-testid="board-inspector-shot-title">{shot?.title ?? selected.name}</h3>
+    {titleEditing
+      ? <input className="board-shot-title-input" data-testid="board-shot-title" autoFocus maxLength={150}
+          value={title} disabled={props.busy || shotRevision === null}
+          aria-label={t('boardUi.inspector.shotTitle')}
+          onChange={event => {setTitle(event.target.value); setShotSaved(false);}}
+          onBlur={() => setTitleEditing(false)}
+          onKeyDown={event => {if (event.key === 'Enter' || event.key === 'Escape') {event.preventDefault();
+            if (event.key === 'Escape' && shot) setTitle(String(shot.title ?? ''));
+            setTitleEditing(false);}}}/>
+      : <button type="button" className="board-shot-title-button" data-testid="board-inspector-shot-title"
+          onClick={() => setTitleEditing(true)}>{shot?.title ?? selected.name}</button>}
     {props.onOpenInEditing && <button type="button" className="board-shot-open-editing"
       data-testid="board-inspector-open-editing" onClick={() => props.onOpenInEditing!(selected.id)}>
       {t('boardUi.inspector.openInEditing')}</button>}
   </div>;
   const shotProperties = selected?.kind === 'shot' ? <>
     <section className="board-shot-fields" data-testid="board-shot-fields">
-      <label>{t('boardUi.inspector.shotTitle')}<input data-testid="board-shot-title" maxLength={150}
-        value={title} disabled={props.busy || shotRevision === null}
-        onChange={event => {setTitle(event.target.value); setShotSaved(false);}}/></label>
       <label>{t('boardUi.inspector.description')}
         <textarea data-testid="board-shot-prompt" rows={4} maxLength={5000} value={prompt}
           disabled={props.busy || shotRevision === null} placeholder={t('boardUi.inspector.descriptionPlaceholder')}
@@ -268,27 +338,18 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
           onClick={() => {void saveShot();}}>{t('boardUi.inspector.saveShot')}</button>
         <button type="button" data-testid="board-shot-discard" disabled={!shotDirty || props.busy}
           onClick={() => {if (!shot) return; setTitle(String(shot.title ?? '')); setPrompt(String(shot.prompt ?? ''));
-            setDuration(Number(shot.duration ?? 4)); setShotError(''); setShotSaved(false);}}>{t('common.cancel')}</button>
+            setDuration(Number(shot.duration ?? 4)); draftRevision.current = shotRevision;
+            setShotError(''); setShotSaved(false);}}>{t('common.cancel')}</button>
         {shotSaved && <span role="status">{t('boardUi.inspector.saved')}</span>}
         {shotError && <span role="alert" data-testid="board-shot-error">{t(shotError.includes('REVISION_CONFLICT')
           ? 'boardUi.inspector.shotConflict' : 'boardUi.inspector.shotSaveFailed')}</span>}
       </div>}
-      <label className="board-shot-duration">{t('boardUi.inspector.duration')}
-        <WorkbenchSelect data-testid="board-shot-duration" value={String(duration)}
-          disabled={props.busy || shotRevision === null}
-          onChange={event => {setDuration(Number(event.target.value)); setShotSaved(false);}}>
-          {Array.from({length: 20}, (_, index) => index + 1).map(seconds =>
-            <option key={seconds} value={seconds}>{t('boardUi.inspector.durationSeconds', {seconds})}</option>)}
-        </WorkbenchSelect>
-      </label>
     </section>
     {generationPanel}
-    <section className="board-shota-dialogue" data-testid="board-inspector-dialogue">
-      <h4>{t('boardUi.inspector.dialogue')}</h4>
-      {props.dialogueLines?.length
-        ? <ul>{props.dialogueLines.map((line, index) => <li key={`${index}:${line}`} data-testid="board-dialogue-line">{line}</li>)}</ul>
-        : <p data-testid="board-dialogue-empty">{t('boardUi.inspector.dialogueEmpty')}</p>}
-    </section>
+    {props.rpc && typeof shot?.projectId === 'string' && props.rpc && <ShotDialogue shot={shot as never}
+      subjectNames={props.dialogueSubjects ?? {}} projectId={shot.projectId as string}
+      cueCount={props.dialogueCueCount ?? 0} disabled={props.busy || !props.onDialogueApplied}
+      rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}
     <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
       disabled={props.busy || !hasService || !props.onGenerateShot}
       onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>

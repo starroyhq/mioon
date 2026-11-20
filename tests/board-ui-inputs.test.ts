@@ -41,7 +41,9 @@ const entry = `import React from 'react';
       {source:'edge',edgeId:'60000000-0000-4000-8000-000000000033',sourceKind:'audio',role:'reference_audio',
        status:'unsupported',reason:'EXCLUSIVE_MODE',label:'对白.wav',orderIndex:3},
       {source:'subject',bindingId:'60000000-0000-4000-8000-000000000034',sourceKind:'subject',role:'subject_reference',
-       status:'used',label:'阿璃',subjectVersionNumber:3,orderIndex:4}],
+       status:'used',label:'阿璃',subjectVersionNumber:3,orderIndex:4},
+      {source:'previs',sourceNodeId:'60000000-0000-4000-8000-000000000035',sourceKind:'subject',role:'subject_reference',
+       status:'used',label:'街口 · 阿璃',subjectVersionNumber:3,orderIndex:5}],
     referenceCount:4};
   const missing={...full,service:null,mode:'frames',usedCount:0,unsupportedCount:2,
     entries:full.entries.map(entry=>({...entry,status:'unsupported',reason:'SERVICE_NOT_SELECTED',primary:undefined})),
@@ -107,9 +109,16 @@ test('the property panel shows the resolved mode, used inputs, primary image and
     assert.match(html, /class="board-input-button"/);
     assert.doesNotMatch(html, /board-input-menu-/);
     // One row per connected input, including the unsupported audio line.
-    assert.equal((html.match(/class="board-input-row/g) ?? []).length, 5);
+    assert.equal((html.match(/class="board-input-row/g) ?? []).length, 6);
     assert.equal((html.match(/data-status="unsupported"/g) ?? []).length, 1);
-    assert.equal((html.match(/data-status="used"/g) ?? []).length, 4);
+    assert.equal((html.match(/data-status="used"/g) ?? []).length, 5);
+    // G's previs scene subject is evidence only: no menu or action controls.
+    const previsIndex = html.indexOf('data-testid="board-input-previs-subject_reference-5"');
+    assert.ok(previsIndex >= 0, locale);
+    const previsRow = html.slice(previsIndex, previsIndex + 500);
+    assert.match(previsRow, /board-input-button is-static/);
+    assert.doesNotMatch(previsRow, /board-input-menu-|board-input-primary-|board-input-detach-/);
+    assert.ok(html.includes('街口 · 阿璃 · V3'), locale);
     assert.match(html, /data-mode="references"/);
     assert.doesNotMatch(html, /data-testid="board-input-primary-60000000-0000-4000-8000-000000000031"/);
     assert.doesNotMatch(html, /data-testid="board-input-role-60000000-0000-4000-8000-000000000030"/);

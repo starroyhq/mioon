@@ -466,7 +466,27 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     expect(page.get_by_test_id('board-inspector-generation-inputs')).to_be_visible()
     first = next(binding for binding in bindings if binding['shotId'] == shot_a)
     key = first['id']
-    page.get_by_test_id(f'board-input-{key}').click()
+    # The row menu opens from the keyboard, closes on Escape/outside click, and
+    # its entries are ordinary keyboard-selectable menu buttons.
+    row = page.get_by_test_id(f'board-input-{key}').locator('button')
+    row.focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_be_visible()
+    page.keyboard.press('Escape')
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_have_count(0)
+    row.focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_be_visible()
+    page.get_by_test_id('board-inspector-shot-title').click()
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_have_count(0)
+    row.focus()
+    page.keyboard.press('Enter')
+    page.locator(f'[data-testid="board-input-menu-{key}"] button').first.focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_have_count(0)
+    log('GB 21-10b row menu opens by keyboard, closes on Escape/outside click and selects by keyboard')
+    page.get_by_test_id(f'board-input-{key}').locator('button').click()
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_be_visible()
     page.get_by_test_id(f'board-input-lock-{key}-{subject_version}').click()
     page.wait_for_function("(id) => window.__boardWireState.bindings.find(item => item.id === id)?.bindingMode === 'locked'",
                            arg=key, timeout=15000)
@@ -509,23 +529,56 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
 
 
 def run_gp_acceptance(page, log, capture, state) -> None:
-    """GP: 21-10 shot properties, draft save, server-planned generation."""
+    """GP: 21-10 shot properties, draft save, conflicts, server-planned generation."""
     shot_a = '70000000-0000-4000-8000-000000000003'
     page.get_by_test_id(f'board-card-{shot_a}').click()
     page.get_by_test_id('wire-tab-settings').click()
     expect(page.get_by_test_id('board-shot-fields')).to_be_visible()
-    expect(page.get_by_test_id('board-shot-prompt')).to_be_visible()
+    expect(page.get_by_test_id('shot-dialogue')).to_be_visible()
+    # The title is edited inside its own row, not through a separate field.
+    page.get_by_test_id('board-inspector-shot-title').click()
     page.get_by_test_id('board-shot-title').fill('窗口剪影 · 改')
+    page.keyboard.press('Enter')
     page.get_by_test_id('board-shot-prompt').fill('雨夜窗口的剪影，人物缓慢回头。')
     page.get_by_test_id('board-shot-duration').click()
     page.get_by_role('option').filter(has_text='4').first.click()
     page.get_by_test_id('board-shot-save').click()
     page.wait_for_function("() => window.__boardWireState.shots.some(shot => shot.id === '70000000-0000-4000-8000-000000000003' && shot.title === '窗口剪影 · 改' && shot.duration === 4)", timeout=15000)
     assert state(page)['history']['undo']['operation'] == 'board.shot.update'
-    log('GB board shot title/description/duration save as one unified action')
+    # 21-10: duration sits below the input rows and above the service footer.
+    rows_box = page.locator('.board-input-list').bounding_box()
+    duration_box = page.get_by_test_id('board-shot-duration').bounding_box()
+    footer_box = page.get_by_test_id('board-input-footer').bounding_box()
+    assert rows_box and duration_box and footer_box
+    assert rows_box['y'] < duration_box['y'] < footer_box['y'], (rows_box, duration_box, footer_box)
+    log('GB 21-10 title row/description/duration and F dialogue panel render')
     capture(page, '21-10-shot-properties.png')
 
-    # A mock service makes the board generate through the server-planned input path.
+    # An untouched draft follows an external revision change.
+    rev = int(next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == shot_a))
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {title: '外部改的标题'}, revision)", [shot_a, rev])
+    page.wait_for_function("() => window.__boardWireState.shots.some(shot => shot.id === '70000000-0000-4000-8000-000000000003' && shot.title === '外部改的标题')", timeout=15000)
+    expect(page.get_by_test_id('board-inspector-shot-title')).to_have_text('外部改的标题')
+    log('GB an untouched shot draft follows an external revision change')
+
+    # A dirty draft keeps its start revision: save reports a conflict and never
+    # overwrites the other writer.
+    page.get_by_test_id('board-inspector-shot-title').click()
+    page.get_by_test_id('board-shot-title').fill('本地草稿标题')
+    page.keyboard.press('Enter')
+    page.get_by_test_id('board-shot-prompt').fill('本地草稿描述，不应覆盖别处。')
+    rev = int(next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == shot_a))
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {title: '别处又改了'}, revision)", [shot_a, rev])
+    page.wait_for_function("() => window.__boardWireState.shots.some(shot => shot.id === '70000000-0000-4000-8000-000000000003' && shot.title === '别处又改了')", timeout=15000)
+    page.get_by_test_id('board-shot-save').click()
+    expect(page.get_by_test_id('board-shot-error')).to_be_visible()
+    assert next(shot['title'] for shot in state(page)['shots'] if shot['id'] == shot_a) == '别处又改了'
+    log('GB a dirty shot draft keeps its start revision and gets a conflict instead of overwriting')
+    capture(page, '21-10-shot-conflict.png')
+    page.get_by_test_id('board-shot-discard').click()
+
+    # Server-planned generation from the board: select the service through the
+    # 21-10 footer itself, then generate without client input.
     before_cards = len(state(page)['cards'])
     page.get_by_test_id('board-ui-add-shot').click()
     page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=before_cards, timeout=15000)
@@ -540,26 +593,15 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     page.wait_for_function("(shotId) => window.__boardWireState.shots.some(shot => shot.id === shotId && shot.prompt === '雨停后路口的俯拍。' && shot.duration === 4)", arg=new_shot, timeout=15000)
     page.evaluate("(shotId) => window.__boardWireActions.updateShot(shotId, {aspectRatio:'16:9'}, window.__boardWireState.shots.find(shot => shot.id === shotId).revision)", arg=new_shot)
     page.wait_for_function("(shotId) => window.__boardWireState.shots.find(shot => shot.id === shotId)?.aspectRatio === '16:9'", arg=new_shot, timeout=15000)
-    page.evaluate("(shotId) => window.__boardWireActions.setGeneration(shotId,"
-                  " {connectionId:'70000000-0000-4000-8000-000000000100', configurationRevision:1,"
-                  "  model:'doubao-seedance-2-5-260628'})", new_shot)
+    page.get_by_test_id('board-input-footer').click()
+    expect(page.get_by_test_id('board-service-menu')).to_be_visible()
+    page.locator('button[data-testid^="board-service-"]').filter(has_text='火山方舟').first.click()
     page.wait_for_function("() => Boolean(window.__boardWireState.inputs?.service)", timeout=15000)
     expect(page.get_by_test_id('board-inspector-generate')).to_be_enabled()
     page.get_by_test_id('board-inspector-generate').click()
     page.wait_for_function("(shotId) => (window.__boardWireState.jobs ?? []).some(job => job.shotId === shotId)", arg=new_shot, timeout=15000)
     log('GB board generation submits only the shot and selected service; server plans inputs', jobs=len(state(page)['jobs']))
     capture(page, '21-10-shot-generate.png')
-
-    # Stale revision surfaces the shared conflict state instead of overwriting.
-    page.get_by_test_id(f'board-card-{new_shot}').click()
-    page.get_by_test_id('wire-tab-settings').click()
-    page.get_by_test_id('board-shot-prompt').fill('本地草稿，未保存。')
-    current_revision = int(state(page)['shots'][0]['revision']) if False else int(next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == new_shot))
-    page.evaluate("([shotId, revision]) => window.__boardWireActions.externalUpdateShot(shotId, {title: '别处改了'}, revision)", [new_shot, current_revision])
-    page.get_by_test_id('board-shot-save').click()
-    expect(page.get_by_test_id('board-shot-error')).to_be_visible()
-    log('GB board shot save surfaces a stale-revision conflict')
-    capture(page, '21-10-shot-conflict.png')
 
 
 if __name__ == '__main__':
