@@ -50,6 +50,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
+import {testEnv} from './helpers/test-env.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 
 const sha256=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -66,7 +67,7 @@ test('format-5 capabilities, preflight and real render complete through the expo
   t.after(async()=>{await services.drain();library.close();store.close();rmSync(root,{recursive:true,force:true});});
   const projectId=store.projectId;
   const media=(name:string,args:string[],mimeType:string,duration:number)=>{
-    const file=path.join(root,name);execFile(ffmpegBin,['-v','error','-y',...args,file]);
+    const file=path.join(root,name);execFile(ffmpegBin,['-v','error','-y',...args,file],{env:testEnv()});
     const bytes=readFileSync(file);return {file,bytes,sha256:sha256(bytes),sizeBytes:bytes.length,mimeType,duration};
   };
   const video=media('main.mp4',['-f','lavfi','-i','color=c=red:s=360x640:d=4:r=30','-pix_fmt','yuv420p'],'video/mp4',4);
@@ -117,7 +118,7 @@ test('format-5 capabilities, preflight and real render complete through the expo
   const capability:any=await services.call('timeline.export.capabilities',{projectId,expectedRevision:1,exportSettings:settings});
   assert.equal(capability.status,'available',JSON.stringify(capability));
   const preflight:any=await services.call('timeline.export.preflight',{projectId,expectedRevision:1,exportSettings:settings});
-  if(!spawnSync(ffmpegBin,['-filters'],{encoding:'utf8'}).stdout.includes('drawtext')){
+  if(!spawnSync(ffmpegBin,['-filters'],{encoding:'utf8',env:testEnv()}).stdout.includes('drawtext')){
     // Local Homebrew ffmpeg lacks libfreetype; CI's reviewed media toolchain has it.
     assert.equal(preflight.status,'blocked');
     assert.equal(preflight.issues[0]?.code,'SUBTITLE_RENDERER_UNAVAILABLE');
@@ -137,7 +138,7 @@ test('format-5 capabilities, preflight and real render complete through the expo
   const outputAsset=store.get('assets',done.assetId) as any;
   const outputFile=path.resolve(store.projectDir,outputAsset.reference.path);
   assert.ok(statSync(outputFile).size>0);
-  const probe=JSON.parse(execFile(ffprobeBin,['-v','error','-show_entries','format=duration:stream=codec_type','-of','json',outputFile],{encoding:'utf8'}));
+  const probe=JSON.parse(execFile(ffprobeBin,['-v','error','-show_entries','format=duration:stream=codec_type','-of','json',outputFile],{encoding:'utf8',env:testEnv()}));
   assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='video'));
   assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='audio'));
   assert.ok(Number(probe.format.duration)>3,'output duration follows the frozen 4s timeline');
