@@ -1,0 +1,11 @@
+# SC：格式 5 按场景切开的成功路径真实走一遍
+
+- 范围：真实格式 5 项目里「素材库检测场景 → 生产对话框预览影响 → 在时间线按切点分割 → 主轨/其它轨切开 → 回执列出跳过原因 → 一步撤销 → 重做」的完整成功路径。服务层语义沿用 FR-B2（#320），本卡补上真实素材与真实场景结果的端到端证据，并修走查暴露的两处界面问题。
+- 夹具（`tests/helpers/scene-split-wire-fixture.ts`）：FFmpeg 现场合成 3 段 120 帧/4 s 的 320×180 短视频，主画面 + 整帧 `overlay` 按主输入帧号在 30/60/90 帧切换（不用 `concat`）；文件走生产 `asset.import` 导入、`asset.media.prepare`（purpose `scene`）算全量哈希，再走生产 `scene.detect` 队列 + `scene.task.get` 轮询拿 `origin: detected` 的真实结果。夹具在浏览器启动前断言检测结果恰为 cuts `[30, 60, 90]`、frameCount 120，任何设备/FFmpeg 版本差异都直接失败，不会手写或注入切点。
+- 时间线：主轨 V1 覆盖「单片段素材」「同一素材两段（同 shot/连续段组）」「未检测素材」；V2 一整段同素材；V3 两段分别只有淡入内切点与范围内无切点，用来命中 `FADE_BOUNDS` / `NO_CUT_IN_RANGE`。所有非主轨片段显式 `anchor`，主轨紧凑、baseline board/track 与 sequence 链一致。
+- 无头流程（本机，非 CI）：`node tests/browser_format5_scene_split.mjs --screens <本卡 screens 目录>`。真实格式 5 内核 + 真实 HTTP project service + Vite 打包的生产 `useSceneDetection`/`SceneDetectionDialog`/`AssetContextMenu`/`Timeline`/`EditUiNoticeBar`/`Format5EditSession`；只给 `project.get` 补 `projectFormatVersion`，并额外挂 `/debug/state`（revision/统一历史/片段/素材/最新场景结果）与真实媒体路由。断言走 `/debug/state` 的服务端真相与 RPC 日志：预览 envelope 与提交 envelope 逐字段相同、`expectedPlanDigest` 等于预览 digest、预览预分配的 `rightClipId` 全部出现在提交后的时间线；无可切位置那次只有 preview 没有 commit，revision/历史/片段全不变。
+- 覆盖与证据（`screens/report.json`，仅本地）：A 单片段 1→4 段（源入点 0/30/60/90）→ 再切 `NOTHING_TO_SPLIT` 不写 → 一步撤销回到逐字节原始片段 → 重做复原原 ID；B 主轨两段 + V2 一次切开 3 个片段、V3 两段跳过并给出两种原因、提示条与实际数一致；C 素材库先真实检测（`scene.detect` → 轮询 succeeded）再切开，切分用的是浏览器刚检测出的 `resultId`。
+- 走查修复（只格式 5，格式 3/4 文案/校验/路由不变）：
+  - 场景切开成功原来只发 toast、没有一步撤销条，和其它格式 5 结构编辑不一致。改 `apps/web/src/App.tsx` 成功分支按回执 `sceneSplit.split/skipped` 数设可撤销提示条，`apps/web/src/edit-ui/session.ts` 新增 `format5SceneSplitNotice`（纯函数）。走查发现检测对话框在切开后不关闭、撤销条被模态层盖住，所以 toast 保留为对话框打开期间的即时反馈（切开数/跳过数），撤销条在对话框关闭后可见可撤销；测试 `tests/edit-ui-session.test.ts`、`tests/client-mutation-app.test.ts`。
+  - 格式 5 失败原因落到通用错误。`format5CommandErrorMessageKey` 补 `NOTHING_TO_SPLIT` → `scene.split.nothing`、`SEQUENCE_EDIT_SCENE_RESULT_CONFLICT` → `scene.error.resultConflict`、`SEQUENCE_EDIT_SCENE_RESULT_STALE` → `scene.error.resultStale`，复用已有文案；测试同上。
+- 不变项：格式 3/4 行为与 `sceneSplitError` 分支未改；三套 Mio 请求指纹逐字节不变；Mio 工具/schema/生成文件未改；`.github/test-timings.json` 未改；未新增 `*.test.ts`；无头脚本按 `browser_*.mjs` 惯例不进 CI；媒体与截图不提交。
