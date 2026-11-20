@@ -6,6 +6,7 @@
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {useI18n} from './i18n/I18nProvider.tsx';
+import {Button} from '@mioon/ui/components/button';
 
 export interface ClipAudioToastTarget {
   readonly projectId: string;
@@ -83,15 +84,15 @@ export default function ClipAudioTaskToast({target, read, cancel, retry, viewAss
         <div className="clip-audio-toast-bar" aria-hidden="true"><span style={{width: `${progress ?? 4}%`}} /></div>
       </div>
       <span className="clip-audio-toast-percent">{progress === null ? '' : `${formatNumber(progress)}%`}</span>
-      <button type="button" className="clip-audio-toast-action" data-testid="clip-audio-cancel" disabled={busy}
-        onClick={() => {setBusy(true); void cancel(target.projectId, target.exportId).finally(() => setBusy(false));}}>{t('clipSound.cancel')}</button>
+      <Button type="button" className="clip-audio-toast-action" data-testid="clip-audio-cancel" disabled={busy}
+        onClick={() => {setBusy(true); void cancel(target.projectId, target.exportId).finally(() => setBusy(false));}}>{t('clipSound.cancel')}</Button>
     </div>}
     {task?.status === 'succeeded' && <div className="clip-audio-toast clip-audio-toast-done" data-testid="clip-audio-done">
       <span className="clip-audio-toast-check" aria-hidden="true" />
       <div className="clip-audio-toast-main"><p>{t('clipSound.toast.done')}</p></div>
-      <button type="button" className="clip-audio-toast-action" data-testid="clip-audio-view"
-        onClick={() => {if (task.assetId) viewAsset(task.assetId);}}>{t('clipSound.toast.viewInLibrary')}</button>
-      <button type="button" className="clip-audio-toast-close" data-testid="clip-audio-close" aria-label={t('editUi.notice.dismiss')} onClick={onClose}>×</button>
+      <Button type="button" className="clip-audio-toast-action" data-testid="clip-audio-view"
+        onClick={() => {if (task.assetId) viewAsset(task.assetId);}}>{t('clipSound.toast.viewInLibrary')}</Button>
+      <Button type="button" className="clip-audio-toast-close" data-testid="clip-audio-close" aria-label={t('editUi.notice.dismiss')} onClick={onClose}>×</Button>
     </div>}
     {task?.status === 'failed' && <div className="clip-audio-toast clip-audio-toast-failed" data-testid="clip-audio-failed">
       <span className="clip-audio-toast-warning" aria-hidden="true" />
@@ -99,9 +100,9 @@ export default function ClipAudioTaskToast({target, read, cancel, retry, viewAss
         <p>{task.error?.code === 'EXPORT_CANCELLED' ? t('clipSound.toast.cancelled') : t('clipSound.toast.failed')}</p>
         {task.error?.code !== 'EXPORT_CANCELLED' && task.error?.message && <p className="clip-audio-toast-reason">{task.error.message}</p>}
       </div>
-      {task.error?.code !== 'EXPORT_CANCELLED' && <button type="button" className="clip-audio-toast-action" data-testid="clip-audio-retry"
-        disabled={busy} onClick={() => {setBusy(true); retry(target);}}>{t('clipSound.retry')}</button>}
-      <button type="button" className="clip-audio-toast-close" data-testid="clip-audio-close" aria-label={t('editUi.notice.dismiss')} onClick={onClose}>×</button>
+      {task.error?.code !== 'EXPORT_CANCELLED' && <Button type="button" className="clip-audio-toast-action" data-testid="clip-audio-retry"
+        disabled={busy} onClick={() => {setBusy(true); retry(target);}}>{t('clipSound.retry')}</Button>}
+      <Button type="button" className="clip-audio-toast-close" data-testid="clip-audio-close" aria-label={t('editUi.notice.dismiss')} onClick={onClose}>×</Button>
     </div>}
   </div>;
 }

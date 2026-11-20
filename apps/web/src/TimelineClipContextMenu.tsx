@@ -6,6 +6,7 @@
  * keeps a structural insert point. No disabled placeholder items are shown.
  */
 import React, {useEffect, useLayoutEffect, useRef} from 'react';
+import {Button} from '@mioon/ui/components/button';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import type {ClipContextMenuPlan} from './clip-sound-state.ts';
 
@@ -64,8 +65,8 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
   if (!anchor) return null;
   const register = (index: number) => (element: HTMLButtonElement | null) => {if (element) items.current[index] = element;};
   const item = (testId: string, label: string, action: () => unknown, enabled: boolean, index: number) =>
-    <button ref={register(index)} type="button" role="menuitem" className="timeline-clip-menu-item"
-      data-testid={testId} disabled={!enabled} onClick={() => {onClose(); void action();}}>{label}</button>;
+    <Button ref={register(index)} type="button" role="menuitem" variant="ghost" className="timeline-clip-menu-item"
+      data-testid={testId} disabled={!enabled} onClick={() => {onClose(); void action();}}>{label}</Button>;
   let index = 0;
   return <div ref={menu} className="timeline-clip-menu" data-testid="clip-context-menu" role="menu"
     aria-label={t('clipSound.clipMenu')} style={{left: anchor.x, top: anchor.y}}>
