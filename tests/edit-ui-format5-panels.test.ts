@@ -116,6 +116,15 @@ test('format-5 clip selection passes a loudness provider backed by a real contex
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef\.current!\.assets, editing\.selectedClipId\)/u);
 });
 
+test('format-5 explicit forms and clip drags receive editing admission without a dead first gesture', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  // Adding a subtitle is an explicit edit; the form must not open locked behind a second Edit click.
+  assert.match(app, /<AgentEditingBoundary autoAcquire workspaceScope=\{editorSession\.current\|\|'unverified'\} disabled=\{false\} projectId=\{subtitles\.state\?\.projectId\}/u);
+  // The first clip drag used to be cancelled by a synchronous admission check that returned false.
+  assert.ok(app.includes("acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return true;"));
+  assert.doesNotMatch(app, /onAdmitClipDrag=\{clipId => \{.*?return false; \}\}/su);
+});
+
 test('the production shell routes format-5 panel edits through the shared entry', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   for (const fragment of [

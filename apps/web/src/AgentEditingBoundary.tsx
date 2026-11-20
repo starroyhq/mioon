@@ -102,13 +102,13 @@ export function holdAgentEditingTarget(projectId: string, target: AgentTaskTarge
     }, 0);
   };
 }
-export interface AgentEditingBoundaryProps { projectId?: string | null; workspaceScope?: string; targets: readonly AgentTaskTarget[]; disabled?: boolean; controlsOnly?: boolean; canRelease: () => boolean; onDiscard?: () => unknown; children: ReactNode | ((allowed: boolean) => ReactNode) }
+export interface AgentEditingBoundaryProps { projectId?: string | null; workspaceScope?: string; targets: readonly AgentTaskTarget[]; disabled?: boolean; controlsOnly?: boolean; autoAcquire?: boolean; canRelease: () => boolean; onDiscard?: () => unknown; children: ReactNode | ((allowed: boolean) => ReactNode) }
 export default function AgentEditingBoundary(props: AgentEditingBoundaryProps) {
   const identity = JSON.stringify([props.projectId, props.workspaceScope, props.targets.map(target => [target.kind, target.id])]);
   if (props.disabled || !props.projectId || !props.targets.length) return <>{typeof props.children === 'function' ? props.children(Boolean(props.disabled)) : props.children}</>;
   return <OwnedEditingBoundary key={identity} {...props} projectId={props.projectId} />;
 }
-function OwnedEditingBoundary({ projectId, workspaceScope = 'normal', targets, canRelease, onDiscard, children, controlsOnly = false }: Omit<AgentEditingBoundaryProps, 'projectId'> & { projectId: string }) {
+function OwnedEditingBoundary({ projectId, workspaceScope = 'normal', targets, canRelease, onDiscard, children, controlsOnly = false, autoAcquire = false }: Omit<AgentEditingBoundaryProps, 'projectId'> & { projectId: string }) {
   const { t } = useI18n(), confirm = useConfirmation(), [state, setState] = useState<AgentEditingState>({ phase: 'loading', claims: [], pending: null }), controller = useRef<ReturnType<typeof createAgentEditingProtection> | null>(null), release = useRef(canRelease), discard = useRef(onDiscard); release.current = canRelease; discard.current=onDiscard;
   useLayoutEffect(() => {
     let entry: ReturnType<typeof protection>;
@@ -117,6 +117,7 @@ function OwnedEditingBoundary({ projectId, workspaceScope = 'normal', targets, c
     if (entry.controller.getState().phase === 'idle') void entry.controller.refresh();
     return () => { entry.listeners.delete(listener); if (controller.current === entry.controller) controller.current = null; };
   }, []);
+  useLayoutEffect(() => { if (autoAcquire && state.phase === 'idle') void controller.current?.acquire(); }, [autoAcquire, state.phase]);
   const allowed = state.phase === 'active', busy = ['loading', 'acquiring', 'releasing'].includes(state.phase);
   const admission = () => controller.current?.canEdit() ?? false;
   const reject = (event: React.SyntheticEvent) => { if (!admission()) { event.preventDefault(); event.stopPropagation(); } };
