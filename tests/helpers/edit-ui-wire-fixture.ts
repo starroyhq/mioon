@@ -62,7 +62,7 @@ export async function createEditUiWireFixture(): Promise<{store: ProjectStore; s
         assetId: WIRE_IDS.imageAsset}]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'UI-E2 无头夹具', createdAt: at, updatedAt: at, revision: 1});
-    store.put('assets', {id: WIRE_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, sha256: sha('a'), sizeBytes: 10});
+    store.put('assets', {id: WIRE_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, hasAudio: true, sha256: sha('a'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: WIRE_IDS.imageAsset, projectId, name: '图片.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10});
     store.put('jobs', {id: id(71), projectId, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock', shotId: WIRE_IDS.shotA, createdAt: at, updatedAt: at});

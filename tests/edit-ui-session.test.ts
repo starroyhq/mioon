@@ -208,7 +208,10 @@ function lostHarness(initial: {readonly scenarios: readonly CommitScenario[]; re
       previews++;
       const envelope = {contractVersion: 1, requestId: `${input.trackIntent ? 'track-preview' : input.formatIntent ? 'format-preview' : 'preview'}-${previews}`,
         projectId: input.projectId, ...(input.trackIntent ? {trackIntent: input.trackIntent} : {}),
-        ...(input.formatIntent ? {formatIntent: input.formatIntent} : {}), ...(input.intents ? {intents: input.intents} : {})};
+        ...(input.formatIntent ? {formatIntent: input.formatIntent} : {}),
+        ...(input.subtitlesIntent ? {subtitlesIntent: input.subtitlesIntent} : {}),
+        ...(input.propertiesIntent ? {propertiesIntent: input.propertiesIntent} : {}),
+        ...(input.intents ? {intents: input.intents} : {})};
       return {envelope, planDigest: PLAN_DIGEST, warnings: []};
     }
     if (operation === 'sequence.commit') {
@@ -502,4 +505,37 @@ test('a lost scene-split commit is settled by one receipt read without writing t
   assert.equal(committed.input.envelope.intents[0].operation.edit.kind, 'split-at-scenes');
   assert.equal(committed.input.envelope.intents[0].operation.edit.assetId, 'asset-1');
   assert.equal(h.session.unconfirmed, null);
+});
+
+test('a lost subtitle commit is settled by one receipt read and never writes twice', async () => {
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead('timeline.subtitle.edit')}});
+  const cueId = crypto.randomUUID();
+  const subtitlesIntent = {side: 'timeline', operation: {kind: 'subtitles', edits: [{kind: 'add',
+    cue: {id: cueId, text: '面板字幕', startFrame: 10, durationFrames: 20}}]}};
+  const result = await h.session.runPayload({subtitlesIntent});
+  assert.equal(result.ok, true);
+  if (result.ok) {assert.equal(result.resolvedFromReceipt, true); assert.equal(result.actionId, null);}
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.equal(h.session.unconfirmed, null);
+  assert.equal(h.commits()[0]!.input.envelope.subtitlesIntent.operation.edits[0].cue.id, cueId,
+    'the exact subtitle envelope is the one that was committed');
+  // A settled lost edit never blocks the next panel action.
+  const again = await h.session.runPayload({subtitlesIntent: {side: 'timeline', operation: {kind: 'subtitles',
+    edits: [{kind: 'update', cueId, patch: {text: '改一句'}}]}}});
+  assert.equal(again.ok, true);
+  assert.equal(h.commits().length, 2);
+});
+
+test('a lost clip-properties panel commit is settled by one receipt read and never writes twice', async () => {
+  const h = lostHarness({scenarios: ['lost-after-write'], read: {kind: 'outcome', outcome: appliedRead('timeline.clip.properties')}});
+  const propertiesIntent = {side: 'timeline', operation: {kind: 'clip-properties', edits: [{clipId: crypto.randomUUID(),
+    patch: {name: '改名', gain: 0.5}}]}};
+  const result = await h.session.runPayload({propertiesIntent});
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.resolvedFromReceipt, true);
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.reads.length, 1);
+  assert.equal(h.session.unconfirmed, null);
+  assert.deepEqual(h.commits()[0]!.input.envelope.propertiesIntent.operation.edits[0].patch, {name: '改名', gain: 0.5});
 });
