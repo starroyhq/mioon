@@ -22,6 +22,8 @@ export interface GenerateInEditingPanelProps {
   readonly cueCount: number;
   readonly jobStatus?: string | null;
   readonly busy: boolean;
+  readonly generateBlocked?: boolean;
+  readonly resizable?: boolean;
   readonly blockedReason?: string | null;
   readonly onSavePrompt: (prompt: string) => unknown;
   readonly onResize: (duration: number) => unknown;
@@ -72,7 +74,7 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
         <div className="generate-in-editing-duration">
           <label htmlFor="editing-generate-duration">{t('boardUi.inspector.duration')}</label>
           <WorkbenchSelect id="editing-generate-duration" data-testid="editing-generate-duration"
-            value={String(duration)} disabled={props.busy}
+            value={String(duration)} disabled={props.busy || props.resizable === false}
             onChange={event => {const next = Number(event.target.value); setDuration(next); void props.onResize(next);}}>
             {Array.from({length: 20}, (_, index) => index + 1).map(seconds =>
               <option key={seconds} value={seconds}>{t('boardUi.inspector.durationSeconds', {seconds})}</option>)}
@@ -94,7 +96,7 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
     {props.blockedReason && <p className="generate-in-editing-note" role="status">{props.blockedReason}</p>}
     <footer className="generate-in-editing-footer">
       <Button type="button" size="sm" className="button generate-button full" data-testid="editing-generate-submit"
-        disabled={props.busy || !inputs?.service} onClick={() => void props.onGenerate()}>
+        disabled={props.busy || props.generateBlocked || !inputs?.service} onClick={() => void props.onGenerate()}>
         <Icon name="sparkle" size={16} />{t('boardUi.inspector.generate')}
       </Button>
     </footer>

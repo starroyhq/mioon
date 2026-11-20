@@ -5081,8 +5081,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       shotLabel={`${String(Math.max(0, sortedShots.findIndex(item => item.id === editingGenerateShot.id)) + 1).padStart(2, '0')}`}
       inputs={format5Inputs} subjectNames={format5DialogueSubjects}
       cueCount={format5DialogueCues.counts.get(editingGenerateShot.id) ?? 0} jobStatus={editingGenerateJob?.status ?? null}
-      busy={format5SessionBusy || format5BoardBusy || Boolean(editingGenerateJob && ['queued','running','submitted','pending'].includes(String(editingGenerateJob.status)))
+      busy={format5SessionBusy || format5BoardBusy}
+      generateBlocked={Boolean(editingGenerateJob && ['queued','running','submitted','pending'].includes(String(editingGenerateJob.status)))
         || data.versions.some(version => version.shotId === editingGenerateShot.id)}
+      resizable={(editingGenerateClip as {sourceState?: string}).sourceState === 'placeholder'}
       blockedReason={editingGenerateJob?.status === 'failed' ? t('timeline.generate.failedHint') : null}
       onSavePrompt={prompt => format5BoardUpdateShot(editingGenerateShot.id, {prompt}, Number(editingGenerateShot.revision) || 1)}
       onResize={duration => format5ResizeGeneration(editingGenerateShot.id, duration)}

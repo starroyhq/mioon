@@ -36,8 +36,9 @@ test('GE-b: the timeline blank menu offers each generate entry only where GE-a c
 test('GE-b: the blank generate entries build the GE-a intents from the blank point', () => {
   const placeholder = generatePlaceholderIntent({target, settings: {requestId: randomUUID()}, shotId: '70000000-0000-4000-8000-000000000010',
     clipId: '70000000-0000-4000-8000-000000000011', title: '新镜头'});
-  assert.deepEqual(placeholder.operation.placement, {kind: 'track', trackId: 'v2', startFrame: 30});
   assert.equal(placeholder.operation.kind, 'generate-placeholder');
+  assert.deepEqual(placeholder.operation.kind === 'generate-placeholder' ? placeholder.operation.placement : null,
+    {kind: 'track', trackId: 'v2', startFrame: 30});
   assert.deepEqual(generateResizeIntent('70000000-0000-4000-8000-000000000010', 2),
     {side: 'timeline', operation: {kind: 'generate-resize', shotId: '70000000-0000-4000-8000-000000000010', duration: 2}});
 });

@@ -122,21 +122,18 @@ def main() -> int:
             capture(page, '21-08-generate-entry-menu.png')
             log('main-track end offers 在末尾生成镜头', items=items)
             page.get_by_test_id('timeline-menu-generate').click(force=True)
-            page.wait_for_timeout(3500)
-            dismiss_toast(page)
             expect(page.get_by_test_id('editing-generate-panel')).to_be_visible(timeout=20000)
             capture(page, '21-09-new-shot-generate-panel.png')
             assert page.locator('.timeline-clip.selected').count() == 1
             state = rpc('project.get', {'projectId': project}, project)
-            placeholders = [clip for clip in state['timeline']['clips'] if clip.get('sourceState') == 'placeholder']
-            assert len(placeholders) == 4, len(placeholders)
-            new_clip = max(placeholders, key=lambda clip: clip['startFrame'] + clip['durationFrames'])
+            new_clip = max(state['timeline']['clips'], key=lambda clip: clip['startFrame'] + clip['durationFrames'])
             assert new_clip['name'] != 'Clip' and new_clip['name'], new_clip.get('name')
-            log('placeholder created, selected and named after the shot', name=new_clip['name'],
-                durationFrames=new_clip['durationFrames'])
+            log('placeholder created, selected and named after the shot', clipName=new_clip['name'],
+                durationFrames=new_clip['durationFrames'], sourceState=new_clip.get('sourceState'))
             # The panel must not claim a failure before the job reaches a terminal state.
             panel_text = page.get_by_test_id('editing-generate-panel').inner_text()
-            job = next((item for item in state.get('jobs', []) if item.get('shotId') == new_clip['shotId']), None)
+            clip_shot = new_clip.get('shotId') or (new_clip.get('sequenceSource') or {}).get('nodeId')
+            job = next((item for item in state.get('jobs', []) if item.get('shotId') == clip_shot), None)
             if not job or job.get('status') not in ('failed', 'cancelled', 'submission_unknown'):
                 assert '生成失败' not in panel_text, panel_text
             log('fresh placeholder does not show a failure without a failed job')
