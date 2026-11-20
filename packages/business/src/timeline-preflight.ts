@@ -64,7 +64,7 @@ function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {has
  if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
  return {...timelineDeliveryNameFields(snapshot),...timelineExportRangeFields(snapshot),...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
   visualClipCount:t.clips.filter(c=>tracks.get(c.trackId)?.kind==='video'&&!tracks.get(c.trackId)!.hidden).length,
-  audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
+  audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.muted!==true&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
 }
 function classify(error: unknown): [string,string]{

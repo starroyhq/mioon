@@ -22,7 +22,7 @@ export function outputLocaleFor(db: DatabaseSync, id: string): OutputLocale | un
   return isLocale(locale) ? locale : undefined;
 }
 
-function availableName(db: DatabaseSync, projectId: string, stem: string, extension: '.mp4' | '.png'): string {
+function availableName(db: DatabaseSync, projectId: string, stem: string, extension: '.mp4' | '.png' | '.m4a'): string {
   const nameWith = (suffix: string): string =>
     stem.slice(0, 200 - suffix.length - extension.length).replace(/[\uD800-\uDBFF]$/u, '') + suffix + extension;
   const names = new Set(db.prepare("SELECT json_extract(data,'$.name') AS name FROM assets WHERE projectId=?")
@@ -61,4 +61,13 @@ export function generatedImageAssetName(db: DatabaseSync, taskId: string, projec
   const locale = outputLocaleFor(db, taskId);
   if (!locale) return `${title} · 图像 ${number}.png`;
   return availableName(db, projectId, translate(locale, 'outputAsset.image', {title:outputTitle(title), number}), '.png');
+}
+
+/** FR-G: «<source name> · Sound» as an .m4a audio asset. Mio and locale-less
+ * callers keep the Chinese fallback used by the other local asset names. */
+export function clipAudioAssetName(db: DatabaseSync, output: {id: string; projectId: string}, sourceName: string): string {
+  const locale = outputLocaleFor(db, output.id);
+  const stem = sourceName.slice(0, 160);
+  if (!locale) return availableName(db, output.projectId, `${stem} 的声音`, '.m4a');
+  return availableName(db, output.projectId, translate(locale, 'clipSound.assetName', {name: stem}), '.m4a');
 }

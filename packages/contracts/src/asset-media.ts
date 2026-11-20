@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {clipAudioSourceSchema} from './clip-audio-export.ts';
 import {projectIdSchema, projectMediaPath} from './project-file.ts';
 import {projectOutputPublicationProofSchema} from './project-output-publication.ts';
 import {frameOutputResultSchema,sceneOutputResultSchema} from './project-output-sources.ts';
@@ -41,14 +42,14 @@ const metadata = {
   height: z.number().int().nonnegative().max(100000).optional(),
   duration: z.number().finite().nonnegative().nullable().optional(),
   hasAudio: z.boolean().optional(), hasVideo: z.boolean().optional(),
-  provenance: z.enum(['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame', 'scene-keyframe']).optional(),
+  provenance: z.enum(['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame', 'scene-keyframe', 'clip-audio']).optional(),
   createdAt: z.string().datetime().optional(),
 };
 
 /** Internal persisted record: reference is the only location source. The
  * optional full hash can never be replaced by a sampled hash. */
 export const assetMediaRecordSchema = z.object({
-  ...metadata, producer:z.object({kind:z.enum(['generation','export']),id}).strict().optional(), publication:projectOutputPublicationProofSchema.optional(),frameResult:frameOutputResultSchema.optional(),sceneResult:sceneOutputResultSchema.optional(),previsOutput:previsOutputIdentitySchema.optional(), reference: mediaReferenceSchema, referenceRevision: revision, sha256: hash.nullable(),
+  ...metadata, producer:z.object({kind:z.enum(['generation','export']),id}).strict().optional(), publication:projectOutputPublicationProofSchema.optional(),frameResult:frameOutputResultSchema.optional(),sceneResult:sceneOutputResultSchema.optional(),previsOutput:previsOutputIdentitySchema.optional(),clipAudioSource:clipAudioSourceSchema.optional(), reference: mediaReferenceSchema, referenceRevision: revision, sha256: hash.nullable(),
 }).strict().refine(value => value.sha256 === value.reference.fullSha256 && value.sizeBytes === value.reference.sizeBytes,
   'Asset size and full hash must match its reference.');
 export type AssetMediaRecord = z.infer<typeof assetMediaRecordSchema>;

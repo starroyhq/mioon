@@ -191,7 +191,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    const args: string[]=['-hide_banner','-loglevel','error',owned?'-y':'-n','-filter_complex_threads','1'];
    const inputs: {clip: TimelineClipRecord;asset: RenderAsset;visual: boolean;audio: boolean;input: number}[]=[];
    for(const clip of clips){
-    const asset=assets.get(clip.assetId)!,track=tracks.get(clip.trackId)!,visual=track.kind==='video'&&!track.hidden,audio=!!asset.hasAudio&&!track.muted&&clip.gain>0&&clip.startFrame<=begin&&clip.startFrame+clip.durationFrames>=end;
+    const asset=assets.get(clip.assetId)!,track=tracks.get(clip.trackId)!,visual=track.kind==='video'&&!track.hidden,audio=!!asset.hasAudio&&!track.muted&&clip.muted!==true&&clip.gain>0&&clip.startFrame<=begin&&clip.startFrame+clip.durationFrames>=end;
     if(!visual&&!audio)continue;
     const input=inputs.length,isImage=asset.mimeType.startsWith('image/');
     args.push('-threads','1');

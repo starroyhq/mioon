@@ -1,6 +1,8 @@
 import {toAssetMediaDto,publicMediaFingerprint} from './asset-media.ts';
 import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
+import {clipAudioExportSchemas,clipAudioExportDescriptions} from './clip-audio-export.ts';
 export * from './export-controls.ts';
+export * from './clip-audio-export.ts';
 import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
 export * from './workspace-configuration.ts';
 import {taskDispositionSchemas,taskDispositionDescriptions} from './task-dispositions.ts';
@@ -153,6 +155,7 @@ export const schemas={
 ...sequenceInspectionSchemas,
 ...sequenceGenerationInputSchemas,
 ...exportControlSchemas,
+...clipAudioExportSchemas,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
 ...projectLifecycleSchemas,
@@ -259,6 +262,7 @@ export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K
 export const descriptions: Record<string, string> = {
  ...projectBackupDescriptions,...projectVersionDescriptions,
  ...exportControlDescriptions,
+ ...clipAudioExportDescriptions,
  'workspace.settings.get':'读取旧版工作区设置客户端的兼容响应',
  'workspace.settings.set':'推进旧版工作区设置的修订号',
  ...taskDispositionDescriptions,

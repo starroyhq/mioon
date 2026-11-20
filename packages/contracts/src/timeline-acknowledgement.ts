@@ -207,7 +207,14 @@ export function isTimelineRenderRecord(value: unknown, input: unknown): boolean 
   for (const clip of timeline.clips) {
     const asset = assets.get(clip.assetId);
     const track = tracks.get(clip.trackId);
-    if (!asset || !track || !(track.kind === 'audio' ? audioTypes : visualTypes).includes(asset.mimeType as string)) return false;
+    const soundOnly = clip.soundOnly === true;
+    // An audio-track clip may play a video source only in the explicit
+    // «sound only» form produced by «separate sound», and that source must
+    // actually carry audio. Video-track clips never carry the flag.
+    if (!asset || !track || (track.kind === 'audio'
+      ? soundOnly ? !(asset.mimeType as string).startsWith('video/') || asset.hasAudio !== true
+        : !audioTypes.includes(asset.mimeType as string)
+      : !visualTypes.includes(asset.mimeType as string))) return false;
     if ((asset.mimeType as string).startsWith('image/') ? clip.sourceInFrame !== 0 : clip.sourceInFrame + clip.durationFrames > (sourceFrameCount(asset.duration) ?? 0)) return false;
     if (clip.volumeEnvelope != null && ((asset.mimeType as string).startsWith('image/') || asset.hasAudio === false)) return false;
     if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > 0 && ((asset.mimeType as string).startsWith('image/') || asset.hasAudio === false)) return false;

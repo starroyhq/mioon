@@ -1,4 +1,7 @@
 import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts';
+import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
+import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
+import {runClipAudioExport} from './clip-audio-export.ts';
 import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import type {BackgroundTaskRef} from './background-task-events.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -524,6 +527,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const claimed=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;const claimedRecord=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimedRecord);return isFloatTimelineExport(current)?claimedRecord:current;});
   if(!claimed)return;
   e=claimed as unknown as ExportRecord;
+  // «Save clip sound» rides the exports channel but owns its own record shape,
+  // staging and publication rules; it never decodes a timeline snapshot.
+  if(e.mode===CLIP_AUDIO_EXPORT_MODE){await processClipAudioTask(e,signal);return;}
   floatClaims.remember(signal,e);
   const floatExport=isFloatTimelineExport(e);
   const writerOwner=registeredProjectStore(root),outputOwner:ProjectOutputOwner={kind:'export',id:e.id,requestId:typeof e.requestId==='string'?e.requestId:e.id,inputHash:outputArtifactDigest(exportOutputArtifactIdentity(e))};
@@ -674,6 +680,29 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    };
    if(terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
+  }
+ }
+
+ async function processClipAudioTask(original: ExportRecord,signal: AbortSignal): Promise<void> {
+  const latest=(): ClipAudioExportRecord|null=>{
+   const current=currentOwnedExport(original);
+   return current&&isClipAudioExportRecord(current)?current as unknown as ClipAudioExportRecord:null;
+  };
+  const initial=latest();
+  if(!initial||initial.status!=='running')return;
+  const save=(values: Record<string,unknown>): void=>{tx(()=>{const current=latest();if(!current||current.status!=='running')return;put('exports',{...current,...values});});};
+  try{
+   await runClipAudioExport(inputStore as never,initial,{
+    signal,
+    beforeEffect:()=>{checkpoint(signal);const current=latest();if(!current||current.status!=='running')throw Object.assign(Error('The clip-audio task is no longer owned.'),{code:'INVALID_TIMELINE_SNAPSHOT'});},
+    latest,
+    save,
+    succeed:(asset: Record<string,unknown>,record: ClipAudioExportRecord)=>{tx(()=>{const current=latest();if(!current||current.status!=='running')throw Object.assign(Error('The clip-audio task is no longer owned.'),{code:'INVALID_TIMELINE_SNAPSHOT'});put('assets',asset);put('exports',record);});},
+   });
+  }catch(error){
+   if(isBackgroundTaskIndexUncertain(error))return;
+   if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:original.id},error))return;
+   tx(()=>{const current=latest();if(!current||current.status!=='running')return;put('exports',{...current,status:'failed',error:safeError(error,'EXPORT_FAILED'),updatedAt:now()});});
   }
  }
 

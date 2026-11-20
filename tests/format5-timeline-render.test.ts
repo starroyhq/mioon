@@ -24,7 +24,7 @@ function fixture(t: test.TestContext) {
   const world = createChainWorld(t, {
     rootId,
     shots: [{id: shotA, title: 'A', versionId: versionA}, {id: shotB, title: 'B', versionId: versionB}],
-    versions: [{versionId: versionA, assetId: assetA, sha256: 'a'.repeat(64), durationSeconds: 4},
+    versions: [{versionId: versionA, assetId: assetA, sha256: 'a'.repeat(64), durationSeconds: 4, hasAudio: true},
       {versionId: versionB, assetId: assetB, sha256: 'b'.repeat(64), durationSeconds: 4}],
     clips: [{nodeId: shotA, clipId: clipA, startFrame: 0, durationFrames: 60, versionId: versionA},
       {nodeId: shotB, clipId: clipB, startFrame: 60, durationFrames: 60, versionId: versionB}],
@@ -37,8 +37,9 @@ function fixture(t: test.TestContext) {
   world.store.tx(() => {
     for (const [id, sha] of [[assetA, 'a'], [assetB, 'b']] as const) {
       const asset = JSON.parse(String((world.store.db.prepare('SELECT data FROM project.assets WHERE id=?').get(id) as {data: string}).data)) as Record<string, unknown>;
-      world.store.put('assets', {...asset, sizeBytes: 1024, reference: {pathForm: 'relative', path: 'media/source.mp4',
-        volume: null, sizeBytes: 1024, mtimeMs: 0, sampledSha256: sha.repeat(64), fullSha256: sha.repeat(64)}});
+      world.store.put('assets', {...asset, sizeBytes: 1024, ...(id === assetA ? {hasAudio: true, hasVideo: true} : {}),
+        reference: {pathForm: 'relative', path: 'media/source.mp4',
+          volume: null, sizeBytes: 1024, mtimeMs: 0, sampledSha256: sha.repeat(64), fullSha256: sha.repeat(64)}});
     }
   });
   return {world, service};
@@ -125,4 +126,40 @@ test('format-5 export blockers refuse to freeze instead of rendering a placehold
   assert.throws(() => freezeFormat5RenderSnapshot(world.store),
     (error: {code?: string; details?: {blockers?: {code: string}[]}}) =>
       error.code === 'EXPORT_BLOCKED' && error.details?.blockers?.[0]?.code === 'VERSION_TOO_SHORT');
+});
+
+test('format-5 render projection keeps muted and sound-only flags and the frozen snapshot admits them', (t) => {
+  const {world, service} = fixture(t);
+  const preview = service.preview({projectId: world.projectId, requestId: 'render-separate-0001',
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipA}}}) as {envelope: unknown; planDigest: string};
+  assert.ok(preview.envelope);
+  service.commit({projectId: world.projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest});
+  const timeline = readFormat5TimelineRecord(world.store.db, 'project')!;
+  const source = timeline.clips.find(item => item.id === clipA)!;
+  const sound = timeline.clips.find(item => item.soundOnly === true)!;
+  assert.equal(source.muted, true);
+  assert.ok(sound);
+  const projection = readFormat5RenderProjection(world.store)!;
+  const legacySource = projection.legacy.clips.find(item => item.id === clipA)!;
+  const legacySound = projection.legacy.clips.find(item => item.id === sound.id)!;
+  assert.equal(legacySource.muted, true);
+  assert.equal(legacySound.soundOnly, true);
+  const frozen = freezeFormat5RenderSnapshot(world.store, {expectedRevision: timeline.revision}) as {
+    timeline: {id: string; revision: number; clips: Record<string, unknown>[]}; assets: unknown[]};
+  const request = {projectId: world.projectId, requestId: 'render-separate-request-0001', expectedRevision: timeline.revision,
+    purpose: 'preview' as const};
+  const record = {id: '10000000-0000-4000-8000-000000000098', projectId: world.projectId, requestId: request.requestId,
+    mode: 'timeline' as const, purpose: 'preview' as const, timelineRevision: timeline.revision, snapshot: frozen,
+    status: 'queued' as const, assetId: null, url: null, error: null, createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'};
+  assert.equal(isTimelineRenderRecord(record, request), true,
+    'the frozen render record accepts both clip flags and the video source on an audio track');
+  // A frozen snapshot without either optional flag stays valid for formats 3/4.
+  const plain = structuredClone(record);
+  for (const clip of plain.snapshot.timeline.clips as Record<string, unknown>[]) {
+    delete clip.muted;
+    delete clip.soundOnly;
+  }
+  assert.equal(isTimelineRenderRecord(plain, request), false,
+    'a video source on an audio track is still refused without the soundOnly flag');
 });

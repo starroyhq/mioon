@@ -12,6 +12,7 @@ import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.
 import {isAssetMediaOperation, assetMediaEffects} from '../../contracts/src/asset-media.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {createExportControlServices} from './export-controls.ts';
+import {getClipAudioExport,startClipAudioExport} from './clip-audio-export.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,assertTaskEffectOrigin,setAgentTaskJobStopper,withAgentTaskJobOrigin} from './agent/task-effects-v2.ts';
@@ -733,6 +734,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...inspection.handlers,
   ...timeline.handlers,
   ...sequenceInspection.handlers,
+  'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
+  'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),

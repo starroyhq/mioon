@@ -14,6 +14,7 @@ import {isFloatTimelineExport,claimFloatTimelineExport} from './timeline-float-o
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {exportControlSchemas,exportActivitySchema,exportOutputSchema} from '../../contracts/src/export-controls.ts';
+import {clipAudioExportRecordSchema} from '../../contracts/src/clip-audio-export.ts';
 
 type Stage='preparing'|'encoding'|'finalizing';
 interface Activity {stage:Stage;started:number;progress:number|null;abort():void}
@@ -39,6 +40,13 @@ export function createExportControlServices(store:Store,{signal}:{signal?:AbortS
     checkpoint();const raw=store.db.prepare('SELECT data FROM exports WHERE id=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304').get(exportId,projectId);
     let value:unknown;try{value=raw&&typeof raw.data==='string'?JSON.parse(raw.data):null;}catch{value=null;}
     if(!row(value)||value.id!==exportId||value.projectId!==projectId||typeof value.status!=='string')throw new AppError('NOT_FOUND','导出任务不存在',404);
+    // «Save clip sound» tasks share the exports channel; their row is validated
+    // by their own closed schema so cancellation/activity never touch timeline
+    // rows or storyboard snapshots.
+    if(value.mode==='clip-audio'){
+      if(!clipAudioExportRecordSchema.safeParse(value).success)throw new AppError('INVALID_MEDIA','音频任务无法核对',409);
+      return value;
+    }
     if(value.mode==='timeline'&&!isTimelineRenderRecord(value,{projectId,requestId:value.requestId,purpose:value.purpose,expectedRevision:value.timelineRevision,...timelineRenderDeliveryFields(value.snapshot)}))throw new AppError('INVALID_TIMELINE_SNAPSHOT','导出任务无法核对',409);
     assertFloatTimelineExportRead(store.db,value,{isTimelineRenderRecord,readOwnedAsset:(owner,id)=>readOwnedTimelineAsset(store.db,owner,id)});
     if(value.mode!=='timeline'){

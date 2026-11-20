@@ -10,6 +10,7 @@ import {
 import {timelineCompositionSegments} from '../packages/contracts/src/timeline-segments.ts';
 
 import type {NegativePreviewPlan, Failure} from './helpers/strict-timeline-audio-types.ts';
+import type {AudioPreviewPlan} from '../packages/contracts/src/timeline-audio-preview.ts';
 interface Snapshot {timeline: {id: string; projectId: string; revision: number; fps: number; durationFrames: number; tracks: {id: string; kind: string; orderIndex: number; hidden: boolean; muted: boolean}[]; clips: {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; fadeInFrames?: number; fadeOutFrames?: number; filter?: string}[]}; assets: {id: string; projectId: string; sha256: string; sizeBytes: number; mimeType: string; duration: number; hasAudio?: boolean | null; path?: string}[]}
 const id=(n: number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const hash=(text: string)=>createHash('sha256').update(text).digest('hex');
@@ -395,4 +396,25 @@ test('half-open ramps, one-frame fades, meeting ramps and seeks use the identica
   throwsCode(()=>audioPreviewEnvelopeAtSample(voice,0.5),'AUDIO_PREVIEW_INVALID_INPUT');
   throwsCode(()=>deriveTimelineAudioSamples(voice,5),'AUDIO_PREVIEW_INVALID_INPUT');
   throwsCode(()=>deriveTimelineAudioSamples({...voice,fadeInFrames:null} as unknown as typeof voice,0),'AUDIO_PREVIEW_INVALID_INPUT');
+});
+
+test('a muted clip is silent and a sound-only video clip on an audio track is planned once',()=>{
+  const f=fixture();
+  (f.snapshot.timeline.clips[0] as Record<string,unknown>).soundOnly=true;
+  (f.snapshot.assets[0] as Record<string,unknown>).mimeType='video/mp4';
+  const soundOnly=planOf(f) as unknown as AudioPreviewPlan;
+  assert.equal(soundOnly.voices.length,1);
+  assert.equal(soundOnly.sources.length,1);
+  (f.snapshot.timeline.clips[0] as Record<string,unknown>).muted=true;
+  const muted=planOf(f) as unknown as AudioPreviewPlan;
+  assert.equal(muted.voices.length,0);
+  assert.deepEqual(muted.sources,[]);
+  delete (f.snapshot.timeline.clips[0] as Record<string,unknown>).soundOnly;
+  throwsCode(()=>planOf(f),'AUDIO_PREVIEW_INVALID_SNAPSHOT');
+  // A muted audio-track clip is silent without changing the source admission.
+  const audio=fixture();
+  (audio.snapshot.timeline.clips[0] as Record<string,unknown>).muted=true;
+  const audioMuted=planOf(audio) as unknown as AudioPreviewPlan;
+  assert.equal(audioMuted.voices.length,0);
+  assert.deepEqual(audioMuted.sources,[], 'a muted clip needs no prepared source');
 });

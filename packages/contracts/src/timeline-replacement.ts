@@ -17,6 +17,8 @@ export interface TimelineClipRecord {
   rect: TimelineRect; gain: number; layout?: ClipLayout;
   fadeInFrames?: number; fadeOutFrames?: number; colour?: unknown; audioRole?: unknown; volumeEnvelope?: unknown; transform?: unknown; transitionIn?: unknown;
   versionId?: string; shotId?: string; jobId?: string;
+  /** Format-5 only; absent means audible/normal clip. */
+  muted?: boolean; soundOnly?: boolean;
   [key: string]: unknown;
 }
 export interface TimelineRecord {
@@ -43,6 +45,10 @@ const encoder = new TextEncoder();
 const timelineFields = ['id', 'projectId', 'revision', 'fps', 'width', 'height', 'tracks', 'clips', 'durationFrames', 'createdAt', 'updatedAt'];
 const trackFields = ['id', 'name', 'kind', 'orderIndex', 'hidden', 'muted'];
 const clipFields = ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain'];
+// Optional format-5-only clip flags: `muted` silences the clip's own sound and
+// `soundOnly` marks an audio-track clip that plays a video source's sound.
+// They are validated as booleans below; older snapshots omit both.
+const format5ClipFlags = ['muted', 'soundOnly'];
 
 export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOptions = {}): value is TimelineRecord {
   if (!fields(value, timelineFields, ['subtitles']) || !uuid(value.id) || !uuid(value.projectId) ||
@@ -60,7 +66,7 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
   }
   let duration = 0;
   for (const clip of value.clips as unknown[]) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout']) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout', ...format5ClipFlags]) ||
         !uuid(clip.id) || ids.has(clip.id) || !uuid(clip.trackId) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
@@ -71,7 +77,9 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
         Object.hasOwn(clip, 'transform') && (clip.transform === null || !isClipTransform(clip.transform, clip.durationFrames) || trackKinds.get(clip.trackId) !== 'video') ||
         Object.hasOwn(clip, 'transitionIn') && (clip.transitionIn === null || !isClipTransition(clip.transitionIn) || trackKinds.get(clip.trackId) !== 'video') ||
         provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key])) ||
-        Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video')) return false;
+        Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video') ||
+        Object.hasOwn(clip, 'muted') && clip.muted !== true ||
+        Object.hasOwn(clip, 'soundOnly') && (clip.soundOnly !== true || trackKinds.get(clip.trackId) !== 'audio')) return false;
     if (!isClipLayoutRect(clip, value)) return false;
     for (const field of ['fadeInFrames', 'fadeOutFrames']) if (Object.hasOwn(clip, field) && !integer(clip[field], 0, clip.durationFrames)) return false;
     if ((clip.fadeInFrames as number | undefined ?? 0) + (clip.fadeOutFrames as number | undefined ?? 0) > clip.durationFrames) return false;
