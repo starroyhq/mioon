@@ -11,6 +11,9 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
+import SubjectLibrary from '../../../apps/web/src/SubjectLibrary.tsx';
+import {useSubjects} from '../../../apps/web/src/use-subjects.ts';
+import {WorkspaceVisibilityProvider} from '../../../apps/web/src/workspace-visibility.tsx';
 import {assetKind, dragAsset} from '../../../apps/web/src/Timeline.tsx';
 import {projectLiveBoard, boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
@@ -61,6 +64,8 @@ function Harness(): React.ReactElement {
   const [inspectorTab, setInspectorTab] = useState<'settings' | 'versions'>('settings');
   const [revealNodeId, setRevealNodeId] = useState<string | null>(null);
   const stateRef = useRef<Row>({});
+  const subjectFile = useRef<HTMLInputElement | null>(null);
+  const subjectGate = useRef<string | null>(null);
   const session = useRef(new BoardUiSession(rpc, () => projectId));
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -77,6 +82,27 @@ function Harness(): React.ReactElement {
     }
   }, []);
   useEffect(() => {void refresh();}, [refresh]);
+  // WT-3-02: a real subject library over the fixture project service. The import
+  // button feeds the production asset.import RPC; creation and binding use the
+  // production controller and board components.
+  const importSubjectImage = useCallback(async (file: File): Promise<void> => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    await rpc('asset.import', {projectId, name: file.name, mimeType: file.type || 'image/png', dataBase64: btoa(binary)});
+    await refresh();
+  }, [refresh]);
+  const subjects = useSubjects({
+    scope: `${projectId}:format5:${selectedNodeId ?? ''}`,
+    projectId: data?.project?.id ?? null,
+    assets: data?.assets ?? [],
+    shotIds: (data?.shots ?? []).map((shot: Row) => String(shot.id)),
+    read: (operation, input) => rpc(operation, input as never),
+    save: async (operation, input) => {
+      try { return await rpc(operation, input as never); }
+      catch (error) { subjectGate.current = (error as {code?: string}).code ?? 'SUBJECT_SAVE_FAILED'; throw error; }
+    },
+  });
   const boardNodeType = (kind: string): 'image' | 'video' | 'audio' | null =>
     kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null;
   const freeBoardPosition = (): {x: number; y: number} => {
@@ -308,6 +334,10 @@ function Harness(): React.ReactElement {
       floating: projection?.projection.floatingNodeIds ?? [], positions: projection?.positions ?? {},
       timelineRevision: data?.timeline?.revision, syncRevision: mount?.syncRevision, inSync: mount?.inSync,
       subjects: mount?.subjects ?? [], bindings: mount?.bindings ?? [],
+      subjectList: subjects.state?.list.items.map(subject => ({id: subject.id, name: subject.name, kind: subject.kind})) ?? [],
+      subjectImages: subjects.state?.assets.map(asset => ({id: asset.id, projectId: asset.projectId ?? null, mimeType: asset.mimeType ?? null})) ?? [],
+      assetCount: data?.assets?.length ?? 0,
+      subjectGate: subjectGate.current,
       shots: (data?.shots ?? []).map((shot: Row) => ({id: shot.id, title: shot.title, prompt: shot.prompt,
         duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId})),
       jobs: data?.jobs ?? [],
@@ -317,7 +347,7 @@ function Harness(): React.ReactElement {
           primary: entry.primary === true}))} : null,
       providers: providers.map(provider => ({id: provider.id, connectionId: provider.connectionId ?? null}))};
     (window as any).__boardWireState = stateRef.current;
-  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers]);
+  }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers, subjects.state]);
   if (!projection) return <div className="board-fixture-loading">Loading…</div>;
   return <div className="board-fixture">
     <header className="board-fixture-head"><strong>Mioon · 画板</strong><span data-testid="fixture-format">格式 5</span>
@@ -332,6 +362,16 @@ function Harness(): React.ReactElement {
         notice={notice} reduceMotion={reduced} busy={busy}
         onAssetDrop={(assetId, position) => {void dropAssetOnBoard(assetId, position);}} revealNodeId={revealNodeId}/>
     </main>
+    <aside className="board-fixture-subject-library" data-testid="board-fixture-subject-library">
+      <button type="button" data-testid="subject-import" onClick={() => subjectFile.current?.click()}>导入图片</button>
+      <input ref={subjectFile} type="file" accept="image/png,image/jpeg,image/webp" style={{display: 'none'}}
+        data-testid="subject-import-input"
+        onChange={event => {const file = event.target.files?.[0]; event.target.value = ''; if (file) void importSubjectImage(file);}}/>
+      <WorkspaceVisibilityProvider visible>
+        <SubjectLibrary subjects={subjects as never} assets={data?.assets ?? []} shots={data?.shots ?? []}
+          dragToBoard onInspectSubject={() => {}} onShowTasks={() => {}}/>
+      </WorkspaceVisibilityProvider>
+    </aside>
     <aside className="board-fixture-inspector">
       <BoardInspector board={projection} activeFilmId={activeFilmId} mount={mount} selectedNodeId={selectedNodeId}
         versions={data?.versions ?? []} shots={data?.shots ?? []} nodes={data?.nodes ?? []} busy={busy}

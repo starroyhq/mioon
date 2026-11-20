@@ -71,6 +71,7 @@ def main() -> int:
                 run_board_assets_acceptance(page, result, log, capture, state, wait_position)
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
                 run_gp_acceptance(page, log, capture, state)
+                run_wt3_subject_creation_acceptance(page, log, capture, state)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -661,6 +662,62 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     page.wait_for_function("(shotId) => (window.__boardWireState.jobs ?? []).some(job => job.shotId === shotId)", arg=new_shot, timeout=15000)
     log('GB board generation submits only the shot and selected service; server plans inputs', jobs=len(state(page)['jobs']))
     capture(page, '21-10-shot-generate.png')
+
+
+def run_wt3_subject_creation_acceptance(page, log, capture, state) -> None:
+    """WT-3-02: import a project image and check the real subject panel lists it.
+    Format-5 subject creation itself is still behind the FR-0 legacy gate until
+    SB ships the unified subject-create intent, so the drag/bind half runs with
+    the fixture's retained subject and the same production board components."""
+    shot_a = '70000000-0000-4000-8000-000000000003'
+    page.set_input_files('[data-testid=subject-import-input]', str(Path(__file__).parent / 'reference.png'))
+    page.wait_for_function("(minimum) => (window.__boardWireState.assetCount ?? 0) > minimum", arg=5, timeout=15000)
+    page.get_by_test_id('subject-new').click()
+    expect(page.get_by_test_id('subject-name')).to_be_visible()
+    page.wait_for_function("() => (window.__boardWireState.subjectImages ?? []).some(asset => asset.mimeType === 'image/png' && asset.id && !asset.id.startsWith('70000000'))", timeout=15000)
+    page.get_by_test_id('subject-name').fill('走查主体甲')
+    page.get_by_test_id('subject-create-image').click()
+    page.wait_for_timeout(700)
+    options = page.locator('[role=option]').all_inner_texts()
+    assert any('reference.png' in option for option in options), options
+    log('WT-3-02 the subject image chooser lists the imported project image', options=options)
+    capture(page, '21-12-subject-create-image-choice.png')
+    page.get_by_role('option').filter(has_text='reference.png').first.click()
+    page.get_by_test_id('subject-create').click()
+    page.wait_for_timeout(800)
+    gate = page.evaluate("() => window.__boardWireState.subjectGate ?? null")
+    assert gate in (None, 'UNSUPPORTED_OPERATION'), gate
+    log('WT-3-02 format 5 subject creation still reports the legacy gate when the panel sends it', gate=gate)
+    # The retained-subject half proves the board drag/bind path the walkthrough
+    # wanted to reach after creation.
+    subject_id = state(page)['subjectList'][0]['id']
+    expect(page.get_by_test_id(f'subject-card-{subject_id}')).to_be_visible()
+    page.evaluate("""(subjectId) => {
+      const card = document.querySelector(`[data-testid="subject-card-${subjectId}"]`);
+      const canvas = document.querySelector('[data-testid=board-ui-canvas]');
+      if (!card || !canvas) throw new Error('subject drag targets missing');
+      const rect = canvas.getBoundingClientRect();
+      const dataTransfer = new DataTransfer();
+      card.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer}));
+      canvas.dispatchEvent(new DragEvent('dragover', {bubbles: true, clientX: rect.left + rect.width * 0.5,
+        clientY: rect.top + rect.height * 0.55, dataTransfer}));
+      canvas.dispatchEvent(new DragEvent('drop', {bubbles: true, clientX: rect.left + rect.width * 0.5,
+        clientY: rect.top + rect.height * 0.55, dataTransfer}));
+    }""", subject_id)
+    page.wait_for_function("(subjectId) => window.__boardWireState.cards.some(card => card.kind === 'subject' && card.subjectId === subjectId)",
+                           arg=subject_id, timeout=15000)
+    card_id = next(card['id'] for card in state(page)['cards'] if card['kind'] == 'subject' and card['subjectId'] == subject_id)
+    page.get_by_test_id(f'board-card-{card_id}').click()
+    page.get_by_test_id(f'board-port-{card_id}-reference-out-top').focus()
+    page.keyboard.press('Enter')
+    page.get_by_test_id(f'board-port-{shot_a}-reference-in-top').focus()
+    page.keyboard.press('Enter')
+    page.wait_for_function("(subjectId) => (window.__boardWireState.bindings ?? []).some(binding => binding.subjectId === subjectId)",
+                           arg=subject_id, timeout=15000)
+    binding = next(binding for binding in state(page)['bindings'] if binding['subjectId'] == subject_id)
+    assert binding['shotId'] == shot_a and binding['role'] in ('subject', 'style'), binding
+    log('WT-3-02 a subject card dropped on the board binds to the shot through the unified intent', binding=binding)
+    capture(page, '21-12-subject-binding.png')
 
 
 if __name__ == '__main__':
