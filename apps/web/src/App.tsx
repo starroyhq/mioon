@@ -267,7 +267,7 @@ import { publishPrevisOutput } from './previs/previs-publication.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.ts';
-import { generationSelection, generationParameters, generationVideoInput, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
+import { generationSelection, generationParameters, generationVideoInput, shotWithGenerationParameters, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
 import { generationAspectError, generationFrameMatches, prepareGenerationAspect } from './generation-settings.ts';
 import { timelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import { isGenerationAspectNotApplied, isGenerationAspectResponse } from '../../../packages/contracts/src/generation-aspect.ts';
@@ -2601,10 +2601,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!format5 || format5SessionBusy) return;
     const shot = dataRef.current.shots.find(item => item.id === shotId);
     if (!shot) return;
-    const selection = generationSelection(providers, generationOptionsRef.current[shotId] ?? {}, shot as never);
+    const options = generationOptionsRef.current[shotId] ?? {};
+    const selection = generationSelection(providers, options, shot as never);
     const provider = selection.provider;
     if (!provider) {notify(t('boardUi.inputs.serviceMissing'), 'warning'); return;}
-    const args: GenerationReviewArgs = {shot: shot as never, providerId: provider.id,
+    // GP follow-up: the new shot panel sends the same defaulted parameters
+    // (native sound opens for dialogue on optional-audio models) as the shot
+    // inspector used to; the raw saved shot must never bypass them.
+    const shotForGeneration = shotWithGenerationParameters(shot as never, provider, options);
+    const args: GenerationReviewArgs = {shot: shotForGeneration as never, providerId: provider.id,
       ...(provider.connectionId ? {connectionId: provider.connectionId,
         configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
         connectionName: provider.name, connectionEndpoint: (provider.videoConnection as {endpoint?: string} | undefined)?.endpoint} : {}),

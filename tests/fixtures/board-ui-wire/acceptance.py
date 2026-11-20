@@ -636,6 +636,38 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     capture(page, '21-10-shot-conflict.png')
     page.get_by_test_id('board-shot-discard').click()
 
+    # DL-b/GP follow-up: the new shot panel shows the dialogue service status.
+    # Write real dialogue through the panel (the unified dialogue action writes
+    # its subtitle cues), then select a service that cannot speak.
+    page.get_by_test_id('shot-dialogue-text').fill('我们回不去了。\n走吧。')
+    page.get_by_test_id('shot-dialogue-save').click()
+    page.wait_for_function("() => window.__boardWireState.shots.find(shot => shot.id === '70000000-0000-4000-8000-000000000003')?.dialogue?.length === 2",
+                           timeout=15000)
+    page.get_by_test_id('board-input-footer').click()
+    expect(page.get_by_test_id('board-service-menu')).to_be_visible()
+    page.locator('button[data-testid^="board-service-"]').filter(has_text='Vidu').first.click()
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'vidu'", timeout=15000)
+    page.wait_for_function("() => window.__boardWireState.inputs?.dialogue?.reason === 'SERVICE_DOES_NOT_SPEAK'", timeout=15000)
+    expect(page.get_by_test_id('shot-dialogue-generation-unsupported')).to_be_visible()
+    assert '当前服务不支持' in page.get_by_test_id('shot-dialogue-generation-unsupported').inner_text()
+    log('GB 21-10 new shot panel shows the DL-b unsupported dialogue status')
+    capture(page, '21-10-shot-dialogue-status.png')
+    # A speaking service with an over-long original prompt shows the dialogue
+    # overflow reason in the same panel.
+    page.get_by_test_id('board-input-footer').click()
+    expect(page.get_by_test_id('board-service-menu')).to_be_visible()
+    page.locator('button[data-testid^="board-service-"]').filter(has_text='火山方舟').first.click()
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'ark'", timeout=15000)
+    page.wait_for_function("() => window.__boardWireState.inputs?.dialogue?.status === 'used'", timeout=15000)
+    rev = int(next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == shot_a))
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {prompt: '海'.repeat(4990)}, revision)", [shot_a, rev])
+    page.wait_for_function("() => window.__boardWireState.inputs?.dialogue?.status === 'rejected'", timeout=15000)
+    expect(page.get_by_test_id('shot-dialogue-generation-rejected')).to_be_visible()
+    assert '台词加进提示词后超出这个服务的上限' in page.get_by_test_id('shot-dialogue-generation-rejected').inner_text()
+    assert '不会截断' not in page.get_by_test_id('shot-dialogue-generation-rejected').inner_text()
+    log('GB 21-10 new shot panel shows the dialogue prompt-overflow reason')
+    capture(page, '21-10-shot-dialogue-overflow.png')
+
     # Server-planned generation from the board: select the service through the
     # 21-10 footer itself, then generate without client input.
     before_cards = len(state(page)['cards'])
