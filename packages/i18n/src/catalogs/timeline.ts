@@ -903,13 +903,7 @@ const timelineCoreMessages = {
     "en": "Fade out (frames)",
     "ja": "フェードアウト（フレーム）"
   },
-  "audio.clip.effect": {
-    "zh-Hans": "淡入/淡出在重新渲染时间线预览与导出时生效；源素材快速查看播放原始声音",
-    "zh-Hant": "淡入／淡出在重新算繪時間軸預覽與匯出時生效；來源素材快速查看播放原始聲音",
-    "en": "Fades apply to newly rendered timeline previews and exports. Quick source previews play the original audio",
-    "ja": "フェードは新たにレンダリングするタイムラインのプレビューと書き出しに適用されます。ソース素材のクイックプレビューでは元の音声を再生します"
-  },
-  "audio.clip.noAudio": {
+"audio.clip.noAudio": {
     "zh-Hans": "此素材不含音轨，音频淡入/淡出不会产生效果",
     "zh-Hant": "此素材不含音軌，音訊淡入／淡出不會產生效果",
     "en": "This asset has no audio track, so audio fades have no effect",
@@ -939,13 +933,7 @@ const timelineCoreMessages = {
     "en": "Nonzero audio fades are available only for video or audio assets with a confirmed audio track",
     "ja": "0 以外の音声フェードを設定できるのは、音声トラックを確認済みの動画または音声素材のみです"
   },
-  "audio.clip.bounds": {
-    "zh-Hans": "30 帧 = 1 秒 · 每项 0–{maximum} 帧，两项合计不得超过片段时长。0 表示关闭",
-    "zh-Hant": "30 影格 = 1 秒 · 每項 0–{maximum} 影格，兩項合計不得超過片段時長。0 表示關閉",
-    "en": "30 frames = 1 second · Each fade is 0–{maximum} frames; their combined length must not exceed the clip duration. 0 disables the fade",
-    "ja": "30 フレーム = 1 秒 · 各フェードは 0–{maximum} フレームで、合計はクリップの長さを超えられません。0 で無効になります"
-  },
-  "audio.clip.totalTooLong": {
+"audio.clip.totalTooLong": {
     "zh-Hans": "淡入与淡出合计不能超过片段时长（{duration} 帧）。缩短片段后，请同时检查并调整两项",
     "zh-Hant": "淡入與淡出合計不可超過片段時長（{duration} 影格）。縮短片段後，請同時檢查並調整兩項",
     "en": "The combined fades must not exceed the clip duration ({duration} frames). After shortening the clip, check and adjust both fades",
@@ -1083,13 +1071,7 @@ const timelineCoreMessages = {
     "en": "Track",
     "ja": "トラック"
   },
-  "timeline.view.stacking": {
-    "zh-Hans": "上层覆盖下层",
-    "zh-Hant": "上層覆蓋下層",
-    "en": "Upper tracks cover lower tracks",
-    "ja": "上のトラックが下のトラックに重なります"
-  },
-  "timeline.view.ruler": {
+"timeline.view.ruler": {
     "zh-Hans": "时间标尺",
     "zh-Hant": "時間尺規",
     "en": "Time ruler",
@@ -1653,13 +1635,7 @@ const timelineCoreMessages = {
     "en": "Source in point (source frames)",
     "ja": "素材のイン点（ソースフレーム）"
   },
-  "timeline.inspector.imageIn": {
-    "zh-Hans": "静态图片入点固定为 0",
-    "zh-Hant": "靜態圖片入點固定為 0",
-    "en": "The in point for still images is fixed at 0",
-    "ja": "静止画像のイン点は 0 に固定されています"
-  },
-  "timeline.inspector.frozen": {
+"timeline.inspector.frozen": {
     "zh-Hans": "来源已冻结",
     "zh-Hant": "來源已固定",
     "en": "Source is fixed",
@@ -1755,25 +1731,7 @@ const timelineCoreMessages = {
     "en": "Remove clip from timeline",
     "ja": "タイムラインからクリップを削除"
   },
-  "timeline.inspector.timeRange": {
-    "zh-Hans": "30 帧 = 1 秒 · 时间线 {start} → {end}",
-    "zh-Hant": "30 影格 = 1 秒 · 時間軸 {start} → {end}",
-    "en": "30 frames = 1 second · Timeline {start} → {end}",
-    "ja": "30 フレーム = 1 秒 · タイムライン {start} → {end}"
-  },
-  "timeline.inspector.sourceDuration": {
-    "zh-Hans": "源素材 {duration} 秒；入点与时间线开始帧各自独立",
-    "zh-Hant": "來源素材 {duration} 秒；入點與時間軸開始影格各自獨立",
-    "en": "Source: {duration} seconds. The source in point and timeline start frame are independent",
-    "ja": "ソース素材：{duration} 秒。ソースのイン点とタイムラインの開始フレームは独立しています"
-  },
-  "timeline.inspector.sourceDurationUnknown": {
-    "zh-Hans": "源素材时长未知；入点与时间线开始帧各自独立",
-    "zh-Hant": "來源素材時長未知；入點與時間軸開始影格各自獨立",
-    "en": "Source duration is unknown. The source in point and timeline start frame are independent",
-    "ja": "ソース素材の長さは不明です。ソースのイン点とタイムラインの開始フレームは独立しています"
-  },
-  "audio.waveform.disclosure": {
+"audio.waveform.disclosure": {
     "zh-Hans": "原始源音轨（首条） · 固定满刻度 · 不反映音量、静音或淡入/淡出",
     "zh-Hant": "原始來源音軌（第一條） · 固定滿刻度 · 不反映音量、靜音或淡入／淡出",
     "en": "Original source audio (first stream) · Fixed full scale · Does not reflect gain, mute, or fades",
@@ -1857,13 +1815,7 @@ const timelineCoreMessages = {
     "en": "View saved waveforms only; new decoding and running historical tasks are unavailable",
     "ja": "保存済み波形の表示のみ可能です。新規デコードと過去のタスクの実行はできません"
   },
-  "audio.waveform.defaultOff": {
-    "zh-Hans": "本次会话默认关闭",
-    "zh-Hant": "此工作階段預設關閉",
-    "en": "Off by default for this session",
-    "ja": "このセッションでは既定でオフ"
-  },
-  "audio.waveform.visibleLimit": {
+"audio.waveform.visibleLimit": {
     "zh-Hans": "仅显示前32个可见片段波形",
     "zh-Hant": "僅顯示前 32 個可見片段的波形",
     "en": "Only the first 32 visible clip waveforms are shown",
@@ -3143,10 +3095,10 @@ const timelineCoreMessages = {
     "ja": "字幕タイムライン"
   },
   "subtitles.ui.empty": {
-    "zh-Hans": "在播放头处新增，随后在右侧编辑文字与整数帧",
-    "zh-Hant": "在播放頭處新增，再於右側編輯文字與整數影格",
-    "en": "Add at the playhead, then edit text and integer frames on the right",
-    "ja": "再生ヘッドに追加し、右側でテキストと整数フレームを編集"
+    "zh-Hans": "还没有字幕",
+    "zh-Hant": "還沒有字幕",
+    "en": "No subtitles yet",
+    "ja": "字幕はまだありません"
   },
   "subtitles.ui.stale": {
     "zh-Hans": "已有渲染是旧快照 修订版 {rendered}，当前 修订版 {current}，请重新渲染",
@@ -3160,13 +3112,7 @@ const timelineCoreMessages = {
     "en": "Render snapshot revision {revision} matches the current saved timeline",
     "ja": "レンダリングのスナップショット リビジョン {revision} は、現在の保存済みタイムラインと一致しています"
   },
-  "subtitles.ui.bounds": {
-    "zh-Hans": "30 帧 = 1 秒 · 出点不包含在范围内 · 媒体时长 {frames} 帧。字幕不能重叠或延长媒体时长",
-    "zh-Hant": "30 影格 = 1 秒 · 出點不包含在範圍內 · 媒體時長 {frames} 影格。字幕不可重疊或延長媒體時長",
-    "en": "30 frames = 1 second · Out point is excluded · Media duration: {frames} frames. Subtitles cannot overlap or extend the media duration",
-    "ja": "30 フレーム = 1 秒 · アウト点は含まない · メディアの長さ {frames} フレーム。字幕の重なりやメディアの長さの延長はできません"
-  },
-  "subtitles.ui.characters": {
+"subtitles.ui.characters": {
     "zh-Hans": "{counts} 字符",
     "zh-Hant": "{counts} 字元",
     "en": "{counts} characters",

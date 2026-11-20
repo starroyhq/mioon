@@ -484,13 +484,7 @@ export const timelineDeliveryMessages = {
     "en": "Local clip draft",
     "ja": "クリップのローカル下書き"
   },
-  "recovery.clip.shortDisclosure": {
-    "zh-Hans": "仅片段属性，本地明文；最后未确认输入可能丢失。草稿不会自动应用到时间线",
-    "zh-Hant": "僅限片段屬性，以本機明文儲存；最後未確認的輸入可能遺失。草稿不會自動套用至時間軸",
-    "en": "Clip properties only, stored locally as plain text. The last unconfirmed input may be lost. Drafts are not automatically applied to the timeline",
-    "ja": "クリップのプロパティのみをローカルに平文で保存します。最後の未確認入力は失われる可能性があります。下書きはタイムラインに自動適用されません"
-  },
-  "recovery.clip.restore": {
+"recovery.clip.restore": {
     "zh-Hans": "恢复到属性表单",
     "zh-Hant": "還原至屬性表單",
     "en": "Restore to properties form",
@@ -502,13 +496,7 @@ export const timelineDeliveryMessages = {
     "en": "Discard saved draft",
     "ja": "保存済み下書きを破棄"
   },
-  "recovery.clip.newInput": {
-    "zh-Hans": "当前有新输入，未替换为旧草稿。放弃旧草稿后可继续保留当前输入",
-    "zh-Hant": "目前有新輸入，尚未替換為舊草稿。放棄舊草稿後仍可保留目前輸入",
-    "en": "New input is present and has not been replaced by the older draft. Discarding the older draft can retain current input",
-    "ja": "新しい入力があるため、古い下書きに置き換えていません。古い下書きを破棄しても現在の入力を保持できます"
-  },
-  "recovery.clip.refused": {
+"recovery.clip.refused": {
     "zh-Hans": "服务明确拒绝了本次请求",
     "zh-Hant": "服務已明確拒絕本次請求",
     "en": "The service explicitly refused this request",
@@ -526,13 +514,7 @@ export const timelineDeliveryMessages = {
     "en": "The earlier request's outcome may still be unconfirmed",
     "ja": "以前のリクエストの結果がまだ未確認の可能性があります"
   },
-  "recovery.clip.recheckOnly": {
-    "zh-Hans": "重新核对只读取记录，不会重新提交或自动恢复写入",
-    "zh-Hant": "重新核對僅讀取記錄，不會重新提交或自動恢復寫入",
-    "en": "Rechecking only reads records; it does not resubmit or automatically resume writes",
-    "ja": "再確認は記録の読み取りのみです。再送信や書き込みの自動再開は行いません"
-  },
-  "recovery.clip.recheck": {
+"recovery.clip.recheck": {
     "zh-Hans": "重新核对本地草稿",
     "zh-Hant": "重新核對本機草稿",
     "en": "Recheck local draft",

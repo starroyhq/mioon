@@ -7,5 +7,6 @@ import {useI18n} from './i18n/I18nProvider.tsx';
 export default function InspectorDraftDisclosure({state,children}:{state:ClipDraftState;children:ReactNode}) {
   const {t}=useI18n();
   const attention=Boolean(state.candidate||state.failure||state.error||state.businessPending||state.autosavePaused||state.compositionPending);
-  return <details className="edit-inspector-draft" open={attention||undefined}><summary>{t('recovery.clip.label')}</summary>{children}</details>;
+  if (!attention) return null;
+  return <details className="edit-inspector-draft" open><summary>{t('recovery.clip.label')}</summary>{children}</details>;
 }
