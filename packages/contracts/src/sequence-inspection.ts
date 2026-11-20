@@ -77,6 +77,14 @@ export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({
   entries: FORMAT5_INPUT_LIMITS.referenceEdgesPerShot + FORMAT5_INPUT_LIMITS.subjectBindingsPerShot
     + FORMAT5_INPUT_LIMITS.previsSceneSubjects,
 });
+/** The built-in Mock provider has no configured video connection. The board's
+ * read-only input projection still needs an exact identity to report the
+ * selected service, so the client sends these reserved UUIDs; the service maps
+ * them to Mock capabilities instead of video-settings selection. */
+export const FORMAT5_MOCK_INPUT_CONNECTION_ID = '00000000-0000-4000-8000-0000000000a1';
+export const FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID = '00000000-0000-4000-8000-0000000000a2';
+export const FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION = 1;
+
 export const sequenceGenerationInputSchemas = Object.freeze({
   'sequence.generation-inputs.get': z.object({
     projectId: uuid, shotId: uuid,

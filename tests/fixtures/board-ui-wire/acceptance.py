@@ -70,7 +70,7 @@ def main() -> int:
                 run_subject_acceptance(page, log, capture, state, wait_position)
                 run_board_assets_acceptance(page, result, log, capture, state, wait_position)
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
-                run_gp_acceptance(page, log, capture, state)
+                run_gp_acceptance(page, log, capture, state, wait_position)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -587,7 +587,7 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     capture(page, '21-01-subject-delete-card-undone.png')
 
 
-def run_gp_acceptance(page, log, capture, state) -> None:
+def run_gp_acceptance(page, log, capture, state, wait_position) -> None:
     """GP: 21-10 shot properties, draft save, conflicts, server-planned generation."""
     shot_a = '70000000-0000-4000-8000-000000000003'
     page.get_by_test_id(f'board-card-{shot_a}').click()
@@ -636,6 +636,18 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     capture(page, '21-10-shot-conflict.png')
     page.get_by_test_id('board-shot-discard').click()
 
+    # Mock is a selected service without a configured video connection: the
+    # footer and read-only projection must still report it.
+    page.evaluate("() => window.__boardWireActions.installMockProvider()")
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {providerId:'mock'})", [shot_a])
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'mock'", timeout=15000)
+    expect(page.get_by_test_id('board-input-footer')).to_have_attribute('data-service', 'selected')
+    expect(page.get_by_test_id('board-input-footer')).not_to_have_text('未选择生成服务')
+    assert int(state(page)['inputs']['usedCount']) >= 1
+    log('WT-3-01 Mock is reported by the live projection and footer',
+        footer=page.get_by_test_id('board-input-footer').inner_text())
+    capture(page, '21-10-mock-service.png')
+
     # Server-planned generation from the board: select the service through the
     # 21-10 footer itself, then generate without client input.
     before_cards = len(state(page)['cards'])
@@ -661,6 +673,30 @@ def run_gp_acceptance(page, log, capture, state) -> None:
     page.wait_for_function("(shotId) => (window.__boardWireState.jobs ?? []).some(job => job.shotId === shotId)", arg=new_shot, timeout=15000)
     log('GB board generation submits only the shot and selected service; server plans inputs', jobs=len(state(page)['jobs']))
     capture(page, '21-10-shot-generate.png')
+
+    # WT-1-07: the format-5 board creates a previs node through the same unified
+    # create intent as formats 3/4, offset from the existing cards, one undo step.
+    previous_cards = state(page)['cards']
+    before_cards = len(previous_cards)
+    previous_ids = {card['id'] for card in previous_cards}
+    position = int(state(page)['history']['position'])
+    expect(page.get_by_test_id('board-ui-add-previs')).to_be_visible()
+    page.get_by_test_id('board-ui-add-previs').click()
+    page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=before_cards, timeout=15000)
+    wait_position(page, position + 1)
+    cards = state(page)['cards']
+    new_previs = next(card for card in cards if card['id'] not in previous_ids)
+    assert new_previs['kind'] == 'previs', new_previs
+    positions = state(page)['positions']
+    assert all(positions[new_previs['id']] != positions[item['id']] for item in previous_cards if item['id'] in positions)
+    assert state(page)['history']['undo']['operation'] == 'previs.create', state(page)['history']
+    log('WT-1-07 board toolbar creates an offset previs node in one unified action', previs=new_previs['id'])
+    capture(page, '21-10-add-previs.png')
+    page.locator('body').press('Control+z')
+    page.wait_for_function("(position) => Number(document.querySelector('[data-testid=fixture-history-position]')?.textContent) === position",
+                           arg=position, timeout=15000)
+    page.wait_for_function("(id) => !window.__boardWireState.cards.some(card => card.id === id)", arg=new_previs['id'], timeout=15000)
+    log('WT-1-07 one undo removes the previs creation')
 
 
 if __name__ == '__main__':

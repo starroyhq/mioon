@@ -6,6 +6,7 @@ import {schemas} from '../packages/contracts/src/index.ts';
 import {sequenceEditRpcSchemas, sequenceBoardGetResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
 import {operationEffects, operationEffect} from '../packages/contracts/src/operation-effects.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
+import {FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,FORMAT5_MOCK_INPUT_CONNECTION_ID,FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID} from '../packages/contracts/src/sequence-inspection.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
 type Services = Awaited<ReturnType<typeof createBoardUiWireFixture>>['services'];
@@ -166,6 +167,18 @@ test('the read-only generation-input projection lists connected lines before any
   await assert.rejects(call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA,
     connectionId: randomUUID(), configurationRevision: 1, modelEntryId: randomUUID()}),
   error => String((error as {code?: unknown}).code).startsWith('VIDEO_SETTINGS_'));
+  // Mock has no configured connection but is a selected service: the projection
+  // reports Mock's reviewed capabilities instead of "no service selected".
+  const mock = await call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA,
+    connectionId: FORMAT5_MOCK_INPUT_CONNECTION_ID,
+    configurationRevision: FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,
+    modelEntryId: FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID});
+  assert.equal(mock.service.providerId, 'mock');
+  assert.equal(mock.service.modelId, 'mock-motion-v1');
+  assert.equal(mock.mode, 'frames');
+  assert.equal(mock.entries[0].status, 'used');
+  assert.equal(mock.entries[0].reason, undefined);
+  assert.ok(mock.usedCount >= 1);
 });
 
 test('reference connect, role change, reorder, detach and one undo step ride the unified sequence RPC', async (t: test.TestContext) => {

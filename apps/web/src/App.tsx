@@ -211,6 +211,7 @@ import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
+import {format5GenerationInputService} from './board-ui/generation-input-request.ts';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
 import {boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent, projectLiveBoard,
@@ -1999,7 +2000,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     markBusy(projectId, 'previs-create', true);
     try {
       const saved = viewRef.current!.canvas.viewport;
-      const location = workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 };
+      // The format-5 board owns its viewport; place the new card by the live
+      // board positions and let the same allocation step avoid overlap.
+      const boardPositions = Object.values(format5BoardProjection?.positions ?? {});
+      const location = state.projectFormatVersion === 5
+        ? (boardPositions.length ? { x: boardPositions.reduce((sum, point) => sum + point.x, 0) / boardPositions.length,
+          y: Math.max(...boardPositions.map(point => point.y)) + 320 } : { x: 100, y: 100 })
+        : workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 };
       // Format 5 writes the node through the unified sequence entry; formats 3/4
       // keep the legacy RPC unchanged (the adapter is a pass-through there).
       const previsRpc = createPrevisEditorRpc({ rpc: (operation, input) => rpc(operation, input),
@@ -2007,7 +2014,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const outcome = await createPrevisNode({ projectId, label: t('previs.node.defaultLabel'), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) }, { rpc: previsRpc, requestId });
       if (currentProject.current === projectId) await refresh(projectId);
       if (!isCurrent(captured)) return;
-      if (outcome.status === 'created') { if (await inspect(outcome.node.id)) revealCanvas(outcome.node.id); }
+      if (outcome.status === 'created') {
+        if (await inspect(outcome.node.id)) {
+          if (state.projectFormatVersion === 5) setFormat5RevealNodeId(outcome.node.id);
+          else revealCanvas(outcome.node.id);
+        }
+      }
       else if (outcome.status === 'unknown') notify(msg('previs.create.unknown'), 'warning');
       else notify(msg(outcome.code === 'PREVIS_CAPACITY' ? 'previs.create.limit' : 'previs.create.failed'), 'error');
     } finally { markBusy(projectId, 'previs-create', false); }
@@ -2533,9 +2545,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // DL-b: pass the switch the user sees so the panel projection reports the
     // same used/AUDIO_OFF dialogue state as the request that would be sent.
     const parameters = generationParameters(shot as never, provider, generationOptionsRef.current[shotId] ?? {});
-    return {shotId, ...(provider?.connectionId && Number.isSafeInteger(provider.configurationRevision) && selection.modelEntryId
-      ? {connectionId: provider.connectionId, configurationRevision: Number(provider.configurationRevision),
-        modelEntryId: selection.modelEntryId} : {}),
+    return {shotId, ...format5GenerationInputService(provider, selection),
       ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
   };
   const format5InputRequestKey = format5 && selectedId && data.shots.some(shot => shot.id === selectedId)
@@ -4925,7 +4935,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
       <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
-          onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+          onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}
+          onAddPrevis={() => { void addPrevis(); }} addingPrevis={Boolean(busy['previs-create'])} previsDisabled={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
         draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
           ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)
