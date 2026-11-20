@@ -11,7 +11,16 @@ import {TIMELINE_SUBTITLE_PROFILE_ID, TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} fro
 import type {TimelineClipRecord, TimelineRecord, TimelineTrackRecord} from './timeline-replacement.ts';
 import type {BoardSequenceErrorCode} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
+import {PREVIS_LIMITS} from './previs.ts';
 
+/** One shot's generation-input capacity: material reference lines, subject
+ * bindings and previs scene subjects. The read-only projection bound is their
+ * sum; the service-side planners read the same constants. */
+export const FORMAT5_INPUT_LIMITS = Object.freeze({
+  referenceEdgesPerShot: 48,
+  subjectBindingsPerShot: 8,
+  previsSceneSubjects: PREVIS_LIMITS.figures + PREVIS_LIMITS.props,
+});
 /** Editing and persistence limits. Export admission retains its own limits. */
 export const FORMAT5_LIMITS = Object.freeze({
   mainTrackClips:500, otherTrackClips:1000, subtitleCues:1000, tracks:12,

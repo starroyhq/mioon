@@ -68,6 +68,7 @@ def main() -> int:
                 run_acceptance(page, result, log, capture, state, wait_position)
                 run_board_management_acceptance(page, result, log, capture, state, wait_position)
                 run_subject_acceptance(page, log, capture, state, wait_position)
+                run_board_assets_acceptance(page, result, log, capture, state, wait_position)
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
                 run_gp_acceptance(page, log, capture, state)
             assert not errors, errors
@@ -376,6 +377,64 @@ def run_ri_b_acceptance(page, log, capture, state, wait_position) -> None:
     assert '主体' in panel, panel
     log('RI-b lists the bound subject with its version', footer=footer())
     capture(page, '21-06-inputs-subject.png')
+
+
+
+def run_board_assets_acceptance(page, result, log, capture, state, wait_position) -> None:
+    """FR-C2: add assets/text to the real format-5 board from the asset library
+    button, drag-drop, blank-canvas menu and paste; every add is one undo step."""
+    IMAGE_ASSET = '70000000-0000-4000-8000-000000000012'
+    VIDEO_ASSET = '70000000-0000-4000-8000-000000000010'
+    AUDIO_ASSET = '70000000-0000-4000-8000-000000000015'
+    def count(page): return page.locator('[data-testid^="board-card-"]').count()
+    def add_and_undo(action, label, screenshot, expected='board.node.create'):
+        position = int(state(page)['history']['position'])
+        before = count(page)
+        action()
+        wait_position(page, position + 1)
+        page.wait_for_function("(count) => document.querySelectorAll('[data-testid^=board-card-]').length === count",
+                               arg=before + 1, timeout=15000)
+        assert state(page)['history']['undo']['operation'] == expected
+        capture(page, screenshot)
+        page.locator('body').press('Control+z')
+        page.wait_for_function("(position) => Number(document.querySelector('[data-testid=fixture-history-position]')?.textContent) === position",
+                               arg=position, timeout=15000)
+        page.wait_for_function("(count) => document.querySelectorAll('[data-testid^=board-card-]').length === count",
+                               arg=before, timeout=15000)
+        log(f'{label} adds one board node and undoes in one step')
+    page.reload()
+    page.wait_for_function("() => Boolean(window.__boardWireState?.ready)", timeout=30000)
+    expect(page.get_by_test_id('board-fixture-assets')).to_be_visible()
+    add_and_undo(lambda: page.get_by_test_id(f'asset-to-canvas-{IMAGE_ASSET}').click(),
+                 'asset-library button', '21-07-asset-button.png')
+    # Drag a video asset card onto the board canvas.
+    def drag(asset_id):
+        canvas = page.get_by_test_id('board-ui-canvas')
+        box = canvas.bounding_box()
+        page.get_by_test_id(f'asset-card-{asset_id}').drag_to(canvas,
+            target_position={'x': box['width'] * .55, 'y': box['height'] * .45})
+    add_and_undo(lambda: drag(VIDEO_ASSET), 'asset drag-drop', '21-08-asset-drop.png')
+    add_and_undo(lambda: drag(AUDIO_ASSET), 'audio drag-drop', '21-08-asset-drop-audio.png')
+    # Blank-canvas right click -> add text.
+    def add_text():
+        page.get_by_test_id('board-ui-canvas').click(position={'x': 420, 'y': 300}, button='right')
+        expect(page.get_by_test_id('board-pane-menu')).to_be_visible()
+        page.get_by_test_id('board-pane-add-text').click()
+    add_and_undo(add_text, 'blank-canvas text', '21-09-pane-menu.png')
+    # Paste from the blank menu after copying the text card. Reload first so the
+    # fixture camera fits every card after the add/undo history above.
+    page.reload()
+    page.wait_for_function("() => Boolean(window.__boardWireState?.ready)", timeout=30000)
+    page.get_by_test_id(f'board-card-{TEXT}').click()
+    page.locator('body').press('Control+c')
+    def paste():
+        page.get_by_test_id('board-ui-canvas').click(position={'x': 24, 'y': 24}, button='right')
+        expect(page.get_by_test_id('board-pane-menu')).to_be_visible()
+        page.get_by_test_id('board-pane-paste').click()
+    add_and_undo(paste, 'blank-canvas paste', '21-10-pane-paste.png', expected='board.duplicate')
+    # Later acceptance functions interact with the bottom-left subject area; the
+    # fixture asset panel is fixed there, so tuck it away once FR-C2 checks end.
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-assets]'); if (panel) panel.style.display = 'none'; }")
 
 
 def run_stress(page, result, log, capture, state) -> None:
