@@ -27,7 +27,12 @@ export interface TimelineRecord {
   createdAt: string; updatedAt: string; subtitles?: unknown;
   [key: string]: unknown;
 }
-export interface TimelineRecordOptions {projectId?: unknown}
+/** Format-5-only clip flags are accepted only through the format-5 projection:
+ * callers state the storage format they are validating. Formats 3 and 4 keep
+ * rejecting `muted` / `soundOnly` exactly like before the format-5 card. */
+export const FORMAT5_TIMELINE_FORMAT = 5;
+export interface TimelineRecordOptions {projectId?: unknown; format?: unknown}
+const acceptsFormat5ClipFlags = (options: TimelineRecordOptions): boolean => options.format === FORMAT5_TIMELINE_FORMAT;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const integer = (value: unknown, min: number, max: number): value is number => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
@@ -50,7 +55,8 @@ const clipFields = ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationF
 // They are validated as booleans below; older snapshots omit both.
 const format5ClipFlags = ['muted', 'soundOnly'];
 
-export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOptions = {}): value is TimelineRecord {
+export function isTimelineRecord(value: unknown, {projectId, ...options}: TimelineRecordOptions = {}): value is TimelineRecord {
+  const clipFlags = acceptsFormat5ClipFlags(options) ? format5ClipFlags : [];
   if (!fields(value, timelineFields, ['subtitles']) || !uuid(value.id) || !uuid(value.projectId) ||
       (projectId !== undefined && value.projectId !== projectId) || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER) ||
       !timelineOutputPreset(value) ||
@@ -66,7 +72,7 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
   }
   let duration = 0;
   for (const clip of value.clips as unknown[]) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout', ...format5ClipFlags]) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout', ...clipFlags]) ||
         !uuid(clip.id) || ids.has(clip.id) || !uuid(clip.trackId) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
@@ -78,8 +84,8 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
         Object.hasOwn(clip, 'transitionIn') && (clip.transitionIn === null || !isClipTransition(clip.transitionIn) || trackKinds.get(clip.trackId) !== 'video') ||
         provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key])) ||
         Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video') ||
-        Object.hasOwn(clip, 'muted') && clip.muted !== true ||
-        Object.hasOwn(clip, 'soundOnly') && (clip.soundOnly !== true || trackKinds.get(clip.trackId) !== 'audio')) return false;
+        Object.hasOwn(clip, 'muted') && (!acceptsFormat5ClipFlags(options) || clip.muted !== true) ||
+        Object.hasOwn(clip, 'soundOnly') && (!acceptsFormat5ClipFlags(options) || clip.soundOnly !== true || trackKinds.get(clip.trackId) !== 'audio')) return false;
     if (!isClipLayoutRect(clip, value)) return false;
     for (const field of ['fadeInFrames', 'fadeOutFrames']) if (Object.hasOwn(clip, field) && !integer(clip[field], 0, clip.durationFrames)) return false;
     if ((clip.fadeInFrames as number | undefined ?? 0) + (clip.fadeOutFrames as number | undefined ?? 0) > clip.durationFrames) return false;
@@ -95,11 +101,11 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
   return encoder.encode(JSON.stringify(value)).byteLength <= TIMELINE_RESPONSE_BYTES;
 }
 
-export function isTimelineReplacementResponse(value: unknown, input: unknown): boolean {
+export function isTimelineReplacementResponse(value: unknown, input: unknown, options: TimelineRecordOptions = {}): boolean {
   if (!object(input) || !text(input.requestId, 200) || input.requestId.length < 8 || !uuid(input.projectId) || !uuid(input.clipId) || !uuid(input.assetId) ||
       !integer(input.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1) ||
       (input.versionId !== undefined && !uuid(input.versionId)) ||
-      !isTimelineRecord(value, {projectId: input.projectId}) || value.revision !== input.expectedRevision + 1 ||
+      !isTimelineRecord(value, {...options, projectId: input.projectId}) || value.revision !== input.expectedRevision + 1 ||
       encoder.encode(JSON.stringify(value)).byteLength > TIMELINE_REPLACEMENT_RESPONSE_BYTES) return false;
   const target = value.clips.find(clip => clip.id === input.clipId);
   if (!target || target.assetId !== input.assetId || Object.hasOwn(target, 'jobId') || target.colour != null && (target.colour as {source?: unknown}).source !== null) return false;

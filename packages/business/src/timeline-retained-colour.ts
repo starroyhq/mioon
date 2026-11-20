@@ -1,4 +1,5 @@
 import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
+import {timelineRecordFormatOf} from './timeline-record-format.ts';
 import {retainedRenderBindings} from './timeline-retained-render-bindings.ts';
 import {projectRetainedTimelineReceipt} from './timeline-retained-receipts.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -19,6 +20,8 @@ const families=[
 ] as const;
 
 export function validateTimelineColourRows(db:Pick<DatabaseSync,'prepare'>,projectCell:(text:string)=>string=value=>value):void {
+ // State the project file's own format so only format 5 admits its clip flags.
+ const recordFormat=timelineRecordFormatOf(db);
  const names=new Map<string,{type:unknown;sql:unknown}>();
  for(const row of retainedTimelineCatalog(db,['timelines','timeline_history','timeline_requests','edit_tasks','exports'])) {
   if(typeof row.name!=='string'||names.has(row.name))invalid();
@@ -36,7 +39,7 @@ export function validateTimelineColourRows(db:Pick<DatabaseSync,'prepare'>,proje
   if(!row)invalid();const value={projectId:row.projectId,sha256:row.sha256,profile:row.profile};luts.set(resourceId,value);return value;
  }
  function inspect(root:unknown,projectId:unknown,enforceBindings:boolean,table:string,rowIdentity:unknown):void {
-  if(table==='timeline_requests')root=projectRetainedTimelineReceipt(root,rowIdentity);
+  if(table==='timeline_requests')root=projectRetainedTimelineReceipt(root,rowIdentity,recordFormat);
   const frozen=retainedRenderBindings(db,root,projectId,table,rowIdentity,()=>invalid());
   const pending:{value:unknown;projectId:unknown;tracks:unknown;depth:number}[]=[{value:root,projectId,tracks:undefined,depth:0}];
   while(pending.length){

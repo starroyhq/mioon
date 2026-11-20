@@ -79,7 +79,7 @@ import {createTimelineMixLoudnessServices} from './timeline-mix-loudness.ts';
 import {createTimelineMixLoudnessDecoder} from './timeline-mix-loudness-decoder.ts';
 import {ownsStoreLock,assertProjectStore} from './store-runtime.ts';
 import type {Store} from './store-contract.ts';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {readOwnedTimelineAsset,readTimelinePreflightSnapshot,readTimelineSourceGraph} from './timeline-sources.ts';
 import {validateManagedSource,verifiedManagedHash} from './managed-media.ts';
 import {run,runStreaming,runStreamingWithBackpressure,checkMediaEffect} from './media-runtime.ts';
@@ -624,7 +624,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
-  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createExportSamplePeakDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
@@ -632,7 +632,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }});
  const loudness=createExportLoudnessServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
-  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createExportLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
@@ -713,7 +713,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
  function subjectDisclosure(table: string,value: ServiceRow,projectId?: string,exportId?: string): ServiceRow {
-  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord,readOwnedAsset:(owner: string,id: string)=>readOwnedTimelineAsset(db,owner,id)});
+  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),readOwnedAsset:(owner: string,id: string)=>readOwnedTimelineAsset(db,owner,id)});
   if(table==='jobs'&&hasSubjectGeneration(value.snapshot)){
    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
    validateSubjectGenerationOwnership(db,value as unknown as GenerationJob);

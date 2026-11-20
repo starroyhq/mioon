@@ -1,4 +1,5 @@
 import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
+import {timelineRecordFormatOf} from './timeline-record-format.ts';
 import {retainedRenderBindings} from './timeline-retained-render-bindings.ts';
 import {projectRetainedTimelineReceipt} from './timeline-retained-receipts.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -24,12 +25,14 @@ export function hasTimelineAudioRoleEvidence(root:unknown):boolean {
 /** Bounded negative admission before domain use. SQLite sees escaped and
  * duplicate keys before JSON.parse could discard evidence. No rows are changed. */
 export function validateTimelineAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,projectCell:(text:string)=>string=value=>value):void {
+ // State the project file's own format so only format 5 admits its clip flags.
+ const recordFormat=timelineRecordFormatOf(db);
  const names=new Map<string,{type:unknown;sql:unknown}>();
  for(const row of retainedTimelineCatalog(db,['timelines','timeline_history','timeline_requests','edit_tasks','exports'])){
   if(typeof row.name!=='string'||names.has(row.name))invalid();names.set(row.name,{type:row.type,sql:row.sql});
  }
  function inspect(root:unknown,owner:unknown,bindings:boolean,table:string,rowIdentity:unknown):void{
-  if(table==='timeline_requests')root=projectRetainedTimelineReceipt(root,rowIdentity);
+  if(table==='timeline_requests')root=projectRetainedTimelineReceipt(root,rowIdentity,recordFormat);
   const frozen=retainedRenderBindings(db,root,owner,table,rowIdentity,()=>invalid());
   const pending:{value:unknown;owner:unknown;depth:number}[]=[{value:root,owner,depth:0}];let nodes=0;
   while(pending.length){const entry=pending.pop()!,value=entry.value;if(++nodes>200000||entry.depth>128)invalid();

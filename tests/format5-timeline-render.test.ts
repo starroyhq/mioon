@@ -4,6 +4,7 @@ import {createChainWorld} from './helpers/sequence-edit-double.ts';
 import {freezeFormat5RenderSnapshot, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
+import {FORMAT5_TIMELINE_FORMAT} from '../packages/contracts/src/timeline-replacement.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
@@ -152,8 +153,12 @@ test('format-5 render projection keeps muted and sound-only flags and the frozen
     mode: 'timeline' as const, purpose: 'preview' as const, timelineRevision: timeline.revision, snapshot: frozen,
     status: 'queued' as const, assetId: null, url: null, error: null, createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z'};
-  assert.equal(isTimelineRenderRecord(record, request), true,
-    'the frozen render record accepts both clip flags and the video source on an audio track');
+  assert.equal(isTimelineRenderRecord(record, request, {format: FORMAT5_TIMELINE_FORMAT}), true,
+    'the format-5 projection accepts both clip flags and the video source on an audio track');
+  // The same record is a format-3/4 record until the caller states format 5:
+  // released formats keep rejecting the clip sound flags byte for byte.
+  assert.equal(isTimelineRenderRecord(record, request), false,
+    'a released-format render record still rejects muted/soundOnly');
   // A frozen snapshot without either optional flag stays valid for formats 3/4.
   const plain = structuredClone(record);
   for (const clip of plain.snapshot.timeline.clips as Record<string, unknown>[]) {

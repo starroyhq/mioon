@@ -24,7 +24,7 @@ import { Volume2, VolumeX } from '@mioon/ui/components/workbench-icons';
 import { clipSoundEntriesVisible } from './clip-sound-state.ts';
 import './clip-sound.css';
 import Icon from './icons.tsx';
-import { sourceFrameCount, isTimelineRecord } from '@mioon/contracts';
+import { sourceFrameCount, isTimelineRecord, FORMAT5_TIMELINE_FORMAT } from '@mioon/contracts';
 import ClipAudioRoleControls from './ClipAudioRoleControls.tsx';
 import { clipAudioRoleChanged } from './clip-audio-role-state.ts';
 import ClipVolumeEnvelopeControls from './ClipVolumeEnvelopeControls.tsx';
@@ -133,7 +133,7 @@ export default function TimelineInspector({ crossfadeCandidates, onCrossfade, tr
     audioRoleEditable: draftContext?.audioRoleEditable === true && (['audio', 'video'] as string[]).includes(assetKind(asset) as string),
     collaboration: draftContext?.collaboration, timelineRevision: timeline.revision, source: clipDraftSource(pass(clip), pass(asset)), saved: savedRaw, layout: clip.layout,
   }, onDirtyChange, onDraftController, onReviewBlockedChange, onCompositionPendingChange, validateTimeline: (value: unknown, projectId: string) => {
-    return value !== null && isTimelineRecord(value, { projectId });
+    return value !== null && isTimelineRecord(value, { projectId, ...(format5 ? {format: FORMAT5_TIMELINE_FORMAT} : {}) });
   } }));
   const state: ClipDraftState = draftResult.state, controller: ClipDraftController = draftResult.controller;
   busy = Boolean(busy || controller.isDiscarding());

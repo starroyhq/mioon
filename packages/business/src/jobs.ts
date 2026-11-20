@@ -15,7 +15,8 @@ import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.ts';
-import {isTimelineExportSnapshot,isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineExportSnapshot} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {lstatSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
@@ -132,7 +133,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
-  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch(error){if(!invalidTimeline(error))throw error;return invalidExport();}
+  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord:(value,input)=>isTimelineRenderRecordFor(store.db,value,input),readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch(error){if(!invalidTimeline(error))throw error;return invalidExport();}
   return value;
  }
  const workerExport=(id: string,observe=true): ExportRecord|null=>{
@@ -161,7 +162,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const receipt=readTimelineReceipt(store.db,input as never,'timeline.render');
    if(!receipt)return false;
    const response: unknown=JSON.parse(String(receipt.response));
-   return property(response,'status')==='queued'&&isTimelineRenderRecord(response,input as never)&&exportIdentity(response as ExportRecord)===exportIdentity(e);
+   return property(response,'status')==='queued'&&isTimelineRenderRecordFor(store.db,response,input as never)&&exportIdentity(response as ExportRecord)===exportIdentity(e);
   }catch(error){if(!(error instanceof SyntaxError)&&!invalidTimeline(error))throw error;return false;}
  }
  const currentOwnedExport=(e: ExportRecord,{cleanupOnly=false,observe=true}: {cleanupOnly?: boolean;observe?: boolean}={}): ExportRecord|null=>{

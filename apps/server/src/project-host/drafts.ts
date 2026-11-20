@@ -1,4 +1,5 @@
-import {AppError, hasRequestNotAppliedProof, isTimelineMutationResponse, publicValue, schemas} from '@mioon/contracts';
+import {AppError, hasRequestNotAppliedProof, publicValue, schemas} from '@mioon/contracts';
+import {isTimelineMutationResponseFor} from '@mioon/business/timeline-record-format';
 import {createLocalDrafts, LocalDraftError, safeLocalDraftError} from '@mioon/business/local-drafts';
 import {createLocalDelivery, LocalDeliveryError, safeLocalDeliveryError} from '@mioon/business/local-delivery';
 import {createLocalShotText, LocalShotTextError, safeLocalShotTextError} from '@mioon/business/local-shot-text';
@@ -64,7 +65,7 @@ export function createProjectDraftsFactory({store, channel, services, call, owns
     const delivery = createLocalDelivery({...common, guards: {ownsLock,
       readTimeline: projectId => createTimelineRecoveryBoundary(store.db, {projectId}).read({sourceSemantics: false}),
       isRenderInput: value => schemas['timeline.render'].safeParse(value).success,
-      isRenderResponse: (input, value) => isTimelineMutationResponse('timeline.render', input, value),
+      isRenderResponse: (input, value) => isTimelineMutationResponseFor(store.db, 'timeline.render', input, value),
       isNotApplied: (input, error) => hasRequestNotAppliedProof(error, input, {operation: 'timeline.render'}),
       readReceipt: input => {
         const saved = readTimelineReceipt(store.db, input, 'timeline.render');

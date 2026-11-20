@@ -17,7 +17,7 @@ import {isTimelineExportSnapshot,timelineExportSettingsSchema,TIMELINE_EXPORT_CA
 import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.ts';
 import {timelineFormatSchemas,timelineFrameSetSchema,timelineOutputPreset} from './timeline-format.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.ts';
-import {isTimelineRecord, isTimelineReplacementResponse, type TimelineRecord, type TimelineClipRecord} from './timeline-replacement.ts';
+import {FORMAT5_TIMELINE_FORMAT, isTimelineRecord, isTimelineReplacementResponse, type TimelineRecord, type TimelineRecordOptions} from './timeline-replacement.ts';
 import {sourceFrameCount} from './source-range.ts';
 import {SUBJECT_MUTATION_OPERATIONS} from './subjects.ts';
 import {REFERENCE_MUTATION_OPERATIONS} from './reference-acknowledgement.ts';
@@ -33,7 +33,11 @@ const timestamp = (value: unknown): value is string => text(value, 1, 64) && Num
 const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const encoder = new TextEncoder();
 const baseFields = ['projectId', 'expectedRevision', 'requestId'];
-const clipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope'];
+const baseClipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope'];
+// Format 5 alone may carry the clip sound flags; formats 3/4 keep the closed list.
+const format5ClipFields = ['muted', 'soundOnly'];
+const clipFieldsFor = (options: TimelineRecordOptions): string[] =>
+  options.format === FORMAT5_TIMELINE_FORMAT ? [...baseClipFields, ...format5ClipFields] : [...baseClipFields];
 const provenance = ['versionId', 'shotId', 'jobId'];
 const same = (a: unknown, b: unknown): boolean => object(a) && object(b)
   ? Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && same(a[key], b[key]))
@@ -75,14 +79,26 @@ export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 // Identity and source-intent checks that can be verified without the previous
 // aggregate. Ownership, exact history transitions and immutable receipt hashes
 // are additionally checked by the backend. No validator edits the supplied data.
-const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-const shotSyncContracts=createTimelineShotSyncContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-const sceneSplitContracts=createTimelineSceneSplitContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-const crossfadeContracts=createTimelineCrossfadeContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-const clipGainsContracts=createTimelineClipGainsContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-const clipTransformContracts=createTimelineClipTransformContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-const clipTransitionContracts=createTimelineClipTransitionContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
-export function isTimelineMutationResponse(operation: unknown, input: unknown, value: unknown): boolean {
+function acknowledgementContracts(format: TimelineRecordOptions['format']) {
+  const isRecord = (value: unknown, options?: TimelineRecordOptions) => isTimelineRecord(value, {...options, ...(format === undefined ? {} : {format})});
+  return {
+    loudnessApply: createTimelineLoudnessApplyContracts({isTimelineRecord: isRecord}),
+    shotSync: createTimelineShotSyncContracts({isTimelineRecord: isRecord}),
+    sceneSplit: createTimelineSceneSplitContracts({isTimelineRecord: isRecord}),
+    crossfade: createTimelineCrossfadeContracts({isTimelineRecord: isRecord}),
+    clipGains: createTimelineClipGainsContracts({isTimelineRecord: isRecord}),
+    clipTransform: createTimelineClipTransformContracts({isTimelineRecord: isRecord}),
+    clipTransition: createTimelineClipTransitionContracts({isTimelineRecord: isRecord}),
+  };
+}
+const legacyContracts = acknowledgementContracts(undefined);
+const format5Contracts = acknowledgementContracts(FORMAT5_TIMELINE_FORMAT);
+export function isTimelineMutationResponse(operation: unknown, input: unknown, value: unknown,
+  options: TimelineRecordOptions = {}): boolean {
+  const contracts = options.format === FORMAT5_TIMELINE_FORMAT ? format5Contracts : legacyContracts;
+  const {loudnessApply: loudnessApplyContracts, shotSync: shotSyncContracts, sceneSplit: sceneSplitContracts,
+    crossfade: crossfadeContracts, clipGains: clipGainsContracts, clipTransform: clipTransformContracts,
+    clipTransition: clipTransitionContracts} = contracts;
   const request = input as Rec;
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessApplyContracts.isTimelineLoudnessApplyResponse(value,input);
   if((TIMELINE_SHOT_SYNC_OPERATIONS as readonly unknown[]).includes(operation))return shotSyncContracts.isTimelineShotSyncResponse(operation,input,value);
@@ -92,7 +108,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
   if(operation===TIMELINE_CLIP_TRANSFORM_OPERATION)return clipTransformContracts.isTimelineClipTransformResponse(value,input);
   if(operation===TIMELINE_CLIP_TRANSITION_OPERATION)return clipTransitionContracts.isTimelineClipTransitionResponse(value,input);
   if(operation==='timeline.format.set'){
-    if(!timelineFrameSetSchema.safeParse(input).success || !isTimelineRecord(value,{projectId:request.projectId}) ||
+    if(!timelineFrameSetSchema.safeParse(input).success || !isTimelineRecord(value,{...options, projectId:request.projectId}) ||
        value.revision!==(request.expectedRevision as number)+1 || timelineOutputPreset(value)?.id!==request.presetId) return false;
     if(value.clips.length===0 && value.durationFrames===0 && timelineFormatSchemas['timeline.format.set'].safeParse(input).success) return true;
     if(request.expectedRevision===0 && value.clips.length!==0) return false;
@@ -100,8 +116,8 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
     return value.clips.every(clip=>Object.hasOwn(clip,'layout')) && (!subtitles || subtitles.profileId===TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID);
   }
   if (!(TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation as string) || !baseInput(input)) return false;
-  if (operation === 'timeline.render') return operationInput(input, ['purpose'], ['preflightSnapshotHash','exportSettings','deliveryName','exportRange']) && isTimelineRenderRecord(value, input);
-  if (request.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value, {projectId: request.projectId}) || value.revision !== (request.expectedRevision as number) + 1) return false;
+  if (operation === 'timeline.render') return operationInput(input, ['purpose'], ['preflightSnapshotHash','exportSettings','deliveryName','exportRange']) && isTimelineRenderRecord(value, input, options);
+  if (request.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value, {...options, projectId: request.projectId}) || value.revision !== (request.expectedRevision as number) + 1) return false;
   const timeline = value as TimelineRecord;
   const target = timeline.clips.find(clip => clip.id === request.clipId);
   switch (operation) {
@@ -126,6 +142,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
       return Boolean(track && !(track.kind === 'audio' && Object.hasOwn(request.patch as Rec, 'hidden')) && hasFields(track, request.patch, Object.keys(request.patch as Rec)));
     }
     case 'timeline.clip.add': {
+      const clipFields = clipFieldsFor(options);
       const optionalClipFields = clipFields.filter(key => !['trackId', 'startFrame', 'durationFrames'].includes(key));
       if (!operationInput(input, ['assetId', 'trackId', 'startFrame', 'durationFrames'], optionalClipFields) || !uuid(request.assetId) || !uuid(request.trackId) || !integer(request.startFrame, 0, 18000) || !integer(request.durationFrames, 1, 18000) || Object.hasOwn(request,'volumeEnvelope')&&!isVolumeEnvelope(request.volumeEnvelope,request.durationFrames)) return false;
       return timeline.clips.some(clip => clip.assetId === request.assetId && hasFields(clip, request, clipFields) &&
@@ -134,8 +151,10 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
         provenance.every(key => !Object.hasOwn(clip, key)) &&
         ['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope'].every(key => (request[key] !== undefined) === Object.hasOwn(clip, key)));
     }
-    case 'timeline.clip.update':
+    case 'timeline.clip.update': {
+      const clipFields = clipFieldsFor(options);
       return operationInput(input, ['clipId', 'patch']) === true && uuid(request.clipId) && patchInput(request.patch, clipFields) && Boolean(target && hasFields(target, request.patch, Object.keys(request.patch as Rec)));
+    }
     case 'timeline.clip.remove':
     case 'timeline.clip.rippleRemove':
       return operationInput(input, ['clipId']) && uuid(request.clipId) && !target;
@@ -167,7 +186,7 @@ const renderError = (value: unknown): boolean => fields(value, ['code', 'message
 // Never require the current job status to equal its originally queued status.
 // relativePath is removed from public responses; old snapshots may omit either
 // relativePath or hasAudio. Those omissions are preserved rather than repaired.
-export function isTimelineRenderRecord(value: unknown, input: unknown): boolean {
+export function isTimelineRenderRecord(value: unknown, input: unknown, options: TimelineRecordOptions = {}): boolean {
   const request = input as Rec;
   if (!baseInput(input) || typeof request.purpose !== 'string' || !['preview', 'export'].includes(request.purpose) || !isTimelineDeliveryNameInput(input,request.purpose) || !isTimelineExportRangeInput(input,request.purpose) ||
       (request.preflightSnapshotHash !== undefined && !digest(request.preflightSnapshotHash)) ||
@@ -181,7 +200,7 @@ export function isTimelineRenderRecord(value: unknown, input: unknown): boolean 
   if (!fields(snapshot, snapshotFields, snapshotOptionalFields) || !isTimelineExportSnapshot(snapshot,{purpose:request.purpose,exportSettings:request.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(snapshot) || !isVolumeEnvelopeProcessingSnapshot(snapshot)) return false;
   const snapshotRecord = snapshot as Rec;
   const timeline = snapshotRecord.timeline as TimelineRecord;
-  if (!isTimelineRecord(timeline, {projectId: request.projectId}) ||
+  if (!isTimelineRecord(timeline, {...options, projectId: request.projectId}) ||
       timeline.revision !== request.expectedRevision || !timeline.clips.length ||
       (request.timelineId !== undefined && timeline.id !== request.timelineId) ||
       !Array.isArray(snapshotRecord.assets) || snapshotRecord.assets.length < 1 || snapshotRecord.assets.length > 100 ||
@@ -258,7 +277,7 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(failure,input);
   if(failure?.code==='AUDIO_ROLE_CLIP_UNSUPPORTED')return Boolean(baseInput(input)&&
     (operation==='timeline.clip.add'&&operationInput(input,['trackId','assetId','startFrame','durationFrames'],['name','sourceInFrame','rect','gain','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'])&&uuid(request.trackId)&&uuid(request.assetId)&&Object.hasOwn(request,'audioRole')&&isClipAudioRole(request.audioRole)||
-     operation==='timeline.clip.update'&&operationInput(input,['clipId','patch'])&&uuid(request.clipId)&&patchInput(request.patch,clipFields)&&Object.hasOwn(request.patch as Rec,'audioRole')&&isClipAudioRole((request.patch as Rec).audioRole))&&
+     operation==='timeline.clip.update'&&operationInput(input,['clipId','patch'])&&uuid(request.clipId)&&patchInput(request.patch,baseClipFields)&&Object.hasOwn(request.patch as Rec,'audioRole')&&isClipAudioRole((request.patch as Rec).audioRole))&&
     object(details)&&(integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true)&&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
 

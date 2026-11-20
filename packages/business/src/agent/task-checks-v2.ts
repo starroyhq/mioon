@@ -3,7 +3,8 @@ import {hasStoreTable,storeDirectories} from '../store-layout.ts';
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
-import {isClipAudioExportRecord,isTimelineRecord,isTimelineRenderRecord,exportPreflightResponseSchema} from '@mioon/contracts';
+import {isClipAudioExportRecord,exportPreflightResponseSchema} from '@mioon/contracts';
+import {isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
 import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
@@ -183,7 +184,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
      const args=object(origin.step.toolCall?.arguments)?origin.step.toolCall.arguments:{};
      const input={...args,projectId,requestId:origin.requestId},receiptRow=store.db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=? AND length(CAST(response AS BLOB))<=4194304').get(origin.requestId),receipt=decode(receiptRow?.response);
      const requestHash=createHash('sha256').update(canonical({operation:'timeline.render',input})).digest('hex');
-     matches=isTimelineRenderRecord(value,input)&&!!receipt&&receiptRow?.requestHash===requestHash&&isTimelineRenderRecord(receipt,input)&&receipt.status==='queued'&&receipt.assetId===null&&receipt.url===null&&receipt.error===null&&receipt.updatedAt===receipt.createdAt&&
+     matches=isTimelineRenderRecordFor(store.db,value,input)&&!!receipt&&receiptRow?.requestHash===requestHash&&isTimelineRenderRecordFor(store.db,receipt,input)&&receipt.status==='queued'&&receipt.assetId===null&&receipt.url===null&&receipt.error===null&&receipt.updatedAt===receipt.createdAt&&
       ['id','projectId','requestId','mode','purpose','timelineRevision','createdAt'].every(field=>receipt[field]===value![field])&&isDeepStrictEqual(receipt.snapshot,value.snapshot);
      const frozen=object(value.snapshot)?value.snapshot:undefined,delivery=object(frozen?.delivery)?frozen.delivery:undefined;
      expected=geometry(object(delivery?.effective)?delivery.effective:frozen?.timeline);
@@ -258,7 +259,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   // Reuse this read's H3 observations. No lazy timeline.get(), workers or
   // alternate export/publication validation are introduced for requirements.
   const exists=!!store.db.prepare('SELECT 1 FROM timelines WHERE projectId=?').get(projectId);
-  const valid=timeline&&isTimelineRecord(timeline,{projectId});
+  const valid=timeline&&isTimelineRecordFor(store.db,timeline,{projectId});
   let values:AgentTaskCheckValues={};
   if(valid)values={...geometry(timeline),durationFrames:Number(timeline.durationFrames)};
   else if(!exists)values={...freezeStoryboardOutputGeometry(store.db,projectId),durationFrames:0};

@@ -135,7 +135,7 @@ import type {NativeEntryCloseSnapshot} from './native-entry-close.ts';
 import type {SubjectState} from './subject-state.ts';
 import {createSubjectController} from './subject-state.ts';
 import type {TimelineLoudnessApplyController} from './timeline-loudness-apply-state.ts';
-import { schemas as productionSchemas, timelineCrossfadeEnvelopes, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_LIMITS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
+import { schemas as productionSchemas, timelineCrossfadeEnvelopes, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_LIMITS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, FORMAT5_TIMELINE_FORMAT, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, SelectionMode, applyNodeChanges, getViewportForBounds, useNodesInitialized, useReactFlow, type Edge as FlowEdge, type Node as FlowNode, type NodeChange } from '@xyflow/react';
 import { measuredFitPadding } from './canvas-fit.ts';
 import { chooseCanvasPosition } from './canvas-position.ts';
@@ -563,8 +563,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return productionRpc<T>(...args);
   };
   const schemas = productionSchemas;
-  const isTimelineMutationResponse = productionTimelineMutationResponse;
-  const isTimelineRenderRecord = productionTimelineRenderRecord;
+  // Format 5 alone may carry the clip sound flags (`muted`/`soundOnly`); the
+  // current project's own format decides which projection the wire guards admit.
+  const timelineRecordFormat = () => dataRef.current.projectFormatVersion === 5
+    ? {format: FORMAT5_TIMELINE_FORMAT} : undefined;
+  const isTimelineMutationResponse: typeof productionTimelineMutationResponse = (operation, input, value) =>
+    productionTimelineMutationResponse(operation, input, value, timelineRecordFormat());
+  const isTimelineRenderRecord: typeof productionTimelineRenderRecord = (value, input) =>
+    productionTimelineRenderRecord(value, input, timelineRecordFormat());
   const { locale, t, renderMessage, formatDate, formatNumber } = useI18n();
   const { resolvedTheme, preferences: uiPreferences } = useUiPreferences();
   const confirm = useConfirmation();

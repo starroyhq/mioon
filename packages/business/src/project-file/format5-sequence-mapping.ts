@@ -245,7 +245,7 @@ function validateSourcesAndDialogue(
   assets:ReadonlyMap<string,Row>,dialogueByShot:ReadonlyMap<string,ReadonlyMap<string,string>>,retainedShots:ReadonlyMap<string,Row>,
 ):void {
   const trackKinds=new Map(timeline.tracks.map(track=>[track.id,track.kind]));
-  const sourceFacts=new Map<string,{mime:unknown;frames?:number}>();
+  const sourceFacts=new Map<string,{mime:unknown;hasAudio?:boolean;frames?:number}>();
   for(const clip of timeline.clips){
     if(clip.sourceState!=='ready')continue;
     const source=clip.sequenceSource;
@@ -253,12 +253,19 @@ function validateSourcesAndDialogue(
       const asset=assets.get(clip.assetId!);
       if(!asset)fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
       let facts=sourceFacts.get(clip.assetId!);
-      if(!facts){facts={mime:asset.mimeType};sourceFacts.set(clip.assetId!,facts);}
+      if(!facts){facts={mime:asset.mimeType,hasAudio:asset.hasAudio===true};sourceFacts.set(clip.assetId!,facts);}
       const kind=trackKinds.get(clip.trackId),mime=facts.mime;
-      const supported=kind==='video'?videoSourceMimes:audioSourceMimes;
-      if(typeof mime!=='string'||!supported.has(mime))fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
-      if(mime.startsWith('image/')?clip.sourceInFrame!==0:
-          clip.sourceInFrame+clip.durationFrames>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+      if(kind==='audio'&&clip.soundOnly===true){
+        // «Separate sound» is the only legal way for an audio track to reference
+        // a video asset: it must really be a video source that carries audio.
+        if(typeof mime!=='string'||!mime.startsWith('video/')||facts.hasAudio!==true)fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
+        if(clip.sourceInFrame+clip.durationFrames>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+      }else{
+        const supported=kind==='video'?videoSourceMimes:audioSourceMimes;
+        if(typeof mime!=='string'||!supported.has(mime))fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
+        if(mime.startsWith('image/')?clip.sourceInFrame!==0:
+            clip.sourceInFrame+clip.durationFrames>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+      }
     }
     if(clip.versionId!==undefined&&input.versions!==undefined){
       const version=versions.get(clip.versionId!);
