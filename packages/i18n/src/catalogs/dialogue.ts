@@ -17,5 +17,7 @@ export const dialogueMessages = {
   'dialogue.ui.error.stale': {'zh-Hans':'项目已变化，请重新读取后再试','zh-Hant':'專案已變更，請重新讀取後再試',en:'The project changed. Read it again and retry',ja:'プロジェクトが変わりました。読み直してから再試行してください'},
   'dialogue.ui.error.noop': {'zh-Hans':'台词没有变化','zh-Hant':'台詞沒有變更',en:'The dialogue did not change',ja:'台詞は変わっていません'},
   'dialogue.ui.error.unsupported': {'zh-Hans':'这个项目暂时不能编辑台词','zh-Hant':'這個專案暫時不能編輯台詞',en:'Dialogue editing is not available in this project yet',ja:'このプロジェクトでは台詞を編集できません'},
+  'dialogue.ui.generationUnsupported': {'zh-Hans':'当前服务不支持','zh-Hant':'目前服務不支援',en:'Not supported by this service',ja:'このサービスでは非対応'},
+  'dialogue.ui.generationPromptTooLong': {'zh-Hans':'台词加进提示词后超出该服务的上限，本次生成会被拒绝（不会截断）。','zh-Hant':'台詞加進提示詞後超出該服務的上限，本次生成會被拒絕（不會截斷）。',en:'The dialogue makes the prompt exceed this service\'s limit; this generation is rejected (no truncation).',ja:'台詞を加えるとこのサービスの上限を超えるため、この生成は拒否されます（切り詰めません）。'},
   'dialogue.ui.mark': {'zh-Hans':'台词','zh-Hant':'台詞',en:'Dialogue',ja:'台詞'},
 } as const satisfies MessageCatalog;

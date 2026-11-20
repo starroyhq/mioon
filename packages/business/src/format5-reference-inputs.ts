@@ -53,6 +53,7 @@ import {readGenerationAsset} from './generation-inputs.ts';
 import {readPrevisOutputSource} from './previs-output-ownership.ts';
 import {resolveGenerationSubjectInputs} from './format5-subject-binding.ts';
 import {resolvePrevisSceneSubjects} from './format5-previs.ts';
+import {format5DialogueView, planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 
 type Row = Record<string, any>;
 type ReferenceEdge = Extract<Format5Edge, {readonly kind: 'reference'}>;
@@ -945,6 +946,15 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     orderIndex: entry.orderIndex,
     ...(primaryEdgeId !== null && entry.edgeId === primaryEdgeId ? {primary: true} : {}),
   }));
+  const shotRow = store.db.prepare('SELECT data FROM project.shots WHERE id=? AND projectId=?')
+    .get(shotId, store.projectId) as {data?: unknown} | undefined;
+  let basePrompt = '';
+  try {
+    const data = typeof shotRow?.data === 'string' ? JSON.parse(shotRow.data) as Row : {};
+    basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
+  } catch { basePrompt = ''; }
+  const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
+    {...(options.binding ? {binding: options.binding} : {}), basePrompt}));
   return {
     projectId: store.projectId,
     shotId,
@@ -957,5 +967,6 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     usedCount: plan.entries.filter(entry => entry.status === 'used').length,
     unsupportedCount: plan.unsupported,
     primaryEdgeId,
+    dialogue,
   };
 }

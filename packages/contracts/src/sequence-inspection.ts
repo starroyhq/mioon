@@ -115,6 +115,20 @@ export interface SequenceGenerationInputServiceView {
   readonly profileId: string;
   readonly profileVersion: string;
 }
+export type SequenceGenerationDialogueStatus = 'used' | 'unsupported' | 'rejected';
+/** DL-b dialogue status for the same selected service. `reason` is a stable code
+ * (`SERVICE_NOT_SELECTED`, `SERVICE_DOES_NOT_SPEAK`, `PROMPT_TOO_LONG`) the panel
+ * localizes; docs list the official rules the style is based on. */
+export interface SequenceGenerationDialogueView {
+  readonly status: SequenceGenerationDialogueStatus;
+  readonly lineCount: number;
+  readonly reason?: string;
+  readonly promptCodeUnits: number;
+  readonly maxPromptCodeUnits: number;
+  readonly style?: 'seedance-braces' | 'wan-quotes' | 'minimax-d-tags' | 'kling-speaker' | 'veo-speaker';
+  readonly audioMode?: 'always-on' | 'request-switch' | 'model-default';
+  readonly docs?: readonly string[];
+}
 export interface SequenceGenerationInputView {
   readonly projectId: string;
   readonly shotId: string;
@@ -125,4 +139,5 @@ export interface SequenceGenerationInputView {
   readonly usedCount: number;
   readonly unsupportedCount: number;
   readonly primaryEdgeId: string | null;
+  readonly dialogue: SequenceGenerationDialogueView;
 }
