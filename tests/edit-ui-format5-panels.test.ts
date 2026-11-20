@@ -57,6 +57,18 @@ test('structural saves map to the TS trim, move and move-off-track commands', ()
   assert.equal(other.kind, 'unsupported');
 });
 
+test('clip mute is part of the one FR-A properties patch and never a structural edit', () => {
+  const current = clip('a');
+  const unmuted = splitFormat5ClipPatch(current, {...current, muted: true});
+  assert.deepEqual(unmuted.properties, {muted: true});
+  assert.deepEqual(unmuted.geometry, {});
+  const muted = clip('a', {muted: true});
+  assert.deepEqual(splitFormat5ClipPatch(muted, {...muted, muted: false}).properties, {muted: false});
+  assert.deepEqual(format5ClipInspectorEdit(current, {muted: true}, clips, main),
+    {kind: 'properties', intent: format5PropertiesIntent('a', {muted: true})});
+  assert.equal(format5PanelErrorKey('SEQUENCE_EDIT_SOUND_INVALID'), 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID');
+});
+
 test('transform and transition edits are FR-A property actions and reject invalid values', () => {
   const transform = {profileId: 'mioon-clip-transform-v1', keyframes: [{frame: 0, x: 0, y: 0, scale: 1}], rotation: 0, crop: {left: 0, top: 0, right: 0, bottom: 0}};
   const mapped = format5ClipPropertyEdit('a', 'transform', transform, 30);
@@ -128,4 +140,31 @@ test('the production shell routes format-5 panel edits through the shared entry'
   assert.doesNotMatch(saveBody, /mutateTimeline\(/u, 'format-5 inspector save must not call the legacy mutation');
   const session = readFileSync(path.join(root, 'apps/web/src/edit-ui/session.ts'), 'utf8');
   assert.match(session, /async runPayload\(payload: Readonly<Record<string, unknown>>\): Promise<SequenceOutcome>/u);
+});
+
+test('the production shell routes clip sound through the shared format-5 entry', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  for (const fragment of [
+    "import TimelineClipContextMenu from './TimelineClipContextMenu.tsx'",
+    "import ClipAudioTaskToast from './ClipAudioTaskToast.tsx'",
+    'function openClipContextMenu(',
+    'async function format5SeparateClipSound(',
+    'async function format5ToggleClipMute(',
+    'async function saveClipAudioAsset(',
+    'async function retryClipAudioAsset(',
+    'soundIntent: {side: \'timeline\', operation: {kind: \'separate-sound\'',
+    'format5={format5 && !clipInspectorRetained}',
+    'onSeparateSound={clipInspectorRetained ? undefined :',
+    'onClipContextMenu={openClipContextMenu}',
+    "rpc('clip.audio.export.get'",
+    "rpc('export.cancel'",
+    "data.exports.filter(item => item.mode === 'clip-audio')",
+  ]) assert.ok(app.includes(fragment), fragment);
+  const timeline = readFileSync(path.join(root, 'apps/web/src/Timeline.tsx'), 'utf8');
+  for (const fragment of ['onClipContextMenu?.(clip.id', 'data-testid="clip-mute-mark"', "clip.soundOnly === true ? 'audio'"])
+    assert.ok(timeline.includes(fragment), fragment);
+  const inspector = readFileSync(path.join(root, 'apps/web/src/TimelineInspector.tsx'), 'utf8');
+  for (const fragment of ['clipSoundEntriesVisible', 'data-testid="clip-mute-toggle"', 'data-testid="clip-audio-actions"',
+    'onSeparateSound(clip.id)', 'onSaveClipAudio(clip.id)'])
+    assert.ok(inspector.includes(fragment), fragment);
 });

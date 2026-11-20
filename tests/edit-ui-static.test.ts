@@ -19,6 +19,8 @@ interface Modules {
   versionLabel(locale: Locale, mode: 'follow' | 'locked'): string;
   pickerLabel(locale: Locale, trackId: string): string;
   renderInspector(locale: Locale, withSequence: boolean): string;
+  renderInspectorAudio(locale: Locale): string;
+  renderClipMenu(locale: Locale, options: {muted: boolean; sound: boolean}): string;
   keyAction(key: string, focused: 'confirm' | 'cancel' | null): string | null;
   noticeReducer(state: {notice: {id: string; message: string} | null}, action: {type: string; notice?: {id: string; message: string}; id?: string}): {notice: {id: string; message: string} | null};
   trackBadge(trackId: string): string | null;
@@ -41,6 +43,7 @@ function modules(): Promise<Modules> {
       import {EditUiDetachedAnchor} from './src/edit-ui/anchors.tsx';
       import {EditUiClipTitle, editUiVersionChoice, editUiVersionLabel, editUiTrackPickerLabel} from './src/edit-ui/status.tsx';
       import TimelineInspector from './src/TimelineInspector.tsx';
+      import TimelineClipContextMenu from './src/TimelineClipContextMenu.tsx';
       import {translate} from '../../packages/i18n/src/index.ts';
       import {ConfirmationProvider} from '@mioon/ui/components/workbench-confirm';
       import {fixtureTimeline, fixtureAssets, COPY_MOVE_REQUEST, FIXTURE_PROJECT_ID, FIXTURE_TIMELINE_ID, FIXTURE_SELECTED_CLIP_ID, FIXTURE_PLAYHEAD, REMOVED_SHOT_NAME} from '../../tests/fixtures/edit-ui-static/scenes.ts';
@@ -84,6 +87,16 @@ function modules(): Promise<Modules> {
       }
       export const versionChoice = mode => editUiVersionChoice({boardVersion: {id: 'version-2', number: 2}, appliedVersion: {id: 'version-1', number: 1}}, mode);
       export const pickerLabel = (locale, trackId) => editUiTrackPickerLabel((key, params) => translate(locale, key, params), timelineFor('main').tracks.find(track => track.id === trackId), timelineFor('main').tracks, 'track-main');
+      export function renderInspectorAudio(locale) {
+        const timeline = timelineFor('main'), clip = timeline.clips.find(item => item.id === FIXTURE_SELECTED_CLIP_ID);
+        return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages: [locale]})}><ConfirmationProvider labels={{title: '确认', cancel: '取消', continue: '继续'}} renderMessage={value => String(value ?? '')}><TimelineInspector clip={clip} timeline={timeline} asset={fixtureAssets(false)[0]} onSave={async () => undefined}
+          sequence={null} draftConnected={false} format5 onToggleClipMute={noop} onSeparateSound={noop} onSaveClipAudio={noop} /></ConfirmationProvider></I18nProvider>);
+      }
+      export function renderClipMenu(locale, options) {
+        const plan = {sound: options.sound, saveAudio: options.sound, muteLabelKey: options.muted ? 'clipSound.unmute' : 'clipSound.mute'};
+        return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages: [locale]})}><TimelineClipContextMenu anchor={{clipId: 'clip-1', x: 10, y: 10}} plan={plan} canSplit busy={false}
+          onSplit={noop} onToggleMute={noop} onSeparate={noop} onSaveAudio={noop} onClose={noop} /></I18nProvider>);
+      }
       export function renderInspector(locale, withSequence) {
         const timeline = timelineFor('main'), clip = timeline.clips.find(item => item.id === FIXTURE_SELECTED_CLIP_ID);
         const sequence = withSequence ? {mainTrackId: 'track-main', shotNumber: '02', shotName: '窗口剪影', versionMode: 'follow',
@@ -257,4 +270,36 @@ test('the unconfirmed bar has no dismiss control and no explanatory copy', async
   assert.ok(!html.includes('edit-ui-notice-dismiss'), 'an unconfirmed result cannot be dismissed silently');
   assert.ok(!/不会|不受影响|will not|not affected/u.test(html), 'no reassuring explanatory sentence');
   assert.equal((html.match(/<button/gu) ?? []).length, 2);
+});
+
+test('the format-5 clip context menu renders only 0.3.0 items plus the sound group in four locales', async () => {
+  const {renderClipMenu} = await modules();
+  const labels = {
+    'zh-Hans': ['切开', '分离声音', '静音', '另存为音频素材'],
+    'zh-Hant': ['切開', '分離聲音', '靜音', '另存為音訊素材'],
+    en: ['Split', 'Separate sound', 'Mute', 'Save as audio asset'],
+    ja: ['分割', '音声を分離', 'ミュート', '音声素材として保存'],
+  } as const;
+  for (const locale of LOCALES) {
+    const html = renderClipMenu(locale, {muted: false, sound: true});
+    for (const label of labels[locale]) assert.ok(html.includes(label), `${locale}: ${label}`);
+    assert.equal(html.includes('data-slot="generate-group"'), true, 'the generate group keeps a structural insert point');
+    assert.equal(html.includes('data-slot="sound-group"'), true);
+    for (const absent of ['变速', '倒放', '定格', '生成镜头']) assert.equal(html.includes(absent), false, `${locale}: ${absent}`);
+    assert.ok(html.includes('data-testid="clip-menu-separate"') && html.includes('data-testid="clip-menu-save-audio"'));
+  }
+  // A muted clip offers «unmute»; an ineligible clip hides the whole group.
+  assert.ok(renderClipMenu('zh-Hans', {muted: true, sound: true}).includes('取消静音'));
+  assert.equal(renderClipMenu('zh-Hans', {muted: false, sound: false}).includes('data-slot="sound-group"'), false);
+});
+
+test('the inspector audio group shows the mute switch and both sound buttons in four locales', async () => {
+  const {renderInspectorAudio} = await modules();
+  for (const locale of LOCALES) {
+    const html = renderInspectorAudio(locale);
+    assert.ok(html.includes('data-testid="clip-mute-toggle"'), locale);
+    assert.ok(html.includes('data-testid="clip-separate-sound"'), locale);
+    assert.ok(html.includes('data-testid="clip-save-as-audio"'), locale);
+    assert.ok(html.includes('role="switch"'), locale);
+  }
 });

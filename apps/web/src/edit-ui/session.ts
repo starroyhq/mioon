@@ -116,6 +116,8 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
+    case 'SEQUENCE_EDIT_SOUND_INVALID': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
+    case 'FORMAT5_CAPACITY': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
     default: return 'editUi.error.GENERIC';
   }
 }

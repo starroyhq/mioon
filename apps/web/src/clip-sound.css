@@ -1,0 +1,117 @@
+/* Format-5 clip sound: clip mute mark, sound-only clip, clip context menu and
+   the save-as-audio floating card (21-11, 21-11b, 21-11c). */
+.timeline-clip .clip-mute-mark {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--wb-bg) 62%, transparent);
+  color: var(--wb-text);
+  pointer-events: none;
+}
+.timeline-clip .clip-mute-mark svg { width: 12px; height: 12px; }
+.timeline-clip.sound-only { --clip-accent: var(--wb-success); }
+
+.timeline-clip-menu {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  max-width: 280px;
+  padding: var(--wb-space-1);
+  border: 1px solid var(--wb-line-strong);
+  border-radius: var(--wb-radius-panel);
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  box-shadow: var(--wb-shadow);
+}
+.timeline-clip-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 var(--wb-space-2);
+  border: 0;
+  border-radius: var(--wb-radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--wb-text-label);
+  text-align: left;
+  cursor: default;
+}
+.timeline-clip-menu-item:hover:not(:disabled),
+.timeline-clip-menu-item:focus-visible { background: var(--wb-hover); outline: none; }
+.timeline-clip-menu-item:disabled { color: var(--wb-muted); }
+.timeline-clip-menu-separator { height: 1px; margin: var(--wb-space-1) var(--wb-space-1); background: var(--wb-line); }
+
+.clip-audio-toast-stack {
+  position: fixed;
+  top: calc(var(--wb-space-4) * 2);
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  width: min(440px, calc(100vw - var(--wb-space-8)));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.clip-audio-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-2) var(--wb-space-2) var(--wb-space-2) var(--wb-space-3);
+  border: 1px solid var(--wb-line-strong);
+  border-radius: var(--wb-radius-panel);
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  box-shadow: var(--wb-shadow);
+  font-size: var(--wb-text-label);
+  pointer-events: auto;
+  animation: workbench-toast-in .18s ease-out;
+}
+.clip-audio-toast-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--wb-space-1); }
+.clip-audio-toast-main p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip-audio-toast-reason { color: var(--wb-soft); font-size: var(--wb-text-caption); white-space: normal !important; }
+.clip-audio-toast-percent { flex: none; min-width: 34px; color: var(--wb-soft); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); text-align: right; }
+.clip-audio-toast-bar { height: 3px; border-radius: 2px; background: var(--wb-line); overflow: hidden; }
+.clip-audio-toast-bar > span { display: block; height: 100%; background: var(--wb-text); transition: width .2s linear; }
+.clip-audio-toast-action { flex: none; border: 0; background: transparent; color: inherit; font: inherit; font-size: var(--wb-text-label); cursor: default; padding: var(--wb-space-1) var(--wb-space-2); border-radius: var(--wb-radius-control); }
+.clip-audio-toast-action:hover:not(:disabled) { background: var(--wb-hover); }
+.clip-audio-toast-close { flex: none; border: 0; background: transparent; color: var(--wb-muted); font-size: 16px; line-height: 1; padding: var(--wb-space-1); cursor: default; }
+.clip-audio-toast-check, .clip-audio-toast-warning, .clip-audio-toast-spinner {
+  flex: none; position: relative; width: 16px; height: 16px; border: 2px solid currentColor; border-radius: 50%;
+}
+.clip-audio-toast-check { color: var(--wb-success); }
+.clip-audio-toast-check::after { content: ''; position: absolute; left: 3px; top: 0; width: 5px; height: 8px; border: solid var(--wb-success); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.clip-audio-toast-warning { color: var(--wb-danger); }
+.clip-audio-toast-warning::after { content: '!'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
+.clip-audio-toast-spinner { color: var(--wb-muted); border-right-color: transparent; animation: clip-audio-spin .8s linear infinite; }
+@keyframes clip-audio-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .clip-audio-toast { animation: none; }
+  .clip-audio-toast-spinner { animation: none; }
+  .clip-audio-toast-bar > span { transition: none; }
+}
+
+/* Inspector audio group: title-row mute switch and bottom sound actions. */
+.edit-inspector-group-heading-row { display: flex; align-items: center; }
+.edit-inspector-group-heading-row .edit-inspector-group-heading { flex: 1; min-width: 0; }
+.edit-inspector-group-action { display: flex; align-items: center; padding-inline-end: var(--wb-space-2); }
+.clip-mute-toggle {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border: 0; border-radius: var(--wb-radius-control); background: transparent; color: var(--wb-soft); cursor: default;
+}
+.clip-mute-toggle:hover:not(:disabled) { background: var(--wb-hover); color: var(--wb-text); }
+.clip-mute-toggle.is-muted { color: var(--wb-danger); }
+.clip-mute-toggle:disabled { opacity: .45; }
+.clip-audio-actions { display: flex; gap: var(--wb-space-2); margin-top: var(--wb-space-3); }
+.clip-audio-actions .wb-button { flex: 1; min-width: 0; }
