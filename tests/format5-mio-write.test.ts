@@ -604,6 +604,9 @@ test('Mio separates a clip sound through the loaded timeline group and undoes on
   const operation = (plan.envelope as any).soundIntent.operation;
   assert.equal(operation.kind, 'separate-sound');
   assert.ok(operation.audioClipId && operation.audioTrackId);
+  // Without a task language the generated clip name keeps the Simplified
+  // Chinese fallback, matching the generated asset names.
+  assert.equal(operation.name, 'A · 声音');
   const receipt = commitMioSequenceAction(store, plan);
   assert.equal(receipt.status, 'applied');
   assert.equal(receipt.operation, 'timeline.clip.separateSound');
@@ -612,6 +615,7 @@ test('Mio separates a clip sound through the loaded timeline group and undoes on
   const sound = timeline.clips.find((clip: any) => clip.id === operation.audioClipId);
   assert.equal(source.muted, true);
   assert.equal(sound.soundOnly, true);
+  assert.equal(sound.name, 'A · 声音');
   assert.equal(sound.assetId, source.assetId);
   assert.deepEqual(sound.anchor, {clipId: clipA, offsetFrames: 0});
   assert.equal(sound.trackId, operation.audioTrackId);
@@ -620,6 +624,52 @@ test('Mio separates a clip sound through the loaded timeline group and undoes on
   const restored = store.get('timelines', timelineId) as any;
   assert.equal(restored.clips.some((clip: any) => clip.id === operation.audioClipId), false);
   assert.equal(Object.hasOwn(restored.clips.find((clip: any) => clip.id === clipA), 'muted'), false);
+});
+
+test('Mio names a separated clip and a created audio track in the task language', t => {
+  const english = fixture(t);
+  // Occupy the only audio track so the separation has to create one, which is
+  // the only path that writes a generated track name.
+  const insertBed = (store: ProjectStore): void => {
+    const bedAsset = id(12);
+    store.tx(() => store.put('assets', {id: bedAsset, projectId, name: 'bed.wav', mimeType: 'audio/wav',
+      duration: 1, sha256: sha('d'), sizeBytes: 16, hasAudio: true, hasVideo: false}));
+    const insert = previewMioSequenceAction(store, projectId, req(110),
+      {kind: 'insert-asset', assetId: bedAsset, trackId: audio, startFrame: 0});
+    assert.equal(commitMioSequenceAction(store, insert).status, 'applied');
+  };
+  insertBed(english);
+  // The tool host passes the task language down to the sequence preview.
+  const hostTools = (store: ProjectStore) => createAgentTaskTools({store, services: {generationAvailability: {
+    mockAllowed: true, video: () => true, image: () => true, imageSelectionRequired: () => false}} as never});
+  const localizedPrepare = hostTools(english).prepare({projectId, operation: 'sequence.tool.timeline',
+    input: {kind: 'separate-sound', clipId: clipA}, locale: 'en'});
+  assert.equal(((localizedPrepare.sequence!.plan as any).envelope as any).soundIntent.operation.name, 'A · Sound');
+  assert.equal(((localizedPrepare.sequence!.plan as any).envelope as any).soundIntent.operation.trackName, 'Sound');
+  const englishPlan = previewMioSequenceAction(english, projectId, req(111),
+    {kind: 'separate-sound', clipId: clipA}, {locale: 'en'});
+  const englishOperation = (englishPlan.envelope as any).soundIntent.operation;
+  assert.ok(englishOperation.createdTrackId, 'the occupied audio track forces a new one');
+  assert.equal(englishOperation.name, 'A · Sound');
+  assert.equal(englishOperation.trackName, 'Sound');
+  assert.equal(commitMioSequenceAction(english, englishPlan).status, 'applied');
+  const englishTimeline = english.get('timelines', timelineId) as any;
+  assert.equal(englishTimeline.tracks.find((track: any) => track.id === englishOperation.createdTrackId).name, 'Sound');
+  assert.equal(englishTimeline.clips.find((clip: any) => clip.id === englishOperation.audioClipId).name, 'A · Sound');
+  // No options: the same action keeps the Simplified Chinese fallback.
+  const chinese = fixture(t);
+  insertBed(chinese);
+  const chinesePrepare = hostTools(chinese).prepare({projectId, operation: 'sequence.tool.timeline',
+    input: {kind: 'separate-sound', clipId: clipA}});
+  assert.equal(((chinesePrepare.sequence!.plan as any).envelope as any).soundIntent.operation.name, 'A · 声音');
+  assert.equal(((chinesePrepare.sequence!.plan as any).envelope as any).soundIntent.operation.trackName, '声音');
+  const chinesePlan = previewMioSequenceAction(chinese, projectId, req(112), {kind: 'separate-sound', clipId: clipA});
+  const chineseOperation = (chinesePlan.envelope as any).soundIntent.operation;
+  assert.equal(chineseOperation.name, 'A · 声音');
+  assert.equal(chineseOperation.trackName, '声音');
+  assert.equal(commitMioSequenceAction(chinese, chinesePlan).status, 'applied');
+  const chineseTimeline = chinese.get('timelines', timelineId) as any;
+  assert.equal(chineseTimeline.tracks.find((track: any) => track.id === chineseOperation.createdTrackId).name, '声音');
 });
 
 test('the format-5 catalog exposes save-as-audio with the asset tier and approval', t => {
@@ -638,6 +688,14 @@ test('the format-5 catalog exposes save-as-audio with the asset tier and approva
   assert.equal(prepared.forceApproval, true);
   assert.equal(prepared.operation, 'clip.audio.export');
   assert.ok(prepared.input.requestId === undefined || typeof prepared.input.requestId === 'string');
+  // A locale-less caller (MCP, or Mio without a task language) leaves the
+  // output language unset, so the accepted task keeps the Chinese fallback.
+  assert.equal(prepared.input.outputLocale, undefined);
+  assert.equal(tools.prepare({projectId, operation: 'clip.audio.export', input: {clipId: clipA},
+    locale: 'en'}).input.outputLocale, 'en');
+  assert.equal(tools.prepare({projectId, operation: 'clip.audio.export',
+    input: {clipId: clipA, outputLocale: 'ja'}, locale: 'en'}).input.outputLocale, 'ja',
+  'an explicit request language is not replaced by the task language');
   // MCP derives its tool list from the shared public schemas.
   assert.ok(schemas['clip.audio.export']);
   assert.ok(schemas['clip.audio.export.get']);

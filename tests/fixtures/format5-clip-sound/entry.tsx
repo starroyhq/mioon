@@ -75,10 +75,6 @@ function Harness(): React.ReactElement {
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    // Headless Chromium never delivers a synthetic contextmenu to React's
-    // delegated listener; this hook opens the very same production menu state
-    // the Timeline contextmenu handler sets, so the menu itself stays under test.
-    (window as any).__openClipMenu = (clipId: string): void => setMenuAnchor({clipId, x: 320, y: 260});
     const publish = (): void => {(window as any).__wireState = {...stateRef.current, ready: Boolean(data)};
       (window as any).__wireRpcLog = rpcLog.slice(-200);};
     publish();

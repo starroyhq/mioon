@@ -63,8 +63,11 @@ export function generatedImageAssetName(db: DatabaseSync, taskId: string, projec
   return availableName(db, projectId, translate(locale, 'outputAsset.image', {title:outputTitle(title), number}), '.png');
 }
 
-/** FR-G: «<source name> · Sound» as an .m4a audio asset. Mio and locale-less
- * callers keep the Chinese fallback used by the other local asset names. */
+/** FR-G: the clip's sound as an .m4a audio asset, named by the output language
+ * recorded with the accepted task («<name> · Sound» in English, «<name> 的声音»
+ * in Simplified Chinese). A caller without a language (MCP, locale-less
+ * request) keeps the Simplified Chinese fallback used by the other local asset
+ * names. */
 export function clipAudioAssetName(db: DatabaseSync, output: {id: string; projectId: string}, sourceName: string): string {
   const locale = outputLocaleFor(db, output.id);
   const stem = sourceName.slice(0, 160);

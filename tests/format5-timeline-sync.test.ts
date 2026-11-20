@@ -16,6 +16,9 @@ import type {
   SequenceEditTimelineCommit, SequenceEditTransactionFailure,
 } from '../packages/contracts/src/sequence-edit.ts';
 import {applySequenceEditBaselineChange, invertSequenceEditPatch} from '../packages/contracts/src/sequence-edit.ts';
+import {translate} from '../packages/i18n/src/index.ts';
+import type {Locale} from '../packages/i18n/src/index.ts';
+import {clipAudioAssetName, recordOutputLocale} from '../packages/business/src/output-asset-names.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `30000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -137,8 +140,9 @@ function occupyAudioGap(store: ProjectStore, clipId: string): void {
       cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged' as const}});
   });
 }
-function separatePreview(store: ProjectStore, requestId: string, clipId = clipA) {
+function separatePreview(store: ProjectStore, requestId: string, clipId = clipA, locale?: Locale) {
   return createFormat5SequenceEditService(store).preview({projectId: store.projectId, requestId,
+    ...(locale === undefined ? {} : {locale}),
     soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId}}}) as
     | {ok: false; code: string; ids?: readonly string[]}
     | {envelope: SequenceEditEnvelope; planDigest: string; warnings: readonly {code: string}[]};
@@ -321,7 +325,8 @@ test('separate-sound expands one intent into a muted source and an anchored soun
   assert.ok(operation.audioClipId && operation.audioTrackId);
   assert.equal(operation.createdTrackId, undefined, 'the existing audio track has a gap');
   assert.equal(operation.audioTrackId, audioTrack);
-  assert.equal(operation.name, 'Shot A · Sound');
+  assert.equal(operation.name, 'Shot A · 声音');
+  assert.equal(operation.trackName, undefined, 'the existing audio track keeps its own name');
   assert.deepEqual(envelope.impact.mainTrackClipIds, [clipA]);
   assert.ok(envelope.impact.otherTrackItemIds.includes(operation.audioClipId!));
   const result = separateCommit(store, prepared as {envelope: SequenceEditEnvelope; planDigest: string});
@@ -341,7 +346,7 @@ test('separate-sound expands one intent into a muted source and an anchored soun
   assert.equal(sound.durationFrames, source.durationFrames);
   assert.equal(sound.sourceInFrame, source.sourceInFrame);
   assert.deepEqual(sound.anchor, {clipId: clipA, offsetFrames: 0});
-  assert.equal(sound.name, 'Shot A · Sound');
+  assert.equal(sound.name, 'Shot A · 声音');
   assert.equal(state(store).entries, 1);
   // One undo restores the exact previous rows and removes the sound clip.
   const originalSource = {...readFormat5TimelineRecord(store.db, 'project')!.clips.find(clip => clip.id === clipA)!} as Record<string, unknown>;
@@ -443,4 +448,57 @@ test('separate-sound refuses silent sources, placeholders, audio clips and forma
   t.after(() => {format4.close(); rmSync(root, {recursive: true, force: true});});
   assert.throws(() => createFormat5SequenceEditService(format4).preview({projectId: id(91), requestId: 'separate-format4',
     soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipA}}}), {code: 'SEQUENCE_EDIT_CONTRACT_INVALID'});
+});
+
+test('separate-sound names use the caller language with a Simplified Chinese fallback', t => {
+  // A new audio track is forced so both generated names (clip and track) are
+  // visible in one action. No language means Simplified Chinese, the same
+  // fallback the generated asset names use.
+  const chinese = fixture(t);
+  occupyAudioGap(chinese, id(35));
+  const chinesePreview = separatePreview(chinese, 'separate-language-zh') as
+    {envelope: SequenceEditEnvelope; planDigest: string};
+  const chineseOperation = chinesePreview.envelope.soundIntent!.operation;
+  assert.ok(chineseOperation.createdTrackId, 'the occupied audio track forces a new one');
+  assert.equal(chineseOperation.name, 'Shot A · 声音');
+  assert.equal(chineseOperation.trackName, '声音');
+  assert.ok(separateCommit(chinese, chinesePreview).ok);
+  const chineseTimeline = readFormat5TimelineRecord(chinese.db, 'project')!;
+  assert.equal(chineseTimeline.tracks.find(track => track.id === chineseOperation.createdTrackId)!.name, '声音');
+  // The task language localizes both names through the same catalog.
+  for (const locale of ['en', 'ja'] as const) {
+    const localized = fixture(t);
+    occupyAudioGap(localized, id(35));
+    const preview = separatePreview(localized, `separate-language-${locale}`, clipA, locale) as
+      {envelope: SequenceEditEnvelope; planDigest: string};
+    const operation = preview.envelope.soundIntent!.operation;
+    assert.equal(operation.name, `Shot A · ${translate(locale, 'clipSound.nameSuffix')}`);
+    assert.equal(operation.trackName, translate(locale, 'clipSound.trackName'));
+    assert.ok(separateCommit(localized, preview).ok);
+    const timeline = readFormat5TimelineRecord(localized.db, 'project')!;
+    assert.equal(timeline.tracks.find(track => track.id === operation.createdTrackId)!.name,
+      translate(locale, 'clipSound.trackName'));
+  }
+  // An unrecognized language is not trusted for generated names.
+  const unknown = fixture(t);
+  occupyAudioGap(unknown, id(35));
+  const unknownPreview = createFormat5SequenceEditService(unknown).preview({projectId: unknown.projectId,
+    requestId: 'separate-language-unknown', locale: 'xx',
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipA}}}) as {envelope: SequenceEditEnvelope};
+  assert.equal(unknownPreview.envelope.soundIntent!.operation.name, 'Shot A · 声音');
+  assert.equal(unknownPreview.envelope.soundIntent!.operation.trackName, '声音');
+});
+
+test('clip audio asset names use the output language and fall back to Simplified Chinese', t => {
+  const store = fixture(t);
+  const plainId = id(95), englishId = id(96), japaneseId = id(97);
+  // The production task records the accepted output language in this store.
+  store.tx(() => {
+    recordOutputLocale(store.db, englishId, sha('f'), 'en');
+    recordOutputLocale(store.db, japaneseId, sha('f'), 'ja');
+  });
+  assert.equal(clipAudioAssetName(store.db, {id: plainId, projectId: store.projectId}, 'Shot A'), 'Shot A 的声音.m4a');
+  assert.equal(clipAudioAssetName(store.db, {id: englishId, projectId: store.projectId}, 'Shot A'), 'Shot A · Sound.m4a');
+  assert.equal(clipAudioAssetName(store.db, {id: japaneseId, projectId: store.projectId}, 'Shot A'),
+    `${translate('ja', 'clipSound.assetName', {name: 'Shot A'})}.m4a`);
 });

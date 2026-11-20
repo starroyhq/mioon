@@ -35,6 +35,7 @@
 .timeline-clip-menu-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   width: 100%;
   min-height: 30px;
   padding: 0 var(--wb-space-2);
@@ -47,6 +48,17 @@
   text-align: left;
   cursor: default;
 }
+.timeline-clip-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-right: var(--wb-space-2);
+  color: var(--wb-muted);
+}
+.timeline-clip-menu-label { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-clip-menu-item:hover:not(:disabled),
 .timeline-clip-menu-item:focus-visible { background: var(--wb-hover); outline: none; }
 .timeline-clip-menu-item:disabled { color: var(--wb-muted); }

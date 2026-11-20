@@ -518,7 +518,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }
     if(!step&&record(source.data)&&source.data.toolsInvalidated===true){
       const current=run;let kept=false;
-      try{const pending=toolset().prepare({projectId:current.projectId,operation:call.name,input:call.arguments,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(configuration(current).protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(current,[{...target,revision:0}])});kept=(pending.referencedTargets??pending.targets).some(target=>current.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id));}
+      try{const pending=toolset().prepare({projectId:current.projectId,operation:call.name,input:call.arguments,locale:taskResponseLocale(current.context),...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(configuration(current).protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(current,[{...target,revision:0}])});kept=(pending.referencedTargets??pending.targets).some(target=>current.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id));}
       catch(error){if(storageError(error))throw error;if(code(error)==='AGENT_TASK_TARGET_SKIPPED')kept=true;}
       return {...source,kind:'tool',status:kept?'denied':'rejected',toolCall:call,result:{error:{code:kept?'TARGET_SKIPPED':'TARGET_CHANGED',message:kept?skippedMessage(current):invalidatedBatchInstructions[taskResponseLocale(current.context)]}}};
     }
@@ -533,7 +533,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const message=invalidLoaderInputMessage(run,source,call.arguments);
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'VALIDATION_ERROR',message}},error:{code:'VALIDATION_ERROR',message}});
       }
-      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,canvasRequester:{runId,stepId:step.id},...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
+      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,locale:taskResponseLocale(run.context),canvasRequester:{runId,stepId:step.id},...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
       if(prepared.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
         const initial=prepared,stepId=step.id;
         // Preparing the frozen source is read-only and precedes approval. The
@@ -963,7 +963,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const original=journal.step(request.stepId);
       if(original.runId===runId&&original.status==='unknown'&&original.toolCall?.name===MIO_PROJECT_FILE_IMPORT_TOOL){
         const retained=record(original.data)?original.data.projectFileImport:undefined;
-        const prepared=toolset().prepare({projectId,operation:original.toolCall.name,input:original.toolCall.arguments});
+        const prepared=toolset().prepare({projectId,operation:original.toolCall.name,input:original.toolCall.arguments,locale:taskResponseLocale(run.context)});
         const checkLookup=()=>{mutable();const current=owned(projectId,runId),step=journal.step(original.id);if(current.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');if(step.runId!==runId||step.status!=='unknown'||step.toolCall?.name!==MIO_PROJECT_FILE_IMPORT_TOOL)throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');};
         // Read the bounded original-key receipt outside the control's write
         // transaction. Its synchronous snapshot fence is checked inside it.
@@ -1058,7 +1058,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         }else if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});
         else if(step.toolCall?.name==='mioon_task_wait'&&request.resolution==='accept_result'){
-          const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments}),result=toolset().recoverWait(prepared);
+          const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,locale:taskResponseLocale(run.context)}),result=toolset().recoverWait(prepared);
           if(result===null)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'completed',result});
         }else if(step.toolCall&&request.resolution==='discard'){
           if(step.toolCall.name===AGENT_TASK_TOOLS_LOAD_NAME){
@@ -1066,7 +1066,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
             if(!sourceId)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
             const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model')throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
             const toolLoadMode=sourceTaskModelToolLoadMode(configuration(run).protocol,source.request);
-            toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,toolLoadMode});
+            toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,toolLoadMode,locale:taskResponseLocale(run.context)});
           }
           const proof=toolset().recoverLocalUnknown({projectId,runId,stepId:step.id,requestId:step.id});
           if(!proof)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'failed',result:{...proof,error:{code:'UNKNOWN_NOT_APPLIED',message:'已核对原子回执，旧步骤未提交。请重新读取当前状态后规划，不要重放旧参数。'}}});

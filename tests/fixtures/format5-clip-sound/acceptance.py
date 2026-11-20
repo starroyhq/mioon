@@ -98,12 +98,81 @@ def main() -> int:
             page.wait_for_selector(f'[data-testid="timeline-clip-{COPY_CLIP}"]', timeout=30000)
             log('harness loaded with the real format-5 timeline')
 
-            def open_clip_menu(clip_id: str):
-                page.locator(f'[data-testid="timeline-clip-{clip_id}"]').click()
-                page.evaluate("(clipId) => window.__openClipMenu(clipId)", clip_id)
+            def menu_box():
+                return page.evaluate('''() => {
+                  const menu = document.querySelector('[data-testid=clip-context-menu]');
+                  if (!menu) return null;
+                  const rect = menu.getBoundingClientRect();
+                  return {left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+                    innerWidth: window.innerWidth, innerHeight: window.innerHeight};
+                }''')
+
+            def wait_menu():
                 wait_until(lambda: page.locator('[data-testid=clip-context-menu]').count() == 1,
                            timeout=5, message='clip context menu')
-                result.setdefault('notes', []).append('context menu opened through the harness hook for the production menu state; synthetic contextmenu is not delegated to React in headless Chromium')
+
+            def expected_menu_origin(pointer: dict, box: dict) -> dict:
+                # The production menu opens at its anchor and then clamps inside
+                # the viewport with an 8 px margin (TimelineClipContextMenu).
+                margin = 8
+                return {'left': max(margin, min(pointer['x'], box['innerWidth'] - box['width'] - margin)),
+                        'top': max(margin, min(pointer['y'], box['innerHeight'] - box['height'] - margin))}
+
+            def assert_menu_origin(pointer: dict, box: dict, label: str) -> None:
+                origin = expected_menu_origin(pointer, box)
+                assert abs(box['left'] - origin['left']) <= 8, (label, 'left', box, origin, pointer)
+                assert abs(box['top'] - origin['top']) <= 8, (label, 'top', box, origin, pointer)
+
+            def open_clip_menu(clip_id: str, *, at_pointer: bool = False) -> dict:
+                # A real right click, not a page.evaluate hook: Playwright sends
+                # genuine mouse input, so React receives the contextmenu event on
+                # the clip button the production handler listens to.
+                locator = page.locator(f'[data-testid="timeline-clip-{clip_id}"]')
+                locator.scroll_into_view_if_needed()
+                bounds = locator.bounding_box()
+                assert bounds, 'clip box: ' + clip_id
+                offset = {'x': 80, 'y': 4} if at_pointer else None
+                if offset:
+                    # Aim near the clip's top edge so the whole menu fits below the
+                    # pointer without meeting the viewport clamp.
+                    locator.click(button='right', position=offset)
+                    pointer = {'x': bounds['x'] + offset['x'], 'y': bounds['y'] + offset['y']}
+                else:
+                    locator.click(button='right')
+                    pointer = {'x': bounds['x'] + bounds['width'] / 2, 'y': bounds['y'] + bounds['height'] / 2}
+                wait_menu()
+                box = menu_box()
+                if at_pointer:
+                    assert_menu_origin(pointer, box, 'real right click')
+                    # 21-11: the menu's top-left corner is where the pointer was,
+                    # within the 8 px grab offset of the viewport clamp.
+                    assert abs(box['left'] - pointer['x']) <= 8 and abs(box['top'] - pointer['y']) <= 8, \
+                        ('menu at the pointer', box, pointer)
+                return {'pointer': pointer, 'menu': box}
+
+            def keyboard_menu_origin(clip_id: str, key: str) -> dict:
+                # Shift+F10 and the keyboard menu key open the same menu, hinged
+                # on the focused clip button rather than on the pointer.
+                locator = page.locator(f'[data-testid="timeline-clip-{clip_id}"]')
+                locator.scroll_into_view_if_needed()
+                locator.focus()
+                assert page.evaluate("(id) => document.activeElement === document.querySelector("
+                                     "'[data-testid=\"timeline-clip-' + id + '\"]')", clip_id), 'clip takes focus'
+                page.keyboard.press(key)
+                wait_menu()
+                bounds = locator.bounding_box()
+                box = menu_box()
+                anchor = {'x': bounds['x'] + min(bounds['width'], 24), 'y': bounds['y'] + bounds['height'] - 2}
+                assert_menu_origin(anchor, box, 'keyboard ' + key)
+                # «Hugs the clip», not the middle of the screen.
+                assert abs(box['left'] - bounds['x']) <= 80, (box, bounds)
+                assert bounds['y'] - 8 <= box['top'] <= bounds['y'] + bounds['height'] + 8, (box, bounds)
+                return {'clip': bounds, 'menu': box}
+
+            def close_menu():
+                page.keyboard.press('Escape')
+                wait_until(lambda: page.locator('[data-testid=clip-context-menu]').count() == 0,
+                           timeout=5, message='menu closed')
 
             def menu_items():
                 return [text.strip() for text in
@@ -111,11 +180,6 @@ def main() -> int:
 
             def sound_group_count():
                 return page.locator('[data-testid=clip-context-menu] [data-testid=clip-menu-sound-group]').count()
-
-            def close_menu():
-                page.keyboard.press('Escape')
-                wait_until(lambda: page.locator('[data-testid=clip-context-menu]').count() == 0,
-                           timeout=5, message='menu closed')
 
             def click_button(testid: str):
                 locator = page.locator(f'[data-testid={testid}]')
@@ -158,16 +222,65 @@ def main() -> int:
                 raise AssertionError(f'inspector audio group did not expand: {page.evaluate("window.__wireState ?? null")} {page.locator("[data-testid=wire-inspector]").inner_html()[:600]}')
 
             # S1: clip context menu (21-11). Only 0.3.0 items plus the sound
-            # group are rendered; the generate group stays a hidden slot.
-            open_clip_menu(COPY_CLIP)
+            # group are rendered; the generate group stays a hidden slot. The
+            # menu is opened by a real right click on the clip, so the pointer
+            # anchor and the contextmenu wiring are part of the acceptance.
+            opened = open_clip_menu(COPY_CLIP, at_pointer=True)
             items = menu_items()
             assert items == ['切开', '分离声音', '静音', '另存为音频素材'], items
             assert page.locator('[data-testid=clip-context-menu] [data-slot=generate-group]').count() == 1
             for absent in ('变速', '倒放', '定格', '生成镜头'):
                 assert all(absent not in text for text in items), (absent, items)
+            # 21-11 style: every item leads with its icon in a fixed-width slot,
+            # labels stay left aligned, and one separator sits between the split
+            # item and the sound group with none after the last group.
+            style = page.evaluate('''() => {
+              const menu = document.querySelector('[data-testid=clip-context-menu]');
+              const items = [...menu.querySelectorAll('[role=menuitem]')];
+              const first = items[0];
+              const icon = first.querySelector('.timeline-clip-menu-icon');
+              const label = first.querySelector('.timeline-clip-menu-label');
+              const itemStyle = getComputedStyle(first);
+              return {icons: items.filter(item => item.querySelector('.timeline-clip-menu-icon svg')).length,
+                labels: items.filter(item => item.querySelector('.timeline-clip-menu-label')).length,
+                separators: menu.querySelectorAll('[role=separator]').length,
+                lastChild: menu.lastElementChild?.getAttribute('data-slot') ?? '',
+                iconBeforeLabel: Boolean(icon) && Boolean(label) && (icon.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+                justify: itemStyle.justifyContent, textAlign: itemStyle.textAlign,
+                iconWidth: icon ? getComputedStyle(icon).width : ''};
+            }''')
+            assert style['icons'] == 4 and style['labels'] == 4 and style['iconBeforeLabel'], style
+            assert style['separators'] == 1, style
+            assert style['lastChild'] == 'generate-group', style
+            assert style['justify'] == 'flex-start' and style['textAlign'] == 'left', style
+            assert style['iconWidth'] == '16px', style
             capture(page, 'g1-clip-menu')
             close_menu()
-            log('context menu order, reserved generate slot and 0.4.0 absence', items=items)
+            log('a real right click opens the menu at the pointer with the 21-11 items and style',
+                items=items, pointer=opened['pointer'], menu=opened['menu'], style=style)
+
+            # The keyboard opens the same menu against the focused clip; Escape
+            # closes it and returns focus to that clip.
+            keyboard = keyboard_menu_origin(COPY_CLIP, 'Shift+F10')
+            capture(page, 'g1-clip-menu-keyboard')
+            close_menu()
+            focus_back = wait_until(lambda: page.evaluate(
+                "(id) => document.activeElement === document.querySelector('[data-testid=\"timeline-clip-' + id + '\"]')",
+                COPY_CLIP), timeout=5, message='focus returned to the clip')
+            assert focus_back
+            log('Shift+F10 opens the menu against the focused clip and Escape restores its focus',
+                clip=keyboard['clip'], menu=keyboard['menu'])
+            # The dedicated keyboard menu key opens the same menu where the
+            # browser reports it; otherwise only Shift+F10 is required by the card.
+            try:
+                context_key = keyboard_menu_origin(COPY_CLIP, 'ContextMenu')
+            except Exception as error:  # noqa: BLE001 - optional coverage of the menu key
+                context_key = None
+                result.setdefault('notes', []).append('the keyboard menu key (ContextMenu) was not delivered: ' + repr(error))
+                page.keyboard.press('Escape')
+            else:
+                close_menu()
+                log('the keyboard menu key opens the clip menu too', clip=context_key['clip'])
 
             # Silent video, image and placeholder clips never show the sound group.
             for clip_id, label in ((SILENT_CLIP, 'silent video'), (IMAGE_CLIP, 'image'), (PLACEHOLDER_CLIP, 'placeholder')):

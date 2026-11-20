@@ -7,6 +7,7 @@
  */
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
+import {AudioLines, Download, Scissors, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import type {ClipContextMenuPlan} from './clip-sound-state.ts';
 
@@ -77,23 +78,34 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
   }, [anchor, onClose]);
   if (!anchor) return null;
   const register = (index: number) => (element: HTMLButtonElement | null) => {if (element) items.current[index] = element;};
-  const item = (testId: string, label: string, action: () => unknown, enabled: boolean, index: number) =>
+  // Every item leads with its icon in a fixed-width slot, then a left-aligned
+  // label, so the text column lines up across the menu (21-11).
+  const item = (index: number, testId: string, label: string, icon: React.ReactNode,
+    action: () => unknown, enabled: boolean) =>
     <Button ref={register(index)} type="button" role="menuitem" variant="ghost" className="timeline-clip-menu-item"
-      data-testid={testId} disabled={!enabled} onClick={() => {onClose(); void action();}}>{label}</Button>;
+      data-testid={testId} disabled={!enabled} onClick={() => {onClose(); void action();}}>
+      <span className="timeline-clip-menu-icon" aria-hidden="true">{icon}</span>
+      <span className="timeline-clip-menu-label">{label}</span>
+    </Button>;
   let index = 0;
   return <div ref={menu} className="timeline-clip-menu" data-testid="clip-context-menu" role="menu"
     aria-label={t('clipSound.clipMenu')} style={position ?? {left: anchor.x, top: anchor.y}}>
-    {item('clip-menu-split', t('clipSound.split'), () => onSplit(anchor.clipId), canSplit && !busy, index++)}
+    {item(index++, 'clip-menu-split', t('clipSound.split'), <Scissors size={16} />,
+      () => onSplit(anchor.clipId), canSplit && !busy)}
     {plan.sound && <>
       <div className="timeline-clip-menu-separator" role="separator" />
       <div data-slot="sound-group" data-testid="clip-menu-sound-group" role="group">
-        {item('clip-menu-separate', t('clipSound.separate'), () => onSeparate(anchor.clipId), !busy, index++)}
-        {item('clip-menu-mute', t(plan.muteLabelKey), () => onToggleMute(anchor.clipId), !busy, index++)}
-        {plan.saveAudio && item('clip-menu-save-audio', t('clipSound.saveAsAudio'), () => onSaveAudio(anchor.clipId), !busy, index++)}
+        {item(index++, 'clip-menu-separate', t('clipSound.separate'), <AudioLines size={16} />,
+          () => onSeparate(anchor.clipId), !busy)}
+        {item(index++, 'clip-menu-mute', t(plan.muteLabelKey),
+          plan.muteLabelKey === 'clipSound.unmute' ? <Volume2 size={16} /> : <VolumeX size={16} />,
+          () => onToggleMute(anchor.clipId), !busy)}
+        {plan.saveAudio && item(index++, 'clip-menu-save-audio', t('clipSound.saveAsAudio'), <Download size={16} />,
+          () => onSaveAudio(anchor.clipId), !busy)}
       </div>
-      <div className="timeline-clip-menu-separator" role="separator" />
     </>}
-    {/* GE-b inserts «在前面 / 在后面生成镜头» here; this card renders no item. */}
+    {/* GE-b inserts «在前面 / 在后面生成镜头» here together with the separator
+        that precedes that group; the sound group leaves no trailing separator. */}
     <div data-slot="generate-group" hidden aria-hidden="true" />
   </div>;
 }

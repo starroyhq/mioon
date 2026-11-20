@@ -47,6 +47,7 @@ import {registerStoreTransactionObserver,registerStoreTransactionFence} from '..
 import type {OrdinaryServices} from '../services.ts';
 import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../provider-registry.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskLocale} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
 import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,agentTaskToolSupportsGroupLoad,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
@@ -817,7 +818,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   }
   return agentTaskParameterFeedback({operation,input,capabilities});
  }
-  function prepareMioSequence(operation:MioSequenceGroupOperation|'sequence.tool.undo',projectId:string,input:unknown):PreparedAgentTaskTool{
+  function prepareMioSequence(operation:MioSequenceGroupOperation|'sequence.tool.undo',projectId:string,input:unknown,locale?:AgentTaskLocale):PreparedAgentTaskTool{
   if(!format5||!isProjectStore(store))fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
   const before=snapshot(store,projectId);
   const targets:AgentTaskTarget[]=[];
@@ -853,7 +854,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='subject-card-delete')add('node',action.nodeId);
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
    if(action.kind==='generate'&&action.placement.kind==='main'&&action.placement.beforeClipId)add('timeline_clip',action.placement.beforeClipId);
-   const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
+   const plan=previewMioSequenceAction(store,projectId,randomUUID(),action,locale!==undefined?{locale}:undefined);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue',
@@ -873,16 +874,16 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   const plan=prepareMioSequenceUndo(store,projectId,randomUUID(),parsed.data.actionId);
   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,sequence:{plan,action:'undo'}};
  }
-function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester}):PreparedAgentTaskTool{
+function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester,locale}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester;locale?:AgentTaskLocale}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
- if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input);
+ if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input,locale);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   if(operation==='asset.import'){
    const parsed=mioAssetImportInputSchema.safeParse(input);
    if(!parsed.success)fail('VALIDATION_ERROR','请指定项目相对文件或用户已选择的句柄');
    return parsed.data.source==='project_file'
-    ? prepare({projectId,operation:MIO_PROJECT_FILE_IMPORT_OPERATION,input:{path:parsed.data.path,...(parsed.data.name?{name:parsed.data.name}:{})},beforeTargetRead,toolLoadMode,canvasRequester})
-    : prepare({projectId,operation:'asset.importSelected',input:{handle:parsed.data.handle},beforeTargetRead,toolLoadMode,canvasRequester});
+    ? prepare({projectId,operation:MIO_PROJECT_FILE_IMPORT_OPERATION,input:{path:parsed.data.path,...(parsed.data.name?{name:parsed.data.name}:{})},beforeTargetRead,toolLoadMode,canvasRequester,locale})
+    : prepare({projectId,operation:'asset.importSelected',input:{handle:parsed.data.handle},beforeTargetRead,toolLoadMode,canvasRequester,locale});
   }
   if(isMioCanvasCopyOperation(operation)){
    if(!canvasCopy||!isProjectStore(store)||projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','复制粘贴需要当前格式 4 项目');
@@ -972,6 +973,11 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   let hostInput:Value={...input};
   // Mio writes a scene without the host's fields; they are filled in before validation.
   if(operation==='previs.scene.set')hostInput={...hostInput,scene:previsSceneCandidate(hostInput.scene)};
+  // FR-G: a clip-sound asset saved by Mio is named in the task language unless
+  // the model asked for one. MCP has no language and keeps the Chinese fallback.
+  // The host field is added before validation, so the strict schema and the
+  // idempotency request hash both see exactly what is executed.
+  if(operation==='clip.audio.export'&&locale!==undefined&&hostInput.outputLocale===undefined)hostInput={...hostInput,outputLocale:locale};
   const schema=toolInputSchema(operation,frameProject);
   // Whether identity exists in the exact input is discovered from the generated
   // schema, while authoritative validation remains the shared runtime schema.

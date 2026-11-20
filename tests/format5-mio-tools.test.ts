@@ -134,7 +134,9 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   const uniqueKinds = new Set(MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)));
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)).length);
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_ACTION_COUNT);
-  assert.equal(uniqueKinds.size, 35);
+  // 34 shared actions before GE-a and FR-G: +1 generation («generate», GE-a)
+  // and +1 «separate-sound» (this card).
+  assert.equal(uniqueKinds.size, 36);
   const groupTools = format5Tools.filter(item => item.operation.startsWith('sequence.tool.')
     && item.operation !== 'sequence.tool.edit' && item.operation !== 'sequence.tool.undo');
   assert.deepEqual(groupTools.map(item => item.name).sort(), ['mioon_sequence_board_edit',

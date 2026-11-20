@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {build} from 'esbuild';
@@ -291,6 +292,42 @@ test('the format-5 clip context menu renders only 0.3.0 items plus the sound gro
   // A muted clip offers «unmute»; an ineligible clip hides the whole group.
   assert.ok(renderClipMenu('zh-Hans', {muted: true, sound: true}).includes('取消静音'));
   assert.equal(renderClipMenu('zh-Hans', {muted: false, sound: false}).includes('data-slot="sound-group"'), false);
+});
+
+test('the clip context menu leads every item with its icon, aligns the labels left and has no trailing separator', async () => {
+  const {renderClipMenu} = await modules();
+  const css = readFileSync(path.join(root, 'apps/web/src/clip-sound.css'), 'utf8');
+  assert.match(css, /\.timeline-clip-menu-item\s*\{[^}]*justify-content:\s*flex-start;[^}]*text-align:\s*left;/u,
+    'the menu item content starts on the left');
+  assert.match(css, /\.timeline-clip-menu-icon\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px;[^}]*margin-right:\s*var\(--wb-space-2\);[^}]*color:\s*var\(--wb-muted\);/u,
+    'the icon slot is a fixed-size leading column');
+  const items = {
+    'clip-menu-split': {icon: 'lucide-scissors', label: '切开'},
+    'clip-menu-separate': {icon: 'lucide-audio-lines', label: '分离声音'},
+    'clip-menu-mute': {icon: 'lucide-volume-x', label: '静音'},
+    'clip-menu-save-audio': {icon: 'lucide-download', label: '另存为音频素材'},
+  } as const;
+  const html = renderClipMenu('zh-Hans', {muted: false, sound: true});
+  for (const [testId, item] of Object.entries(items)) {
+    const start = html.indexOf(`data-testid="${testId}"`);
+    assert.ok(start >= 0, testId);
+    const markup = html.slice(start, html.indexOf('</button>', start));
+    assert.ok(markup.includes(`class="timeline-clip-menu-icon"`) && markup.includes(item.icon), `${testId}: leading ${item.icon}`);
+    assert.ok(markup.includes('class="timeline-clip-menu-label"'), `${testId}: label slot`);
+    assert.ok(markup.indexOf('timeline-clip-menu-icon') < markup.indexOf('timeline-clip-menu-label'), `${testId}: icon before label`);
+    assert.ok(markup.includes(`>${item.label}</span>`), `${testId}: ${item.label}`);
+  }
+  // A muted clip swaps the horn icon with the label.
+  const muted = renderClipMenu('zh-Hans', {muted: true, sound: true});
+  assert.ok(muted.includes('lucide-volume-2') && muted.includes('取消静音'));
+  // One separator sits between the split item and the sound group; the sound
+  // group itself ends the menu, followed only by the hidden generate slot.
+  assert.equal(html.split('timeline-clip-menu-separator').length - 1, 1, 'exactly one separator');
+  assert.ok(html.indexOf('data-testid="clip-menu-split"') < html.indexOf('timeline-clip-menu-separator'), 'separator after split');
+  assert.ok(html.indexOf('timeline-clip-menu-separator') < html.indexOf('data-slot="sound-group"'), 'separator before the sound group');
+  assert.match(html.trimEnd(), /data-slot="generate-group"[^>]*><\/div><\/div>$/u, 'the last element is the generate insert point');
+  assert.equal(renderClipMenu('zh-Hans', {muted: false, sound: false}).includes('timeline-clip-menu-separator'), false,
+    'no separator when the whole sound group is absent');
 });
 
 test('the inspector audio group shows the mute switch and both sound buttons in four locales', async () => {

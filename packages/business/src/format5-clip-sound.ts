@@ -65,8 +65,10 @@ function requireTimeline(store: ProjectStore): Format5Timeline {
   return record;
 }
 
-/** Localized clip name: «clip name · sound». Mio and locale-less callers keep
- * the English suffix; the UI passes a pre-localized `name` instead. */
+/** Localized clip name: «clip name · sound». A caller without a language (Mio
+ * without a task language, MCP) falls back to Simplified Chinese, the same
+ * fallback the generated asset names use; the UI passes a pre-localized `name`
+ * instead. */
 function soundClipName(base: string, locale: Locale): string {
   const suffix = ` · ${translate(locale, 'clipSound.nameSuffix')}`;
   const room = 200 - suffix.length;
@@ -103,7 +105,9 @@ interface ResolvedSound extends Operation {
 /**
  * Expand a minimal operation into concrete ids and names. `locale` is only used
  * when the caller did not supply localized names, so a resolved operation is
- * reproduced byte-for-byte when it is planned again.
+ * reproduced byte-for-byte when it is planned again. Without a recognized
+ * language the names fall back to Simplified Chinese, matching the other
+ * generated asset names.
  */
 export function resolveSeparateSound(store: ProjectStore, operation: Operation, options: {locale?: Locale} = {}): ResolvedSound {
   if (!operation || operation.kind !== 'separate-sound' || !isUuid(operation.clipId)) invalid('分离声音的片段无效');
@@ -118,7 +122,7 @@ export function resolveSeparateSound(store: ProjectStore, operation: Operation, 
   const asset = readSoundAsset(store.db, assetId);
   if (!asset || !asset.mimeType.startsWith('video/') || asset.hasAudio !== true)
     invalid('这个片段没有可分离的声音', {clipId: source.id, assetId});
-  const locale: Locale = options.locale !== undefined && isLocale(options.locale) ? options.locale : 'en';
+  const locale: Locale = options.locale !== undefined && isLocale(options.locale) ? options.locale : 'zh-Hans';
   const trackName = trackNameOf(timeline, operation, locale);
   const name = operation.name ?? soundClipName(source.name, locale);
   if (typeof name !== 'string' || name.length < 1 || name.length > 200) invalid('音频片段名称无效');
@@ -216,12 +220,12 @@ export function planSeparateSound(store: ProjectStore, operation: Operation): Se
     invalid('目标音频轨这段时间没有空位', {trackId: operation.audioTrackId});
   }
   if (timeline.clips.some(clip => clip.id === operation.audioClipId)) invalid('音频片段 ID 已被使用', {clipId: operation.audioClipId});
-  const name = operation.name ?? soundClipName(source.name, 'en');
+  const name = operation.name ?? soundClipName(source.name, 'zh-Hans');
   if (typeof name !== 'string' || name.length < 1 || name.length > 200) invalid('音频片段名称无效');
   const tracks: readonly Track[] = destination ? timeline.tracks
     : [...timeline.tracks, createdAudioTrack(timeline, {kind: 'separate-sound', clipId: operation.clipId,
       audioClipId: operation.audioClipId, audioTrackId: operation.audioTrackId, createdTrackId: createdTrackId as string,
-      name, trackName: operation.trackName?.trim() || translate('en', 'clipSound.trackName')} as ResolvedSound)];
+      name, trackName: operation.trackName?.trim() || translate('zh-Hans', 'clipSound.trackName')} as ResolvedSound)];
   const inherit = inheritedSoundFields(source);
   const soundClip = {
     id: operation.audioClipId, trackId: operation.audioTrackId, assetId: source.assetId,
