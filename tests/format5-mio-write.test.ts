@@ -279,6 +279,62 @@ test('write actions are bounded and reject generated ids supplied as envelopes',
   assert.equal(listAgentTaskTools(false,false).some(tool=>tool.operation==='sequence.tool.edit'),false);
 });
 
+test('Mio dialogue action writes the shot lines and projects their cues in one Mio step', t => {
+  const store=fixture(t);
+  const plan=previewMioSequenceAction(store,projectId,req(8),{kind:'dialogue',shotId:shotA,edits:[
+    {kind:'add',text:'你好'},{kind:'add',text:'走吧'}]});
+  assert.equal(plan.envelope.origin,'mio');
+  const intent=(plan.envelope as any).dialogueIntent;
+  assert.equal(intent.operation.kind,'dialogue');
+  assert.equal(intent.operation.edits.length,2);
+  assert.ok(intent.operation.edits.every((edit:any)=>typeof edit.line.id==='string'),'the service allocates new line ids');
+  assert.ok(plan.summary.counts.other>=2,'the projected cues show up in the bounded impact');
+  const receipt=commitMioSequenceAction(store,plan);
+  assert.equal(receipt.status,'applied');
+  let shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['你好','走吧']);
+  const projected=()=>((store.get('timelines',timelineId) as any).subtitles?.cues??[])
+    .filter((cue:any)=>cue.dialogueRef?.shotId===shotA);
+  assert.equal(projected().length,2,'each line projects to a real cue');
+  // Update one line through its inspected id: the cue text follows.
+  const update=previewMioSequenceAction(store,projectId,req(9),{kind:'dialogue',shotId:shotA,
+    edits:[{kind:'update',lineId:shot.dialogue[0].id,text:'你好啊'}]});
+  commitMioSequenceAction(store,update);
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['你好啊','走吧']);
+  assert.equal((projected().find((cue:any)=>cue.dialogueRef.lineId===shot.dialogue[0].id) as any).text,'你好啊');
+  // Reorder through the inspected ids.
+  const reorder=previewMioSequenceAction(store,projectId,req(10),{kind:'dialogue',shotId:shotA,
+    edits:[{kind:'reorder',lineIds:[shot.dialogue[1].id,shot.dialogue[0].id]}]});
+  commitMioSequenceAction(store,reorder);
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['走吧','你好啊']);
+  // One Mio undo restores the shot lines and their cues.
+  const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(11)));
+  assert.equal(undone.status,'applied');
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['你好啊','走吧']);
+  // Removing a line removes its cue; the reader exposes the remaining lines.
+  const remove=previewMioSequenceAction(store,projectId,req(12),{kind:'dialogue',shotId:shotA,
+    edits:[{kind:'remove',lineId:shot.dialogue[0].id}]});
+  commitMioSequenceAction(store,remove);
+  shot=store.get('shots',shotA) as any;
+  assert.deepEqual(shot.dialogue.map((line:any)=>line.text),['走吧']);
+  assert.equal(projected().length,1);
+  const page=createSequenceInspectionService(store).handlers['sequence.inspect']({projectId}) as any;
+  const segment=page.items.find((item:any)=>item.nodeId===shotA);
+  assert.deepEqual(segment.dialogue.map((line:any)=>line.text),['走吧']);
+});
+
+test('Mio dialogue schema is bounded and refuses generated envelope fields', () => {
+  const parse=(input:unknown)=>mioSequenceEditSchemas['sequence.tool.edit'].safeParse(input).success;
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'你好'}]}),true);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'你好',lineId:projectId}]}),false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'add',text:'字'.repeat(82)}]}),false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[{kind:'update',lineId:projectId}]}),false);
+  assert.equal(parse({kind:'dialogue',shotId:projectId,edits:[]}),false);
+});
+
 test('MT-5 reference reorder sets the primary image as one Mio action and undoes it', t => {
   const store = fixture(t);
   for (const [index, source] of [image, image2].entries()) {
@@ -438,7 +494,6 @@ test('Mio board management actions build the same unified envelope', t => {
   commitMioSequenceAction(store,duplicate);
   assert.equal(mioSequenceEditSchemas['sequence.tool.edit'].safeParse({kind:'board-node-create',type:'text',name:'X',
     position:{x:0,y:0}}).success,true);
-
 });
 
 test('FR-D track add/update are Mio sequence actions with one-step undo', t => {

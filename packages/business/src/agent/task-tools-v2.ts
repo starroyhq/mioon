@@ -806,6 +806,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='board-restore'||action.kind==='board-duplicate')
     for(const target of action.targets)add(target.kind,target.id);
    if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
+   if(action.kind==='dialogue')add('shot',action.shotId);
    if(action.kind==='board-layout-move')for(const move of action.moves)add(before[key('shot',move.nodeId)]?'shot':'node',move.nodeId);
    if(action.kind==='subtitles')for(const edit of action.edits)if(edit.kind!=='add')add('timeline_subtitle',edit.cueId);
    if(action.kind==='subject-binding'){
@@ -821,13 +822,12 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action);
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
-   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties',
+   const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue',
     'format-set','split-at-scenes','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
     'subject-card-create','subject-card-delete','previs-create'].includes(action.kind);
-   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,
-     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
+   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
   if(!parsed.success)fail('VALIDATION_ERROR','序列撤销参数无效：actionId 可选；省略时撤销栈顶 Mio 动作');

@@ -42,6 +42,11 @@ export interface SequenceInspectionSegment {
     readonly sourceNodeId: string;
   }[];
   readonly referenceCount?: number;
+  /** DL-a: the shot's ordered dialogue lines (its cue projection is validated by
+   * the kernel; the lines are the authoritative text). */
+  readonly dialogue?: readonly {
+    readonly id: string; readonly text: string; readonly speakerSubjectId?: string;
+  }[];
 }
 export interface SequenceInspectionDiff {
   readonly kind: 'board' | 'track' | 'anchor';

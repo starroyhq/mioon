@@ -9,6 +9,7 @@ import '../../../apps/web/src/styles.css';
 import '../../../apps/web/src/edit-ui/edit-ui.css';
 import './fixture.css';
 import Timeline from '../../../apps/web/src/Timeline.tsx';
+import ShotDialogue from '../../../apps/web/src/ShotDialogue.tsx';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import {timelineHistoryState} from '../../../apps/web/src/timeline-history.ts';
 import {timelineSplitState} from '../../../apps/web/src/timeline-split.ts';
@@ -39,6 +40,7 @@ const projectId = '90000000-0000-4000-8000-000000000001';
 const mainTrackId = '90000000-0000-4000-8000-000000000060';
 const track2Id = '90000000-0000-4000-8000-000000000061';
 const imageClipId = '90000000-0000-4000-8000-000000000033';
+const shotAId = '90000000-0000-4000-8000-000000000003';
 
 function historySource(data: WireData | null, history: SequenceHistoryView | null) {
   if (!data || !history) return null;
@@ -169,6 +171,20 @@ function Harness(): React.ReactElement {
     } finally {busy.current = false;}
   };
   const cancelCopy = (): void => {session.current.cancelCopy(); setCopyRequest(null); setLastOperation('copy-cancelled');};
+  const dialogueShot = (data?.shots as Row[] | undefined)?.find(shot => shot.id === shotAId) ?? null;
+  const dialogueCueMarks = useMemo(() => {
+    const marks = new Map<string, {shotName?: string}>();
+    const counts = new Map<string, number>();
+    const titles = new Map(((data?.shots as Row[] | undefined) ?? []).map(shot => [String(shot.id), String(shot.title ?? '')]));
+    for (const cue of ((data?.timeline as Row | undefined)?.subtitles?.cues as Row[] | undefined) ?? []) {
+      const ref = cue.dialogueRef as Row | null | undefined;
+      if (typeof ref?.shotId !== 'string') continue;
+      const shotName = titles.get(ref.shotId) || undefined;
+      marks.set(String(cue.id), shotName ? {shotName} : {});
+      counts.set(ref.shotId, (counts.get(ref.shotId) ?? 0) + 1);
+    }
+    return {marks, counts};
+  }, [data]);
   const sequenceFor = (clipId: string | undefined): EditUiInspectorSequence | null => {
     if (!data || !clipId) return null;
     return format5InspectorSequence(timeline as never, data.shots as never, data.versions as never, clipId, {});
@@ -237,9 +253,12 @@ function Harness(): React.ReactElement {
           onRippleRemove={(clipId: string) => {setSelectedClipId(clipId); void run(format5RemoveCommand(clipId));}}
           onTrackAdd={() => undefined} onTrackUpdate={() => undefined} onSeed={() => undefined} onRender={() => undefined}
           onSeek={setPlayhead} playhead={playhead} collapsed={false} onCollapse={() => undefined} busy={false}
+          dialogueCues={dialogueCueMarks.marks}
           viewState={{pixelsPerSecond: 60, scrollLeft: 0, scrollTop: 0, snappingEnabled: true}} />
       </section>
       <aside className="wire-inspector">
+        {dialogueShot && <ShotDialogue shot={dialogueShot as never} subjectNames={{}} projectId={projectId}
+          cueCount={dialogueCueMarks.counts.get(shotAId) ?? 0} rpc={rpc} onApplied={() => {void refresh();}} />}
         {selectedSequence ? <ShotVersionBar sequence={{...selectedSequence,
           onRevealShot: () => setLastOperation('reveal'),
           onVersionChoice: choice => {void (async () => {
