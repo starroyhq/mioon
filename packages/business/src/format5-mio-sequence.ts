@@ -214,6 +214,14 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
     assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
+  else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
+    placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',
+    settings: {requestId: `mio-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
+      region: action.region, prompt: action.prompt, aspectRatio: action.aspectRatio, duration: action.duration,
+      ...(action.parameters ? {parameters: action.parameters} : {}),
+      ...(action.connectionId ? {connectionId: action.connectionId} : {}),
+      ...(action.configurationRevision !== undefined ? {configurationRevision: action.configurationRevision} : {}),
+      ...(action.modelEntryId ? {modelEntryId: action.modelEntryId} : {})}}};
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
     const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');
@@ -223,9 +231,10 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     summary: summarize(action, result.envelope as SequenceEditEnvelope, result.warnings as readonly unknown[] ?? [])};
 }
 /** Commit exactly the previewed envelope; repeated commits replay the receipt. */
-export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan): SequenceEditReceipt {
+export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan,
+  options: {readonly generationSubmit?: (input: any) => unknown} = {}): SequenceEditReceipt {
   requireF5(store);
-  const value = createFormat5SequenceEditService(store).commit({projectId: store.projectId,
+  const value = createFormat5SequenceEditService(store, options).commit({projectId: store.projectId,
     envelope: plan.envelope, expectedPlanDigest: plan.planDigest}) as SequenceEditReceipt;
   return value;
 }

@@ -1,13 +1,14 @@
 import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {projectRetainedTimelineReceipt} from './timeline-retained-receipts.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {captureOpacityTimelineRecord, captureOpacityTimelineIntent} from '../../contracts/src/timeline-opacity-persistence.ts';
 import {OPACITY_ENVELOPE_PROFILE} from '../../contracts/src/timeline-opacity-envelope.ts';
+import {getFormat5TimelineHeaderIssue} from '../../contracts/src/project-format5.ts';
 import {OPACITY_RENDER_CANDIDATE_PROFILE, captureOpacityPreparedSourceProjection, isOpacityRenderRecord} from '../../contracts/src/timeline-opacity-render-candidate.ts';
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {validateTimelineColourRows} from './timeline-retained-colour.ts';
 import {readTimelineStorage, timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {validateTimelineAudioRoleRows} from './timeline-retained-audio-role.ts';
 import {validateTimelineVolumeEnvelopeRows} from './timeline-retained-volume-envelope.ts';
 import {validateLutResourceRows} from './lut-resource-validation.ts';
@@ -129,21 +130,26 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
         if (++cells > 80000 || typeof row.value !== 'string' || row.valid !== 1 || row.duplicates !== 0 || (bytes += Buffer.byteLength(row.value)) > 128 * 1024 * 1024) invalid();
         let parsed: unknown; try {parsed = JSON.parse(row.value);} catch {invalid();}
         if(table==='timeline_requests')parsed=projectRetainedTimelineReceipt(parsed,row.identity);
-        if (!object(parsed)) invalid();
-        // A format-5 project stores only the timeline header in `timelines.data`;
-        // the validated record is the shared assembled projection.
-        let recordValue = parsed;
-        if (table === 'timelines' && format5) {
-          const snapshot = readTimelineStorage(db, String(row.owner), {schema: storageSchema});
-          if (!snapshot?.format5 || !object(snapshot.timeline)) invalid();
-          recordValue = snapshot.timeline;
+        if (format5) {
+          // Format 5 stores native clip/cue rows and only a header in
+          // `timelines.data`. The legacy record validators below expect legacy
+          // clips with a concrete asset, so a valid placeholder clip
+          // (assetId:null) must never be fed to them. Validate the persisted
+          // format-5 header and keep the retained-row guarantee that dormant
+          // opacity evidence is not smuggled through any format-5 row.
+          if (table === 'timelines') {
+            if (!object(parsed) || parsed.id !== row.identity || containsOpacity(parsed)) invalid();
+            owner(parsed.projectId);
+            if (getFormat5TimelineHeaderIssue(parsed, {projectId: parsed.projectId}) !== null) invalid();
+          } else if (containsOpacity(parsed)) invalid();
+          continue;
         }
-        const hasOpacity = containsOpacity(recordValue);
+        const hasOpacity = containsOpacity(parsed);
         if (!hasOpacity && table !== 'timelines') continue;
-        if (!object(recordValue)) invalid();
+        if (!object(parsed)) invalid();
         let projection: Value;
         if (table === 'timelines') {
-          const captured = captureRecord(recordValue, row.owner);
+          const captured = captureRecord(parsed, row.owner);
           if (captured.id !== row.identity) invalid();
           timelines.set(String(row.owner), captured); projection = projectRecord(captured);
           // Other retained-row validators receive this table's raw text and
