@@ -206,7 +206,7 @@ import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
 import ShotDialogue from './ShotDialogue.tsx';
 import {format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
-import type {LostResponseView} from './edit-ui/lost-response.ts';import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PatchCommand, format5Projection, format5RemoveCommand, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import type {LostResponseView} from './edit-ui/lost-response.ts';import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
@@ -3675,9 +3675,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await refresh(currentProject.current); await format5RefreshHistory();
         return;
       }
-      const sceneSplit = result.receipt?.sceneSplit;
-      const count = sceneSplit?.split.length ?? 0, skipped = sceneSplit?.skipped.length ?? 0;
-      notify(skipped ? msg('scene.split.doneSkipped', { count, skipped }) : msg('scene.split.done', { count }));
+      // One structural batch with one history step, so it also keeps one undo
+      // bar like every other format-5 edit. The detection dialog stays open and
+      // covers that bar, so the toast still carries the immediate result while
+      // the bar waits behind the dialog for its one-step undo.
+      const notice = format5SceneSplitNotice(result.receipt?.sceneSplit);
+      notify(msg(notice.key, notice.params));
+      setFormat5Notice({id: result.actionId ?? `format5-scene-split-${Date.now()}`, message: renderMessage(msg(notice.key, notice.params))});
+      setFormat5NoticeActionId(result.actionId);
       await refresh(currentProject.current); await format5RefreshHistory();
       return;
     }
