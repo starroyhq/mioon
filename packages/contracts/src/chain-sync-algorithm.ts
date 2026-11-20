@@ -26,7 +26,18 @@ export type TrackSyncEdit =
   | { readonly kind: 'move'; readonly clipId: string; readonly beforeClipId: string | null; readonly copyNodeId?: string }
   | { readonly kind: 'move-off-track'; readonly clipId: string; readonly trackId: string; readonly startFrame: number; readonly copyNodeId?: string }
   | { readonly kind: 'remove'; readonly clipId: string }
-  | { readonly kind: 'add'; readonly clip: ChainSyncClip; readonly beforeClipId: string | null; readonly media?: ChainSyncMedia; readonly nodeKind?: 'shot' | 'video' | 'image' }
+  | { readonly kind: 'add'; readonly clip: ChainSyncClip; readonly beforeClipId: string | null; readonly media?: ChainSyncMedia;
+    readonly nodeKind?: 'shot' | 'video' | 'image'; readonly nodeAssetId?: string; readonly nodeName?: string;
+    readonly copyFromClipId?: string }
+  /** ED: insert one asset or paste one copied clip. The minimal form carries the
+   * user intent; the service expands it into `add`/`add-overlay` before planning
+   * so the exact envelope (IDs and media) is what the UI confirms. */
+  | { readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number }
+  | { readonly kind: 'paste-clip'; readonly clipId: string; readonly startFrame: number }
+  /** ED: add one clip to a non-main track, anchored below its owning main clip. */
+  | { readonly kind: 'add-overlay'; readonly clipId: string; readonly trackId: string; readonly startFrame: number;
+    readonly durationFrames: number; readonly sourceInFrame: number; readonly name: string;
+    readonly assetId?: string; readonly copyFromClipId?: string }
   | { readonly kind: 'split'; readonly clipId: string; readonly offsetFrames: number; readonly rightClipId: string; readonly rightSourceInFrame?: number }
   | { readonly kind: 'trim'; readonly clipId: string; readonly durationFrames: number; readonly sourceInFrame?: number }
   | { readonly kind: 'version'; readonly clipId: string; readonly version: ChainSyncVersion | null; readonly locked: boolean }
@@ -301,6 +312,10 @@ function planTrackEdit(
   state: ChainSyncState, edit: TrackSyncEdit, previous: readonly ChainSyncClip[], oldIds: readonly string[],
   nodes: Map<string, ChainNode>, media: Map<string, ChainSyncMedia>, issues: readonly BoardSequenceIssue[],
 ): ChainSyncPlan {
+  // ED insert/paste/overlay actions are expanded by the format-5 service into
+  // ordinary add edits before SA planning; they never reach this planner.
+  if (edit.kind === 'insert-asset' || edit.kind === 'paste-clip' || edit.kind === 'add-overlay')
+    return {ok: false, code: 'INVALID_TRACK_TARGET', id: ''};
   const next = [...previous];
   const splits: TrackAnchorSplit[] = [];
   const warnings: ChainSyncWarning[] = [];

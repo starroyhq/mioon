@@ -284,8 +284,10 @@ test('the committed timing table parses and covers most of the full catalog', as
 });
 test('the format 5 performance budgets stay in the exclusive phase', () => {
   // These tests measure in-lock latency; sharing a shard's CPUs made their p95
-  // budgets flake in CI, so the reviewed exclusive list must keep all three.
+  // budgets flake in CI, so the reviewed exclusive list must keep all five.
   for (const file of [
+    'tests/format5-dialogue-performance.test.ts',
+    'tests/format5-format-scenes-performance.test.ts',
     'tests/format5-timeline-sync-b-performance.test.ts',
     'tests/format5-timeline-sync-performance.test.ts',
     'tests/project-format5-performance.test.ts',

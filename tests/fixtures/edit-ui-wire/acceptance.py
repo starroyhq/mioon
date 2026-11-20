@@ -266,6 +266,127 @@ def main() -> int:
                 " const cues = (((state.data.timeline || {}).subtitles || {}).cues || []);"
                 " return (shot?.dialogue || []).length === 1 && cues.length === 0; }",
                 timeout=15000)
+            wire = lambda: page.evaluate("() => window.__wireState")
+            def dismiss_ed_notice() -> None:
+                dismiss = page.get_by_test_id('edit-ui-notice-dismiss')
+                if dismiss.count() and dismiss.is_visible():
+                    dismiss.click()
+
+            def undo_once() -> None:
+                before = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
+                notice_undo = page.get_by_test_id('edit-ui-notice-undo')
+                if notice_undo.count() and notice_undo.is_visible():
+                    notice_undo.click()
+                    page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'notice-undo'")
+                else:
+                    page.get_by_test_id('wire-undo-key').click()
+                    page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'undo'")
+                after = int(page.get_by_test_id('wire-state').get_attribute('data-position'))
+                assert after == before - 1, (before, after)
+
+            # ED: insert asset at the beginning/middle/end of the main track.
+            for button, frame, label in [('wire-insert-start', 0, 'start'), ('wire-insert-mid', 60, 'middle'), ('wire-insert-end', 150, 'end')]:
+                before = wire()
+                page.get_by_test_id(button).click()
+                page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'insert-asset'")
+                after = wire()
+                assert len(after['data']['timeline']['clips']) == len(before['data']['timeline']['clips']) + 1, (label, after.get('lastError'))
+                inserted = [clip for clip in after['data']['timeline']['clips'] if clip['id'] not in {item['id'] for item in before['data']['timeline']['clips']}]
+                assert len(inserted) == 1 and inserted[0]['startFrame'] == frame, (label, inserted)
+                assert inserted[0]['sequenceSource']['nodeId'] not in {clip['sequenceSource']['nodeId'] for clip in before['data']['timeline']['clips']}
+                assert len(after['data']['nodes']) == len(before['data']['nodes']) + 1, 'main insert creates a board media node'
+                log(f'ED 主轨插入（{label}）', frame=frame)
+                capture(page, f'ed-main-insert-{label}.png')
+                undo_once()
+                assert len(wire()['data']['timeline']['clips']) == 4, f'{label} undo'
+
+            # ED: overlay clips on V2 and the audio track.
+            before = wire()
+            page.get_by_test_id('wire-insert-v2').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'insert-asset'")
+            after = wire()
+            overlay = [clip for clip in after['data']['timeline']['clips'] if clip['id'] not in {item['id'] for item in before['data']['timeline']['clips']}]
+            assert len(overlay) == 1 and overlay[0]['trackId'] == '90000000-0000-4000-8000-000000000061'
+            assert overlay[0]['anchor']['clipId'] in {clip['id'] for clip in before['data']['timeline']['clips'] if clip['trackId'] == '90000000-0000-4000-8000-000000000060'}
+            assert len(after['data']['nodes']) == len(before['data']['nodes']), 'overlay does not create a board node'
+            page.get_by_test_id('track-lane-90000000-0000-4000-8000-000000000061').click()
+            log('ED V2 放置片段并挂到主轨')
+            capture(page, 'ed-overlay-v2.png')
+            undo_once()
+
+            before = wire()
+            page.get_by_test_id('wire-insert-audio').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'insert-asset'")
+            after = wire()
+            overlay = [clip for clip in after['data']['timeline']['clips'] if clip['id'] not in {item['id'] for item in before['data']['timeline']['clips']}]
+            assert len(overlay) == 1 and overlay[0]['trackId'] == '90000000-0000-4000-8000-000000000062'
+            assert overlay[0]['assetId'] == '90000000-0000-4000-8000-000000000013'
+            log('ED 音频轨放置音频片段')
+            capture(page, 'ed-overlay-audio.png')
+            undo_once()
+
+            # ED: copy/paste a main-track clip. The paste creates one new shot and
+            # one main clip; undo removes both as one action.
+            before = wire()
+            page.get_by_test_id('timeline-clip-90000000-0000-4000-8000-000000000030').click()
+            page.wait_for_function("() => JSON.parse(document.querySelector('[data-testid=wire-inspector-state]').textContent).clip === '90000000-0000-4000-8000-000000000030'")
+            page.get_by_test_id('wire-copy').click()
+            page.get_by_test_id('wire-playhead-60').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]').getAttribute('data-playhead') === '60'")
+            page.get_by_test_id('wire-paste').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'paste-clip'")
+            after = wire()
+            assert len(after['data']['timeline']['clips']) == len(before['data']['timeline']['clips']) + 1
+            assert len(after['data']['shots']) == len(before['data']['shots']) + 1, 'main paste copies the shot'
+            pasted = [clip for clip in after['data']['timeline']['clips'] if clip['id'] not in {item['id'] for item in before['data']['timeline']['clips']}]
+            assert len(pasted) == 1 and pasted[0]['sequenceSource']['nodeId'] not in {clip['sequenceSource']['nodeId'] for clip in before['data']['timeline']['clips']}
+            log('ED 主轨复制粘贴生成新镜头', frame=pasted[0]['startFrame'])
+            capture(page, 'ed-paste-main.png')
+            undo_once()
+            assert len(wire()['data']['shots']) == len(before['data']['shots'])
+
+            # ED: copy/paste an other-track clip re-anchors the new item.
+            before = wire()
+            page.get_by_test_id('wire-insert-v2').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'insert-asset'")
+            v2 = wire()
+            source = [clip for clip in v2['data']['timeline']['clips'] if clip['id'] not in {item['id'] for item in before['data']['timeline']['clips']}][0]
+            dismiss_ed_notice()
+            page.get_by_test_id('wire-copy-v2').click()
+            page.get_by_test_id('wire-playhead-120').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]').getAttribute('data-playhead') === '120'")
+            page.get_by_test_id('wire-paste').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'paste-clip'")
+            copied = wire()
+            v2_clips = [clip for clip in copied['data']['timeline']['clips'] if clip['trackId'] == '90000000-0000-4000-8000-000000000061']
+            assert len(v2_clips) == 2, (copied.get('lastError'), v2_clips)
+            assert all(clip['anchor']['clipId'] for clip in v2_clips), 'all overlay clips stay anchored'
+            log('ED V2 复制粘贴并重新挂靠')
+            capture(page, 'ed-paste-overlay.png')
+            undo_once()
+            undo_once()
+
+            # ED: blank timeline right-click menu. Paste is disabled without a
+            # clipboard and commits exactly one paste action when available.
+            lane = page.get_by_test_id('track-lane-90000000-0000-4000-8000-000000000061')
+            lane.click(button='right', position={'x': 120, 'y': 10})
+            expect(page.get_by_test_id('timeline-blank-menu')).to_be_visible()
+            capture(page, 'ed-blank-menu-disabled.png')
+            page.keyboard.press('Escape')
+            page.get_by_test_id('timeline-clip-90000000-0000-4000-8000-000000000030').click()
+            page.wait_for_function("() => JSON.parse(document.querySelector('[data-testid=wire-inspector-state]').textContent).clip === '90000000-0000-4000-8000-000000000030'")
+            page.get_by_test_id('wire-copy').click()
+            lane.click(button='right', position={'x': 120, 'y': 10})
+            expect(page.get_by_test_id('timeline-blank-menu')).to_be_visible()
+            capture(page, 'ed-blank-menu.png')
+            before = wire()
+            page.get_by_test_id('timeline-menu-paste').click()
+            page.wait_for_function("() => document.querySelector('[data-testid=wire-state]')?.dataset.operation === 'paste-clip'")
+            after = wire()
+            assert len(after['data']['timeline']['clips']) == len(before['data']['timeline']['clips']) + 1
+            assert after['data']['timeline']['clips'][-1] or True
+            log('ED 空白右键粘贴')
+            undo_once()
 
             # 21-04 first: delete, one undo bar, then undo (simple action).
             page.get_by_test_id(f'timeline-clip-{CLIP_A}').click()

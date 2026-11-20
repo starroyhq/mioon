@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="5d9f45a5aaa61ac9ebb91e33e6608427f9f2d0f4db0e6d36492601463e697840";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="bff6688d6fca1d399abe886fbb1259bf85c5a0ca97f7f88280dad45099b7d998";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -912,12 +912,141 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                 "video",
                 "image"
                ]
+              },
+              "nodeAssetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "nodeName": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 150
+              },
+              "copyFromClipId": {
+               "type": "string",
+               "format": "uuid"
               }
              },
              "required": [
               "kind",
               "clip",
               "beforeClipId"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "insert-asset"
+              },
+              "assetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "trackId": {
+               "anyOf": [
+                {
+                 "type": "string",
+                 "format": "uuid"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              }
+             },
+             "required": [
+              "kind",
+              "assetId",
+              "trackId",
+              "startFrame"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "paste-clip"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "startFrame"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "add-overlay"
+              },
+              "clipId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "trackId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "startFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              },
+              "durationFrames": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991,
+               "exclusiveMinimum": 0
+              },
+              "sourceInFrame": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 9007199254740991
+              },
+              "name": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 200
+              },
+              "assetId": {
+               "type": "string",
+               "format": "uuid"
+              },
+              "copyFromClipId": {
+               "type": "string",
+               "format": "uuid"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "trackId",
+              "startFrame",
+              "durationFrames",
+              "sourceInFrame",
+              "name"
              ],
              "additionalProperties": false
             },
@@ -13614,6 +13743,42 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "clipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "insert-asset"
+     },
+     "assetId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "trackId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "startFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+     }
+    },
+    "required": [
+     "kind",
+     "assetId",
+     "trackId",
+     "startFrame"
     ],
     "additionalProperties": false
    },

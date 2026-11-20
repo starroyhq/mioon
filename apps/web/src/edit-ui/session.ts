@@ -78,6 +78,15 @@ export function format5MoveCommand(clipId: string, beforeClipId: string | null, 
 export function format5MoveOffTrackCommand(clipId: string, trackId: string, startFrame: number, copyNodeId?: string): SequenceSyncCommand {
   return {kind: 'clip-move-off-track', clipId, trackId, startFrame, ...(copyNodeId ? {copyNodeId} : {})};
 }
+/** ED: put one library asset on a track. `trackId: null` means the main track;
+ * the server allocates the board node/clip identities and expands the envelope. */
+export function format5InsertAssetCommand(assetId: string, trackId: string | null, startFrame: number): SequenceSyncCommand {
+  return {kind: 'insert-asset', assetId, trackId, startFrame};
+}
+/** ED: paste the copied clip at the playhead; the server allocates every new id. */
+export function format5PasteClipCommand(clipId: string, startFrame: number): SequenceSyncCommand {
+  return {kind: 'paste-clip', clipId, startFrame};
+}
 
 /** Exact clip patch -> one TS command. Only the fields UI-E2 owns are mapped;
  * anything else is reported as unsupported instead of silently writing it. */
