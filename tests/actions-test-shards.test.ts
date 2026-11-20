@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {discoverTests, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
-import {EXCLUSIVE_TEST_FILES, fullSuiteForPlatform, parseShardArguments, parseTestTimings, partitionFullTests, shardArtifactDirectory, shardFileTimeoutMs, shardPhases, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
+import {EXCLUSIVE_TEST_FILES, duplicateTimingKeys, fullSuiteForPlatform, parseShardArguments, parseTestTimings, partitionFullTests, shardArtifactDirectory, shardFileTimeoutMs, shardPhases, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
 import {runShardFiles} from '../.github/scripts/test-shard-runner.ts';
 import {mergeTestTimings} from '../.github/scripts/test-timings.ts';
 
@@ -260,9 +260,22 @@ test('the timing table must be a bounded per-file map', () => {
     assert.throws(() => parseTestTimings(text), /INVALID_TEST_TIMINGS/);
   }
 });
+test('a duplicated timing-table key is rejected by text instead of silently keeping the last value', () => {
+  const table = (lines: readonly string[]) => `{\n "schema": 1,\n "unit": "seconds",\n "files": {\n${lines.map(line => `  ${line}`).join(',\n')}\n }\n}\n`;
+  assert.deepEqual(duplicateTimingKeys(table(['"tests/a.test.ts": 1', '"tests/b.test.ts": 2'])), []);
+  const duplicated = table(['"tests/a.test.ts": 1', '"tests/b.test.ts": 2', '"tests/a.test.ts": 3']);
+  assert.deepEqual(duplicateTimingKeys(duplicated), ['tests/a.test.ts']);
+  // JSON.parse silently keeps only the last duplicate; the text scan must catch it first.
+  assert.equal((JSON.parse(duplicated) as {files: Record<string, number>}).files['tests/a.test.ts'], 3);
+  assert.throws(() => parseTestTimings(duplicated), /DUPLICATE_TEST_TIMING_KEYS/);
+  assert.throws(() => parseTestTimings(duplicated.replace('"tests/a.test.ts": 1', '"tests/a.test.ts": 1 ')), /DUPLICATE_TEST_TIMING_KEYS/);
+});
+
 test('the committed timing table parses and covers most of the full catalog', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const timings = parseTestTimings(await readFile(path.join(root, TIMINGS_FILE), 'utf8'));
+  const timingsText = await readFile(path.join(root, TIMINGS_FILE), 'utf8');
+  assert.deepEqual(duplicateTimingKeys(timingsText), [], 'the committed timing table must not repeat a test key');
+  const timings = parseTestTimings(timingsText);
   const full = await discoverTests(root, {suite: 'full', platform: 'linux'});
   assert.ok(full.filter(file => timings.has(file)).length >= full.length * 0.9, 'refresh the table with .github/scripts/test-timings.ts');
   // An exclusive file weighs its full recorded time; an unrecorded one would

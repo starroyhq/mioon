@@ -296,7 +296,11 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /canSeed=\{format5 \? false : Boolean\(sortedShots/);
   assert.match(app, /onAddTransition=\{addTimelineTransition\}/, 'UI-E3 restores quick transition add for format 5');
   assert.equal((app.match(/onRippleRemove=\{format5 \? undefined :/g) ?? []).length, 2, 'timeline menu and inspector hide ripple removal');
-  assert.match(app, /onCanvas=\{format5 \? undefined : addNode\} onTimeline=\{addTimelineAsset\}/);
+  // FR-C2 + ED: format 5 keeps both asset-library entries, each in its workspace:
+  // canvas mode adds a board node, editing mode adds a timeline clip.
+  assert.match(app, /onCanvas=\{format5 \? \(workspaceMode === 'canvas' \?/);
+  assert.match(app, /void format5BoardAddAsset\(kind, asset\)/);
+  assert.match(app, /onTimeline=\{format5 \? \(workspaceMode === 'editing' \? addTimelineAsset : undefined\) : addTimelineAsset\}/);
   assert.match(app, /format5AddTimelineAsset/);
   assert.match(app, /format5InsertAssetCommand/);
   assert.match(app, /format5PasteClipCommand/);

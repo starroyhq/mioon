@@ -13,7 +13,7 @@
  */
 import {AppError} from '@mioon/contracts';
 import type {Format5Edge, Format5SubjectBinding} from '@mioon/contracts/project-format5';
-import {format5EdgeSchema, format5SubjectBindingSchema} from '@mioon/contracts/project-format5';
+import {FORMAT5_INPUT_LIMITS, format5EdgeSchema, format5SubjectBindingSchema} from '@mioon/contracts/project-format5';
 import type {
   SequenceEditBoardDelta, SequenceEditBoardEntity, SequenceEditEnvelope, SequenceEditExpectedTarget,
   SequenceEditImpact, SequenceEditStateDelta, SequenceEditTimelineDelta, SubjectBindingOperation,
@@ -139,8 +139,9 @@ function appliedVersion(store: ProjectStore, subjectId: string, versionId: strin
 function assertActiveLimit(store: ProjectStore, shotId: string, exceptId?: string): void {
   const values = store.db.prepare(`SELECT id FROM project.subject_bindings WHERE projectId=? AND shotId=?
     AND bindingMode IN ('follow','locked')`).all(store.projectId, shotId) as Row[];
-  if (values.filter(value => value.id !== exceptId).length >= 8) {
-    throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT', '每个镜头最多绑定 8 个主体或风格', 409, {limit: 8});
+  const limit = FORMAT5_INPUT_LIMITS.subjectBindingsPerShot;
+  if (values.filter(value => value.id !== exceptId).length >= limit) {
+    throw new AppError('SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT', `每个镜头最多绑定 ${limit} 个主体或风格`, 409, {limit});
   }
 }
 
