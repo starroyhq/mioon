@@ -112,7 +112,8 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   const nativePrevis = nativeTools.find(item => item.operation === 'previs.scene.set')!.parameters as {
     properties: {scene: {properties: {figures: {items: {properties: Record<string, unknown>}}}}}};
   assert.equal('subject' in nativePrevis.properties.scene.properties.figures.items.properties, false);
-  // C+A: the core sequence tool keeps only the nine high-frequency actions.
+  // C+A: the core sequence tool keeps only the nine high-frequency actions; ED's
+  // insert-asset rides the on-demand timeline group.
   const actionKinds = (operation: string): string[] => [...mioSequenceActionKindsForOperation(
     operation as Parameters<typeof mioSequenceActionKindsForOperation>[0])];
   assert.deepEqual(actionKinds('sequence.tool.edit').sort(), ['connect', 'copy-move', 'delete-node', 'disconnect',
