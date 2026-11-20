@@ -186,8 +186,10 @@ test('side follows the SA operation kind and every kind maps to one stable name'
   assert.equal(referenceSamples.length, 4);
   assert.equal(trackSamples.length, 2);
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length
-    + trackSamples.length + 1, SEQUENCE_EDIT_OPERATIONS.length);
+    + trackSamples.length + 3, SEQUENCE_EDIT_OPERATIONS.length);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.format.set'), true);
+  assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.placeholder'), true);
+  assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.resize'), true);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');

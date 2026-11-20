@@ -36,6 +36,7 @@ import {
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
 import {previewTimelineFormat, runTimelineFormatSync} from './format5-format-set.ts';
 import {previewTrack, runTrackSync} from './format5-tracks.ts';
+import {previewGenerateInEditing} from './format5-sequence-sync.ts';
 import {previewPrevisAction} from './format5-previs.ts';
 import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edits.ts';
 import {previewDialogueAction, runDialogueAction} from './format5-dialogue.ts';
@@ -143,7 +144,10 @@ function subjectCardCommand(operation: import('../../contracts/src/sequence-edit
   }
 }
 
-export function createFormat5SequenceEditService(store: ProjectStore, options: {readonly clipboardOwner?: object} = {}): {
+export function createFormat5SequenceEditService(store: ProjectStore, options: {
+  readonly clipboardOwner?: object;
+  readonly generationSubmit?: (input: any) => unknown;
+} = {}): {
   preview(input: any): unknown;
   commit(input: any): unknown;
   history(input: {projectId: string}): unknown;
@@ -246,6 +250,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
+    if (input.generateIntent) return previewGenerateInEditing(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      generateIntent: input.generateIntent as never});
     if (input.formatIntent) return previewTimelineFormat(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       formatIntent: input.formatIntent as never});
@@ -287,6 +294,21 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     const actualDigest = sequenceEditInputDigest(envelope);
     if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
     const intents = envelope.intents;
+    if (envelope.generateIntent) {
+      const operation = envelope.generateIntent.operation;
+      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest,
+        ...(operation.kind === 'generate-placeholder' && options.generationSubmit ? {afterApply: () => {
+          options.generationSubmit!({shotId: operation.shotId, expectedRevision: 1,
+            requestId: operation.settings.requestId, providerId: operation.settings.providerId,
+            model: operation.settings.model, parameters: operation.settings.parameters ?? {},
+            ...(operation.settings.connectionId ? {connectionId: operation.settings.connectionId} : {}),
+            ...(operation.settings.configurationRevision !== undefined
+              ? {configurationRevision: operation.settings.configurationRevision} : {}),
+            ...(operation.settings.modelEntryId ? {modelEntryId: operation.settings.modelEntryId} : {})});
+        }} : {})}) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 剪辑里生成没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
     if (envelope.formatIntent) {
       const result = runTimelineFormatSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 画幅没有完成。', 409, {ids: result.ids});
