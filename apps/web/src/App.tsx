@@ -212,7 +212,7 @@ import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
-import {boardDeleteIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent, projectLiveBoard,
+import {boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardVersionIntent, projectLiveBoard,
   subjectBindingDetachOperation, subjectBindingModeOperation, subjectBindingRestoreOperation,
   subjectCardDeleteOperation} from './board-ui/live.ts';
 import type {BoardBinding} from './board-ui/live-session.ts';
@@ -2353,6 +2353,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // second undo stack.
   const format5BoardSessionRef = useRef<BoardUiSession | null>(null);
   const [format5BoardMount, setFormat5BoardMount] = useState<BoardMountView | null>(null);
+  const [format5RevealNodeId, setFormat5RevealNodeId] = useState<string | null>(null);
   const [format5BoardBusy, setFormat5BoardBusy] = useState(false);
   // RI-b: live generation-input projection of the selected shot under the
   // selected exact video connection; the board and property panel share it.
@@ -2402,6 +2403,46 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       return outcome;
     } finally {setFormat5BoardBusy(false);}
+  }
+
+  /** FR-C2: pick a free card slot near the centre of the current board content
+   * (fit-all camera centres that content, so this is the visible middle). */
+  function format5FreeBoardPosition(): {x: number; y: number} {
+    const positions = Object.values(format5BoardProjection?.positions ?? {});
+    const bounds = positions.length ? {
+      minX: Math.min(...positions.map(point => point.x)), maxX: Math.max(...positions.map(point => point.x)),
+      minY: Math.min(...positions.map(point => point.y)), maxY: Math.max(...positions.map(point => point.y)),
+    } : {minX: 0, maxX: 0, minY: 0, maxY: 0};
+    const center = {x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2};
+    const occupied = positions.map(point => ({x: point.x, y: point.y}));
+    for (let ring = 0; ring < 24; ring += 1) {
+      for (let dx = -ring; dx <= ring; dx += 1) for (let dy = -ring; dy <= ring; dy += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+        const candidate = {x: center.x + dx * 310, y: center.y + dy * 300};
+        if (!occupied.some(point => Math.abs(point.x - candidate.x) < 260 && Math.abs(point.y - candidate.y) < 264)) return candidate;
+      }
+    }
+    return {x: bounds.maxX + 120, y: bounds.minY};
+  }
+  function format5BoardNodeType(kind: string): 'image' | 'video' | 'audio' | 'text' | null {
+    return kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null;
+  }
+  async function format5BoardAddAsset(kind: string, asset: AppAsset): Promise<void> {
+    const nodeType = format5BoardNodeType(kind);
+    if (!nodeType) return;
+    const nodeId = globalThis.crypto.randomUUID();
+    const outcome = await format5BoardRun(boardNodeCreateIntent(nodeId, nodeType, asset.name, format5FreeBoardPosition(),
+      {assetId: asset.id}), t('boardUi.notice.assetAdded', {name: asset.name}));
+    if (outcome.ok) {setSelectedId(nodeId); setFormat5RevealNodeId(nodeId);}
+  }
+  async function format5BoardAssetDrop(assetId: string, position: {x: number; y: number}): Promise<void> {
+    const asset = dataRef.current.assets.find(item => item.id === assetId);
+    const nodeType = asset ? format5BoardNodeType(assetKind(asset)) : null;
+    if (!asset || !nodeType) return;
+    const nodeId = globalThis.crypto.randomUUID();
+    const outcome = await format5BoardRun(boardNodeCreateIntent(nodeId, nodeType, asset.name, position,
+      {assetId: asset.id}), t('boardUi.notice.assetAdded', {name: asset.name}));
+    if (outcome.ok) {setSelectedId(nodeId); setFormat5RevealNodeId(nodeId);}
   }
   async function format5BoardUndoNotice(actionId: string): Promise<boolean> {
     const view = await format5BoardSession().history();
@@ -4757,7 +4798,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       { id: 'subjects', label: t('subjects.subjects'), icon: 'subjects', selected: libraryTab === 'subjects', onClick: () => showCompactLibrary('subjects'), focusSelector: '[data-testid=library-subjects-tab]' },
     ]} bottomAction={{ id: 'import', label: t('assets.importLocal'), icon: 'import', disabled: Boolean(busy.import), onClick: () => { if (!clipDraftRef.current?.hasPendingComposition() && !busy.import) fileInput.current?.click(); } }} />)}
     <PanelBoundary name="assets" className={panelOverlay === 'assets' ? 'panel-overlay' : ''} visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
-    <AssetLibrary activeTab={libraryTab} onTabChange={setLibraryTab} annotations={annotations} annotationBlocked={annotationBlocked}  confirm={confirm} timelineUsage={timelineUsage as never} onLocateTimelineUse={locateAssetUse} subjects={subjects as never} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onInspectSubject={id => { void inspectSubject(id); }} subjectDragToBoard={format5 && workspaceMode === 'canvas'} inspectedSubjectId={subjectFocusActive && subjectFocus ? subjectFocus.subjectId : null} onShowTasks={() => openTasks()} dispositions={dispositions as never} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds as Set<string>} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={format5 ? undefined : addNode} onTimeline={format5 ? undefined : addTimelineAsset} onDetectScenes={asset => openSceneDetection(asset, true)} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
+    <AssetLibrary activeTab={libraryTab} onTabChange={setLibraryTab} annotations={annotations} annotationBlocked={annotationBlocked}  confirm={confirm} timelineUsage={timelineUsage as never} onLocateTimelineUse={locateAssetUse} subjects={subjects as never} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onInspectSubject={id => { void inspectSubject(id); }} subjectDragToBoard={format5 && workspaceMode === 'canvas'} inspectedSubjectId={subjectFocusActive && subjectFocus ? subjectFocus.subjectId : null} onShowTasks={() => openTasks()} dispositions={dispositions as never} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds as Set<string>} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={format5 ? (workspaceMode === 'canvas' ? (kind: string, asset: AppAsset) => { void format5BoardAddAsset(kind, asset); } : undefined) : addNode} onTimeline={format5 ? undefined : addTimelineAsset} onDetectScenes={asset => openSceneDetection(asset, true)} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
     {panelOverlay === 'assets' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-assets" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('assets', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
@@ -4773,7 +4814,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
+          onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
         draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
           ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)

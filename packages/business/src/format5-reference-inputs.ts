@@ -29,7 +29,7 @@
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {Format5Edge} from '../../contracts/src/project-format5.ts';
-import {format5EdgeSchema} from '../../contracts/src/project-format5.ts';
+import {FORMAT5_INPUT_LIMITS, format5EdgeSchema} from '../../contracts/src/project-format5.ts';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../contracts/src/board-sequence.ts';
 import {FRAME_REFERENCE_ROLES, REFERENCE_SOURCE_ROLES, defaultReferenceRole, referenceRoleAllowed} from '../../contracts/src/board-sequence.ts';
 import type {SequenceGenerationInputEntryView, SequenceGenerationInputMode, SequenceGenerationInputStatus,
@@ -239,7 +239,7 @@ function compareReferenceEdges(left: ReferenceEdge, right: ReferenceEdge): numbe
   return leftOrder - rightOrder || left.id.localeCompare(right.id);
 }
 
-const REFERENCE_EDGE_LIMIT = 48;
+const REFERENCE_EDGE_LIMIT = FORMAT5_INPUT_LIMITS.referenceEdgesPerShot;
 const FRAME_ROLES = new Set<ChainReferenceRole>(FRAME_REFERENCE_ROLES);
 
 function assertRoleCardinality(store: ProjectStore, shotId: string, role: ChainReferenceRole,
@@ -540,7 +540,7 @@ interface PrevisSceneSource {
  * connected node only contributes what is left. This keeps the frozen job
  * snapshot (copied into the immutable version provenance) bounded even on an
  * extreme board. */
-const PREVIS_SCENE_SUBJECT_INPUT_LIMIT = PREVIS_LIMITS.figures + PREVIS_LIMITS.props;
+const PREVIS_SCENE_SUBJECT_INPUT_LIMIT = FORMAT5_INPUT_LIMITS.previsSceneSubjects;
 
 /** Subjects a previs scene names, in figure-then-prop order. A subject already
  * bound directly to the shot is skipped entirely (its direct binding owns the

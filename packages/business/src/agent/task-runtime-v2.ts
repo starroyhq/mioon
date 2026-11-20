@@ -10,6 +10,7 @@ import {GENERATION_SERVICE_UNAVAILABLE} from '../provider-registry.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
+import {isFormat5Project} from '../sequence-edit.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioProjectRules} from './mio-rules.ts';
@@ -284,6 +285,9 @@ export interface AgentTaskRuntimeOptions {store:Store;agentSettings:AgentSetting
  * current executor; opening this runtime never restarts an interrupted run. */
 export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore=testProjectAppLibrary(store)?.agentPolicy,rules:injectedRules,journal:injectedJournal,readOnly=false,assertMutationAllowed,checksPreflight,onDiagnosticCompleted}:AgentTaskRuntimeOptions){
   assertProjectStore(store);
+  // Format-5 requests use the compact `_mio_step` declaration and the grouped
+  // loader description; formats 3/4 keep their reviewed bytes unchanged.
+  const format5=isFormat5Project(store);
   const sourceJournal:AgentTaskJournal=injectedJournal??createMioProjectJournal(store,policyStore);
   const instanceId=randomUUID(),active=new Map<string,Active>();let closed=false,storageFaulted=false,storageFailureCode='AGENT_TASK_STORAGE_UNAVAILABLE';
   let rules=injectedRules;
@@ -766,9 +770,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }
           const baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run);
           // History is budgeted against this request's own tool catalog.
-          const budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic});
+          const budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic,format5});
           const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});
-          body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});
+          body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic,format5});
           model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),assemblyModelStepIds:[...new Set(fragments.flatMap(fragment=>fragment.modelStepId?[fragment.modelStepId]:[]))],...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
         }
         const knownTools=run.diagnostic?undefined:toolset().list();
@@ -913,7 +917,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // attachment imports. That request still validates the profile and reports
     // its error, so an unsupported configuration keeps the byte budget here.
     let budget:Readonly<TaskHistoryBudget>|undefined;
-    if(historyRuns?.length)try{budget=taskModelHistoryBudget(configuration(dummy),selectTaskModelTools(toolset().list(),undefined,{steps:[],attachments:uploads}),locale,selfPort(),{toolLoading:true});}catch(error){if(!code(error).startsWith('AGENT_CHAT_'))throw error;}
+    if(historyRuns?.length)try{budget=taskModelHistoryBudget(configuration(dummy),selectTaskModelTools(toolset().list(),undefined,{steps:[],attachments:uploads}),locale,selfPort(),{toolLoading:true,format5});}catch(error){if(!code(error).startsWith('AGENT_CHAT_'))throw error;}
     const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,rulesSnapshot,attachments,budget});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
@@ -946,7 +950,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // Reject known overflow in the control transaction, before acknowledging
     // the note. Future model/tool output remains subject to the original caps.
     // This is only a capacity probe: it never submits or changes a saved intent.
-    try{const config=configuration(run),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run),budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic}),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
+    try{const config=configuration(run),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run),budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic,format5}),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic,format5});}
     catch(error){if(code(error)==='AGENT_CHAT_LIMIT')throw agentTaskFailure('AGENT_TASK_NOTE_CAPACITY');throw error;}
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{
