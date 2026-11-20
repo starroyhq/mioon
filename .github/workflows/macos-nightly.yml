@@ -1,0 +1,96 @@
+name: macOS nightly full
+
+# Nightly full-darwin validation on the arm64 macOS runner. Scheduled at
+# 02:00 Beijing time (18:00 UTC). It reuses the reviewed F-card media toolchain
+# (Homebrew ffmpeg@7 with bottle SHA-256 cache, re-hash on hit, capability
+# evidence), runs a single per-file-deadline shard, and skips when main has not
+# advanced since the last successful nightly. It has its own concurrency group
+# with cancel-in-progress false so candidate packaging and PR CI never cancel it.
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+  # Temporary branch-validation trigger. workflow_dispatch cannot run before
+  # this workflow exists on the default branch, so the acceptance run uses this
+  # trigger; it is removed before review.
+  push:
+    branches: [howard/ci-macos-nightly]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-nightly
+  cancel-in-progress: false
+
+jobs:
+  full:
+    name: macOS arm64 full-darwin nightly
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout the nightly revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'main' || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Decide whether main changed since the last successful nightly
+        id: gate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MACOS_NIGHTLY_WORKFLOW_FILE: macos-nightly.yml
+        run: node .github/scripts/macos-nightly-gate.ts
+
+      - name: Prepare the macOS media toolchain
+        if: steps.gate.outputs.run == 'true'
+        uses: ./.github/actions/macos-media-toolchain
+
+      - name: Run the complete macOS full-darwin lane
+        id: full
+        if: steps.gate.outputs.run == 'true'
+        run: node .github/scripts/macos-nightly.ts --concurrency=3
+
+      - name: Write nightly diagnostics
+        if: always()
+        env:
+          GATE_RUN: ${{ steps.gate.outputs.run }}
+          GATE_REASON: ${{ steps.gate.outputs.reason }}
+          FULL_RESULT: ${{ steps.full.outcome }}
+        run: |
+          mkdir -p artifacts/macos-nightly
+          {
+            node --version
+            pnpm --version
+            printf 'gate-run=%s\ngate-reason=%s\nfull-darwin=%s\n' "$GATE_RUN" "$GATE_REASON" "$FULL_RESULT"
+          } > artifacts/macos-nightly/status.log
+          cat artifacts/macos-nightly/status.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload nightly and media evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: macos-nightly-evidence-${{ github.run_id }}
+          path: |
+            artifacts/checks-macos-0/
+            artifacts/macos-nightly/
+            artifacts/macos-media-environment/
+          retention-days: 14
+          if-no-files-found: warn

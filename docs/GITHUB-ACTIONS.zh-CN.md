@@ -88,6 +88,15 @@ gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0
 
 打包诊断中的 `build-timings.jsonl` 记录一次完整 TypeScript 检查、Web 打包、桌面 bundle 和暂存的分阶段耗时。桌面暂存只在私有证据确认同一份源码指纹时跳过重复检查，单独运行桌面暂存仍会检查。`desktop-build` 包含该进程的子阶段。通用包合并和公证在后续打包步骤计时。Apple 芯片 runner 支持按 Homebrew bottle 的完整 SHA-256 缓存 `ffmpeg-full` 下载文件，安装和媒体能力探针仍逐轮执行。Intel 和未找到匹配 bottle 的 runner 沿用 Homebrew 安装。依赖下载使用既有的 pnpm store 缓存。
 
+## macOS 夜间完整测试
+
+`.github/workflows/macos-nightly.yml` 每北京时间 02:00（`cron: '0 18 * * *'`）在 `macos-15` 上跑一次单分片完整 macOS 目录，也可手动 `workflow_dispatch`。
+
+- 读取 `main` 与最近一次成功 nightly 的 head；schedule 时没有新提交就跳过（手动触发和分支验证总是运行）。跳过时仍写 step summary。
+- 单分片：`node .github/scripts/test-shard.ts --index=0 --count=1 --concurrency=3`，`full-darwin` 入口由平台选择；每个文件用与 Linux 相同的 3 倍计时 + 2 分钟、最短 10 分钟、无记录 35 分钟期限；`TMPDIR=/private/tmp`，独占文件按清单先单独跑。
+- 媒体工具链复用 F 卡 action（Homebrew `ffmpeg@7`，瓶子 SHA-256 缓存、命中重算哈希、能力探针与证据），版本/能力写入 `artifacts/macos-media-environment/`。
+- 结果：原始日志、`failures.json`（失败文件 + 用例名、超时单独标记）、`shard.json`/计时产物和媒体证据一起上传为 `macos-nightly-evidence-<run_id>`；step summary 写总时长与失败列表。自有 concurrency group `macos-nightly`、`cancel-in-progress: false`，与候选包和 PR CI 互不取消。单晚超过 90 分钟再提拆成两片。
+
 ## macOS 媒体工具链（手动）
 
 `.github/workflows/macos-media-toolchain.yml`（`workflow_dispatch`）在 `macos-15` 上安装并验证 Homebrew **`ffmpeg@7`**（Homebrew 的 FFmpeg **7.1.5** 版本化 formula），然后运行 `node scripts/tooling.ts test --suite=macos-media --concurrency=2 --reporter=tap`（H0 中需要完整 FFmpeg 能力的 26 个媒体文件）。Linux 仍使用 `checks.yml` 里准备 job 的固定工具链。
