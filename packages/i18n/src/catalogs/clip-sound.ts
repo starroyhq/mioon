@@ -4,7 +4,6 @@ import type {MessageCatalog} from '../types.ts';
 export const clipSoundMessages = {
   'clipSound.split': {'zh-Hans': '切开', 'zh-Hant': '切開', en: 'Split', ja: '分割'},
   'clipSound.clipMenu': {'zh-Hans': '片段菜单', 'zh-Hant': '片段選單', en: 'Clip menu', ja: 'クリップメニュー'},
-  'clipSound.muteSwitch': {'zh-Hans': '片段声音', 'zh-Hant': '片段聲音', en: 'Clip sound', ja: 'クリップの音声'},
   'clipSound.muted': {'zh-Hans': '已静音', 'zh-Hant': '已靜音', en: 'Muted', ja: 'ミュート中'},
   'clipSound.separate': {'zh-Hans': '分离声音', 'zh-Hant': '分離聲音', en: 'Separate sound', ja: '音声を分離'},
   'clipSound.mute': {'zh-Hans': '静音', 'zh-Hant': '靜音', en: 'Mute', ja: 'ミュート'},

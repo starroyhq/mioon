@@ -334,11 +334,10 @@ def main() -> int:
                              'activityGet': sum(1 for entry in rpc_log if entry.get('operation') == 'clip.audio.export.get'),
                              'cancel': sum(1 for entry in rpc_log if entry.get('operation') == 'export.cancel'),
                              'exportGet': sum(1 for entry in rpc_log if entry.get('operation') == 'export.get')}
-            log('accepted save-audio tasks are the exports rows shown by the task center')
-            result['ok'] = True
-            browser.close()
+            # The exports row is the shared read path; the task-center surface is
+            # covered by the component mapping test, not by this page walk.
+            log('accepted save-audio tasks are readable through export.get')
             result['diagnostics'] = diagnostics
-            log('accepted save-audio tasks are the exports rows shown by the task center')
             result['ok'] = True
             browser.close()
     except Exception:  # noqa: BLE001 - report failures as evidence

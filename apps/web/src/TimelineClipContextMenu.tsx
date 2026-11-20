@@ -5,7 +5,7 @@
  * audio asset) sits in the middle, and the generate group owned by a later card
  * keeps a structural insert point. No disabled placeholder items are shown.
  */
-import React, {useEffect, useLayoutEffect, useRef} from 'react';
+import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import type {ClipContextMenuPlan} from './clip-sound-state.ts';
@@ -32,14 +32,27 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
   const menu = useRef<HTMLDivElement | null>(null);
   const items = useRef<HTMLButtonElement[]>([]);
   const anchorRef = useRef<HTMLElement | null>(null);
+  // Open at the pointer, then clamp the rendered box inside the viewport. Both
+  // layout effects settle before paint, so the clamped position never flashes.
+  const [position, setPosition] = useState<{left: number; top: number} | null>(null);
   useLayoutEffect(() => {
-    if (!anchor) return;
+    if (!anchor) {setPosition(null); return;}
     items.current = [];
     anchorRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPosition({left: anchor.x, top: anchor.y});
     const first = menu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
     first?.focus();
     return () => {anchorRef.current?.focus?.();};
   }, [anchor]);
+  useLayoutEffect(() => {
+    if (!anchor || !position) return;
+    const node = menu.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect(), margin = 8;
+    const left = Math.max(margin, Math.min(position.left, window.innerWidth - rect.width - margin));
+    const top = Math.max(margin, Math.min(position.top, window.innerHeight - rect.height - margin));
+    if (left !== position.left || top !== position.top) setPosition({left, top});
+  }, [anchor, position]);
   useEffect(() => {
     if (!anchor) return;
     const close = (event: globalThis.PointerEvent) => {
@@ -69,7 +82,7 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
       data-testid={testId} disabled={!enabled} onClick={() => {onClose(); void action();}}>{label}</Button>;
   let index = 0;
   return <div ref={menu} className="timeline-clip-menu" data-testid="clip-context-menu" role="menu"
-    aria-label={t('clipSound.clipMenu')} style={{left: anchor.x, top: anchor.y}}>
+    aria-label={t('clipSound.clipMenu')} style={position ?? {left: anchor.x, top: anchor.y}}>
     {item('clip-menu-split', t('clipSound.split'), () => onSplit(anchor.clipId), canSplit && !busy, index++)}
     {plan.sound && <>
       <div className="timeline-clip-menu-separator" role="separator" />
