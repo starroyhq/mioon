@@ -269,6 +269,7 @@ test('renderer uses shared components for ordinary controls and modal confirmati
     assert.doesNotMatch(source, /window\.confirm\(/, `${name} must use the cancellable confirmation provider`);
   }
   const app = readFileSync(resolve(renderer, 'App.tsx'), 'utf8');
+  const timelineSource = readFileSync(resolve(renderer, 'Timeline.tsx'), 'utf8');
   const main = readFileSync(resolve(renderer, 'main.tsx'), 'utf8');
   assert.match(main, /<ConfirmationProvider labels=\{\{ title: t\('common.confirmTitle'\), cancel: t\('common.cancel'\), continue: t\('common.continue'\) \}\} renderMessage=\{renderMessage\}>/);
   assert.match(app, /async function inspect\(/);
@@ -295,11 +296,19 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /canSeed=\{format5 \? false : Boolean\(sortedShots/);
   assert.match(app, /onAddTransition=\{addTimelineTransition\}/, 'UI-E3 restores quick transition add for format 5');
   assert.equal((app.match(/onRippleRemove=\{format5 \? undefined :/g) ?? []).length, 2, 'timeline menu and inspector hide ripple removal');
-  // FR-C2: format 5 re-shows the asset library's "add to board" entry through
-  // board.node.create, while the timeline entry stays hidden.
+  // FR-C2 + ED: format 5 keeps both asset-library entries, each in its workspace:
+  // canvas mode adds a board node, editing mode adds a timeline clip.
   assert.match(app, /onCanvas=\{format5 \? \(workspaceMode === 'canvas' \?/);
   assert.match(app, /void format5BoardAddAsset\(kind, asset\)/);
-  assert.match(app, /onTimeline=\{format5 \? undefined : addTimelineAsset\}/);
+  assert.match(app, /onTimeline=\{format5 \? \(workspaceMode === 'editing' \? addTimelineAsset : undefined\) : addTimelineAsset\}/);
+  assert.match(app, /format5AddTimelineAsset/);
+  assert.match(app, /format5InsertAssetCommand/);
+  assert.match(app, /format5PasteClipCommand/);
+  assert.match(app, /format5CopyTimelineClip/);
+  assert.match(app, /onPasteClipboard=\{format5 \?/);
+  assert.match(app, /clipboardPasteAvailable=\{format5ClipboardReady\}/);
+  assert.match(app, /key === 'v'/);
+  assert.match(timelineSource, /timeline-menu-paste/);
   assert.match(app, /onUpdateShot=\{format5BoardUpdateShot\} onGenerateShot=\{format5GenerateShot\}/);
   assert.match(app, /dialogueSubjects=\{format5DialogueSubjects\}/);
   assert.match(app, /dialogueCueCount=/);

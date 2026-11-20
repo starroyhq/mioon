@@ -23,8 +23,13 @@ import {
 import {MATERIALS, buildMaterials} from './materials.mjs';
 import {constantPlan, expectedTargetSamples, outputFramesForSourceFrame, presetPlan} from './timemap.mjs';
 import {
-  atempoChain, atempoFilter, boundaryClick, resampleWithTimeMap, stretchCurveChunked, stretchSplitWithAtempo, stretchWithAtempo,
+  atempoChain, atempoFilter, boundaryClick, resampleWithTimeMap, stretchCurveChunked, stretchCurveChunkedWith,
+  stretchSplitWithAtempo, stretchWithAtempo,
 } from './stretch.mjs';
+import {
+  calibrateRubberbandOffset, rubberbandAvailability, rubberbandChunkProcessor, RUBBERBAND_CANDIDATES,
+  stretchSplitWithRubberband, stretchWithRubberband,
+} from './rubberband.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const thresholds = JSON.parse(readFileSync(join(here, 'thresholds.json'), 'utf8'));
@@ -32,6 +37,8 @@ const args = process.argv.slice(2);
 const valueOf = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
 const flag = name => args.includes(name);
 const ffmpeg = valueOf('--ffmpeg') ?? process.env.MIOON_FFMPEG_PATH;
+const rubberbandFfmpeg = valueOf('--rubberband-ffmpeg') ?? process.env.MIOON_RUBBERBAND_FFMPEG;
+const sweepRubberband = flag('--sweep-rubberband');
 if (!ffmpeg) {
   console.error('SP-E0 gate needs the application FFmpeg: pass --ffmpeg <path> or set MIOON_FFMPEG_PATH.');
   process.exit(2);
@@ -85,7 +92,8 @@ function stretchWithAtempoSimple(input, rate) {
 const calibration = new Map();
 for (const speed of speeds) calibration.set(speed, calibrateAtempo(speed, SPEED_FRACTIONS[String(speed)].numerator / SPEED_FRACTIONS[String(speed)].denominator));
 const report = {profile: thresholds.profile, ffmpeg, ffmpegVersion, sampleRate: SAMPLE_RATE, fps: 30,
-  generatedAt: new Date().toISOString(), rows: [], variants: [], curveRows: [], gate: null};
+  generatedAt: new Date().toISOString(), rows: [], variants: [], curveRows: [], rubberbandCurveRows: [],
+  rubberband: null, comparison: [], gate: null};
 const failures = [];
 const rows = [];
 
@@ -158,14 +166,58 @@ function seamMetrics(whole, split, boundarySample) {
     seamStepDb: round(db(seamStep / Math.max(wholePeak, 1e-12))), seamStepRatio: round(seamStep / Math.max(wholePercentile, 1e-12)),
     boundarySample: boundary};
 }
-function check(scope, metrics) {
+function check(scope, metrics, label = scope) {
   for (const [metric, threshold] of Object.entries(thresholds[scope])) for (const row of metrics) {
     const value = row[metric];
     if (typeof value !== 'number' || !Number.isFinite(value)) continue;
     const limit = typeof threshold === 'number' ? threshold : threshold?.max;
-    if (typeof limit === 'number' && value > limit) failures.push({scope, case: row.case, metric, value, threshold: limit});
+    if (typeof limit === 'number' && value > limit) failures.push({scope: label, case: row.case, metric, value, threshold: limit});
   }
 }
+
+// 0) Optional Rubber Band prototype line: a separate FFmpeg build with the
+// `rubberband` filter. The product media-tools FFmpeg keeps its own matrix.
+let rubberband = null;
+if (rubberbandFfmpeg) {
+  const availability = rubberbandAvailability(rubberbandFfmpeg);
+  const versionResult = spawnSync(rubberbandFfmpeg, ['-hide_banner', '-version'], {encoding: 'utf8'});
+  if (versionResult.status !== 0 || !availability.available) {
+    console.error(`rubberband FFmpeg at ${rubberbandFfmpeg} is not usable (filter missing or failed to run).`);
+    process.exit(2);
+  }
+  const version = (versionResult.stdout.split('\n')[0] ?? '').replace(/^ffmpeg version /u, '').split(' ')[0];
+  const calibrationSamples = new Map();
+  for (const speed of speeds) calibrationSamples.set(speed, calibrateRubberbandOffset(rubberbandFfmpeg, speed));
+  rubberband = {ffmpeg: rubberbandFfmpeg, version, availability, calibrationSamples, sweep: []};
+  report.rubberband = {ffmpeg: rubberbandFfmpeg, version, availability,
+    calibrationMs: Object.fromEntries([...calibrationSamples].map(([speed, samples]) =>
+      [speed, roundMs(samples / (SAMPLE_RATE / 1000))]))};
+  if (sweepRubberband) {
+    // Small documented sweep: 14 filter combinations on the transient and
+    // speech-tail materials at the extreme and middle speeds. The default
+    // matrix below uses the fixed selection in rubberband.mjs.
+    rubberband.sweep = [];
+    for (const params of RUBBERBAND_CANDIDATES) {
+      for (const speed of speeds.filter(value => [0.1, 0.5, 10].includes(value))) {
+        const calibration = calibrateRubberbandOffset(rubberbandFfmpeg, speed, params);
+        for (const material of materials.filter(item => ['transient', 'speech-tail'].includes(item.name))) {
+          const bundle = constantPlan(material, SPEED_FRACTIONS[String(speed)]);
+          const started = performance.now();
+          const processed = stretchWithRubberband(rubberbandFfmpeg, material.samples, bundle, speed, {params, calibration});
+          const tail = measureTail(processed.samples, bundle, material);
+          const transients = measureTransients(processed.samples, bundle, material);
+          rubberband.sweep.push({candidate: {...params}, material: material.name, speed,
+            durationErrorSamples: processed.samples.length / 2 - bundle.totalSamples,
+            calibrationOffsetSamples: calibration, unexplainedTailMs: tail.unexplainedMs,
+            transientDeviationMs: transients?.maxMs ?? null,
+            elapsedMs: Math.round(performance.now() - started)});
+        }
+      }
+    }
+    report.rubberband.sweep = rubberband.sweep;
+  }
+}
+function roundMs(value) {return Math.round(value * 100) / 100;}
 
 // 1) Pitch-preserving atempo matrix.
 for (const material of materials) for (const speed of speeds) {
@@ -225,6 +277,30 @@ for (const material of materials) for (const speed of speeds) {
     transientDeviationMs: transients?.maxMs ?? null, transientCompensatedMs: transients?.maxMs ?? null,
     phaseDeviationMs: phase.deviationMs, seamMaxDiffDb: -120, seamStepDb: -120, seamStepRatio: 0, seamClickRatio: 1, chain: 'resample'});
 }
+// 3b) Rubber Band pitch-preserving matrix (separate FFmpeg build).
+if (rubberband) for (const material of materials) for (const speed of speeds) {
+  const bundle = constantPlan(material, SPEED_FRACTIONS[String(speed)]);
+  const calibration = rubberband.calibrationSamples.get(speed);
+  const started = performance.now();
+  const processed = stretchWithRubberband(rubberband.ffmpeg, material.samples, bundle, speed, {calibration});
+  const tail = measureTail(processed.samples, bundle, material);
+  const transients = measureTransients(processed.samples, bundle, material);
+  const phase = measurePhase(material, processed.samples, speed);
+  const splitSample = Math.round(material.audioFrames * 0.45);
+  const split = stretchSplitWithRubberband(rubberband.ffmpeg, material.samples, bundle, speed, splitSample, {calibration});
+  const seam = seamMetrics(processed.samples, split.samples, split.splitOutputSample);
+  rows.push({phase: 'rubberband', case: `${material.name}@${speed}x`, material: material.name, speed,
+    durationFrames: bundle.durationFrames, totalSamples: bundle.totalSamples, normalizedSamples: processed.samples.length / 2,
+    naturalErrorMs: roundMs((processed.rawFrames - bundle.totalSamples) / (SAMPLE_RATE / 1000)),
+    durationErrorSamples: processed.samples.length / 2 - bundle.totalSamples,
+    tail: tail.tailMs, intentionalTailMs: tail.intentionalMs, unexplainedTailMs: tail.unexplainedMs,
+    transientDeviationMs: transients?.maxMs ?? null, transientCompensatedMs: transients?.maxMs ?? null,
+    calibrationOffsetMs: roundMs(calibration / (SAMPLE_RATE / 1000)), phaseDeviationMs: phase.deviationMs,
+    seamMaxDiffDb: seam.maxDiffDb, seamStepDb: seam.seamStepDb, seamStepRatio: seam.seamStepRatio, seamClickRatio: seam.clickRatio,
+    chain: `rubberband tempo=${speed} pitch=1 transients=smooth window=short phase=laminar smoothing=off formant=shifted pitchq=speed channels=apart`,
+    elapsedMs: Math.round(performance.now() - started)});
+}
+
 // 4) Chunked curve prototype (only materials with a real tail and transients).
 if (!skipCurve) for (const preset of ['slowMiddle', 'fastToSlow']) for (const material of materials.filter(item => ['speech-tail', 'transient', 'sustain'].includes(item.name))) {
   const bundle = presetPlan(material, preset);
@@ -248,10 +324,65 @@ if (!skipCurve) for (const preset of ['slowMiddle', 'fastToSlow']) for (const ma
   rows.push(row);
 }
 
+// 4b) Rubber Band curve: same SP-M chunk mapping but each chunk is stretched by
+// the rubberband filter; the chunk processor caches a calibrated latency per
+// rounded tempo value.
+if (rubberband && !skipCurve) for (const preset of ['slowMiddle', 'fastToSlow']) for (const material of materials.filter(item => ['speech-tail', 'transient', 'sustain'].includes(item.name))) {
+  const bundle = presetPlan(material, preset);
+  const processor = rubberbandChunkProcessor(rubberband.ffmpeg, undefined, new Map());
+  const started = performance.now();
+  const processed = stretchCurveChunkedWith(processor, material, bundle, {chunkFrames: 9, contextFrames: 1, overlapFrames: 0.5});
+  const tail = measureTail(processed.samples, bundle, material);
+  const transients = measureTransients(processed.samples, bundle, material);
+  const boundary = boundaryClick(processed.samples, processed.boundaries, Math.round(0.002 * SAMPLE_RATE));
+  const firstDifferences = [];
+  for (let index = 1 + 960; index < processed.samples.length / 2 - 960; index += 37) firstDifferences.push(maxFirstDifference(processed.samples, index, index + 1));
+  const globalJump = percentile(firstDifferences, 0.995);
+  const row = {phase: 'rubberband-curve', case: `${material.name}/${preset}`, material: material.name, preset,
+    durationFrames: bundle.durationFrames, totalSamples: bundle.totalSamples,
+    normalizedSamples: processed.samples.length / 2, naturalErrorMs: 0,
+    durationErrorSamples: processed.samples.length / 2 - bundle.totalSamples,
+    tail: tail.tailMs, intentionalTailMs: tail.intentionalMs, unexplainedTailMs: tail.unexplainedMs,
+    transientDeviationMs: transients?.maxMs ?? null, phaseDeviationMs: null,
+    chunkBoundaryJumpDb: round(db(boundary.maxBoundaryJump / Math.max(boundary.peak, 1e-12))),
+    chunkBoundaryClickRatio: round(boundary.maxBoundaryJump / Math.max(globalJump, 1e-9)),
+    chunks: processed.chunkCount, elapsedMs: Math.round(performance.now() - started)};
+  report.rubberbandCurveRows.push(row);
+  rows.push(row);
+}
+
 // Gate evaluation.
 check('atempo', rows.filter(row => row.phase === 'atempo'));
+check('atempo', rows.filter(row => row.phase === 'rubberband'), 'rubberband');
 check('resample', rows.filter(row => row.phase === 'resample'));
-check('curve', report.curveRows);
+check('curve', [...report.curveRows, ...report.rubberbandCurveRows]);
+if (rubberband) {
+  const rowFailures = (scope, row) => Object.entries(thresholds[scope]).filter(([metric, threshold]) => {
+    const value = row[metric];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    const limit = typeof threshold === 'number' ? threshold : threshold?.max;
+    return typeof limit === 'number' && value > limit;
+  }).map(([metric]) => metric);
+  const cases = [...new Set(rows.map(row => row.case))];
+  report.comparison = cases.map(testCase => {
+    const atempo = rows.find(row => row.phase === 'atempo' && row.case === testCase);
+    const resample = rows.find(row => row.phase === 'resample' && row.case === testCase);
+    const rubber = rows.find(row => row.phase === 'rubberband' && row.case === testCase);
+    const curveAtempo = report.curveRows.find(row => row.case === testCase);
+    const curveRubber = report.rubberbandCurveRows.find(row => row.case === testCase);
+    return {case: testCase,
+      atempo: atempo ? {transientMs: atempo.transientDeviationMs, tailMs: atempo.unexplainedTailMs,
+        failed: rowFailures('atempo', atempo)} : null,
+      resample: resample ? {transientMs: resample.transientDeviationMs, tailMs: resample.unexplainedTailMs,
+        failed: rowFailures('resample', resample)} : null,
+      rubberband: rubber ? {transientMs: rubber.transientDeviationMs, tailMs: rubber.unexplainedTailMs,
+        failed: rowFailures('atempo', rubber)} : null,
+      curveAtempo: curveAtempo ? {transientMs: curveAtempo.transientDeviationMs, tailMs: curveAtempo.unexplainedTailMs,
+        failed: rowFailures('curve', curveAtempo)} : null,
+      curveRubberband: curveRubber ? {transientMs: curveRubber.transientDeviationMs,
+        tailMs: curveRubber.unexplainedTailMs, failed: rowFailures('curve', curveRubber)} : null};
+  });
+}
 report.rows = rows;
 report.gate = {passed: failures.length === 0, failures, thresholds: thresholds,
   measured: {atempo: rows.filter(row => row.phase === 'atempo').length, resample: rows.filter(row => row.phase === 'resample').length,
@@ -268,6 +399,15 @@ for (const row of report.rows) {
 if (report.variants.length) {
   console.log('\nEdge-tail mitigation variants (unexplained tail ms):');
   for (const variant of report.variants) console.log(`${variant.case}\t${variant.variant}\t${variant.unexplainedTailMs}`);
+}
+if (report.comparison.length) {
+  console.log('\nThree-line comparison (PASS = no threshold failure for the case):');
+  console.log(['case', 'atempo', 'resample', 'rubberband'].join('\t'));
+  const verdict = row => row ? (row.failed.length ? `FAIL/${row.failed.join(',')}` : 'PASS') : '-';
+  for (const row of report.comparison) console.log([row.case,
+    row.curveAtempo ? `curve:${verdict(row.curveAtempo)}` : verdict(row.atempo),
+    verdict(row.resample),
+    row.curveRubberband ? `curve:${verdict(row.curveRubberband)}` : verdict(row.rubberband)].join('\t'));
 }
 console.log(`\nFFmpeg ${ffmpegVersion}; report ${outputPath}`);
 console.log(report.gate.passed ? 'GATE PASS' : `GATE FAIL (${failures.length} failure${failures.length === 1 ? '' : 's'})`);

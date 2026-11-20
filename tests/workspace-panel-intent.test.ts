@@ -9,7 +9,9 @@ import { stripSourceTypes } from './helpers/eval-source.ts';
 // acceptance separately holds the real HTTP acknowledgement after SQLite commit.
 const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const start = source.indexOf('  async function addTimelineAsset(');
-const end = source.indexOf('  async function returnToSource(', start);
+// The format-5 helper block sits between the legacy function and returnToSource;
+// slice exactly the bridge body under test.
+const end = source.indexOf('  async function format5AddTimelineAsset(', start);
 assert.ok(start > 0 && end > start);
 const bridgeSource = source.slice(start, end).trim();
 const mobileStart = source.indexOf('  function mobileNavigate(');
