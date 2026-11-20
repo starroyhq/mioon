@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createFormat5ExportTicket, assertFormat5ExportAdmissible} from '../packages/business/src/format5-timeline-export.ts';
+import {getFormat5TimelineIssue} from '../packages/contracts/src/project-format5.ts';
 import {adoptFormat5GeneratedVersionInside} from '../packages/business/src/format5-sequence-sync.ts';
 import {previewMioSequenceAction, commitMioSequenceAction} from '../packages/business/src/format5-mio-sequence.ts';
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
@@ -101,9 +102,10 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
   assert.equal(readyClip.sourceState, 'ready');
   assert.equal(readyClip.versionId, versionId);
   assert.equal(readyClip.assetId, assetId);
-  assert.equal(readyClip.durationFrames, 120);
-  for (const item of shifted) assert.equal(ready.clips.find((clip: any) => clip.id === item.id).startFrame,
-    item.startFrame + 60);
+  // Adoption keeps the edit's clip parameters; it does not stretch the cut to
+  // the full source length or move following clips.
+  assert.equal(readyClip.durationFrames, 60);
+  for (const item of shifted) assert.equal(ready.clips.find((clip: any) => clip.id === item.id).startFrame, item.startFrame);
   // The video's own audio follows the picture through the existing clip gain path.
   const gainPreview = await services.call('sequence.preview', {projectId, requestId: `gain-${randomUUID()}`,
     propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties',
@@ -117,6 +119,29 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
   f.store.put('shots', {...(f.store.get('shots', shotId) as any), revision: 2});
   const revisedAdopt = f.store.tx(() => adoptFormat5GeneratedVersionInside(f.store, job, {id: versionId, assetId}));
   assert.equal(revisedAdopt, false);
+  // The same completion rule covers any format-5 shot with a follow placeholder,
+  // not just shots created by edit generation. shotB's clipB is such a placeholder.
+  f.store.put('shots', {...(f.store.get('shots', shotId) as any), revision: 1});
+  const otherShotId = '70000000-0000-4000-8000-000000000004';
+  const otherAssetId = randomUUID(), otherVersionId = randomUUID();
+  const otherJob = {id: randomUUID(), projectId, shotId: otherShotId, snapshot: {shotRevision: 1}};
+  let otherAdopted = false;
+  f.store.put('assets', {id: otherAssetId, projectId, name: 'board-generated.mp4', mimeType: 'video/mp4',
+    duration: 4, sha256: 'c'.repeat(64), createdAt: at});
+  f.store.put('versions', {id: otherVersionId, projectId, shotId: otherShotId, jobId: otherJob.id,
+    assetId: otherAssetId, sha256: 'c'.repeat(64), createdAt: at});
+  f.store.tx(() => {
+    otherAdopted = adoptFormat5GeneratedVersionInside(f.store, otherJob, {id: otherVersionId, assetId: otherAssetId});
+    console.error('OTHER ISSUE', getFormat5TimelineIssue(f.store.get('timelines', BOARD_IDS.timeline), {projectId}));
+    console.error('VERSION', JSON.stringify(f.store.get('versions', otherVersionId)));
+  });
+  assert.equal(otherAdopted, true);
+  const otherReady = f.store.get('timelines', BOARD_IDS.timeline) as any;
+  const boardReadyClip = otherReady.clips.find((item: any) => item.sequenceSource?.nodeId === otherShotId);
+  assert.equal(boardReadyClip.sourceState, 'ready');
+  assert.equal(boardReadyClip.versionId, otherVersionId);
+  assert.equal(boardReadyClip.startFrame, 120);
+  assert.equal(boardReadyClip.durationFrames, 120);
   await services.drain();
   f.store.close();
 });

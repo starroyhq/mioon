@@ -1590,42 +1590,28 @@ export function adoptFormat5GeneratedVersionInside(store: ProjectStore,
   if (!format5(store) || job.projectId !== store.projectId) return false;
   const context = readSyncContext(store);
   const shot = context.shots.get(job.shotId);
+  // First ready version of any format-5 shot: only the frozen shot revision and
+  // an unselected shot may adopt it. A late result records the version and stops.
   if (!shot || shot.selectedVersionId !== null || shot.revision !== job.snapshot.shotRevision) return false;
+  if (!context.assets.has(String(version.assetId))) return false;
+  // Follow-mode main pieces and other-track placeholders keep their editing
+  // parameters (start, duration, sourceInFrame, gain, rect, fades, anchor/group);
+  // only the source identity changes from "not generated yet" to this version.
   const placeholders = context.timeline.clips.filter(clip => clip.sourceState === 'placeholder'
-    && (clip.sequenceSource?.nodeId === job.shotId || clip.shotId === job.shotId));
-  if (placeholders.length !== 1) return false;
-  const placeholder = placeholders[0]!;
-  const asset = context.assets.get(String(version.assetId));
-  const frames = sourceFrameCount(asset?.duration);
-  if (frames === null) return false;
-  if (placeholder.trackId !== context.timeline.mainTrack.trackId) {
-    const {shotId:_shot, ...base} = placeholder;
-    void _shot;
-    const ready: Format5Clip = {...base, assetId: String(version.assetId), versionId: String(version.id),
-      jobId: job.id, sourceState: 'ready', durationFrames: frames, shotId: job.shotId};
-    const applied = applyTimelineDelta(store, {clips: [ready], cues: [], removedClipIds: [], removedCueIds: [],
-      baseline: {kind: 'unchanged'}}, context);
-    return applied.changed;
-  }
-  const plan = planChainSync(saState(context), {kind: 'board-version', nodeId: job.shotId,
-    version: {id: String(version.id), sourceFrames: frames}});
-  if (plan.ok === false) return false;
-  const envelope = {allocation: {clips: [], nodes: [], splitClips: [], edges: []}} as unknown as SequenceEditEnvelope;
-  const board = boardPlanEntities(context, plan, envelope);
-  if ('ok' in board && board.ok === false) return false;
-  const boardEntities = board as BoardPlanEntities;
-  const projected = patchMainTimeline(context, plan, boardEntities.extraShots);
-  if (projected.ok === false) return false;
-  const nextTimeline = projected.projection.timeline;
+    && (clip.sequenceSource?.kind === 'shot' && clip.sequenceSource.nodeId === job.shotId
+      || clip.shotId === job.shotId));
+  if (placeholders.length === 0) return false;
+  const ready = placeholders.map(clip => ({...clip, assetId: String(version.assetId),
+    versionId: String(version.id), jobId: job.id, shotId: job.shotId, sourceState: 'ready' as const} as Format5Clip));
+  const nextTimeline: Format5Timeline = {...context.timeline,
+    clips: context.timeline.clips.map(clip => ready.find(item => item.id === clip.id) ?? clip)};
   if (validateAnchoredTimeline(nextTimeline)) return false;
-  const nextShot = {...shot, selectedVersionId: String(version.id)};
-  const nextBaseline = buildBaseline(context, nextTimeline, new Map([[job.shotId, nextShot]]),
-    boardEntities.extraShots, boardEntities.extraNodeKinds, boardEntities.extraNodeRows);
-  const patch = timelineDeltaPair(context, nextTimeline, plan, boardEntities, nextBaseline, [],
-    projected.projection);
-  applyBoardDelta(store, boardEntities.after);
-  applyTimelineDelta(store, patch.after.timeline, context);
-  applyBaselineDelta(store, context, patch.after.timeline.baseline);
+  const nextShot = {...shot, selectedVersionId: String(version.id), updatedAt: now()};
+  const nextBaseline = buildBaseline(context, nextTimeline, new Map([[job.shotId, nextShot]]));
+  const applied = applyTimelineDelta(store, {clips: ready, cues: [], removedClipIds: [], removedCueIds: [],
+    baseline: {kind: 'unchanged'}}, context);
+  if (!applied.changed) return false;
+  applyBaselineDelta(store, context, {kind: 'set', value: nextBaseline});
   return true;
 }
 
