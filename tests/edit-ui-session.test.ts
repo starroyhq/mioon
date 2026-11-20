@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5PasteStartFrame,
-  format5UserUndoBlocked, format5MoveCommand, format5PatchCommand, format5Projection, format5SplitCommand, format5TrimCommand, format5VersionCommand,
+  format5UserUndoBlocked, format5MoveCommand, format5PatchCommand, format5Projection, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5VersionCommand,
 } from '../apps/web/src/edit-ui/session.ts';
 import type {SequenceRpc} from '../apps/web/src/edit-ui/session.ts';
 import {LostResponseState, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
@@ -124,6 +124,21 @@ test('undo/redo bind the exact history cursor the caller read', async () => {
   for (const code of ['COPY_NODE_REQUIRED', 'SEQUENCE_EDIT_ANCHOR_CONFLICT', 'SEQUENCE_EDIT_REVISION_CONFLICT', 'OTHER']) {
     assert.match(format5CommandErrorMessageKey(code), /^editUi\.error\./);
   }
+  // FR-B2 scene refusals keep the format 3/4 reasons instead of the generic one.
+  assert.equal(format5CommandErrorMessageKey('NOTHING_TO_SPLIT'), 'scene.split.nothing');
+  assert.equal(format5CommandErrorMessageKey('SEQUENCE_EDIT_SCENE_RESULT_CONFLICT'), 'scene.error.resultConflict');
+  assert.equal(format5CommandErrorMessageKey('SEQUENCE_EDIT_SCENE_RESULT_STALE'), 'scene.error.resultStale');
+});
+
+test('scene split notice reports the applied count and the skipped count', () => {
+  assert.deepEqual(format5SceneSplitNotice(undefined), {key: 'scene.split.done', params: {count: 0, skipped: 0}});
+  const split = (length: number) => Array.from({length}, () => ({clipId: crypto.randomUUID(), clipIds: [crypto.randomUUID(), crypto.randomUUID()],
+    cutFrames: [30], fadeCutFrames: []}));
+  const skipped = (length: number) => Array.from({length}, () => ({clipId: crypto.randomUUID(), reason: 'NO_CUT_IN_RANGE' as const}));
+  assert.deepEqual(format5SceneSplitNotice({split: split(3) as never, skipped: []}),
+    {key: 'scene.split.done', params: {count: 3, skipped: 0}});
+  assert.deepEqual(format5SceneSplitNotice({split: split(3) as never, skipped: skipped(2) as never}),
+    {key: 'scene.split.doneSkipped', params: {count: 3, skipped: 2}});
 });
 
 test('format-5 projection maps persisted sources, statuses, anchors and shot identity', () => {

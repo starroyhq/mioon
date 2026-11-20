@@ -136,8 +136,23 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
     case 'SEQUENCE_EDIT_SOUND_INVALID': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
     case 'FORMAT5_CAPACITY': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
+    // FR-B2 scene split refusals keep the format 3/4 reasons instead of the
+    // generic failure: no usable cut, or the shown result is no longer usable.
+    case 'NOTHING_TO_SPLIT': return 'scene.split.nothing';
+    case 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT': return 'scene.error.resultConflict';
+    case 'SEQUENCE_EDIT_SCENE_RESULT_STALE': return 'scene.error.resultStale';
     default: return 'editUi.error.GENERIC';
   }
+}
+
+/** The one-line result of a scene split for the format-5 undo bar: how many
+ * clips were split, and how many were skipped because their source range had
+ * no usable cut (or only cuts inside a fade). Format 3/4 shows the same two
+ * messages as toasts. */
+export function format5SceneSplitNotice(sceneSplit: SequenceEditReceipt['sceneSplit']):
+  {key: 'scene.split.done' | 'scene.split.doneSkipped'; params: {count: number; skipped: number}} {
+  const count = sceneSplit?.split.length ?? 0, skipped = sceneSplit?.skipped.length ?? 0;
+  return {key: skipped ? 'scene.split.doneSkipped' : 'scene.split.done', params: {count, skipped}};
 }
 
 function versionOf(versions: readonly AppVersion[], id: string | null | undefined): EditUiVersion | null {

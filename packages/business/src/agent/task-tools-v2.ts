@@ -267,7 +267,7 @@ export interface MioSequencePreparation {readonly plan:MioSequencePlan|MioSequen
 /** Loadable sequence group operations share the one bounded expansion path. */
 const MIO_SEQUENCE_WRITE_OPERATIONS:ReadonlySet<string>=new Set<string>(MIO_SEQUENCE_GROUP_OPERATIONS);
 const isMioSequenceWriteOperation=(operation:string):boolean=>MIO_SEQUENCE_WRITE_OPERATIONS.has(operation);
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation;canvasCopy?:MioCanvasCopyPreparation;sequence?:MioSequencePreparation}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation;canvasCopy?:MioCanvasCopyPreparation;sequence?:MioSequencePreparation;generatedTargets?:{kind:string;id:string}[]}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -753,7 +753,19 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   let expected:AgentTaskTarget|undefined;
   try{
    assertAgentTaskBindingEffect(db,binding);
-   expected=journal.step(binding.stepId).targets?.find(item=>item.kind===target.kind&&item.id===target.id);if(!expected)fail('AGENT_TASK_TARGET_CHANGED','后台结果没有此目标的修改权限');journal.assertTargets(binding.projectId,[expected]);return true;
+   const step=journal.step(binding.stepId),data=object(step.data)?step.data:{},
+    executed=Array.isArray(data.executedTargets)?data.executedTargets as unknown as AgentTaskTarget[]:[],
+    stepTargets=[...(step.targets??[]),...executed];
+   expected=stepTargets.find(item=>item.kind===target.kind&&item.id===target.id);if(!expected)fail('AGENT_TASK_TARGET_CHANGED','后台结果没有此目标的修改权限');
+   const ledger=journal.targetRevision(binding.projectId,target.kind,target.id),
+    row=target.kind==='shot'?store.get('shots',target.id):undefined,
+    rowRevision=object(row)&&Number.isSafeInteger(row.revision)?Number(row.revision):0;
+   // A newly created target has no pre-effect ledger row until the domain
+   // trigger runs. Its own row revision is the same monotonic identity; use it
+   // only when the ledger is absent, never to bypass an existing revision.
+   if(ledger===0&&rowRevision>0){if(rowRevision!==expected.revision)fail('AGENT_TASK_TARGET_CHANGED','后台结果没有此目标的修改权限');}
+   else journal.assertTargets(binding.projectId,[expected]);
+   return true;
   }catch(error){
    const failure=object(error)&&typeof error.code==='string'?error.code:'',targetFailure=failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED';
    const knownGate=isAgentTaskEffectBlocked(error)&&['AGENT_TASK_TARGET_SKIPPED','AGENT_TASK_STOPPED','AGENT_TASK_PAUSED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_SETTINGS_CHANGED','AGENT_TASK_APPROVAL_REQUIRED','AGENT_TASK_EFFECT_BLOCKED','AGENT_TASK_ABORTED','ABORT_ERR','AGENT_TASK_CLOSED','AGENT_TASK_READ_ONLY'].includes(failure);
@@ -855,6 +867,14 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
    if(action.kind==='generate'&&action.placement.kind==='main'&&action.placement.beforeClipId)add('timeline_clip',action.placement.beforeClipId);
    const plan=previewMioSequenceAction(store,projectId,randomUUID(),action,locale!==undefined?{locale}:undefined);
+   // A generate action creates a shot and a placeholder clip inside this same
+   // step. They have no pre-edit target row, so record their identities for the
+   // runtime to resolve after the effect; the job target gate then sees them.
+   const generatedTargets:{kind:string;id:string}[]=[];
+   if(action.kind==='generate')for(const clip of plan.envelope.allocation.clips){
+    for(const target of [{kind:'shot',id:clip.nodeId},{kind:'timeline_clip',id:clip.clipId}])
+     if(!generatedTargets.some(item=>item.kind===target.kind&&item.id===target.id))generatedTargets.push(target);
+   }
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','dialogue',
@@ -867,7 +887,8 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    // confirmation as generation.submit instead of the local-reversible path.
    const risk:AgentTaskTier=action.kind==='generate'?'paid':'local_reversible';
    return {projectId,operation,input:parsed.data as unknown as Value,risk,targets,before,
-     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary}};
+     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary},
+     ...(generatedTargets.length?{generatedTargets}:{})};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
   if(!parsed.success)fail('VALIDATION_ERROR','序列撤销参数无效：actionId 可选；省略时撤销栈顶 Mio 动作');
@@ -1093,15 +1114,23 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
   if(prepared.sequence){
    if(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
-   context.beforeEffect();context.signal?.throwIfAborted();
-   const receipt=prepared.sequence.action==='undo'
-     ? applyMioSequenceUndo(store,prepared.sequence.plan as MioSequenceUndoPlan)
-     : commitMioSequenceAction(store,prepared.sequence.plan as MioSequencePlan,{generationSubmit:services.createGenerationJobInside});
-   const impact=receipt.affected;
-   const result=json({action:prepared.sequence.action,status:receipt.status,
-     affected:impact,history:{position:receipt.history.position,revision:receipt.history.revision},
-     ...(prepared.sequence.summary?{planned:prepared.sequence.summary.counts}:{})});
-   return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:false};
+   // Sequence writes, including the paid generation job, share the task effect
+   // origin so the background completion is bound and gated like any Mio job.
+   const origin:AgentTaskEffectOrigin={...context,beforeEffect:()=>{},projectId:prepared.projectId,
+     operation:prepared.operation,recorded:false};
+   preparedOrigins.set(origin,prepared);
+   const sequence=prepared.sequence;
+   return withTaskEffectOrigin(origin,async()=>{
+    context.beforeEffect();context.signal?.throwIfAborted();
+    const receipt=sequence.action==='undo'
+      ? applyMioSequenceUndo(store,sequence.plan as MioSequenceUndoPlan)
+      : commitMioSequenceAction(store,sequence.plan as MioSequencePlan,{generationSubmit:services.createGenerationJobInside});
+    const impact=receipt.affected;
+    const result=json({action:sequence.action,status:receipt.status,
+      affected:impact,history:{position:receipt.history.position,revision:receipt.history.revision},
+      ...(sequence.summary?{planned:sequence.summary.counts}:{})});
+    return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:false};
+   });
   }
   if(isMioCanvasCopyOperation(prepared.operation)){
    const {projectId,operation,canvasCopy:copy}=prepared;
