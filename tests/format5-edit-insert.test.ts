@@ -180,3 +180,32 @@ test('pasting a shot copies its dialogue with fresh line ids and projects both s
   const restoredSource = undone.shots.find((shot: Row) => shot.id === '90000000-0000-4000-8000-000000000003');
   assert.equal(restoredSource.dialogue[0].id, '90000000-0000-4000-8000-000000000091');
 });
+
+test('copying a main-track media clip allocates a new media node and node identity', async t => {
+  const f = await createEditUiWireFixture();
+  t.after(() => {f.store.close(); f.library.close();});
+  const call = async (operation: string, input: Row): Promise<Row> => await f.services.call(operation, input) as Row;
+  const execute = async (command: SequenceSyncCommand): Promise<Row> => {
+    const requestId = `ui-${crypto.randomUUID()}`, actionId = crypto.randomUUID();
+    const preview = await call('sequence.preview', {projectId: f.projectId, requestId, actionId,
+      intents: [sequenceSyncIntent(command)]});
+    assert.ok(preview.envelope, JSON.stringify(preview));
+    await call('sequence.commit', {projectId: f.projectId, envelope: preview.envelope,
+      expectedPlanDigest: preview.planDigest});
+    return await call('project.get', {projectId: f.projectId});
+  };
+  const before = await call('project.get', {projectId: f.projectId});
+  await execute({kind: 'insert-asset', assetId: '90000000-0000-4000-8000-000000000011', trackId: null, startFrame: 150});
+  const inserted = await call('project.get', {projectId: f.projectId});
+  const media = inserted.timeline.clips.find((clip: Row) => clip.startFrame === 150 && clip.trackId === '90000000-0000-4000-8000-000000000060');
+  assert.ok(media && media.sequenceSource.kind === 'media');
+  const copied = await execute({kind: 'paste-clip', clipId: media.id, startFrame: 30});
+  assert.equal(copied.timeline.clips.length, before.timeline.clips.length + 2);
+  const pasted = copied.timeline.clips.find((clip: Row) => !inserted.timeline.clips.some((old: Row) => old.id === clip.id));
+  assert.ok(pasted, 'pasted media clip exists');
+  assert.equal(pasted.assetId, media.assetId);
+  assert.notEqual(pasted.sequenceSource.nodeId, media.sequenceSource.nodeId);
+  const view = await call('sequence.history.get', {projectId: f.projectId});
+  await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${crypto.randomUUID()}`,
+    actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}});
+});

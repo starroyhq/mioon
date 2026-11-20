@@ -781,8 +781,11 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
   if (source.trackId === mainTrackId) {
     const ids = allocated ?? {nodeId: randomUUID(), clipId: randomUUID()};
     if (!allocated) allocation.push(ids);
+    // A media node uses its asset ID as the playable media identity; a shot
+    // copy uses the applied immutable version ID.
+    const copiedVersionId = source.sequenceSource?.kind === 'media' ? source.assetId : source.versionId ?? null;
     const addEdit: TrackSyncEdit = {kind: 'add', clip: {id: ids.clipId, nodeId: ids.nodeId,
-      versionId: source.versionId ?? null, versionLocked: false, startFrame: 0,
+      versionId: copiedVersionId, versionLocked: false, startFrame: 0,
       durationFrames: source.durationFrames, sourceInFrame: source.sourceInFrame, splitGroupId: ids.clipId},
       beforeClipId: insertionBefore(context, edit.startFrame), copyFromClipId: source.id};
     return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: addEdit}}]};
