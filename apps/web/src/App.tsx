@@ -200,6 +200,7 @@ import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.tsx';
 import type {TimelineGenerateTarget} from './Timeline.tsx';
 import GenerateInEditingPanel from './edit-ui/GenerateInEditingPanel.tsx';
+import {generatePlaceholderIntent, generateResizeIntent} from './edit-ui/generate-in-editing.ts';
 import TimelineInspector from './TimelineInspector.tsx';
 import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
@@ -2642,10 +2643,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const settings = {requestId: globalThis.crypto.randomUUID(), providerId: provider.id, model,
       region: String((provider as {region?: unknown}).region ?? 'local'), prompt: '',
       aspectRatio: (frame?.ratio ?? '9:16') as string, duration: 4, parameters: {}};
-    const generateIntent: SequenceEditGenerateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
-      placement: target.main ? {kind: 'main', beforeClipId: target.beforeClipId}
-        : {kind: 'track', trackId: target.trackId, startFrame: target.startFrame},
-      settings, shotId, clipId, title: t('timeline.generate.newShotTitle')}};
+    const generateIntent: SequenceEditGenerateIntent = generatePlaceholderIntent({target, settings, shotId, clipId,
+      title: t('timeline.generate.newShotTitle')});
     markBusy(currentProject.current, 'format5-generate-placeholder', true);
     try {
       const outcome = await format5BoardSession().runGenerate(generateIntent);
@@ -2663,8 +2662,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   /** GE-b: the panel duration resizes the placeholder (one timeline history step). */
   async function format5ResizeGeneration(shotId: string, duration: number): Promise<void> {
     if (!format5 || format5SessionBusy) return;
-    const outcome = await format5BoardSession().runGenerate({side: 'timeline',
-      operation: {kind: 'generate-resize', shotId, duration}});
+    const outcome = await format5BoardSession().runGenerate(generateResizeIntent(shotId, duration));
     if (!outcome.ok) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;}
     await refresh(currentProject.current);
     await format5RefreshHistory();

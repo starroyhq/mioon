@@ -44,6 +44,8 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
   assert.equal(clip.sourceState, 'placeholder');
   assert.equal(clip.durationFrames, 60);
   assert.equal(clip.sequenceSource.nodeId, shotId);
+  // GE-b: the placeholder clip carries the localized shot name, never "Clip".
+  assert.equal(clip.name, '剪辑里生成的镜头');
   const shots = f.store.list('shots').filter((shot: any) => shot.id === shotId);
   assert.equal(shots.length, 1);
   const jobs = f.store.list('jobs').filter((job: any) => job.shotId === shotId);
