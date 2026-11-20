@@ -951,6 +951,24 @@ const timelineCoreMessages = {
     "en": "The combined fades must not exceed the clip duration ({duration} frames). After shortening the clip, check and adjust both fades",
     "ja": "フェードの合計はクリップの長さ（{duration} フレーム）を超えられません。クリップを短くした場合は、両方のフェードを確認して調整してください"
   },
+  "timeline.menu.blank": {
+    "zh-Hans": "剪辑菜单",
+    "zh-Hant": "剪輯選單",
+    "en": "Timeline menu",
+    "ja": "タイムラインメニュー"
+  },
+  "timeline.menu.pasteShortcut": {
+    "zh-Hans": "⌘V",
+    "zh-Hant": "⌘V",
+    "en": "⌘V",
+    "ja": "⌘V"
+  },
+  "timeline.menu.paste": {
+    "zh-Hans": "粘贴",
+    "zh-Hant": "貼上",
+    "en": "Paste",
+    "ja": "貼り付け"
+  },
   "timeline.view.region": {
     "zh-Hans": "04 多轨时间线",
     "zh-Hant": "04 多軌時間軸",
