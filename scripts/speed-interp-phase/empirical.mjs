@@ -144,3 +144,39 @@ export function constantEmpirical(ffmpeg, ffprobe, workRoot) {
   });
   return {outputFrames: 600, probe: probeVfrBlend(ffmpeg, ffprobe, samples, times, workRoot)};
 }
+
+/** Reverse-direction control: input frame order is reversed (frame n carries
+ * original source frame 149-n) while PTS stay increasing. The filter's weight
+ * still points at the next ordered frame, so the expected weight is
+ * 1 - fractional part of the shared reverse source position. */
+export function reverseConstantEmpirical(ffmpeg, ffprobe, workRoot) {
+  const dir = mkdtempSync(path.join(workRoot, 'reverse-'));
+  try {
+    const times = Array.from({length: 150}, (_, n) => n * 4 / FPS);
+    const values = times.map((_, n) => (149 - n) % 2 === 0 ? 16 : 239);
+    const list = writeConcatInput(ffmpeg, dir, values, times);
+    const pts = inputPts(ffprobe, list);
+    const frames = 600;
+    const minterpolate = filterGraph(ffmpeg, list, 'minterpolate=fps=30:mi_mode=blend:scd=none', frames, dir, 'rev-mci');
+    const framerate = filterGraph(ffmpeg, list, 'framerate=fps=30:interp_start=0:interp_end=255:scene=100', frames, dir, 'rev-fr');
+    let framerateMatches = 0, minterpolateMatches = 0;
+    const rows = [];
+    for (let j = 0; j < frames; j++) {
+      const reversePosition = 149 - j / 4;
+      const fraction = reversePosition - Math.floor(reversePosition);
+      const nextFactor = Math.round((1 - fraction) * 128);
+      const pair = 148 - Math.floor(reversePosition);
+      const v0 = values[pair], v1 = values[Math.min(values.length - 1, pair + 1)];
+      const frPredicted = (v0 * (128 - nextFactor) + v1 * nextFactor + 64) >> 7;
+      const expectedAlpha = Math.round((1 - fraction) * 1024);
+      const mciPredicted = (v0 * (1024 - expectedAlpha) + v1 * expectedAlpha + 512) >> 10;
+      if (framerate[j] === frPredicted) framerateMatches++;
+      if (minterpolate[j] === mciPredicted) minterpolateMatches++;
+      if (j < 4) rows.push({outputFrame: j, reversePosition, fraction, nextFactor,
+        frameratePixel: framerate[j], frameratePredicted: frPredicted,
+        minterpolatePixel: minterpolate[j], minterpolatePredicted: mciPredicted, pts: pts[pair]});
+    }
+    return {frames, framerateMatches, minterpolateMatches, rows,
+      rule: 'expected next-frame weight = 1 - fractional part of the shared reverse source coordinate'};
+  } finally {rmSync(dir, {recursive: true, force: true});}
+}

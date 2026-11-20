@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {resolveTools} from './tools.mjs';
 import {compiledCurve, inverseSourceTimes, timestampRemap, errorStats, independentLinearFit, phaseRowsForCurve,
   curvePhaseSweep, CURVE_POINTS} from './phase.mjs';
-import {curveEmpirical, constantEmpirical} from './empirical.mjs';
+import {curveEmpirical, constantEmpirical, reverseConstantEmpirical} from './empirical.mjs';
 import {probeFormats, probeFilterHelp} from './formats.mjs';
 import {generatePortrait, generateAnalytic} from './samples.mjs';
 import {measureAllModes} from './bench.mjs';
@@ -80,8 +80,9 @@ try {
       curvePhaseErrorFrames: results.curvePhase.empirical.probe.frameratePhaseError,
       note: 'off-table drop/duplicate first would make the two blend inputs identical (weight irrelevant); the measured weights are non-trivial fractions of the shared map coordinates',
     },
-    directionWeights: 'direction is encoded by the order of source frames in the window; the same fractional weight then applies to the ordered next frame. The prototype verifies the increasing-time weight formula; reverse windows reverse the frame order rather than the weight sign.',
+    directionWeights: 'direction is encoded by the order of source frames in the window; the same fractional weight then applies to the ordered next frame. Reverse windows reverse the frame order and the expected next-frame weight becomes 1 - forward phase (verified below).',
     empiricalPhaseErrorVersusSharedMap: results.curvePhase.empirical.probe.frameratePhaseError,
+    reverseDirectionControl: reverseConstantEmpirical(ffmpeg, ffprobe, scratch),
   };
 
   // 3. Pixel-format admission, no automatic 8-bit downgrade.
@@ -115,7 +116,10 @@ try {
       framerateFormulaMatches: `${results.curvePhase.empirical.probe.framerateFormulaMatches}/${results.curvePhase.empirical.probe.rows.length}`,
       curveSweep: Object.fromEntries(Object.entries(results.curvePhase.curveSweep).map(([name, value]) =>
         [name, {maxAbsErrorFrames: value.phaseErrorFrames.maxAbs, outputFrames: value.outputFrames}]))},
-    frameBlend: {constantRateFormulaMatches: results.frameBlend.directCoordinateEvidence.constantRateWeightsMatchFormula},
+    frameBlend: {constantRateFormulaMatches: results.frameBlend.directCoordinateEvidence.constantRateWeightsMatchFormula,
+      curveFormulaMatches: results.frameBlend.directCoordinateEvidence.curveWeightsMatchFormula,
+      reverseFrameWeightsMatches: results.frameBlend.reverseDirectionControl.framerateMatches,
+      reverseDirectionFrames: results.frameBlend.reverseDirectionControl.frames},
     pixelFormats: {directAccepted: results.pixelFormats.accepted8BitPlanar,
       rejected: results.pixelFormats.rejected.map(row => row.format)},
     bench: bench.map(row => ({mode: row.name, wallSeconds: row.wallSeconds, peakRssBytes: row.peakRssBytes,
