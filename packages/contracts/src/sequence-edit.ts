@@ -101,6 +101,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
   'timeline.clip.splitAtScenes', 'timeline.clip.separateSound', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
+  'timeline.generate.placeholder', 'timeline.generate.resize',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'subject.card.create', 'subject.card.delete',
   'previs.create', 'previs.scene.set',
@@ -521,7 +522,7 @@ export function sequenceEditTrackOperationName(operation: SequenceEditTrackOpera
 }
 
 export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
-  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent' | 'soundIntent'>): string {  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
+  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent' | 'soundIntent' | 'generateIntent'>): string {  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
   if (envelope.soundIntent) return 'timeline.clip.separateSound';
@@ -530,6 +531,8 @@ export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnv
   if (envelope.dialogueIntent) return sequenceEditDialogueOperationName(envelope.dialogueIntent.operation);
   if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
   if (envelope.formatIntent) return 'timeline.format.set';
+  if (envelope.generateIntent) return envelope.generateIntent.operation.kind === 'generate-placeholder'
+    ? 'timeline.generate.placeholder' : 'timeline.generate.resize';
   return sequenceEditOperationName(envelope.intents);
 }
 
@@ -671,6 +674,8 @@ export interface SequenceEditEnvelope {
   /** FR-G separate sound; exactly one intent family is present. The operation
    * carries the server-allocated audio clip/track ids so confirming replays them. */
   readonly soundIntent?: SequenceEditSeparateSoundIntent;
+  /** GE-a generation placement/resize; exactly one intent family is present. */
+  readonly generateIntent?: SequenceEditGenerateIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -871,6 +876,51 @@ export const sequenceEditSubtitlesIntentSchema = z.object({
         'Each subtitle cue may appear once')}).strict(),
 }).strict();
 const subtitlesIntentSchema = sequenceEditSubtitlesIntentSchema;
+const generationSettingsSchema = z.object({
+  requestId: z.string().min(8).max(200),
+  providerId: z.string().min(1).max(120),
+  model: z.string().min(1).max(200),
+  region: z.string().min(1).max(120),
+  prompt: z.string().max(5000),
+  aspectRatio: z.string().min(1).max(40),
+  duration: z.number().int().min(1).max(60),
+  parameters: z.record(z.unknown()).optional(),
+  connectionId: uuidSchema.optional(),
+  configurationRevision: revisionSchema.optional(),
+  modelEntryId: z.string().min(1).max(200).optional(),
+}).strict();
+/** GE-a: place one new shot from the timeline and freeze one generation call.
+ * `beforeClipId` null appends at the end of the packed main track. The caller
+ * names only the requested position and generation settings; the service
+ * allocates the shot, node, edge and clip identities server-side. */
+export const sequenceEditGenerateIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.discriminatedUnion('kind', [
+    z.object({kind: z.literal('generate-placeholder'),
+      placement: z.discriminatedUnion('kind', [
+        z.object({kind: z.literal('main'), beforeClipId: uuidSchema.nullable()}).strict(),
+        z.object({kind: z.literal('track'), trackId: uuidSchema,
+          startFrame: z.number().int().min(0).max(300000)}).strict(),
+      ]),
+      settings: generationSettingsSchema,
+      shotId: uuidSchema, clipId: uuidSchema, title: z.string().min(1).max(200),
+      position: z.object({x: z.number().finite(), y: z.number().finite()}).strict().optional()}).strict(),
+    z.object({kind: z.literal('generate-resize'), shotId: uuidSchema,
+      duration: z.number().int().min(1).max(60)}).strict(),
+  ]),
+}).strict();
+export type SequenceEditGenerateGeneration = z.infer<typeof generationSettingsSchema>;
+export interface SequenceEditGenerateIntent {
+  readonly side: 'timeline';
+  readonly operation:
+    | {readonly kind: 'generate-placeholder';
+        readonly placement: {readonly kind: 'main'; readonly beforeClipId: string | null}
+          | {readonly kind: 'track'; readonly trackId: string; readonly startFrame: number};
+        readonly settings: SequenceEditGenerateGeneration; readonly shotId: string; readonly clipId: string;
+        readonly title: string; readonly position?: BoardPosition}
+    | {readonly kind: 'generate-resize'; readonly shotId: string; readonly duration: number};
+}
+const generateIntentSchema = sequenceEditGenerateIntentSchema;
 const dialogueTextSchema = z.string().superRefine((value, context) => {
   const issue = getTimelineSubtitleTextIssue(value);
   if (issue) context.addIssue({code: z.ZodIssueCode.custom, message: issue.message});
@@ -947,6 +997,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   trackIntent: trackIntentSchema.optional(),
   soundIntent: soundIntentSchema.optional(),
   formatIntent: formatIntentSchema.optional(),
+  generateIntent: generateIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
@@ -958,7 +1009,8 @@ export const sequenceEditEnvelopeSchema = z.object({
   const hasTrack = value.trackIntent !== undefined;
   const hasSound = value.soundIntent !== undefined;
   const hasFormat = value.formatIntent !== undefined;
-  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat, hasSound].filter(Boolean).length
+  const hasGenerate = value.generateIntent !== undefined;
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat, hasSound, hasGenerate].filter(Boolean).length
     + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
   if (hasSubtitles) {
@@ -1012,6 +1064,19 @@ export const sequenceEditEnvelopeSchema = z.object({
     const edit = value.trackIntent!.operation.edit;
     if (!(value.impact.trackIds ?? []).includes(edit.trackId)) context.addIssue({code: z.ZodIssueCode.custom,
       message: 'Track impact must list the added or edited track'});
+    return;
+  }
+  if (hasGenerate) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A generation action carries no CS/TS intent'});
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A generation action is timeline-origin'});
+    const operation = value.generateIntent!.operation;
+    if (operation.kind === 'generate-placeholder') {
+      if (!value.allocation.clips.some(item => item.nodeId === operation.shotId && item.clipId === operation.clipId)) {
+        context.addIssue({code: z.ZodIssueCode.custom, message: 'A generation placeholder requires its shot/clip allocation'});
+      }
+    } else if (operation.kind === 'generate-resize') {
+      if (!value.impact.mainTrackClipIds.length) context.addIssue({code: z.ZodIssueCode.custom, message: 'Resizing a placeholder lists its clip impact'});
+    }
     return;
   }
   if (hasReference) {
@@ -1574,7 +1639,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
   'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID', 'SEQUENCE_EDIT_DIALOGUE_INVALID',
   'SEQUENCE_EDIT_DIALOGUE_CONFLICT', 'SEQUENCE_EDIT_SOUND_INVALID', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
-  'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT',] as const);
+  'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_GENERATION_INVALID',] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
 export type SequenceEditErrorCode = Format5ErrorCode | SequenceEditPlanFailureCode | SequenceEditNewErrorCode;

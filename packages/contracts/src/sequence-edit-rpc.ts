@@ -11,7 +11,7 @@ import {z} from 'zod';
 import {sequenceEditClipPropertiesIntentSchema, sequenceEditDialogueIntentSchema, sequenceEditEnvelopeSchema,
   sequenceEditFormatIntentSchema, sequenceEditPrevisIntentSchema, sequenceEditReferenceIntentSchema,
   sequenceEditSeparateSoundIntentSchema, sequenceEditSubjectIntentSchema, sequenceEditSubtitlesIntentSchema,
-  sequenceEditTrackIntentSchema} from './sequence-edit.ts';
+  sequenceEditTrackIntentSchema, sequenceEditGenerateIntentSchema} from './sequence-edit.ts';
 import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
 import {sequenceEditingSchemas} from './sequence-editing.ts';
 import type {SequenceEditIntent} from './sequence-edit.ts';
@@ -40,15 +40,16 @@ export const sequencePreviewRequestSchema = z.object({
   trackIntent: sequenceEditTrackIntentSchema.optional(),
   soundIntent: sequenceEditSeparateSoundIntentSchema.optional(),
   formatIntent: sequenceEditFormatIntentSchema.optional(),
+  generateIntent: sequenceEditGenerateIntentSchema.optional(),
   allocation: allocationSchema.optional(),
 }).strict().superRefine((value, context) => {
   const families = [value.intents !== undefined, value.subjectIntent !== undefined,
     value.referenceIntent !== undefined, value.propertiesIntent !== undefined,
     value.subtitlesIntent !== undefined, value.dialogueIntent !== undefined,
     value.trackIntent !== undefined, value.soundIntent !== undefined, value.previsIntent !== undefined,
-    value.formatIntent !== undefined].filter(Boolean).length;
+    value.formatIntent !== undefined, value.generateIntent !== undefined].filter(Boolean).length;
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
-    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent, dialogueIntent, trackIntent, soundIntent, previsIntent and formatIntent.'});});
+    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent, dialogueIntent, trackIntent, soundIntent, previsIntent, formatIntent and generateIntent.'});});
 export const sequenceCommitRequestSchema = z.object({
   projectId: uuid,
   envelope: sequenceEditEnvelopeSchema,

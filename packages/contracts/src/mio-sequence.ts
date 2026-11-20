@@ -104,6 +104,17 @@ const mioSequenceActionBranches = z.discriminatedUnion('kind', [
   // FR-G: mute goes through `clip-properties`, separate sound is a timeline
   // structure action (source clip muted + a new anchored sound-only clip).
   z.object({kind: z.literal('separate-sound'), clipId: uuid}).strict(),
+  z.object({kind: z.literal('generate'),
+    placement: z.discriminatedUnion('kind', [
+      z.object({kind: z.literal('main'), beforeClipId: uuid.nullable()}).strict(),
+      z.object({kind: z.literal('track'), trackId: uuid, startFrame: z.number().int().min(0).max(300000)}).strict(),
+    ]),
+    title: z.string().min(1).max(200).optional(),
+    providerId: z.string().min(1).max(120), model: z.string().min(1).max(200), region: z.string().min(1).max(120),
+    prompt: z.string().max(5000), aspectRatio: z.string().min(1).max(40), duration: z.number().int().min(1).max(60),
+    parameters: z.record(z.unknown()).optional(),
+    connectionId: uuid.optional(), configurationRevision: z.number().int().min(1).optional(),
+    modelEntryId: z.string().min(1).max(200).optional()}).strict(),
   // ED: put one library asset into the timeline. The server expands the asset
   // into a board media node plus main clip, or an anchored overlay clip, and
   // allocates every new identity; the model only names asset, track and frame.
@@ -150,7 +161,7 @@ const MIO_SEQUENCE_ACTION_GROUPS = Object.freeze({
   previs: ['previs-create', 'previs-scene-set'],
   // Dialogue lines are one shot's spoken text edits and sit next to subtitles in
   // the same timeline/audio domain; they share the loadable timeline group.
-  timeline: ['subtitles', 'dialogue', 'format-set', 'split-at-scenes', 'separate-sound', 'track-add', 'track-update',
+  timeline: ['subtitles', 'dialogue', 'format-set', 'split-at-scenes', 'separate-sound', 'track-add', 'track-update', 'generate',
     'insert-asset'],
   clip: ['clip-properties'],
 } as const);

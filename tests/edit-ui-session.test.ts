@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5UserUndoBlocked,
-  format5MoveCommand, format5PatchCommand, format5Projection, format5SplitCommand, format5TrimCommand, format5VersionCommand,
+  Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InspectorSequence, format5PasteStartFrame,
+  format5UserUndoBlocked, format5MoveCommand, format5PatchCommand, format5Projection, format5SplitCommand, format5TrimCommand, format5VersionCommand,
 } from '../apps/web/src/edit-ui/session.ts';
 import type {SequenceRpc} from '../apps/web/src/edit-ui/session.ts';
 import {LostResponseState, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
@@ -538,4 +538,11 @@ test('a lost clip-properties panel commit is settled by one receipt read and nev
   assert.equal(h.reads.length, 1);
   assert.equal(h.session.unconfirmed, null);
   assert.deepEqual(h.commits()[0]!.input.envelope.propertiesIntent.operation.edits[0].patch, {name: '改名', gain: 0.5});
+});
+
+test('format-5 paste takes the live playhead rather than a stale keydown closure', () => {
+  assert.equal(format5PasteStartFrame(30, 12, 0), 30);
+  assert.equal(format5PasteStartFrame(null, 12, 0), 12);
+  assert.equal(format5PasteStartFrame(undefined, undefined, 7), 7);
+  assert.equal(format5PasteStartFrame(-2, 12.6, 0), 13);
 });

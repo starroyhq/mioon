@@ -127,7 +127,7 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.deepEqual(actionKinds('sequence.tool.subject').sort(), ['subject-binding', 'subject-card-create',
     'subject-card-delete']);
   assert.deepEqual(actionKinds('sequence.tool.previs').sort(), ['previs-create', 'previs-scene-set']);
-  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'insert-asset',
+  assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'generate', 'insert-asset',
     'separate-sound', 'split-at-scenes', 'subtitles', 'track-add', 'track-update']);
   assert.deepEqual(actionKinds('sequence.tool.clip'), ['clip-properties']);
   // Every bounded action lives in exactly one tool.
