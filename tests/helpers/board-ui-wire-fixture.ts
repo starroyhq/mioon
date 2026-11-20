@@ -31,7 +31,7 @@ export const BOARD_IDS = {
 const sha = (letter: string): string => letter.repeat(64);
 export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
   library: ReturnType<typeof openAppLibrary>; settings: Awaited<ReturnType<typeof createVideoSettings>>;
-  projectId: string; root: string}> {
+  providers: Map<string, any>; projectId: string; root: string}> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-board-ui-wire-'));
   const store = createProjectStore({projectId: BOARD_IDS.project, projectFile: path.join(root, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
@@ -141,9 +141,10 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     secret: {action: 'replace', value: 'synthetic-ark-key', storage: 'persistent'}});
   await settings.put({action: 'save', expectedRevision: 1, configuration: wan,
     secret: {action: 'replace', value: 'synthetic-wan-key', storage: 'persistent'}});
-  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),
+  const providers = new Map<string, any>();
+  const services = createServices(store, providers, {env: {}, application: createProjectServiceApplication(library, undefined, {}),
     videoSettings: settings});
-  return {store, services, library, settings, projectId, root};
+  return {store, services, library, settings, providers, projectId, root};
 }
 
 /** 500-shot stress project for the UI-B2 board frame-rate measurement. */
