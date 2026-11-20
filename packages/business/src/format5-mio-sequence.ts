@@ -211,6 +211,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     operation: {kind: 'track-structure', edit: {kind: 'update', trackId: action.trackId, patch: action.patch}}};
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
     'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
+  else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
+    assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {

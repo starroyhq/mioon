@@ -21,7 +21,7 @@ MT-6 按 C+A 把格式 5 单轮 Mio 请求从格式 4 的 225.6% 降到 110% 以
 - 节点：`insert` / `delete-node`
 - 成片内剪辑：`reorder` / `remove` / `split` / `set-mode` / `copy-move`
 
-其余 23 个动作按领域拆成 6 个按需加载工具（仍走同一服务器展开、审批和 Mio 撤销）：
+其余 25 个动作按领域拆成 6 个按需加载工具（仍走同一服务器展开、审批和 Mio 撤销）：
 
 | 工具 | 操作 | 动作 |
 | --- | --- | --- |
@@ -29,14 +29,14 @@ MT-6 按 C+A 把格式 5 单轮 Mio 请求从格式 4 的 225.6% 降到 110% 以
 | `mioon_sequence_reference_edit` | `sequence.tool.reference` | 素材引用线连接/改角色/断开/排序（第一条参考图是主图） |
 | `mioon_sequence_subject_edit` | `sequence.tool.subject` | 主体绑定三态、主体卡建卡/删卡 |
 | `mioon_sequence_previs_edit` | `sequence.tool.previs` | 预演节点新建、预演场景保存（人偶/道具可带主体） |
-| `mioon_sequence_timeline_edit` | `sequence.tool.timeline` | 画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改 |
+| `mioon_sequence_timeline_edit` | `sequence.tool.timeline` | 画幅切换、按场景切开、字幕与台词增改删、轨道增改、素材入轨 |
 | `mioon_sequence_clip_edit` | `sequence.tool.clip` | 片段属性（变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称） |
 
 台词（`dialogue`）放在时间线组：台词和字幕同属一段文字内容，共用时间线组不需要第 7 个组名。生成输入只读工具的上限由服务端三个实际上限算出：一镜头 48 条引用线 + 8 个主体绑定 + 32 个预演主体 = 88 条（`FORMAT5_INPUT_LIMITS`，`SEQUENCE_GENERATION_INPUT_LIMITS.entries` 与工具说明同源）。
 
 Mio 在修改前用 `mioon_tools_load` 按名字加载相应组，加载后的下一次回复即可调用；审批级别、`origin: mio` 和 D5 撤销与原来一致。`mioon_tools_load` 的格式 5 说明列出每组的一句话用途。`mioon_sequence_undo` 和三个只读格式 5 工具（`sequence.inspect`、`sequence.board.get`、`sequence.generation-inputs.get`）仍是 core。
 
-每个动作在且仅在一个工具里；`tests/format5-mio-tools.test.ts` 逐条核对 32 个动作的分组、组工具只在格式 5 目录、加载名字与不可用清单不冲突；`tests/format5-mio-write.test.ts` 覆盖“加载组 → 审批 → 提交 → Mio 撤销”。
+每个动作在且仅在一个工具里；`tests/format5-mio-tools.test.ts` 逐条核对 34 个动作的分组、组工具只在格式 5 目录、加载名字与不可用清单不冲突；`tests/format5-mio-write.test.ts` 覆盖“加载组 → 审批 → 提交 → Mio 撤销”。
 
 ## 四、指纹和体积结果
 

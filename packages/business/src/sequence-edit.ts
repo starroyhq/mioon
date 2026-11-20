@@ -868,17 +868,39 @@ function planBoardDeltas(context: EditContext, envelope: SequenceEditEnvelope, f
   return {before: {writes: beforeWrites, removals: beforeRemovals}, after: {writes: afterWrites, removals: afterRemovals}, nodes, edges};
 }
 
+function boardEntityRank(kind: SequenceEditBoardEntity['kind'], direction: 'write' | 'remove'): number {
+  // Adoption rows reference a shot; edges reference nodes. Delete children before
+  // their owners and insert owners before children on every forward/undo apply.
+  if (kind === 'adoption') return direction === 'remove' ? 0 : 4;
+  if (kind === 'edge') return direction === 'remove' ? 1 : 3;
+  if (kind === 'shot') return direction === 'remove' ? 2 : 2;
+  if (kind === 'node') return direction === 'remove' ? 3 : 1;
+  return direction === 'remove' ? 0 : 5;
+}
 function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mode: 'forward' | 'restore'): void {
   let subjectTouched = false;
-  for (const entity of delta.removals) {
+  for (const entity of [...delta.removals].sort((left, right) => boardEntityRank(left.kind, 'remove') - boardEntityRank(right.kind, 'remove'))) {
     if (entity.kind === 'subject_binding') {
       fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '主体绑定是墓碑，不能删除。', [entity.id]);
+    }
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      const removed = store.db.prepare('DELETE FROM project.shot_version_adoptions WHERE projectId=? AND shotId=? AND versionId=?')
+        .run(store.projectId, String(data.shotId), String(data.versionId));
+      if (mode === 'restore' && Number(removed.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
+      continue;
     }
     const table = tableOf(entity.kind);
     const removed = store.db.prepare(`DELETE FROM project.${table} WHERE id=? AND projectId=?`).run(entity.id, store.projectId);
     if (mode === 'restore' && Number(removed.changes) !== 1) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能应用。', [entity.id]);
   }
-  for (const entity of delta.writes) {
+  for (const entity of [...delta.writes].sort((left, right) => boardEntityRank(left.kind, 'write') - boardEntityRank(right.kind, 'write'))) {
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      store.db.prepare('INSERT OR IGNORE INTO project.shot_version_adoptions(projectId,shotId,versionId,createdAt) VALUES(?,?,?,?)')
+        .run(store.projectId, String(data.shotId), String(data.versionId), String(data.createdAt ?? now()));
+      continue;
+    }
     if (entity.kind === 'subject_binding') {
       applySubjectBindingWrite(store, entity.data as Row);
       subjectTouched = true;
@@ -908,6 +930,13 @@ function applyBoardDelta(store: ProjectStore, delta: SequenceEditBoardDelta, mod
 
 function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): boolean {
   for (const entity of delta.writes) {
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      const current = store.db.prepare('SELECT 1 AS found FROM project.shot_version_adoptions WHERE projectId=? AND shotId=? AND versionId=?')
+        .get(store.projectId, String(data.shotId), String(data.versionId));
+      if (!current) return false;
+      continue;
+    }
     if (entity.kind === 'subject_binding') {
       const data = entity.data as Row;
       const current = store.db.prepare(`SELECT bindingMode,subjectVersionId,shotId,subjectId,role
@@ -924,6 +953,12 @@ function boardDeltaMatches(store: ProjectStore, delta: SequenceEditBoardDelta): 
   }
   for (const entity of delta.removals) {
     if (entity.kind === 'subject_binding') return false;
+    if (entity.kind === 'adoption') {
+      const data = entity.data as Row;
+      if (store.db.prepare('SELECT 1 AS found FROM project.shot_version_adoptions WHERE projectId=? AND shotId=? AND versionId=?')
+        .get(store.projectId, String(data.shotId), String(data.versionId))) return false;
+      continue;
+    }
     if (store.db.prepare(`SELECT 1 FROM project.${tableOf(entity.kind)} WHERE id=? AND projectId=?`)
       .get(entity.id, store.projectId) !== undefined) return false;
   }
