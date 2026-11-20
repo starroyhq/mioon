@@ -376,6 +376,36 @@ jobs:
             printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Measure speed interpolation phase prototype on macOS arm64
+        id: interp
+        if: github.event_name == 'pull_request'
+        # The prototype downloads the application-same media-tools release and
+        # verifies its pinned hashes; it never decodes project/user media.
+        timeout-minutes: 25
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed="$(git diff --name-only --diff-filter=AM "$PR_BASE_SHA" HEAD -- scripts/speed-interp-phase)"
+          if test -z "$changed"; then exit 0; fi
+          test "$(uname -m)" = arm64
+          results="$RUNNER_TEMP/mioon-sp-i0"
+          node --experimental-strip-types --no-warnings scripts/speed-interp-phase/run-prototype.mjs --output "$results"
+          cat "$results/summary.json"
+          {
+            printf '\n### Speed interpolation phase prototype (macOS arm64)\n\n```json\n'
+            cat "$results/summary.json"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload speed interpolation prototype evidence
+        if: github.event_name == 'pull_request' && steps.interp.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-sp-i0
+          path: ${{ runner.temp }}/mioon-sp-i0/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Test the reviewed macOS desktop group
         id: desktop
         run: node scripts/tooling.ts test --suite=macos-desktop --concurrency=2 --reporter=tap
@@ -386,13 +416,14 @@ jobs:
           TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
           TEST_RESULT: ${{ steps.tests.outcome }}
           HELPER_RESULT: ${{ steps.helpers.outcome }}
+          INTERP_RESULT: ${{ steps.interp.outcome }}
           DESKTOP_RESULT: ${{ steps.desktop.outcome }}
         run: |
           mkdir -p artifacts/checks-macos
           {
             node --version
             pnpm --version
-            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\ndesktop-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT" "$DESKTOP_RESULT"
+            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\nspeed-interp=%s\ndesktop-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT" "$INTERP_RESULT" "$DESKTOP_RESULT"
           } > artifacts/checks-macos/status.log
           cat artifacts/checks-macos/status.log >> "$GITHUB_STEP_SUMMARY"
 
