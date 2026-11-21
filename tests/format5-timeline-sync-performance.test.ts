@@ -7,6 +7,7 @@ import {createProjectStore} from '../packages/business/src/project-file/store.ts
 import {previewSequenceSync, readSequenceSyncProjection, runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
 import {withK1BenchmarkLock} from './helpers/k1-benchmark-lock.ts';
 import {measureCommittedCall, summarizeTiming} from './helpers/commit-timing.ts';
+import {checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -101,7 +102,7 @@ test('K1 500+500+1,000 format-5 synchronization meets the local p95 budget', t =
   // The acceptance budget is 100 ms on the developer Mac and 200 ms on the
   // Linux CI runners; the runner platform is the stable signal here. Linux gates
   // the transaction body only; macOS also gates total latency including COMMIT.
-  const budget = process.platform === 'linux' ? 200 : 100;
-  assert.ok(codePath.p95 <= budget, `K1 code path p95 ${codePath.p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
-  if (process.platform !== 'linux') assert.ok(total.p95 <= budget, `K1 p95 ${total.p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
+  const file = 'tests/format5-timeline-sync-performance.test.ts', budget = process.platform === 'linux' ? 200 : 100;
+  checkPerformanceBudget({file, name: 'K1 code path p95', actual: codePath.p95, budget, unit: 'ms'});
+  if (process.platform !== 'linux') checkPerformanceBudget({file, name: 'K1 p95 including COMMIT', actual: total.p95, budget, unit: 'ms'});
 }));
