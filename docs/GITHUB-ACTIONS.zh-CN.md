@@ -95,7 +95,9 @@ gh workflow run release-desktop.yml --ref main -f update_feed_url=http://127.0.0
 - 读取 `main` 与最近一次成功 nightly 的 head；schedule 时没有新提交就跳过（手动触发和分支验证总是运行）。跳过时仍写 step summary。
 - 单分片：`node .github/scripts/test-shard.ts --index=0 --count=1 --concurrency=3`，`full-darwin` 入口由平台选择；每个文件用与 Linux 相同的 3 倍计时 + 2 分钟、最短 10 分钟、无记录 35 分钟期限；`TMPDIR=/private/tmp`，独占文件按清单先单独跑。
 - 媒体工具链复用 F 卡 action（Homebrew `ffmpeg@7`，瓶子 SHA-256 缓存、命中重算哈希、能力探针与证据），版本/能力写入 `artifacts/macos-media-environment/`。
-- 结果：原始日志、`failures.json`（失败文件 + 用例名、超时单独标记）、`shard.json`/计时产物和媒体证据一起上传为 `macos-nightly-evidence-<run_id>`；step summary 写总时长与失败列表。自有 concurrency group `macos-nightly`、`cancel-in-progress: false`，与候选包和 PR CI 互不取消。单晚超过 90 分钟再提拆成两片。
+- 性能预算类测试在 macOS 虚拟机上只记录、不判失败：预算断言走 `tests/helpers/performance-budget.ts`，夜间把每项的实测值与预算值写进 step summary、`failures.json` 和 artifact（`perf-budgets.jsonl`）；Linux CI 仍是门槛。同一文件里的功能断言照常失败。
+- 与平台无关、Linux CI 已守住的检查（当前为 `tests/typecheck-runtime.test.ts`）夜间不重复跑：工作流用 `MIOON_MACOS_NIGHTLY_SKIP_TESTS` 列出文件与理由，分片脚本只在 darwin 上过滤，summary 会写出被跳过的文件。其余失败一律算真失败。
+- 结果：原始日志、`failures.json`（失败文件 + 用例名、超时单独标记、被跳过文件、预算实测值）、`shard.json`/计时产物和媒体证据一起上传为 `macos-nightly-evidence-<run_id>`；step summary 写总时长与失败列表。自有 concurrency group `macos-nightly`、`cancel-in-progress: false`，与候选包和 PR CI 互不取消。单晚超过 90 分钟再提拆成两片。
 
 ## macOS 媒体工具链（手动）
 

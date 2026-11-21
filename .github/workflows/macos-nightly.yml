@@ -23,6 +23,16 @@ jobs:
     name: macOS arm64 full-darwin nightly
     runs-on: macos-15
     timeout-minutes: 150
+    env:
+      # The virtual macOS runner is not the developer-Mac latency reference:
+      # performance budgets are recorded (actual + budget in summary/artifact)
+      # but only Linux CI gates them. Only budget assertions call the helper;
+      # functional assertions in the same files still fail on this lane.
+      MIOON_PERF_RECORD_ONLY: '1'
+      MIOON_PERF_EVIDENCE: artifacts/macos-nightly/perf-budgets.jsonl
+      # Platform-independent checks already gated by Linux CI; the nightly lane
+      # does not repeat them (reason: identical sources, slower spawn timeout).
+      MIOON_MACOS_NIGHTLY_SKIP_TESTS: tests/typecheck-runtime.test.ts
     steps:
       - name: Checkout the nightly revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile, mkdtemp, readFile as readText, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {nightlyGate} from '../.github/scripts/macos-nightly-gate.ts';
-import {parseNightlyLog, renderNightlySummary} from '../.github/scripts/macos-nightly.ts';
+import {parseNightlyLog, parseRecordedBudgets, renderNightlySummary} from '../.github/scripts/macos-nightly.ts';
+import {nightlySkippedTests} from '../.github/scripts/test-shard.ts';
+import {budgetPassed, checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sha = (letter: string): string => letter.repeat(40);
@@ -71,6 +74,58 @@ test('the nightly summary names every failed file and test case', () => {
   assert.match(pass, /no test failures/);
 });
 
+test('the recorded performance budgets keep actual and budget values for the summary', () => {
+  const text = [
+    JSON.stringify({file: 'tests/format5-dialogue-performance.test.ts', name: 'K1 dialogue code path p95', actual: 212.9, budget: 100, unit: 'ms', passed: false}),
+    JSON.stringify({file: 'tests/project-format5-performance.test.ts', name: 'total p95 with 100 clips', actual: 42, budget: 100, unit: 'ms', passed: true}),
+    '',
+  ].join('\n');
+  assert.deepEqual(parseRecordedBudgets(text), [
+    {file: 'tests/format5-dialogue-performance.test.ts', name: 'K1 dialogue code path p95', actual: 212.9, budget: 100, unit: 'ms', passed: false},
+    {file: 'tests/project-format5-performance.test.ts', name: 'total p95 with 100 clips', actual: 42, budget: 100, unit: 'ms', passed: true},
+  ]);
+  assert.throws(() => parseRecordedBudgets('{"file":"tests/a.test.ts"}'), /INVALID_PERF_EVIDENCE/);
+});
+
+test('the nightly summary lists recorded budgets and platform-independent skips', () => {
+  const summary = renderNightlySummary({totalSeconds: 60, exitCode: 0, files: 1225, failures: [],
+    recordedBudgets: [{file: 'tests/format5-timeline-sync-performance.test.ts', name: 'K1 code path p95', actual: 103.7, budget: 100, unit: 'ms', passed: false}],
+    skipped: ['tests/typecheck-runtime.test.ts']});
+  assert.match(summary, /Performance budgets \(macOS VM records only; Linux gates them\)/);
+  assert.match(summary, /K1 code path p95: 103\.7 ms \/ budget 100 ms \(over\)/);
+  assert.match(summary, /Skipped by design/);
+  assert.match(summary, /tests\/typecheck-runtime\.test\.ts/);
+});
+
+test('the budget helper records every evaluation and enforces only outside the macOS record-only lane', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'mioon-perf-evidence-')), evidence = path.join(directory, 'budgets.jsonl');
+  const previous = process.env.MIOON_PERF_EVIDENCE;
+  process.env.MIOON_PERF_EVIDENCE = evidence;
+  try {
+    const passing = {file: 'tests/a.test.ts', name: 'p95', actual: 10, budget: 20, unit: 'ms' as const};
+    assert.equal(budgetPassed(passing), true);
+    checkPerformanceBudget(passing, {platform: 'linux'});
+    checkPerformanceBudget({...passing, actual: 30}, {platform: 'darwin', recordOnly: true});
+    const lines = (await readText(evidence, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as {actual: number; budget: number; passed: boolean});
+    assert.deepEqual(lines.map(line => [line.actual, line.budget, line.passed]), [[10, 20, true], [30, 20, false]]);
+    assert.throws(() => checkPerformanceBudget({...passing, actual: 30}, {platform: 'linux'}), /p95 30ms exceeds 20ms budget/);
+    assert.throws(() => checkPerformanceBudget({...passing, actual: 30}, {platform: 'darwin', recordOnly: false}), /p95 30ms exceeds 20ms budget/);
+    assert.doesNotThrow(() => checkPerformanceBudget({...passing, actual: 30}, {platform: 'darwin', recordOnly: true}));
+  } finally {
+    if (previous === undefined) delete process.env.MIOON_PERF_EVIDENCE; else process.env.MIOON_PERF_EVIDENCE = previous;
+    await rm(directory, {recursive: true, force: true});
+  }
+});
+
+test('the nightly skip list only applies on darwin and rejects malformed selections', () => {
+  const source = {MIOON_MACOS_NIGHTLY_SKIP_TESTS: 'tests/typecheck-runtime.test.ts'};
+  assert.deepEqual(nightlySkippedTests(source, 'darwin'), ['tests/typecheck-runtime.test.ts']);
+  assert.deepEqual(nightlySkippedTests(source, 'linux'), []);
+  assert.deepEqual(nightlySkippedTests({}, 'darwin'), []);
+  assert.throws(() => nightlySkippedTests({MIOON_MACOS_NIGHTLY_SKIP_TESTS: 'tests/nope.ts'}, 'darwin'), /INVALID_NIGHTLY_SKIP_TESTS/);
+  assert.throws(() => nightlySkippedTests({MIOON_MACOS_NIGHTLY_SKIP_TESTS: '/etc/passwd'}, 'darwin'), /INVALID_NIGHTLY_SKIP_TESTS/);
+});
+
 function workflowJob(workflow: string, name: string): string {
   const value = new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:\\r?\\n|(?![\\s\\S]))`, 'm').exec(workflow)?.[1];
   assert.ok(value, `the ${name} job must exist`);
@@ -87,6 +142,10 @@ test('the nightly workflow runs on schedule plus manual dispatch with its own co
   const full = workflowJob(workflow, 'full');
   assert.match(full, /runs-on: macos-15/);
   assert.match(full, /timeout-minutes: 150/);
+  assert.match(full, /MIOON_PERF_RECORD_ONLY: '1'/);
+  assert.match(full, /MIOON_PERF_EVIDENCE: artifacts\/macos-nightly\/perf-budgets\.jsonl/);
+  assert.match(full, /MIOON_MACOS_NIGHTLY_SKIP_TESTS: tests\/typecheck-runtime\.test\.ts/);
+  assert.match(full, /performance budgets are recorded/);
   assert.match(full, /ref: \$\{\{ github\.event_name == 'schedule' && 'main' \|\| github\.ref \}\}/);
   assert.match(full, /fetch-depth: 0/);
   assert.match(full, /persist-credentials: false/);

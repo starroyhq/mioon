@@ -21,6 +21,30 @@ export interface NightlyFailure {
   readonly tests: string[];
 }
 
+/** A performance budget evaluated by tests/helpers/performance-budget.ts. */
+export interface RecordedBudget {
+  readonly file: string;
+  readonly name: string;
+  readonly actual: number;
+  readonly budget: number;
+  readonly unit: 'ms' | 'bytes';
+  readonly passed: boolean;
+}
+
+export function parseRecordedBudgets(text: string): RecordedBudget[] {
+  const budgets: RecordedBudget[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const value = JSON.parse(line) as Partial<RecordedBudget>;
+    if (typeof value.file !== 'string' || typeof value.name !== 'string' || typeof value.actual !== 'number' ||
+        typeof value.budget !== 'number' || (value.unit !== 'ms' && value.unit !== 'bytes') || typeof value.passed !== 'boolean') {
+      throw new Error('INVALID_PERF_EVIDENCE');
+    }
+    budgets.push({file: value.file, name: value.name, actual: value.actual, budget: value.budget, unit: value.unit, passed: value.passed});
+  }
+  return budgets;
+}
+
 const startMarker = /^TEST_FILE_START (\S+)$/u;
 const failedMarker = /^TEST_FILE_FAILED (\S+) \(([0-9.]+)s\)$/u;
 const timeoutMarker = /^TEST_FILE_TIMEOUT (\S+) \(([0-9.]+)s\)$/u;
@@ -49,11 +73,13 @@ export function parseNightlyLog(lines: readonly string[]): NightlyFailure[] {
   return failures;
 }
 
-export function renderNightlySummary({totalSeconds, exitCode, files, failures}: {
+export function renderNightlySummary({totalSeconds, exitCode, files, failures, recordedBudgets = [], skipped = []}: {
   readonly totalSeconds: number;
   readonly exitCode: number;
   readonly files: number;
   readonly failures: readonly NightlyFailure[];
+  readonly recordedBudgets?: readonly RecordedBudget[];
+  readonly skipped?: readonly string[];
 }): string {
   const lines = [
     '### macOS nightly full-darwin', '',
@@ -68,6 +94,16 @@ export function renderNightlySummary({totalSeconds, exitCode, files, failures}: 
     if (!failure.tests.length) lines.push('  - (no individual test name captured; see raw log)');
   }
   if (!failures.length) lines.push('', '- no test failures');
+  if (skipped.length) {
+    lines.push('', '### Skipped by design (platform-independent; Linux CI gates them)', '');
+    for (const file of skipped) lines.push(`- \`${file}\` (not repeated on the macOS nightly VM)`);
+  }
+  if (recordedBudgets.length) {
+    lines.push('', '### Performance budgets (macOS VM records only; Linux gates them)', '');
+    for (const budget of recordedBudgets) {
+      lines.push(`- \`${budget.file}\` :: ${budget.name}: ${budget.actual} ${budget.unit} / budget ${budget.budget} ${budget.unit} (${budget.passed ? 'within' : 'over'})`);
+    }
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -118,9 +154,12 @@ async function main(): Promise<number> {
     const shard = JSON.parse(await readFile(path.join(root, 'artifacts/checks-macos-0/shard.json'), 'utf8')) as {selectedCount?: number};
     files = Number(shard.selectedCount ?? 0);
   } catch { /* shard.json is absent when preflight failed before selection */ }
+  const evidencePath = process.env.MIOON_PERF_EVIDENCE;
+  const recordedBudgets = evidencePath ? parseRecordedBudgets(await readFile(path.join(root, evidencePath), 'utf8').catch(() => '')) : [];
+  const skipped = (process.env.MIOON_MACOS_NIGHTLY_SKIP_TESTS ?? '').split(',').map(value => value.trim()).filter(Boolean);
   await writeFile(failuresPath, JSON.stringify({schema: 1, durationSeconds: Number(totalSeconds.toFixed(1)), exitCode,
-    selectedFiles: files, failures}, null, 2) + '\n', {mode: 0o600});
-  const summary = renderNightlySummary({totalSeconds, exitCode, files, failures});
+    selectedFiles: files, failures, skippedByDesign: skipped, recordedBudgets}, null, 2) + '\n', {mode: 0o600});
+  const summary = renderNightlySummary({totalSeconds, exitCode, files, failures, recordedBudgets, skipped});
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary);
   process.stdout.write(summary);
   return exitCode;
