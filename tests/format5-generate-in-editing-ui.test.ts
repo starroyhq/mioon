@@ -43,8 +43,14 @@ test('GE-b: a main-track clip offers generate before/after with the packed-track
   assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c2', where: 'before', mainTrackId: 'main', clips: around}),
     {trackId: 'main', main: true, startFrame: 60, beforeClipId: 'c2'});
   // After a split shot inserts after its last segment, not between its segments.
+  // The service inserts before/after the whole shot: the second segment of a
+  // split shot reports the shot's first start / last end, not the clicked piece.
   assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c2', where: 'after', mainTrackId: 'main', clips: around}),
-    {trackId: 'main', main: true, startFrame: 120, beforeClipId: null});
+    {trackId: 'main', main: true, startFrame: 160, beforeClipId: null});
+  assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c3', where: 'before', mainTrackId: 'main', clips: around}),
+    {trackId: 'main', main: true, startFrame: 60, beforeClipId: 'c3'});
+  assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c3', where: 'after', mainTrackId: 'main', clips: around}),
+    {trackId: 'main', main: true, startFrame: 160, beforeClipId: null});
   assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c1', where: 'after', mainTrackId: 'main', clips: around}),
     {trackId: 'main', main: true, startFrame: 60, beforeClipId: 'c2'});
   assert.equal(mainTrackGenerateAroundPlacement({clipId: 'c4', where: 'before', mainTrackId: 'main', clips: around}), null);

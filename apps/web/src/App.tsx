@@ -2665,9 +2665,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       setEditingGenerateShotId(shotId);
       await changeMode('editing');
       setPropertiesPage('inspector'); setRightDockTab('properties');
-      setSelectedClipId(clipId); setPlayhead(target.startFrame);
+      setSelectedClipId(clipId);
       setPanelOpen('inspector', true, 'editing'); setPanelOpen('timeline', true, 'editing');
-      await refresh(currentProject.current);
+      const next = await refresh(currentProject.current);
+      // The service decides where the shot lands (a split shot inserts before/after
+      // its whole shot), so the playhead follows the committed clip, never the
+      // pre-commit estimate.
+      const committedClip = (next?.timeline?.clips as readonly {id: string; startFrame: number}[] | undefined)
+        ?.find(clip => clip.id === clipId);
+      setPlayhead(committedClip?.startFrame ?? target.startFrame);
       await format5RefreshHistory();
       await format5LoadBoard();
     } finally {markBusy(currentProject.current, 'format5-generate-placeholder', false);}
