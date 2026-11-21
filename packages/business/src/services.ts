@@ -29,6 +29,7 @@ import {createLookPackInspectionServices,assertLookPackInspectInput} from './loo
 import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from './timeline-colour-source.ts';
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
+import {readFormat5RenderProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
 import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
@@ -641,6 +642,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const readSavedTimeline=(projectId: string)=>{
+  // Format 5 stores native rows; the preflight reader is a Format-3/4 aggregate.
+  if(isProjectStore(store)&&isFormat5Project(store)){
+   const projection=readFormat5RenderProjection(store);
+   if(!projection)return null;
+   return {timeline:projection.legacy,assets:[...projection.assets.values()]};
+  }
   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
   try{const {timeline:value}=readTimelinePreflightSnapshot(store,projectId,undefined);if(!value)return null;
    const assets=readTimelineSourceGraph(db,projectId,value);validateTimeline(value,assets,{structureOnly:true});
