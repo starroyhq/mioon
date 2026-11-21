@@ -92,6 +92,7 @@ async function inspectorHarness(patch: Record<string,unknown> = {}, lutRpc: clip
       if (id === '@mioon/contracts') return { sourceFrameCount: (duration: number) => Math.floor(duration * 30), isTimelineRecord };
       if (id === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
       if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
+      if (id === './clip-sound-state.ts') return {clipSoundEntriesVisible: () => false, clipSaveAudioVisible: () => false};
       return primitive;
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;
@@ -152,11 +153,10 @@ test('actual inspector renders integer fade controls inside its existing ScrollA
       const field = h.find(id);
       assert.equal((field)!.props.value, 0); assert.equal((field)!.props.min, '0'); assert.equal((field)!.props.max, 120); assert.equal((field)!.props.step, '1'); assert.equal((field)!.props.disabled, false); assert.equal((field)!.props.required, true);
       assert.ok(nodes(h.all().find(node => node.type === 'ScrollArea')).includes(((field) as unknown as Parameters<NonNullable<(ReturnType<typeof nodes>)["includes"]>>[0])));
-      assert.match((((field)!.props['aria-describedby']) as unknown as Parameters<NonNullable<(typeof assert)["match"]>>[0]), /clip-fade-bounds clip-fade-effect/);
+      assert.equal((field)!.props['aria-describedby'], undefined);
     }
     assert.equal((h.find('clip-gain'))!.props.inputMode, 'decimal'); assert.equal((h.find('clip-gain'))!.props.value, '0'); assert.equal((h.find('save-clip'))!.props.disabled, true);
-    assert.match(h.text(), /淡入淡出/); assert.match(h.text(), /30 帧 = 1 秒/);
-    assert.match(text(h.find('clip-fade-effect')), /重新渲染时间线预览与导出.*源素材快速查看播放原始声音/);
+    assert.match(h.text(), /淡入淡出/); assert.equal(h.find('clip-fade-effect'), undefined);
   }
 });
 

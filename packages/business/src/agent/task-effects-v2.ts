@@ -79,6 +79,11 @@ export function withAgentTaskJobOrigin<T>(db:DatabaseSync,kind:string,id:string,
 export function setAgentTaskEffectGate(db:DatabaseSync,gate:AgentTaskJobGate):()=>void{
  gates.set(db,gate);return ()=>{if(gates.get(db)===gate)gates.delete(db);};
 }
+export function agentTaskTargetClaimed(db:DatabaseSync,projectId:string,kind:string,targetId:string):boolean{
+ if(!hasStoreTable(db,'mio_edit_claims'))return false;
+ return db.prepare("SELECT 1 FROM main.mio_edit_claims WHERE projectId=? AND kind=? AND targetId=? AND state='active' LIMIT 1")
+  .get(projectId,kind,targetId)!==undefined;
+}
 export function bindAgentTaskJobInside(db:DatabaseSync,kind:string,id:string):void{
  const origin=taskEffectOrigin();if(!origin)return;
  if(!db.isTransaction)throw Error('Agent task admission must share the domain transaction');

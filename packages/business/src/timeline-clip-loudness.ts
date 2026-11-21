@@ -159,6 +159,7 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
         durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
         ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
         ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {}),
+        ...(clip.muted === true ? {muted: true} : {}), ...(clip.soundOnly === true ? {soundOnly: true} : {}),
         ...volumeEnvelopeField(clip)};
     });
     let processingSnapshot: ReturnType<typeof volumeEnvelopeReadSnapshot>;
@@ -185,7 +186,7 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
     if (!track || !asset || !source) unavailable();
     if (source.sha256 !== input.expectedAssetSha256) throw fault('TIMELINE_CLIP_LOUDNESS_STALE');
     if (clip.durationFrames > LIMITS.clipFrames) throw fault('TIMELINE_CLIP_LOUDNESS_DURATION_LIMIT');
-    if (track.muted) throw fault('TIMELINE_CLIP_LOUDNESS_MUTED');
+    if (track.muted || clip.muted === true) throw fault('TIMELINE_CLIP_LOUDNESS_MUTED');
     if (clip.gain === 0) throw fault('TIMELINE_CLIP_LOUDNESS_ZERO_GAIN');
     if (asset.mimeType.startsWith('image/')) throw fault('TIMELINE_CLIP_LOUDNESS_NO_AUDIO');
     const signal = freeze({clip, track, asset});

@@ -7,7 +7,7 @@ import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/cont
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
 import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
-import {validateTimeline,validateSavedTimeline} from './timeline-inputs.ts';
+import {validateTimeline,validateSavedTimeline,freezeTimelineSnapshot} from './timeline-inputs.ts';
 import {terminateMediaProcesses} from './media-processes.ts';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
@@ -18,6 +18,7 @@ import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {readFormat5RenderProjection} from './format5-timeline-render.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelinePreflightSnapshot,TimelinePreflightSnapshotAsset} from './timeline-sources.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -64,7 +65,7 @@ function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {has
  if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
  return {...timelineDeliveryNameFields(snapshot),...timelineExportRangeFields(snapshot),...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
   visualClipCount:t.clips.filter(c=>tracks.get(c.trackId)?.kind==='video'&&!tracks.get(c.trackId)!.hidden).length,
-  audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
+  audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.muted!==true&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
 }
 function classify(error: unknown): [string,string]{
@@ -93,6 +94,11 @@ function classify(error: unknown): [string,string]{
  */
 export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
+  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   const projection=readFormat5RenderProjection(store as never);
+   if(!projection)return {timeline:null,snapshot:null};
+   return {timeline:projection.legacy,snapshot:freezeTimelineSnapshot(projection.legacy,projection.assets,input.exportSettings,input) as TimelinePreflightSnapshot};
+  }
   const read=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
   if(read.snapshot)assertTransitionImageBudget(read.snapshot as never);

@@ -1,4 +1,7 @@
 import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts';
+import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
+import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
+import {runClipAudioExport} from './clip-audio-export.ts';
 import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import type {BackgroundTaskRef} from './background-task-events.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -12,7 +15,8 @@ import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.ts';
-import {isTimelineExportSnapshot,isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineExportSnapshot} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {lstatSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
@@ -36,6 +40,7 @@ import type {VideoProviderFailure} from '../../contracts/src/video-provider-fail
 import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
+import {adoptFormat5GeneratedVersionInside} from './format5-sequence-sync.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
@@ -128,7 +133,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
-  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch(error){if(!invalidTimeline(error))throw error;return invalidExport();}
+  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord:(value,input)=>isTimelineRenderRecordFor(store.db,value,input),readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch(error){if(!invalidTimeline(error))throw error;return invalidExport();}
   return value;
  }
  const workerExport=(id: string,observe=true): ExportRecord|null=>{
@@ -157,7 +162,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const receipt=readTimelineReceipt(store.db,input as never,'timeline.render');
    if(!receipt)return false;
    const response: unknown=JSON.parse(String(receipt.response));
-   return property(response,'status')==='queued'&&isTimelineRenderRecord(response,input as never)&&exportIdentity(response as ExportRecord)===exportIdentity(e);
+   return property(response,'status')==='queued'&&isTimelineRenderRecordFor(store.db,response,input as never)&&exportIdentity(response as ExportRecord)===exportIdentity(e);
   }catch(error){if(!(error instanceof SyntaxError)&&!invalidTimeline(error))throw error;return false;}
  }
  const currentOwnedExport=(e: ExportRecord,{cleanupOnly=false,observe=true}: {cleanupOnly?: boolean;observe?: boolean}={}): ExportRecord|null=>{
@@ -437,7 +442,17 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const commit = () => tx(()=>{if(projectOwner){checkOutput();if(published)assertPublishedProjectOutput(projectOwner,published.publication);}const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){if(artifact&&(previous.id!==artifact.versionId||previous.assetId!==artifact.assetId||previous.sha256!==artifact.info.sha256))throw Object.assign(Error('Generation result conflicts with completed artifact'),{code:'INVALID_OUTPUT_ARTIFACT'});services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
      const asset={id:artifact?.assetId??randomUUID(),projectId:j!.projectId,name:generatedVideoAssetName(store.db,j!,String(property(j!.snapshot,'title'))),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:artifact?.versionId??randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId}))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const format5=projectOwner!==null&&projectOwner!==undefined&&Number(projectOwner.db.prepare('PRAGMA project.user_version').get()?.user_version)===5;
+     // Format-5 adoption is a background mutation of the generated shot. It
+     // uses the same Mio target gate as the version selection below (one call
+     // records the skipped/conflict event); user-owned jobs have no binding and
+     // pass. A denied check leaves the placeholder and version untouched.
+     const targetAllowed=!format5||allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId});
+     const adopted=format5&&projectOwner&&targetAllowed?adoptFormat5GeneratedVersionInside(projectOwner,j!,version):false;
+     // Format-5 edit-created shots adopt only while their placeholder and the
+     // frozen shot revision still match. A late result records the version but
+     // never rewrites a moved-on shot.
+     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
       await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {
@@ -524,6 +539,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const claimed=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;const claimedRecord=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimedRecord);return isFloatTimelineExport(current)?claimedRecord:current;});
   if(!claimed)return;
   e=claimed as unknown as ExportRecord;
+  // «Save clip sound» rides the exports channel but owns its own record shape,
+  // staging and publication rules; it never decodes a timeline snapshot.
+  if(e.mode===CLIP_AUDIO_EXPORT_MODE){await processClipAudioTask(e,signal);return;}
   floatClaims.remember(signal,e);
   const floatExport=isFloatTimelineExport(e);
   const writerOwner=registeredProjectStore(root),outputOwner:ProjectOutputOwner={kind:'export',id:e.id,requestId:typeof e.requestId==='string'?e.requestId:e.id,inputHash:outputArtifactDigest(exportOutputArtifactIdentity(e))};
@@ -674,6 +692,29 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    };
    if(terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
+  }
+ }
+
+ async function processClipAudioTask(original: ExportRecord,signal: AbortSignal): Promise<void> {
+  const latest=(): ClipAudioExportRecord|null=>{
+   const current=currentOwnedExport(original);
+   return current&&isClipAudioExportRecord(current)?current as unknown as ClipAudioExportRecord:null;
+  };
+  const initial=latest();
+  if(!initial||initial.status!=='running')return;
+  const save=(values: Record<string,unknown>): void=>{tx(()=>{const current=latest();if(!current||current.status!=='running')return;put('exports',{...current,...values});});};
+  try{
+   await runClipAudioExport(inputStore as never,initial,{
+    signal,
+    beforeEffect:()=>{checkpoint(signal);const current=latest();if(!current||current.status!=='running')throw Object.assign(Error('The clip-audio task is no longer owned.'),{code:'INVALID_TIMELINE_SNAPSHOT'});},
+    latest,
+    save,
+    succeed:(asset: Record<string,unknown>,record: ClipAudioExportRecord)=>{tx(()=>{const current=latest();if(!current||current.status!=='running')throw Object.assign(Error('The clip-audio task is no longer owned.'),{code:'INVALID_TIMELINE_SNAPSHOT'});put('assets',asset);put('exports',record);});},
+   });
+  }catch(error){
+   if(isBackgroundTaskIndexUncertain(error))return;
+   if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:original.id},error))return;
+   tx(()=>{const current=latest();if(!current||current.status!=='running')return;put('exports',{...current,status:'failed',error:safeError(error,'EXPORT_FAILED'),updatedAt:now()});});
   }
  }
 

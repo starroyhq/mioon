@@ -229,3 +229,15 @@ test('the GP board generate action sends the same defaulted sound switch as the 
   assert.deepEqual(shotWithGenerationParameters({id: 'shot'}, null), {id: 'shot'},
     'no provider keeps the legacy raw shot');
 });
+
+test('a selected legacy Mock service reports the unsupported-service reason, not "no service"', () => {
+  const mock = planDialogueGeneration({shotId, shotRevision: 1, lines: [], basePrompt: base,
+    legacyService: {providerId: 'mock'}});
+  assert.equal(mock.status, 'unsupported');
+  assert.equal(mock.reason, FORMAT5_DIALOGUE_REASONS.serviceDoesNotSpeak);
+  assert.equal(mock.prompt, base);
+  assert.equal(format5DialogueView(mock).reason, 'SERVICE_DOES_NOT_SPEAK');
+  const noService = planDialogueGeneration({shotId, shotRevision: 1, lines: [], basePrompt: base});
+  assert.equal(noService.reason, FORMAT5_DIALOGUE_REASONS.serviceNotSelected);
+
+});

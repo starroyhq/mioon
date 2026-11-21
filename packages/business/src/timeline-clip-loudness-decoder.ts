@@ -14,7 +14,7 @@ const fail = (code: string): never => {throw Object.assign(new Error('The select
  * Source offset/duration/gain/fades are unchanged. Other clips never enter it. */
 function descriptor(signal: TimelineClipLoudnessSignal) {
   if (signal.clip.durationFrames > TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames) fail('TIMELINE_CLIP_LOUDNESS_DURATION_LIMIT');
-  if (signal.track.muted) fail('TIMELINE_CLIP_LOUDNESS_MUTED');
+  if (signal.track.muted || signal.clip.muted === true) fail('TIMELINE_CLIP_LOUDNESS_MUTED');
   if (signal.clip.gain === 0) fail('TIMELINE_CLIP_LOUDNESS_ZERO_GAIN');
   if (signal.asset.mimeType.startsWith('image/')) fail('TIMELINE_CLIP_LOUDNESS_NO_AUDIO');
   return {timeline: {fps: 30 as const, durationFrames: signal.clip.durationFrames,

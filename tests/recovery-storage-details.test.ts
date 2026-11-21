@@ -188,13 +188,19 @@ test('last-project remains one overwritten location, separate from all three bou
   assert.match(html, /前三类清除草稿后仍保留版本记录并占用槽位/);
 });
 
-test('all three actual recovery panels mount their domain disclosure once and preserve existing status regions', () => {
-  for (const [domain, html] of Object.entries(rendered.hosts)) {
+test('clip recovery keeps only its status while delivery and shot-text mount their domain disclosure once', () => {
+  // Clip draft recovery deliberately keeps only the saved/paused status; the
+  // routine storage disclosure was removed from the clip inspector's routine
+  // UI, while the other two domains retain it.
+  assert.equal(rendered.hosts.clip.split('data-testid="clip-draft-disclosure"').length - 1, 0);
+  assert.match(rendered.hosts.clip, /data-testid="clip-draft-status"/);
+  assert.match(rendered.hosts.clip, /role="status"/);
+  for (const domain of ['delivery', 'shot-text']) {
+    const html = rendered.hosts[domain];
     assert.equal(html.split(`data-testid="${(ids as Record<string, string>)[domain]}"`).length - 1, 1, domain);
     assert.match(html, /role="status"/);
     assert.doesNotMatch(html, /<details[^>]*\sopen(?:[\s=>])/);
   }
-  assert.match(rendered.hosts.clip, /data-testid="clip-draft-status"/);
   assert.match(rendered.hosts.delivery, /data-testid="delivery-draft-status"/);
   assert.match(rendered.hosts['shot-text'], /data-testid="shot-text-draft-status"/);
 });

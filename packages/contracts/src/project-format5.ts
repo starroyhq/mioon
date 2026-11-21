@@ -101,6 +101,12 @@ export interface Format5Clip extends Omit<TimelineClipRecord,'assetId'|'versionI
   rect:TimelineClipRecord['rect'];gain:number;
   assetId:string|null;versionId?:string|null;jobId?:string|null;shotId?:string;
   sourceState:'ready'|'placeholder';sequenceSource?:Format5SequenceSource;anchor?:Format5Anchor;
+  /** Per-clip mute of the clip's own sound. Only stored as `true`; absence means
+   * audible. Format 3/4 rows never carry it. */
+  muted?:boolean;
+  /** Audio-track clip that plays only the sound of a video source. The only
+   * legal way for an audio track to reference a video asset. */
+  soundOnly?:boolean;
 }
 export interface Format5Cue {
   id:string;text:string;startFrame:number;durationFrames:number;
@@ -172,7 +178,7 @@ const headerFields=fields(['id','projectId','revision','fps','width','height','t
 const mainTrackFields=fields(['trackId','sequenceNodeId']);
 const trackFields=fields(['id','name','kind','orderIndex','hidden','muted']);
 const clipFields=fields(['id','trackId','assetId','name','startFrame','durationFrames','sourceInFrame','rect','gain','sourceState'],
-  ['versionId','shotId','jobId','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope','transform','transitionIn','layout','sequenceSource','anchor']);
+  ['versionId','shotId','jobId','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope','transform','transitionIn','layout','sequenceSource','anchor','muted','soundOnly']);
 const fixedSubtitleFields=fields(['profileId','cues']);
 const relativeSubtitleFields=fields(['profileId','basisPresetId','cues']);
 const headerFixedSubtitleFields=fields(['profileId']);
@@ -185,7 +191,9 @@ function clipEffectsValid(clip:RecordValue,frame:unknown,kind:unknown):boolean {
       Object.hasOwn(clip,'volumeEnvelope')&&!isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames as number)||
       Object.hasOwn(clip,'transform')&&(clip.transform===null||!isClipTransform(clip.transform,clip.durationFrames as number)||kind!=='video')||
       Object.hasOwn(clip,'transitionIn')&&(clip.transitionIn===null||!isClipTransition(clip.transitionIn)||kind!=='video')||
-      Object.hasOwn(clip,'colour')&&(!isTimelineClipColour(clip.colour)||clip.colour!==null&&kind!=='video'))return false;
+      Object.hasOwn(clip,'colour')&&(!isTimelineClipColour(clip.colour)||clip.colour!==null&&kind!=='video')||
+      Object.hasOwn(clip,'muted')&&clip.muted!==true||
+      Object.hasOwn(clip,'soundOnly')&&(clip.soundOnly!==true||kind!=='audio'))return false;
   for(const key of ['fadeInFrames','fadeOutFrames'])if(Object.hasOwn(clip,key)&&!integer(clip[key],0,clip.durationFrames as number))return false;
   return Number(clip.fadeInFrames??0)+Number(clip.fadeOutFrames??0)<=(clip.durationFrames as number);
 }
@@ -223,10 +231,14 @@ export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext
   }else if(Object.hasOwn(clip,'sequenceSource')||!format5AnchorSchema.safeParse(clip.anchor).success)
     return issue('FORMAT5_ANCHOR_INVALID','Other-track clips must carry an explicit anchor',[clip.id]);
   if(clip.sourceState==='placeholder'){
-    if(!main||!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
-        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
-        Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
-      return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+    if(main){
+      if(!object(clip.sequenceSource)||clip.sequenceSource.kind!=='shot'||clip.sequenceSource.versionMode!=='follow'||
+          clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||
+          Object.hasOwn(clip,'shotId')&&clip.shotId!==clip.sequenceSource.nodeId)
+        return issue('FORMAT5_PLACEHOLDER_INVALID','A placeholder must reference an ungenerated shot',[clip.id]);
+    }else if(!uuid(clip.shotId)||!format5AnchorSchema.safeParse(clip.anchor).success||
+        clip.assetId!==null||clip.versionId!==null||clip.jobId!==null||clip.sourceInFrame!==0||Object.hasOwn(clip,'sequenceSource'))
+      return issue('FORMAT5_PLACEHOLDER_INVALID','An other-track placeholder must reference its ungenerated shot and owner',[clip.id]);
   }else if(clip.sourceState!=='ready'||!uuid(clip.assetId)||
       ['versionId','shotId','jobId'].some(key=>Object.hasOwn(clip,key)&&!uuid(clip[key]))||
       main&&object(clip.sequenceSource)&&clip.sequenceSource.kind==='shot'&&!uuid(clip.versionId))

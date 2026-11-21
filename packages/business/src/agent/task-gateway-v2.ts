@@ -86,7 +86,8 @@ const objectCompositions=['anyOf','oneOf','allOf'] as const;
  * instruction instead of on every object branch. Formats 3/4 keep the reviewed
  * full text byte-for-byte. */
 function explainedToolParameters(parameters:unknown,locale:AgentTaskLocale,depth=0,compactExplanations=false):Record<string,unknown>{
-  if(depth>32||!object(parameters)||parameters.type!=='object'||['$ref','not','if','then','else','unevaluatedProperties','dependentSchemas'].some(key=>Object.hasOwn(parameters,key)))fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  const composition=objectCompositions.some(key=>object(parameters)&&Object.hasOwn(parameters,key));
+  if(depth>32||!object(parameters)||parameters.type!=='object'&&!composition||['$ref','not','if','then','else','unevaluatedProperties','dependentSchemas'].some(key=>Object.hasOwn(parameters,key)))fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   const projected={...parameters};let recognized=false;
   if(Object.hasOwn(parameters,'properties')){
     if(!object(parameters.properties)||Object.hasOwn(parameters.properties,explanationField))fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
@@ -100,7 +101,8 @@ function explainedToolParameters(parameters:unknown,locale:AgentTaskLocale,depth
     const branches=parameters[key];if(!Array.isArray(branches)||!branches.length)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
     projected[key]=branches.map(branch=>explainedToolParameters(branch,locale,depth+1,compactExplanations));recognized=true;
   }
-  if(!recognized)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');return projected;
+  if(!recognized)return projected;
+  return projected;
 }
 function declaresToolExplanation(parameters:unknown,depth=0):boolean{
   if(depth>32||!object(parameters))return false;

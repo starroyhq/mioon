@@ -362,8 +362,8 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     {props.rpc && typeof shot?.projectId === 'string' && props.rpc && <ShotDialogue shot={shot as never}
       subjectNames={props.dialogueSubjects ?? {}} projectId={shot.projectId as string}
       cueCount={props.dialogueCueCount ?? 0}
-      // GP follow-up: the panel shows the same DL-b service status as the
-      // projection; a stale view for another shot never leaks a marker.
+      // WT-3-05: the GP shot panel shows the same live dialogue status as the
+      // read-only projection (selected silent service, prompt overflow, ...).
       dialogueStatus={props.inputs && props.inputs.shotId === shot.id ? props.inputs.dialogue : null}
       disabled={props.busy || !props.onDialogueApplied}
       rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}

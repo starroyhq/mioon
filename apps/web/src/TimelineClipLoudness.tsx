@@ -48,25 +48,6 @@ export default function TimelineClipLoudness({ loudness }: { readonly loudness: 
     {!available && <p className="clip-loudness-blocked" data-testid="clip-loudness-blocked">{state.durationFrames > TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames ? t('audio.loudness.clip.tooLong') : t(!state.audioSupported || state.muted || state.gain <= 0 ? 'audio.loudness.clip.inaudible' : 'audio.loudness.clip.blocked')}</p>}
     <div id={statusId} role="status" aria-live="polite" aria-atomic="true">{status && <p data-testid="clip-loudness-status">{status}</p>}</div>
     {preparing && available && <Button type="button" variant="ghost" size="sm" data-testid="clip-loudness-cancel" onClick={() => controller.cancel(state)}>{t('audio.loudness.cancelObservation')}</Button>}
-    <details className="clip-audio-help"><summary>{t('round3.audio.learnMore')}</summary>
-      <p data-testid="clip-loudness-limit">{t('audio.loudness.clip.durationLimit', { seconds: TIMELINE_CLIP_LOUDNESS_LIMITS.clipSeconds })}</p>
-      {report && <>
-        <p>{t('round3.audio.samplePeak')} {peak(report.measurement.samplePeakDbfs, 'dBFS')}</p>
-        <p data-testid="clip-loudness-range">{t('audio.loudness.clip.range', { start: report.identity.startFrame, end: report.identity.startFrame + report.identity.durationFrames,
-          source: report.identity.sourceInFrame, sourceEnd: report.identity.sourceInFrame + report.identity.durationFrames, duration: report.identity.durationFrames })}</p>
-        <p data-testid="clip-loudness-stage">{t('audio.loudness.clip.stage', { gain: report.identity.gain, fadeIn: report.identity.fadeInFrames, fadeOut: report.identity.fadeOutFrames })}<br />{report.stage}</p>
-        <details><summary>{t('audio.loudness.clip.details')}</summary>
-          <p>{t('audio.loudness.clip.identity', { project: report.projectId, timeline: report.timelineId, revision: report.expectedRevision, clip: report.clipId, track: report.identity.trackId, asset: report.identity.assetId })}</p>
-          <p>{t('audio.loudness.clip.samples', { frames: report.measurement.sampleFrames, end: report.identity.measurementEndFrame })}<br />
-            {t('audio.loudness.profile')}{report.measurementProfile}<br />{report.processingProfile}<br />
-            {t('audio.loudness.duration', { seconds: formatNumber(report.measurement.decodedDurationSeconds, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) })}<br />
-            {t('audio.loudness.stateLabel')}{t(`audio.loudness.state.${report.measurement.state}`)}<br />
-            {t('audio.loudness.gating', { all: formatNumber(report.measurement.gatingBlockCount), absolute: formatNumber(report.measurement.absoluteGatedBlockCount), relative: formatNumber(report.measurement.relativeGatedBlockCount) })}<br />
-            {t('audio.loudness.relativeGate')}{report.measurement.relativeGateLufs === null ? t('audio.loudness.unavailable') : t('audio.loudness.clip.integratedValue', { value: number(report.measurement.relativeGateLufs) })}<br />
-            {t('audio.loudness.snapshotHash')}{report.identity.snapshotSha256}<br />{t('audio.loudness.clip.sourceHash')}{report.identity.assetSha256}</p>
-          <p>{t('audio.loudness.measuredAt')}<time dateTime={report.checkedAt}>{formatDate(report.checkedAt, { dateStyle: 'medium', timeStyle: 'medium' })}</time></p>
-        </details>
-      </>}
-    </details>
+
   </section>;
 }

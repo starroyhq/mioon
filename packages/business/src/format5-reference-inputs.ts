@@ -670,6 +670,8 @@ export interface PlanFormat5GenerationInputsOptions {
    * the plan only resolves candidates and reports every service-specific check
    * as unknown (RI-b always supplies it for the property panel). */
   readonly binding?: VideoExecutionBinding;
+  /** Legacy provider capabilities when no video connection exists (Mock). */
+  readonly legacyService?: Format5LegacyGenerationService;
   /** Explicit primary reference chosen by the user (edge id or binding id). It
    * is placed first in the actual image order; remaining images keep the board
    * order. Ignored when it is not part of the candidate set. */
@@ -680,16 +682,15 @@ const REFERENCE_ROLES = new Set<ChainReferenceRole>(['reference_image', 'composi
 const IMAGE_ROLES = new Set<ChainReferenceRole>(['first_frame', 'last_frame', 'reference_image', 'composition',
   'subject_reference', 'style_reference']);
 
-function unsupportedReason(kind: 'frames' | 'references' | 'audio' | 'image', binding: VideoExecutionBinding | undefined): string | undefined {
-  if (!binding) return 'SERVICE_NOT_SELECTED';
-  const profile = videoInputProfile(binding);
-  if (kind === 'frames') {
-    if (!profile.inputs.roles.first_frame?.implemented) return 'UNSUPPORTED_FRAME_INPUT';
-    if (profile.inputs.roles.last_frame && !profile.inputs.roles.last_frame.implemented) return 'UNSUPPORTED_LAST_FRAME';
-    return undefined;
-  }
-  if (kind === 'image') return profile.inputs.roles.reference_image?.implemented ? undefined : 'UNSUPPORTED_REFERENCE_IMAGES';
-  if (kind === 'audio') return isSeedance25Binding(binding) ? undefined : 'UNSUPPORTED_REFERENCE_AUDIO';
+function unsupportedReason(kind: 'frames' | 'references' | 'audio' | 'image', binding: VideoExecutionBinding | undefined,
+  legacyService?: Format5LegacyGenerationService): string | undefined {
+  if (!binding && !legacyService) return 'SERVICE_NOT_SELECTED';
+  const profile = binding ? videoInputProfile(binding) : null;
+  const roles = profile ? profile.inputs.roles : legacyService?.roles;
+  if (kind === 'frames') return roles?.first_frame?.implemented ? undefined : 'UNSUPPORTED_FRAME_INPUT';
+  if (kind === 'image') return roles?.reference_image?.implemented ? undefined : 'UNSUPPORTED_REFERENCE_IMAGES';
+  if (kind === 'audio') return binding ? (isSeedance25Binding(binding) ? undefined : 'UNSUPPORTED_REFERENCE_AUDIO')
+    : (roles?.reference_audio?.implemented ? undefined : 'UNSUPPORTED_REFERENCE_AUDIO');
   return 'UNSUPPORTED_REFERENCE_MODE';
 }
 
@@ -701,7 +702,7 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
   options: PlanFormat5GenerationInputsOptions = {}): Format5GenerationInputPlan {
   const [set] = readFormat5ShotReferenceCandidates(store, [shotId]);
   if (!set) throw new TypeError('A shot reference set is required');
-  const {binding} = options;
+  const {binding, legacyService} = options;
   const entries: Format5GenerationInputEntry[] = [];
   const frames = set.candidates.filter(candidate => FRAME_ROLES.has(candidate.role));
   const referenceCandidates = set.candidates.filter(candidate => REFERENCE_ROLES.has(candidate.role));
@@ -714,10 +715,11 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
   };
 
   if (mode === 'frames') {
-    const frameIssue = unsupportedReason('frames', binding);
+    const frameIssue = unsupportedReason('frames', binding, legacyService);
     const first = frames.find(candidate => candidate.role === 'first_frame');
     const last = frames.find(candidate => candidate.role === 'last_frame');
-    const lastImplemented = !binding || videoInputProfile(binding).inputs.roles.last_frame?.implemented !== false;
+    const lastImplemented = binding ? videoInputProfile(binding).inputs.roles.last_frame?.implemented !== false
+      : legacyService ? legacyService.roles.last_frame?.implemented !== false : true;
     for (const candidate of set.candidates) {
       if (candidate === first) {
         if (frameIssue) unsupported(candidate, frameIssue);
@@ -734,8 +736,9 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
       if (FRAME_ROLES.has(candidate.role)) unsupported(candidate, 'EXCLUSIVE_MODE');
       else if (candidate.role === 'reference_video') unsupported(candidate, 'UNSUPPORTED_REFERENCE_VIDEO');
     }
-    const imageIssue = unsupportedReason('image', binding);
-    const maxImages = binding ? Number(videoInputProfile(binding).inputs.roles.reference_image?.max ?? 0) : Number.MAX_SAFE_INTEGER;
+    const imageIssue = unsupportedReason('image', binding, legacyService);
+    const maxImages = binding ? Number(videoInputProfile(binding).inputs.roles.reference_image?.max ?? 0)
+      : legacyService ? Number(legacyService.roles.reference_image?.max ?? 0) : Number.MAX_SAFE_INTEGER;
     const primaryId = options.primaryReferenceId;
     const ordered = [...referenceCandidates].sort((left, right) => {
       // Only an explicitly chosen id is a primary match; previs scene subjects
@@ -752,8 +755,9 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
       else if (imageIndex > maxImages) unsupported(candidate, 'CAPACITY_EXCEEDED');
       else entries.push({...candidate, status: 'used', appliedRole: 'reference_image', imageIndex});
     }
-    const audioIssue = unsupportedReason('audio', binding);
-    const maxAudios = binding && isSeedance25Binding(binding) ? 10 : 0;
+    const audioIssue = unsupportedReason('audio', binding, legacyService);
+    const maxAudios = binding && isSeedance25Binding(binding) ? 10
+      : legacyService ? Number(legacyService.roles.reference_audio?.max ?? 0) : 0;
     const orderedAudio = [...audioCandidates].sort((left, right) => left.orderIndex - right.orderIndex
       || (left.edgeId ?? '').localeCompare(right.edgeId ?? ''));
     let audioIndex = 0;
@@ -912,10 +916,23 @@ export function hasFrozenFormat5GenerationInputs(snapshot: unknown): boolean {
 // Property-panel projection (RI-b)
 // ---------------------------------------------------------------------------
 
+/** Legacy provider capabilities (Mock) that have no configured video connection.
+ * The roles are the reviewed input-profile roles; the read-only projection uses
+ * them exactly as it uses a video binding's profile. */
+export interface Format5LegacyGenerationService {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly modelName: string;
+  readonly profileId: string;
+  readonly profileVersion: string;
+  readonly roles: Readonly<Record<string, {readonly implemented?: boolean; readonly max?: number}>>;
+}
 export interface ReadFormat5GenerationInputOptions {
   /** Exact selected video connection/model; omitted while no service is chosen,
    * which reports every input as unsupported with SERVICE_NOT_SELECTED. */
   readonly binding?: VideoExecutionBinding;
+  /** Legacy provider capabilities when no video connection exists (Mock). */
+  readonly legacyService?: Format5LegacyGenerationService;
   /** Explicit primary image chosen in the panel (edge or binding id). */
   readonly primaryReferenceId?: string;
   /** Current "生成声音" switch; omitted reports the service default. */
@@ -929,6 +946,7 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
   options: ReadFormat5GenerationInputOptions = {}): SequenceGenerationInputView {
   const plan = planFormat5GenerationInputs(store, shotId, {
     ...(options.binding ? {binding: options.binding} : {}),
+    ...(options.legacyService ? {legacyService: options.legacyService} : {}),
     ...(options.primaryReferenceId ? {primaryReferenceId: options.primaryReferenceId} : {}),
   });
   const profile = options.binding ? videoInputProfile(options.binding) : null;
@@ -956,7 +974,8 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
   } catch { basePrompt = ''; }
   const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
-    {...(options.binding ? {binding: options.binding} : {}), basePrompt,
+    {...(options.binding ? {binding: options.binding} : {}),
+     ...(options.legacyService ? {legacyService: {providerId: options.legacyService.providerId}} : {}), basePrompt,
      ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})}));
   return {
     projectId: store.projectId,
@@ -965,7 +984,10 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     mode: plan.mode,
     service: options.binding && profile ? {providerId: options.binding.providerId,
       modelId: options.binding.model.modelId, modelName: options.binding.model.name ?? options.binding.model.modelId,
-      profileId: profile.profileId, profileVersion: profile.profileVersion} : null,
+      profileId: profile.profileId, profileVersion: profile.profileVersion}
+      : options.legacyService ? {providerId: options.legacyService.providerId,
+        modelId: options.legacyService.modelId, modelName: options.legacyService.modelName,
+        profileId: options.legacyService.profileId, profileVersion: options.legacyService.profileVersion} : null,
     entries,
     usedCount: plan.entries.filter(entry => entry.status === 'used').length,
     unsupportedCount: plan.unsupported,

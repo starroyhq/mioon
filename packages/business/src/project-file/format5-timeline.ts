@@ -528,11 +528,12 @@ export function fenceFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchema
   // range that fits its duration (asset facts are parsed once per asset).
   expectNone(db, `SELECT count(*) FROM ${clips} c WHERE c.timelineId=? AND c.sourceState='ready'
     AND NOT EXISTS(SELECT 1 FROM ${schema}.assets a WHERE a.id=c.assetId AND a.projectId=c.projectId)`, [timelineId]);
-  expectNone(db, `WITH asset_facts AS (SELECT id,json_extract(data,'$.mimeType') mime,json_extract(data,'$.duration') duration FROM ${schema}.assets)
+  expectNone(db, `WITH asset_facts AS (SELECT id,json_extract(data,'$.mimeType') mime,json_extract(data,'$.duration') duration,json_extract(data,'$.hasAudio') hasAudio FROM ${schema}.assets)
     SELECT count(*) FROM ${clips} c JOIN asset_facts a ON a.id=c.assetId
     WHERE c.timelineId=? AND c.sourceState='ready' AND (
       (CASE c.trackId ${trackKindCase} END='video' AND a.mime NOT IN (${VIDEO_MIMES})) OR
-      (CASE c.trackId ${trackKindCase} END='audio' AND a.mime NOT IN (${AUDIO_MIMES})) OR
+      (CASE c.trackId ${trackKindCase} END='audio' AND NOT (a.mime IN (${AUDIO_MIMES}) OR
+        (json_extract(c.data,'$.soundOnly')=1 AND a.mime IN ('video/mp4','video/webm') AND a.hasAudio=1))) OR
       (a.mime LIKE 'image/%' AND c.sourceInFrame<>0) OR
       (a.mime NOT LIKE 'image/%' AND (typeof(a.duration) NOT IN ('integer','real') OR
         c.sourceInFrame+c.durationFrames>CAST(a.duration*30+0.000001 AS INTEGER))))`, [timelineId]);

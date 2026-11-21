@@ -36,6 +36,7 @@ function harness(locale: unknown='zh-Hans'){
   if(name==='./use-timeline-waveforms.ts')return{useTimelineWaveforms:(options?: unknown)=>{lastWaveform=options as {active:boolean};return{windows:[],entries:new Map(),setEnabled:(value?: unknown|string)=>calls.push(['waveform',value]),retry:()=>calls.push(['retry'])};}};
   if(name==='./waveform-state.ts')return{WAVEFORM_LIMITS:{entries:20}};
   if(name==='./TimelineWaveform.tsx')return{__esModule:true,default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls'};
+  if(name==='./edit-ui/generate-in-editing.ts')return{timelineGenerateTargetForBlank:()=>null};
   if(name==='./edit-ui/status.tsx')return{EditUiClipTitle:'EditUiClipTitle'}; if(name==='./edit-ui/anchors.tsx')return{EditUiAnchorLayer:'EditUiAnchorLayer',EditUiDetachedAnchor:'EditUiDetachedAnchor'};
   if((name)!.endsWith('.css'))return{};
   if((name)!.startsWith('@mioon/ui/'))return new Proxy({},{get:(_,key)=>String(key)});

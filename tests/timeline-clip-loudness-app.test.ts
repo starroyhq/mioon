@@ -35,6 +35,11 @@ test('actual App getter binds saved selection/graph and masks comparison/source-
   for (const ref of [h.refs.previewAssetRef, h.refs.comparisonIdRef]) { ref.current = id(8); assert.equal(h.read().visible, false); ref.current = null; }
   h.refs.currentProject.current = id(99); assert.equal(timelineClipLoudnessAvailable(h.read()), false);
 });
+test('format-5 App getter still exposes the saved clip loudness context', () => {
+  const h = harness(); (h.refs.dataRef.current as {projectFormatVersion?: number}).projectFormatVersion = 5;
+  const c = h.read();
+  assert.equal(c.clipId, input().clipId); assert.equal(timelineClipLoudnessAvailable(c), true);
+});
 test('actual App getter and controller fence batched A→B→A and same-id source replacement before any render', async () => {
   const h = harness(), wait = deferred(); let signal: AbortSignal | undefined;
   const controller = createTimelineClipLoudnessController({ getContext: h.read, read: (_input, options) => { signal = options.signal; return wait.promise; } });

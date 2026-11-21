@@ -141,7 +141,8 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame,
         durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
         ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
-        ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {})};
+        ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {}),
+        ...(clip.muted === true ? {muted: true} : {}), ...(clip.soundOnly === true ? {soundOnly: true} : {})};
     });
     const managed = new Map<string, TimelineAudioPreviewManagedAsset>();
     const assets = raw.assets.map((asset: unknown) => {

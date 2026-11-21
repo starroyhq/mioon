@@ -44,6 +44,9 @@ test('a mock Format-5 board generation completes and exposes the written version
   const shot = (await call('project.get', {projectId: fixture.projectId}))
     .shots.find((item: {id: string}) => item.id === appendedId);
   assert.ok(shot);
+  const placeholder = (fixture.store.get('timelines', BOARD_IDS.timeline) as any).clips
+    .find((item: any) => item.sequenceSource?.nodeId === appendedId);
+  assert.equal(placeholder.sourceState, 'placeholder');
   const preview = await call('sequence.preview', {projectId: fixture.projectId, requestId: `gp-shot-${randomUUID()}`,
     intents: [{side: 'board', operation: {kind: 'board.shot.update', shotId: shot.id,
       expectedRevision: shot.revision, patch: {title: '生成镜头', prompt: '雨停后的路口俯拍。', duration: 4,
@@ -54,6 +57,7 @@ test('a mock Format-5 board generation completes and exposes the written version
   assert.equal(updated.status, 'applied');
   const row = (await call('project.get', {projectId: fixture.projectId})).shots.find((item: {id: string}) => item.id === shot.id);
   fixture.store.put('shots', {...row, referenceAssetIds: [], referenceBindings: []});
+  const historyBefore = await call('sequence.history.get', {projectId: fixture.projectId});
   const submitted = await call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision + 1,
     providerId: 'mock', requestId: `gp-generate-${randomUUID()}`});
   assert.equal(typeof submitted.id, 'string');
@@ -73,4 +77,15 @@ test('a mock Format-5 board generation completes and exposes the written version
   assert.equal(after.selectedVersionId, job.versionId, 'the shot follows the completed version');
   assert.equal(project.versions.some((item: {id: string}) => item.id === job.versionId), true,
     'the completed task version is visible on the project/version page');
+  // GE-a item 5: the main-track placeholder is replaced in the worker's own
+  // transaction. The board UI does nothing and adds no board-version history.
+  const readyClip = (fixture.store.get('timelines', BOARD_IDS.timeline) as any).clips
+    .find((item: any) => item.id === placeholder.id);
+  assert.equal(readyClip.sourceState, 'ready');
+  assert.equal(readyClip.versionId, job.versionId);
+  assert.equal(readyClip.startFrame, placeholder.startFrame);
+  assert.equal(readyClip.durationFrames, placeholder.durationFrames);
+  const historyAfter = await call('sequence.history.get', {projectId: fixture.projectId});
+  assert.equal(historyAfter.position, historyBefore.position, 'task completion is not a user undo entry');
+  assert.equal(historyAfter.undo?.actionId, historyBefore.undo?.actionId);
 });
