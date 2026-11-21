@@ -163,6 +163,8 @@ test('the read-only generation-input projection lists connected lines before any
   assert.equal(view.entries[0].status, 'unsupported');
   assert.equal(view.entries[0].reason, 'SERVICE_NOT_SELECTED');
   assert.equal(view.entries[0].primary, undefined);
+  assert.equal(view.dialogue.status, 'unsupported');
+  assert.equal(view.dialogue.reason, 'SERVICE_NOT_SELECTED', 'no service selected keeps the no-service dialogue reason');
   // A service triple requires the real configured connection.
   await assert.rejects(call('sequence.generation-inputs.get', {projectId: f.projectId, shotId: BOARD_IDS.shotA,
     connectionId: randomUUID(), configurationRevision: 1, modelEntryId: randomUUID()}),
@@ -179,6 +181,10 @@ test('the read-only generation-input projection lists connected lines before any
   assert.equal(mock.entries[0].status, 'used');
   assert.equal(mock.entries[0].reason, undefined);
   assert.ok(mock.usedCount >= 1);
+  // WT-3-05: Mock is a selected service that cannot speak. The dialogue status
+  // must say so instead of falling back to "no service selected".
+  assert.equal(mock.dialogue.status, 'unsupported');
+  assert.equal(mock.dialogue.reason, 'SERVICE_DOES_NOT_SPEAK');
 });
 
 test('reference connect, role change, reorder, detach and one undo step ride the unified sequence RPC', async (t: test.TestContext) => {
