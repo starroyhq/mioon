@@ -329,7 +329,9 @@ test('missing portable test fails rather than silently skipping it', async t => 
 test('build and test plans retain spaces, Unicode and Windows executable path as exact argv', () => {
   const executable = 'C:\\Program Files\\Node 中\\node.exe';
   const commands = buildCommands('/repo 中 space', {vite: {entry: 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js'}} as never, 'production', executable);
-  assert.equal(commands[0].command, executable); assert.equal(commands[0].args[1], 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js');
+  assert.equal(commands[0].command, executable); assert.equal(commands[0].args[0], '--max-old-space-size=1024');
+  assert.match(String(commands[0].args[1]), /^--import=file:.*\/scripts\/lib\/build-heap-probe\.ts$/u);
+  assert.equal(commands[0].args[2], 'C:\\repo 中\\node_modules\\vite\\bin\\vite.js');
   assert.equal(commands[1].args.at(-1), '--channel=production');
   const testPlan = testCommand('/repo', ['tests/z.test.mjs', 'tests/a.test.mjs'], 2, executable);
   assert.deepEqual(testPlan.args, ['--test', '--test-concurrency=2', 'tests/z.test.mjs', 'tests/a.test.mjs']);
@@ -519,7 +521,7 @@ async function buildCliFixture(t: TestContext) {
   await write('scripts/tooling.ts', await readFile(path.join(root, 'scripts/tooling.ts'), 'utf8'));
   // Re-export the reviewed tooling modules instead of linking directories: the
   // fixture has no source symlinks, so evidence fingerprinting stays comparable.
-  for (const name of ['local-tooling', 'build-timings', 'typecheck-evidence'])
+  for (const name of ['local-tooling', 'build-timings', 'typecheck-evidence', 'build-heap-probe'])
     await write(`scripts/lib/${name}.ts`, `export * from ${JSON.stringify(pathToFileURL(path.join(root, `scripts/lib/${name}.ts`)).href)};\n`);
   return {...state, logs, report, projectLog, viteLog};
 }

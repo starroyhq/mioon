@@ -1,8 +1,10 @@
-import {mkdir, realpath} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
+import {mkdir, realpath, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, testEnvironment, toolingEnvironment} from './lib/local-tooling.ts';
-import {BUILD_COMMAND_TIMING_STAGES, DESKTOP_TYPECHECK_TIMING_STAGES, hasDesktopTypecheckTiming, measureBuildStage} from './lib/build-timings.ts';
+import {BUILD_COMMAND_TIMING_STAGES, DESKTOP_TYPECHECK_TIMING_STAGES, hasDesktopTypecheckTiming, heapEvidence, measureBuildStage} from './lib/build-timings.ts';
+import type {BuildHeapEvidence} from './lib/build-timings.ts';
 import {createTypecheckEvidence, removeTypecheckEvidence, type OwnedTypecheckEvidence} from './lib/typecheck-evidence.ts';
 
 interface ToolingFailure {
@@ -15,6 +17,24 @@ function failureOf(error: unknown): ToolingFailure {
   return error !== null && typeof error === 'object' ? error as ToolingFailure : {};
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
+
+/** The web bundle is the only stage with a heap probe; a missing or corrupt
+ * evidence file is reported as an absent measurement, never as a pass. */
+function readWebBundleHeap(file: string): BuildHeapEvidence | undefined {
+  let value: Record<string, unknown>;
+  try { value = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>; } catch { return undefined; }
+  const peak = value.peakOldSpaceBytes, limit = value.maxOldSpaceBytes;
+  if (typeof peak !== 'number' || typeof limit !== 'number') return undefined;
+  try {
+    const evidence = heapEvidence({peakOldSpaceBytes: peak, maxOldSpaceBytes: limit,
+      ...(typeof value.peakHeapUsedBytes === 'number' ? {peakHeapUsedBytes: value.peakHeapUsedBytes} : {}),
+      ...(typeof value.peakRssBytes === 'number' ? {peakRssBytes: value.peakRssBytes} : {})});
+    if (evidence.warning) {
+      console.log(`::warning title=web-bundle heap::peak old space ${(evidence.peakOldSpaceBytes / 1048576).toFixed(1)} MB is ${evidence.percent}% of the ${(evidence.maxOldSpaceBytes / 1048576).toFixed(0)} MB limit`);
+    }
+    return evidence;
+  } catch { return undefined; }
+}
 
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number | undefined> {
   try {
@@ -51,13 +71,18 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
             return undefined;
           });
         }
+        const stage = options.command === 'build' ? BUILD_COMMAND_TIMING_STAGES[index]! : undefined;
+        const heapPath = stage === 'web-bundle' ? path.join(root, 'artifacts', 'build', 'web-bundle-heap.json') : undefined;
+        if (heapPath) { await mkdir(path.dirname(heapPath), {recursive: true}); await rm(heapPath, {force: true}).catch(() => {}); }
         const env = {...(options.command === 'test' ? testEnvironment(process.env) : toolingEnvironment(process.env)),
+          ...(heapPath ? {MIOON_BUILD_HEAP_EVIDENCE: heapPath} : {}),
           ...(index === stagingIndex && typecheckEvidence ? typecheckEvidence.environment : {})};
         const run = async () => options.command === 'test' && options.compileCache
           ? await (await import('./lib/test-compile-cache.ts')).withOwnedTestCompileCache(env, cachedEnv => executeCommand(command, {env: cachedEnv}))
           : await executeCommand(command, {env});
+        const heap = heapPath ? () => readWebBundleHeap(heapPath) : undefined;
         const result = options.command === 'build'
-          ? await measureBuildStage(BUILD_COMMAND_TIMING_STAGES[index]!, run, {exitCode: value => value.code})
+          ? await measureBuildStage(stage!, run, {exitCode: value => value.code, ...(heap ? {heap} : {})})
           : await run();
         if (result.code !== 0) return result.code;
       }
