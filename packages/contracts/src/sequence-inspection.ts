@@ -115,7 +115,7 @@ export interface SequenceGenerationInputEntryView {
   readonly sourceNodeId?: string;
   readonly sourceKind: 'image' | 'video' | 'audio' | 'previs' | 'subject';
   readonly role: ChainReferenceRole;
-  readonly appliedRole?: 'first_frame' | 'last_frame' | 'reference_image' | 'reference_audio';
+  readonly appliedRole?: 'first_frame' | 'last_frame' | 'reference_image' | 'subject_reference' | 'reference_audio';
   readonly status: SequenceGenerationInputStatus;
   readonly reason?: string;
   readonly label: string;

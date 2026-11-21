@@ -280,7 +280,10 @@ export function getGenerationProfileIssue(snapshot: unknown, capabilities: unkno
     references: assetRecords.map((asset, index) => ({
       role: boundBindings ? boundBindings[index].role : own(asset, 'role') ? asset.role : 'first_frame',
       assetId: ids[index], mimeType: asset.mimeType, sha256: asset.sha256,
-      ...(own(asset, 'durationSeconds') || own(asset, 'duration') && asset.duration !== 0 ? { durationSeconds: asset.durationSeconds ?? asset.duration } : {}),
+      ...((() => {
+        const duration = asset.durationSeconds ?? asset.duration;
+        return typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? { durationSeconds: duration } : {};
+      })()),
       ...(asset.sizeBytes === undefined ? {} : { sizeBytes: asset.sizeBytes }),
       ...(asset.width === undefined ? {} : { width: asset.width }),
       ...(asset.height === undefined ? {} : { height: asset.height }),

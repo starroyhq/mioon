@@ -208,6 +208,10 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       }
     }
     function referenceAssets(value: InspectionRecord): string[] {
+      // Format-5 shots created from the board carry no legacy reference array;
+      // the board edges are their source of truth. Validate an absent relation as
+      // empty instead of rejecting every version disclosure for that shot.
+      if (value.referenceAssetIds === undefined) { lastFrameAsset(value); return []; }
       const references = ids(value.referenceAssetIds);
       references.forEach(reference => validateAsset(get('assets', reference)));
       lastFrameAsset(value);

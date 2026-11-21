@@ -489,7 +489,17 @@ export function getGenerationIssue(snapshot: unknown, capabilities: unknown): Ge
  if(modelParameters&&Object.keys(parameters).some(key=>!modelParameters.includes(key)))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
  const seedRule = model.seed as {min: number; max: number} | undefined;
  if(parameters.seed!==undefined&&seedRule&&(typeof parameters.seed!=='number'||!Number.isInteger(parameters.seed)||parameters.seed<seedRule.min||parameters.seed>seedRule.max))return issue('INVALID_SEED',`随机种子须为 ${seedRule.min}–${seedRule.max} 之间的整数`);
- if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){const rich=getGenerationProfileIssue({...request,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);}
+ if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){
+  // All current reference roles are images. A null image `duration` is not a
+  // clip duration; strip a stray duration field before profile validation.
+  const references=Array.isArray(request.referenceAssets)?request.referenceAssets.map(asset=>{
+    if(!dataRecord(asset)||!Object.hasOwn(asset as object,'durationSeconds'))return asset;
+    const duration=(asset as Record<string,unknown>).durationSeconds;
+    if(typeof duration==='number'&&duration>0)return asset;
+    const {durationSeconds:_duration,...rest}=asset as Record<string,unknown>;void _duration;return rest;
+  }):request.referenceAssets;
+  const rich=getGenerationProfileIssue({...request,referenceAssets:references,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);
+ }
  return null;
 }
 

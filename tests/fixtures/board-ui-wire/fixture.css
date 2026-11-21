@@ -27,3 +27,5 @@ html,body,#root{height:100%;margin:0;background:#0b0c0e;}
 
 .board-fixture-subject-library {position:fixed;left:8px;top:48px;z-index:29;display:flex;flex-direction:column;gap:6px;width:320px;max-height:52vh;overflow:auto;padding:8px;border:1px solid #2e3138;border-radius:8px;background:#141518;box-shadow:0 10px 30px rgb(0 0 0 / 40%);}
 .board-fixture-subject-library > button {align-self:flex-start;padding:3px 8px;border:1px solid #3a3d44;border-radius:5px;background:#1f2126;color:#ecedef;font:11px system-ui,sans-serif;cursor:pointer;}
+
+.board-fixture-editing-generate{position:fixed;top:56px;right:0;z-index:40;width:360px;max-height:calc(100vh - 80px);overflow:auto;background:var(--wb-panel,#1d1d1f);border:1px solid var(--wb-line,#333);box-shadow:0 18px 40px #0008;}
