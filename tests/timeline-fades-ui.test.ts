@@ -92,6 +92,7 @@ async function inspectorHarness(patch: Record<string,unknown> = {}, lutRpc: clip
       if (id === '@mioon/contracts') return { sourceFrameCount: (duration: number) => Math.floor(duration * 30), isTimelineRecord };
       if (id === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
       if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
+      if (id === './clip-sound-state.ts') return {clipSoundEntriesVisible: () => false, clipSaveAudioVisible: () => false};
       return primitive;
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;

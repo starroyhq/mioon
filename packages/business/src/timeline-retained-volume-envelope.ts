@@ -12,6 +12,8 @@ import {TIMELINE_CLIP_GAINS_OPERATION,createTimelineClipGainsContracts} from '..
 import {TIMELINE_CLIP_TRANSFORM_OPERATION,createTimelineClipTransformContracts} from '../../contracts/src/timeline-clip-transform-operation.ts';
 import {TIMELINE_CLIP_TRANSITION_OPERATION,createTimelineClipTransitionContracts} from '../../contracts/src/timeline-clip-transition-operation.ts';
 import {WRAPPED_TIMELINE_OPERATIONS} from './timeline-retained-receipts.ts';
+import {timelineRecordFormatOf} from './timeline-record-format.ts';
+import {isTimelineRecord} from '../../contracts/src/timeline-replacement.ts';
 
 const JSON_BYTES=4*1024*1024, SNAPSHOT_BYTES=256*1024;
 const keys=['volumeEnvelope','volumeEnvelopeProfile','volumeEnvelopeProcessingProfile','volumeEnvelopeSha256'];
@@ -45,7 +47,11 @@ export function hasTimelineVolumeEnvelopeEvidence(root:unknown):boolean {
  * archived history. This is read-only admission, never a migration or capability. */
 export function validateTimelineVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare'>,projectCell:(text:string)=>string=value=>value):void {
  const runtime=timelineRetainedRuntime;
- const isTimelineLoudnessApplyResponse=(root:unknown,input:unknown)=>createTimelineLoudnessApplyContracts({isTimelineRecord:timelineRetainedRuntime.isTimelineRecord}).isTimelineLoudnessApplyResponse(root,input);
+ // These rows serve released formats and format 5; state the file's own format.
+ const recordFormat=timelineRecordFormatOf(db);
+ const formatRecord=(value:unknown,options?:Parameters<typeof isTimelineRecord>[1])=>
+  isTimelineRecord(value,{...(options??{}),format:recordFormat});
+ const isTimelineLoudnessApplyResponse=(root:unknown,input:unknown)=>createTimelineLoudnessApplyContracts({isTimelineRecord:formatRecord}).isTimelineLoudnessApplyResponse(root,input);
  const names=new Map<string,{type:unknown;sql:unknown}>();
  for(const row of retainedTimelineCatalog(db,['timelines','timeline_history','timeline_requests','edit_tasks','exports','assets'])){
   if(typeof row.name!=='string'||names.has(row.name))invalid();names.set(row.name,{type:row.type,sql:row.sql});
@@ -91,26 +97,26 @@ export function validateTimelineVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare
    // clips inside are still checked one by one below, sources included.
    const timeline=root.timeline;
    if(!object(timeline)||typeof root.requestId!=='string'||bindings.request&&request!==root.requestId||
-    !timelineRetainedRuntime.isTimelineRecord(timeline,{projectId:timeline.projectId}))invalid();
+    !formatRecord(timeline,{projectId:timeline.projectId}))invalid();
    if(root.operation===TIMELINE_CROSSFADE_OPERATION){
     const summary=root.crossfade,revision=Number(timeline.revision);
     const input=object(summary)?{projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,outgoingClipId:summary.outgoingClipId,incomingClipId:summary.incomingClipId}:null;
-    if(!input||!createTimelineCrossfadeContracts({isTimelineRecord:timelineRetainedRuntime.isTimelineRecord}).isTimelineCrossfadeResponse(root,input))invalid();
+    if(!input||!createTimelineCrossfadeContracts({isTimelineRecord:formatRecord}).isTimelineCrossfadeResponse(root,input))invalid();
    }
    if(root.operation===TIMELINE_CLIP_GAINS_OPERATION){
     const changes=root.gains,revision=Number(timeline.revision);
     const input=Array.isArray(changes)&&changes.every(object)?{projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,gains:changes.map(change=>({clipId:change.clipId,gain:change.gain}))}:null;
-    if(!input||!createTimelineClipGainsContracts({isTimelineRecord:timelineRetainedRuntime.isTimelineRecord}).isTimelineClipGainsResponse(root,input))invalid();
+    if(!input||!createTimelineClipGainsContracts({isTimelineRecord:formatRecord}).isTimelineClipGainsResponse(root,input))invalid();
    }
    if(root.operation===TIMELINE_CLIP_TRANSFORM_OPERATION){
     const revision=Number(timeline.revision);
     const input={projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,clipId:root.clipId,transform:root.transform};
-    if(!createTimelineClipTransformContracts({isTimelineRecord:timelineRetainedRuntime.isTimelineRecord}).isTimelineClipTransformResponse(root,input))invalid();
+    if(!createTimelineClipTransformContracts({isTimelineRecord:formatRecord}).isTimelineClipTransformResponse(root,input))invalid();
    }
    if(root.operation===TIMELINE_CLIP_TRANSITION_OPERATION){
     const revision=Number(timeline.revision);
     const input={projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,clipId:root.clipId,transition:root.transition};
-    if(!createTimelineClipTransitionContracts({isTimelineRecord:timelineRetainedRuntime.isTimelineRecord}).isTimelineClipTransitionResponse(root,input))invalid();
+    if(!createTimelineClipTransitionContracts({isTimelineRecord:formatRecord}).isTimelineClipTransitionResponse(root,input))invalid();
    }
   }
   const admitted=new WeakMap<object,Set<string>>();

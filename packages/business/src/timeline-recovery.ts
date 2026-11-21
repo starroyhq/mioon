@@ -7,10 +7,11 @@ import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION,TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES,createTimelineLoudnessApplyContracts} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineFormatProvenance} from './timeline-format-receipts.ts';
-import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_PROOF_CODES,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_TRANSFORM_OPERATION,TIMELINE_CLIP_TRANSFORM_PROOF_CODES,TIMELINE_CLIP_TRANSFORM_RESPONSE_BYTES,TIMELINE_CLIP_TRANSITION_OPERATION,TIMELINE_CLIP_TRANSITION_PROOF_CODES,TIMELINE_CLIP_TRANSITION_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
+import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_PROOF_CODES,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_TRANSFORM_OPERATION,TIMELINE_CLIP_TRANSFORM_PROOF_CODES,TIMELINE_CLIP_TRANSFORM_RESPONSE_BYTES,TIMELINE_CLIP_TRANSITION_OPERATION,TIMELINE_CLIP_TRANSITION_PROOF_CODES,TIMELINE_CLIP_TRANSITION_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {readTimelineStorage,timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
+import {isTimelineMutationResponseFor, isTimelineRecordFor, isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {canvasActiveCondition} from './canvas-active.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {validateSavedTimeline} from './timeline-inputs.ts';
@@ -63,7 +64,6 @@ export interface TimelineRecoveryBoundary {
 }
 const asRecord=<T>(value: unknown): T=>value as T;
 
-const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRecord});
 const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 const object=(value: unknown): boolean=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -180,6 +180,11 @@ function format5TimelineProjection(timeline: Record<string, unknown>): TimelineR
     const {anchor:_cueAnchor,dialogueRef:_dialogueRef,...legacy}=cue;return legacy as unknown as TimelineSubtitleCueRecord;})}}:{})} as unknown as TimelineRecord;
 }
 export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineRecoveryInput): TimelineRecoveryBoundary{
+ // Format-scoped guard: only a format-5 project file may carry the format-5
+ // clip sound flags; formats 3/4 keep the pre-card closed record shape.
+ const formatRecord=(value: unknown,options?: import('../../contracts/src/timeline-replacement.ts').TimelineRecordOptions)=>
+  isTimelineRecordFor(db,value,options);
+ const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRecord:(value,options)=>formatRecord(value,options)});
  const guarded=<T>(fn: ()=>T): T=>{try{return fn();}catch(error){if((error as {code?: unknown}).code==='INSPECTION_UNAVAILABLE')unavailable();throw error;}};
  const graph=(): OwnedMediaGraph=>guarded(()=>createOwnedMediaGraphReader(db,input.projectId) as unknown as OwnedMediaGraph);
  const asset=(id: string): TimelineAssetRecord=>guarded(()=>graph().asset(id));
@@ -221,7 +226,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   },asset:(_projectId,id)=>assets.get(id)!});
   admitTimelineImageResponse(timeline);
   admitTimelineVolumeEnvelopeWrite(timeline);
-  if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
+  if(!isTimelineRecordFor(db,timeline,{projectId:input.projectId}))invalidTimeline();
   return timeline;
  }
  function validateReadonly(timeline: TimelineRecord): TimelineRecord{
@@ -230,7 +235,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   }
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
-  if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
+  if(!isTimelineRecordFor(db,timeline,{projectId:input.projectId}))invalidTimeline();
   try{const checked=validate(clone(timeline));if(checked.durationFrames!==timeline.durationFrames)invalidTimeline();}
   catch(error){const failure=error as {code?: string};if(['TIMELINE_SOURCE_UNAVAILABLE','INSPECTION_BUDGET_EXCEEDED'].includes(failure.code as string))throw error;invalidTimeline();}
   return timeline;
@@ -259,7 +264,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   // Historical render acknowledgements retain their own frozen media metadata.
   // Current structure and source ownership remain mandatory even when later
   // metadata discovery changes duration or audio flags under the same bytes.
-  if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
+  if(!isTimelineRecordFor(db,timeline,{projectId:input.projectId}))invalidTimeline();
   sources(timeline as unknown as TimelineRecord);return timeline as unknown as TimelineRecord;
  }
  function shots(): TimelineShotRecord[]{
@@ -292,7 +297,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
  function renderRecord(response: TimelineRenderResponseLike): TimelineRenderResponseLike{
   const row=db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data',TIMELINE_RENDER_RESPONSE_BYTES)} AS data FROM exports WHERE id=? AND projectId=?`).get(response.id,input.projectId);
   let current;try{current=JSON.parse(row?.data as string);}catch{unavailable();}
-  if(!row||row.id!==response.id||row.projectId!==input.projectId||!isTimelineRenderRecord(current,input)||current.id!==response.id)unavailable();
+  if(!row||row.id!==response.id||row.projectId!==input.projectId||!isTimelineRenderRecordFor(db,current,input)||current.id!==response.id)unavailable();
   for(const field of ['id','projectId','requestId','mode','purpose','timelineRevision'])if((current as unknown as Record<string, unknown>)[field]!==(response as unknown as Record<string, unknown>)[field])invalidTimeline();
   if(JSON.stringify(current.snapshot)!==JSON.stringify(response.snapshot))invalidTimeline();
   if(current.assetId!==null)asset(current.assetId);
@@ -307,7 +312,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(operation==='timeline.render'&&historical){
    // The shared ACK validator checked frame/fade semantics against the frozen
    // asset DTO. Replaying must not substitute current duration/audio metadata.
-   if(!isTimelineRecord(timeline,{projectId:input.projectId}))invalidTimeline();
+   if(!isTimelineRecordFor(db,timeline,{projectId:input.projectId}))invalidTimeline();
    sources(timeline);
   }else validateReadonly(timeline);
   if(operation==='timeline.clip.split'){
@@ -339,7 +344,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessRecovery.replay(text);
   if(operation==='timeline.format.set')readTimelineFormatProvenance(db,input,readTimelineReceipt(db,input,operation)?.requestHash);
   let response;try{response=JSON.parse(text);}catch{invalidTimeline();}
-  if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
+  if(!isTimelineMutationResponseFor(db,operation,input,response))invalidTimeline();
   const current=read({sourceSemantics:operation!=='timeline.render'});
   if(!current)return unavailable();
   const timeline=responseSources(operation,response,{historical:true});
@@ -352,7 +357,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
  function verify(operation: string,response: unknown,requestHash: string): void{
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessRecovery.verify(response,requestHash);
   if(operation==='timeline.format.set')readTimelineFormatProvenance(db,input,requestHash);
-  if(!isTimelineMutationResponse(operation,input,response))invalidTimeline();
+  if(!isTimelineMutationResponseFor(db,operation,input,response))invalidTimeline();
   const current=read();if(!current)return unavailable();
   responseSources(operation,response);
   if(operation==='timeline.render'){

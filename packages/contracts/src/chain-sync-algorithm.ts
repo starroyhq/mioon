@@ -215,6 +215,15 @@ export function planChainSync(state: ChainSyncState, operation: ChainSyncOperati
   const inSync = sameOrder(oldIds, previousChain);
   if (operation.kind === 'track') {
     if (!inSync) return {ok: false, code: 'CHAIN_TRACK_MISMATCH', id: state.filmId};
+    // A non-main-track item (for example a sound-only audio clip) is removed by
+    // the same one-clip remove command; the main-track list does not own it.
+    if (operation.edit.kind === 'remove') {
+      const removedClipId = operation.edit.clipId;
+      if (!mainIds.has(removedClipId) && state.anchored.some(item => item.id === removedClipId)) {
+        return makePlan(state, board, [...media.values()], track.clips,
+          state.anchored.filter(item => item.id !== removedClipId), [], issues);
+      }
+    }
     return planTrackEdit(state, operation.edit, track.clips, oldIds, nodes, media, issues);
   }
 
