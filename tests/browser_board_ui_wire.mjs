@@ -9,7 +9,7 @@ import {createRequire} from 'node:module';
 import {join, relative, sep} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {execFileSync, spawn} from 'node:child_process';
-import {copyFileSync} from 'node:fs';
+import {copyFileSync,mkdirSync} from 'node:fs';
 import {createBoardUiWireFixture} from './helpers/board-ui-wire-fixture.ts';
 import {createProviderRegistry, registerInputProfileWrapper} from '../packages/business/src/provider-registry.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -24,6 +24,11 @@ const scratch = await mkdtemp(join(root, '.board-wire-browser-'));
 const fixture = stress ? await import('./helpers/board-ui-wire-fixture.ts').then(module => module.createBoardUiWireStressFixture())
   : await createBoardUiWireFixture();
 const {store, services, library, projectId} = fixture;
+// The fixture image node points at a managed relative path; give the worker a
+// real file so first-frame publication checks exercise the normal path.
+mkdirSync(join(fixture.root, 'media'), {recursive: true});
+copyFileSync(join(root, 'tests/fixtures/board-ui-wire/reference.png'), join(fixture.root, 'media/ref.png'));
+copyFileSync(join(root, 'tests/fixtures/board-ui-wire/reference.png'), join(fixture.root, 'media/ref2.png'));
 const settings = fixture.settings;
 // The default FFmpeg on some walkthrough machines lacks drawtext, which the Mock
 // renderer needs. Keep the real worker/publication path but download a small
@@ -78,16 +83,6 @@ let server;
 try {
   server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://fixture.invalid');
-    if (url.pathname === '/test/mock-shot-references' && request.method === 'POST') {
-      let raw = '';
-      for await (const chunk of request) raw += chunk;
-      const {shotId} = JSON.parse(raw);
-      const row = store.get('shots', shotId);
-      if (row) store.put('shots', {...row, referenceAssetIds: [], referenceBindings: []});
-      response.writeHead(200, {'content-type': 'application/json'});
-      response.end(JSON.stringify({ok: Boolean(row)}));
-      return;
-    }
     if (url.pathname === '/test/start-mock-worker' && request.method === 'POST') {
       mockWorker ??= startWorker(store, services, fixture.providers);
       response.writeHead(200, {'content-type': 'application/json'});

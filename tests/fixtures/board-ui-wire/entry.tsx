@@ -67,6 +67,7 @@ function Harness(): React.ReactElement {
   const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
   const [mockProviderInstalled, setMockProviderInstalled] = useState(false);
   const [editingPanelShot, setEditingPanelShot] = useState<string | null>(null);
+  const [forceUnsupportedSubject, setForceUnsupportedSubject] = useState(false);
   const activeProviders = useMemo<readonly GenerationProvider[]>(() => mockProviderInstalled
     ? [...providers, {id: 'mock', name: 'Mock · simulated motion', models: ['mock-motion-v1'],
       mock: true, configured: true, enabled: true, status: 'available'}] : providers, [providers, mockProviderInstalled]);
@@ -185,10 +186,17 @@ function Harness(): React.ReactElement {
     const provider = selection.provider;
     const request = {projectId, shotId: shot.id, ...format5GenerationInputService(provider, selection)};
     let cancelled = false;
-    void rpc('sequence.generation-inputs.get', request).then(value => {if (!cancelled) setInputs(value as SequenceGenerationInputView);})
+    void rpc('sequence.generation-inputs.get', request).then(value => {
+      if (cancelled) return;
+      const view = value as SequenceGenerationInputView;
+      // Test-only projection for a service that has no subject slot; the
+      // binding menu/lifecycle is production behavior and stays board-side.
+      setInputs(forceUnsupportedSubject ? {...view, entries: view.entries.map(entry => entry.source === 'subject'
+        ? {...entry, status: 'unsupported', reason: 'UNSUPPORTED_REFERENCE_ROLE'} : entry)} : view);
+    })
       .catch(() => {if (!cancelled) setInputs(null);});
     return () => {cancelled = true;};
-  }, [data, activeProviders, generationOptions, selectedNodeId]);
+  }, [data, activeProviders, generationOptions, selectedNodeId, forceUnsupportedSubject]);
   useEffect(() => {
     const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     const update = (): void => setReduced(query?.matches === true);
@@ -340,6 +348,9 @@ function Harness(): React.ReactElement {
       setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
       installMockProvider: () => setMockProviderInstalled(true),
       openEditingGeneratePanel: (shotId: string) => {setSelectedNodeId(shotId); setEditingPanelShot(shotId);},
+      closeEditingGeneratePanel: () => setEditingPanelShot(null),
+      forceUnsupportedSubject: () => setForceUnsupportedSubject(true),
+      attachReference: (sourceNodeId: string, shotId: string, role?: string) => runReference(referenceAttachRequest(sourceNodeId, shotId, role as never), t('boardUi.notice.referenceAttached', {name: '参考'})),
       refresh: () => refresh(),
       setInspectorTab: (tab: string) => setInspectorTab(tab === 'versions' ? 'versions' : 'settings'),
       clearSelection: () => setSelectedNodeId(null),
