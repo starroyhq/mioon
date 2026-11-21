@@ -202,11 +202,13 @@ def main() -> int:
                 main = state['timeline']['mainTrack']['trackId']
                 target = next(clip for clip in state['timeline']['clips']
                     if clip['trackId'] == main and (clip.get('sequenceSource') or {}).get('kind') == 'shot')
+                dismiss_toast(page)
                 page.get_by_test_id('timeline-clip-' + target['id']).click(button='right', force=True)
                 page.wait_for_timeout(500)
                 expect(page.get_by_test_id('clip-context-menu')).to_be_visible(timeout=10000)
                 assert page.get_by_test_id('clip-menu-generate-before').count() == 1
                 assert page.get_by_test_id('clip-menu-generate-after').count() == 1
+                capture(page, f'21-08-clip-generate-{where}-menu.png')
                 page.get_by_test_id('clip-menu-generate-' + where).click(force=True)
                 page.wait_for_timeout(300)
                 history = rpc('sequence.history.get', {'projectId': project}, project)
@@ -229,7 +231,6 @@ def main() -> int:
             log('clip menu 在前面生成镜头 places before the shot and undoes in one step')
             clip_menu_generate('after')
             log('clip menu 在后面生成镜头 places after the shot and undoes in one step')
-            capture(page, '21-08-clip-generate-menu.png')
             assert not errors, errors
             result['projectId'] = project
             result['passed'] = True
