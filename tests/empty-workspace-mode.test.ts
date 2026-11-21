@@ -77,7 +77,7 @@ const fixture = `
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, retainWorkbenchForIdentity = false, retainSettingsForIdentity = false, nativeLeaseRevoked = {current:false}, webSettingsCenter = null, historyLayer = null, historyRecoveryLayer = null, formatUpgradeLayer = null, backupRecovery = null, webSettingsOpen = false, setAuth, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, retainWorkbenchForIdentity = false, retainSettingsForIdentity = false, nativeLeaseRevoked = {current:false}, webSettingsCenter = null, historyLayer = null, formatUpgradeLayer = null, backupRecovery = null, webSettingsOpen = false, setAuth, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
     projectEntryIdentityRef, readProjectEntryIdentity, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
     const { t } = createI18nTestContext(locale);
     ${videoDirectoryNoticeSource}

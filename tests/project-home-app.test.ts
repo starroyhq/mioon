@@ -523,7 +523,7 @@ function boundaryRenderer() {
   // element; full workbench internals are outside
   // this focused fixture, rather than replaced by a generic permissive proxy.
   const readiness = section('  const workbenchReady =', '  function readProjectMediaOwner()') + section('  function showProjectRules()', '  const panelSurface =') + section('  const retainWorkbenchForIdentity =', '  const staleClips =');
-  const renderSource = 'const historyRecoveryLayer = null;' + readiness + section('  const historyLayer =', '  if (auth === false && !retainWorkbenchForClip') + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></ProjectMediaProvider>;';
+  const renderSource = readiness + section('  const historyLayer =', '  if (auth === false && !retainWorkbenchForClip') + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></ProjectMediaProvider>;';
   const ui = homeUi();
   const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code;
   presentation = (h:HomeHarness) => {
