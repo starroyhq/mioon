@@ -29,8 +29,9 @@ const settings = fixture.settings;
 // renderer needs. Keep the real worker/publication path but download a small
 // pre-rendered synthetic clip instead.
 const syntheticVideo = join(fixture.root, 'synthetic-generation.mp4');
-execFileSync(process.env.MIOON_FFMPEG_PATH ?? 'ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i',
-  'color=c=black:s=360x640:d=4:r=30', '-pix_fmt', 'yuv420p', '-y', syntheticVideo]);
+const fixtureEnv = testEnv();
+execFileSync(fixtureEnv.MIOON_FFMPEG_PATH ?? 'ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i',
+  'color=c=black:s=360x640:d=4:r=30', '-pix_fmt', 'yuv420p', '-y', syntheticVideo], {env: fixtureEnv});
 const baseMock = createProviderRegistry({db: store.db, root: fixture.root, env: {}}).get('mock');
 const mockProvider = registerInputProfileWrapper({
   id: 'mock', capabilities: baseMock.capabilities, validate: baseMock.validate?.bind(baseMock),
