@@ -32,7 +32,7 @@ const plainCue = id(30);
  * span and a long music clip that keeps the timeline duration stable. */
 function fixture(t: test.TestContext): ProjectStore {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-dialogue-'));
-  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const timeline = {

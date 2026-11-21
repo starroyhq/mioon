@@ -4,7 +4,10 @@ import {publicValue} from '../../../../packages/contracts/src/index.ts';
 import type {RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import type {ProjectEntryCreateInput} from '../../../../packages/contracts/src/project-entry-native.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/index.ts';
-import type {Format4Options} from '../../../../packages/business/src/project-file/index.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import {applyFormat5ConversionInside} from '../../../../packages/business/src/project-file/format5-conversion-store.ts';
+import {prepareTrustedFormat5Conversion} from '../../../../packages/business/src/project-file/format5-upgrade.ts';
+import type {Format4Options, ProjectFileFormat} from '../../../../packages/business/src/project-file/index.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
 import type {ProjectHostManager} from './manager.ts';
@@ -14,29 +17,43 @@ import {ensureProjectRow} from './project-initialization.ts';
 
 /** One create path for the app RPC and trusted desktop control. Selecting a
  * location does not skip project-row initialization or ownership checks. */
-export function createInitializedProject({manager, registry, directories, identity, assertProjectFile, format4}: {
+export function createInitializedProject({manager, registry, directories, identity, assertProjectFile, format4, targetFormat}: {
   readonly manager: ProjectHostManager;
   readonly registry: ProjectRegistryPort;
   readonly directories: AppDirectories;
   readonly identity: ProjectFileIdentityPort;
   readonly assertProjectFile: (file: string) => void;
   readonly format4?: Format4Options;
+  readonly targetFormat?: ProjectFileFormat;
 }) {
   return async (input: ProjectEntryCreateInput): Promise<{readonly registration: RecentProject; readonly project: unknown}> => {
     // Reject private application targets before creating any folder or file.
     assertProjectFile(input.projectFile ?? path.join(input.parentDir ?? directories.projectsDir, 'project.mioon'));
-    const entry = await manager.create({name: input.name,
+    let entry = await manager.create({name: input.name,
       ...(input.parentDir === undefined ? {} : {parentDir: input.parentDir}),
-      ...(input.projectFile === undefined ? {} : {projectFile: input.projectFile})});
+      ...(input.projectFile === undefined ? {} : {projectFile: input.projectFile})},
+      {format: targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT4_PROJECT_SCHEMA_VERSION : targetFormat});
     let initialized = false;
     try {
       assertProjectFile(entry.projectFile);
+      const openProfile = format4 ?? (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION ? {} : undefined);
       const store = openProjectStore({projectFile: entry.projectFile,
-        locate: id => projectLocation(directories, id), checkCopy: registry.checkCopy, format4});
+        locate: id => projectLocation(directories, id), checkCopy: registry.checkCopy, ...(openProfile === undefined ? {} : {format4: openProfile})});
       try {
         ensureProjectRow(store, {name: input.name,
           ...(input.description === undefined ? {} : {description: input.description}),
           ...(input.timelinePresetId === undefined ? {} : {timelinePresetId: input.timelinePresetId})});
+        if (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION && Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) !== FORMAT5_PROJECT_SCHEMA_VERSION) {
+          // A new project starts on the released kernel so the preset timeline
+          // exists, then joins format 5 through the reviewed conversion. No
+          // user confirmation is needed: the file was created by this request.
+          const prepared = prepareTrustedFormat5Conversion(store);
+          store.tx(() => { applyFormat5ConversionInside(store, prepared); });
+          const fileIdentity = identity(entry.projectFile);
+          if (!fileIdentity) throw new Error('The new project file has no file identity');
+          registry.upsert({...entry, fileIdentity});
+          entry = {...entry, fileIdentity};
+        }
         initialized = true;
         // Creation by itself does not compose a runtime or count as an open.
         // The existing public RPC performs its request admission afterwards;

@@ -67,8 +67,15 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   if (projectId === oldId) throw new TypeError('A project copy requires a new ID');
   const target = path.resolve(options.projectFile), parent = path.dirname(target), sourceProjectDir = path.resolve(options.sourceProjectDir);
   if (lstatSync(target, {throwIfNoEntry: false})) throw projectFileError('PROJECT_FILE_EXISTS', {database: 'project', reason: 'exists'});
-  const targetFormat = options.targetFormat ?? PROJECT_FILE_SCHEMA_VERSION;
-  const sourceFormat = live ? source.db.prepare('PRAGMA project.user_version').get()?.user_version : source.identity.formatVersion;
+  const sourceFormat = (live ? source.db.prepare('PRAGMA project.user_version').get()?.user_version : source.identity.formatVersion) as ProjectFileFormat;
+  // K5b copies preserve the writable source format unless the caller asks for
+  // a released-format upgrade (the template seam promotes explicitly).
+  const requestedFormat = options.targetFormat ?? sourceFormat;
+  // Copies of an old writable project keep the original format (K5b: no
+  // cross-format copies); a current-format template is upgraded in place by
+  // the template instantiation seam before publication.
+  const targetFormat: ProjectFileFormat = requestedFormat === FORMAT5_PROJECT_SCHEMA_VERSION && sourceFormat !== FORMAT5_PROJECT_SCHEMA_VERSION
+    ? sourceFormat as ProjectFileFormat : requestedFormat;
   if (!writableFormat(targetFormat) || !writableFormat(sourceFormat)
     || (sourceFormat === FORMAT5_PROJECT_SCHEMA_VERSION) !== (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION)) throw failed('format');
   if (targetFormat < sourceFormat) {

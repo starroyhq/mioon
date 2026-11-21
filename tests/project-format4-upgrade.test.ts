@@ -414,7 +414,7 @@ for (const release of RELEASES) {
     const reopened = f.open({approveUpgrade: () => assert.fail('A current file does not prompt again')});
     try {assertCandidate(reopened, f, previous);} finally {reopened.close();}
     assert.equal(assertUpgradeBackup(f, true), backup);
-    assert.throws(() => inspectProjectFormatReadOnly(f.projectFile), {code: 'PROJECT_FORMAT_NEWER'});
+    assert.deepEqual(inspectProjectFormatReadOnly(f.projectFile), {projectId: f.evidence.projectId, ...f.evidence.stamp, formatVersion: candidate.project});
     assert.deepEqual(inspectProjectFormatReadOnly(f.projectFile, candidateRead), {projectId: f.evidence.projectId, ...f.evidence.stamp, formatVersion: candidate.project});
 
     const upgraded = files(f);

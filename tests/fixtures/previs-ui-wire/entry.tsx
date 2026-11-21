@@ -58,8 +58,8 @@ function Harness(): React.ReactElement {
       }
     })();
   }, []);
-  const editorRpc = createPrevisEditorRpc({rpc, format5: true, projectId: () => projectId,
-    requestId: () => crypto.randomUUID()});
+  const editorRpc = createPrevisEditorRpc({rpc, projectId: () => projectId,
+    requestId: () => crypto.randomUUID(), format5: true});
   const onThumbnail = useCallback((_nodeId: string, _framePresetId: string, sceneRevision: number) => {
     setThumbnails(current => [...current, {sceneRevision}]);
   }, []);

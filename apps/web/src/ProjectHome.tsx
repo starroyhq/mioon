@@ -136,7 +136,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   const [formError, setFormError] = useState<string | DisplayMessage>('');
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
-  const showProjectOptions = newProjectFormatVersion !== 4;
+  const showProjectOptions = (newProjectFormatVersion ?? 3) < 4;
   const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh });
   current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh };
   const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange, showProjectOptions });

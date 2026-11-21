@@ -108,40 +108,6 @@ for(const point of ['ready','records-prepared','records-published','project-publ
  f.unchanged();
 });
 
-test('default recovery leaves a ready format 4 adoption untouched until a trusted host resumes it',async t=>{
- const f=await fixture(t);
- await f.restart(phase=>{if(phase==='ready')throw Error('candidate adoption ready');},FORMAT4_PROJECT_SCHEMA_VERSION);
- await assert.rejects(f.app.copies.adoptCopy(f.input),/candidate adoption ready/u);
- const saved=f.readIntent(),intentBytes=readFileSync(f.intentFile),stageBefore=tree(saved.stageDirectory);
- const stage=path.join(saved.stageDirectory,'project.mioon'),records=projectLocation(f.app.directories,saved.projectId).localDir;
- assert.equal(saved.phase,'ready');
- assert.equal(inspectCopiedProjectFile(stage).formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
- assert.deepEqual(readFileSync(f.selected),f.selectedBefore);
-
- await f.restart();await f.app.copies.recover();
- await assert.rejects(f.app.copies.adoptCopy(f.input),{code:'PROJECT_FORMAT_NEWER',details:{database:'project',reason:'format-newer',
-  formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
- assert.deepEqual(readFileSync(f.selected),f.selectedBefore);
- assert.deepEqual(readFileSync(f.intentFile),intentBytes);
- assert.deepEqual(tree(saved.stageDirectory),stageBefore);
- assert.equal(existsSync(records),false);
- assert.equal(f.app.library.registry.get(saved.projectId),null);
- assert.equal(f.app.library.receipts.read('project.adopt-copy',f.input.requestId),null);
-
- await f.restart(undefined,FORMAT4_PROJECT_SCHEMA_VERSION);await f.app.copies.recover();
- const result=await f.app.copies.adoptCopy(f.input);
- assert.deepEqual(result,saved.response);
- assert.equal(f.readIntent().phase,'completed');
- assert.equal(inspectCopiedProjectFile(f.selected).formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
- const store=openProjectStore({projectFile:f.selected,locate:id=>projectLocation(f.app.directories,id),format4:{}});
- try{
-  assert.equal(store.projectId,saved.projectId);
-  assert.equal(store.historyState,'current');
-  assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version,FORMAT4_HISTORY_SCHEMA_VERSION);
- }finally{store.close();}
- f.unchanged();
-});
-
 for(const point of ['ready','project-published'] as const)test(`real SIGKILL at ${point} recovers the fixed adoption without inherited sidecars`,{timeout:60_000},async t=>{
  const f=await fixture(t);await f.app.close();
  const worker=new URL('./fixtures/project-copy-action-worker.ts',import.meta.url);

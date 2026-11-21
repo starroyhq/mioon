@@ -20,7 +20,7 @@ const sha = (letter: string): string => letter.repeat(64);
 
 function fixture(t: test.TestContext): ProjectStore {
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-tsb-export-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(directory, 'records'), cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'temp')})});
   t.after(() => {store.close(); rmSync(directory, {recursive: true, force: true});});
   const projectId = store.projectId;

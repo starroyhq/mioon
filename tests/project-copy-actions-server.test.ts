@@ -19,7 +19,7 @@ import {createProjectServiceApplication} from '../packages/business/src/project-
 import {openProjectStore, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyResponse, ProjectCopyToInput} from '../packages/contracts/src/project-copies.ts';
@@ -42,7 +42,7 @@ async function fixture(t: TestContext) {
   const dataDir = path.join(root, 'app'), targets = path.join(root, 'targets'); mkdirSync(targets);
   let inspect!: InspectProject, application!: InspectApplication;
   let boundary: ServerOptions['projectCopyActionBoundaryForTest'];
-  const server = await startServer({dataDir, token, port: 0, inspectProject: value => {inspect = value;}, inspectApplication: value => {application = value;},
+  const server = await startServer({dataDir, token, port: 0, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION, inspectProject: value => {inspect = value;}, inspectApplication: value => {application = value;},
     projectCopyActionBoundaryForTest: (phase, input) => boundary?.(phase, input)});
   t.after(async () => {await server.close(); rmSync(root, {recursive: true, force: true});});
   const rpc = async <T = unknown>(operation: string, input: unknown, projectId?: string) => {
@@ -122,20 +122,21 @@ for (const state of ['current', 'diverged'] as const) test(`copy-to reads all ${
   assert.equal(result.status, 200, JSON.stringify(result.body)); const copy = projectCopyResponseSchema.parse(result.body.data);
   assert.equal(copy.versions, f.versions.length); assert.deepEqual(f.sourceFiles(), before);
   assert.deepEqual((await f.registrations()).find(value => value.projectId === f.source.projectId), registrations[0]);
-  const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+  const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(f.directories, id)});
   try {
-    assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+    assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT5_HISTORY_SCHEMA_VERSION);
     assert.deepEqual(createProjectVersions(store).list({projectId: copy.project.projectId}).versions.map(value => value.id).sort(), [...f.versions].sort());
     assert.equal(createProjectVersions(store).list({projectId: copy.project.projectId}).versions.some(value => value.id === f.manualId), true);
+    const singletons = new Set(['history_state', 'canvas_receipt_window', 'editor_receipt_window', 'editor_storage_counters']);
     for (const table of HISTORY_TABLES.filter(name => !['project_versions', 'project_version_blobs', 'mio_storage_counters'].includes(name)))
-      assert.equal(store.db.prepare(`SELECT count(*) n FROM main.${table}`).get()!.n, table === 'history_state' ? 1 : 0, table);
+      assert.equal(store.db.prepare(`SELECT count(*) n FROM main.${table}`).get()!.n, singletons.has(table) ? 1 : 0, table);
     assert.deepEqual(readProjectContentStamp(store.db), {contentSequence: copy.contentSequence, contentToken: copy.contentToken});
   } finally {store.close();}
   assert.deepEqual((await f.rpc('project.copy-to', input)).body.data, copy);
   assert.deepEqual(f.sourceFiles(), before);
 });
 
-test('trusted copy-to stages format 4 with retained named versions from either source format', async t => {
+test('trusted copy-to stages format 5 with retained named versions from either source format', async t => {
   const f = await fixture(t);
   await f.server.close();
   const before = f.sourceFiles(), input = f.input();
@@ -143,17 +144,17 @@ test('trusted copy-to stages format 4 with retained named versions from either s
   const manager = createProjectHostManager({directories: f.directories, registry: library.registry,
     factory: async () => assert.fail('closed-source copy must not create a project runtime')});
   const copies = createProjectCopies({manager, library, directories: f.directories, signal: owner.signal,
-    targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION, assertProjectFile: createApplicationFileGuard(f.directories)});
+    targetFormat: FORMAT5_PROJECT_SCHEMA_VERSION, assertProjectFile: createApplicationFileGuard(f.directories)});
   try {
     const copied = await copies.copyTo(input);
     assert.equal(copied.versions, f.versions.length);
     assert.deepEqual(await copies.copyTo(input), copied);
-    const store = openProjectStore({projectFile: copied.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+    const store = openProjectStore({projectFile: copied.project.projectFile, locate: id => projectLocation(f.directories, id)});
     let firstEpoch: unknown;
     try {
       assert.equal(store.historyState, 'current');
-      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
-      assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT5_PROJECT_SCHEMA_VERSION);
+      assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT5_HISTORY_SCHEMA_VERSION);
       assert.deepEqual(createProjectVersions(store).list({projectId: copied.project.projectId}).versions.map(value => value.id).sort(), [...f.versions].sort());
       assert.deepEqual(readProjectContentStamp(store.db), {contentSequence: copied.contentSequence, contentToken: copied.contentToken});
       firstEpoch = store.db.prepare('SELECT epoch FROM main.canvas_receipt_window').get()?.epoch;
@@ -163,11 +164,11 @@ test('trusted copy-to stages format 4 with retained named versions from either s
       sourceIdentity: copied.project.fileIdentity, sourceStamp: {contentSequence: copied.contentSequence, contentToken: copied.contentToken},
       requestId: randomUUID(), projectFile: path.join(f.targets, 'Second copy.mioon')});
     assert.equal(next.versions, f.versions.length);
-    const second = openProjectStore({projectFile: next.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+    const second = openProjectStore({projectFile: next.project.projectFile, locate: id => projectLocation(f.directories, id)});
     try {
       assert.equal(second.historyState, 'current');
-      assert.equal(second.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
-      assert.equal(second.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+      assert.equal(second.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT5_PROJECT_SCHEMA_VERSION);
+      assert.equal(second.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT5_HISTORY_SCHEMA_VERSION);
       const window = second.db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window').get();
       assert.match(String(window?.epoch), /^[0-9a-f]{32}$/u);
       assert.notEqual(window?.epoch, firstEpoch);

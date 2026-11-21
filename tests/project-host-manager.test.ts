@@ -476,7 +476,7 @@ test('a pinned acquire never searches for a moved file or opens an unapproved re
   registry.findMoved = async () => {searches++; return null;};
   await assert.rejects(manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile}), {code: 'PROJECT_UNAVAILABLE', details: {projectId: film.projectId, reason: 'PROJECT_MISSING'}});
   assert.equal(searches, 0);
-  assert.equal(opens.count, 1, 'only the admitted path reached the kernel');
+  assert.equal(opens.count, 0, 'the missing admitted path is rejected before any kernel open');
 });
 
 test('a pinned acquire rechecks the registry after asynchronous host composition', async t => {

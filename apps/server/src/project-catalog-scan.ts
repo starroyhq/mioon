@@ -1,7 +1,7 @@
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
-import {inspectProjectFormatHeader, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile} from '@mioon/business/project-file/index';
+import {inspectProjectFormatHeader, recoverProjectFile} from '@mioon/business/project-file/index';
 import type {Format4Options, ProjectFileRecovery} from '@mioon/business/project-file/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
@@ -13,7 +13,7 @@ export interface ProjectCatalogScanInput {
   readonly birthtime: string;
   readonly journalGeneration: string | null;
   readonly checkHeader: boolean;
-  readonly format4?: true;
+  readonly targetFormat?: number;
 }
 
 const formatStatuses = ['current', 'upgrade-required', 'newer'] as const;
@@ -33,7 +33,8 @@ export function catalogFileGeneration(info: BigIntStats): string {
  * a worker thread would release another thread's SQLite locks on the inode. */
 export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectCatalogScanResult {
   const {file, generation, birthtime, journalGeneration, checkHeader} = input;
-  const format4: Format4Options | undefined = input.format4 ? {deferLegacyRecovery: true} : undefined;
+  const targetFormat = input.targetFormat ?? 3;
+  const format4: Format4Options | undefined = targetFormat === 4 ? {deferLegacyRecovery: true} : undefined;
   const journal = file + '-journal';
   let changed = false;
   const failChanged = (): never => {
@@ -74,8 +75,8 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     };
     let status: typeof formatStatuses[number];
     try {
-      const version = inspectProjectFormatHeader(file, format4, assertHeader);
-      status = format4 && version === PROJECT_FILE_SCHEMA_VERSION ? 'upgrade-required' : 'current';
+      const version = inspectProjectFormatHeader(file, undefined, assertHeader);
+      status = version < targetFormat ? 'upgrade-required' : version === targetFormat ? 'current' : 'newer';
     } catch (error) {
       if (changed) return {recovery: 'changed'};
       if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') return result;
@@ -100,11 +101,11 @@ export function catalogObject(value: unknown): Record<string, unknown> | undefin
 
 function isScanInput(value: unknown): value is ProjectCatalogScanInput {
   const input = catalogObject(value);
-  return !!input && Object.keys(input).length === (input.format4 === true ? 6 : 5)
+  return !!input && Object.keys(input).length === (input.targetFormat !== undefined ? 6 : 5)
     && typeof input.file === 'string' && input.file.length <= 4096 && !input.file.includes('\0') && path.isAbsolute(input.file) && path.resolve(input.file) === input.file
     && isGeneration(input.generation) && isBirthtime(input.birthtime)
     && (input.journalGeneration === null || isGeneration(input.journalGeneration)) && typeof input.checkHeader === 'boolean'
-    && (input.format4 === undefined || input.format4 === true);
+    && (input.targetFormat === undefined || [3, 4, 5].includes(Number(input.targetFormat)));
 }
 
 export function isCatalogScanBatch(value: unknown): value is readonly ProjectCatalogScanInput[] {

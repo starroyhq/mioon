@@ -148,19 +148,22 @@ test('even a cold rollback journal is refused unchanged before any preparation',
  assert.equal(existsSync(f.directory),false);assert.equal(inspectProjectFileReadOnly(f.selected).projectId,f.projectId);
 });
 
-test('default adoption refuses a real candidate pair before creating a snapshot',async t=>{
+test('default adoption accepts a released format 4 candidate pair under the current profile',async t=>{
  const f=fixture(t),format4={},projectFile=path.join(f.root,'candidate.mioon');
  const location={localDir:path.join(f.root,'candidate-records'),cacheDir:path.join(f.root,'candidate-cache'),tempDir:path.join(f.root,'candidate-tmp')};
  createProjectFile(projectFile,{format4});
  openProjectStore({projectFile,locate:()=>location,format4}).close();
- const historyFile=path.join(location.localDir,'history.db'),project=evidence(projectFile),history=evidence(historyFile);
- const options={...f.options,projectFile,expectedIdentity:fileIdentity(projectFile),expectedSource:inspectCopiedProjectFile(projectFile),
-  onBoundary:()=>assert.fail('default admission must reject before taking the snapshot lock')};
- await assert.rejects(withLockedProjectCopy(options,async()=>assert.fail('must not adopt')),{
-  code:'PROJECT_FORMAT_NEWER',details:{database:'project',reason:'format-newer',
-   formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
- assert.equal(existsSync(f.directory),false);
- unchanged(projectFile,project);unchanged(historyFile,history);
+ const historyFile=path.join(location.localDir,'history.db');
+ const options={...f.options,projectFile,expectedIdentity:fileIdentity(projectFile),expectedSource:inspectCopiedProjectFile(projectFile)};
+ let adopted='';
+ await withLockedProjectCopy(options,async copy=>{
+  const stage=await build(copy,f.root,FORMAT4_PROJECT_SCHEMA_VERSION);adopted=stage.expected.projectId;
+  copy.replace(stage.file,stage.expected);
+ });
+ assert.equal(existsSync(path.join(f.directory,'project.source.sqlite')),false);
+ assert.equal(inspectCopiedProjectFile(projectFile).projectId,adopted);
+ assert.equal(inspectCopiedProjectFile(projectFile).formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.equal(existsSync(historyFile),true);
 });
 
 test('a same-path foreign file is never removed or replaced after selection changes',async t=>{

@@ -33,7 +33,7 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
   library: ReturnType<typeof openAppLibrary>; settings: Awaited<ReturnType<typeof createVideoSettings>>;
   providers: Map<string, any>; projectId: string; root: string}> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-board-ui-wire-'));
-  const store = createProjectStore({projectId: BOARD_IDS.project, projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: BOARD_IDS.project, projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const projectId = store.projectId;
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
@@ -152,7 +152,7 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
 export async function createBoardUiWireStressFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
   library: ReturnType<typeof openAppLibrary>; projectId: string; root: string}> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-board-ui-wire-stress-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const projectId = store.projectId, rootId = id(102), timelineId = id(103), video = id(104), imageAsset = id(105);
   const shotIds = Array.from({length: 500}, (_, index) => `71000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`);

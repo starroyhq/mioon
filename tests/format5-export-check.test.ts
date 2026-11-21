@@ -60,7 +60,7 @@ const fid=(n:number)=>`99000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 test('format-5 capabilities, preflight and real render complete through the export worker', {timeout:180000}, async t => {
   const ffmpegBin=process.env.MIOON_FFMPEG_PATH??'ffmpeg',ffprobeBin=process.env.MIOON_FFPROBE_PATH??'ffprobe';
   const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-format5-export-full-'));
-  const store=createProjectStore({projectId:fid(1),projectFile:path.join(root,'project.mioon'),format5:true,
+  const store=createProjectStore({projectId:fid(1),projectFile:path.join(root,'project.mioon'),targetFormat:5,
     locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})});
   const library=openAppLibrary({dataDir:path.join(root,'app')});
   const services=createServices(store,new Map(),{env:{},application:createProjectServiceApplication(library,undefined,{})});

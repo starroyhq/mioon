@@ -36,7 +36,7 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   const traffic: TrafficRecord[] = [], report: Report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.ts'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.ts'], port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
   let stdout = '', stderr = '', mcpStderr = '';
   let client: Client | undefined, transport: StdioClientTransport | undefined;
-  const backend = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const backend = spawn(process.execPath, ['tests/fixtures/project-server-process.ts', '--format4-project'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
   backend.stdout?.setEncoding('utf8').on('data', (bytes: string) => stdout += bytes); backend.stderr?.setEncoding('utf8').on('data', (bytes: string) => stderr += bytes);
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});

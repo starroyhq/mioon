@@ -123,7 +123,7 @@ async function detect(services: ReturnType<typeof createServices>, projectId: st
 export async function createSceneSplitWireFixture(): Promise<SceneSplitWireFixture> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-scene-split-wire-'));
   const projectId = SCENE_SPLIT_IDS.project;
-  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const library = openAppLibrary({dataDir: path.join(root, 'app')});
   // No sceneOptions: the real local decoder and the production queue run.

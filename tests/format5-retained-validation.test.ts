@@ -103,7 +103,7 @@ test('a format-5 project with a placeholder clip can be reopened through the ser
   await first.close();
   // A second server assembly on the same file is the real reopen path.
   const reopened = (await import('../packages/business/src/project-file/store.ts')).openProjectStore({projectFile: paths.projectFile,
-    format5: true, locate: () => paths.location});
+    locate: () => paths.location});
   const second = await composeExisting(t, reopened, root);
   const project = await second.runtime.serviceCall('project.get', {projectId: reopened.projectId}) as {shots: unknown[]};
   assert.ok(project.shots.length >= 1, 'the reopened project keeps its shots');
