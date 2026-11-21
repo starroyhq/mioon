@@ -109,7 +109,12 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   // and never creates an undo step; its writer takes the node's scene revision
   // as CAS and refuses a stale render.
   'previs.create': 'sequence.preview/commit', 'previs.scene.set': 'sequence.preview/commit',
-  'subject.create': 'sequence.preview/commit', 'subject.version.add': 'sequence.preview/commit',
+  // Product decision 11-21: the subject library's create/version-add are asset
+  // library operations. They write only subjects/subject_versions (retained
+  // evidence) and never the board or the timeline, so they stay out of the
+  // unified undo stack — exactly like importing an asset. Putting a subject on
+  // the board still travels through the subject-card intent, and binding it to
+  // a shot still goes through `sequence.preview/commit`.
   'subject.binding.set': 'sequence.preview/commit',
 });
 export function format5LegacyWriteUse(operation: string): Format5LegacyWriteUse | null {

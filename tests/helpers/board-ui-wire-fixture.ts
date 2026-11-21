@@ -67,6 +67,7 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('assets', {id: BOARD_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 4, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetV2, projectId, name: '镜头A v2.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('d'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10,
+      width: 1080, height: 1920, provenance: 'user-import',
       referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/ref.png', volume: null, sizeBytes: 10,
         mtimeMs: 0, sampledSha256: sha('c'), fullSha256: sha('c')}});
     store.put('assets', {id: BOARD_IDS.imageAsset2, projectId, name: '参考图 B.png', mimeType: 'image/png', duration: null, sha256: sha('e'), sizeBytes: 10});
