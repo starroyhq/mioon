@@ -1,17 +1,24 @@
 """Headless acceptance for the format-5 render/export UI against the real app.
 
-The page is the production web shell talking to the real project service. The
-run follows the user export flow (check -> settings -> confirmation -> start),
-waits for the real worker export, opens the task/export surfaces, downloads the
-output through the authenticated media route, and probes it. The reviewed D
-4-second project is selected by name/id; its expected timeline/export facts live
-in the committed `consistency.json` (copied from
-board-edit-3/evidence/consistency.json). Screenshots are written only under the
-caller-provided --screens directory.
+The page is the production web shell talking to the real project service. By
+default the script builds a fresh format-5 project through the public RPC write
+entries: it synthesizes two 2-second 1080x1920 30fps clips with ffmpeg (one test
+pattern with a 440 Hz tone, one silent blue), imports them, inserts them on the
+main track, sets the reviewed gain, separates the first clip's sound, and adds a
+0-60 frame subtitle. No local project or data directory is required.
+
+It then follows the user export flow (check -> settings -> confirmation -> start),
+waits for the real worker export, downloads the output through the authenticated
+media route and probes it against the committed `consistency.json` structure.
+Screenshots are written only under the caller-provided --screens directory.
+An existing equivalent project can be selected with --project-id / --project-name;
+--expected-mp4 optionally requires byte equality with a reviewed export.
 """
 import argparse
+import base64
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -19,13 +26,15 @@ import sys
 import tempfile
 import time
 import traceback
+import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-PROJECT_NAME = 'D 导出走查 1121'
 HERE = Path(__file__).resolve().parent
+SUBTITLE_TEXT = '导出字幕检查'
 
 
 class Rpc:
@@ -39,8 +48,11 @@ class Rpc:
         request = urllib.request.Request(route, data=body, method='POST',
                                          headers={'content-type': 'application/json',
                                                   'authorization': f'Bearer {self.token}'})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            value = json.loads(response.read())
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                value = json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            raise AssertionError(f'{operation} failed with HTTP {error.code}: {error.read().decode()}') from error
         if not value.get('ok'):
             raise AssertionError(f'{operation} failed: {value.get("error")}')
         return value['data']
@@ -52,7 +64,7 @@ class Rpc:
             return response.read()
 
 
-def run(command: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess:
+def run(command: list[str], *, timeout: int = 180) -> subprocess.CompletedProcess:
     return subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
 
 
@@ -64,72 +76,163 @@ def probe(ffprobe: str, file: Path) -> dict:
 
 def rms(ffmpeg: str, file: Path, start: float, duration: float) -> float | None:
     result = run([ffmpeg, '-hide_banner', '-nostats', '-ss', str(start), '-t', str(duration), '-i', str(file),
-                  '-af', 'volumedetect', '-f', 'null', '-'], timeout=120)
+                  '-af', 'volumedetect', '-f', 'null', '-'])
     match = re.search(r'mean_volume:\s*(-?[\d.]+) dB', result.stderr)
-    if not match:
-        return None
-    return 10 ** (float(match.group(1)) / 20)
+    return None if not match else 10 ** (float(match.group(1)) / 20)
 
 
 def expected_frames(directory: Path | None) -> dict[str, str]:
     if directory is None or not directory.is_dir():
         return {}
-    result = {}
-    for name in ('frame-00_5s.png', 'frame-01_5s.png', 'frame-02_5s.png'):
-        path = directory / name
-        if path.is_file():
-            result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return result
+    return {name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
+            for name in ('frame-00_5s.png', 'frame-01_5s.png', 'frame-02_5s.png')
+            if (directory / name).is_file()}
+
+
+def synthesize(ffmpeg: str, directory: Path) -> tuple[Path, Path]:
+    first, second = directory / 'with-audio.mp4', directory / 'silent.mp4'
+    result = run([ffmpeg, '-hide_banner', '-v', 'error', '-y',
+                  '-f', 'lavfi', '-i', 'testsrc2=size=1080x1920:rate=30:duration=2',
+                  '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2',
+                  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k',
+                  '-shortest', '-movflags', '+faststart', str(first)])
+    assert result.returncode == 0, result.stderr
+    result = run([ffmpeg, '-hide_banner', '-v', 'error', '-y',
+                  '-f', 'lavfi', '-i', 'color=c=blue:size=1080x1920:rate=30:duration=2',
+                  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', str(second)])
+    assert result.returncode == 0, result.stderr
+    return first, second
+
+
+def build_project(rpc: Rpc, consistency: dict, ffmpeg: str, name: str) -> tuple[str, dict]:
+    project = rpc.call('project.create', {'name': name})['id']
+    project_state = rpc.call('project.get', {'projectId': project}, project)
+    assert project_state.get('projectFormatVersion') == 5, (
+        'acceptance needs a format-5-enabled application build; project.create returned '
+        f"format {project_state.get('projectFormatVersion')!r}")
+    with tempfile.TemporaryDirectory(prefix='format5-render-export-') as temp:
+        first, second = synthesize(ffmpeg, Path(temp))
+        asset_ids = {}
+        for path, name_value in ((first, 'with-audio.mp4'), (second, 'silent.mp4')):
+            data = path.read_bytes()
+            asset = rpc.call('asset.import', {'projectId': project, 'name': name_value,
+                'mimeType': 'video/mp4', 'dataBase64': base64.b64encode(data).decode()}, project)
+            asset_ids[name_value] = asset['id']
+        # Uploaded assets start with a sampled fingerprint; the production
+        # import path prepares the full hash before it puts them on a timeline.
+        rpc.call('asset.media.prepare', {'projectId': project, 'purpose': 'timeline',
+            'assets': [{'assetId': asset_id, 'referenceRevision': 1} for asset_id in asset_ids.values()]}, project)
+        for name_value, start in (('with-audio.mp4', 0), ('silent.mp4', 60)):
+            preview = rpc.call('sequence.preview', {'projectId': project,
+                'requestId': f'insert-{uuid.uuid4()}', 'intents': [{'side': 'timeline',
+                    'operation': {'kind': 'track', 'edit': {'kind': 'insert-asset', 'assetId': asset_ids[name_value],
+                                  'trackId': None, 'startFrame': start}}}]}, project)
+            applied = rpc.call('sequence.commit', {'projectId': project, 'envelope': preview['envelope'],
+                'expectedPlanDigest': preview['planDigest']}, project)
+            assert applied.get('status') == 'applied', applied
+    project_state = rpc.call('project.get', {'projectId': project}, project)
+    timeline = project_state['timeline']
+    source = next(clip for clip in timeline['clips']
+                  if clip.get('assetId') == asset_ids['with-audio.mp4'])
+    gain = consistency['export']['audioChecked']['appliedClipGain']
+    preview = rpc.call('sequence.preview', {'projectId': project, 'requestId': f'gain-{uuid.uuid4()}',
+        'propertiesIntent': {'side': 'timeline', 'operation': {'kind': 'clip-properties',
+            'edits': [{'clipId': source['id'], 'patch': {'gain': gain}}]}}}, project)
+    assert rpc.call('sequence.commit', {'projectId': project, 'envelope': preview['envelope'],
+        'expectedPlanDigest': preview['planDigest']}, project).get('status') == 'applied'
+    preview = rpc.call('sequence.preview', {'projectId': project, 'requestId': f'sound-{uuid.uuid4()}',
+        'soundIntent': {'side': 'timeline', 'operation': {'kind': 'separate-sound',
+            'clipId': source['id']}}}, project)
+    assert rpc.call('sequence.commit', {'projectId': project, 'envelope': preview['envelope'],
+        'expectedPlanDigest': preview['planDigest']}, project).get('status') == 'applied'
+    cue_id = str(uuid.uuid4())
+    preview = rpc.call('sequence.preview', {'projectId': project, 'requestId': f'subtitle-{uuid.uuid4()}',
+        'subtitlesIntent': {'side': 'timeline', 'operation': {'kind': 'subtitles',
+            'edits': [{'kind': 'add', 'cue': {'id': cue_id, 'text': SUBTITLE_TEXT,
+                                               'startFrame': 0, 'durationFrames': 60}}]}}}, project)
+    assert rpc.call('sequence.commit', {'projectId': project, 'envelope': preview['envelope'],
+        'expectedPlanDigest': preview['planDigest']}, project).get('status') == 'applied'
+    return project, rpc.call('project.get', {'projectId': project}, project)
+
+
+def structure_checks(state: dict, consistency: dict) -> None:
+    timeline = state['timeline']
+    assert timeline['durationFrames'] == consistency['timeline']['durationFrames'], timeline['durationFrames']
+    assert timeline['fps'] == consistency['timeline']['fps'], timeline['fps']
+    clips = timeline['clips']
+    assert len(clips) == consistency['timeline']['clips'], len(clips)
+    assert len([clip for clip in clips if clip.get('soundOnly') is True]) == consistency['timeline']['audioClips']
+    assert len([clip for clip in clips if clip.get('soundOnly') is not True]) == consistency['timeline']['videoClips']
+    muted = [clip for clip in clips if clip.get('muted') is True]
+    assert len(muted) == 1 and muted[0].get('soundOnly') is not True, muted
+    sound = next(clip for clip in clips if clip.get('soundOnly') is True)
+    gain = consistency['export']['audioChecked']['appliedClipGain']
+    assert abs(float(sound['gain']) - gain) < 1e-12, sound['gain']
+    assert abs(float(muted[0]['gain']) - gain) < 1e-12, muted[0]['gain']
+    cues = timeline.get('subtitles', {}).get('cues', [])
+    assert len(cues) == consistency['timeline']['subtitleCues'], cues
+    assert cues[0]['startFrame'] == 0 and cues[0]['durationFrames'] == 60, cues[0]
+    assert cues[0]['text'] == SUBTITLE_TEXT, cues[0]
 
 
 def main() -> int:  # noqa: C901 - one linear acceptance script
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', required=True)
-    parser.add_argument('--base', required=True)
-    parser.add_argument('--token', required=True)
+    parser.add_argument('--token')
+    parser.add_argument('--token-file')
     parser.add_argument('--project-id')
-    parser.add_argument('--project-name', default=PROJECT_NAME)
+    parser.add_argument('--project-name')
     parser.add_argument('--consistency', default=str(HERE / 'consistency.json'))
     parser.add_argument('--expected-mp4')
     parser.add_argument('--expected-frames')
     parser.add_argument('--screens')
     parser.add_argument('--browser')
-    parser.add_argument('--ffmpeg', default=shutil.which('ffmpeg'))
-    parser.add_argument('--ffprobe', default=shutil.which('ffprobe'))
+    parser.add_argument('--ffmpeg', default=os.environ.get('MIOON_FFMPEG_PATH') or shutil.which('ffmpeg'))
+    parser.add_argument('--ffprobe', default=os.environ.get('MIOON_FFPROBE_PATH') or shutil.which('ffprobe'))
     options = parser.parse_args()
+    base = options.url.rstrip('/')
+    token = options.token or (Path(options.token_file).read_text().strip() if options.token_file else None)
+    assert token, 'Pass --token or --token-file'
+    assert options.ffmpeg and options.ffprobe, 'ffmpeg and ffprobe are required'
     consistency = json.loads(Path(options.consistency).read_text())
     executable = options.browser or shutil.which('chromium') or shutil.which('google-chrome')
     mac = Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
     if not executable and mac.exists():
         executable = str(mac)
     assert executable, 'A Chromium executable is required'
-    assert options.ffmpeg and options.ffprobe, 'ffmpeg and ffprobe are required'
     screens = Path(options.screens) if options.screens else None
     if screens:
         screens.mkdir(parents=True, exist_ok=True)
     expected_mp4 = Path(options.expected_mp4) if options.expected_mp4 else None
-    result = {'checks': [], 'screens': {}, 'projectName': options.project_name}
+    result = {'checks': [], 'screens': {}}
 
     def log(name: str, **details) -> None:
         result['checks'].append({'name': name, 'passed': True, **details})
+        print(f'ok - {name}', flush=True)
 
     def capture(page, name: str) -> None:
-        if not screens:
-            return
-        path = screens / name
-        page.screenshot(path=str(path), full_page=True)
-        result['screens'][name] = str(path)
+        if screens:
+            page.screenshot(path=str(screens / name), full_page=True)
+            result['screens'][name] = str(screens / name)
 
-    rpc = Rpc(options.base, options.token)
-    projects = rpc.call('project.list', {})
-    project = next((item for item in projects if item.get('id') == options.project_id), None)
-    if project is None:
-        project = next((item for item in projects if item.get('name') == options.project_name), None)
-    assert project is not None, f'project not found: {options.project_id or options.project_name}'
-    project_id = project['id']
-    result['projectId'] = project_id
-    before = rpc.call('project.get', {'projectId': project_id}, project_id)
-    before_exports = {item['id'] for item in before.get('exports', [])}
+    rpc = Rpc(base, token)
+    if options.project_id or options.project_name:
+        projects = rpc.call('project.list', {})
+        project = next((item for item in projects if item['id'] == options.project_id), None)
+        if project is None and options.project_name:
+            project = next((item for item in projects if item['name'] == options.project_name), None)
+        assert project is not None, f'project not found: {options.project_id or options.project_name}'
+        project_id = project['id']
+        state = rpc.call('project.get', {'projectId': project_id}, project_id)
+        assert state.get('projectFormatVersion') == 5, state.get('projectFormatVersion')
+        log('using the requested format-5 project', projectId=project_id)
+    else:
+        project_id, state = build_project(rpc, consistency, options.ffmpeg,
+            f'format5 render export acceptance {uuid.uuid4().hex[:8]}')
+        log('fresh format-5 project built through the real write entries', projectId=project_id)
+    structure_checks(state, consistency)
+    log('project has two main-track clips, one separated sound with the reviewed gain, one muted source and a 0-60 subtitle')
+    before_exports = {item['id'] for item in state.get('exports', [])}
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=executable, headless=True, chromium_sandbox=True)
@@ -141,43 +244,35 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
             page.goto(options.url)
             page.wait_for_timeout(700)
             if page.get_by_test_id('access-token').count():
-                page.get_by_test_id('access-token').fill(options.token)
+                page.get_by_test_id('access-token').fill(token)
                 page.get_by_test_id('login-submit').click()
             page.get_by_test_id('project-home').wait_for(timeout=30000)
             page.get_by_test_id(f'pf-card-open-{project_id}').click()
             page.get_by_test_id('workspace-editing').wait_for(timeout=30000)
             page.get_by_test_id('workspace-editing').click()
             page.wait_for_timeout(1200)
-            log('the real app opens the reviewed format-5 project', projectId=project_id)
+            log('the real app opens the built format-5 project')
             capture(page, '1-project-editing.png')
 
-            # -- Production export flow: check, settings, confirmation, start.
             page.get_by_test_id('export-timeline').click()
             page.get_by_test_id('timeline-export-dialog').wait_for(timeout=15000)
             page.get_by_test_id('preflight-check').click()
-            # The capability/preflight check runs real FFmpeg; wait for a concrete
-            # result instead of a fixed delay.
             page.wait_for_function(
                 "() => { const text=(document.querySelector('[data-testid=timeline-export-dialog]')?.innerText ?? '');"
                 " return /检查通过|检查不通过|素材|编码/.test(text) && !document.querySelector('[data-testid=preflight-check]')?.disabled; }",
                 timeout=60000)
-            guard = page.get_by_test_id('timeline-export-dialog').inner_text()
             log('export capability/preflight check returns a concrete result')
             capture(page, '2-export-checked.png')
             page.get_by_test_id('export-workflow-next').click()
             page.wait_for_timeout(500)
             page.get_by_test_id('export-workflow-next').click()
             page.wait_for_timeout(500)
-            page.get_by_test_id('timeline-export-dialog').inner_text()
             capture(page, '3-export-confirmation.png')
 
-            started = time.time()
             page.get_by_test_id('preflight-export').click()
-            # The UI starts a local-delivery prepare/execute and then a real
-            # worker render. Wait for the durable export record, not a toast.
+            started = time.time()
             export = None
-            deadline = started + 120
-            while time.time() < deadline:
+            while time.time() - started < 120:
                 current = rpc.call('project.get', {'projectId': project_id}, project_id)
                 candidates = [item for item in current.get('exports', [])
                               if item['id'] not in before_exports and item.get('purpose') == 'export']
@@ -193,18 +288,8 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
                 exportId=export['id'], assetId=export['assetId'])
             capture(page, '4-export-submitted.png')
 
-            # Task center / export surfaces show the completed task, then the
-            # output is downloaded from the authenticated media route.
-            try:
-                page.get_by_test_id('topbar-status').click()
-                page.get_by_test_id('task-center-dialog').wait_for(timeout=10000)
-                page.wait_for_timeout(600)
-                capture(page, '5-task-center.png')
-                task_text = page.get_by_test_id('task-center-dialog').inner_text()
-                log('task center opens after export', text=task_text[:400])
-            except Exception:  # noqa: BLE001 - the durable record already proves completion
-                log('task center surface was not available; durable export record remains the proof')
             current = rpc.call('project.get', {'projectId': project_id}, project_id)
+            structure_checks(current, consistency)
             asset = next(item for item in current.get('assets', []) if item.get('id') == export['assetId'])
             media_path = asset.get('url') or f'/api/projects/{project_id}/media/{export["assetId"]}'
             output = rpc.download(media_path)
@@ -213,44 +298,30 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
                 output_path = Path(handle.name)
             try:
                 info = probe(options.ffprobe, output_path)
-                timeline = current['timeline']
-                assert timeline['durationFrames'] == consistency['timeline']['durationFrames']
-                assert timeline['fps'] == consistency['timeline']['fps']
                 video = next(stream for stream in info['streams'] if stream['codec_type'] == 'video')
                 audio = next(stream for stream in info['streams'] if stream['codec_type'] == 'audio')
-                expected_export = consistency['export']
-                assert abs(float(info['format']['duration']) - expected_export['durationSeconds']) < 0.001
-                assert video['codec_name'] == expected_export['video']['codec']
-                assert video['width'] == expected_export['video']['width'] and video['height'] == expected_export['video']['height']
-                assert video['r_frame_rate'] == f"{expected_export['video']['fps']}/1"
-                assert int(video['nb_frames']) == expected_export['video']['frames']
-                assert audio['codec_name'] == expected_export['audio']['codec']
-                assert int(audio['sample_rate']) == expected_export['audio']['sampleRate']
-                assert int(audio['channels']) == expected_export['audio']['channels']
+                expected = consistency['export']
+                assert abs(float(info['format']['duration']) - expected['durationSeconds']) < 0.001
+                assert video['codec_name'] == expected['video']['codec']
+                assert video['width'] == expected['video']['width'] and video['height'] == expected['video']['height']
+                assert video['r_frame_rate'] == f"{expected['video']['fps']}/1"
+                assert int(video['nb_frames']) == expected['video']['frames']
+                assert audio['codec_name'] == expected['audio']['codec']
+                assert int(audio['sample_rate']) == expected['audio']['sampleRate']
+                assert int(audio['channels']) == expected['audio']['channels']
                 first_rms = rms(options.ffmpeg, output_path, 0, 2)
                 second_rms = rms(options.ffmpeg, output_path, 2, 2)
-                # The reviewed consistency RMS is the signal-domain source
-                # (0.08819 x applied gain 1.22646 = 0.10808), not the lossy AAC
-                # decode. Decode equality is compared against the reviewed MP4
-                # below; here the shape is held: audible then silent.
-                consistency_rms = expected_export['audioChecked']['0-2s RMS']
                 assert first_rms is not None and first_rms > 0.02, first_rms
                 assert second_rms is None or second_rms < 0.001, second_rms
-                log('the exported file matches the reviewed D consistency facts',
+                log('the UI export matches the reviewed D consistency structure',
                     duration=float(info['format']['duration']), frames=int(video['nb_frames']),
-                    decodedFirstRms=first_rms, secondRms=second_rms,
-                    reviewedSignalRms=consistency_rms, exportId=export['id'])
+                    decodedFirstRms=first_rms, secondRms=second_rms, exportId=export['id'])
 
                 if expected_mp4 is not None:
                     expected_hash = hashlib.sha256(expected_mp4.read_bytes()).hexdigest()
                     actual_hash = hashlib.sha256(output).hexdigest()
                     assert actual_hash == expected_hash, (actual_hash, expected_hash)
-                    log('the UI export is byte-identical to the reviewed backend export', sha256=actual_hash, expected=str(expected_mp4))
-                    expected_first = rms(options.ffmpeg, expected_mp4, 0, 2)
-                    expected_second = rms(options.ffmpeg, expected_mp4, 2, 2)
-                    assert expected_first is not None and abs((first_rms or 0) - expected_first) < 0.0001, (first_rms, expected_first)
-                    assert (expected_second is None and second_rms is None) or abs((second_rms or 0) - (expected_second or 0)) < 0.0001, (second_rms, expected_second)
-
+                    log('the UI export is byte-identical to the reviewed export', sha256=actual_hash)
                 frames = expected_frames(Path(options.expected_frames) if options.expected_frames else None)
                 if frames:
                     for name, digest in frames.items():
@@ -278,7 +349,7 @@ def main() -> int:  # noqa: C901 - one linear acceptance script
             traceback.print_exc()
             raise
         finally:
-            if options.screens:
+            if screens:
                 (screens / 'report.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
             context.close()
             browser.close()
