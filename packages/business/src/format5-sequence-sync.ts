@@ -966,6 +966,13 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
   const meta = metadataOf(plan);
   const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
   if (meta) for (const clip of mainClips) {const name = meta.clipNames.get(clip.id); if (name) clip.name = name;}
+  // GE-b: a generation placeholder is named after the shot it creates. The new
+  // shot is not in `context.shots` yet while the plan is projected, so the
+  // generic nodeName fallback would name the clip "Clip" in every locale.
+  const generatedShot = generatedShotMeta.get(plan)?.shot;
+  if (generatedShot && typeof generatedShot.title === 'string' && generatedShot.title) {
+    for (const clip of mainClips) if (clip.sequenceSource?.nodeId === generatedShot.id) clip.name = generatedShot.title;
+  }
   const ownerList = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
   const ownerSegments = new Map(ownerList.map(owner => [owner.id, owner] as const));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));

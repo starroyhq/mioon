@@ -21,7 +21,7 @@ interface Modules {
   pickerLabel(locale: Locale, trackId: string): string;
   renderInspector(locale: Locale, withSequence: boolean): string;
   renderInspectorAudio(locale: Locale): string;
-  renderClipMenu(locale: Locale, options: {muted: boolean; sound: boolean}): string;
+  renderClipMenu(locale: Locale, options: {muted: boolean; sound: boolean; generate?: boolean}): string;
   keyAction(key: string, focused: 'confirm' | 'cancel' | null): string | null;
   noticeReducer(state: {notice: {id: string; message: string} | null}, action: {type: string; notice?: {id: string; message: string}; id?: string}): {notice: {id: string; message: string} | null};
   trackBadge(trackId: string): string | null;
@@ -96,7 +96,8 @@ function modules(): Promise<Modules> {
       export function renderClipMenu(locale, options) {
         const plan = {sound: options.sound, saveAudio: options.sound, muteLabelKey: options.muted ? 'clipSound.unmute' : 'clipSound.mute'};
         return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages: [locale]})}><TimelineClipContextMenu anchor={{clipId: 'clip-1', x: 10, y: 10}} plan={plan} canSplit busy={false}
-          onSplit={noop} onToggleMute={noop} onSeparate={noop} onSaveAudio={noop} onClose={noop} /></I18nProvider>);
+          onSplit={noop} onToggleMute={noop} onSeparate={noop} onSaveAudio={noop}
+          {...(options.generate ? {onGenerateBefore: noop, onGenerateAfter: noop} : {})} onClose={noop} /></I18nProvider>);
       }
       export function renderInspector(locale, withSequence) {
         const timeline = timelineFor('main'), clip = timeline.clips.find(item => item.id === FIXTURE_SELECTED_CLIP_ID);
@@ -284,10 +285,18 @@ test('the format-5 clip context menu renders only 0.3.0 items plus the sound gro
   for (const locale of LOCALES) {
     const html = renderClipMenu(locale, {muted: false, sound: true});
     for (const label of labels[locale]) assert.ok(html.includes(label), `${locale}: ${label}`);
-    assert.equal(html.includes('data-slot="generate-group"'), true, 'the generate group keeps a structural insert point');
+    assert.equal(html.includes('data-slot="generate-group"'), false, 'no generate group without a main-track shot');
     assert.equal(html.includes('data-slot="sound-group"'), true);
     for (const absent of ['变速', '倒放', '定格', '生成镜头']) assert.equal(html.includes(absent), false, `${locale}: ${absent}`);
     assert.ok(html.includes('data-testid="clip-menu-separate"') && html.includes('data-testid="clip-menu-save-audio"'));
+    const withGenerate = renderClipMenu(locale, {muted: false, sound: true, generate: true});
+    const generateLabels = {
+      'zh-Hans': ['在前面生成镜头', '在后面生成镜头'], 'zh-Hant': ['在前面生成鏡頭', '在後面生成鏡頭'],
+      en: ['Generate shot before', 'Generate shot after'], ja: ['前にショットを生成', '後ろにショットを生成'],
+    } as const;
+    for (const label of generateLabels[locale]) assert.ok(withGenerate.includes(label), `${locale}: ${label}`);
+    assert.ok(withGenerate.includes('data-testid="clip-menu-generate-before"')
+      && withGenerate.includes('data-testid="clip-menu-generate-after"'));
   }
   // A muted clip offers «unmute»; an ineligible clip hides the whole group.
   assert.ok(renderClipMenu('zh-Hans', {muted: true, sound: true}).includes('取消静音'));
@@ -320,12 +329,25 @@ test('the clip context menu leads every item with its icon, aligns the labels le
   // A muted clip swaps the horn icon with the label.
   const muted = renderClipMenu('zh-Hans', {muted: true, sound: true});
   assert.ok(muted.includes('lucide-volume-2') && muted.includes('取消静音'));
-  // One separator sits between the split item and the sound group; the sound
-  // group itself ends the menu, followed only by the hidden generate slot.
+  // One separator sits between the split item and the sound group; with a
+  // main-track shot the generate group follows its own separator and ends the menu.
   assert.equal(html.split('timeline-clip-menu-separator').length - 1, 1, 'exactly one separator');
   assert.ok(html.indexOf('data-testid="clip-menu-split"') < html.indexOf('timeline-clip-menu-separator'), 'separator after split');
   assert.ok(html.indexOf('timeline-clip-menu-separator') < html.indexOf('data-slot="sound-group"'), 'separator before the sound group');
-  assert.match(html.trimEnd(), /data-slot="generate-group"[^>]*><\/div><\/div>$/u, 'the last element is the generate insert point');
+  const withGenerate = renderClipMenu('zh-Hans', {muted: false, sound: true, generate: true});
+  assert.equal(withGenerate.split('timeline-clip-menu-separator').length - 1, 2, 'one separator per group');
+  assert.ok(withGenerate.indexOf('data-slot="sound-group"') < withGenerate.lastIndexOf('timeline-clip-menu-separator'),
+    'separator before the generate group');
+  for (const [testId, label] of [['clip-menu-generate-before', '在前面生成镜头'],
+    ['clip-menu-generate-after', '在后面生成镜头']] as const) {
+    const start = withGenerate.indexOf(`data-testid="${testId}"`);
+    assert.ok(start >= 0, testId);
+    const markup = withGenerate.slice(start, withGenerate.indexOf('</button>', start));
+    assert.ok(markup.includes('class="timeline-clip-menu-icon"') && markup.includes('lucide-sparkles'), `${testId}: leading sparkles`);
+    assert.ok(markup.includes('class="timeline-clip-menu-label"') && markup.includes(`>${label}</span>`), `${testId}: ${label}`);
+  }
+  assert.match(withGenerate.trimEnd(), /data-slot="generate-group"[^>]*>[\s\S]*<\/div><\/div>$/u,
+    'the generate group is the last element');
   assert.equal(renderClipMenu('zh-Hans', {muted: false, sound: false}).includes('timeline-clip-menu-separator'), false,
     'no separator when the whole sound group is absent');
 });

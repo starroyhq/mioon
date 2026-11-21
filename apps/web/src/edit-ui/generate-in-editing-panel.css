@@ -1,0 +1,22 @@
+.generate-in-editing-panel {display:flex;flex-direction:column;gap:14px;padding:14px;min-height:100%;overflow:auto}
+.generate-in-editing-heading {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.generate-in-editing-heading strong {font-size:14px;line-height:1.35;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.generate-in-editing-field {display:flex;flex-direction:column;gap:6px}
+.generate-in-editing-field>label,.generate-in-editing-inputs h4 {font-size:12px;color:var(--text-muted);font-weight:500;margin:0}
+.generate-in-editing-save {display:flex;justify-content:flex-end}
+.generate-in-editing-inputs {display:flex;flex-direction:column;gap:8px}
+.generate-in-editing-input-list {list-style:none;display:flex;flex-direction:column;gap:4px;margin:0;padding:0}
+.generate-in-editing-input-list li {display:flex;align-items:center;gap:8px;min-height:26px;padding:3px 8px;border-radius:6px;background:var(--surface-raised)}
+.generate-in-editing-role {font-size:11px;color:var(--text-muted);min-width:52px}
+.generate-in-editing-label {font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.generate-in-editing-primary {font-size:10px;border:1px solid var(--border-strong);border-radius:4px;padding:0 4px;color:var(--text-muted)}
+.generate-in-editing-unsupported {margin-left:auto;font-size:11px;color:var(--warning-text)}
+.generate-in-editing-empty {margin:0;font-size:12px;color:var(--text-muted)}
+.generate-in-editing-duration {display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted)}
+.generate-in-editing-duration>label {white-space:nowrap;flex:0 0 auto}
+.generate-in-editing-duration select {min-width:120px}
+.generate-in-editing-service {display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)}
+.generate-in-editing-note {margin:0;font-size:12px;color:var(--warning-text)}
+.generate-in-editing-dialogue {border-top:1px solid var(--border-subtle);padding-top:12px}
+.generate-in-editing-footer {margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:8px}
+.generate-in-editing-status {font-size:12px;color:var(--text-muted)}

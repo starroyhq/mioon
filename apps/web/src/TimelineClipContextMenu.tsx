@@ -7,7 +7,7 @@
  */
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
-import {AudioLines, Download, Scissors, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
+import {AudioLines, Download, Scissors, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import type {ClipContextMenuPlan} from './clip-sound-state.ts';
 
@@ -22,13 +22,16 @@ export interface TimelineClipContextMenuProps {
   readonly onToggleMute: (clipId: string) => unknown;
   readonly onSeparate: (clipId: string) => unknown;
   readonly onSaveAudio: (clipId: string) => unknown;
+  /** GE-b: present only for a main-track format-5 shot clip. */
+  readonly onGenerateBefore?: (clipId: string) => unknown;
+  readonly onGenerateAfter?: (clipId: string) => unknown;
   readonly onClose: () => void;
 }
 
 /** Focusable item list; arrow keys wrap, Escape closes and returns focus to the
  * clip button that opened it. */
 export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, onSplit, onToggleMute,
-  onSeparate, onSaveAudio, onClose}: TimelineClipContextMenuProps): React.ReactElement | null {
+  onSeparate, onSaveAudio, onGenerateBefore, onGenerateAfter, onClose}: TimelineClipContextMenuProps): React.ReactElement | null {
   const {t} = useI18n();
   const menu = useRef<HTMLDivElement | null>(null);
   const items = useRef<HTMLButtonElement[]>([]);
@@ -104,8 +107,14 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
           () => onSaveAudio(anchor.clipId), !busy)}
       </div>
     </>}
-    {/* GE-b inserts «在前面 / 在后面生成镜头» here together with the separator
-        that precedes that group; the sound group leaves no trailing separator. */}
-    <div data-slot="generate-group" hidden aria-hidden="true" />
+    {(onGenerateBefore || onGenerateAfter) && <>
+      <div className="timeline-clip-menu-separator" role="separator" />
+      <div data-slot="generate-group" data-testid="clip-menu-generate-group" role="group">
+        {onGenerateBefore && item(index++, 'clip-menu-generate-before', t('timeline.menu.generateBefore'),
+          <Sparkles size={16} />, () => onGenerateBefore(anchor.clipId), !busy)}
+        {onGenerateAfter && item(index++, 'clip-menu-generate-after', t('timeline.menu.generateAfter'),
+          <Sparkles size={16} />, () => onGenerateAfter(anchor.clipId), !busy)}
+      </div>
+    </>}
   </div>;
 }
