@@ -3,7 +3,8 @@ import {hasStoreTable,storeDirectories} from '../store-layout.ts';
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
-import {isTimelineRecord,isTimelineRenderRecord,exportPreflightResponseSchema} from '@mioon/contracts';
+import {isClipAudioExportRecord,exportPreflightResponseSchema} from '@mioon/contracts';
+import {isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
 import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
@@ -33,6 +34,7 @@ const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f\d]{8
 const integer=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
 const operations:Readonly<Record<string,{kind:TaskKind;group:AgentTaskCheckGroup;type:AgentTaskCheck['type']}>>={
  mioon_export_create:{kind:'export',group:'export_render',type:'export_status'},mioon_timeline_render:{kind:'export',group:'export_render',type:'export_status'},
+ mioon_clip_audio_export:{kind:'export',group:'export_render',type:'export_status'},
  mioon_generation_submit:{kind:'job',group:'generation',type:'generation_status'},mioon_image_generate:{kind:'image',group:'generation',type:'generation_status'},
  mioon_frame_extract:{kind:'frame',group:'decomposition_frames',type:'frame_status'},mioon_scene_detect:{kind:'scene',group:'decomposition_frames',type:'decomposition_status'},
  mioon_scene_shots_create:{kind:'scene',group:'decomposition_frames',type:'decomposition_status'},
@@ -153,6 +155,25 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   const state=value?.status??value?.state,description=operations[origin.step.toolCall!.name]!,result=stateResult(state),current=stateValues(state);
   const progress=typeof value?.progress==='number'&&Number.isFinite(value.progress)&&value.progress>=0&&value.progress<=100?value.progress:undefined;
   add(description.group,description.type,target,proof,result,{current,...(result.status==='pending'&&progress!==undefined?{progress}:{})});
+  if(origin.kind==='export'&&isClipAudioExportRecord(value)){
+   // «Save clip sound» produces one audio/mp4 asset whose own row carries the
+   // portable source record; it is not a render receipt, so no timeline
+   // snapshot or publication-producer proof applies.
+   let produced:Value|undefined;
+   try {produced=uuid(value.assetId)?graph.asset(value.assetId):undefined;} catch(error){if(!knownObservationFailure(error))throw error;}
+   const okAsset=!!produced&&produced.projectId===projectId&&produced.provenance==='clip-audio'&&
+     value.output!==null&&produced.sha256===value.output.sha256&&produced.sizeBytes===value.output.sizeBytes&&
+     produced.mimeType==='audio/mp4';
+   const artifactProof=related(proof,okAsset?[{kind:'asset',id:String(value.assetId)}]:[]);
+   add('export_render','export_artifact',target,artifactProof,
+     result.status==='pending'?reason('pending','TASK_PENDING'):result.status!=='passed'?reason('not_applicable','ARTIFACT_UNAVAILABLE'):okAsset?{status:'passed'}:reason('failed','ARTIFACT_UNAVAILABLE'),
+     {current:{available:okAsset,...(okAsset?{assetId:String(value.assetId)}:{})}});
+   const matches=value.requestId===origin.requestId&&value.projectId===projectId&&value.id===origin.id;
+   add('export_render','export_parameters',target,artifactProof,
+     !matches?reason('failed','PARAMETERS_MISMATCH'):result.status==='pending'?reason('pending','TASK_PENDING'):result.status!=='passed'?reason('not_applicable','TASK_FAILED'):{status:'passed'},
+     {current:{available:okAsset}});
+   continue;
+  }
   if(origin.kind==='export'){
    const published=asset(value?.assetId,origin.id),artifactResult=result.status==='pending'?reason('pending','TASK_PENDING'):result.status!=='passed'?reason('not_applicable','ARTIFACT_UNAVAILABLE'):published?{status:'passed' as const}:reason('failed','ARTIFACT_UNAVAILABLE');
    const artifactProof=related(proof,published?[{kind:'asset',id:published.id}]:[]);
@@ -163,7 +184,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
      const args=object(origin.step.toolCall?.arguments)?origin.step.toolCall.arguments:{};
      const input={...args,projectId,requestId:origin.requestId},receiptRow=store.db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=? AND length(CAST(response AS BLOB))<=4194304').get(origin.requestId),receipt=decode(receiptRow?.response);
      const requestHash=createHash('sha256').update(canonical({operation:'timeline.render',input})).digest('hex');
-     matches=isTimelineRenderRecord(value,input)&&!!receipt&&receiptRow?.requestHash===requestHash&&isTimelineRenderRecord(receipt,input)&&receipt.status==='queued'&&receipt.assetId===null&&receipt.url===null&&receipt.error===null&&receipt.updatedAt===receipt.createdAt&&
+     matches=isTimelineRenderRecordFor(store.db,value,input)&&!!receipt&&receiptRow?.requestHash===requestHash&&isTimelineRenderRecordFor(store.db,receipt,input)&&receipt.status==='queued'&&receipt.assetId===null&&receipt.url===null&&receipt.error===null&&receipt.updatedAt===receipt.createdAt&&
       ['id','projectId','requestId','mode','purpose','timelineRevision','createdAt'].every(field=>receipt[field]===value![field])&&isDeepStrictEqual(receipt.snapshot,value.snapshot);
      const frozen=object(value.snapshot)?value.snapshot:undefined,delivery=object(frozen?.delivery)?frozen.delivery:undefined;
      expected=geometry(object(delivery?.effective)?delivery.effective:frozen?.timeline);
@@ -238,7 +259,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   // Reuse this read's H3 observations. No lazy timeline.get(), workers or
   // alternate export/publication validation are introduced for requirements.
   const exists=!!store.db.prepare('SELECT 1 FROM timelines WHERE projectId=?').get(projectId);
-  const valid=timeline&&isTimelineRecord(timeline,{projectId});
+  const valid=timeline&&isTimelineRecordFor(store.db,timeline,{projectId});
   let values:AgentTaskCheckValues={};
   if(valid)values={...geometry(timeline),durationFrames:Number(timeline.durationFrames)};
   else if(!exists)values={...freezeStoryboardOutputGeometry(store.db,projectId),durationFrames:0};

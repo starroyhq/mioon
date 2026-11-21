@@ -1,4 +1,5 @@
 import {isTimelineRecord} from '../../contracts/src/timeline-replacement.ts';
+import type {TimelineRecordOptions} from '../../contracts/src/timeline-replacement.ts';
 import {isTimelineMutationResponse} from '../../contracts/src/timeline-acknowledgement.ts';
 import {TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SOURCE_REFRESH_OPERATION,TIMELINE_SHOT_APPEND_OPERATION} from '../../contracts/src/timeline-shot-sync.ts';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION} from '../../contracts/src/timeline-loudness-apply.ts';
@@ -16,6 +17,10 @@ const JSON_BYTES = 4 * 1024 * 1024;
 // receipt adapter reads as a render receipt.
 const evidenceKeys = new Set(['audioRole', 'audioRoleProfile', 'colour', 'colourPlan', 'profileId', 'timeline', 'snapshot', 'assets']);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+/** The retained rows serve released formats and format 5; scanners pass the
+ * project file's own format so only format 5 admits its clip sound flags. */
+const recordPredicate = (format: number | undefined) =>
+  (value: unknown, options?: TimelineRecordOptions): boolean => isTimelineRecord(value, {...(options ?? {}), ...(format === undefined ? {} : {format})});
 
 function carriesEvidence(root: unknown): boolean {
   const pending = [{value: root, depth: 0}]; let nodes = 0;
@@ -31,25 +36,26 @@ function carriesEvidence(root: unknown): boolean {
 
 /** Only a bound, complete wrapper without evidence hidden in outcomes can be
  * inspected as its saved timeline. The original object is never mutated. */
-export function projectRetainedTimelineReceipt(root:unknown,requestId:unknown):unknown {
+export function projectRetainedTimelineReceipt(root:unknown,requestId:unknown,format?:number):unknown {
  if(!object(root)||!WRAPPED_TIMELINE_OPERATIONS.includes(root.operation as string)||Buffer.byteLength(JSON.stringify(root))>JSON_BYTES)return root;
  const {timeline,...outcomes}=root;
- return root.requestId===requestId&&object(timeline)&&isTimelineRecord(timeline,{projectId:timeline.projectId})&&!carriesEvidence(outcomes)?timeline:root;
+ return root.requestId===requestId&&object(timeline)&&recordPredicate(format)(timeline,{projectId:timeline.projectId})&&!carriesEvidence(outcomes)?timeline:root;
 }
 
 /** Wrappers that carry their owner on the timeline rather than the response. */
 export const TIMELINE_RECEIPT_WRAPPER_OPERATIONS: readonly string[] =
  Object.freeze([...WRAPPED_TIMELINE_OPERATIONS,TIMELINE_LOUDNESS_APPLY_OPERATION]);
 
-const sceneSplitContracts=createTimelineSceneSplitContracts({isTimelineRecord});
+const legacySceneSplitContracts=createTimelineSceneSplitContracts({isTimelineRecord});
 
 /** The original input of a legacy receipt is not always retained. Validate the
  * envelope and the outcomes against its own timeline. Exact replay still uses
  * the original input and retained request digest. */
-export function readWrappedTimelineReceipt(root: unknown, projectId: string, requestId: string) {
+export function readWrappedTimelineReceipt(root: unknown, projectId: string, requestId: string, format?: number) {
+ const record=recordPredicate(format);
  if(!object(root)||!TIMELINE_RECEIPT_WRAPPER_OPERATIONS.includes(root.operation as string)||
-  root.requestId!==requestId||!isTimelineRecord(root.timeline,{projectId}))return;
- const {operation,timeline}=root;
+  root.requestId!==requestId||!record(root.timeline,{projectId}))return;
+ const {operation}=root, timeline=root.timeline as {revision: number; [key: string]: unknown};
  const input={projectId,requestId,expectedRevision:timeline.revision-1};
  switch(operation){
   case TIMELINE_SOURCE_REFRESH_OPERATION:{
@@ -57,32 +63,32 @@ export function readWrappedTimelineReceipt(root: unknown, projectId: string, req
    // The lists retain order within each outcome class. Their interleaving in
    // the original request does not participate in this structural check.
    const clipIds=[...root.refreshed,...root.skipped].map(row=>object(row)?row.clipId:undefined);
-   return isTimelineMutationResponse(operation,{...input,clipIds},root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,{...input,clipIds},root,{...(format===undefined?{}:{format})})?timeline:undefined;
   }
   case TIMELINE_SCENE_SPLIT_OPERATION:
-   return sceneSplitContracts.isRetainedTimelineSceneSplitResponse(root,{projectId,requestId})?timeline:undefined;
+   return (format===undefined?legacySceneSplitContracts:createTimelineSceneSplitContracts({isTimelineRecord:record})).isRetainedTimelineSceneSplitResponse(root,{projectId,requestId})?timeline:undefined;
   case TIMELINE_SHOT_APPEND_OPERATION:
-   return isTimelineMutationResponse(operation,input,root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,input,root,{...(format===undefined?{}:{format})})?timeline:undefined;
   case TIMELINE_CROSSFADE_OPERATION:{
    const summary=root.crossfade;
    if(!object(summary))return;
    const {outgoingClipId,incomingClipId}=summary;
-   return isTimelineMutationResponse(operation,{...input,outgoingClipId,incomingClipId},root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,{...input,outgoingClipId,incomingClipId},root,{...(format===undefined?{}:{format})})?timeline:undefined;
   }
   case TIMELINE_CLIP_GAINS_OPERATION:{
    if(!Array.isArray(root.gains))return;
    const gains=root.gains.map(row=>object(row)?{clipId:row.clipId,gain:row.gain}:null);
-   return isTimelineMutationResponse(operation,{...input,gains},root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,{...input,gains},root,{...(format===undefined?{}:{format})})?timeline:undefined;
   }
   case TIMELINE_CLIP_TRANSFORM_OPERATION:
-   return isTimelineMutationResponse(operation,{...input,clipId:root.clipId,transform:root.transform},root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,{...input,clipId:root.clipId,transform:root.transform},root,{...(format===undefined?{}:{format})})?timeline:undefined;
   case TIMELINE_CLIP_TRANSITION_OPERATION:
-   return isTimelineMutationResponse(operation,{...input,clipId:root.clipId,transition:root.transition},root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,{...input,clipId:root.clipId,transition:root.transition},root,{...(format===undefined?{}:{format})})?timeline:undefined;
   case TIMELINE_LOUDNESS_APPLY_OPERATION:{
    const application=root.application;
    if(!object(application))return;
    const {candidateDigest,snapshotSha256,mixProfile,measurementProfile,target}=application;
-   return isTimelineMutationResponse(operation,{...input,candidateDigest,snapshotSha256,mixProfile,measurementProfile,target},root)?timeline:undefined;
+   return isTimelineMutationResponse(operation,{...input,candidateDigest,snapshotSha256,mixProfile,measurementProfile,target},root,{...(format===undefined?{}:{format})})?timeline:undefined;
   }
  }
 }

@@ -33,7 +33,8 @@ import { readOwnedTimelineAsset } from '@mioon/business/timeline-sources';
 import { createUiPreferences } from '@mioon/business/ui-preferences';
 import { createVideoSettingsV2 } from '@mioon/business/video/settings-v2';
 import { createVideoSettingsV2File } from '@mioon/business/video/settings-v2-file';
-import { AppError,isTimelineRenderRecord } from '@mioon/contracts';
+import { AppError } from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from '@mioon/business/timeline-record-format';
 import { readPrivateFile,validateManagedDirectory,validateManagedFile,validatePrivateDirectory,writePrivateFileAtomic } from '@mioon/contracts/private-storage';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage,ServerResponse } from 'node:http';
@@ -202,7 +203,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
     const projectPackages = null;
     const projectPackageHttp = createProjectPackageHttp({service:()=>projectPackages!,available:()=>projectPackages!==null,signal:shutdown.signal});
     const exportFileRecovery: ExportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
-      guards:{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
+      guards:{isTimelineRenderRecord:(value:unknown,input:Readonly<Record<string,unknown>>)=>isTimelineRenderRecordFor(store.db,value,input),readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
       assertAvailable:()=>{if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
       validateFile:(file,allowMissing)=>resolveProjectMediaFile(store,path.relative(root,file),{allowMissing}).info,
       validateDirectory:directory=>validateManagedDirectory(directory,{root:path.join(root,'media')})});

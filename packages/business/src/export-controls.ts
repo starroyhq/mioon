@@ -6,7 +6,8 @@ import {projectOutputPublicationProofSchema} from '../../contracts/src/project-o
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import {createHash} from 'node:crypto';
 import {validAssetLocator} from './asset-reference-record.ts';
-import {isTimelineRenderRecord,AppError} from '@mioon/contracts';
+import {AppError} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {readTimelineExportOutput} from './timeline-delivery-read.ts';
 import {readOwnedTimelineAsset} from './timeline-sources.ts';
 import {verifiedManagedHash} from './managed-media.ts';
@@ -14,6 +15,7 @@ import {isFloatTimelineExport,claimFloatTimelineExport} from './timeline-float-o
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {exportControlSchemas,exportActivitySchema,exportOutputSchema} from '../../contracts/src/export-controls.ts';
+import {clipAudioExportRecordSchema} from '../../contracts/src/clip-audio-export.ts';
 
 type Stage='preparing'|'encoding'|'finalizing';
 interface Activity {stage:Stage;started:number;progress:number|null;abort():void}
@@ -39,8 +41,15 @@ export function createExportControlServices(store:Store,{signal}:{signal?:AbortS
     checkpoint();const raw=store.db.prepare('SELECT data FROM exports WHERE id=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304').get(exportId,projectId);
     let value:unknown;try{value=raw&&typeof raw.data==='string'?JSON.parse(raw.data):null;}catch{value=null;}
     if(!row(value)||value.id!==exportId||value.projectId!==projectId||typeof value.status!=='string')throw new AppError('NOT_FOUND','导出任务不存在',404);
-    if(value.mode==='timeline'&&!isTimelineRenderRecord(value,{projectId,requestId:value.requestId,purpose:value.purpose,expectedRevision:value.timelineRevision,...timelineRenderDeliveryFields(value.snapshot)}))throw new AppError('INVALID_TIMELINE_SNAPSHOT','导出任务无法核对',409);
-    assertFloatTimelineExportRead(store.db,value,{isTimelineRenderRecord,readOwnedAsset:(owner,id)=>readOwnedTimelineAsset(store.db,owner,id)});
+    // «Save clip sound» tasks share the exports channel; their row is validated
+    // by their own closed schema so cancellation/activity never touch timeline
+    // rows or storyboard snapshots.
+    if(value.mode==='clip-audio'){
+      if(!clipAudioExportRecordSchema.safeParse(value).success)throw new AppError('INVALID_MEDIA','音频任务无法核对',409);
+      return value;
+    }
+    if(value.mode==='timeline'&&!isTimelineRenderRecordFor(store.db,value,{projectId,requestId:value.requestId,purpose:value.purpose,expectedRevision:value.timelineRevision,...timelineRenderDeliveryFields(value.snapshot)}))throw new AppError('INVALID_TIMELINE_SNAPSHOT','导出任务无法核对',409);
+    assertFloatTimelineExportRead(store.db,value,{isTimelineRenderRecord:(record,input)=>isTimelineRenderRecordFor(store.db,record,input),readOwnedAsset:(owner,id)=>readOwnedTimelineAsset(store.db,owner,id)});
     if(value.mode!=='timeline'){
       const receipt=store.db.prepare("SELECT resourceId FROM idempotency WHERE scope='export' AND requestId=?").get(String(value.requestId));
       if(receipt?.resourceId!==exportId||!Array.isArray(value.snapshot))throw new AppError('INVALID_TIMELINE_SNAPSHOT','导出任务无法核对',409);
@@ -70,7 +79,7 @@ export function createExportControlServices(store:Store,{signal}:{signal?:AbortS
     'export.output.get':async(raw:unknown)=>{
       const input=exportControlSchemas['export.output.get'].parse(raw),record=read(input.projectId,input.exportId);
       if(record.status!=='succeeded')throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件尚不可用',409);
-      const output=readTimelineExportOutput(store.db,input,{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)});
+      const output=readTimelineExportOutput(store.db,input,{isTimelineRenderRecord:(record,input)=>isTimelineRenderRecordFor(store.db,record,input),readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)});
       if(record.mode==='timeline'&&!output)throw new AppError('EXPORT_FILE_UNAVAILABLE','导出回执无法核对',409);
       const asset=output?.asset??(typeof record.assetId==='string'?readOwnedTimelineAsset(store.db,input.projectId,record.assetId):null);
       if(!row(asset)||!validAssetLocator(store.db,asset)||!row(asset.producer)||asset.producer.kind!=='export'||asset.producer.id!==input.exportId||!isPublishedProjectOutput(asset,{projectId:input.projectId,owner:{kind:'export',id:input.exportId,requestId:typeof record.requestId==='string'?record.requestId:record.id as string,inputHash:createHash('sha256').update(exportOutputArtifactIdentity(record)).digest('hex')},targetKind:'exports',mimeType:'video/mp4'})||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||typeof asset.sha256!=='string')throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件无法核对',409);

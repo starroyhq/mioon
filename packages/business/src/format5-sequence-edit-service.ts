@@ -34,6 +34,7 @@ import {
   buildReferenceEdgeEnvelope, planReferenceEdgeAction,
 } from './format5-reference-inputs.ts';
 import {previewClipProperties, runClipPropertiesSync} from './format5-clip-properties.ts';
+import {previewSeparateSound, runSeparateSoundSync} from './format5-clip-sound.ts';
 import {previewTimelineFormat, runTimelineFormatSync} from './format5-format-set.ts';
 import {previewTrack, runTrackSync} from './format5-tracks.ts';
 import {previewGenerateInEditing} from './format5-sequence-sync.ts';
@@ -46,6 +47,7 @@ import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
 import {isBoardIntentOperation} from '../../contracts/src/sequence-edit.ts';
+import {isLocale} from '../../i18n/src/index.ts';
 
 type Row = Record<string, any>;
 const uuid = (value: unknown): value is string => typeof value === 'string' &&
@@ -271,6 +273,14 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     if (input.propertiesIntent) return previewClipProperties(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       propertiesIntent: input.propertiesIntent as never});
+    if (input.soundIntent) {
+      // The caller's language only expands the generated names; it never
+      // becomes part of the envelope, so previewing again reproduces the rows.
+      const locale = isLocale(input.locale) ? input.locale : undefined;
+      return previewSeparateSound(store, {requestId: input.requestId,
+        ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+        soundIntent: input.soundIntent as never, ...(locale !== undefined ? {locale} : {})});
+    }
     if (input.subjectIntent) return subjectPreview(input);
     if (input.referenceIntent) return referencePreview(input);
     const intents = (input.intents ?? []) as SequenceEditIntent[];
@@ -332,6 +342,11 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     if (envelope.propertiesIntent) {
       const result = runClipPropertiesSync(store, envelope) as any;
       if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
+    if (envelope.soundIntent) {
+      const result = runSeparateSoundSync(store, envelope) as any;
+      if (result.ok === false) throw new AppError(result.code, '格式 5 分离声音没有完成。', 409, {ids: result.ids});
       return result.receipt;
     }
     if (envelope.subjectIntent || envelope.referenceIntent || envelope.previsIntent || intents.some(timelineIntent)) {

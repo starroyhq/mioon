@@ -80,6 +80,19 @@ test('ready report summarizes saved state, hashes once and probes once without w
  assert.ok(!JSON.stringify(result).includes(f.root));assert.ok(!JSON.stringify(result).includes(asset.reference.path));
 });
 
+test('audible clip count ignores muted clips while clip count stays the saved total',async t=>{
+ const f=await fixture(t),asset=await f.seed();
+ const timeline=f.timeline!;
+ timeline.clips=[{...timeline.clips[0],id:randomUUID()} as never,{...timeline.clips[0],id:randomUUID(),startFrame:15,muted:true} as never];
+ timeline.clips.forEach(clip=>clip.durationFrames=15);timeline.durationFrames=30;f.save((timeline as unknown as Parameters<typeof f.save>[0]));
+ const before=f.state(),writes=f.writes(),result=await f.call();
+ assert.equal(result.status,'ready');assert.equal((result.summary)!.clipCount,2);
+ assert.equal((result.summary)!.audibleClipCount,1,'the muted clip contributes no audible source');
+ assert.equal((result.summary)!.mutedTrackCount,0);
+ assert.equal(f.writes(),writes);assert.deepEqual(f.state(),before);
+ assert.ok(!JSON.stringify(result).includes(asset.reference.path));
+});
+
 test('missing, corrupt and byte-replaced sources block with sanitized reasons',async t=>{
  const f=await fixture(t),asset=await f.seed(),file=mediaFixturePath(f.root,asset);await unlink(file);
  assert.equal((await f.call()).issues[0].code,'PREFLIGHT_SOURCE_INVALID');await writeFile(file,'different private bytes');

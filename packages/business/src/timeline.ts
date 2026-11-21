@@ -7,6 +7,7 @@ import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,adm
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './store-runtime.ts';
 import {timelineStorageFormat,timelineStorageSchema,readTimelineStorage} from './project-file/timeline-storage.ts';
+import {isTimelineMutationResponseFor} from './timeline-record-format.ts';
 import {bumpFormat5ContentStampInside,deleteFormat5TimelineInside} from './project-file/format5-timeline.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace,usesTimelineFrameTransaction} from './store-capabilities.ts';
@@ -16,7 +17,7 @@ import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,TIMELINE_SUBTITLE_PROFILE_ID,timelineFormatSchemas} from '@mioon/contracts';
+import {AppError,sourceFrameCount,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,TIMELINE_SUBTITLE_PROFILE_ID,timelineFormatSchemas} from '@mioon/contracts';
 import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.ts';
 import {canonicalFormatValue} from './timeline-format-receipts.ts';
 import {CLIP_LAYOUT_PROFILE} from '../../contracts/src/timeline-clip-layout.ts';
@@ -201,7 +202,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  const assertTimelineAudioRoleWorkspace=legacyAssertAudioRoleWorkspace;
  const assertTimelineVolumeEnvelopeWorkspace=legacyAssertVolumeWorkspace;
  const createTimelineRecoveryBoundary: (db: DatabaseSync,input: TimelineMutationInput)=>TimelineRecoveryBoundary=legacyRecoveryBoundary as never;
- const isTimelineMutationResponse: (operation: string,input: unknown,response: unknown)=>boolean=legacyMutationResponse;
+ // Format 3/4 responses validate the legacy record shape; a format-5 project
+ // additionally allows its own muted/soundOnly clip fields but nothing else.
+ const isTimelineMutationResponse: (operation: string,input: unknown,response: unknown)=>boolean=
+  (operation,input,response)=>isTimelineMutationResponseFor(store.db,operation,input,response);
  const admitTimelineImageResponse=(value: unknown): void=>{legacyAdmitImageResponse(value as TimelineRecord);};
  const {db,put,tx}=store;
  // The trusted host opens the actual project format. No RPC input can opt a

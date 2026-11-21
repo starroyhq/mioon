@@ -19,6 +19,10 @@ export interface TimelineClipRecord {
  rect: TimelineRect;gain: number;layout?: ClipLayout;transform?: unknown;fadeInFrames?: number;fadeOutFrames?: number;audioRole?: string;
  colour?: Record<string, unknown>|null;volumeEnvelope?: unknown;opacityEnvelope?: unknown;
  versionId?: string;shotId?: string;jobId?: string;
+ /** Format-5 only: per-clip mute of its own sound; absence means audible. */
+ muted?: boolean;
+ /** Format-5 only: an audio-track clip that plays a video source's sound. */
+ soundOnly?: boolean;
 }
 export interface TimelineRecord {
  id: string;projectId: string;revision: number;fps: number;width: number;height: number;
@@ -56,7 +60,11 @@ export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<st
   const roleIssue=getTimelineAudioRoleIssue(c,a);if(roleIssue)invalid(roleIssue.message);
   const fadeIssue=getTimelineFadeIssue(c,structureOnly?{...a,hasAudio:true}:a);if(fadeIssue)invalid(fadeIssue.message);
   const isImage=a.mimeType?.startsWith('image/'),isVideo=a.mimeType?.startsWith('video/'),isAudio=['audio/wav','audio/mpeg','audio/mp4'].includes(a.mimeType);
-  if(t.kind==='video'?(!isImage&&!isVideo):!isAudio)invalid('Asset is not supported on this track');
+  const soundOnly=c.soundOnly===true;
+  // An audio track accepts a video source only through the explicit «sound
+  // only» form; every other video-on-audio-track clip stays refused.
+  if(t.kind==='video'?(soundOnly||!isImage&&!isVideo):!(soundOnly?isVideo&&a.hasAudio===true:isAudio))invalid('Asset is not supported on this track');
+  if(Object.hasOwn(c,'muted')&&c.muted!==true)invalid('Invalid clip mute flag');
   if(!structureOnly&&(t.kind==='video'&&!a.hasVideo||t.kind==='audio'&&!a.hasAudio))invalid('Asset has no required media stream');
   if(isImage?c.sourceInFrame!==0:(!structureOnly&&c.sourceInFrame+c.durationFrames>(sourceFrameCount(a.duration)??0)))invalid('Clip exceeds source duration');
   for(const effect of ['transition','transitions','effects','speed','rate','opacity','blendMode'])if((c as unknown as Record<string, unknown>)[effect]!==undefined)invalid(`Unsupported timeline effect: ${effect}`);
@@ -96,7 +104,8 @@ export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {t
   let duration=0;
   for(const item of timeline.clips){
    const lane=track(timeline,item.trackId),source=asset(timeline.projectId,item.assetId);
-   if(!(lane.kind==='audio'?audioTypes:visualTypes).has(source.mimeType))
+   const soundOnlyVideo = item.soundOnly === true && source.mimeType.startsWith('video/');
+   if(!(lane.kind==='audio'?(soundOnlyVideo?source.hasAudio===true:audioTypes.has(source.mimeType)):visualTypes.has(source.mimeType))||soundOnlyVideo&&lane.kind!=='audio')
     throw new AppError('INVALID_CLIP_TYPE','视频轨道只接收图片/视频，音频轨道只接收音频',400,{clipId:item.id,trackId:lane.id,assetId:source.id});
    validateTimelineVolumeEnvelopeClip(item,source);
    const roleIssue=getTimelineAudioRoleIssue(item,source);

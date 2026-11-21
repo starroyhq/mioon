@@ -101,6 +101,9 @@ const mioSequenceActionBranches = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('format-set'),
     presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
   z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),
+  // FR-G: mute goes through `clip-properties`, separate sound is a timeline
+  // structure action (source clip muted + a new anchored sound-only clip).
+  z.object({kind: z.literal('separate-sound'), clipId: uuid}).strict(),
   z.object({kind: z.literal('generate'),
     placement: z.discriminatedUnion('kind', [
       z.object({kind: z.literal('main'), beforeClipId: uuid.nullable()}).strict(),
@@ -158,7 +161,7 @@ const MIO_SEQUENCE_ACTION_GROUPS = Object.freeze({
   previs: ['previs-create', 'previs-scene-set'],
   // Dialogue lines are one shot's spoken text edits and sit next to subtitles in
   // the same timeline/audio domain; they share the loadable timeline group.
-  timeline: ['subtitles', 'dialogue', 'format-set', 'split-at-scenes', 'track-add', 'track-update', 'generate',
+  timeline: ['subtitles', 'dialogue', 'format-set', 'split-at-scenes', 'separate-sound', 'track-add', 'track-update', 'generate',
     'insert-asset'],
   clip: ['clip-properties'],
 } as const);

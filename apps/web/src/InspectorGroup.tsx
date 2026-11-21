@@ -8,7 +8,16 @@ export function InspectorGroups({defaultOpen,children,requestedOpen}:{defaultOpe
   const toggle=(key:string)=>setOpen(current=>current.has(key)?new Set([...current].filter(value=>value!==key)):new Set([key]));
   return <Context.Provider value={{open,toggle}}>{children}</Context.Provider>;
 }
-export default function InspectorGroup({title, children, initialOpen = false, className = '', groupKey = ''}: {title: string; children: ReactNode; initialOpen?: boolean; className?: string; groupKey?: string}) {
+/** One collapsible inspector group. `headerAction` renders beside the title and
+ * stays available while collapsed; `footer` renders under the group content
+ * (format-5 audio group: mute switch + separate/save buttons). Both are purely
+ * additive: every existing group keeps its exact DOM. */
+export default function InspectorGroup({title, children, initialOpen = false, className = '', groupKey = '', headerAction, footer}: {title: string; children: ReactNode; initialOpen?: boolean; className?: string; groupKey?: string; headerAction?: ReactNode; footer?: ReactNode}) {
   const group=useContext(Context),[localOpen,setLocalOpen] = useState(initialOpen),open=group?group.open.has(groupKey):localOpen;
-  return <section className={`edit-inspector-group ${className} ${open?'is-open':''}`}><button type="button" className="edit-inspector-group-heading" aria-expanded={open} onClick={() => group?group.toggle(groupKey):setLocalOpen(!localOpen)}><ChevronRight size={13} /><span>{title}</span></button><div className="edit-inspector-group-content" hidden={!open}>{children}</div></section>;
+  const heading = <button type="button" className="edit-inspector-group-heading" aria-expanded={open} onClick={() => group?group.toggle(groupKey):setLocalOpen(!localOpen)}><ChevronRight size={13} /><span>{title}</span></button>;
+  return <section className={`edit-inspector-group ${className} ${open?'is-open':''}`}>
+    {headerAction === undefined ? heading
+      : <div className="edit-inspector-group-heading-row" data-testid={`inspector-group-heading-${groupKey}`}>{heading}<div className="edit-inspector-group-action">{headerAction}</div></div>}
+    <div className="edit-inspector-group-content" hidden={!open}>{children}{footer !== undefined && <div className="edit-inspector-group-footer">{footer}</div>}</div>
+  </section>;
 }

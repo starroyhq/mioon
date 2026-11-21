@@ -35,6 +35,8 @@ const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 export const operationEffects = Object.freeze({
   ...projectBackupEffects,...projectVersionEffects,
   'export.cancel':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Cancels one local export and terminates only its owned media operation; source files and acceptance receipt remain.'}),
+  'clip.audio.export':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Durably accepts one format-5 clip-sound extraction before bounded local FFmpeg work. Required stable requestId replays the immutable original record without starting again. Copies AAC or transcodes with the fixed export audio profile, then publishes one new audio asset with portable source provenance. Source asset and clip are not modified; no network, model or paid generation.'}),
+  'clip.audio.export.get':define({...read,notes:'Reads one owned clip-audio background task record and its bounded local activity descriptor. Never starts, cancels, retries or decodes.'}),
   'export.activity.get':define({...read,notes:'Reads only one owned export stage and elapsed time; unavailable encoding progress is null'}),
   'export.output.get':define({...read,notes:'Verifies and reads only an owned managed export file and location.'}),
   'workspace.settings.get':define({...read,notes:'Reads the revision and compatibility response for legacy workspace settings clients'}),

@@ -1,6 +1,7 @@
 import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
 import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT5_TIMELINE_FORMAT} from '../../contracts/src/timeline-replacement.ts';
 import {projectRetainedTimelineReceipt} from './timeline-retained-receipts.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {captureOpacityTimelineRecord, captureOpacityTimelineIntent} from '../../contracts/src/timeline-opacity-persistence.ts';
@@ -120,7 +121,7 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
       for (const row of db.prepare(query).iterate()) {
         if (++cells > 80000 || typeof row.value !== 'string' || row.valid !== 1 || row.duplicates !== 0 || (bytes += Buffer.byteLength(row.value)) > 128 * 1024 * 1024) invalid();
         let parsed: unknown; try {parsed = JSON.parse(row.value);} catch {invalid();}
-        if(table==='timeline_requests')parsed=projectRetainedTimelineReceipt(parsed,row.identity);
+        if(table==='timeline_requests')parsed=projectRetainedTimelineReceipt(parsed,row.identity,format5?FORMAT5_TIMELINE_FORMAT:4);
         if (format5) {
           // Format 5 stores native clip/cue rows and only a header in
           // `timelines.data`. The legacy record validators below expect legacy

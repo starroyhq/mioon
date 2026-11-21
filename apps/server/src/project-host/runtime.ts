@@ -1,5 +1,6 @@
 import {handleMioRulesHttp} from '../mio-rules-http.ts';
-import {AppError, isTimelineRenderRecord} from '@mioon/contracts';
+import {AppError} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from '@mioon/business/timeline-record-format';
 import path from 'node:path';
 import {admitProjectAssetSource, registeredProjectAssetReferences, validatedProjectAssetSource, resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
@@ -192,7 +193,8 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     }
     if (route.kind === 'media' && ['GET', 'HEAD'].includes(req.method ?? '')) {
       const preview = local.searchParams.has('preview'), named = local.searchParams.has('exportId');
-      const guards = {isTimelineRenderRecord, readOwnedAsset: (id: string, assetId: string) => readOwnedTimelineAsset(store.db, id, assetId)};
+      const guards = {isTimelineRenderRecord: (value: unknown, input: Readonly<Record<string, unknown>>) =>
+        isTimelineRenderRecordFor(store.db, value, input), readOwnedAsset: (id: string, assetId: string) => readOwnedTimelineAsset(store.db, id, assetId)};
       const playback = preview ? readTimelineExportPreviewMedia(store.db, local, guards) : null;
       const delivery = named && !preview ? readTimelineDeliveryDownload(store.db, local, guards) : null;
       const asset = preview ? playback : named ? delivery : store.get('assets', route.assetId);

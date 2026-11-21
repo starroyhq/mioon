@@ -146,6 +146,7 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
         durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
         ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
         ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {}),
+        ...(clip.muted === true ? {muted: true} : {}), ...(clip.soundOnly === true ? {soundOnly: true} : {}),
         ...volumeEnvelopeField(clip)};
     });
     let processingSnapshot: ReturnType<typeof volumeEnvelopeReadSnapshot>;
@@ -173,7 +174,7 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     // Persisted hasAudio=false cannot prove a potentially audible video is
     // silent. Pin and double-hash all unmuted positive-gain media so the real
     // probe can confirm that saved audio presence still agrees with its bytes.
-    const observed = new Set(timeline.clips.filter(clip => clip.volumeEnvelope != null || !tracksById.get(clip.trackId)!.muted && clip.gain > 0 &&
+    const observed = new Set(timeline.clips.filter(clip => clip.volumeEnvelope != null || !tracksById.get(clip.trackId)!.muted && clip.muted !== true && clip.gain > 0 &&
       !assets.get(clip.assetId)!.mimeType.startsWith('image/')).map(clip => clip.assetId));
     const sources = [...observed].sort().map(id => managed.get(id)!);
     const totalSourceBytes = sources.reduce((sum, asset) => sum + asset.sizeBytes, 0);
@@ -373,7 +374,7 @@ async function prepareCandidate(initial: Current, original: ExportLoudnessMeasur
   const requiredGainDb = target.integratedLufs - original.integratedLufs, gainMultiplier = 10 ** (requiredGainDb / 20);
   const tracks = new Map(initial.timeline.tracks.map(track => [track.id, track]));
   const gains = initial.timeline.clips
-    .filter(clip => !tracks.get(clip.trackId)!.muted && clip.gain > 0 && assets.get(clip.assetId)!.hasAudio)
+    .filter(clip => !tracks.get(clip.trackId)!.muted && clip.muted !== true && clip.gain > 0 && assets.get(clip.assetId)!.hasAudio)
     .map(clip => ({clipId: clip.id, assetId: clip.assetId, beforeGain: clip.gain, afterGain: clip.gain * gainMultiplier}))
     .sort((a, b) => a.clipId < b.clipId ? -1 : a.clipId > b.clipId ? 1 : 0);
   if (!Number.isFinite(gainMultiplier) || gainMultiplier <= 0 || gains.some(gain => !Number.isFinite(gain.afterGain) || gain.afterGain <= 0 || gain.afterGain > 2))
