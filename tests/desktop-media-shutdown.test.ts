@@ -286,7 +286,7 @@ test('stale media PID never authorizes killing an unrelated replacement or clear
   assert.equal(forks, 1);
 });
 
-test('native quit waits for the same unconfirmed child then cleans settings once, with no signal retry', async () => {
+test('native quit waits for the same unconfirmed child then cleans settings once, with no signal retry', async t => {
   const child = fakeChild();
   let hardCalls = 0, notices = 0, cleanups = 0, finishes = 0;
   const supervisor = supervisorFor(child, { forceKill: () => hardCalls++ });
@@ -297,7 +297,22 @@ test('native quit waits for the same unconfirmed child then cleans settings once
     stop: () => stopBackendForQuit({ backend: supervisor,
       onUnconfirmed: () => { notices++; notified(); }, cleanup: async () => { cleanups++; } }),
     finish: () => { finishes++; } });
+  // Drive the bounded stop through its mocked phases instead of real 10 ms
+  // timers: on a slow runner the absolute deadline can become runnable before
+  // the nested hard-stop timer, which is a legitimate product outcome covered
+  // by the dedicated delayed-grace test below. Here the TERM grace expires and
+  // the owned hard stop is requested before the deadline, deterministically.
+  t.mock.timers.enable({apis: ['setTimeout']});
   const pending = coordinator.request();
+  assert.equal(coordinator.state, 'stopping');
+  t.mock.timers.tick(10);
+  await tick();
+  assert.equal(child.termCalls, 1);
+  assert.equal(hardCalls, 0);
+  t.mock.timers.tick(10);
+  await tick();
+  assert.equal(hardCalls, 1);
+  t.mock.timers.tick(10);
   await notice;
   assert.equal(coordinator.state, 'stopping');
   assert.equal(coordinator.request(), pending);
