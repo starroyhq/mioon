@@ -68,12 +68,18 @@ export function mainTrackGenerateAroundPlacement(context: MainTrackAroundContext
   if (!mainTrackId) return null;
   const clip = clips.find(item => item.id === clipId);
   if (!clip || clip.trackId !== mainTrackId || clip.sequenceSource?.kind !== 'shot') return null;
-  if (where === 'before') return {trackId: mainTrackId, main: true, startFrame: clip.startFrame, beforeClipId: clip.id};
   const nodeId = clip.sequenceSource.nodeId;
+  // The service inserts before/after the whole shot, not one of its split
+  // segments: "before" is the shot's first segment start, "after" its last end.
+  const segments = clips.filter(item => item.trackId === mainTrackId
+      && item.sequenceSource?.nodeId === nodeId)
+    .sort((left, right) => left.startFrame - right.startFrame);
+  const first = segments[0] ?? clip;
+  const last = segments.at(-1) ?? clip;
+  if (where === 'before') return {trackId: mainTrackId, main: true, startFrame: first.startFrame, beforeClipId: clip.id};
+  const lastEnd = last.startFrame + last.durationFrames;
   const next = clips.filter(item => item.trackId === mainTrackId
-      && item.startFrame >= clip.startFrame + clip.durationFrames
-      && item.sequenceSource?.nodeId !== nodeId)
+      && item.startFrame >= lastEnd && item.sequenceSource?.nodeId !== nodeId)
     .sort((left, right) => left.startFrame - right.startFrame)[0];
-  return {trackId: mainTrackId, main: true, startFrame: clip.startFrame + clip.durationFrames,
-    beforeClipId: next?.id ?? null};
+  return {trackId: mainTrackId, main: true, startFrame: lastEnd, beforeClipId: next?.id ?? null};
 }
