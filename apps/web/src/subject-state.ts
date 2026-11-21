@@ -100,7 +100,21 @@ export function subjectVersionOriginDescriptor(version: Pick<SubjectVersionRespo
   return Object.hasOwn(originKeys, kind) ? message(originKeys[kind]) : kind;
 }
 export const subjectPageSize = 20;
+/** WT-3-02: a format-5 project's asset material view can omit `projectId` even
+ * though the asset belongs to the open project. The project context supplies the
+ * owner for views that do not carry one; an explicit foreign owner stays foreign
+ * (and stays rejected by `subjectImage`). Formats 3/4 asset views already carry
+ * their own owner, so this normalization is a no-op there. */
+export function normalizeSubjectAssets(assets: readonly SubjectAsset[], projectId: string | null): SubjectAsset[] {
+  return assets.map(asset => asset.projectId === undefined && projectId !== null ? {...asset, projectId} : asset);
+}
 export const subjectImage = (asset: SubjectAsset | null | undefined, projectId: string | null): boolean => Boolean(asset?.id && asset.projectId === projectId && ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mimeType ?? ''));
+/** The image candidates a subject chooser may offer: exactly the project-owned
+ * images among the supplied views. WT-3-02 keeps the create and add-version
+ * choosers and the controller validation on this one function. */
+export function subjectImageChoices<T extends SubjectAsset>(assets: readonly T[], projectId: string | null): T[] {
+  return assets.filter(asset => subjectImage(asset, projectId));
+}
 export const filterSubjects = (items: readonly SubjectResponse[], { kind = 'all', search = '' }: { kind?: string; search?: string } = {}): SubjectResponse[] => items.filter(item => (kind === 'all' || item.kind === kind) && item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
 export const activeSubjectBindings = (entry: Pick<SubjectPage<SubjectBindingResponse>, 'items'> | null | undefined): SubjectBindingResponse[] => (entry?.items || []).filter(row => row.subjectVersionId !== null);
 export const subjectDraftDirty = (state: SubjectState | null | undefined): boolean => {
@@ -262,7 +276,7 @@ export function createSubjectController({ read, save, hasPending = () => false, 
       if (changed) {
         epoch++; generations.clear(); state = initialState();
       }
-      emit({ scope: context.scope, projectId: context.projectId, assets: [...(context.assets || [])], shotIds: [...(context.shotIds || [])], uncertain: pending(context.projectId) });
+      emit({ scope: context.scope, projectId: context.projectId, assets: normalizeSubjectAssets(context.assets || [], context.projectId), shotIds: [...(context.shotIds || [])], uncertain: pending(context.projectId) });
       if (changed) { void readPage('subject.list'); if (state.selectedSubjectId) void readPage('subject.version.list', state.selectedSubjectId); }
     },
     read: refresh,

@@ -29,6 +29,7 @@ export const continuousAudioSnapshotSchema = z.object({volumeEnvelopeProfile: z.
   clips: z.array(z.object({id: snapshotId, trackId: snapshotId, assetId: snapshotId, startFrame: snapshotFrame,
     durationFrames: integer(1, 18000), sourceInFrame: integer(0, Number.MAX_SAFE_INTEGER - 18000),
     gain: z.number().finite().min(0).max(2), fadeInFrames: snapshotFrame.optional(), fadeOutFrames: snapshotFrame.optional(),
+    muted: z.literal(true).optional(), soundOnly: z.literal(true).optional(),
     volumeEnvelope: z.custom<TimelineVolumeEnvelope|null>().optional()}).strict().refine(clip =>
       !Object.hasOwn(clip, 'volumeEnvelope') || isVolumeEnvelope(clip.volumeEnvelope, clip.durationFrames), 'Invalid volume envelope.')).max(100),
 }).strict(), assets: z.array(z.object({id: snapshotId, projectId: snapshotId, sha256: digest,

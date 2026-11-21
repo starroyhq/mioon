@@ -969,6 +969,18 @@ const timelineCoreMessages = {
     "en": "Generate shot here",
     "ja": "ここにショットを生成"
   },
+  "timeline.menu.generateBefore": {
+    "zh-Hans": "在前面生成镜头",
+    "zh-Hant": "在前面生成鏡頭",
+    "en": "Generate shot before",
+    "ja": "前にショットを生成"
+  },
+  "timeline.menu.generateAfter": {
+    "zh-Hans": "在后面生成镜头",
+    "zh-Hant": "在後面生成鏡頭",
+    "en": "Generate shot after",
+    "ja": "後ろにショットを生成"
+  },
   "timeline.generate.newShotTitle": {
     "zh-Hans": "新镜头",
     "zh-Hant": "新鏡頭",

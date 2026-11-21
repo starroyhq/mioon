@@ -12,11 +12,10 @@ import {subjectVersionResponseSchema, isSubjectMutationResponse} from '../../../
 import {isAssetAnnotationResponse} from '../../../contracts/src/asset-annotations.ts';
 import {isAssetDispositionResponse} from '../../../contracts/src/asset-disposition.ts';
 import {isSourceRangeResponse} from '../../../contracts/src/source-range.ts';
-import {isTimelineRecord} from '../../../contracts/src/timeline-replacement.ts';
+import {isTimelineRecordFor,isTimelineRenderRecordFor,timelineRecordFormatOf} from '../timeline-record-format.ts';
 import type {TimelineRecord} from '../timeline-inputs.ts';
 import {isClipLayoutRect} from '../../../contracts/src/timeline-clip-layout.ts';
 import {timelineFrameSetSchema} from '../../../contracts/src/timeline-format.ts';
-import {isTimelineRenderRecord} from '../../../contracts/src/timeline-acknowledgement.ts';
 import {timelineRenderDeliveryFields} from '../../../contracts/src/timeline-delivery.ts';
 import {isReferenceShotRecord, isReferenceEdgeRecord} from '../../../contracts/src/reference-acknowledgement.ts';
 import {isPrevisNodeRecord} from '../../../contracts/src/previs.ts';
@@ -194,7 +193,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     if (!object(value) || value.projectId !== store.projectId) deny('invalid');
   }
   function timeline(value: unknown, source: string): void {
-    if (!isTimelineRecord(value, {projectId: store.projectId})) deny('invalid');
+    if (!isTimelineRecordFor(store.db, value, {projectId: store.projectId})) deny('invalid');
     tree(value, source);
   }
   function generationSnapshot(value: unknown): void {
@@ -239,7 +238,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     } else if (table === 'exports') {
       if (!fields(value, dataFields.exports)) deny('unsupported');
       if (value.mode === 'timeline') {
-        if (!isTimelineRenderRecord(value, {projectId: store.projectId, requestId: value.requestId, expectedRevision: value.timelineRevision,
+        if (!isTimelineRenderRecordFor(store.db, value, {projectId: store.projectId, requestId: value.requestId, expectedRevision: value.timelineRevision,
           purpose: value.purpose, ...timelineRenderDeliveryFields(value.snapshot)})) deny('invalid');
       } else if (!Array.isArray(value.snapshot) || value.snapshot.some(entry => !object(entry) || !uuid(entry.assetId)
         || !fields(entry, ['versionId', 'assetId', 'sha256', 'shotId']))) deny('invalid');
@@ -250,13 +249,13 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
   }
   function receipt(value: unknown, source: string, identity: unknown): void {
     if (frameTransaction && object(value) && TIMELINE_RECEIPT_WRAPPER_OPERATIONS.includes(value.operation as string)) {
-      if (typeof identity !== 'string' || !readWrappedTimelineReceipt(value, store.projectId, identity)) deny('invalid');
+      if (typeof identity !== 'string' || !readWrappedTimelineReceipt(value, store.projectId, identity, timelineRecordFormatOf(store.db))) deny('invalid');
       tree(value, source);
       return;
     }
-    const projected = projectRetainedTimelineReceipt(value, identity);
+    const projected = projectRetainedTimelineReceipt(value, identity, timelineRecordFormatOf(store.db));
     if (object(projected) && object(projected.snapshot)) {
-      if (!isTimelineRenderRecord(projected, {projectId: store.projectId, requestId: identity,
+      if (!isTimelineRenderRecordFor(store.db, projected, {projectId: store.projectId, requestId: identity,
         expectedRevision: projected.timelineRevision, purpose: projected.purpose, ...timelineRenderDeliveryFields(projected.snapshot)})) deny('invalid');
       tree(projected, source);
     } else timeline(projected, source);

@@ -134,6 +134,8 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
+    case 'SEQUENCE_EDIT_SOUND_INVALID': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
+    case 'FORMAT5_CAPACITY': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
     // FR-B2 scene split refusals keep the format 3/4 reasons instead of the
     // generic failure: no usable cut, or the shown result is no longer usable.
     case 'NOTHING_TO_SPLIT': return 'scene.split.nothing';

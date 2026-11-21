@@ -142,3 +142,38 @@ test('transition, fades and gain can change together in one undo step; invalid v
   const position = (service.history({projectId: world.projectId}) as {position: number}).position;
   assert.ok((readFormat5TimelineRecord(world.store.db, 'project') as Format5Timeline).revision > position);
 });
+
+test('clip mute is one properties action and undo restores gain and the unmuted row', (t) => {
+  const {world, service} = fixture(t);
+  const preview = service.preview({projectId: world.projectId, requestId: 'fr-a-mute-0001',
+    propertiesIntent: properties([{clipId: clipA, patch: {gain: 0.5, muted: true}}])}) as {
+      envelope: {actionId: string}; planDigest: string};
+  const commit = service.commit({projectId: world.projectId, envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest}) as {status: string};
+  assert.equal(commit.status, 'applied');
+  let record = timeline(world);
+  const muted = record.clips.find(clip => clip.id === clipA)!;
+  assert.equal(muted.muted, true);
+  assert.equal(muted.gain, 0.5);
+  let view = service.history({projectId: world.projectId}) as SequenceEditHistoryView;
+  assert.equal(view.undo!.operation, 'timeline.clip.set-properties');
+  const undone = service.undo({projectId: world.projectId, requestId: 'fr-a-mute-undo-1', actionId: preview.envelope.actionId,
+    expected: {position: view.position, revision: view.revision}}) as {status: string};
+  assert.equal(undone.status, 'applied');
+  record = timeline(world);
+  const restored = record.clips.find(clip => clip.id === clipA)!;
+  assert.equal(Object.hasOwn(restored, 'muted'), false, 'undo removes the optional flag entirely');
+  assert.equal(restored.gain, 1, 'mute keeps and restores the exact gain');
+  // Unmuting removes the persisted flag; it is never stored as `false`.
+  view = service.history({projectId: world.projectId}) as SequenceEditHistoryView;
+  const redone = service.redo({projectId: world.projectId, requestId: 'fr-a-mute-redo-1', actionId: preview.envelope.actionId,
+    expected: {position: view.position, revision: view.revision}}) as {status: string};
+  assert.equal(redone.status, 'applied');
+  const removeMute = service.preview({projectId: world.projectId, requestId: 'fr-a-mute-0002',
+    propertiesIntent: properties([{clipId: clipA, patch: {muted: false}}])}) as {envelope: {actionId: string}; planDigest: string};
+  assert.ok(removeMute.envelope);
+  service.commit({projectId: world.projectId, envelope: removeMute.envelope, expectedPlanDigest: removeMute.planDigest});
+  const unmuted = timeline(world).clips.find(clip => clip.id === clipA)!;
+  assert.equal(Object.hasOwn(unmuted, 'muted'), false);
+  assert.equal(unmuted.gain, 0.5);
+});

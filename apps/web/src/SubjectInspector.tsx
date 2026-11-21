@@ -12,7 +12,7 @@ import { ImageChoice, SubjectImage, SubjectNotice, SubjectPager } from './Subjec
 import type { SubjectAssetView, SubjectsBundle } from './SubjectLibrary.tsx';
 import SubjectVariantDialog from './SubjectVariantDialog.tsx';
 import { SubjectVariantBatchRow, SubjectVariantItemTile, SubjectVariantNotice } from './SubjectVariantRows.tsx';
-import { activeSubjectBindings, subjectImage, subjectKindDescriptor, subjectVariantTagParts, subjectVersionOriginDescriptor } from './subject-state.ts';
+import { activeSubjectBindings, subjectImage, subjectKindDescriptor, subjectVariantTagParts, subjectVersionOriginDescriptor, subjectImageChoices} from './subject-state.ts';
 import { shownSubjectVariantBatches } from './subject-variant-state.ts';
 import type { SubjectVariantController, SubjectVariantState } from './subject-variant-state.ts';
 import { useSubjectInteraction } from './use-subjects.ts';
@@ -73,7 +73,10 @@ export default function SubjectInspector({ subjects, variants = null, mockAvaila
   const kind = renderMessage(subjectKindDescriptor(subject.kind));
   const tag = (version: SubjectVersionResponse): string | null => { const parts = subjectVariantTagParts(version.variant); return parts ? parts.map(part => renderMessage(part)).join(' · ') : null; };
   const date = (value: string): string => { const at = new Date(value); return at.toDateString() === new Date().toDateString() ? t('subjects.inspector.today', { time: formatDate(at, { hour: '2-digit', minute: '2-digit' }) }) : formatDate(at, { month: 'numeric', day: 'numeric' }); };
-  const images = assets.filter(asset => subjectImage(asset, view.projectId ?? null));
+  // WT-3-02: the add-version chooser follows the same project-owned candidate
+  // list as the create dialog (format-5 views may omit their own projectId).
+  const candidateAssets = view.assets?.length ? view.assets : assets;
+  const images = subjectImageChoices(candidateAssets, view.projectId ?? null);
   const formOpen = adding === subjectId || Boolean(versionDraft?.assetId);
   const staleVersionDraft = Boolean(versionDraft?.assetId && versionDraft.expectedRevision !== subject.revision);
   const order = [...shots].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));

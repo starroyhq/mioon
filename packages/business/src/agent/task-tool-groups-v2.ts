@@ -33,10 +33,10 @@ export const AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS:Readonly<Record<AgentTaskLocale,
 /** Format-5 keeps the generic loader wording and adds the domain groups the
  * model can load by name. Formats 3/4 keep the reviewed generic description. */
 export const AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
-  'zh-Hans':'修改项目前按名称加载本轮需要的工具。names 只能使用列出的确切工具名，不支持组名、前缀或通配符。加载只增加可见范围，不授予权限；新加载工具从下一次回复起才可调用。格式 5 的额外序列动作按组加载：mioon_sequence_board_edit（画板对象与布局）、mioon_sequence_reference_edit（素材引用线）、mioon_sequence_subject_edit（主体绑定与主体卡）、mioon_sequence_previs_edit（预演）、mioon_sequence_timeline_edit（画幅/场景切开/字幕/台词/轨道）、mioon_sequence_clip_edit（片段属性）。',
-  'zh-Hant':'修改專案前按名稱載入本輪需要的工具。names 只能使用列出的完整工具名稱，不接受組名、前綴或萬用字元。載入只增加可見範圍，不授予權限；新載入工具從下一次回覆起才可呼叫。格式 5 的額外序列動作按組載入：mioon_sequence_board_edit（畫板物件與配置）、mioon_sequence_reference_edit（素材引用線）、mioon_sequence_subject_edit（主體綁定與主體卡）、mioon_sequence_previs_edit（預演）、mioon_sequence_timeline_edit（畫幅/場景切開/字幕/台詞/軌道）、mioon_sequence_clip_edit（片段屬性）。',
-  en:'Load tools needed in this run by their exact listed names before changing the project. names accepts no group names, prefixes or wildcards. Loading adds visibility only, never permission; newly loaded tools may be called only in a later response. Format-5 extra sequence actions load by group: mioon_sequence_board_edit (board objects and layout), mioon_sequence_reference_edit (material reference lines), mioon_sequence_subject_edit (subject bindings and subject cards), mioon_sequence_previs_edit (previs), mioon_sequence_timeline_edit (format, scene split, subtitles, dialogue, tracks), mioon_sequence_clip_edit (clip properties).',
-  ja:'プロジェクトを変更する前に、この実行で必要なツールを列挙された正確な名前で読み込んでください。names にグループ名、接頭辞、ワイルドカードは使えません。読み込みは可視範囲を増やすだけで権限を与えず、新しいツールは次の応答から呼び出せます。形式 5 の追加シーケンス動作はグループ単位で読み込みます：mioon_sequence_board_edit（ボードオブジェクトと配置）、mioon_sequence_reference_edit（素材参照線）、mioon_sequence_subject_edit（被写体バインドと被写体カード）、mioon_sequence_previs_edit（プリビズ）、mioon_sequence_timeline_edit（画面比/シーン分割/字幕/台詞/トラック）、mioon_sequence_clip_edit（クリップ属性）。',
+  'zh-Hans':'修改项目前按名称加载本轮需要的工具。names 只能使用列出的确切工具名，不支持组名、前缀或通配符。加载只增加可见范围，不授予权限；新加载工具从下一次回复起才可调用。格式 5 的额外序列动作按组加载：mioon_sequence_board_edit（画板对象与布局）、mioon_sequence_reference_edit（素材引用线）、mioon_sequence_subject_edit（主体绑定与主体卡）、mioon_sequence_previs_edit（预演）、mioon_sequence_timeline_edit（画幅/场景切开/字幕/台词/轨道/分离声音）、mioon_sequence_clip_edit（片段属性与静音）；素材组另有 mioon_clip_audio_export（把片段声音另存为音频素材）。',
+  'zh-Hant':'修改專案前按名稱載入本輪需要的工具。names 只能使用列出的完整工具名稱，不接受組名、前綴或萬用字元。載入只增加可見範圍，不授予權限；新載入工具從下一次回覆起才可呼叫。格式 5 的額外序列動作按組載入：mioon_sequence_board_edit（畫板物件與配置）、mioon_sequence_reference_edit（素材引用線）、mioon_sequence_subject_edit（主體綁定與主體卡）、mioon_sequence_previs_edit（預演）、mioon_sequence_timeline_edit（畫幅/場景切開/字幕/台詞/軌道/分離聲音）、mioon_sequence_clip_edit（片段屬性與靜音）；素材組另有 mioon_clip_audio_export（把片段聲音另存為音訊素材）。',
+  en:'Load tools needed in this run by their exact listed names before changing the project. names accepts no group names, prefixes or wildcards. Loading adds visibility only, never permission; newly loaded tools may be called only in a later response. Format-5 extra sequence actions load by group: mioon_sequence_board_edit (board objects and layout), mioon_sequence_reference_edit (material reference lines), mioon_sequence_subject_edit (subject bindings and subject cards), mioon_sequence_previs_edit (previs), mioon_sequence_timeline_edit (format, scene split, subtitles, dialogue, tracks, separate sound), mioon_sequence_clip_edit (clip properties and mute); the asset group also has mioon_clip_audio_export (save clip sound as an audio asset).',
+  ja:'プロジェクトを変更する前に、この実行で必要なツールを列挙された正確な名前で読み込んでください。names にグループ名、接頭辞、ワイルドカードは使えません。読み込みは可視範囲を増やすだけで権限を与えず、新しいツールは次の応答から呼び出せます。形式 5 の追加シーケンス動作はグループ単位で読み込みます：mioon_sequence_board_edit（ボードオブジェクトと配置）、mioon_sequence_reference_edit（素材参照線）、mioon_sequence_subject_edit（被写体バインドと被写体カード）、mioon_sequence_previs_edit（プリビズ）、mioon_sequence_timeline_edit（画面比/シーン分割/字幕/台詞/トラック/音声分離）、mioon_sequence_clip_edit（クリップ属性とミュート）。素材グループには mioon_clip_audio_export（クリップ音声を音声素材として保存）もあります。',
 });
 
 /** Explicit alongside the tool admission tiers: neither RPC discovery nor a
@@ -130,7 +130,10 @@ const format5GroupedTools=[...groupedTools.filter(tool=>FORMAT5_UNAVAILABLE_OPER
  {group:'editing' as const,operation:'sequence.tool.subject',name:'mioon_sequence_subject_edit'},
  {group:'editing' as const,operation:'sequence.tool.previs',name:'mioon_sequence_previs_edit'},
  {group:'editing' as const,operation:'sequence.tool.timeline',name:'mioon_sequence_timeline_edit'},
- {group:'editing' as const,operation:'sequence.tool.clip',name:'mioon_sequence_clip_edit'}];
+ {group:'editing' as const,operation:'sequence.tool.clip',name:'mioon_sequence_clip_edit'},
+ // FR-G: saving one clip's sound is an asset-producing local task, so it lives
+ // with the asset tools and is exposed only in the format-5 catalog.
+ {group:'assets' as const,operation:'clip.audio.export',name:'mioon_clip_audio_export'}];
 export function agentTaskToolCatalogProfile(definitions:readonly {name:string}[]):AgentTaskToolCatalogProfile{
  if(definitions.some(tool=>tool.name==='mioon_sequence_inspect'))return 'format5';
  if(definitions.some(tool=>mioCanvasOperationForTool(tool.name)))return 'format4';

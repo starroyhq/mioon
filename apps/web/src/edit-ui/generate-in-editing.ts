@@ -52,3 +52,28 @@ export function generatePlaceholderIntent(input: GeneratePlaceholderInput): Sequ
 export function generateResizeIntent(shotId: string, duration: number): SequenceEditGenerateIntent {
   return {side: 'timeline', operation: {kind: 'generate-resize', shotId, duration}};
 }
+
+export interface MainTrackAroundContext {
+  readonly clipId: string;
+  readonly where: 'before' | 'after';
+  readonly mainTrackId: string | null;
+  readonly clips: readonly {readonly id: string; readonly trackId: string; readonly startFrame: number;
+    readonly durationFrames: number; readonly sequenceSource?: {readonly kind?: string; readonly nodeId?: string}}[];
+}
+/** GE-b clip menu: place a generated shot before or after one packed main-track
+ * shot. "After" names the next different shot's clip, so a split shot inserts
+ * after all of its segments; the end of the track appends. */
+export function mainTrackGenerateAroundPlacement(context: MainTrackAroundContext): TimelineGenerateTarget | null {
+  const {clipId, where, mainTrackId, clips} = context;
+  if (!mainTrackId) return null;
+  const clip = clips.find(item => item.id === clipId);
+  if (!clip || clip.trackId !== mainTrackId || clip.sequenceSource?.kind !== 'shot') return null;
+  if (where === 'before') return {trackId: mainTrackId, main: true, startFrame: clip.startFrame, beforeClipId: clip.id};
+  const nodeId = clip.sequenceSource.nodeId;
+  const next = clips.filter(item => item.trackId === mainTrackId
+      && item.startFrame >= clip.startFrame + clip.durationFrames
+      && item.sequenceSource?.nodeId !== nodeId)
+    .sort((left, right) => left.startFrame - right.startFrame)[0];
+  return {trackId: mainTrackId, main: true, startFrame: clip.startFrame + clip.durationFrames,
+    beforeClipId: next?.id ?? null};
+}

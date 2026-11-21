@@ -63,6 +63,7 @@ function inspector(locale: Locale='en', eligible=true, supported=true){
   if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
   if(name.endsWith('clip-audio-state.ts'))return {clipAudioIssue:()=>''};
+  if(name.endsWith('clip-sound-state.ts'))return {clipSoundEntriesVisible:()=>false,clipSaveAudioVisible:()=>false};
   if(name.endsWith('timeline-format-state.ts'))return formatState;
   if(name.endsWith('workspace-visibility.tsx'))return {useWorkspaceVisibility:()=>true};
   if(name.endsWith('.css'))return {};

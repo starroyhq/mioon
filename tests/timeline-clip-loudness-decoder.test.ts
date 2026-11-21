@@ -48,7 +48,9 @@ test('timeline placement cannot add leading silence, extra segments, or change s
   for (const graph of graphs) assert.deepEqual(graph, graphs[0]);
 });
 test('muted, zero gain and image selections reject without a source probe', async () => {
-  for (const [change, code] of [[(s: Signal) => s.track.muted = true, 'MUTED'], [(s: Signal) => s.clip.gain = 0, 'ZERO_GAIN'],
+  for (const [change, code] of [[(s: Signal) => s.track.muted = true, 'MUTED'],
+    [(s: Signal) => ((s.clip as unknown as {muted?: boolean}).muted = true), 'MUTED'],
+    [(s: Signal) => s.clip.gain = 0, 'ZERO_GAIN'],
     [(s: Signal) => s.asset.mimeType = 'image/png', 'NO_AUDIO']] as const) {
     const signal = fixture(), r = runtime(); change(signal);
     await assert.rejects(createTimelineClipLoudnessDecoder(r)(signal, options()), {code: `TIMELINE_CLIP_LOUDNESS_${code}`});
@@ -90,4 +92,18 @@ test('60 second clip planner stays one pass; longer selections refuse before all
 
 test('adapter preserves the existing synchronous borrowed-chunk callback contract', async () => {
   await assert.rejects(createTimelineClipLoudnessDecoder(runtime())(fixture(), options({onPcm: async () => {}})), {code: 'MEDIA_INVALID_CONFIGURATION'});
+});
+
+test('a sound-only audio-track clip measures the video source sound and stays the only legal form', async () => {
+  const soundOnly = fixture();
+  soundOnly.track.kind = 'audio';
+  (soundOnly.clip as unknown as {soundOnly?: boolean}).soundOnly = true;
+  soundOnly.asset.mimeType = 'video/mp4';
+  const r = runtime();
+  await createTimelineClipLoudnessDecoder(r)(soundOnly, options());
+  assert.equal(r.calls.filter(call => call.command === 'ffprobe').length, 1);
+  const illegal = fixture();
+  illegal.track.kind = 'audio';
+  illegal.asset.mimeType = 'video/mp4';
+  await assert.rejects(Promise.resolve().then(() => planTimelineClipLoudnessDecode(illegal)), {code: 'MEDIA_INVALID_CONFIGURATION'});
 });

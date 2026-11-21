@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
 import {
-  generatePlaceholderIntent, generateResizeIntent, timelineGenerateTargetForBlank,
+  generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement, timelineGenerateTargetForBlank,
 } from '../apps/web/src/edit-ui/generate-in-editing.ts';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -31,6 +31,24 @@ test('GE-b: the timeline blank menu offers each generate entry only where GE-a c
   assert.equal(timelineGenerateTargetForBlank({trackId: 'a1', trackKind: 'audio', mainTrackId: 'main', frame: 30, clips}), null);
   // No main track yet (an empty format-5 project): no entry.
   assert.equal(timelineGenerateTargetForBlank({trackId: 'v2', trackKind: 'video', mainTrackId: null, frame: 0, clips: []}), null);
+});
+
+test('GE-b: a main-track clip offers generate before/after with the packed-track position', () => {
+  const around = [
+    {id: 'c1', trackId: 'main', startFrame: 0, durationFrames: 60, sequenceSource: {kind: 'shot', nodeId: 's1'}},
+    {id: 'c2', trackId: 'main', startFrame: 60, durationFrames: 60, sequenceSource: {kind: 'shot', nodeId: 's2'}},
+    {id: 'c3', trackId: 'main', startFrame: 120, durationFrames: 40, sequenceSource: {kind: 'shot', nodeId: 's2'}},
+    {id: 'c4', trackId: 'v2', startFrame: 0, durationFrames: 60},
+  ];
+  assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c2', where: 'before', mainTrackId: 'main', clips: around}),
+    {trackId: 'main', main: true, startFrame: 60, beforeClipId: 'c2'});
+  // After a split shot inserts after its last segment, not between its segments.
+  assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c2', where: 'after', mainTrackId: 'main', clips: around}),
+    {trackId: 'main', main: true, startFrame: 120, beforeClipId: null});
+  assert.deepEqual(mainTrackGenerateAroundPlacement({clipId: 'c1', where: 'after', mainTrackId: 'main', clips: around}),
+    {trackId: 'main', main: true, startFrame: 60, beforeClipId: 'c2'});
+  assert.equal(mainTrackGenerateAroundPlacement({clipId: 'c4', where: 'before', mainTrackId: 'main', clips: around}), null);
+  assert.equal(mainTrackGenerateAroundPlacement({clipId: 'c1', where: 'after', mainTrackId: null, clips: around}), null);
 });
 
 test('GE-b: the blank generate entries build the GE-a intents from the blank point', () => {

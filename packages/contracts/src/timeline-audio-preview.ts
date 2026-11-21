@@ -145,6 +145,8 @@ const trackSchema=z.object({id,kind:z.enum(['video','audio']),orderIndex:integer
 const clipSchema=z.object({
   id,trackId:id,assetId:id,startFrame:frame,durationFrames:positiveFrames,sourceInFrame:sourceFrame,gain,
   fadeInFrames:frame.optional(),fadeOutFrames:frame.optional(),
+  // Format-5-only flags: only the `true` form is ever stored.
+  muted:z.literal(true).optional(),soundOnly:z.literal(true).optional(),
 }).strict();
 const assetSchema=z.object({
   id,projectId:id,sha256:digest,sizeBytes:integer(Number.MAX_SAFE_INTEGER,1),
@@ -312,7 +314,11 @@ export function buildAudioPreviewPlan(
     if(ids.has(clip.id)||!track||!asset||end>18000)fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Unresolvable saved clip.');
     ids.add(clip.id);duration=Math.max(duration,end);
     const image=asset.mimeType.startsWith('image/'),audio=asset.mimeType.startsWith('audio/'),video=asset.mimeType.startsWith('video/');
-    if(track.kind==='audio'?!audio:!image&&!video)fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Source type does not match its track.');
+    const soundOnly=clip.soundOnly===true;
+    // Audio-track clips accept a video source only in the explicit «sound only»
+    // form and only when that source actually carries audio.
+    if(track.kind==='audio'?(soundOnly?!video||asset.hasAudio!==true:!audio):soundOnly||!image&&!video)
+      fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Source type does not match its track.');
     if(image&&asset.hasAudio===true)fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Image asset has contradictory audio metadata.');
     if(!image&&typeof asset.hasAudio!=='boolean')fail('AUDIO_PREVIEW_AUDIO_UNKNOWN','Saved source audio metadata is unknown.');
     const fadeIn=clip.fadeInFrames??0,fadeOut=clip.fadeOutFrames??0;
@@ -345,7 +351,7 @@ export function buildAudioPreviewPlan(
   for(const clip of ordered){
     const track=trackMap.get(clip.trackId)!,asset=assetMap.get(clip.assetId)!;
     const intersectionStartFrame=Math.max(startFrame,clip.startFrame),intersectionEndFrame=Math.min(endFrame,clip.startFrame+clip.durationFrames);
-    if(track.muted||clip.gain===0||asset.hasAudio!==true||intersectionStartFrame>=intersectionEndFrame)continue;
+    if(track.muted||clip.muted===true||clip.gain===0||asset.hasAudio!==true||intersectionStartFrame>=intersectionEndFrame)continue;
     if(asset.sizeBytes>AUDIO_PREVIEW_LIMITS.sourceBytes||asset.duration===null||asset.duration>AUDIO_PREVIEW_LIMITS.sourceSeconds)
       fail('AUDIO_PREVIEW_SOURCE_LIMIT','Preview source exceeds the input size or duration limit.');
     const sourceInFrame=clip.sourceInFrame+intersectionStartFrame-clip.startFrame,durationFrames=intersectionEndFrame-intersectionStartFrame;

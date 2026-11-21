@@ -84,13 +84,17 @@ function DurableTask({ task, uncertain, busy, onRecover, onAcknowledge, disposit
   </div>;
 }
 
-interface RenderTaskRow { id: string; projectId: string; mode: string; purpose: string; status: string; snapshot?: { deliveryName?: string } }
+interface RenderTaskRow { id: string; projectId: string; mode: string; purpose: string; status: string; snapshot?: { deliveryName?: string }; source?: { clipName?: string } }
 type TaskFilter = 'all' | 'active' | 'uncertain' | 'finished';
 interface TaskListEntry { key: string; label: string; status: string; warning: boolean; group: string; phase: Exclude<TaskFilter, 'all'>; search?: string }
 function renderTaskRow(value: unknown, projectId: string): value is RenderTaskRow {
   if (!value || typeof value !== 'object') return false;
   const row = value as Partial<RenderTaskRow>;
-  return typeof row.id === 'string' && row.projectId === projectId && row.mode === 'timeline' && ['preview', 'export'].includes(row.purpose ?? '') && typeof row.status === 'string';
+  // «Save clip sound» tasks share the exports channel but carry their own mode
+  // and record shape; they still belong to the task center while they run.
+  const clipAudio = row.mode === 'clip-audio';
+  return typeof row.id === 'string' && row.projectId === projectId && typeof row.status === 'string' &&
+    (clipAudio || row.mode === 'timeline' && ['preview', 'export'].includes(row.purpose ?? ''));
 }
 
 export default function TaskCenter({ activeCount, pending, busy, jobs, data, reconcileIds, setReconcileIds, run, retryGeneration, mockGenerationAvailable = false, onInspectJob, context, confirm, isCurrent, captureView, taskViewScope, tasks, onRecover, onReload, onAdopt, onOpenExportHistory, selectedTaskId, dispositions, scenes = [] }: TaskCenterProps): React.ReactElement {
@@ -105,7 +109,9 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
   const dispositionKey=(item:TaskDisposition)=>item.kind==='generation'?item.taskId:`${item.kind==='render'?'render':'local'}:${item.taskId}`;
   const dispositionFor=(key:string)=>dispositions?.items.find(item=>dispositionKey(item)===key);
   const entries: TaskListEntry[] = [
-    ...renderTasks.map<TaskListEntry>(item => ({ key: `render:${item.id}`, label: typeof item.snapshot?.deliveryName === 'string' ? item.snapshot.deliveryName : t(item.purpose === 'export' ? 'redesign.export.step4' : 'shell.preview'), status: renderMessage(statusDescriptor(item.status)), warning: false, group: t('redesign.tasks.rendering'), phase: ['queued', 'running'].includes(item.status) ? 'active' : 'finished' })),
+    ...renderTasks.map<TaskListEntry>(item => ({ key: `${item.mode === 'clip-audio' ? 'clip-audio' : 'render'}:${item.id}`, label: item.mode === 'clip-audio'
+        ? `${t('clipSound.saveAsAudio')}${typeof item.source?.clipName === 'string' ? ` · ${item.source.clipName}` : ''}`
+        : typeof item.snapshot?.deliveryName === 'string' ? item.snapshot.deliveryName : t(item.purpose === 'export' ? 'redesign.export.step4' : 'shell.preview'), status: renderMessage(statusDescriptor(item.status)), warning: false, group: t(item.mode === 'clip-audio' ? 'clipSound.saveAsAudio' : 'redesign.tasks.rendering'), phase: ['queued', 'running'].includes(item.status) ? 'active' : 'finished' })),
     ...tasks.items.map<TaskListEntry>(task => ({ key: `local:${task.id}`, label: subtitleLabels(t)[task.operation] || (task.operation === 'timeline.format.set' ? t('tasks.center.timelineFormatOperation') : task.operation), status: localStatus(task), warning: ['unknown', 'dispatching'].includes(task.status) || tasks.uncertain.includes(task.id), group: t('tasks.center.localEditRequests'), phase: ['applied', 'not_applied'].includes(task.status) ? 'finished' : 'uncertain', search: task.requestId })),
     ...pending.map<TaskListEntry>(entry => ({ key: `pending:legacy:${entry.key}`, label: entry.operation, status: t('tasks.pending.outcomeUnconfirmed'), warning: true, group: t('tasks.center.sessionPending'), phase: 'uncertain', search: entry.input.requestId })),
     ...scenes.map<TaskListEntry>(item => ({ key: item.key, label: item.label, status: item.status, warning: item.warning, group: t('scene.task.group'), phase: item.active ? 'active' : 'finished' })),
