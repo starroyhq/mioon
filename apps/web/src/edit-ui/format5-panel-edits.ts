@@ -13,7 +13,7 @@ type Row = Record<string, unknown>;
 const PROPERTY_FIELDS = Object.freeze([
   ['name', 'name'], ['gain', 'gain'], ['fadeInFrames', 'fadeInFrames'], ['fadeOutFrames', 'fadeOutFrames'],
   ['colour', 'colour'], ['audioRole', 'audioRole'], ['volumeEnvelope', 'volumeEnvelope'],
-  ['transform', 'transform'], ['transitionIn', 'transition'],
+  ['transform', 'transform'], ['transitionIn', 'transition'], ['muted', 'muted'],
 ] as const);
 const GEOMETRY_FIELDS = Object.freeze(['trackId', 'startFrame', 'durationFrames', 'sourceInFrame'] as const);
 
@@ -157,6 +157,7 @@ export function format5PanelErrorKey(code: string | undefined): string {
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
     case 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID': return 'editUi.error.CLIP_PROPERTIES_INVALID';
     case 'SEQUENCE_EDIT_SUBTITLE_INVALID': return 'editUi.error.SUBTITLE_INVALID';
+    case 'SEQUENCE_EDIT_SOUND_INVALID': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
     default: return 'editUi.error.GENERIC';
   }
 }

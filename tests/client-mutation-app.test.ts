@@ -13,7 +13,7 @@ import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotA
 import { prepareSubmission, prepareRequestReplay, readPending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 import { ApiError } from '../apps/web/src/api.ts';
 import { generationAspectError } from '../apps/web/src/generation-settings.ts';
-import { format5CommandErrorMessageKey } from '../apps/web/src/edit-ui/session.ts';
+import { format5CommandErrorMessageKey, format5SceneSplitNotice } from '../apps/web/src/edit-ui/session.ts';
 import type { GenerationFrame } from '../apps/web/src/generation-settings.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const taskIntentModule = {exports:{} as {captureTaskWorkspaceIntent:typeof CapturedIntent}};
@@ -341,4 +341,84 @@ test('actual format-5 action entry keeps one unconfirmed state and reports one r
   await runPolicy({kind: 'clip-split', clipId: 'clip-1'});
   assert.equal(notices.length, 1);
   assert.match(notices[0]!, /上一次编辑结果未确认/u);
+});
+
+// ---------------------------------------------------------------------------
+// Actual FR-B2 scene-split entry: a successful format-5 split closes the
+// detection dialog and keeps one undo bar with the real applied and skipped
+// counts, reports the mapped reason on refusal, and leaves the format 3/4
+// branch on its dialog, toast and mutation operation.
+// ---------------------------------------------------------------------------
+interface SceneSplitCalls {notices: {message: string; type: string}[]; notice: {id: string; message: string} | null;
+  noticeActionId: string | null | undefined; sceneTarget: unknown; refresh: number; history: number; mutations: unknown[][]}
+function sceneSplitHarness(outcome: unknown, format: 3 | 5 = 5) {
+  const calls: SceneSplitCalls = {notices: [], notice: null, noticeActionId: undefined, sceneTarget: 'open', refresh: 0, history: 0, mutations: []};
+  const scope = {
+    dataRef: {current: {projectFormatVersion: format, timeline: {clips: []}, assets: []} as {projectFormatVersion: number}},
+    format5Session: () => ({splitAtScenes: async () => outcome}),
+    mutateTimeline: async (...args: unknown[]) => {calls.mutations.push(args); return format === 3 ? {split: [1, 2], skipped: []} : null;},
+    sceneSplitError: (error: Error) => error.message,
+    notify: (message: DisplayMessage | string, type = 'info') => calls.notices.push({message: renderCoreMessage('zh-Hans', message), type}),
+    setFormat5Notice: (notice: {id: string; message: string} | null) => {calls.notice = notice;},
+    setFormat5NoticeActionId: (id: string | null) => {calls.noticeActionId = id;},
+    setSceneTarget: (target: unknown) => {calls.sceneTarget = target;},
+    refresh: async () => {calls.refresh++;}, format5RefreshHistory: async () => {calls.history++;},
+    format5CommandErrorMessageKey, format5SceneSplitNotice, currentProject: {current: 'project-a'},
+  };
+  return {calls, split: compile(section('async function splitTimelineAtScenes(', '  // Storyboards. A built one is selected as one batch'),
+    'splitTimelineAtScenes', scope)};
+}
+const sceneSplitRow = (id: string) => ({clipId: id, clipIds: [id, crypto.randomUUID()], cutFrames: [30], fadeCutFrames: []});
+
+test('a successful scene split closes the dialog and leaves only the undo bar', async () => {
+  const applied = sceneSplitHarness({ok: true, actionId: 'action-scene-1', operation: 'sequence.edit',
+    receipt: {status: 'applied', sceneSplit: {split: [sceneSplitRow('clip-a'), sceneSplitRow('clip-b'), sceneSplitRow('clip-c')], skipped: []}}});
+  assert.equal(await applied.split('asset-1', 'result-1'), undefined);
+  // The dialog would cover the bar, so a successful format-5 split closes it
+  // and the bar is the only result surface: no duplicate toast.
+  assert.deepEqual(applied.calls.notices, []);
+  assert.equal(applied.calls.sceneTarget, null, 'the detection dialog closes on success');
+  assert.equal(applied.calls.notice?.id, 'action-scene-1');
+  assert.equal(applied.calls.notice?.message, '已在切点处分割 3 个片段');
+  assert.equal(applied.calls.noticeActionId, 'action-scene-1');
+  assert.equal(applied.calls.refresh, 1);
+  assert.equal(applied.calls.history, 1);
+  const skipped = sceneSplitHarness({ok: true, actionId: 'action-scene-2', operation: 'sequence.edit',
+    receipt: {status: 'applied', sceneSplit: {split: [sceneSplitRow('clip-a')], skipped: [{clipId: 'clip-b', reason: 'NO_CUT_IN_RANGE'}]}}});
+  await skipped.split('asset-1', 'result-1');
+  assert.deepEqual(skipped.calls.notices, []);
+  assert.equal(skipped.calls.sceneTarget, null);
+  assert.match(skipped.calls.notice!.message, /已在切点处分割 1 个片段；另有 1 个片段的源区间内没有可用切点/u);
+});
+
+test('actual scene-split entry reports the mapped refusal and keeps a recovered applied result silent', async () => {
+  const refused = sceneSplitHarness({ok: false, code: 'NOTHING_TO_SPLIT'});
+  await refused.split('asset-1', 'result-1');
+  assert.equal(refused.calls.notice, null);
+  assert.equal(refused.calls.noticeActionId, undefined);
+  assert.equal(refused.calls.sceneTarget, 'open', 'a refusal keeps the dialog open');
+  assert.equal(refused.calls.notices.length, 1);
+  assert.match(refused.calls.notices[0]!.message, /源区间内都没有可用的切点/u);
+  assert.equal(refused.calls.refresh + refused.calls.history, 0);
+  // Settled by the receipt read, not by the lost commit response: no action id
+  // exists for an undo step, so the bar reports the applied result without one.
+  const resolved = sceneSplitHarness({ok: true, resolvedFromReceipt: true, actionId: 'action-scene-3'});
+  await resolved.split('asset-1', 'result-1');
+  assert.deepEqual(resolved.calls.notices, []);
+  assert.equal(resolved.calls.sceneTarget, null);
+  assert.equal(resolved.calls.notice?.message, '已应用');
+  assert.equal(resolved.calls.noticeActionId, null);
+  assert.equal(resolved.calls.refresh, 1);
+  assert.equal(resolved.calls.history, 1);
+});
+
+test('the format 3/4 scene split keeps its own mutation operation and toast', async () => {
+  const legacy = sceneSplitHarness({ok: false, code: 'NOTHING_TO_SPLIT'}, 3);
+  await legacy.split('asset-1', 'result-1');
+  assert.equal(legacy.calls.mutations.length, 1);
+  assert.equal(legacy.calls.mutations[0]![0], 'timeline.clip.splitAtScenes');
+  assert.deepEqual(legacy.calls.mutations[0]![1], {assetId: 'asset-1', resultId: 'result-1'});
+  assert.equal(legacy.calls.notice, null);
+  assert.equal(legacy.calls.sceneTarget, 'open', 'format 3/4 keeps the dialog open');
+  assert.deepEqual(legacy.calls.notices, [{message: '已在切点处分割 2 个片段', type: 'info'}]);
 });

@@ -22,7 +22,8 @@ import type {
   SequenceEditHistoryEntry, SequenceEditIntent, SequenceEditPatch, SequenceEditPlan, SequenceEditReceipt,
   SequenceEditService, SequenceEditStateDelta, SequenceEditSubjectIntent, SequenceEditTransactionRequest,
   PrevisIntentOperation, ReferenceEdgeOperation, SequenceEditPrevisIntent,
-  SequenceEditReferenceIntent, SequenceEditTrackOperation, SubjectBindingOperation, SubjectEditOperation,
+  SequenceEditReferenceIntent, SequenceEditSeparateSoundOperation, SequenceEditTrackOperation,
+  SubjectBindingOperation, SubjectEditOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 
@@ -181,13 +182,23 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track-structure', edit: {kind: 'add', trackId: uuid('95'), trackKind: 'video'}}, 'timeline.track.add'],
     [{kind: 'track-structure', edit: {kind: 'update', trackId: uuid('95'), patch: {muted: true}}}, 'timeline.track.update'],
   ];
+  const soundSamples: Array<[SequenceEditSeparateSoundOperation, string]> = [
+    [{kind: 'separate-sound', clipId: clipA}, 'timeline.clip.separateSound'],
+  ];
   assert.equal(subjectSamples.length, 6);
   assert.equal(previsSamples.length, 2);
   assert.equal(referenceSamples.length, 4);
   assert.equal(trackSamples.length, 2);
+  assert.equal(soundSamples.length, 1);
+  for (const [, name] of soundSamples) {
+    assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes(name), true);
+    assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
+  }
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length
-    + trackSamples.length + 1, SEQUENCE_EDIT_OPERATIONS.length);
+    + trackSamples.length + soundSamples.length + 3, SEQUENCE_EDIT_OPERATIONS.length);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.format.set'), true);
+  assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.placeholder'), true);
+  assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.resize'), true);
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');

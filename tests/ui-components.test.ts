@@ -309,6 +309,19 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /clipboardPasteAvailable=\{format5ClipboardReady\}/);
   assert.match(app, /key === 'v'/);
   assert.match(timelineSource, /timeline-menu-paste/);
+  assert.match(app, /onUpdateShot=\{format5BoardUpdateShot\} onGenerateShot=\{format5GenerateShot\}/);
+  assert.match(app, /dialogueSubjects=\{format5DialogueSubjects\}/);
+  assert.match(app, /dialogueCueCount=/);
+  assert.match(app, /onDialogueApplied=/);
+  assert.match(app, /workbench-panel-detail/);
+  assert.match(app, /onAddPrevis=\{\(\) => \{ void addPrevis\(\); \}\}/);
+  assert.match(app, /addingPrevis=\{Boolean\(busy\['previs-create'\]\)\}/);
+  const boardUiSource = readFileSync(new URL('../apps/web/src/board-ui/BoardUiLive.tsx', import.meta.url), 'utf8');
+  assert.match(boardUiSource, /data-testid="board-ui-add-previs"/);
+  assert.match(boardUiSource, /onAddPrevis\?/);
+  assert.match(boardUiSource, /t\('previs\.toolbar\.add'\)/);
+
+  assert.match(app, /data-testid="board-inspector-header-shot"/);
   assert.doesNotMatch(app, /subjectDragToBoard=\{format5\}/);
   assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);

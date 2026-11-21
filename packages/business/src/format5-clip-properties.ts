@@ -147,6 +147,12 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
     if (typeof patch.name !== 'string' || patch.name.length < 1 || patch.name.length > 200) invalid('片段名称无效', {clipId: clip.id});
     next.name = patch.name;
   }
+  if (patch.muted !== undefined) {
+    if (typeof patch.muted !== 'boolean') invalid('片段静音值无效', {clipId: clip.id});
+    // Only the `true` form is persisted; unmuting removes the field so a clip
+    // row round-trips to exactly the bytes it had before it was muted.
+    if (patch.muted) (next as Row).muted = true; else delete (next as Row).muted;
+  }
   return next;
 }
 

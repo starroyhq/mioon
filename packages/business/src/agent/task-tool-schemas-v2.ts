@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="98a6a49cdd40b121bcce2e50a28a19cf06d01608a382d9369e67fa19b4738fc0";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="1f1372ffec43ed8f835c44565ca0ba9bcfe15d3fcf2f7bde9e59b0c7314095c5";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1654,6 +1654,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "type": "string",
              "minLength": 1,
              "maxLength": 200
+            },
+            "muted": {
+             "type": "boolean"
             }
            },
            "additionalProperties": false
@@ -2728,6 +2731,60 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "soundIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "separate-sound"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "audioClipId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "audioTrackId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "createdTrackId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+       },
+       "trackName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 150
+       }
+      },
+      "required": [
+       "kind",
+       "clipId"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "formatIntent": {
     "type": "object",
     "properties": {
@@ -2759,6 +2816,209 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "presetId"
       ],
       "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
+   "generateIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "generate-placeholder"
+         },
+         "placement": {
+          "anyOf": [
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "main"
+             },
+             "beforeClipId": {
+              "anyOf": [
+               {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "kind",
+             "beforeClipId"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "const": "track"
+             },
+             "trackId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "startFrame": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 300000
+             }
+            },
+            "required": [
+             "kind",
+             "trackId",
+             "startFrame"
+            ],
+            "additionalProperties": false
+           }
+          ]
+         },
+         "settings": {
+          "type": "object",
+          "properties": {
+           "providerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+           },
+           "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           },
+           "region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+           },
+           "prompt": {
+            "type": "string",
+            "maxLength": 5000
+           },
+           "aspectRatio": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+           },
+           "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+           },
+           "parameters": {
+            "type": "object",
+            "additionalProperties": {}
+           },
+           "connectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "configurationRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+           },
+           "modelEntryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           }
+          },
+          "required": [
+           "providerId",
+           "model",
+           "region",
+           "prompt",
+           "aspectRatio",
+           "duration"
+          ],
+          "additionalProperties": false
+         },
+         "shotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "clipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+         },
+         "position": {
+          "type": "object",
+          "properties": {
+           "x": {
+            "type": "number"
+           },
+           "y": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "x",
+           "y"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kind",
+         "placement",
+         "settings",
+         "shotId",
+         "clipId",
+         "title"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "generate-resize"
+         },
+         "shotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "duration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+         }
+        },
+        "required": [
+         "kind",
+         "shotId",
+         "duration"
+        ],
+        "additionalProperties": false
+       }
+      ]
      }
     },
     "required": [
@@ -3394,6 +3654,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "string",
                "minLength": 1,
                "maxLength": 200
+              },
+              "muted": {
+               "type": "boolean"
               }
              },
              "additionalProperties": false
@@ -4468,6 +4731,60 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "soundIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "separate-sound"
+         },
+         "clipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "audioClipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "audioTrackId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "createdTrackId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+         },
+         "trackName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+         }
+        },
+        "required": [
+         "kind",
+         "clipId"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "formatIntent": {
       "type": "object",
       "properties": {
@@ -4499,6 +4816,209 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "presetId"
         ],
         "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "generateIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "generate-placeholder"
+           },
+           "placement": {
+            "anyOf": [
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "main"
+               },
+               "beforeClipId": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "required": [
+               "kind",
+               "beforeClipId"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "track"
+               },
+               "trackId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+               },
+               "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 300000
+               }
+              },
+              "required": [
+               "kind",
+               "trackId",
+               "startFrame"
+              ],
+              "additionalProperties": false
+             }
+            ]
+           },
+           "settings": {
+            "type": "object",
+            "properties": {
+             "providerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+             },
+             "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+             },
+             "region": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+             },
+             "prompt": {
+              "type": "string",
+              "maxLength": 5000
+             },
+             "aspectRatio": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+             },
+             "duration": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+             },
+             "parameters": {
+              "type": "object",
+              "additionalProperties": {}
+             },
+             "connectionId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+             },
+             "configurationRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+             },
+             "modelEntryId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+             }
+            },
+            "required": [
+             "providerId",
+             "model",
+             "region",
+             "prompt",
+             "aspectRatio",
+             "duration"
+            ],
+            "additionalProperties": false
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "clipId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+           },
+           "position": {
+            "type": "object",
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "placement",
+           "settings",
+           "shotId",
+           "clipId",
+           "title"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "generate-resize"
+           },
+           "shotId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+           },
+           "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+           }
+          },
+          "required": [
+           "kind",
+           "shotId",
+           "duration"
+          ],
+          "additionalProperties": false
+         }
+        ]
        }
       },
       "required": [
@@ -4929,6 +5449,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "modelEntryId": {
     "type": "string",
     "format": "uuid"
+   },
+   "generateAudio": {
+    "type": "boolean"
    }
   },
   "required": [
@@ -4966,6 +5489,43 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
  "export.output.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "clip.audio.export": {
+  "type": "object",
+  "properties": {
+   "clipId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "outputLocale": {
+    "type": "string",
+    "enum": [
+     "zh-Hans",
+     "zh-Hant",
+     "en",
+     "ja"
+    ]
+   }
+  },
+  "required": [
+   "clipId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "clip.audio.export.get": {
   "type": "object",
   "properties": {
    "exportId": {
@@ -13582,6 +14142,148 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "separate-sound"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "generate"
+     },
+     "placement": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "main"
+         },
+         "beforeClipId": {
+          "anyOf": [
+           {
+            "type": "string",
+            "format": "uuid"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "beforeClipId"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "track"
+         },
+         "trackId": {
+          "type": "string",
+          "format": "uuid"
+         },
+         "startFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300000
+         }
+        },
+        "required": [
+         "kind",
+         "trackId",
+         "startFrame"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     },
+     "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "providerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "region": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+     },
+     "prompt": {
+      "type": "string",
+      "maxLength": 5000
+     },
+     "aspectRatio": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "duration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60
+     },
+     "parameters": {
+      "type": "object",
+      "additionalProperties": {}
+     },
+     "connectionId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "configurationRevision": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "modelEntryId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     }
+    },
+    "required": [
+     "kind",
+     "placement",
+     "providerId",
+     "model",
+     "region",
+     "prompt",
+     "aspectRatio",
+     "duration"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "insert-asset"
      },
      "assetId": {
@@ -13727,6 +14429,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "type": "string",
            "minLength": 1,
            "maxLength": 200
+          },
+          "muted": {
+           "type": "boolean"
           }
          },
          "additionalProperties": false

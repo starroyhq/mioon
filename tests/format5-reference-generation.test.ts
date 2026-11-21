@@ -23,6 +23,7 @@ import {png} from './helpers/timeline-image-fixtures.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {buildReferenceEdgeEnvelope,readFrozenFormat5GenerationInputs} from '../packages/business/src/format5-reference-inputs.ts';
+import {readFrozenFormat5Dialogue} from '../packages/business/src/format5-dialogue-generation.ts';
 import {prepareSequenceEditHistory} from '../packages/business/src/format5-editor-history.ts';
 import {runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
@@ -361,4 +362,131 @@ test('previs scene subjects freeze the version used at submit; later subject and
   assert.equal(thirdSubjects[2]!.bindingMode,'follow');
   assert.equal(JSON.stringify(f.job(first.id).snapshot),firstSnapshot);
   assert.equal(JSON.stringify(f.job(second.id).snapshot),secondSnapshot);
+});
+
+async function seedDialogue(f: Fixture, seeded: Awaited<ReturnType<typeof seedMedia>>,
+  lines: readonly {id: string; text: string}[], prompt?: string) {
+  const current = f.store.get('shots', seeded.shotId) as Record<string, unknown>;
+  f.store.tx(() => f.store.put('shots', {...current, duration: 4, aspectRatio: '9:16',
+    ...(prompt === undefined ? {} : {prompt}), dialogue: lines, updatedAt: new Date().toISOString()}));
+  const shot = f.store.get('shots', seeded.shotId) as Record<string, unknown>;
+  return {...seeded, shot};
+}
+
+function lastRequestBody(f: Fixture, index: number): Record<string, unknown> {
+  const call = f.posts()[index];
+  assert.ok(call, `request ${index} was sent`);
+  return JSON.parse(String(call.init.body)) as Record<string, unknown>;
+}
+
+test('format 5 dialogue follows the 生成声音 switch: default, manual off/on and an Mio request without it', async t => {
+  const f = await fixture(t);
+  const seeded = await seedDialogue(f, await seedMedia(f), [{id: randomUUID(), text: '我们走吧。'}]);
+  const model = f.configuration.models[0]!;
+  const base = {shotId: seeded.shotId, expectedRevision: Number(seeded.shot.revision), providerId: 'ark',
+    model: model.modelId, connectionId: f.configuration.id, configurationRevision: 1, modelEntryId: model.id,
+    parameters: {durationSeconds: 4, resolution: '720p'}} as Record<string, unknown>;
+
+  // 1) Seedance default: the shot's dialogue opens the optional native sound.
+  const first = await f.services.call('generation.submit', {...base, requestId: randomUUID()} as never) as JobRecord;
+  const firstFrozen = readFrozenFormat5Dialogue(first.snapshot)!;
+  assert.equal(firstFrozen.status, 'used');
+  assert.equal(firstFrozen.generateAudio, true);
+  assert.equal(first.snapshot.prompt, `${String(seeded.shot.prompt)}\n{“我们走吧。”}`, 'the snapshot keeps the final raw prompt');
+  await f.tick();
+  await f.stop();
+  const firstBody = lastRequestBody(f, 0);
+  const firstText = (firstBody.content as {type: string; text?: string}[])[0]!.text!;
+  assert.equal(firstText, first.snapshot.prompt, 'the provider receives the same raw text');
+  assert.equal(firstBody.generate_audio, true);
+
+  // 2) Manual off: the dialogue is not sent and the freeze records the actual value.
+  const off = await f.services.call('generation.submit', {...base, requestId: randomUUID(),
+    parameters: {...base.parameters as Record<string, unknown>, generateAudio: false}} as never) as JobRecord;
+  const offFrozen = readFrozenFormat5Dialogue(off.snapshot)!;
+  assert.equal(offFrozen.status, 'unsupported');
+  assert.equal(offFrozen.reason, 'AUDIO_OFF');
+  assert.equal(offFrozen.generateAudio, false);
+  assert.equal(off.snapshot.prompt, String(seeded.shot.prompt), 'muted dialogue stays out of the prompt');
+  await f.tick();
+  await f.stop();
+  const offBody = lastRequestBody(f, 1);
+  assert.equal((offBody.content as {type: string; text?: string}[])[0]!.text, String(seeded.shot.prompt));
+  assert.equal(offBody.generate_audio, false);
+
+  // 3) Manual on: the explicit switch wins and the dialogue is sent.
+  const on = await f.services.call('generation.submit', {...base, requestId: randomUUID(),
+    parameters: {...base.parameters as Record<string, unknown>, generateAudio: true}} as never) as JobRecord;
+  const onFrozen = readFrozenFormat5Dialogue(on.snapshot)!;
+  assert.equal(onFrozen.status, 'used');
+  assert.equal(onFrozen.generateAudio, true);
+  assert.match(String(on.snapshot.prompt), /\{“我们走吧。”\}$/u);
+  await f.tick();
+  await f.stop();
+  assert.equal((lastRequestBody(f, 2).content as {type: string; text?: string}[])[0]!.text, on.snapshot.prompt);
+  assert.equal(lastRequestBody(f, 2).generate_audio, true);
+
+  // 4) Mio does not send the switch: the same dialogue default applies.
+  const {parameters: _omitted, ...mioBase} = base;
+  const mio = await f.services.call('generation.submit', {...mioBase, requestId: randomUUID()} as never) as JobRecord;
+  const mioFrozen = readFrozenFormat5Dialogue(mio.snapshot)!;
+  assert.equal(mioFrozen.status, 'used');
+  assert.equal(mioFrozen.generateAudio, true);
+  await f.tick();
+  await f.stop();
+  assert.equal((lastRequestBody(f, 3).content as {type: string; text?: string}[])[0]!.text, mio.snapshot.prompt);
+  assert.equal(lastRequestBody(f, 3).generate_audio, true);
+});
+
+test('retrying a format 5 dialogue generation reuses the frozen prompt and request', async t => {
+  const f = await fixture(t);
+  const seeded = await seedDialogue(f, await seedMedia(f), [{id: randomUUID(), text: '第一句台词。'}]);
+  const model = f.configuration.models[0]!;
+  const job = await f.services.call('generation.submit', {shotId: seeded.shotId,
+    expectedRevision: Number(seeded.shot.revision), requestId: randomUUID(), providerId: 'ark',
+    model: model.modelId, connectionId: f.configuration.id, configurationRevision: 1, modelEntryId: model.id,
+    parameters: {durationSeconds: 4, resolution: '720p'}} as never) as JobRecord;
+  await f.tick();
+  await f.stop();
+  const frozenSnapshot = JSON.stringify(job.snapshot);
+  const firstBody = JSON.stringify(lastRequestBody(f, 0));
+
+  // A later shot edit must not reach the retried job.
+  await seedDialogue(f, seeded, [{id: randomUUID(), text: '改过的台词。'}]);
+  f.store.put('jobs', {...f.job(job.id), status: 'failed', phase: 'failed',
+    error: {code: 'SYNTHETIC', message: 'synthetic failure', retryable: true}, updatedAt: new Date().toISOString()});
+  const retried = await f.services.call('job.retry', {jobId: job.id, requestId: randomUUID()}) as JobRecord;
+  assert.equal(JSON.stringify(retried.snapshot), frozenSnapshot, 'the retry keeps the frozen prompt');
+  assert.equal(readFrozenFormat5Dialogue(retried.snapshot)!.generateAudio,
+    readFrozenFormat5Dialogue(job.snapshot)!.generateAudio);
+  await f.tick();
+  await f.stop();
+  assert.equal(f.posts().length, 2);
+  await seedDialogue(f, seeded, [{id: randomUUID(), text: '再来一句。'}]);
+  assert.equal(JSON.stringify(lastRequestBody(f, 1)), firstBody, 'the retried request is byte-identical');
+});
+
+test('a dialogue-caused prompt overflow is rejected before any job or idempotency row', async t => {
+  const f = await fixture(t);
+  const seeded = await seedDialogue(f, await seedMedia(f), [{id: randomUUID(), text: '我们走吧。'}],
+    '海'.repeat(4995));
+  const model = f.configuration.models[0]!;
+  const jobs = Number((f.store.db.prepare('SELECT count(*) AS n FROM jobs').get() as {n: number}).n);
+  const idempotency = Number((f.store.db.prepare("SELECT count(*) AS n FROM idempotency WHERE scope='generation'").get() as {n: number}).n);
+  await assert.rejects(f.services.call('generation.submit', {shotId: seeded.shotId,
+    expectedRevision: Number(seeded.shot.revision), requestId: randomUUID(), providerId: 'ark',
+    model: model.modelId, connectionId: f.configuration.id, configurationRevision: 1, modelEntryId: model.id,
+    parameters: {durationSeconds: 4, resolution: '720p'}} as never),
+  (error: {code?: string}) => error.code === 'DIALOGUE_PROMPT_TOO_LONG');
+  assert.equal(Number((f.store.db.prepare('SELECT count(*) AS n FROM jobs').get() as {n: number}).n), jobs,
+    'a rejected dialogue generation writes no job row');
+  assert.equal(Number((f.store.db.prepare("SELECT count(*) AS n FROM idempotency WHERE scope='generation'").get() as {n: number}).n), idempotency,
+    'a rejected dialogue generation writes no idempotency row');
+  // The original prompt alone is too long: that stays the existing prompt error.
+  await seedDialogue(f, seeded, [{id: randomUUID(), text: '我们走吧。'}], '海'.repeat(5005));
+  await assert.rejects(f.services.call('generation.submit', {shotId: seeded.shotId,
+    expectedRevision: Number((f.store.get('shots', seeded.shotId) as {revision: number}).revision), requestId: randomUUID(),
+    providerId: 'ark', model: model.modelId, connectionId: f.configuration.id, configurationRevision: 1,
+    modelEntryId: model.id, parameters: {durationSeconds: 4, resolution: '720p'}} as never),
+  (error: {code?: string}) => error.code !== 'DIALOGUE_PROMPT_TOO_LONG');
 });

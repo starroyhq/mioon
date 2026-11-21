@@ -3,6 +3,8 @@ import {timelineRetainedRuntime as runtime} from './timeline-retained-runtime.ts
 import {isTimelineVolumeEnvelopeRecord} from '../../contracts/src/timeline-volume-envelope-record.ts';
 import {isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-delivery.ts';
+import {isTimelineRecord} from '../../contracts/src/timeline-replacement.ts';
+import {timelineRecordFormatOf} from './timeline-record-format.ts';
 
 type Value = Record<string,unknown>;
 const object=(value:unknown):value is Value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -28,6 +30,11 @@ export function retainedRenderBindings(db:Pick<DatabaseSync,'prepare'>,root:unkn
  }
  if(!evidence)return result;
  if(!object(root)||!object(root.snapshot)||!object(root.snapshot.timeline)||!Array.isArray(root.snapshot.assets))invalid();
+ // The same exports/timeline_requests rows serve formats 3/4 and format 5. State
+ // the project file's own format so only format 5 admits its clip sound flags.
+ const recordFormat=timelineRecordFormatOf(db);
+ const formatRecord=(value: unknown,options?: Parameters<typeof isTimelineRecord>[1])=>
+  isTimelineRecord(value,{...(options??{}),format:recordFormat});
  const snapshot=root.snapshot,timeline=snapshot.timeline as Value,assets=snapshot.assets as unknown[];
  if((table==='exports'||owner!=null)&&root.projectId!==owner||timeline.projectId!==root.projectId||
     root[table==='timeline_requests'?'requestId':'id']!==rowIdentity||
@@ -36,7 +43,7 @@ export function retainedRenderBindings(db:Pick<DatabaseSync,'prepare'>,root:unkn
     !isVolumeEnvelopeProcessingSnapshot(snapshot))invalid();
  const clips=timeline.clips as unknown[];
  const hasEnvelope=clips.some(clip=>object(clip)&&own(clip,'volumeEnvelope'));
- if(hasEnvelope&&!isTimelineVolumeEnvelopeRecord(timeline,{projectId:root.projectId},runtime.isTimelineRecord))invalid();
+ if(hasEnvelope&&!isTimelineVolumeEnvelopeRecord(timeline,{projectId:root.projectId},formatRecord))invalid();
  const projectedTimeline=hasEnvelope?{...timeline,clips:clips.map(clip=>without(clip as Value,'volumeEnvelope'))}:timeline;
  // An optional frozen projectId is accepted only when it agrees with the
  // original receipt. The production public asset projection omits that field.
@@ -47,7 +54,7 @@ export function retainedRenderBindings(db:Pick<DatabaseSync,'prepare'>,root:unkn
  const projectedSnapshot={...without(snapshot,'volumeEnvelopeProfile'),timeline:projectedTimeline,assets:projectedAssets};
  let input:Value;
  try{input={projectId:root.projectId,requestId:root.requestId,expectedRevision:root.timelineRevision,purpose:root.purpose,...timelineRenderDeliveryFields(snapshot)};}catch{invalid();}
- if(!runtime.isTimelineRenderRecord({...root,snapshot:projectedSnapshot},input))invalid();
+ if(!runtime.isTimelineRenderRecord({...root,snapshot:projectedSnapshot},input,{format:recordFormat}))invalid();
  const frozen=new Map<string,Value>();
  for(const item of assets){const asset=item as Value;
   // Only current resource existence and owning project are authoritative here.

@@ -31,6 +31,7 @@ export const MIO_DEFERRED_OPERATIONS=Object.freeze({
  'canvas.archive.list':'建议后续补只读分页归档查询，需确定与隐藏主体的结果投影',
  'export.cancel':'建议后续按需要用户确认开放；停止本机导出不能等同撤销已发布文件',
  'export.output.get':'建议后续补有界只读发布证明投影，现有结果含内部发布信息',
+ 'clip.audio.export.get':'另存为音频素材任务通过 export.get / task.wait 观察；单独的只读投影留到任务中心统一开放',
  'task.disposition.markFailed':'建议维持用户确认档；人工标失败不等于远端已停止',
  'job.cancel':'建议需要用户确认；本地取消不能保证供应商任务取消',
  'job.retry':'建议付费档逐次确认，不能自动重试或更换未知请求的身份',

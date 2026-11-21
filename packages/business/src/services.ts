@@ -12,6 +12,7 @@ import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.
 import {isAssetMediaOperation, assetMediaEffects} from '../../contracts/src/asset-media.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {createExportControlServices} from './export-controls.ts';
+import {getClipAudioExport,startClipAudioExport} from './clip-audio-export.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,assertTaskEffectOrigin,setAgentTaskJobStopper,withAgentTaskJobOrigin} from './agent/task-effects-v2.ts';
@@ -28,6 +29,7 @@ import {createLookPackInspectionServices,assertLookPackInspectInput} from './loo
 import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from './timeline-colour-source.ts';
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
+import {readFormat5RenderProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
 import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
@@ -43,6 +45,7 @@ import type {OperationName} from '@mioon/contracts';
 import {generationServiceUnavailable,isMockGenerationProvider,normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
+import {FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,FORMAT5_MOCK_INPUT_CONNECTION_ID,FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID} from '../../contracts/src/sequence-inspection.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
 import {getWan30Capability,isWan30Binding,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
@@ -65,6 +68,8 @@ import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {format5GenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
+import type {Format5LegacyGenerationService} from './format5-reference-inputs.ts';
+import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
@@ -77,7 +82,7 @@ import {createTimelineMixLoudnessServices} from './timeline-mix-loudness.ts';
 import {createTimelineMixLoudnessDecoder} from './timeline-mix-loudness-decoder.ts';
 import {ownsStoreLock,assertProjectStore} from './store-runtime.ts';
 import type {Store} from './store-contract.ts';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {readOwnedTimelineAsset,readTimelinePreflightSnapshot,readTimelineSourceGraph} from './timeline-sources.ts';
 import {validateManagedSource,verifiedManagedHash} from './managed-media.ts';
 import {run,runStreaming,runStreamingWithBackpressure,checkMediaEffect} from './media-runtime.ts';
@@ -169,6 +174,8 @@ export interface OrdinaryServices {
   imageSelectionRequired():boolean;
   video(providerId?:string,model?:string):boolean;
  }>;
+ /** Runs inside an already-open sequence-editing transaction (no nested tx). */
+ createGenerationJobInside: (input: GenerationSubmitInput)=>unknown;
  assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
@@ -546,6 +553,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // RI-a: a new format-5 generation reads the live board reference lines and
   // freezes the actual request; a retry keeps the original snapshot untouched.
   let format5Input: ReturnType<typeof format5GenerationSource>|null=null;
+  let format5Dialogue: ReturnType<typeof planFormat5DialogueGeneration>|null=null;
   if(format5Project&&!retrySnapshot&&executionBinding){
    const plan=planFormat5GenerationInputs(store,shot.id,{binding:executionBinding});
    format5Input=format5GenerationSource(plan,executionBinding);
@@ -565,10 +573,27 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     throw new AppError('UNSUPPORTED_PARAMETERS','本次生成参数的画幅与已选择的来源不一致');
    parameters={...recordValue(parameters),aspectRatio:ratio};
   }
+  // DL-b: the shot's dialogue lines join the exact outgoing prompt. A service
+  // without a reviewed speaking capability sends no dialogue; a prompt that
+  // would exceed the model limit rejects the whole generation (no truncation).
+  if(format5Project&&!retrySnapshot&&executionBinding){
+   // The explicit "生成声音" switch wins; without it the shot's dialogue already
+   // opened it in the shared UI default, and the same default is applied here so
+   // Mio-initiated generations agree with the checkbox.
+   const requestedGenerateAudio=executionBinding.model.audio==='optional'&&isRecord(parameters)&&typeof parameters.generateAudio==='boolean'
+    ?parameters.generateAudio:undefined;
+   format5Dialogue=planFormat5DialogueGeneration(store,shot.id,{binding:executionBinding,
+    basePrompt:typeof shot.prompt==='string'?shot.prompt:'',
+    ...(requestedGenerateAudio!==undefined?{generateAudio:requestedGenerateAudio}:{})});
+   assertFormat5DialogueSubmittable(format5Dialogue);
+   if(format5Dialogue.status==='used'&&format5Dialogue.lines.length>0)
+    source={...source,prompt:format5Dialogue.prompt};
+   if(format5Dialogue.audioRequest)parameters={...recordValue(parameters),...format5Dialogue.audioRequest};
+  }
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph,ratio?{input,ratio}:undefined);
-  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input};
+  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input,format5Dialogue};
  });
- const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
+ const createGenerationJobInside=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>{
   assertApplicationMutationAllowed();assertMutationAllowed?.();
   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
   if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
@@ -576,26 +601,33 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    for(const [id,raw] of referenceBasis)if(JSON.stringify(required('assets',id))!==raw)throw new AppError('REFERENCE_CHANGED','确认后的素材引用已改变，请重新确认',409);
   });
   assertSubjectGenerationRequestVacant(db,input);
-  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input}=prepareJobDraft(input,retrySnapshot);
-  const format5Snapshot=format5Input?{format5ReferenceInputs:format5Input.freeze,
+  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters,format5Input,format5Dialogue}=prepareJobDraft(input,retrySnapshot);
+  const format5InputSnapshot=format5Input?{format5ReferenceInputs:format5Input.freeze,
    ...(format5Input.freeze.mode==='references'?{referenceAssetIds:[...format5Input.referenceAssetIds],lastFrameAssetId:null}
     :format5Input.freeze.actual.lastFrameAssetId===null?{lastFrameAssetId:null}:{})}:{};
+  // The frozen dialogue prompt is the raw text the adapter sends; a retry keeps
+  // this snapshot untouched and never re-composes after the shot changed.
+  const format5DialogueSnapshot=format5Dialogue?{format5Dialogue:freezeFormat5Dialogue(format5Dialogue),
+   ...(format5Dialogue.status==='used'&&format5Dialogue.lines.length>0?{prompt:format5Dialogue.prompt}:{})}:{};
+  const format5Snapshot={...format5InputSnapshot,...format5DialogueSnapshot};
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:source.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{}),...format5Snapshot};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
   recordOutputLocale(db,job.id,requestHash,outputLocale);
   if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
   return job;
- });
+ };
+ const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
- const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths});
+ const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths,
+  generationSubmit: (input) => createGenerationJobInside(input as unknown as GenerationSubmitInput)});
  const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
-  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createExportSamplePeakDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
@@ -603,13 +635,19 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }});
  const loudness=createExportLoudnessServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
-  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createExportLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const readSavedTimeline=(projectId: string)=>{
+  // Format 5 stores native rows; the preflight reader is a Format-3/4 aggregate.
+  if(isProjectStore(store)&&isFormat5Project(store)){
+   const projection=readFormat5RenderProjection(store);
+   if(!projection)return null;
+   return {timeline:projection.legacy,assets:[...projection.assets.values()]};
+  }
   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
   try{const {timeline:value}=readTimelinePreflightSnapshot(store,projectId,undefined);if(!value)return null;
    const assets=readTimelineSourceGraph(db,projectId,value);validateTimeline(value,assets,{structureOnly:true});
@@ -684,7 +722,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
  function subjectDisclosure(table: string,value: ServiceRow,projectId?: string,exportId?: string): ServiceRow {
-  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord,readOwnedAsset:(owner: string,id: string)=>readOwnedTimelineAsset(db,owner,id)});
+  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),readOwnedAsset:(owner: string,id: string)=>readOwnedTimelineAsset(db,owner,id)});
   if(table==='jobs'&&hasSubjectGeneration(value.snapshot)){
    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
    validateSubjectGenerationOwnership(db,value as unknown as GenerationJob);
@@ -733,6 +771,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...inspection.handlers,
   ...timeline.handlers,
   ...sequenceInspection.handlers,
+  'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
+  'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
@@ -747,11 +787,27 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    const modelEntryId=stringValue(input.modelEntryId);
    if(connectionId===undefined&&configurationRevision===undefined&&modelEntryId===undefined)
      return readFormat5GenerationInputView(store,shotId);
+   // The built-in Mock provider has no configured video connection; the client
+   // still needs the same live projection/footer as any selected service.
+   if(connectionId===FORMAT5_MOCK_INPUT_CONNECTION_ID&&configurationRevision===FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION
+     &&modelEntryId===FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID){
+    // Mock has no configured video connection, but its reviewed capability is
+    // fixed and local; the read-only projection does not need provider I/O.
+    const legacyService: Format5LegacyGenerationService = {providerId:'mock', modelId:'mock-motion-v1',
+      modelName:'Mock · simulated motion', profileId:'mock:mock-motion-v1:v3', profileVersion:'mioon-input-profiles/3',
+      roles:{first_frame:{implemented:true},last_frame:{implemented:false},
+        reference_image:{implemented:false,max:0},subject_reference:{implemented:false},
+        reference_audio:{implemented:false,max:0}}};
+    const generateAudio=typeof input.generateAudio==='boolean'?input.generateAudio:undefined;
+    return readFormat5GenerationInputView(store,shotId,{legacyService,...(generateAudio!==undefined?{generateAudio}:{})});
+   }
    if(!connectionId||configurationRevision===undefined||!modelEntryId)
      throw new AppError('VALIDATION_ERROR','生成服务选择不完整。',400);
    const binding=videoSettings?.select(connectionId,configurationRevision,modelEntryId);
    if(!binding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
-   return readFormat5GenerationInputView(store,shotId,{binding});
+   const generateAudio=typeof input.generateAudio==='boolean'?input.generateAudio:undefined;
+   return readFormat5GenerationInputView(store,shotId,{binding,
+    ...(generateAudio!==undefined?{generateAudio}:{})});
   },
   ...references.handlers,
   ...localMutations.handlers,
@@ -1064,5 +1120,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

@@ -201,3 +201,19 @@ test('legitimate stored false video is probed once without audio work, including
     assert.ok(!((r.calls.find(call=>call.command==='ffmpeg'))!.args)!.includes('-i'));
   }
 });
+
+test('saved clip mute removes the source from the measured mix and sound-only video is admitted', async () => {
+  const muted = fixture();
+  ((muted.timeline.clips[0] as unknown as {muted?: boolean}).muted = true);
+  const mutedPlan = planTimelineMixLoudnessDecode((muted.timeline as never), muted.assets);
+  assert.deepEqual(mutedPlan, {sampleFrames: 9600, pcmBytes: 76800, segmentCount: 1, decodeWorkFrames: 0});
+  const soundOnly = fixture();
+  soundOnly.timeline.clips[0] = (({...soundOnly.timeline.clips[0], soundOnly: true}) as unknown as Parameters<typeof planTimelineMixLoudnessDecode>[0]['clips'][number]);
+  soundOnly.assets.set('source', {file: '/private/sound.mp4', mimeType: 'video/mp4', duration: 10, hasAudio: true});
+  const soundOnlyPlan = planTimelineMixLoudnessDecode((soundOnly.timeline as never), soundOnly.assets);
+  assert.equal(soundOnlyPlan.decodeWorkFrames, 7);
+  const illegal = fixture();
+  illegal.timeline.clips[0] = (({...illegal.timeline.clips[0]}) as unknown as Parameters<typeof planTimelineMixLoudnessDecode>[0]['clips'][number]);
+  illegal.assets.set('source', {file: '/private/sound.mp4', mimeType: 'video/mp4', duration: 10, hasAudio: true});
+  assert.throws(() => planTimelineMixLoudnessDecode((illegal.timeline as never), illegal.assets), {code: 'MEDIA_INVALID_CONFIGURATION'});
+});

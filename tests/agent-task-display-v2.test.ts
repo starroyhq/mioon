@@ -280,3 +280,21 @@ test('strict shared display schema rejects arbitrary properties, object values, 
   for(const altered of [{...valid,snapshot:{}},{...valid,fields:[{...valid.fields[0],property:'prompt'}]},{...valid,fields:[{...valid.fields[0],after:{secret:true}}]},{...valid,fields:[{...valid.fields[0],after:Infinity}]},{...valid,fields:[{...valid.fields[0],current:Infinity}]},{...valid,fields:[{...valid.fields[0],current:'x'.repeat(241)}]},{...valid,fields:[{...valid.fields[0],current:{private:true}}]},{...valid,fields:[{...valid.fields[0],after:'x'.repeat(241)}]},{...valid,fields:[{...valid.fields[0],targetIndex:1}]},{...valid,targets:[{kind:'shot',id:'/private/path'}]}])assert.equal(agentTaskDisplaySchema.safeParse(altered).success,false);
   const emoji=projectAgentTaskChangeDisplay(change('shot.update','shot',null,{prompt:'😀'.repeat(200)}));assert.ok(agentTaskDisplaySchema.safeParse(emoji).success);
 });
+
+test('Mio timeline generate approval shows the same generation card fields and title',()=>{
+  const shot='11111111-1111-4111-8111-111111111111',clip='22222222-2222-4222-8222-222222222222';
+  const planned=step('mioon_sequence_timeline_edit',{kind:'generate',placement:{kind:'main',beforeClipId:clip},
+    settings:{providerId:'mock',model:'mock-motion-v1',region:'local',prompt:'PRIVATE_PROMPT_MUST_NOT_LEAK',aspectRatio:'9:16',
+      duration:4,parameters:{resolution:'1080p',generateAudio:true,seed:7}}});
+  planned.targets=[{kind:'timeline_clip',id:clip,revision:3}];
+  const display=projectAgentTaskStepDisplay(planned);
+  assert.ok(display);
+  assert.equal(display.operation,'generation.submit');
+  assert.deepEqual(display.fields.map(field=>field.property),['provider','model','aspectRatio','durationSeconds','mode','resolution','generateAudio','seed']);
+  assert.equal(display.fields.find(field=>field.property==='mode')?.after,'text_to_video');
+  const entries=taskDisplayEntries(display,'zh-Hans');
+  assert.ok(entries.some(entry=>entry.value.includes('mock-motion-v1')));
+  assert.equal(taskOperationTitle(display.operation,'zh-Hans'),taskOperationTitle('generation.submit','zh-Hans'));
+  assert.doesNotMatch(JSON.stringify(display),/PRIVATE_PROMPT|prompt/u);
+  assert.equal(agentTaskDisplaySchema.safeParse(display).success,true);
+});

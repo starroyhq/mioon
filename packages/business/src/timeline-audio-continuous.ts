@@ -145,7 +145,8 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
         return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame, durationFrames: clip.durationFrames,
           sourceInFrame: clip.sourceInFrame, gain: clip.gain, ...volumeEnvelopeField(clip),
           ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
-          ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {})};
+          ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {}),
+          ...(clip.muted === true ? {muted: true} : {}), ...(clip.soundOnly === true ? {soundOnly: true} : {})};
       })}, assets: raw.assets.map((asset: unknown) => {
       if (!object(asset) || typeof asset.id !== 'string' || !validAssetLocator(store.db,asset) ||
           typeof asset.sha256 !== 'string' || typeof asset.sizeBytes !== 'number' || managed.has(asset.id)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
@@ -167,8 +168,11 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       const track = tracks.get(clip.trackId), asset = sources.get(clip.assetId), end = clip.startFrame + clip.durationFrames;
       if (!track || !asset || clipIds.has(clip.id) || end > 18000) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       clipIds.add(clip.id); duration = Math.max(duration, end);
-      const image = asset.mimeType.startsWith('image/'), audio = asset.mimeType.startsWith('audio/');
-      if (track.kind === 'audio' ? !audio : audio) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
+      const image = asset.mimeType.startsWith('image/'), audio = asset.mimeType.startsWith('audio/'), video = asset.mimeType.startsWith('video/');
+      const soundOnly = clip.soundOnly === true;
+      // Audio tracks accept a video source only in the explicit «sound only» form.
+      if (track.kind === 'audio' ? (soundOnly ? !video || asset.hasAudio !== true : !audio) : soundOnly || audio)
+        throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if (image ? asset.hasAudio === true || clip.sourceInFrame !== 0 : typeof asset.hasAudio !== 'boolean' || asset.duration === null ||
           asset.duration <= 0 || clip.sourceInFrame + clip.durationFrames > Math.floor(asset.duration * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > clip.durationFrames ||
@@ -179,7 +183,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
         if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         envelopeClips.push(clip);
       }
-      if (!track.muted && clip.gain !== 0 && asset.hasAudio === true) {
+      if (!track.muted && clip.muted !== true && clip.gain !== 0 && asset.hasAudio === true) {
         if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         voices.push(clip);
       }

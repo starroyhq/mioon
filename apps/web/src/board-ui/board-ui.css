@@ -161,3 +161,76 @@
 .board-ui-context-menu button:hover:not(:disabled),
 .board-ui-context-menu button:focus-visible {background: var(--hover, #2c2c2e)}
 .board-ui-context-menu button:disabled {opacity: .5; cursor: default}
+
+/* GP: 21-10 shot properties. The row itself is one menu trigger (21-10b). */
+.board-inspector-selection {display:flex;flex-direction:column;gap:12px;}
+.board-shot-title-row {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.board-shot-title-row h3 {margin:0;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-shot-open-editing {min-height:24px;padding:2px 8px;border:1px solid var(--wb-line);border-radius:5px;background:transparent;color:var(--wb-text);font-size:10px;white-space:nowrap;}
+.board-shot-fields {display:flex;flex-direction:column;gap:8px;}
+.board-shot-fields label {display:flex;flex-direction:column;gap:4px;color:var(--wb-muted);font-size:10px;}
+.board-shot-fields input,.board-shot-fields textarea,.board-shot-fields select {width:100%;box-sizing:border-box;padding:6px 7px;border:1px solid var(--wb-line);border-radius:5px;background:var(--wb-input,transparent);color:var(--wb-text);font:inherit;font-size:11px;}
+.board-shot-fields textarea {resize:vertical;min-height:84px;}
+.board-shot-count {align-self:flex-end;color:var(--wb-muted);font-size:9px;margin-top:-2px;}
+.board-shot-save {display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:var(--wb-muted);}
+.board-shot-save button {min-height:24px;padding:2px 9px;border:1px solid var(--wb-line);border-radius:5px;background:transparent;color:var(--wb-text);font-size:10px;}
+.board-shot-save [role="alert"] {color:var(--wb-warning,#d9a441);}
+.board-shot-duration {max-width:140px;}
+.board-input-row {position:relative;display:block!important;padding:0!important;border:0!important;}
+.board-input-button {display:flex;align-items:center;gap:6px;width:100%;padding:6px 7px;border:1px solid var(--wb-line);border-radius:6px;background:transparent;color:var(--wb-text);font:inherit;font-size:11px;text-align:start;cursor:pointer;}
+.board-input-button:hover:not(:disabled),.board-input-button:focus-visible {background:var(--wb-hover,#26262a);}
+.board-input-button:disabled {opacity:.55;cursor:default;}
+.board-input-row.is-unsupported .board-input-button {opacity:.62;border-style:dashed;}
+.board-input-row.is-open .board-input-button {border-color:var(--wb-accent-line);}
+.board-input-menu {position:absolute;top:calc(100% + 3px);right:0;z-index:30;min-width:150px;padding:4px;border:1px solid var(--wb-line-strong,#4a4a4f);border-radius:8px;background:var(--wb-panel,#1d1d1f);box-shadow:0 10px 28px #0009;display:flex;flex-direction:column;}
+.board-input-menu button {display:flex;align-items:center;gap:7px;padding:6px 8px;border:0;border-radius:5px;background:transparent;color:var(--wb-text);font:inherit;font-size:11px;text-align:start;cursor:pointer;}
+.board-input-menu button:hover:not(:disabled),.board-input-menu button:focus-visible {background:var(--wb-hover,#2c2c2e);}
+.board-input-menu button[aria-checked="true"] {color:var(--wb-accent-line);}
+.board-detached-inputs {display:flex;flex-direction:column;gap:4px;margin-top:4px;}
+.board-input-row.is-detached {display:flex!important;align-items:center;gap:6px;padding:5px 7px!important;border:1px dashed var(--wb-line)!important;border-radius:6px;font-size:11px;}
+.board-input-row.is-detached .board-input-label {flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-shot-dialogue {display:flex;flex-direction:column;gap:5px;}
+.board-shot-dialogue h4 {margin:0;font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--wb-muted);}
+.board-shot-dialogue ul {margin:0;padding:8px 9px;list-style:none;display:flex;flex-direction:column;gap:5px;border:1px solid var(--wb-line);border-radius:6px;background:var(--wb-input,transparent);font-size:11px;line-height:1.5;}
+.board-shot-dialogue p {margin:0;color:var(--wb-muted);font-size:11px;}
+.board-shot-generate {display:flex;align-items:center;justify-content:center;gap:7px;min-height:34px;border:0;border-radius:7px;background:var(--wb-accent,#e9e9e9);color:#151515;font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
+.board-shot-generate:disabled {opacity:.5;cursor:default;}
+
+/* GP review: 21-10 inline title, footer service picker, static previs rows. */
+.board-shot-title-button {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:var(--wb-text);font:inherit;font-size:13px;font-weight:600;text-align:start;padding:0;cursor:text;}
+.board-shot-title-input {min-width:0;flex:1;padding:3px 6px;border:1px solid var(--wb-accent-line);border-radius:5px;background:var(--wb-input,transparent);color:var(--wb-text);font:inherit;font-size:13px;font-weight:600;}
+.board-service-picker {position:relative;display:flex;flex-direction:column;}
+button.board-input-footer {display:block;width:100%;border:0;background:transparent;text-align:start;cursor:pointer;font:inherit;font-size:10px;color:var(--wb-muted);}
+button.board-input-footer:hover:not(:disabled),button.board-input-footer:focus-visible {color:var(--wb-text);}
+button.board-input-footer:disabled {cursor:default;opacity:.7;}
+.board-service-menu {position:absolute;bottom:calc(100% + 4px);left:0;right:0;z-index:30;max-height:260px;overflow:auto;padding:4px;border:1px solid var(--wb-line-strong,#4a4a4f);border-radius:8px;background:var(--wb-panel,#1d1d1f);box-shadow:0 10px 28px #0009;display:flex;flex-direction:column;}
+.board-service-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 8px;border:0;border-radius:5px;background:transparent;color:var(--wb-text);font:inherit;font-size:11px;text-align:start;cursor:pointer;}
+.board-service-menu button:hover:not(:disabled),.board-service-menu button:focus-visible {background:var(--wb-hover,#2c2c2e);}
+.board-service-menu small {color:var(--wb-muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-input-row.is-static .board-input-button {cursor:default;opacity:.88;}
+.board-input-row.is-static .board-input-button:hover {background:transparent;}
+
+/* GP re-review: 21-10 title row, inline duration, embedded dialogue and primary generate. */
+.board-shot-properties {display:flex;flex-direction:column;gap:12px;}
+.board-shot-heading {display:flex;align-items:center;gap:6px;min-width:0;color:var(--wb-text);}
+.board-shot-heading > svg {flex:none;color:var(--wb-muted);}
+.board-shot-title-row .board-shot-title-button {border:0;background:transparent;padding:0;font-size:13px;font-weight:600;color:var(--wb-text);}
+.board-shot-title-row .board-shot-title-button:hover {color:var(--wb-text);text-decoration:underline;text-underline-offset:3px;}
+.board-shot-title-input {min-width:0;flex:1;}
+.board-shot-duration-row {display:flex;align-items:center;gap:8px;color:var(--wb-muted);font-size:10px;}
+.board-shot-duration-label {flex:none;}
+.board-shot-duration-select {flex:1;min-width:0;}
+.board-inspector-selection .board-shot-properties .shot-dialogue {padding:0;border-top:0;gap:6px;}
+.board-inspector-selection .board-shot-properties .shot-dialogue .shot-dialogue-text {min-height:68px;}
+button.board-input-footer {display:flex;align-items:center;gap:6px;}
+button.board-input-footer > svg {flex:none;}
+button.board-input-footer > span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-shot-generate {background:#f2f2f2;color:#121212;border:1px solid transparent;min-height:36px;}
+.board-shot-generate:hover:not(:disabled),.board-shot-generate:focus-visible {background:#fff;color:#0b0b0b;}
+.board-shot-generate:disabled {background:#f2f2f2;color:#7a7a7e;opacity:.55;cursor:default;}
+
+/* WT-3-01: the service footer sits directly below the input list; keep an open
+ * row menu above its pointer box so every entry remains clickable. */
+.board-input-list {position:relative;z-index:2;}
+.board-input-menu {z-index:50;}
+.board-detached-inputs,.board-shot-duration-row,.board-service-picker {position:relative;z-index:1;}

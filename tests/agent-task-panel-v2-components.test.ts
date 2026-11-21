@@ -1119,3 +1119,26 @@ test('periodic reads of earlier pending rounds explicitly use quiet background r
     t.mock.timers.tick(5000);await new Promise(setImmediate);assert.deepEqual(h.calls,[['refreshRound','earlier-pending',{background:true}]]);assert.equal(h.state.snapshot!.run.id,'run');
   }finally{h.unmount();}
 });
+
+test('Mio timeline generate approval renders the paid generation card and fee confirmation',()=>{
+  const h=harness();
+  try{
+    h.state.snapshot!.run={...h.state.snapshot!.run,status:'awaiting_approval',revision:2};
+    h.state.snapshot!.steps=[{id:'generate-approval',kind:'tool',status:'awaiting_approval',position:2,tier:'paid',
+      toolCall:{name:'mioon_sequence_timeline_edit',arguments:{kind:'generate'}},
+      display:{operation:'generation.submit',targets:[{kind:'timeline_clip',id:followClip}],targetCount:1,fields:[
+        {targetIndex:undefined,property:'provider',unit:'enum',after:'mock'},
+        {targetIndex:undefined,property:'model',unit:'text',after:'mock-motion-v1'},
+        {targetIndex:undefined,property:'aspectRatio',unit:'ratio',after:'9:16'},
+        {targetIndex:undefined,property:'durationSeconds',unit:'seconds',after:4},
+        {targetIndex:undefined,property:'resolution',unit:'enum',after:'1080p'},
+      ]}}];
+    h.render();
+    const card=h.find('agent-task-approval-generate-approval');assert.ok(card);
+    const text=renderedText(card);
+    assert.ok(text.includes(translate('zh-Hans','agent.panel.confirmGenerate')));
+    assert.ok(text.includes('mock-motion-v1'));
+    assert.ok(text.includes('9:16'));
+    assert.ok(text.includes('1080p'));
+  }finally{h.unmount();}
+});

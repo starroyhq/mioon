@@ -2,6 +2,7 @@
  * A page is bound to one frozen snapshot id; continuing with a cursor from a
  * different snapshot is rejected so the model never stitches mismatched reads. */
 import {z} from 'zod';
+import type {DialogueAudioMode, DialogueDeliveryStyle} from './dialogue-generation.ts';
 import {FORMAT5_INPUT_LIMITS} from './project-format5.ts';
 import type {ChainReferenceRole} from './board-sequence.ts';
 
@@ -76,11 +77,21 @@ export const SEQUENCE_GENERATION_INPUT_LIMITS = Object.freeze({
   entries: FORMAT5_INPUT_LIMITS.referenceEdgesPerShot + FORMAT5_INPUT_LIMITS.subjectBindingsPerShot
     + FORMAT5_INPUT_LIMITS.previsSceneSubjects,
 });
+/** The built-in Mock provider has no configured video connection. The board's
+ * read-only input projection still needs an exact identity to report the
+ * selected service, so the client sends these reserved UUIDs; the service maps
+ * them to Mock capabilities instead of video-settings selection. */
+export const FORMAT5_MOCK_INPUT_CONNECTION_ID = '00000000-0000-4000-8000-0000000000a1';
+export const FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID = '00000000-0000-4000-8000-0000000000a2';
+export const FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION = 1;
+
 export const sequenceGenerationInputSchemas = Object.freeze({
   'sequence.generation-inputs.get': z.object({
     projectId: uuid, shotId: uuid,
     connectionId: uuid.optional(), configurationRevision: z.number().int().positive().optional(),
     modelEntryId: uuid.optional(),
+    /** Current "生成声音" switch for this shot; omitted means the service default. */
+    generateAudio: z.boolean().optional(),
   }).strict().superRefine((value, context) => {
     const triple = [value.connectionId, value.configurationRevision, value.modelEntryId];
     const supplied = triple.filter(item => item !== undefined).length;
@@ -119,6 +130,20 @@ export interface SequenceGenerationInputServiceView {
   readonly profileId: string;
   readonly profileVersion: string;
 }
+export type SequenceGenerationDialogueStatus = 'used' | 'unsupported' | 'rejected';
+/** DL-b dialogue status for the same selected service. `reason` is a stable code
+ * (`SERVICE_NOT_SELECTED`, `SERVICE_DOES_NOT_SPEAK`, `PROMPT_TOO_LONG`) the panel
+ * localizes; docs list the official rules the style is based on. */
+export interface SequenceGenerationDialogueView {
+  readonly status: SequenceGenerationDialogueStatus;
+  readonly lineCount: number;
+  readonly reason?: string;
+  readonly promptCodeUnits: number;
+  readonly maxPromptCodeUnits: number;
+  readonly style?: DialogueDeliveryStyle;
+  readonly audioMode?: DialogueAudioMode;
+  readonly docs?: readonly string[];
+}
 export interface SequenceGenerationInputView {
   readonly projectId: string;
   readonly shotId: string;
@@ -129,4 +154,5 @@ export interface SequenceGenerationInputView {
   readonly usedCount: number;
   readonly unsupportedCount: number;
   readonly primaryEdgeId: string | null;
+  readonly dialogue: SequenceGenerationDialogueView;
 }

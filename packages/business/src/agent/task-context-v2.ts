@@ -144,7 +144,7 @@ function sourceTaskModelToolLoadSchema(protocol:AgentConfiguration['protocol'],r
   if(Object.keys(schema.properties).some(key=>key!==mode&&key!=='_mio_step')||!Object.hasOwn(schema.properties,mode))return invalid();
   if(Object.hasOwn(schema.properties,'_mio_step')){
     const explanation=schema.properties._mio_step;
-    if(!record(explanation)||Object.keys(explanation).some(key=>!['type','minLength','maxLength','description'].includes(key))||explanation.type!=='string'||explanation.minLength!==1||explanation.maxLength!==40||typeof explanation.description!=='string')return invalid();
+    if(!record(explanation)||Object.keys(explanation).some(key=>!['type','minLength','maxLength','description'].includes(key))||explanation.type!=='string'||explanation.minLength!==1||explanation.maxLength!==40||Object.hasOwn(explanation,'description')&&typeof explanation.description!=='string')return invalid();
   }
   const selection=schema.properties[mode];
   if(!record(selection)||Object.keys(selection).some(key=>!['type','items','minItems','maxItems'].includes(key))||selection.type!=='array'||selection.minItems!==1||!Number.isSafeInteger(selection.maxItems)||(selection.maxItems as number)<1||!record(selection.items)||Object.keys(selection.items).some(key=>!['type','enum'].includes(key))||selection.items.type!=='string'||!Array.isArray(selection.items.enum)||!selection.items.enum.length||!selection.items.enum.every(value=>typeof value==='string'))return invalid();

@@ -31,7 +31,7 @@ export const BOARD_IDS = {
 const sha = (letter: string): string => letter.repeat(64);
 export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
   library: ReturnType<typeof openAppLibrary>; settings: Awaited<ReturnType<typeof createVideoSettings>>;
-  projectId: string; root: string}> {
+  providers: Map<string, any>; projectId: string; root: string}> {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-board-ui-wire-'));
   const store = createProjectStore({projectId: BOARD_IDS.project, projectFile: path.join(root, 'project.mioon'), format5: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
@@ -67,6 +67,7 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('assets', {id: BOARD_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 4, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetV2, projectId, name: '镜头A v2.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('d'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10,
+      width: 1080, height: 1920, provenance: 'user-import',
       referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/ref.png', volume: null, sizeBytes: 10,
         mtimeMs: 0, sampledSha256: sha('c'), fullSha256: sha('c')}});
     store.put('assets', {id: BOARD_IDS.imageAsset2, projectId, name: '参考图 B.png', mimeType: 'image/png', duration: null, sha256: sha('e'), sizeBytes: 10});
@@ -141,9 +142,10 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     secret: {action: 'replace', value: 'synthetic-ark-key', storage: 'persistent'}});
   await settings.put({action: 'save', expectedRevision: 1, configuration: wan,
     secret: {action: 'replace', value: 'synthetic-wan-key', storage: 'persistent'}});
-  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),
+  const providers = new Map<string, any>();
+  const services = createServices(store, providers, {env: {}, application: createProjectServiceApplication(library, undefined, {}),
     videoSettings: settings});
-  return {store, services, library, settings, projectId, root};
+  return {store, services, library, settings, providers, projectId, root};
 }
 
 /** 500-shot stress project for the UI-B2 board frame-rate measurement. */

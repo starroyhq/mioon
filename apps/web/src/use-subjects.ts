@@ -42,7 +42,10 @@ export function useSubjects({ scope, projectId, assets, shotIds, read, save, has
     hasPending: (id?: string|null) => Boolean(callbacks.current.hasPending?.(id)), canSave: () => !callbacks.current.blocked,
     onChange: setState,
   });
-  const assetsKey = JSON.stringify((assets || []).filter(isRecord).map(({ id, projectId: owner, mimeType, sha256 }) => ({ id, projectId: owner, mimeType, sha256 })));
+  // Keep the display name: the subject choosers list their candidates from this
+  // project-owned context, and format-5 views may omit the owner that is added
+  // there. Bounded to the same five fields per asset.
+  const assetsKey = JSON.stringify((assets || []).filter(isRecord).map(({ id, projectId: owner, mimeType, sha256, name }) => ({ id, projectId: owner, mimeType, sha256, name })));
   const shotsKey = JSON.stringify(shotIds || []);
   useLayoutEffect(() => { controller.current!.setContext(projectId ? { scope, projectId, assets: JSON.parse(assetsKey) as SubjectAsset[], shotIds: JSON.parse(shotsKey) as string[] } : null); }, [scope, projectId, assetsKey, shotsKey]);
   useLayoutEffect(() => () => controller.current?.dispose(), []);

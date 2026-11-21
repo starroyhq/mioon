@@ -64,3 +64,12 @@
   height: 2px;
   background: var(--wb-accent-line);
 }
+.workbench-panel-header > .workbench-panel-detail {
+  flex: none;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wb-muted);
+  font-size: var(--wb-text-label, 11px);
+}

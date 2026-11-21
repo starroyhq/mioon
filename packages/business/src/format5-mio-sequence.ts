@@ -17,6 +17,7 @@ import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
 import type {BoardIntentOperation, SequenceEditDialogueEdit, SequenceEditDialogueIntent, SequenceEditEnvelope,
   SequenceEditIntent, SequenceEditPrevisIntent, SequenceEditReceipt, SequenceEditReferenceIntent,
   SequenceEditSubjectIntent, SequenceEditTrackIntent} from '../../contracts/src/sequence-edit.ts';
+import type {AgentTaskLocale} from '../../contracts/src/agent-tasks-v2.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, any>;
@@ -121,7 +122,8 @@ function freeBoardPosition(store: ProjectStore): {x: number; y: number} {
     if (value === null || typeof value !== 'object' || !Number.isFinite((value as Row).x)) return maximum;
     return Math.max(maximum, Number((value as Row).x));
   }, 0);
-  return {x: Math.min(1_000_000, right + 340), y: 120};}
+  return {x: Math.min(1_000_000, right + 340), y: 120};
+}
 function referenceRequest(action: MioSequenceAction): {referenceIntent: SequenceEditReferenceIntent; allocation: {edges: {id: string; fromId: string; toId: string}[]}} {
   switch (action.kind) {
     case 'reference-attach': {
@@ -177,13 +179,18 @@ function summarize(action: MioSequenceAction, envelope: SequenceEditEnvelope, wa
       clips: (impact.mainTrackClipIds ?? []).length, other: (impact.otherTrackItemIds ?? []).length + (impact.subtitleCueIds ?? []).length + (impact.trackIds ?? []).length},
     warnings: warnings.length};
 }
-/** Preview one bounded action and return the exact envelope to commit. */
-export function previewMioSequenceAction(store: ProjectStore, projectId: string, requestId: string, action: MioSequenceAction): MioSequencePlan {
+/** Preview one bounded action and return the exact envelope to commit. The
+ * optional task language reaches the server-side name expansion, so a
+ * separated-sound clip and a created audio track are named in the language the
+ * user talks to Mio in. */
+export function previewMioSequenceAction(store: ProjectStore, projectId: string, requestId: string,
+  action: MioSequenceAction, options: {readonly locale?: AgentTaskLocale} = {}): MioSequencePlan {
   requireF5(store);
   projectCheck(store, projectId);
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
-  const request: Row = {projectId, requestId, origin: 'mio'};
+  const request: Row = {projectId, requestId, origin: 'mio',
+    ...(options.locale !== undefined ? {locale: options.locale} : {})};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
   else if (action.kind === 'subject-card-create' || action.kind === 'subject-card-delete')
     request.subjectIntent = subjectCardIntent(store, action);
@@ -201,6 +208,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
+  else if (action.kind === 'separate-sound') request.soundIntent = {side: 'timeline',
+    operation: {kind: 'separate-sound', clipId: action.clipId}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
     operation: {kind: 'timeline-format', presetId: action.presetId}};
   else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',
@@ -213,6 +222,14 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
     assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
+  else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
+    placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',
+    settings: {requestId: `mio-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
+      region: action.region, prompt: action.prompt, aspectRatio: action.aspectRatio, duration: action.duration,
+      ...(action.parameters ? {parameters: action.parameters} : {}),
+      ...(action.connectionId ? {connectionId: action.connectionId} : {}),
+      ...(action.configurationRevision !== undefined ? {configurationRevision: action.configurationRevision} : {}),
+      ...(action.modelEntryId ? {modelEntryId: action.modelEntryId} : {})}}};
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
     const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');
@@ -222,9 +239,10 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     summary: summarize(action, result.envelope as SequenceEditEnvelope, result.warnings as readonly unknown[] ?? [])};
 }
 /** Commit exactly the previewed envelope; repeated commits replay the receipt. */
-export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan): SequenceEditReceipt {
+export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan,
+  options: {readonly generationSubmit?: (input: any) => unknown} = {}): SequenceEditReceipt {
   requireF5(store);
-  const value = createFormat5SequenceEditService(store).commit({projectId: store.projectId,
+  const value = createFormat5SequenceEditService(store, options).commit({projectId: store.projectId,
     envelope: plan.envelope, expectedPlanDigest: plan.planDigest}) as SequenceEditReceipt;
   return value;
 }

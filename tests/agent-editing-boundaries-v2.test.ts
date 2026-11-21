@@ -76,6 +76,17 @@ test('the editing boundary is one compact Edit control whose name, hint and anno
     assert.doesNotMatch(String(full.props.className),/is-compact/);assert.equal(nodes(full).find((node)=>node.props?.role==='status')!.props.className,undefined);assert.ok(find(tree,'agent-editing-query'));
   }finally{h.cleanup();}
 });
+test('autoAcquire claims the editing target for an explicit form without a second Edit click',async()=>{
+  const h=harness();try{
+    const props={projectId:h.initialProjectId,targets:[h.target],canRelease:()=>true,autoAcquire:true,children:'Protected fields'};
+    let tree=h.renderBoundary(props);await flush();
+    for(let attempt=0;attempt<6;attempt++){tree=h.renderBoundary(props);await flush();if(h.controller().getState().phase==='active')break;}
+    assert.ok(h.updates.some(update=>update.action==='claim'),'automatic claim dispatched');
+    assert.equal(h.controller().getState().phase,'active');
+    assert.match(readFileSync(new URL('../apps/web/src/AgentEditingBoundary.tsx',import.meta.url),'utf8'),/autoAcquire && state\.phase === 'idle'/u);
+  }finally{h.cleanup();}
+});
+
 test('automatic read leaves no empty recovery card and never dispatches a write',async()=>{
   const h=harness();try{assert.equal(h.render(),null);await flush();assert.equal(h.render(),null);assert.equal(h.reads.length,1);assert.equal(h.updates.length,0);assert.equal(h.closeState()!.blocked,false);}finally{h.cleanup();}
 });

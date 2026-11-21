@@ -171,3 +171,18 @@ test('last source validation cannot revoke the owner scope unnoticed by the priv
   };
   await assert.rejects(f.apply(input),{code:'OPERATION_CANCELLED'});assert.equal(f.accepts,0);assert.equal(f.rejected,0);
 });
+
+test('unity-gain candidates skip muted clips and apply leaves their saved gain untouched',async t=>{
+  const f=await fixture(t),audible=f.snapshot.timeline.clips[0],mutedId=randomUUID(),mutedTrack=randomUUID();
+  f.snapshot.timeline.tracks.push({id:mutedTrack,name:'Audio 2',kind:'audio',orderIndex:1,hidden:false,muted:false});
+  f.snapshot.timeline.clips.push({...audible,id:mutedId,trackId:mutedTrack,gain:.25,muted:true} as never);
+  const {input,report}=await f.review();
+  assert.deepEqual(report.candidate.gains.map(gain=>gain.clipId),[audible.id],'the muted clip is not a unity-gain candidate');
+  assert.equal(report.candidate.gains[0].beforeGain,.75);
+  const response=await f.apply(input);
+  assert.deepEqual(response.application.gains.map(gain=>gain.clipId),[audible.id]);
+  const muted=f.snapshot.timeline.clips.find(clip=>clip.id===mutedId)!;
+  assert.equal(muted.gain,.25,'a muted clip keeps its gain for the later unmute');
+  assert.deepEqual(f.snapshot.timeline.clips.find(clip=>clip.id===audible.id)!.gain,report.candidate.gains[0].afterGain);
+  assert.equal(f.accepts,1);
+});
