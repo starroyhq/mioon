@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BUILD_TIMING_STAGES, hasDesktopTypecheckTiming, measureBuildStage, withDesktopTypecheckTiming} from '../scripts/lib/build-timings.ts';
+import {BUILD_TIMING_STAGES, hasDesktopTypecheckTiming, heapEvidence, measureBuildStage, withDesktopTypecheckTiming} from '../scripts/lib/build-timings.ts';
 import type {BuildTimingRecord, BuildTimingStage} from '../scripts/lib/build-timings.ts';
 
 test('build timing returns the original value and records only a fixed stage and numeric outcome', async () => {
@@ -9,6 +9,24 @@ test('build timing returns the original value and records only a fixed stage and
   assert.deepEqual(records, [{schema: 1, stage: 'web-bundle', durationMs: 9, result: 'success'}]);
   assert.equal(JSON.stringify(records).includes(value.output), false);
   assert.equal(new Set(BUILD_TIMING_STAGES).size, BUILD_TIMING_STAGES.length);
+});
+
+test('heap evidence derives the visible margin and warns only above 80 percent of the limit', () => {
+  const measured = heapEvidence({peakOldSpaceBytes: 690516000, maxOldSpaceBytes: 1024 * 1024 * 1024, peakHeapUsedBytes: 779558960, peakRssBytes: 1170194432});
+  assert.equal(measured.percent, 64.3); assert.equal(measured.warning, false); assert.equal(measured.peakRssBytes, 1170194432);
+  assert.equal(heapEvidence({peakOldSpaceBytes: 900 * 1024 * 1024, maxOldSpaceBytes: 1024 * 1024 * 1024}).warning, true);
+  assert.throws(() => heapEvidence({peakOldSpaceBytes: -1, maxOldSpaceBytes: 1024}), /Invalid build heap evidence/);
+  assert.throws(() => heapEvidence({peakOldSpaceBytes: 1.5, maxOldSpaceBytes: 1024}), /Invalid build heap evidence/);
+});
+
+test('measureBuildStage records probe evidence and never lets a broken probe fail the build', async () => {
+  const records: BuildTimingRecord[] = [], value = {code: 0};
+  const heap = heapEvidence({peakOldSpaceBytes: 700 * 1024 * 1024, maxOldSpaceBytes: 1024 * 1024 * 1024});
+  await measureBuildStage('web-bundle', async () => value, {exitCode: result => result.code, report: record => records.push(record), heap: () => heap});
+  assert.deepEqual(records[0]!.heap, heap);
+  records.length = 0;
+  await measureBuildStage('web-bundle', async () => value, {exitCode: result => result.code, report: record => records.push(record), heap: () => {throw Error('corrupt evidence');}});
+  assert.equal(records[0]!.heap, undefined);
 });
 
 test('nonzero child exits and interruptions keep their original result and record failure', async () => {

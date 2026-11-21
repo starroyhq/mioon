@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {constants} from 'node:os';
 import {constants as fsConstants} from 'node:fs';
 import type {Stats} from 'node:fs';
@@ -475,8 +476,16 @@ export async function discoverTests(root: string, {suite = 'portable', files = [
 }
 export function buildCommands(root: string, entries: Record<string, InstalledPackage>, channel: DesktopChannel, execPath: string = process.execPath): CommandSpec[] {
   desktopIdentity.identityForChannel(channel);
+  // Measured with the heap probe on Node 24.21: the web bundle peaked at
+  // 690 MB old space / 762 MB heapUsed against the former 768 MB limit, and
+  // main CI runs hit the fatal mark-compact at ~720-737 MB on Linux. 1024 MB
+  // reserves ~48% headroom over the measured old-space peak while staying well
+  // inside the 16 GB Linux runner, the 7 GB macOS runner and a source-build
+  // workstation. BUILD_TIMING reports each run's actual peak and warns above 80%.
+  const heapLimitMb = 1024;
+  const heapProbe = pathToFileURL(path.join(root, 'scripts/lib/build-heap-probe.ts')).href;
   return [
-    {command: execPath, args: ['--max-old-space-size=768', entries.vite.entry, 'build'], cwd: path.join(root, 'apps/web')},
+    {command: execPath, args: [`--max-old-space-size=${heapLimitMb}`, `--import=${heapProbe}`, entries.vite.entry, 'build'], cwd: path.join(root, 'apps/web')},
     {command: execPath, args: [path.join(root, 'apps/desktop/scripts/build.ts'), `--channel=${channel}`], cwd: root},
   ];
 }
