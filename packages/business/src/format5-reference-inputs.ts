@@ -974,7 +974,8 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
   } catch { basePrompt = ''; }
   const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
-    {...(options.binding ? {binding: options.binding} : {}), basePrompt,
+    {...(options.binding ? {binding: options.binding} : {}),
+     ...(options.legacyService ? {legacyService: {providerId: options.legacyService.providerId}} : {}), basePrompt,
      ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})}));
   return {
     projectId: store.projectId,

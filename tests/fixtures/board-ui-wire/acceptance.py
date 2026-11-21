@@ -645,9 +645,16 @@ def run_gp_acceptance(page, log, capture, state, wait_position) -> None:
     expect(page.get_by_test_id('board-input-footer')).to_have_attribute('data-service', 'selected')
     expect(page.get_by_test_id('board-input-footer')).not_to_have_text('未选择生成服务')
     assert int(state(page)['inputs']['usedCount']) >= 1
+    # WT-3-05: Mock cannot emit sound; the dialogue status must say the selected
+    # service is unsupported instead of pretending no service was selected.
+    expect(page.get_by_test_id('shot-dialogue-generation-unsupported')).to_be_visible(timeout=15000)
+    marker = page.get_by_test_id('shot-dialogue-generation-unsupported').inner_text()
+    assert '当前服务不支持' in marker, marker
     log('WT-3-01 Mock is reported by the live projection and footer',
         footer=page.get_by_test_id('board-input-footer').inner_text())
+    log('WT-3-05 Mock is a selected but silent service in the dialogue status', marker=marker)
     capture(page, '21-10-mock-service.png')
+    capture(page, '21-10-mock-dialogue-unsupported.png')
 
     # Server-planned generation from the board: select the service through the
     # 21-10 footer itself, then generate without client input.
