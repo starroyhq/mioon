@@ -11,6 +11,7 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
+import GenerateInEditingPanel from '../../../apps/web/src/edit-ui/GenerateInEditingPanel.tsx';
 import SubjectLibrary from '../../../apps/web/src/SubjectLibrary.tsx';
 import {useSubjects} from '../../../apps/web/src/use-subjects.ts';
 import {WorkspaceVisibilityProvider} from '../../../apps/web/src/workspace-visibility.tsx';
@@ -65,6 +66,7 @@ function Harness(): React.ReactElement {
   const [openedNode, setOpenedNode] = useState<string | null>(null);
   const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
   const [mockProviderInstalled, setMockProviderInstalled] = useState(false);
+  const [editingPanelShot, setEditingPanelShot] = useState<string | null>(null);
   const activeProviders = useMemo<readonly GenerationProvider[]>(() => mockProviderInstalled
     ? [...providers, {id: 'mock', name: 'Mock · simulated motion', models: ['mock-motion-v1'],
       mock: true, configured: true, enabled: true, status: 'available'}] : providers, [providers, mockProviderInstalled]);
@@ -337,6 +339,7 @@ function Harness(): React.ReactElement {
       },
       setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
       installMockProvider: () => setMockProviderInstalled(true),
+      openEditingGeneratePanel: (shotId: string) => {setSelectedNodeId(shotId); setEditingPanelShot(shotId);},
       refresh: () => refresh(),
       setInspectorTab: (tab: string) => setInspectorTab(tab === 'versions' ? 'versions' : 'settings'),
       clearSelection: () => setSelectedNodeId(null),
@@ -476,6 +479,21 @@ function Harness(): React.ReactElement {
       <span data-testid="fixture-history-redo">{history?.redo?.operation ?? ''}</span>
       <span data-testid="fixture-at-earliest">{history?.atEarliest ? 'true' : 'false'}</span>
     </div>
+    {editingPanelShot && (() => {
+      const shot = data?.shots?.find((item: Row) => item.id === editingPanelShot);
+      if (!shot) return null;
+      const job = (data?.jobs ?? []).find((item: Row) => item.shotId === shot.id);
+      return <div className="board-fixture-editing-generate">
+        <GenerateInEditingPanel shot={shot} shotLabel={String(Math.max(0, (data?.shots ?? []).findIndex((item: Row) => item.id === shot.id)) + 1).padStart(2, '0')}
+          inputs={inputs} subjectNames={{}} cueCount={0} jobStatus={job?.status ?? null} busy={busy}
+          generateBlocked={Boolean(job && ['queued','running','submitted','pending'].includes(String(job.status)))
+            || (data?.versions ?? []).some((version: Row) => version.shotId === shot.id)}
+          resizable onSavePrompt={prompt => updateShot(shot.id, {prompt}, Number(shot.revision) || 1)}
+          onResize={duration => updateShot(shot.id, {duration}, Number(shot.revision) || 1)}
+          onGenerate={() => generateShot(shot.id)} onRevealOnBoard={() => {}} rpc={(operation, input) => rpc(operation, input)}
+          onDialogueApplied={() => {void refresh();}}/>
+      </div>;
+    })()}
   </div>;
 }
 

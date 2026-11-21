@@ -74,6 +74,7 @@ def main() -> int:
                 run_wt3_subject_creation_acceptance(page, log, capture, state)
                 run_wt114_subject_menu_acceptance(page, log, capture, state)
                 run_wt13_mock_generation_acceptance(page, log, capture, state)
+                run_wt13_editing_panel_acceptance(page, log, capture, state)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -761,6 +762,42 @@ def run_wt13_mock_generation_acceptance(page, log, capture, state) -> None:
     log('WT-1-13 Mock generation carries aspectSource, writes a version and follows it on the main track',
         version=job['versionId'], aspectSource=request['aspectSource'])
     capture(page, '21-13-mock-generation.png')
+
+
+def run_wt13_editing_panel_acceptance(page, log, capture, state) -> None:
+    """WT-1-13 second entry: the 21-09 editing generation panel uses the same
+    format-5 request builder, so its Mock generation also carries aspectSource,
+    writes a version and replaces the placeholder."""
+    before_cards = len(state(page)['cards'])
+    page.get_by_test_id('board-ui-add-shot').click()
+    page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=before_cards, timeout=15000)
+    shot_id = next(card['id'] for card in reversed(state(page)['cards']) if card['kind'] == 'shot')
+    page.get_by_test_id(f'board-card-{shot_id}').click()
+    revision = next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == shot_id)
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {prompt: '21-09 Mock 画幅检查。', duration: 4, aspectRatio: '9:16'}, revision)",
+                  [shot_id, revision])
+    page.wait_for_function("(shotId) => { const shot = window.__boardWireState.shots.find(item => item.id === shotId); return shot?.prompt === '21-09 Mock 画幅检查。' && shot?.duration === 4 && shot?.aspectRatio === '9:16'; }",
+                           arg=shot_id, timeout=15000)
+    page.evaluate("async (shotId) => { await fetch('/test/mock-shot-references', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({shotId})}); await window.__boardWireActions.refresh(); }", shot_id)
+    page.get_by_test_id(f'board-card-{shot_id}').click()
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {providerId:'mock', connectionId:null, configurationRevision:null, modelEntryId:null})", [shot_id])
+    page.wait_for_function("(shotId) => window.__boardWireState.inputs?.shotId === shotId && window.__boardWireState.inputs?.service === 'mock'",
+                           arg=shot_id, timeout=15000)
+    page.evaluate("(shotId) => window.__boardWireActions.openEditingGeneratePanel(shotId)", shot_id)
+    expect(page.get_by_test_id('editing-generate-panel')).to_be_visible(timeout=15000)
+    expect(page.get_by_test_id('editing-generate-submit')).to_be_enabled(timeout=15000)
+    page.evaluate("async () => { const response = await fetch('/test/start-mock-worker', {method: 'POST'}); return response.ok; }")
+    page.get_by_test_id('editing-generate-submit').click()
+    page.wait_for_function("""(shotId) => (window.__boardWireState.jobs ?? []).some(job =>
+      job.shotId === shotId && job.status === 'succeeded' && typeof job.versionId === 'string')""", arg=shot_id, timeout=60000)
+    job = next(job for job in state(page)['jobs'] if job['shotId'] == shot_id and job['status'] == 'succeeded')
+    page.wait_for_function("([shotId, versionId]) => window.__boardWireState.shots.find(shot => shot.id === shotId)?.selectedVersionId === versionId",
+                           arg=[shot_id, job['versionId']], timeout=30000)
+    page.wait_for_function("""([shotId, versionId]) => (window.__boardWireState.clips ?? []).some(clip =>
+      clip.sequenceSource?.nodeId === shotId && clip.versionId === versionId)""", arg=[shot_id, job['versionId']], timeout=30000)
+    log('WT-1-13 21-09 panel Mock generation writes a version and follows the main track',
+        version=job['versionId'])
+    capture(page, '21-09-mock-generation.png')
 
 
 def run_wt114_subject_menu_acceptance(page, log, capture, state) -> None:
