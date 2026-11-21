@@ -98,7 +98,7 @@
 .board-input-row {display:flex!important;flex-wrap:wrap;align-items:center;gap:6px;
   min-height:30px;padding:4px 7px;border:1px solid var(--wb-line);border-radius:6px;background:var(--wb-surface,#17181b);
   font-size:11px;color:var(--wb-text);}
-.board-input-row.is-unsupported {opacity:.62;border-style:dashed;}
+.board-input-row.is-unsupported {border-style:dashed;}
 .board-input-icon {display:flex;align-items:center;color:var(--wb-muted);}
 .board-input-role {color:var(--wb-muted);white-space:nowrap;}
 .board-input-label {min-width:0;flex:1 1 110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:5px;}

@@ -72,6 +72,8 @@ def main() -> int:
                 run_ri_b_acceptance(page, log, capture, state, wait_position)
                 run_gp_acceptance(page, log, capture, state, wait_position)
                 run_wt3_subject_creation_acceptance(page, log, capture, state)
+                run_wt114_subject_menu_acceptance(page, log, capture, state)
+                run_wt13_mock_generation_acceptance(page, log, capture, state)
             assert not errors, errors
             result.update({'ok': True, 'browserVersion': browser.version})
         except Exception as error:
@@ -387,6 +389,7 @@ def run_board_assets_acceptance(page, result, log, capture, state, wait_position
     IMAGE_ASSET = '70000000-0000-4000-8000-000000000012'
     VIDEO_ASSET = '70000000-0000-4000-8000-000000000010'
     AUDIO_ASSET = '70000000-0000-4000-8000-000000000015'
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = 'none'; }")
     def count(page): return page.locator('[data-testid^="board-card-"]').count()
     def add_and_undo(action, label, screenshot, expected='board.node.create'):
         position = int(state(page)['history']['position'])
@@ -405,6 +408,7 @@ def run_board_assets_acceptance(page, result, log, capture, state, wait_position
         log(f'{label} adds one board node and undoes in one step')
     page.reload()
     page.wait_for_function("() => Boolean(window.__boardWireState?.ready)", timeout=30000)
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = 'none'; }")
     expect(page.get_by_test_id('board-fixture-assets')).to_be_visible()
     add_and_undo(lambda: page.get_by_test_id(f'asset-to-canvas-{IMAGE_ASSET}').click(),
                  'asset-library button', '21-07-asset-button.png')
@@ -426,6 +430,7 @@ def run_board_assets_acceptance(page, result, log, capture, state, wait_position
     # fixture camera fits every card after the add/undo history above.
     page.reload()
     page.wait_for_function("() => Boolean(window.__boardWireState?.ready)", timeout=30000)
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = 'none'; }")
     page.get_by_test_id(f'board-card-{TEXT}').click()
     page.locator('body').press('Control+c')
     def paste():
@@ -496,7 +501,22 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     # link it to two shots through the keyboard reference ports.
     palette = page.get_by_test_id(f'fixture-subject-{subject_id}')
     board_canvas = page.get_by_test_id('board-ui-canvas')
-    palette.drag_to(board_canvas, target_position={'x': 260, 'y': 260})
+    assert palette.count() == 1
+    # The production library card starts a native subject drag; dispatch the same
+    # dragstart/dragover/drop events at the canvas target (Playwright's synthetic
+    # drag_to can time out on the transformed board pane).
+    page.evaluate("""(subjectId) => {
+      const card = document.querySelector(`[data-testid="fixture-subject-${subjectId}"]`);
+      const canvas = document.querySelector('[data-testid=board-ui-canvas]');
+      if (!card || !canvas) throw new Error('subject drag targets missing');
+      const rect = canvas.getBoundingClientRect();
+      const dataTransfer = new DataTransfer();
+      card.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer}));
+      canvas.dispatchEvent(new DragEvent('dragover', {bubbles: true, clientX: rect.left + 260,
+        clientY: rect.top + 260, dataTransfer}));
+      canvas.dispatchEvent(new DragEvent('drop', {bubbles: true, clientX: rect.left + 260,
+        clientY: rect.top + 260, dataTransfer}));
+    }""", subject_id)
     wait_position(page, start + 1)
     cards = state(page)['cards']
     card = next(item for item in cards if item['kind'] == 'subject' and item['subjectId'] == subject_id)
@@ -567,6 +587,9 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
     capture(page, '21-06-subject-inputs.png')
 
     # 3. Subject card selection lists linked shots and confirms both delete scopes.
+    # The fixture subject library floats over the lower-left canvas; hide it for
+    # this selection and restore it for the later library acceptance.
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = 'none'; }")
     page.get_by_test_id(f'board-card-{card["id"]}').click()
     expect(page.get_by_test_id('board-inspector-linked-shots')).to_be_visible()
     assert page.get_by_test_id('board-inspector-linked-shots').locator('li').count() == 2
@@ -586,6 +609,7 @@ def run_subject_acceptance(page, log, capture, state, wait_position) -> None:
                            arg=card['id'], timeout=15000)
     log('deleting a subject card confirms its impact and undoes as one step')
     capture(page, '21-01-subject-delete-card-undone.png')
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = ''; }")
 
 
 def run_gp_acceptance(page, log, capture, state, wait_position) -> None:
@@ -700,12 +724,143 @@ def run_gp_acceptance(page, log, capture, state, wait_position) -> None:
     log('WT-1-07 one undo removes the previs creation')
 
 
+def run_wt13_mock_generation_acceptance(page, log, capture, state) -> None:
+    """WT-1-13: the board generation entry must submit the project frame source,
+    then the real Mock task creates a version and replaces the follow placeholder."""
+    before_cards = len(state(page)['cards'])
+    page.get_by_test_id('board-ui-add-shot').click()
+    page.wait_for_function("(count) => window.__boardWireState.cards.length > count", arg=before_cards, timeout=15000)
+    shot_id = next(card['id'] for card in reversed(state(page)['cards']) if card['kind'] == 'shot')
+    page.get_by_test_id(f'board-card-{shot_id}').click()
+    page.get_by_test_id('wire-tab-settings').click()
+    revision = next(shot['revision'] for shot in state(page)['shots'] if shot['id'] == shot_id)
+    page.evaluate("([shotId, revision]) => window.__boardWireActions.updateShot(shotId, {prompt: 'Mock 发版画幅检查。', duration: 4, aspectRatio: '9:16'}, revision)",
+                  [shot_id, revision])
+    page.wait_for_function("(shotId) => { const shot = window.__boardWireState.shots.find(item => item.id === shotId); return shot?.prompt === 'Mock 发版画幅检查。' && shot?.duration === 4 && shot?.aspectRatio === '9:16'; }",
+                           arg=shot_id, timeout=15000)
+    assert (window := state(page)['clips']) and any((clip.get('sequenceSource') or {}).get('nodeId') == shot_id and clip.get('sourceState') == 'placeholder' for clip in window), window
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {providerId:'mock', connectionId:null, configurationRevision:null, modelEntryId:null})", [shot_id])
+    page.wait_for_function("(shotId) => window.__boardWireState.inputs?.shotId === shotId && window.__boardWireState.inputs?.service === 'mock'",
+                           arg=shot_id, timeout=15000)
+    page.evaluate("async () => { const response = await fetch('/test/start-mock-worker', {method: 'POST'}); return response.ok; }")
+    page.evaluate("async (shotId) => { await fetch('/test/mock-shot-references', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({shotId})}); await window.__boardWireActions.refresh(); }", shot_id)
+    page.wait_for_function("(shotId) => window.__boardWireState.shots.some(shot => shot.id === shotId)", arg=shot_id, timeout=15000)
+    page.get_by_test_id('board-inspector-generate').click()
+    page.wait_for_function("() => window.__boardWireLastGeneration?.aspectSource?.kind === 'project'", timeout=15000)
+    request = page.evaluate("() => window.__boardWireLastGeneration")
+    assert request['aspectSource']['aspectRatio'] == '9:16', request
+    assert isinstance(request['aspectSource']['expectedTimelineRevision'], int), request
+    page.wait_for_function("""(shotId) => (window.__boardWireState.jobs ?? []).some(job =>
+      job.shotId === shotId && job.status === 'succeeded' && typeof job.versionId === 'string')""", arg=shot_id, timeout=60000)
+    job = next(job for job in state(page)['jobs'] if job['shotId'] == shot_id and job['status'] == 'succeeded')
+    page.wait_for_function("([shotId, versionId]) => window.__boardWireState.shots.find(shot => shot.id === shotId)?.selectedVersionId === versionId",
+                           arg=[shot_id, job['versionId']], timeout=30000)
+    page.wait_for_function("""([shotId, versionId]) => (window.__boardWireState.clips ?? []).some(clip =>
+      clip.sequenceSource?.nodeId === shotId && clip.versionId === versionId)""", arg=[shot_id, job['versionId']], timeout=30000)
+    assert any(version['id'] == job['versionId'] for version in state(page)['versions'])
+    log('WT-1-13 Mock generation carries aspectSource, writes a version and follows it on the main track',
+        version=job['versionId'], aspectSource=request['aspectSource'])
+    capture(page, '21-13-mock-generation.png')
+
+
+def run_wt114_subject_menu_acceptance(page, log, capture, state) -> None:
+    """WT-1-14: a subject binding is board-side state, so its input row keeps the
+    21-10b menu (follow/lock/detach/restore) even when the selected service
+    reports subject input unsupported. Mock stays unsupported; a supported
+    service then uses the locked version."""
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = 'none'; }")
+    known_shots = {'70000000-0000-4000-8000-000000000003', '70000000-0000-4000-8000-000000000004'}
+    binding = next(item for item in state(page)['bindings']
+                   if item['bindingMode'] != 'detached' and item['shotId'] not in known_shots)
+    shot_id, key = binding['shotId'], binding['id']
+    page.get_by_test_id(f'board-card-{shot_id}').click()
+    page.get_by_test_id('wire-tab-settings').click()
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {providerId:'mock', connectionId:null, configurationRevision:null, modelEntryId:null})", [shot_id])
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'mock'", timeout=15000)
+    page.wait_for_function("(id) => window.__boardWireState.inputs.entries.some(entry => entry.source === 'subject' && entry.bindingId === id)",
+                           arg=key, timeout=15000)
+    subject = next(entry for entry in state(page)['inputs']['entries']
+                   if entry['source'] == 'subject' and entry['bindingId'] == key)
+    assert subject['status'] == 'unsupported', subject
+    assert subject['reason'], subject
+    expect(page.get_by_test_id(f'board-input-{key}')).to_have_attribute('data-status', 'unsupported')
+    expect(page.get_by_test_id(f'board-input-{key}')).to_contain_text('主体')
+    assert page.get_by_test_id(f'board-input-{key}').inner_text().strip(), subject
+    page.get_by_test_id(f'board-input-{key}').locator('button').click()
+    expect(page.get_by_test_id(f'board-input-menu-{key}')).to_be_visible()
+    assert page.locator(f'[data-testid^="board-input-lock-{key}-"]').count() >= 1
+    assert page.get_by_test_id(f'board-input-detach-{key}').count() == 1
+    log('WT-1-14 an unsupported subject row keeps the follow/lock/detach menu', binding=key, reason=subject['reason'])
+    page.keyboard.press('Escape')
+
+    def select(action) -> int:
+        before = int(state(page)['history']['position'])
+        page.get_by_test_id(f'board-input-{key}').locator('button').click()
+        expect(page.get_by_test_id(f'board-input-menu-{key}')).to_be_visible()
+        action()
+        page.wait_for_function("(position) => Number(document.querySelector('[data-testid=fixture-history-position]')?.textContent) === position",
+                               arg=before + 1, timeout=15000)
+        return before + 1
+
+    position = select(lambda: page.locator(f'[data-testid^="board-input-lock-{key}-"]').first.click())
+    assert next(item for item in state(page)['bindings'] if item['id'] == key)['bindingMode'] == 'locked'
+    assert state(page)['history']['undo']['operation'] == 'subject.binding.set-mode', state(page)['history']
+    log('WT-1-14 Mock row locks a subject version in one undo step', position=position)
+    capture(page, '21-10-mock-subject-locked.png')
+
+    # A supported service sees the locked version as a used input.
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {connectionId:'70000000-0000-4000-8000-000000000100', configurationRevision:1, model:'doubao-seedance-2-5-260628'})", [shot_id])
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'ark'", timeout=15000)
+    locked = next(entry for entry in state(page)['inputs']['entries']
+                  if entry['source'] == 'subject' and entry['bindingId'] == key)
+    assert locked['status'] == 'used', locked
+    assert locked['subjectVersionNumber'] == 1, locked
+    log('WT-1-14 a supported service uses the locked subject version', version=locked['subjectVersionNumber'])
+
+    page.evaluate("([shot]) => window.__boardWireActions.setGeneration(shot, {providerId:'mock', connectionId:null, configurationRevision:null, modelEntryId:null})", [shot_id])
+    page.wait_for_function("() => window.__boardWireState.inputs?.service === 'mock'", timeout=15000)
+    position = select(lambda: page.get_by_test_id(f'board-input-follow-{key}').click())
+    assert next(item for item in state(page)['bindings'] if item['id'] == key)['bindingMode'] == 'follow'
+    assert state(page)['history']['undo']['operation'] == 'subject.binding.set-mode', state(page)['history']
+    log('WT-1-14 Mock row returns to follow in one undo step', position=position)
+
+    position = select(lambda: page.get_by_test_id(f'board-input-detach-{key}').click())
+    assert next(item for item in state(page)['bindings'] if item['id'] == key)['bindingMode'] == 'detached'
+    assert state(page)['history']['undo']['operation'] == 'subject.binding.detach', state(page)['history']
+    expect(page.get_by_test_id(f'board-input-detached-{key}')).to_be_visible()
+    log('WT-1-14 Mock row detaches in one undo step', position=position)
+
+    before = int(state(page)['history']['position'])
+    page.get_by_test_id(f'board-input-restore-{key}').click()
+    page.wait_for_function("(position) => Number(document.querySelector('[data-testid=fixture-history-position]')?.textContent) === position",
+                           arg=before + 1, timeout=15000)
+    assert next(item for item in state(page)['bindings'] if item['id'] == key)['bindingMode'] == 'follow'
+    assert state(page)['history']['undo']['operation'] == 'subject.binding.restore', state(page)['history']
+    position = before + 1
+    log('WT-1-14 detached subject restores in one undo step', position=position)
+    capture(page, '21-10-mock-subject-restored.png')
+
+    # A material line unsupported by Mock keeps the service-independent menu too.
+    shot_a = '70000000-0000-4000-8000-000000000003'
+    page.get_by_test_id(f'board-card-{shot_a}').click()
+    page.wait_for_function("(shotId) => window.__boardWireState.inputs?.shotId === shotId && window.__boardWireState.inputs?.service === 'mock'",
+                           arg=shot_a, timeout=15000)
+    material = next(entry for entry in state(page)['inputs']['entries'] if entry['source'] == 'edge')
+    material_key = material['edgeId']
+    page.get_by_test_id(f'board-input-{material_key}').locator('button').click()
+    expect(page.get_by_test_id(f'board-input-menu-{material_key}')).to_be_visible()
+    assert page.locator(f'[data-testid^="board-input-role-{material_key}-"]').count() > 0
+    assert page.get_by_test_id(f'board-input-detach-{material_key}').count() == 1
+    log('WT-1-14 an unsupported material row keeps role/detach menu items')
+
+
 def run_wt3_subject_creation_acceptance(page, log, capture, state) -> None:
     """WT-3-02 (product decision 11-21): the format-5 subject library creates a
     subject and a second version without touching the board/timeline undo stack;
     the board still binds it through the subject-card intent; generation freezes
     the version the shot actually uses."""
     shot_a = '70000000-0000-4000-8000-000000000003'
+    page.evaluate("() => { const panel = document.querySelector('[data-testid=board-fixture-subject-library]'); if (panel) panel.style.display = ''; }")
     history_before = int(state(page)['history']['position'])
     page.set_input_files('[data-testid=subject-import-input]', str(Path(__file__).parent / 'reference.png'))
     page.wait_for_function("(minimum) => (window.__boardWireState.assetCount ?? 0) > minimum", arg=5, timeout=15000)

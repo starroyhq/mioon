@@ -24,6 +24,7 @@ import {createPrevisNode} from '../../../apps/web/src/previs/previs-create.ts';
 import {createPrevisEditorRpc} from '../../../apps/web/src/previs/previs-format5-rpc.ts';
 import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
 import {format5GenerationInputService} from '../../../apps/web/src/board-ui/generation-input-request.ts';
+import {format5GenerationEntry} from '../../../apps/web/src/format5-generation-entry.ts';
 import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
 import {referenceAttachRequest, referenceDetachRequest, referenceReorderRequest, referenceRoleRequest} from '../../../apps/web/src/board-ui/inputs.ts';
 import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
@@ -39,6 +40,7 @@ const rpc = async (operation: string, input: unknown): Promise<any> => {
   const response = await fetch('/rpc', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({operation, input})});
   const body = await response.json() as {ok: boolean; data?: any; error?: {code?: string; message?: string}};
+  if (operation === 'generation.submit') (globalThis as any).__boardWireLastGeneration = input;
   if (!body.ok) throw Object.assign(new Error(body.error?.message ?? 'RPC failed'), {code: body.error?.code ?? 'RPC_FAILED'});
   return body.data;
 };
@@ -81,7 +83,11 @@ function Harness(): React.ReactElement {
       const nextHistory = await rpc('sequence.history.get', {projectId});
       const nextMount = await rpc('sequence.board.get', {projectId});
       const directory = await readGenerationProviderDirectory(operation => rpc(operation, {}));
-      setData(next); setHistory(nextHistory); setMount(nextMount); setProviders(directory.providers);
+      // The driver installs the Mock provider on demand for the generation
+      // acceptance; keep it out of the default directory so no-service steps
+      // remain no-service.
+      setData(next); setHistory(nextHistory); setMount(nextMount);
+      setProviders(directory.providers.filter(provider => provider.id !== 'mock'));
     } catch (error) {
       console.error('board fixture refresh failed', error);
       (window as any).__boardWireError = String((error as Error)?.message ?? error);
@@ -264,24 +270,40 @@ function Harness(): React.ReactElement {
   }, [refresh, t]);
   const generateShot = useCallback((shotId: string): void => {
     const shot = data?.shots?.find((item: Row) => item.id === shotId);
-    const selection = shot ? generationSelection(providers, (generationOptions[shotId] ?? {}) as never, shot as never) : null;
+    const options = generationOptions[shotId] ?? {};
+    const selection = shot ? generationSelection(activeProviders, options as never, shot as never) : null;
     const provider = selection?.provider;
     if (!shot || !selection || !provider) return;
+    const entry = format5GenerationEntry({shot: shot as never, provider, model: selection.model, options,
+      frame: data?.timeline && (data.timelineFrameTransaction === true || true) ? data.timeline as never : null});
+    if (entry.issue) {(window as any).__boardWireGenerationError = 'FRAME'; return;}
     setBusy(true);
     void (async () => {
       try {
         try {
-          await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
-          providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
-            configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId} : {}),
+          const submitted = await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
+            ...(entry.aspectSource ? {aspectSource: entry.aspectSource} : {}),
+            providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
+              configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId} : {}),
             model: selection.model, ...(provider.id === 'mock' ? {parameters: {scenario: selection.scenario}} : {})});
+          // The headless driver starts a synthetic task worker on demand; poll
+          // the real project service so the fixture state sees terminal status,
+          // the written version and the followed main-track clip.
+          if (provider.id === 'mock' && submitted?.id) {
+            for (let attempt = 0; attempt < 120; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 250));
+              const next = await rpc('project.get', {projectId});
+              const current = (next.jobs ?? []).find((job: Row) => job.id === submitted.id);
+              if (current && ['succeeded', 'failed', 'cancelled'].includes(String(current.status))) break;
+            }
+          }
         } catch (error) {
           (window as any).__boardWireGenerationError = String((error as Error)?.message ?? error);
         }
         await refresh();
       } finally {setBusy(false);}
     })();
-  }, [data, providers, generationOptions, refresh]);
+  }, [data, activeProviders, generationOptions, refresh]);
   const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
     void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
   }, [runReference, t]);
@@ -315,6 +337,7 @@ function Harness(): React.ReactElement {
       },
       setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
       installMockProvider: () => setMockProviderInstalled(true),
+      refresh: () => refresh(),
       setInspectorTab: (tab: string) => setInspectorTab(tab === 'versions' ? 'versions' : 'settings'),
       clearSelection: () => setSelectedNodeId(null),
       updateShot: (shotId: string, patch: Record<string, unknown>, expectedRevision: number) => updateShot(shotId, patch as never, expectedRevision),
@@ -372,10 +395,13 @@ function Harness(): React.ReactElement {
       shots: (data?.shots ?? []).map((shot: Row) => ({id: shot.id, title: shot.title, prompt: shot.prompt,
         duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId})),
       jobs: data?.jobs ?? [],
-      inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+      versions: (data?.versions ?? []).map((version: Row) => ({id: version.id, shotId: version.shotId, number: version.number})),
+      clips: ((data?.timeline as Row | null)?.clips ?? []).map((clip: Row) => ({id: clip.id, trackId: clip.trackId,
+        versionId: clip.versionId, sourceState: clip.sourceState, sequenceSource: clip.sequenceSource})),
+      inputs: inputs ? {shotId: inputs.shotId, mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
         entries: inputs.entries.map(entry => ({source: entry.source, status: entry.status, role: entry.role,
-          edgeId: entry.edgeId, bindingId: entry.bindingId, reason: entry.reason ?? null,
-          primary: entry.primary === true}))} : null,
+          edgeId: entry.edgeId, bindingId: entry.bindingId, subjectVersionNumber: entry.subjectVersionNumber,
+          label: entry.label, reason: entry.reason ?? null, primary: entry.primary === true}))} : null,
       providers: providers.map(provider => ({id: provider.id, connectionId: provider.connectionId ?? null}))};
     (window as any).__boardWireState = stateRef.current;
   }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers, subjects.state]);
