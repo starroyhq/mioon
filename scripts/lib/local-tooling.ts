@@ -200,6 +200,13 @@ export function toolingEnvironment(source: NodeJS.ProcessEnv = process.env, {pla
   if (mediaPaths) for (const key of ['MIOON_FFMPEG_PATH', 'MIOON_FFPROBE_PATH']) {
     if (typeof source[key] === 'string' && source[key]) result[key] = source[key];
   }
+  // Nightly performance evidence is an explicit, validated opt-in: the macOS
+  // nightly sets the record-only switch, and tests append the measured values
+  // to a JSON-lines file under artifacts/. Neither value can carry credentials,
+  // arbitrary paths or host configuration.
+  if (source.MIOON_PERF_RECORD_ONLY === '1') result.MIOON_PERF_RECORD_ONLY = '1';
+  const evidence = source.MIOON_PERF_EVIDENCE;
+  if (typeof evidence === 'string' && /^artifacts\/[a-z0-9/-]+\.jsonl$/u.test(evidence)) result.MIOON_PERF_EVIDENCE = evidence;
   return result;
 }
 /** The canonical macOS private temp root used by test children. The default

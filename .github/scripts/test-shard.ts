@@ -23,6 +23,18 @@ export interface ShardReport {
   exclusiveFiles: string[];
 }
 export const TIMINGS_FILE = '.github/test-timings.json';
+/** Reviewed platform-independent checks the macOS nightly lane must not repeat.
+ * The Linux full lane already gates them; the nightly workflow names the exact
+ * files in this environment variable, and only the darwin shard honors it. */
+export const NIGHTLY_SKIP_ENV = 'MIOON_MACOS_NIGHTLY_SKIP_TESTS';
+export function nightlySkippedTests(source: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+  if (platform !== 'darwin') return [];
+  const raw = source[NIGHTLY_SKIP_ENV]?.trim();
+  if (!raw) return [];
+  const files = raw.split(',').map(value => value.trim()).filter(Boolean);
+  if (!files.length || files.some(file => !testPath.test(file))) fail('INVALID_NIGHTLY_SKIP_TESTS');
+  return [...new Set(files)].sort();
+}
 /**
  * Test files that must not share the runner's CPUs; each shard runs its share of them alone, before its other
  * files. Shared execution and runner speed both affect the wall time, so a test needs headroom
@@ -178,7 +190,10 @@ export function shardPhases(report: Pick<ShardReport, 'files' | 'exclusiveFiles'
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number> {
   const options = parseShardArguments(args), root = fileURLToPath(new URL('../../', import.meta.url));
   const suite = fullSuiteForPlatform();
-  const full = await discoverTests(root, {suite});
+  const discovered = await discoverTests(root, {suite});
+  const skipped = nightlySkippedTests();
+  if (skipped.some(file => !discovered.includes(file))) fail('UNKNOWN_NIGHTLY_SKIP_TESTS');
+  const full = discovered.filter(file => !skipped.includes(file));
   const environment = testEnvironment(process.env);
   const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, env: environment, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
   const timingsText = await readFile(path.join(root, TIMINGS_FILE), 'utf8');
@@ -190,7 +205,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
   const output = path.join(root, shardArtifactDirectory(options.index), 'shard.json');
   await mkdir(path.dirname(output), {recursive: true});
   await writeFile(output, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
-  process.stdout.write(`Full test shard ${options.index}/${options.count}: ${report.selectedCount}/${report.fullCount} files (${report.exclusiveFiles.length} alone), about ${report.estimatedSeconds} s, ${options.concurrency ?? 1} at a time; catalog SHA256 ${report.fullListSha256}\n`);
+  process.stdout.write(`Full test shard ${options.index}/${options.count}: ${report.selectedCount}/${report.fullCount} files (${report.exclusiveFiles.length} alone), about ${report.estimatedSeconds} s, ${options.concurrency ?? 1} at a time; catalog SHA256 ${report.fullListSha256}${skipped.length ? `; nightly skipped: ${skipped.join(', ')}` : ''}\n`);
   const {report: prerequisites} = await preflight(root);
   if (!prerequisites.buildReady) {
     console.error(JSON.stringify(prerequisites, null, 2));

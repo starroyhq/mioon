@@ -13,6 +13,7 @@ import {
   readFormat5TimelineState, readFormat5TimelineStateForIds,
 } from '../packages/business/src/project-file/format5-timeline.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
+import {checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `10000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -171,18 +172,18 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing bu
       totalClips: total, mainClips: Math.min(total, FORMAT5_LIMITS.mainTrackClips), subtitleCues: timeline.subtitles!.cues.length,
       cold: Object.fromEntries(Object.entries(cold).map(([key, value]) => [key, round(value)])), results,
       peakProcessRssMiB: round(process.resourceUsage().maxRSS / 1024)}));
-    const linux = process.platform === 'linux';
-    assert.ok(cold.totalMs <= (linux ? 400 : 200), JSON.stringify(cold));
+    const linux = process.platform === 'linux', file = 'tests/project-format5-performance.test.ts', limit = (value: number) => linux ? value * 2 : value;
+    checkPerformanceBudget({file, name: `cold open with ${total} clips`, actual: cold.totalMs, budget: limit(200), unit: 'ms'});
     for (const result of results) {
       // The measured phases must explain the transaction median. A large
       // residual is the signal to add a timer, not noise to retry away.
       assert.ok(Math.abs(result.unattributedMs.p50) <= 5, JSON.stringify(result));
-      assert.ok(result.codePathMs.p95 <= (linux ? 200 : 100), JSON.stringify(result));
-      assert.ok(result.codePathMs.max <= (linux ? 400 : 200), JSON.stringify(result));
+      checkPerformanceBudget({file, name: `code path p95 with ${total} clips`, actual: result.codePathMs.p95, budget: limit(100), unit: 'ms'});
+      checkPerformanceBudget({file, name: `code path max with ${total} clips`, actual: result.codePathMs.max, budget: limit(200), unit: 'ms'});
       if (!linux) {
         // The macOS developer run keeps the end-to-end assertion including COMMIT.
-        assert.ok(result.totalMs.p95 <= 100, JSON.stringify(result));
-        assert.ok(result.totalMs.max <= 200, JSON.stringify(result));
+        checkPerformanceBudget({file, name: `total p95 with ${total} clips`, actual: result.totalMs.p95, budget: 100, unit: 'ms'});
+        checkPerformanceBudget({file, name: `total max with ${total} clips`, actual: result.totalMs.max, budget: 200, unit: 'ms'});
       }
     }
   } finally {store.close(); rmSync(root, {recursive: true, force: true});}

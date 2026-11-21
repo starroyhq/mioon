@@ -13,6 +13,7 @@ import {createProjectServiceApplication} from '../packages/business/src/project-
 import {createServices} from '../packages/business/src/services.ts';
 import {withK1BenchmarkLock} from './helpers/k1-benchmark-lock.ts';
 import {measureCommittedCall, summarizeTiming} from './helpers/commit-timing.ts';
+import {checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -139,16 +140,17 @@ test('K1 format switch and scene split meet the local budgets', async t => {
   console.log(JSON.stringify({benchmark: 'format5-format-scenes', shots, mainClips: shots, auxiliaryClips: auxiliary,
     cues, buildMs, formatTotal, formatCodePath, formatCommit, sceneCodePath, sceneCommit, sceneTotal}));
   assert.ok(buildMs < 180_000, `fixture build took ${buildMs}ms`);
+  const file = 'tests/format5-format-scenes-performance.test.ts';
   if (process.platform === 'linux') {
-    assert.ok(formatCodePath.p95 <= 200, `format K1 code path p95 ${formatCodePath.p95}ms exceeds 200ms`);
-    assert.ok(formatCodePath.max <= 400, `format K1 code path max ${formatCodePath.max}ms exceeds 400ms`);
-    assert.ok(sceneCodePath.p95 <= 400, `scene K1 code path p95 ${sceneCodePath.p95}ms exceeds 400ms`);
-    assert.ok(sceneCodePath.max <= 800, `scene K1 code path max ${sceneCodePath.max}ms exceeds 800ms`);
+    checkPerformanceBudget({file, name: 'format K1 code path p95', actual: formatCodePath.p95, budget: 200, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'format K1 code path max', actual: formatCodePath.max, budget: 400, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'scene K1 code path p95', actual: sceneCodePath.p95, budget: 400, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'scene K1 code path max', actual: sceneCodePath.max, budget: 800, unit: 'ms'});
   } else {
-    assert.ok(formatTotal.p95 <= 100, `format K1 p95 ${formatTotal.p95}ms exceeds 100ms`);
-    assert.ok(formatTotal.max <= 200, `format K1 max ${formatTotal.max}ms exceeds 200ms`);
-    assert.ok(sceneTotal.p95 <= 200, `scene K1 p95 ${sceneTotal.p95}ms exceeds 200ms`);
-    assert.ok(sceneTotal.max <= 400, `scene K1 max ${sceneTotal.max}ms exceeds 400ms`);
+    checkPerformanceBudget({file, name: 'format K1 p95', actual: formatTotal.p95, budget: 100, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'format K1 max', actual: formatTotal.max, budget: 200, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'scene K1 p95', actual: sceneTotal.p95, budget: 200, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'scene K1 max', actual: sceneTotal.max, budget: 400, unit: 'ms'});
   }
   });
 });
