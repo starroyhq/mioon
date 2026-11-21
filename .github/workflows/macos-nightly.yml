@@ -10,12 +10,6 @@ on:
   schedule:
     - cron: '0 18 * * *'
   workflow_dispatch:
-  # TEMPORARY acceptance trigger: GitHub cannot dispatch a workflow that only
-  # exists on a branch (workflow_dispatch requires the file on the default
-  # branch), so this branch-only push trigger runs the acceptance pass. It is
-  # removed in the final commit before review.
-  push:
-    branches: [howard/ci-macos-nightly]
 
 permissions:
   contents: read
