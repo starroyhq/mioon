@@ -9,19 +9,17 @@ import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import net from 'node:net';
+import {startOwnedServer} from './helpers/owned-test-server.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { createProjectStorageReader } from './fixtures/project-server-process.ts';
 import type { BinaryLike } from 'crypto';
-import type { ChildProcessByStdio } from 'child_process';
-import type { Readable } from 'stream';
 
 // Independent, local-only renderer acceptance. The HTTP backend and its client are
 // children of this one test invocation; no externally hosted backend or media is used.
@@ -45,34 +43,23 @@ async function command<B extends boolean=false>(file:string,args:readonly string
   }
 }
 async function ffmpeg(args: string[]) { return command('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-filter_complex_threads', '1', ...args]); }
-async function freePort() {
-  const listener = net.createServer().listen(0, '127.0.0.1'); await once(listener, 'listening');
-  const port = ((listener.address() as import('node:net').AddressInfo) as import('node:net').AddressInfo).port; await new Promise(resolve => listener.close(resolve)); return port;
-}
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-v2-media-'));
-  const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  let child!: ChildProcessByStdio<null,Readable,Readable>;
+  let child!: ChildProcess;
+  let server: Awaited<ReturnType<typeof startOwnedServer>> | undefined;
+  let base = '';
   let read!: ReturnType<typeof createProjectStorageReader>;
   async function start() {
-    const processRecord = { action: 'start', at: new Date().toISOString(), port, root, stdout: '', stderr: '' };
-    child = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts'), '--legacy-project-format'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }) as typeof child;
+    server = await startOwnedServer({repo, root, token, ipc: true, args: [path.join(repo, 'tests/fixtures/project-server-process.ts'), '--legacy-project-format']});
+    child = server.child; base = server.url;
+    const processRecord = { action: 'start', at: new Date().toISOString(), port: server.port, root, stdout: '', stderr: '' };
     read = createProjectStorageReader(child);
     (processRecord as typeof processRecord & {pid:(number | undefined)}).pid = child.pid; records.processes.push(((processRecord) as unknown as Parameters<typeof records.processes.push>[0]));
-    child.stdout.setEncoding('utf8').on('data', bytes => processRecord.stdout += bytes); child.stderr.setEncoding('utf8').on('data', bytes => processRecord.stderr += bytes);
-    child.on('close', (code, signal) => Object.assign(processRecord, { exitCode: code, signal }));
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      if (child.exitCode !== null) throw Error(`Backend exited: ${processRecord.stderr}`);
-      try { if ((await fetch(base + '/health')).ok) return; } catch {}
-      await pause(30);
-    }
-    throw Error(`Backend startup timed out: ${processRecord.stderr}`);
+    child.on('close', (code, signal) => Object.assign(processRecord, { exitCode: code, signal, stdout: server!.stdout(), stderr: server!.stderr() }));
   }
   async function stop(signal: unknown = 'SIGTERM') {
-    if (!child || child.exitCode !== null || child.signalCode) return;
-    const current = child, exited = once(current, 'exit');
-    records.processes.push((({ action: 'stop', signal, pid: current.pid, at: new Date().toISOString() }) as unknown as Parameters<typeof records.processes.push>[0])); current.kill(((signal) as unknown as Parameters<typeof current.kill>[0])); await exited;
+    if (!server || child.exitCode !== null || child.signalCode) return;
+    records.processes.push((({ action: 'stop', signal, pid: child.pid, at: new Date().toISOString() }) as unknown as Parameters<typeof records.processes.push>[0])); await server.stop(signal as NodeJS.Signals);
   }
   async function rpc<O extends string,S extends number=200>(operation:O,input:Record<string,unknown> = {},expectedStatus:S=200 as S,entityProjectId?:string):Promise<S extends 200 ? ServiceResponse<O> : Failure> {
     const response = await fetch(base + rpcPathFor(operation,input,entityProjectId), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
@@ -119,7 +106,7 @@ async function fixture(t: test.TestContext) {
     await stop(); (records as typeof records & {finishedAt:(string)}).finishedAt = new Date().toISOString(); (records as typeof records & {result:("passed" | "failed_or_incomplete")}).result = records.checks.length && records.checks.every(c => ((c as typeof c & {result:("passed" | "failed_or_incomplete")}) as unknown as {result:("passed" | "failed_or_incomplete")}).result === 'passed') ? 'passed' : 'failed_or_incomplete';
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2)); await rm(root, { recursive: true, force: true });
   });
-  await start(); return { root, base, start, stop, rpc, exportUntil, finish, download, storage, importFile, project,projectDirectory };
+  await start(); return { root, get base() { return base; }, start, stop, rpc, exportUntil, finish, download, storage, importFile, project,projectDirectory };
 }
 
 async function check<T extends object>(t:test.TestContext,name:string,fn:()=>Promise<T>) {
