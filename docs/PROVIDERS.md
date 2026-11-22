@@ -517,14 +517,15 @@ Scenarios:
 | --- | --- |
 | `success` | Runs briefly, then succeeds |
 | `delay` | Succeeds after `delayMs`; default 2 seconds |
-| `failure`, `terminal_failure` | Definitive failed remote task |
+| `failure`, `terminal_failure` | Definitive failed remote task; retrying the frozen request fails again |
+| `failure_once` | First submission of a snapshot fails; submitting the same frozen request again succeeds |
 | `reject`, `rejected_before_accept` | Definitive submission rejection, no remote task |
 | `timeout`, `poll_timeout_then_recover` | First two polls fail transiently; third poll resumes the same task |
 | `unknown` | Unresolved submission with no discoverable task; never automatically retry |
 | `accepted_then_response_lost` | Durable remote acceptance followed by a lost response; reconcile by request ID |
 | `download_fail_once` | First download fails; subsequent download of the same task succeeds |
 
-`delayMs` is bounded to 0–120000ms. Mock supports 9:16 and 2/4/8 seconds. A user retry of a format-5 `failure`/`terminal_failure` request simulates success so the retry UI can exercise recovery; the frozen request snapshot itself is unchanged. It produces a moving 360×640, 24fps H.264/yuv420p MP4 using local FFmpeg with an argument array and no shell. A permanent on-frame SIMULATED MOCK label and file metadata identify the result. The moving test pattern is a workflow simulation; it does not depict the prompt or image. No external provider is contacted. Cancellation can positively confirm a running mock task was cancelled; completed outputs are preserved.
+`delayMs` is bounded to 0–120000ms. Mock supports 9:16 and 2/4/8 seconds. It produces a moving 360×640, 24fps H.264/yuv420p MP4 using local FFmpeg with an argument array and no shell. A permanent on-frame SIMULATED MOCK label and file metadata identify the result. The moving test pattern is a workflow simulation; it does not depict the prompt or image. No external provider is contacted. Cancellation can positively confirm a running mock task was cancelled; completed outputs are preserved.
 
 ## Runway implementation
 

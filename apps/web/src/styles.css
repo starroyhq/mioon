@@ -590,6 +590,7 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 .workbench-toast.error > svg { color: var(--wb-danger); }
 .workbench-toast.warning { border-color: var(--wb-warning); }
 .workbench-toast.warning > svg { color: var(--wb-warning); }
+.shell-redesign.mode-canvas .workbench-toast { right: calc(var(--wb-inspector-width) + 2 * var(--wb-panel-gap) + var(--wb-space-3)); }
 @keyframes workbench-toast-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .wb-dialog[data-testid="timeline-export-dialog"] > .wb-dialog-content, .wb-dialog[data-testid="task-center-dialog"] > .wb-dialog-content, .wb-dialog[data-testid="image-generation-dialog"] > .wb-dialog-content { display: flex; flex-direction: column; }
 .project-chooser-list { display: flex; flex-direction: column; gap: var(--wb-space-2); padding: var(--wb-space-3); }

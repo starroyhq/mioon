@@ -259,7 +259,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   let j=recordValue(get('jobs',original.id)) as JobRecord|null;
   if(!j)return;
   let provider:ReturnType<NonNullable<OrdinaryServices['resolveGenerationResultProvider']>>;
-  const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,retryOfJobId:j.retryOfJobId??null,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),providerAcceptedAt:j.providerAcceptedAt,signal};
+  const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),providerAcceptedAt:j.providerAcceptedAt,signal};
   let acceptedProviderId: string|null=null,guardJob=j,postPermitted=false,blockedGate=false;
   const submissionCount=numberValue(j.submissionCount)??0;
   const nextPollAt=numberValue(j.nextPollAt);

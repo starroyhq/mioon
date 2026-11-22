@@ -26,8 +26,6 @@ export interface ProviderContext {
   beforeSubmit?: () => unknown;
   requestId?: string;
   jobId?: string;
-  /** Set only when this submission is a user retry of a terminal failed job. */
-  retryOfJobId?: string | null;
   providerRegion?: string;
   validateReferenceState?: () => unknown;
 }

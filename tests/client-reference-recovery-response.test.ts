@@ -60,7 +60,7 @@ test('complete legacy, existing-binding no-op and historical reference results r
 });
 
 test('every known optional parameter and selected version remains valid without normalization', () => {
-  const scenarios = ['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure'];
+  const scenarios = ['success', 'failure', 'failure_once', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure'];
   for (const operation of REFERENCE_MUTATION_OPERATIONS) for (const parameters of [{}, {seed: -1}, {seed: Number.MAX_VALUE}, {delayMs: 0}, {delayMs: 120000}, ...scenarios.map(scenario => ({scenario}))]) {
     const {input, value} = fixture(operation); value.shot.parameters = parameters; value.shot.selectedVersionId = randomUUID();
     const before = clone(value); frozen(value);

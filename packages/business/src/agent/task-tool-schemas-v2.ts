@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="1f1372ffec43ed8f835c44565ca0ba9bcfe15d3fcf2f7bde9e59b0c7314095c5";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="c06b478e18b9d124883407aec9dbd8e2f3d92c6e8facff67f59feb1b376c7905";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -9462,6 +9462,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "enum": [
        "success",
        "failure",
+       "failure_once",
        "delay",
        "timeout",
        "unknown",
@@ -9574,6 +9575,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "enum": [
          "success",
          "failure",
+         "failure_once",
          "delay",
          "timeout",
          "unknown",
@@ -9966,6 +9968,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "enum": [
        "success",
        "failure",
+       "failure_once",
        "delay",
        "timeout",
        "unknown",

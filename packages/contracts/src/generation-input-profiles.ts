@@ -10,7 +10,7 @@ export const FRAME_PAIR_PROFILE_VERSION = 'mioon-input-profiles/2';
 export const SUBJECT_REFERENCE_PROFILE_VERSION = 'mioon-input-profiles/3';
 export const REVIEWED_ON = '2026-10-10';
 export const INPUT_ROLES = Object.freeze(['first_frame', 'last_frame', 'subject_reference', 'style_reference', 'motion_reference']);
-export const MOCK_SCENARIOS = Object.freeze(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure']);
+export const MOCK_SCENARIOS = Object.freeze(['success', 'failure', 'failure_once', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure']);
 
 export interface GenerationInputDimensions {
   min: number;
