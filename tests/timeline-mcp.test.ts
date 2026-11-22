@@ -1,4 +1,5 @@
 import {testEnv} from './helpers/test-env.ts';
+import {startOwnedServer} from './helpers/owned-test-server.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -16,7 +17,6 @@ import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import net from 'node:net';
 import path from 'node:path';
 import type { ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
@@ -26,23 +26,20 @@ const exec = promisify(execFile), repo = fileURLToPath(new URL('..', import.meta
 const evidence = path.join(repo, 'evidence/v2-tests/mcp');
 const token = 'timeline-mcp-regression-test-local-token';
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
-async function freePort() { const server = net.createServer().listen(0, '127.0.0.1'); await once(server, 'listening'); const port = ((server.address() as import('node:net').AddressInfo))!.port; await new Promise(resolve => server.close(resolve)); return port; }
 
 test('timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart', { timeout: 120_000 }, async t => {
   await mkdir(evidence, { recursive: true });
   const root = await mkdtemp(path.join(tmpdir(), 'workbench-timeline-mcp-'));
-  const port = await freePort(), base = `http://127.0.0.1:${port}`;
+  let base = ''; let server: Awaited<ReturnType<typeof startOwnedServer>> | undefined;
   const traffic: ({ direction: string; at: string; message: JSONRPCMessage; })[] = [], report = { startedAt: new Date().toISOString(), runtime: process.version, implementation: 'Official MCP SDK Client + StdioClientTransport', calls: [], http: [], processes: [], checks: [] };
   let backend!: ChildProcessByStdio<null,Readable,Readable>, client!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>, transport!: StdioClientTransport, mcpStderr = '';
   async function start() {
-    const record = { event: 'start', at: new Date().toISOString(), port, stdout: '', stderr: '' }; report.processes.push(((record) as unknown as Parameters<typeof report.processes.push>[0]));
-    backend = spawn(process.execPath, ['tests/fixtures/project-server-process.ts', '--format4-project'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
-    (record as typeof record & {pid:(number | undefined)}).pid = backend.pid; backend.stdout.setEncoding('utf8').on('data', bytes => record.stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => record.stderr += bytes); backend.on('exit', (code, signal) => Object.assign(record, { exitCode: code, signal }));
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) { if (backend.exitCode !== null) throw Error(record.stderr); try { if ((await fetch(base + '/health')).ok) return; } catch {} await pause(40); }
-    throw Error(`Backend startup timed out: ${record.stderr}`);
+    server = await startOwnedServer({repo, root, token, args: ['tests/fixtures/project-server-process.ts', '--format4-project']});
+    base = server.url;
+    const record = { event: 'start', at: new Date().toISOString(), port: server.port, stdout: '', stderr: '' }; report.processes.push(((record) as unknown as Parameters<typeof report.processes.push>[0]));
+    (record as typeof record & {pid:(number | undefined)}).pid = server.child.pid;
   }
-  async function stop() { if (!backend || backend.exitCode !== null || backend.signalCode) return; const child = backend, end = once(child, 'exit'); child.kill('SIGTERM'); await end; }
+  async function stop() { await server?.stop(); server = undefined; }
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});
     await stop(); (report as typeof report & {finishedAt:(string)}).finishedAt = new Date().toISOString(); (report as typeof report & {mcpStderr:(string)}).mcpStderr = mcpStderr; (report as typeof report & {protocolMessageCount:(number)}).protocolMessageCount = traffic.length;
@@ -128,8 +125,8 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   do { rendered = await call('export_get', { projectId, exportId: queued.id }); if (['succeeded', 'failed'].includes(rendered.status)) break; await pause(100); } while (Date.now() < renderDeadline);
   assert.equal(rendered.status, 'succeeded', JSON.stringify(rendered));
   assert.deepEqual(await call('timeline_render', renderArgs), queued, 'render replay remains the original queued response even after success');
-  const firstPid = backend.pid; const preRestart = await http('project.get', { projectId });
-  await stop(); await start(); assert.notEqual(backend.pid, firstPid, 'a new HTTP process actually started');
+  const firstPid = server!.child.pid; const preRestart = await http('project.get', { projectId });
+  await stop(); await start(); assert.notEqual(server!.child.pid, firstPid, 'a new HTTP process actually started');
   assert.deepEqual(await http('project.get', { projectId }), preRestart, 'backend process restart preserves project, tracks, clips, imported media, and completed render');
   for (const item of history) assert.deepEqual(await call(item.name, item.args), item.result, `${item.name} exact original replay survives actual backend restart`);
   assert.deepEqual(await call('timeline_render', renderArgs), queued);
