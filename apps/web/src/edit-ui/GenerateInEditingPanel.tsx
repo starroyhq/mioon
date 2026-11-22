@@ -9,6 +9,7 @@ import Icon from '../icons.tsx';
 import ShotDialogue from '../ShotDialogue.tsx';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {generationModeKeys, referenceRoleKey, unsupportedReasonKey} from '../board-ui/inputs.ts';
+import {generationFailureDescriptor, providerDisplayName} from '../creation-i18n.ts';
 import type {SequenceGenerationInputView} from '../../../../packages/contracts/src/sequence-inspection.ts';
 import type {MessageKey} from '../../../../packages/i18n/src/index.ts';
 import './generate-in-editing-panel.css';
@@ -20,12 +21,14 @@ export interface GenerateInEditingPanelProps {
   readonly inputs: SequenceGenerationInputView | null;
   readonly subjectNames: Record<string, string>;
   readonly cueCount: number;
-  readonly jobStatus?: string | null;
+  readonly job?: Row | null;
   readonly busy: boolean;
   readonly generateBlocked?: boolean;
   readonly resizable?: boolean;
-  readonly blockedReason?: string | null;
   readonly onSavePrompt: (prompt: string) => unknown;
+  readonly onCancelJob?: (job: Row) => unknown;
+  readonly onRetryJob?: (job: Row) => unknown;
+  readonly onOpenTaskCenter?: (jobId: string) => unknown;
   readonly onResize: (duration: number) => unknown;
   readonly onGenerate: () => unknown;
   readonly onRevealOnBoard: () => unknown;
@@ -40,10 +43,26 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
   const {shot, inputs} = props;
   const [draft, setDraft] = useState(String(shot.prompt ?? ''));
   const [duration, setDuration] = useState(Number(shot.duration) || 4);
+  const [jobAction, setJobAction] = useState<string | null>(null);
   useEffect(() => {setDraft(String(shot.prompt ?? '')); setDuration(Number(shot.duration) || 4);},
     [shot.id, shot.revision]);
   const dirty = draft !== String(shot.prompt ?? '');
   const entries = inputs?.entries ?? [];
+  const latestJob = props.job ?? null;
+  const activeJob = latestJob && ['queued', 'submitting', 'running', 'downloading'].includes(String(latestJob.status)) ? latestJob : null;
+  const failedJob = latestJob?.status === 'failed' ? latestJob : null;
+  const unknownJob = latestJob?.status === 'submission_unknown' ? latestJob : null;
+  const jobServiceName = latestJob ? providerDisplayName({id: String(latestJob.providerId ?? '')}, t) : '';
+  const cancelJob = async (job: Row): Promise<void> => {
+    if (!props.onCancelJob || jobAction !== null) return;
+    setJobAction(`cancel:${String(job.id)}`);
+    try { await props.onCancelJob(job); } finally { setJobAction(null); }
+  };
+  const retryJob = async (job: Row): Promise<void> => {
+    if (!props.onRetryJob || jobAction !== null) return;
+    setJobAction(`retry:${String(job.id)}`);
+    try { await props.onRetryJob(job); } finally { setJobAction(null); }
+  };
   return <div className="generate-in-editing-panel" data-testid="editing-generate-panel">
     <header className="generate-in-editing-heading">
       <strong data-testid="editing-generate-shot-title">{props.shotLabel ? `${props.shotLabel} · ` : ''}{String(shot.title ?? '')}</strong>
@@ -93,12 +112,34 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
         cueCount={props.cueCount} dialogueStatus={inputs?.dialogue ?? null} disabled={props.busy}
         rpc={props.rpc} onApplied={() => props.onDialogueApplied()} />
     </section>
-    {props.blockedReason && <p className="generate-in-editing-note" role="status">{props.blockedReason}</p>}
     <footer className="generate-in-editing-footer">
-      <Button type="button" size="sm" className="button generate-button full" data-testid="editing-generate-submit"
-        disabled={props.busy || props.generateBlocked || !inputs?.service} onClick={() => void props.onGenerate()}>
-        <Icon name="sparkle" size={16} />{t('boardUi.inspector.generate')}
-      </Button>
+      {activeJob ? <section className="generate-in-editing-progress" data-testid="editing-generate-progress">
+        <div className="generate-in-editing-progress-row">
+          <span className="spinner" aria-hidden="true"/>
+          <span className="generate-in-editing-progress-label">{t('redesign.board.generating')} · {jobServiceName}</span>
+          <strong className="generate-in-editing-progress-percent">{Math.round(Number(activeJob.progress) || 0)}%</strong>
+          {props.onCancelJob && <Button type="button" size="sm" className="generate-in-editing-cancel" data-testid="editing-generate-cancel"
+            disabled={props.busy || jobAction !== null} onClick={() => { void cancelJob(activeJob); }}>{t('redesign.board.cancelGeneration')}</Button>}
+        </div>
+        <div className="generate-in-editing-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+          aria-valuenow={Math.round(Number(activeJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(activeJob.progress) || 0)))}%`}}/></div>
+      </section> : <>
+        {failedJob && <section className="generate-in-editing-failure" data-testid="editing-generate-failure" role="alert">
+          <span className="generate-in-editing-failure-label" data-text-selectable>{t('redesign.board.failureReason',
+            {reason: renderMessage(generationFailureDescriptor(failedJob.error))})}</span>
+          {props.onRetryJob && <Button type="button" size="sm" className="generate-in-editing-retry" data-testid="editing-generate-retry"
+            disabled={props.busy || jobAction !== null} onClick={() => { void retryJob(failedJob); }}>
+            <Icon name="refresh" size={12}/>{t('redesign.board.retry')}</Button>}
+        </section>}
+        {unknownJob && <button type="button" className="generate-in-editing-unknown" data-testid="editing-generate-unknown"
+          disabled={props.busy} onClick={() => props.onOpenTaskCenter?.(String(unknownJob.id))}>
+          {t('redesign.board.unknownOutcome')}
+        </button>}
+        <Button type="button" size="sm" className="button generate-button full" data-testid="editing-generate-submit"
+          disabled={props.busy || props.generateBlocked || !inputs?.service} onClick={() => void props.onGenerate()}>
+          <Icon name="sparkle" size={16} />{t('boardUi.inspector.generate')}
+        </Button>
+      </>}
     </footer>
   </div>;
 }

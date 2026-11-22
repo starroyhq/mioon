@@ -4376,7 +4376,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       && (timeline!.clips.find(item => item.id === selectedClipId) as {sequenceSource?: {nodeId?: string}}).sequenceSource?.nodeId === editingGenerateShot.id
       ? timeline!.clips.find(item => item.id === selectedClipId) ?? null : null : null;
   const editingGenerateJob = editingGenerateShot
-    ? jobs.find(job => job.shotId === editingGenerateShot.id) ?? null : null;
+    ? [...jobs].filter(job => job.shotId === editingGenerateShot.id)
+      .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')))[0] ?? null : null;
   useEffect(() => {
     if (!editingGenerateShotId || isBusy('format5-generate-placeholder')) return;
     if (!editingGenerateClip && viewRef.current?.activeMode === 'editing' && selectedClipId) {
@@ -5182,21 +5183,30 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         if (!await confirm(msg('tasks.center.stopWaitConfirmation'))) return;
         return run(`cancel:${job.id}`, 'job.cancel', {jobId: job.id}, undefined, {canExecute: () => true});
       }}
-      onRetryJob={job => retryGeneration(job as never)} /> :
+      onRetryJob={job => retryGeneration(job as never)}
+      onOpenTaskCenter={jobId => openTasks(undefined, jobId)} /> :
     canvasEditingEnabled && canvasSelectedItems.length > 1 ? <aside className="inspector"><CanvasSelectionInspector items={canvasSelectedItems} />
       <CanvasOverview shots={data.shots} versions={data.versions} jobs={jobs as React.ComponentProps<typeof CanvasOverview>['jobs']} nodes={data.nodes} />
     </aside> : storyboardPanel ?? previsPanel ?? <Inspector protectEditing={(content,onDiscard) => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} onDiscard={onDiscard} disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:chosenShot.revision ?? 0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:chosenNode.revision ?? 0}] : []} canRelease={() => !shotDirty && !shotTextRef.current?.hasUnsaved() && !shotTextRef.current?.getState().pending && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain && !isBusy(`save:${chosenShot?.id || chosenNode?.id}`)}>{content}</AgentEditingBoundary>} onEditImage={openImageEdit} annotations={annotations} annotationAsset={librarySource as never} assetSections={sceneSummary(librarySource as AppAsset | null)} annotationBlocked={annotationBlocked}  onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext } as never} onShotTextController={registerShotText} onShotTextAccepted={((({ response }: {response: {projectId: string}}) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }) as never)} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects as never} subjectBlocked={subjectBlocked} shotDialogue={format5 && chosenShot ? <ShotDialogue shot={chosenShot as never} subjectNames={format5DialogueSubjects} projectId={data.project?.id ?? null} cueCount={format5DialogueCues.counts.get(chosenShot.id) ?? 0} dialogueStatus={format5Inputs && format5Inputs.shotId === chosenShot.id ? format5Inputs.dialogue : null} disabled={!online || auth !== true || loading || format5SessionBusy} rpc={(operation, input) => rpc(operation, input)} onApplied={() => { const project = currentProject.current; if (!project) return; void refresh(project); void format5RefreshHistory(); }}></ShotDialogue> : null} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} videoDirectoryUnavailable={videoDirectoryUnavailable} onRetryVideoDirectory={() => { void refresh(); }} showEnvironmentSetup={!nativeWindow} configureGeneration={configureVideoGeneration ? () => openGlobalSettings('models') : undefined} generationFrame={data.timelineFrameTransaction === true ? data.timeline : null} generationOptions={generationOptions[selectedId as string]} onGenerationOptionsChange={updateGenerationOptions as never} tab={tab} setTab={setTab} busy={busy} onSave={saveShot as never} onNodeSave={saveNode as never} onGenerate={generate as never} regenerationJobId={regenerationJobId} onRegenerate={(shot, options, job, stillCurrent) => generate(shot, options, { job, stillCurrent })} onCancelJob={(job, stillCurrent) => { const live = dataRef.current!.jobs.find(item => item.id === job.id); if (!stillCurrent() || live?.projectId !== currentProject.current || live?.status !== job.status || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return; return run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }, undefined, { canExecute: stillCurrent }); }} onRetryJob={retryGeneration} onSelectVersion={selectVersion as never} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots as never[]} nodes={data.nodes as never[]} edges={data.edges as never[]} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={((id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true })) as never} timelineStatus={shotTimelineView(chosenShot?.id)} onViewInEditing={viewShotInEditing} onAddVersion={(assetId: string) => addTimelineAsset(assetId)} />}
     </div> : quickAssetId && sourceAsset ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={data.project?.id} targets={[{kind:'asset_range',id:sourceAsset.id,revision:0}]} canRelease={() => !sourceDirty} onDiscard={()=>{if(sourceRanges.controller.getState().scope===sourceRanges.state?.scope)sourceRanges.controller.discard();}}><SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller as never} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} sections={sceneSummary(sourceAsset as AppAsset | null)}>{<FrameExtractionPanel controller={frameExtraction.controller as never} revealTask={agentRecovery?.kind === 'frame' ? agentRecovery : null} />}</SourceRangeInspector></AgentEditingBoundary> : editingGenerateShot && editingGenerateClip ? <GenerateInEditingPanel shot={editingGenerateShot as never}
       shotLabel={`${String(Math.max(0, sortedShots.findIndex(item => item.id === editingGenerateShot.id)) + 1).padStart(2, '0')}`}
       inputs={format5Inputs} subjectNames={format5DialogueSubjects}
-      cueCount={format5DialogueCues.counts.get(editingGenerateShot.id) ?? 0} jobStatus={editingGenerateJob?.status ?? null}
+      cueCount={format5DialogueCues.counts.get(editingGenerateShot.id) ?? 0} job={editingGenerateJob as never}
       busy={format5SessionBusy || format5BoardBusy}
-      generateBlocked={Boolean(editingGenerateJob && ['queued','running','submitted','pending'].includes(String(editingGenerateJob.status)))
+      generateBlocked={Boolean(editingGenerateJob && ['queued','running','submitted','pending','submission_unknown'].includes(String(editingGenerateJob.status)))
         || data.versions.some(version => version.shotId === editingGenerateShot.id)}
       resizable={(editingGenerateClip as {sourceState?: string}).sourceState === 'placeholder'}
-      blockedReason={editingGenerateJob?.status === 'failed' ? t('timeline.generate.failedHint') : null}
       onSavePrompt={prompt => format5BoardUpdateShot(editingGenerateShot.id, {prompt}, Number(editingGenerateShot.revision) || 1)}
       onResize={duration => format5ResizeGeneration(editingGenerateShot.id, duration)}
+      onCancelJob={async job => {
+        const live = dataRef.current!.jobs.find(item => item.id === job.id);
+        if (!live || live.projectId !== currentProject.current || live.status !== job.status
+          || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return;
+        if (!await confirm(msg('tasks.center.stopWaitConfirmation'))) return;
+        return run(`cancel:${job.id}`, 'job.cancel', {jobId: job.id}, undefined, {canExecute: () => true});
+      }}
+      onRetryJob={job => retryGeneration(job as never)}
+      onOpenTaskCenter={jobId => openTasks(undefined, jobId)}
       onGenerate={() => format5GenerateShot(editingGenerateShot.id)}
       onRevealOnBoard={() => format5RevealGenerationShot(editingGenerateShot.id)}
       rpc={(operation, input) => rpc(operation, input)}

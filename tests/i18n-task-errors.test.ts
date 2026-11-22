@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LOCALES, renderMessage, message } from '../packages/i18n/src/index.ts';
 import { agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
+import { generationFailureDescriptor } from '../apps/web/src/creation-i18n.ts';
 import { agentChatError, safeAgentChatError } from '../packages/business/src/agent/chat-errors.ts';
 import type { DisplayMessage } from '../packages/i18n/src/index.ts';
 import type { EditTaskClient } from '../apps/web/src/edit-task-client.ts';
@@ -120,4 +121,14 @@ test('every retained local task diagnostic has an adjacent explicit display desc
     }
     visit(ast); assert.ok(diagnostics > 0);
   }
+});
+
+
+test('generation failure lines translate known error codes and keep unknown codes visible', () => {
+  assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'PROVIDER_GENERATION_FAILED'})), '服务商没有返回视频');
+  assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'MOCK_GENERATION_FAILED'})), '模拟生成失败');
+  assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'DOWNLOAD_FAILED'})), '下载生成结果失败');
+  assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'SYNTHETIC_UNKNOWN'})), '生成失败（SYNTHETIC_UNKNOWN）');
+  assert.equal(renderMessage('zh-Hant', generationFailureDescriptor({code: 'PROVIDER_GENERATION_FAILED'})), '服務商沒有傳回影片');
+  assert.equal(renderMessage('en', generationFailureDescriptor({code: 'PROVIDER_GENERATION_FAILED'})), 'The provider did not return a video');
 });
