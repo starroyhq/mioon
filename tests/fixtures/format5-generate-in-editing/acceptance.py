@@ -231,6 +231,71 @@ def main() -> int:
             log('clip menu 在前面生成镜头 places before the shot and undoes in one step')
             clip_menu_generate('after')
             log('clip menu 在后面生成镜头 places after the shot and undoes in one step')
+            # WT-1-18: a long packed project must keep the main end entry on the
+            # main track after an overlay right-click and horizontal scrolling.
+            long_name = 'GE-b acceptance long ' + str(uuid.uuid4())[:8]
+            long = rpc('project.create', {'name': long_name})['id']
+            for index in range(40):
+                node = str(uuid.uuid4())
+                seed = rpc('sequence.preview', {'projectId': long, 'requestId': f'seed-long-{node}',
+                    'intents': [{'side': 'board', 'operation': {'kind': 'board.shot.append', 'nodeId': node,
+                        'name': f'长镜头 {index + 1}'}}]}, long)
+                rpc('sequence.commit', {'projectId': long, 'envelope': seed['envelope'],
+                    'expectedPlanDigest': seed['planDigest']}, long)
+            page.get_by_role('link', name='Mioon').click(force=True)
+            page.wait_for_timeout(2500)
+            if page.get_by_test_id('project-home').count() == 0:
+                page.get_by_test_id('project-home-page-projects').click(force=True)
+                page.wait_for_timeout(1000)
+            page.get_by_test_id('pf-card-open-' + long).click(force=True)
+            page.wait_for_timeout(4500)
+            page.get_by_test_id('workspace-editing').click(force=True)
+            page.wait_for_timeout(2500)
+            dismiss_toast(page)
+            long_state = rpc('project.get', {'projectId': long}, long)
+            long_main = long_state['timeline']['mainTrack']['trackId']
+            assert len([clip for clip in long_state['timeline']['clips'] if clip['trackId'] == long_main]) == 40
+            # Add the overlay track and generate one overlay placeholder first.
+            page.get_by_role('button', name='轨道', exact=True).click(force=True)
+            page.wait_for_timeout(500)
+            page.get_by_test_id('add-video-track').click(force=True)
+            page.wait_for_timeout(1500)
+            long_state = rpc('project.get', {'projectId': long}, long)
+            overlay = next(track for track in long_state['timeline']['tracks']
+                if track['kind'] == 'video' and track['id'] != long_main)
+            overlay_lane = page.get_by_test_id('track-lane-' + overlay['id'])
+            overlay_box = overlay_lane.bounding_box()
+            assert overlay_box
+            page.mouse.click(overlay_box['x'] + 500, overlay_box['y'] + overlay_box['height'] / 2, button='right')
+            page.wait_for_timeout(700)
+            assert 'timeline-menu-generate' in menu_items(page)
+            page.keyboard.press('Escape')
+            page.wait_for_timeout(300)
+            # Scroll to the horizon and right-click the main end: target stays main.
+            page.eval_on_selector('[data-testid="timeline-scroll"]',
+                'el => { el.scrollLeft = el.scrollWidth; el.dispatchEvent(new Event("scroll", {bubbles: true})); }')
+            page.wait_for_timeout(1000)
+            long_state = rpc('project.get', {'projectId': long}, long)
+            main_clips = sorted([clip for clip in long_state['timeline']['clips'] if clip['trackId'] == long_main],
+                key=lambda clip: clip['startFrame'])
+            last_clip = page.get_by_test_id('timeline-clip-' + main_clips[-1]['id']).bounding_box()
+            assert last_clip
+            page.mouse.click(min(1580, last_clip['x'] + last_clip['width'] + 30),
+                last_clip['y'] + last_clip['height'] / 2, button='right')
+            page.wait_for_timeout(800)
+            assert 'timeline-menu-generate' in menu_items(page)
+            end_item_text = page.get_by_test_id('timeline-menu-generate').inner_text()
+            assert '在末尾生成镜头' in end_item_text, end_item_text
+            capture(page, '21-08-long-main-end-menu.png')
+            page.get_by_test_id('timeline-menu-generate').click(force=True)
+            page.wait_for_timeout(3500)
+            long_after = rpc('project.get', {'projectId': long}, long)
+            long_main_after = [clip for clip in long_after['timeline']['clips'] if clip['trackId'] == long_main]
+            generated_end = max(long_main_after, key=lambda clip: clip['startFrame'])
+            assert generated_end['startFrame'] >= main_clips[-1]['startFrame'] + main_clips[-1]['durationFrames'], generated_end
+            assert len(long_main_after) == 41, len(long_main_after)
+            log('40-shot scrolled project keeps the main end entry on the main track',
+                clips=len(long_main_after), startFrame=generated_end['startFrame'])
             assert not errors, errors
             result['projectId'] = project
             result['passed'] = True
