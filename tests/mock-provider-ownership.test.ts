@@ -58,7 +58,7 @@ function revokeOnStart(t: test.TestContext, store: ReturnType<typeof openStore>)
 
 test('mock failure retry is simulated as a successful rerun of the frozen request',async t=>{
   const f = await fixture(t);
-  const failure = {...snapshot,parameters:{scenario:'failure',delayMs:0}};
+  const failure = {...snapshot,parameters:{scenario:'failure',delayMs:0},format5ReferenceInputs:{version:1}};
   const firstRequest = randomUUID(), retryRequest = randomUUID();
   await f.provider.submit(failure,{requestId:firstRequest});
   await f.provider.submit(failure,{requestId:retryRequest,jobId:'retry-job',retryOfJobId:'original-job'});

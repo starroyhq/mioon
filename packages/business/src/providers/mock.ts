@@ -134,7 +134,7 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
       // frozen job must be able to exercise the successful recovery path. Real
       // providers keep their own retry semantics; this branch is Mock-only.
       const retriedFailure = typeof context.retryOfJobId === 'string' && context.retryOfJobId.length > 0
-        && requested === 'failure';
+        && requested === 'failure' && Object.hasOwn(value, 'format5ReferenceInputs');
       const scenario = retriedFailure ? 'success' : requested;
       const delayMs = typeof parameters.delayMs === 'number' ? parameters.delayMs : (scenario === 'delay' ? 2000 : 250);
       const json = stable(snapshot), hash = createHash('sha256').update(json).digest('hex');
