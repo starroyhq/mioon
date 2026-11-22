@@ -234,3 +234,24 @@ button.board-input-footer > span {overflow:hidden;text-overflow:ellipsis;white-s
 .board-input-list {position:relative;z-index:2;}
 .board-input-menu {z-index:50;}
 .board-detached-inputs,.board-shot-duration-row,.board-service-picker {position:relative;z-index:1;}
+
+/* 21-10c: generating progress replaces the generate button; a failed generation
+ * adds one danger line above it; unknown outcomes link to the task center. */
+.board-shot-progress {display:flex;flex-direction:column;gap:7px;padding:9px 10px;border:1px solid var(--wb-line,#3a3a3c);border-radius:8px;background:var(--wb-raised,#242426);}
+.board-shot-progress-row {display:flex;align-items:center;gap:7px;min-width:0;color:var(--wb-text);font-size:11px;}
+.board-shot-progress-row .spinner {flex:none;}
+.board-shot-progress-label {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-shot-progress-percent {margin-left:auto;flex:none;font-variant-numeric:tabular-nums;color:var(--wb-soft);font-weight:500;}
+.board-shot-progress-cancel {flex:none;border:1px solid var(--wb-line-strong,#4a4a4f);border-radius:6px;background:transparent;color:var(--wb-text);font:inherit;font-size:10px;padding:5px 9px;cursor:pointer;}
+.board-shot-progress-cancel:hover:not(:disabled) {background:var(--wb-hover,#2c2c2e);}
+.board-shot-progress-cancel:disabled {opacity:.5;cursor:default;}
+.board-shot-progress-track {height:3px;border-radius:999px;background:var(--wb-input,#111);overflow:hidden;}
+.board-shot-progress-track>span {display:block;height:100%;border-radius:inherit;background:var(--wb-text,#f2f2f2);transition:width .2s ease;}
+.board-shot-failure {display:flex;align-items:center;gap:8px;min-width:0;padding:9px 10px;border:1px solid color-mix(in srgb,var(--wb-danger,#e36b6b) 62%,transparent);border-radius:8px;background:color-mix(in srgb,var(--wb-danger,#e36b6b) 13%,var(--wb-raised,#242426));color:var(--wb-danger,#e36b6b);font-size:10px;}
+.board-shot-failure-label {min-width:0;flex:1;line-height:1.5;overflow-wrap:anywhere;}
+.board-shot-failure-retry {flex:none;display:flex;align-items:center;gap:4px;border:1px solid color-mix(in srgb,var(--wb-danger,#e36b6b) 55%,transparent);border-radius:6px;background:transparent;color:var(--wb-text);font:inherit;font-size:10px;padding:5px 8px;cursor:pointer;}
+.board-shot-failure-retry:hover:not(:disabled) {background:var(--wb-hover,#2c2c2e);}
+.board-shot-failure-retry:disabled {opacity:.5;cursor:default;}
+.board-shot-unknown {width:100%;border:1px solid var(--wb-warning,#e8a33d);border-radius:8px;background:color-mix(in srgb,var(--wb-warning,#e8a33d) 12%,var(--wb-raised,#242426));color:var(--wb-warning,#e8a33d);font:inherit;font-size:10px;line-height:1.5;text-align:start;padding:9px 10px;cursor:pointer;}
+.board-shot-unknown:hover:not(:disabled) {background:color-mix(in srgb,var(--wb-warning,#e8a33d) 18%,var(--wb-raised,#242426));}
+.board-shot-unknown:disabled {opacity:.6;cursor:default;}

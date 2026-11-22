@@ -12,7 +12,7 @@ import type { ProviderContext, ProviderSnapshotView, ProviderReferenceAsset } fr
 import {resolveJobOutputDestination} from '../output-artifact-storage.ts';
 
 const ALIASES: Readonly<Record<string, string>> = { rejected_before_accept: 'reject', terminal_failure: 'failure', poll_timeout_then_recover: 'timeout' };
-const SCENARIOS = new Set(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'accepted_then_response_lost', ...Object.keys(ALIASES)]);
+const SCENARIOS = new Set(['success', 'failure', 'failure_once', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'accepted_then_response_lost', ...Object.keys(ALIASES)]);
 const error = providerError;
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
 const stable = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -79,7 +79,8 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
     if (row.cancelled) return { status: 'failed' as const, progress: 0, error: { code: 'PROVIDER_CANCELLED', message: 'Simulated provider task was cancelled.' } };
     if (row.scenario === 'timeout' && row.poll_count <= 2) throw error('PROVIDER_POLL_TIMEOUT', 'Simulated provider status request timed out; the task may still be running.', { retryable: true });
     if (now() < row.ready_at_ms) return { status: 'running' as const, progress: Math.max(0, Math.min(0.95, (now() - row.created_at_ms) / Math.max(1, row.ready_at_ms - row.created_at_ms))) };
-    if (row.scenario === 'failure') return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_GENERATION_FAILED', message: 'Simulated generation failure. You can retry this failed job.' } };
+    if (row.scenario === 'failure') return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_GENERATION_FAILED', message: 'Definitive simulated generation failure. Retrying this frozen request will fail again.' } };
+    if (row.scenario === 'failure_once') return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_GENERATION_FAILED', message: 'One-time simulated generation failure. Retrying this failed job can succeed.' } };
     return { status: 'succeeded' as const, progress: 1 };
   };
   function validate(snapshot: unknown): true {
@@ -132,6 +133,12 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
       const scenario = typeof requestedScenario === 'string' ? (ALIASES[requestedScenario] ?? requestedScenario) : 'success';
       const delayMs = typeof parameters.delayMs === 'number' ? parameters.delayMs : (scenario === 'delay' ? 2000 : 250);
       const json = stable(snapshot), hash = createHash('sha256').update(json).digest('hex');
+      // failure_once: the first submission for an exact snapshot fails; a later
+      // submission of the same frozen request (the user retry) succeeds. This is
+      // a property of the snapshot, not of a particular project format.
+      const repeatedFailureOnce = scenario === 'failure_once'
+        && Boolean(db.prepare('SELECT 1 FROM mock_provider_tasks WHERE snapshot_hash = ? AND scenario = \'failure_once\' LIMIT 1').get(hash));
+      const taskScenario = repeatedFailureOnce ? 'success' : scenario;
       const timestamp = now();
       context.beforeSubmit?.();throwIfMediaAborted(context.signal);assertProjectDatabase(db);
       db.exec('SAVEPOINT mock_submission');
@@ -154,7 +161,7 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
           outcome = 'unknown';
         } else {
           taskId = `mock-${createHash('sha256').update(requestId).digest('hex').slice(0, 32)}`;
-          db.prepare('INSERT INTO mock_provider_tasks(provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms) VALUES(?,?,?,?,?,?,?)').run(taskId, requestId, json, hash, scenario, timestamp, timestamp + delayMs);
+          db.prepare('INSERT INTO mock_provider_tasks(provider_job_id,request_id,snapshot_json,snapshot_hash,scenario,created_at_ms,ready_at_ms) VALUES(?,?,?,?,?,?,?)').run(taskId, requestId, json, hash, taskScenario, timestamp, timestamp + delayMs);
           outcome = scenario === 'accepted_then_response_lost' ? 'accepted_response_lost' : 'accepted';
           if (scenario === 'accepted_then_response_lost') failure = error('SUBMISSION_UNKNOWN', 'The simulated provider accepted the task, but its response was lost. Reconcile without resubmitting.', { uncertain: true });
         }

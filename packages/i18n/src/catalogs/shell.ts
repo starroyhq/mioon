@@ -3071,10 +3071,16 @@ const shellCoreMessages = {
     "ja": "正常完了"
   },
   "inspector.mockFailure": {
-    "zh-Hans": "明确失败（可手动重试）",
-    "zh-Hant": "明確失敗（可手動重試）",
-    "en": "Definitive failure (manual retry allowed)",
-    "ja": "明確な失敗（手動再試行可）"
+    "zh-Hans": "明确失败（每次重试都失败）",
+    "zh-Hant": "明確失敗（每次重試都失敗）",
+    "en": "Definitive failure (retries fail again)",
+    "ja": "明確な失敗（再試行も失敗）"
+  },
+  "inspector.mockFailureOnce": {
+    "zh-Hans": "失败一次（重试成功）",
+    "zh-Hant": "失敗一次（重試成功）",
+    "en": "Fail once (retry succeeds)",
+    "ja": "1回失敗（再試行で成功）"
   },
   "inspector.mockDelay": {
     "zh-Hans": "延迟完成",

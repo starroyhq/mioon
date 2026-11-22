@@ -508,8 +508,8 @@ function Harness(): React.ReactElement {
       const job = (data?.jobs ?? []).find((item: Row) => item.shotId === shot.id);
       return <div className="board-fixture-editing-generate">
         <GenerateInEditingPanel shot={shot} shotLabel={String(Math.max(0, (data?.shots ?? []).findIndex((item: Row) => item.id === shot.id)) + 1).padStart(2, '0')}
-          inputs={inputs} subjectNames={{}} cueCount={0} jobStatus={job?.status ?? null} busy={busy}
-          generateBlocked={Boolean(job && ['queued','running','submitted','pending'].includes(String(job.status)))
+          inputs={inputs} subjectNames={{}} cueCount={0} job={job ?? null} busy={busy}
+          generateBlocked={Boolean(job && ['queued','running','submitted','pending','submission_unknown'].includes(String(job.status)))
             || (data?.versions ?? []).some((version: Row) => version.shotId === shot.id)}
           resizable onSavePrompt={prompt => updateShot(shot.id, {prompt}, Number(shot.revision) || 1)}
           onResize={duration => updateShot(shot.id, {duration}, Number(shot.revision) || 1)}

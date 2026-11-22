@@ -10,7 +10,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
-import {providerDisplayName} from '../creation-i18n.ts';
+import {providerDisplayName, generationFailureDescriptor} from '../creation-i18n.ts';
 import {generationSelection} from '../generation-settings.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
 import {BoardFilmOverview} from './BoardFilmComponents.tsx';
@@ -62,6 +62,12 @@ export interface BoardInspectorProps {
   readonly onUpdateShot?: (shotId: string, patch: {title?: string; prompt?: string; duration?: number},
     expectedRevision: number) => Promise<{readonly ok: boolean; readonly code?: string}>;
   readonly onGenerateShot?: (shotId: string) => void;
+  /** Generation jobs for this project; the selected shot's running/failed job
+   * owns the board-side cancel and retry entries. */
+  readonly jobs?: readonly Row[];
+  readonly onCancelJob?: (job: Row) => unknown;
+  readonly onRetryJob?: (job: Row) => unknown;
+  readonly onOpenTaskCenter?: (jobId: string) => unknown;
   readonly providers?: readonly GenerationProvider[];
   readonly generationOptions?: BoardGenerationOptions;
   readonly onGenerationOptionsChange?: (shotId: string, options: BoardGenerationOptions) => void;
@@ -75,7 +81,7 @@ interface DeleteRequest {readonly nodeId: string; readonly subjectId: string}
 interface InputMenu {readonly key: string; readonly entry: SequenceGenerationInputEntryView}
 
 export default function BoardInspector(props: BoardInspectorProps): React.ReactElement {
-  const {t, formatNumber} = useI18n();
+  const {t, formatNumber, renderMessage} = useI18n();
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const [confirm, setConfirm] = useState<DeleteRequest | null>(null);
   const [inputMenu, setInputMenu] = useState<InputMenu | null>(null);
@@ -88,6 +94,7 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const [shotSaved, setShotSaved] = useState(false);
   const [titleEditing, setTitleEditing] = useState(false);
   const [serviceMenu, setServiceMenu] = useState(false);
+  const [jobAction, setJobAction] = useState<string | null>(null);
   const draftRevision = useRef<number | null>(null);
   const lastShotId = useRef<string | null>(null);
   const dirtyRef = useRef(false);
@@ -101,6 +108,29 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     ?? props.board.projection.films[0])?.items.filter(item => item.kind === 'shot').map(item => item.nodeId) ?? [];
   const shotIndex = shot ? (filmShotIds.includes(shot.id) ? filmShotIds.indexOf(shot.id) : props.shots.findIndex(item => item.id === shot.id)) : -1;
   const shotNumber = shotIndex >= 0 ? String(shotIndex + 1).padStart(2, '0') : null;
+  const isActiveJob = (job: Row): boolean => ['queued', 'submitting', 'running', 'downloading'].includes(String(job.status));
+  const shotJobs = shot ? (props.jobs ?? []).filter(job => job.shotId === shot.id)
+    .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''))) : [];
+  // 21-10c: only the newest generation owns the bottom state. A successful
+  // retry or a newer generation replaces the old failure/unknown entry.
+  const latestJob = shotJobs[0] ?? null;
+  const runningJob = latestJob && isActiveJob(latestJob) ? latestJob : null;
+  const failedJob = latestJob?.status === 'failed' ? latestJob : null;
+  const unknownJob = latestJob?.status === 'submission_unknown' ? latestJob : null;
+  const jobServiceName = (job: Row): string => providerDisplayName(
+    props.providers?.find(provider => provider.id === job.providerId) ?? {id: String(job.providerId ?? '')}, t);
+  const retryPending = Boolean(failedJob && shotJobs.some(job => job.retryOfJobId === failedJob.id
+    && (isActiveJob(job) || job.status === 'submission_unknown')));
+  const cancelGeneration = async (job: Row): Promise<void> => {
+    if (!props.onCancelJob || jobAction !== null) return;
+    setJobAction(`cancel:${job.id}`);
+    try { await props.onCancelJob(job); } finally { setJobAction(null); }
+  };
+  const retryGeneration = async (job: Row): Promise<void> => {
+    if (!props.onRetryJob || jobAction !== null || retryPending) return;
+    setJobAction(`retry:${job.id}`);
+    try { await props.onRetryJob(job); } finally { setJobAction(null); }
+  };
   useEffect(() => {
     if (!editableNode) {setNodeName(''); setNodeText(''); return;}
     setNodeName(editableNode.name);
@@ -367,11 +397,38 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       dialogueStatus={props.inputs && props.inputs.shotId === shot.id ? props.inputs.dialogue : null}
       disabled={props.busy || !props.onDialogueApplied}
       rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}
-    <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
-      disabled={props.busy || !hasService || !props.onGenerateShot}
-      onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>
-      <Icon name="sparkle" size={15}/>{t('boardUi.inspector.generate')}
-    </button>
+    {runningJob ? <section className="board-shot-progress" data-testid="board-shot-job-running"
+      aria-label={`${t('redesign.board.generating')} · ${jobServiceName(runningJob)}`}>
+      <div className="board-shot-progress-row">
+        <span className="spinner" aria-hidden="true"/>
+        <span className="board-shot-progress-label">{t('redesign.board.generating')} · {jobServiceName(runningJob)}</span>
+        <strong className="board-shot-progress-percent">{Math.round(Number(runningJob.progress) || 0)}%</strong>
+        {props.onCancelJob && <button type="button" className="board-shot-progress-cancel" data-testid="cancel-generation"
+          disabled={props.busy || jobAction !== null} onClick={() => { void cancelGeneration(runningJob); }}>
+          {t('redesign.board.cancelGeneration')}
+        </button>}
+      </div>
+      <div className="board-shot-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+        aria-valuenow={Math.round(Number(runningJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(runningJob.progress) || 0)))}%`}}/></div>
+    </section> : <>
+      {failedJob && <section className="board-shot-failure" data-testid={`failed-version-${failedJob.id}`} role="alert">
+        <span className="board-shot-failure-label" data-text-selectable>{t('redesign.board.failureReason',
+          {reason: renderMessage(generationFailureDescriptor(failedJob.error))})}</span>
+        {props.onRetryJob && <button type="button" className="board-shot-failure-retry" data-testid={`retry-failed-version-${failedJob.id}`}
+          disabled={props.busy || jobAction !== null || retryPending} onClick={() => { void retryGeneration(failedJob); }}>
+          <Icon name="refresh" size={12}/>{t('redesign.board.retry')}
+        </button>}
+      </section>}
+      {unknownJob && <button type="button" className="board-shot-unknown" data-testid={`unknown-generation-${unknownJob.id}`}
+        disabled={props.busy} onClick={() => props.onOpenTaskCenter?.(String(unknownJob.id))}>
+        {t('redesign.board.unknownOutcome')}
+      </button>}
+      <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
+        disabled={props.busy || !hasService || !props.onGenerateShot || Boolean(unknownJob)}
+        onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>
+        <Icon name="sparkle" size={15}/>{t('boardUi.inspector.generate')}
+      </button>
+    </>}
   </div> : null;
   return <aside className="inspector board-inspector" data-testid="board-inspector" aria-label={t('shell.properties')}>
     {!selected ? <>

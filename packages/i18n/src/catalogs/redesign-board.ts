@@ -127,6 +127,8 @@ export const redesignBoardMessages={
   'redesign.comparison.seek':{'zh-Hans':'同步播放位置','zh-Hant':'同步播放位置',en:'Shared playback position',ja:'同期再生位置'},
   'redesign.board.use':{'zh-Hans':'选用','zh-Hant':'選用',en:'Use',ja:'選択'},
   'redesign.board.addTimeline':{'zh-Hans':'加入时间线','zh-Hant':'加入時間線',en:'Add to timeline',ja:'タイムラインに追加'},
+  'redesign.board.failureReason':{'zh-Hans':'生成失败：{reason}','zh-Hant':'生成失敗：{reason}',en:'Generation failed: {reason}',ja:'生成失敗：{reason}'},
+  'redesign.board.unknownOutcome':{'zh-Hans':'结果未知，在任务中心核对','zh-Hant':'結果未知，請在工作中心核對',en:'Result unknown; check in Tasks',ja:'結果不明。タスクで確認してください'},
   'redesign.board.retry':{'zh-Hans':'重试','zh-Hant':'重試',en:'Retry',ja:'再試行'},
   'redesign.board.cancelGeneration':{'zh-Hans':'取消生成','zh-Hant':'取消生成',en:'Cancel generation',ja:'生成をキャンセル'},
   'redesign.comparison.useVersion':{'zh-Hans':'选用 V{number}','zh-Hant':'選用 V{number}',en:'Use V{number}',ja:'V{number} を選択'},
