@@ -427,7 +427,7 @@ test('actual empty startup chooses home while explicit startup succeeds without 
 test('nonempty startup without a project URL never reads project contents, and has no retired last-project state', async () => {
   const h = harness({ get() {assert.fail('A home startup must not call project.get.');}});
   await h.boot();
-  assert.deepEqual(h.env.projects, projects);assert.equal('lastProjectRef' in h.env,false);assert.deepEqual(callsOf(h,'directory'),[['directory','/api/project-entries','GET']]);assert.equal(h.env.projectEntryIdentityRef.current.getVerifiedScope(),PROJECT_ENTRY_TEST_SCOPE); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
+  assert.deepEqual(h.env.projects, projectDirectoryProjects(projectEntryFixture(projects)));assert.equal('lastProjectRef' in h.env,false);assert.deepEqual(callsOf(h,'directory'),[['directory','/api/project-entries','GET']]);assert.equal(h.env.projectEntryIdentityRef.current.getVerifiedScope(),PROJECT_ENTRY_TEST_SCOPE); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
   assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
   assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
   for (const action of ['preferences', 'autoReread', 'remember', 'replaceState', 'pushState']) assert.deepEqual(callsOf(h, action), [], action);

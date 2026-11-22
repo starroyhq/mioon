@@ -602,7 +602,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const updateGenerationOptions = useCallback((shotId: string | null, options: GenerationOptionState) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
   const [loading, setLoading] = useState(false);
   const [projectOpening, setProjectOpening] = useState<ProjectOpening>({ phase: 'home', projectId: null, error: '' });
-  const [historyRecovery, setHistoryRecovery] = useState<{projectId: string; name: string | null} | null>(null);
+  const [historyRecovery, setHistoryRecovery] = useState<{projectId: string; name: string | null; projectFile: string | null} | null>(null);
   const formatUpgradeFlight = useRef<WebFormatUpgrade | null>(null);
   const openedProject = useRef<unknown>(null);
   const projectCreateFlight = useRef<Record<string, unknown> | null>(null);
@@ -1342,7 +1342,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           }
         }
         if ((e as {code?: string} | null)?.code === 'PROJECT_HISTORY_DIVERGED') {
-          setHistoryRecovery({projectId: id, name: projects.find(project => project.id === id)?.name ?? null});
+          setHistoryRecovery({projectId: id, name: projects.find(project => project.id === id)?.name ?? null, projectFile: projects.find(project => project.id === id)?.projectFile ?? null});
           setProjectOpening({phase: nativeWindow ? 'error' : 'home', projectId: id, error: ''});
           return false;
         }
@@ -1434,7 +1434,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const nativeProjectId = nativeWindow?.context.initialProjectId;
       if ((e as {code?: string} | null)?.code === 'PROJECT_HISTORY_DIVERGED' && nativeWindow && !nativeWindow.context.quitting
         && !importSession.current.leaseRevoked && isProjectWindowId(nativeProjectId)) {
-        setHistoryRecovery({projectId: nativeProjectId, name: projects.find(project => project.id === nativeProjectId)?.name ?? null});
+        setHistoryRecovery({projectId: nativeProjectId, name: projects.find(project => project.id === nativeProjectId)?.name ?? null, projectFile: projects.find(project => project.id === nativeProjectId)?.projectFile ?? null});
         setProjectOpening({phase: 'error', projectId: nativeProjectId, error: ''});
         return;
       }
@@ -5058,7 +5058,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return claimProjectDocumentTitle(document, data.project.name);
   }, [nativeWindow?.context.contextId, data.project?.id, data.project?.name]);
   const historyRecoveryLayer = historyRecovery && <ProjectHistoryRecoveryDialog key={historyRecovery.projectId} projectId={historyRecovery.projectId}
-    projectName={historyRecovery.name} onClose={() => setHistoryRecovery(null)} onResolved={() => {
+    projectName={historyRecovery.name} projectFile={historyRecovery.projectFile} onClose={() => setHistoryRecovery(null)} onStale={() => {
+      setHistoryRecovery(null); notify(t('projectFile.historyRecovery.stale'));
+    }} onResolved={() => {
       const target = historyRecovery.projectId; setHistoryRecovery(null);
       if (nativeWindow) void nativeProjectEntry?.open(target);
       else void selectProject(target, true, true, true);
