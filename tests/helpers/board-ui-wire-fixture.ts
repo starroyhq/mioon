@@ -24,7 +24,7 @@ export const BOARD_IDS = {
   jobA: id(70), jobB: id(71), jobV2: id(72), clipA: id(30), clipB: id(31), imageClip: id(32), groupA: id(40), groupB: id(41),
   groupImage: id(42), timeline: id(50), edge1: id(80), edge2: id(81), edge3: id(82), referenceEdge: id(83),
   subjectCharacter: id(90), subjectLook: id(91), subjectCharacterVersion: id(92), subjectLookVersion: id(93),
-  arkConnection: id(100), wanConnection: id(101),
+  arkConnection: id(100), wanConnection: id(101), viduConnection: id(102),
   imageNode2: id(7), audioNode: id(8), subjectCard: id(9),
   imageAsset2: id(14), audioAsset: id(15), subjectBinding: id(94), subjectEdge: id(84),
 } as const;
@@ -146,6 +146,13 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     secret: {action: 'replace', value: 'synthetic-ark-key', storage: 'persistent'}});
   await settings.put({action: 'save', expectedRevision: 1, configuration: wan,
     secret: {action: 'replace', value: 'synthetic-wan-key', storage: 'persistent'}});
+  // GP follow-up screenshot: a selected service that cannot speak, so the new
+  // shot panel can show the DL-b "当前服务不支持" marker in a real flow.
+  const vidu: VideoConnectionConfiguration = {id: BOARD_IDS.viduConnection, providerId: 'vidu', name: 'Vidu',
+    region: 'global', workspaceId: '', enabled: true, archived: false, outputHosts: ['output.example'],
+    models: defaultVideoModels('vidu')};
+  await settings.put({action: 'save', expectedRevision: 2, configuration: vidu,
+    secret: {action: 'replace', value: 'synthetic-vidu-key', storage: 'persistent'}});
   const providers = new Map<string, any>();
   const services = createServices(store, providers, {env: {}, application: createProjectServiceApplication(library, undefined, {}),
     videoSettings: settings});

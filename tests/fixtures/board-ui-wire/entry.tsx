@@ -23,7 +23,7 @@ import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
 import {readGenerationProviderDirectory} from '../../../apps/web/src/video-provider-directory.ts';
 import {createPrevisNode} from '../../../apps/web/src/previs/previs-create.ts';
 import {createPrevisEditorRpc} from '../../../apps/web/src/previs/previs-format5-rpc.ts';
-import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
+import {generationParameters, generationSelection, shotWithGenerationParameters} from '../../../apps/web/src/generation-settings.ts';
 import {format5GenerationInputService} from '../../../apps/web/src/board-ui/generation-input-request.ts';
 import {format5GenerationEntry} from '../../../apps/web/src/format5-generation-entry.ts';
 import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
@@ -182,9 +182,15 @@ function Harness(): React.ReactElement {
   useEffect(() => {
     const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
     if (!shot) {setInputs(null); return;}
-    const selection = generationSelection(activeProviders, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
+    const options = (generationOptions[selectedNodeId!] ?? {}) as never;
+    const selection = generationSelection(activeProviders, options, shot as never);
     const provider = selection.provider;
-    const request = {projectId, shotId: shot.id, ...format5GenerationInputService(provider, selection)};
+    // Same projection input as App: B #354's service identity (including Mock's
+    // reserved triple) plus the current 生成声音 switch defaulted by the shared
+    // generationParameters layer for a shot with dialogue.
+    const parameters = generationParameters(shot as never, provider, options);
+    const request = {projectId, shotId: shot.id, ...format5GenerationInputService(provider, selection),
+      ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
     let cancelled = false;
     void rpc('sequence.generation-inputs.get', request).then(value => {
       if (cancelled) return;
@@ -287,6 +293,9 @@ function Harness(): React.ReactElement {
     const entry = format5GenerationEntry({shot: shot as never, provider, model: selection.model, options,
       frame: data?.timeline && (data.timelineFrameTransaction === true || true) ? data.timeline as never : null});
     if (entry.issue) {(window as any).__boardWireGenerationError = 'FRAME'; return;}
+    // Mirrors App.format5GenerateShot: the project-frame aspect entry and the
+    // shared generation sound default are both applied before submit.
+    const shotForGeneration = shotWithGenerationParameters(entry.shot as never, provider, options);
     setBusy(true);
     void (async () => {
       try {
@@ -294,7 +303,8 @@ function Harness(): React.ReactElement {
           const submitted = await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
             ...(entry.aspectSource ? {aspectSource: entry.aspectSource} : {}),
             providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
-              configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId} : {}),
+              configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
+              parameters: shotForGeneration.parameters} : {}),
             model: selection.model, ...(provider.id === 'mock' ? {parameters: {scenario: selection.scenario}} : {})});
           // The headless driver starts a synthetic task worker on demand; poll
           // the real project service so the fixture state sees terminal status,
@@ -407,12 +417,14 @@ function Harness(): React.ReactElement {
       subjectGate: subjectGate.current,
 
       shots: (data?.shots ?? []).map((shot: Row) => ({id: shot.id, title: shot.title, prompt: shot.prompt,
-        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId})),
+        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId,
+        dialogue: Array.isArray(shot.dialogue) ? shot.dialogue.map((line: Row) => ({id: line.id, text: line.text})) : []})),
       jobs: data?.jobs ?? [],
       versions: (data?.versions ?? []).map((version: Row) => ({id: version.id, shotId: version.shotId, number: version.number})),
       clips: ((data?.timeline as Row | null)?.clips ?? []).map((clip: Row) => ({id: clip.id, trackId: clip.trackId,
         versionId: clip.versionId, sourceState: clip.sourceState, sequenceSource: clip.sequenceSource})),
       inputs: inputs ? {shotId: inputs.shotId, mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+        dialogue: inputs.dialogue ?? null,
         entries: inputs.entries.map(entry => ({source: entry.source, status: entry.status, role: entry.role,
           edgeId: entry.edgeId, bindingId: entry.bindingId, subjectVersionNumber: entry.subjectVersionNumber,
           label: entry.label, reason: entry.reason ?? null, primary: entry.primary === true}))} : null,

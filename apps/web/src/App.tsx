@@ -276,7 +276,7 @@ import { publishPrevisOutput } from './previs/previs-publication.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.ts';
-import { generationSelection, generationParameters, generationVideoInput, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
+import { generationSelection, generationParameters, generationVideoInput, shotWithGenerationParameters, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
 import { generationAspectError, generationFrameMatches, prepareGenerationAspect } from './generation-settings.ts';
 import { timelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import { isGenerationAspectNotApplied, isGenerationAspectResponse } from '../../../packages/contracts/src/generation-aspect.ts';
@@ -2642,7 +2642,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const frame = state.timelineFrameTransaction === true || format5 ? state.timeline : null;
     const entry = format5GenerationEntry({shot: shot as never, provider, model: selection.model, options, frame});
     if (entry.issue) {notify(entry.issue, 'error'); return;}
-    const args: GenerationReviewArgs = {shot: entry.shot as never, providerId: provider.id,
+    // Keep the shared sound default: the entry path already resolves
+    // generationParameters, but every board generation still goes through
+    // shotWithGenerationParameters so no caller can bypass the dialogue sound
+    // default. The project-frame aspectSource is passed alongside it.
+    const shotForGeneration = shotWithGenerationParameters(entry.shot as never, provider, options);
+    const args: GenerationReviewArgs = {shot: shotForGeneration as never, providerId: provider.id,
       ...(entry.aspectSource ? {aspectSource: entry.aspectSource} : {}),
       ...(provider.connectionId ? {connectionId: provider.connectionId,
         configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
