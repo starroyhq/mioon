@@ -6,13 +6,14 @@ import type {McpData,WireResult} from './helpers/strict-timeline-transport-types
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import {startOwnedServer} from './helpers/owned-test-server.ts';
+import net from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
 import type { BinaryLike } from 'crypto';
 
@@ -40,19 +41,36 @@ async function command<B extends boolean=false>(file: string, args?: unknown[]|r
   }
 }
 const ffmpeg = (args: string[]) => command('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-filter_complex_threads', '1', ...args]);
+async function freePort() {
+  const listener = net.createServer().listen(0, '127.0.0.1');
+  await once(listener, 'listening');
+  const port = ((listener.address() as import('node:net').AddressInfo))!.port;
+  await new Promise(resolve => listener.close(resolve));
+  return port;
+}
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-split-media-'));
   await mkdir(evidence, { recursive: true });
-  const server = await startOwnedServer({repo, root, token, args: ['server/index.ts']});
-  const base = server.url;
-  records.server = { pid: server.child.pid, port: server.port, stdout: '', stderr: '' };
+  const port = await freePort(), base = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ['tests/fixtures/project-server-process.ts', '--format4-project'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
+  records.server = { pid: child.pid, port, stdout: '', stderr: '' };
+  child.stdout.setEncoding('utf8').on('data', bytes => records.server.stdout += bytes);
+  child.stderr.setEncoding('utf8').on('data', bytes => records.server.stderr += bytes);
+  child.on('close', (exitCode, signal) => Object.assign(records.server, { exitCode, signal }));
   t.after(async () => {
-    await server.stop();
-    records.server.stdout = server.stdout(); records.server.stderr = server.stderr();
+    if (child.exitCode === null && !child.signalCode) { const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; }
     (records as typeof records & {finishedAt:(string)}).finishedAt = new Date().toISOString();
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2));
     await rm(root, { recursive: true, force: true });
   });
+  const deadline = Date.now() + 20_000;
+  let ready = false;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw Error(`Backend exited: ${records.server.stderr}`);
+    try { if ((await fetch(base + '/health')).ok) { ready = true; break; } } catch {}
+    await pause(40);
+  }
+  assert.ok(ready, `Backend startup timed out: ${records.server.stderr}`);
   async function rpc<N extends string,I extends Record<string,unknown>=Record<string,never>,E extends string|undefined=undefined>(operation: N, input: I = {} as I, entityProjectId?: string):Promise<WireResult<ServiceResponse<N>,E>> {
     const response = await fetch(base + rpcPathFor(operation,input,entityProjectId), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
     const body = await response.json();

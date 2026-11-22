@@ -6,13 +6,14 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { execFile } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import {startOwnedServer} from './helpers/owned-test-server.ts';
+import net from 'node:net';
 import path from 'node:path';
 interface TrafficRecord {at: string; direction: 'client-to-server' | 'server-to-client'; message: {method?: string; params?: {name?: string}; [key: string]: unknown}}
 interface BackendRecord {command: string; args: string[]; port: number; dataDirectory: string; liveProviderEnabled: boolean; stdout?: string; stderr?: string}
@@ -25,26 +26,28 @@ interface Report {
 const exec = promisify(execFile), repo = fileURLToPath(new URL('..', import.meta.url));
 const evidence = path.join(repo, 'evidence/mcp'), token = 'mcp-acceptance-token-minimum-twenty-characters';
 const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+async function freePort(): Promise<number> { const server = net.createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening'); const address = server.address(); if (!address || typeof address === 'string') throw Error('Expected a bound TCP address'); const port = address.port; await new Promise<void>(resolve => server.close(() => resolve())); return port; }
 
 test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP project, jobs and versions', { timeout: 120_000 }, async (t: TestContext) => {
   await mkdir(evidence, { recursive: true });
   const persist = process.env.MIOON_MCP_PERSIST_DIR ? path.resolve(process.env.MIOON_MCP_PERSIST_DIR) : null;
   const root = persist || await mkdtemp(path.join(tmpdir(), 'mioon-mcp-'));
-  await mkdir(root, { recursive: true });
-  const server = await startOwnedServer({repo, root, token, args: ['server/index.ts']});
-  const base = server.url;
-  const traffic: TrafficRecord[] = [], report: Report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.ts'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.ts'], port: server.port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
-  let mcpStderr = '';
+  await mkdir(root, { recursive: true }); const port = await freePort(), base = `http://127.0.0.1:${port}`;
+  const traffic: TrafficRecord[] = [], report: Report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.ts'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.ts'], port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
+  let stdout = '', stderr = '', mcpStderr = '';
   let client: Client | undefined, transport: StdioClientTransport | undefined;
-  const backend = server.child;
+  const backend = spawn(process.execPath, ['tests/fixtures/project-server-process.ts', '--format4-project'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
+  backend.stdout?.setEncoding('utf8').on('data', (bytes: string) => stdout += bytes); backend.stderr?.setEncoding('utf8').on('data', (bytes: string) => stderr += bytes);
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});
-    await server.stop();
-    report.finishedAt = new Date().toISOString(); report.backend.stdout = server.stdout(); report.backend.stderr = server.stderr(); report.mcpStderr = mcpStderr; report.protocolMessages = traffic.length;
+    if (backend.exitCode === null && !backend.signalCode) { const done = once(backend, 'exit'); backend.kill('SIGTERM'); await done; }
+    report.finishedAt = new Date().toISOString(); report.backend.stdout = stdout; report.backend.stderr = stderr; report.mcpStderr = mcpStderr; report.protocolMessages = traffic.length;
     await writeFile(path.join(evidence, 'protocol-traffic.jsonl'), traffic.map(record => JSON.stringify(record)).join('\n') + '\n');
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(report, null, 2));
     if (!persist) await rm(root, { recursive: true, force: true });
   });
+  const deadline = Date.now() + 20_000;
+  while (true) { if (backend.exitCode !== null) throw Error(`Backend exit ${backend.exitCode}: ${stderr}`); try { if ((await fetch(base + '/health')).ok) break; } catch {} if (Date.now() > deadline) throw Error(`Backend start timed out: ${stderr}`); await pause(40); }
   transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...testEnv(), MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
   (transport.stderr as unknown as {setEncoding(encoding: string): {on(event: string, listener: (chunk: string) => void): void}} | null)?.setEncoding('utf8').on('data', (bytes: string) => mcpStderr += bytes);
   // Preserve the official SDK transport as the wire implementation. This wrapper

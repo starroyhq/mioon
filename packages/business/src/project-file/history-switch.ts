@@ -11,7 +11,7 @@ import {projectHistoryResolveResultSchema} from '../../../contracts/src/project-
 import {projectHistorySwitchIntentSchema as intentSchema, projectHistorySwitchActiveSchema as activeSchema} from '../../../contracts/src/project-history-recovery-records.ts';
 import type {ProjectHistorySwitchIntent as Intent} from '../../../contracts/src/project-history-recovery-records.ts';
 import type {HistoryFileIdentity, ProjectHistoryResolveInput, ProjectHistoryResolveResult} from '../../../contracts/src/project-history-recovery.ts';
-import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {clearProjectProcessRevisions} from './schema/history-upgrades.ts';
 import {isProjectStore, openStagedProjectStore} from './store.ts';
@@ -38,6 +38,7 @@ export interface HistorySwitchOptions {
 }
 const failure = (message: string, code = 'PROJECT_HISTORY_SWITCH_INVALID'): AppError => new AppError(code, message, 409);
 function historyVersionForProject(format: ProjectFileFormat, projectId: string, options: HistorySwitchOptions): number {
+  if (format === FORMAT5_PROJECT_SCHEMA_VERSION) return FORMAT5_HISTORY_SCHEMA_VERSION;
   if (format !== FORMAT4_PROJECT_SCHEMA_VERSION) return HISTORY_SCHEMA_VERSION;
   if (!options.format4) throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer', projectId,
     formatVersion: format, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
