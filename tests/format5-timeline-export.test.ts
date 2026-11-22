@@ -131,7 +131,7 @@ interface RealSoundFixture {
 async function realSoundFixture(t: test.TestContext, codec: 'aac' | 'mp3', {seconds = 2}: {seconds?: number} = {}): Promise<RealSoundFixture> {
   const durationFrames = seconds * 30;
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-clip-audio-real-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(directory, 'records'), cacheDir: path.join(directory, 'cache'),
       tempDir: path.join(directory, 'temp')})});
   const release = registerProjectMediaStore(store);

@@ -173,7 +173,7 @@ test('a format-5 project with muted/sound-only clips, its video export and clip-
   const root = temporary();
   t.after(() => rmSync(root, {recursive: true, force: true}));
   const location = {localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'tmp')};
-  const store = createProjectStore({projectId, format5: true, projectFile: path.join(root, 'project.mioon'),
+  const store = createProjectStore({projectId, targetFormat: 5, projectFile: path.join(root, 'project.mioon'),
     locate: () => location});
   t.after(() => {try {store.close();} catch {}});
   seed(store);
@@ -182,7 +182,7 @@ test('a format-5 project with muted/sound-only clips, its video export and clip-
   const first = await composeExisting(t, store, root);
   await first.close();
   // A second assembly on the same file is the real reopen path.
-  const reopened = openProjectStore({projectFile: path.join(root, 'project.mioon'), format5: true, locate: () => location});
+  const reopened = openProjectStore({projectFile: path.join(root, 'project.mioon'), locate: () => location});
   const second = await composeExisting(t, reopened, root);
   const project = await second.runtime.serviceCall('project.get', {projectId}) as {project: {id: string};
     timeline?: {clips: {id: string; muted?: boolean; soundOnly?: boolean; gain?: number; volumeEnvelope?: unknown; audioRole?: unknown}[]}};

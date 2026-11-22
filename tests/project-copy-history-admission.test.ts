@@ -31,13 +31,13 @@ function prepareCopiedProject(a: string, b: string, format: 3 | 4 | 5, staleHist
   if (format === 5) {
     const projectId = randomUUID(), projectFile = path.join(privateRoot(a, 'projects', 'orig'), 'orig.mioon');
     const location = {localDir: path.join(a, 'records', projectId), cacheDir: path.join(a, 'cache', projectId), tempDir: path.join(a, 'tmp', projectId)};
-    const store = createProjectStore({projectId, projectFile, format5: true, locate: () => location});
+    const store = createProjectStore({projectId, projectFile, targetFormat: 5, locate: () => location});
     ensureProjectRow(store, {name: 'Copied project'});
     const versionId = createProjectVersions(store).save({projectId, requestId: randomUUID(), name: 'Before edit'}).version.id;
     store.close();
     const historyFile = path.join(location.localDir, 'history.db'), oldHistory = path.join(a, 'old-history.db');
     copyFileSync(historyFile, oldHistory);
-    const reopened = openProjectStore({projectFile, format5: true, locate: () => location});
+    const reopened = openProjectStore({projectFile, locate: () => location});
     const row = reopened.get('projects', projectId) as Record<string, unknown>; reopened.put('projects', {...row, name: 'Edited after copy', revision: 2}); reopened.close();
     const copied = path.join(privateRoot(b, 'projects', 'copy'), 'copy.mioon');
     copyFileSync(projectFile, copied);
@@ -159,7 +159,7 @@ test('format 5 copied project opens fresh, and stale history resolves with conti
         const registry = createMemoryProjectRegistry();
         registry.upsert({projectId: copied.projectId, projectFile: copied.projectFile, fileIdentity: statProjectFileIdentity(copied.projectFile)!, name: 'Copied project', lastOpenedAt: null, summary: null});
         const runtime = {handle: async () => false, isBusy: () => false, interrupt() {}, drain: async () => {}, dispose() {}};
-        const manager = createProjectHostManager({directories: serverAppDirectories(b), registry, format5: true,
+        const manager = createProjectHostManager({directories: serverAppDirectories(b), registry, targetFormat: 5,
           factory: async () => runtime, assertMutationAllowed: () => {}});
         try {
           const lease = await manager.acquire(copied.projectId, 'window');
