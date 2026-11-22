@@ -29,6 +29,7 @@ export const BOARD_IDS = {
   imageAsset2: id(14), audioAsset: id(15), subjectBinding: id(94), subjectEdge: id(84),
 } as const;
 const sha = (letter: string): string => letter.repeat(64);
+const imageSha = '7f9947260290c903f76c61d6f63949b62d9ac1766d4471dd64db378c9075da03';
 export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; services: ReturnType<typeof createServices>;
   library: ReturnType<typeof openAppLibrary>; settings: Awaited<ReturnType<typeof createVideoSettings>>;
   providers: Map<string, any>; projectId: string; root: string}> {
@@ -66,15 +67,18 @@ export async function createBoardUiWireFixture(): Promise<{store: ProjectStore; 
     store.put('assets', {id: BOARD_IDS.assetA, projectId, name: '镜头A.mp4', mimeType: 'video/mp4', duration: 2, sha256: sha('a'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetB, projectId, name: '镜头B.mp4', mimeType: 'video/mp4', duration: 4, sha256: sha('b'), sizeBytes: 10});
     store.put('assets', {id: BOARD_IDS.assetV2, projectId, name: '镜头A v2.mp4', mimeType: 'video/mp4', duration: 3, sha256: sha('d'), sizeBytes: 10});
-    store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: null, sha256: sha('c'), sizeBytes: 10,
-      width: 1080, height: 1920, provenance: 'user-import',
-      referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/ref.png', volume: null, sizeBytes: 10,
-        mtimeMs: 0, sampledSha256: sha('c'), fullSha256: sha('c')}});
-    store.put('assets', {id: BOARD_IDS.imageAsset2, projectId, name: '参考图 B.png', mimeType: 'image/png', duration: null, sha256: sha('e'), sizeBytes: 10});
+    store.put('assets', {id: BOARD_IDS.imageAsset, projectId, name: '参考图.png', mimeType: 'image/png', duration: 0, sha256: imageSha, sizeBytes: 3809,
+      width: 640, height: 960, provenance: 'user-import',
+      referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/ref.png', volume: null, sizeBytes: 3809,
+        mtimeMs: 0, sampledSha256: imageSha, fullSha256: imageSha}});
+    store.put('assets', {id: BOARD_IDS.imageAsset2, projectId, name: '参考图 B.png', mimeType: 'image/png', duration: 0, sha256: imageSha, sizeBytes: 3809,
+      width: 640, height: 960, provenance: 'user-import',
+      referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/ref2.png', volume: null, sizeBytes: 3809,
+        mtimeMs: 0, sampledSha256: imageSha, fullSha256: imageSha}});
     store.put('assets', {id: BOARD_IDS.audioAsset, projectId, name: '对白.wav', mimeType: 'audio/wav', duration: 5, sha256: sha('f'), sizeBytes: 10});
     const subjectVersionData = (versionId: string, subjectId: string, assetId: string = BOARD_IDS.imageAsset): string => JSON.stringify({id: versionId,
-      projectId, subjectId, number: 1, assetId, sha256: 'c'.repeat(64), mimeType: 'image/png',
-      width: 1080, height: 1920, createdAt: at,
+      projectId, subjectId, number: 1, assetId, sha256: imageSha, mimeType: 'image/png',
+      width: 640, height: 960, createdAt: at,
       provenance: {kind: 'user-import', versionId: null, shotId: null, jobId: null}});
     store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
       VALUES(?,?,?,?,?,?,?,?)`).run(BOARD_IDS.subjectCharacter, projectId, 'character', '阿琦', 1,

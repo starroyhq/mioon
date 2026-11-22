@@ -12,9 +12,10 @@ import {prepareSequenceEditHistory, findSequenceEditReceipt} from '../packages/b
 import {runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {
-  buildReferenceEdgeEnvelope, format5GenerationSource, planFormat5GenerationInputs, readFormat5GenerationInputView,
-  readFormat5ShotReferenceCandidates, readShotReferenceEdges, resolveReferenceSource,
+  buildReferenceEdgeEnvelope, format5GenerationSource, format5LegacyGenerationSource, planFormat5GenerationInputs,
+  readFormat5GenerationInputView, readFormat5ShotReferenceCandidates, readShotReferenceEdges, resolveReferenceSource,
 } from '../packages/business/src/format5-reference-inputs.ts';
+import {getCapabilityProfile} from '../packages/contracts/src/generation-input-profiles.ts';
 import {createPrevisPublicationServices} from '../packages/business/src/previs-publication.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 import type {PrevisFigure, PrevisProp, PrevisScene, PrevisSubjectReference} from '../packages/contracts/src/previs.ts';
@@ -398,6 +399,56 @@ test('reference generation planning combines frames, multi-image references, pre
     assert.deepEqual(withAudioReferences.audios.map(audio => audio.assetId), [seeded.audio.assetId]);
     assert.equal(withAudioReferences.entries.find(entry => entry.role === 'first_frame'), undefined);
     assert.equal(withAudioReferences.unsupported, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test('Mock legacy planning reads roles, limits and combinations from its exact v3 profile', () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const profile = getCapabilityProfile('mock', 'mock-motion-v1', 'local');
+    assert.ok(profile);
+    // This mirrors the service projection: no hand-written Mock roles.
+    const legacyService = {providerId: 'mock', modelId: 'mock-motion-v1', modelName: 'Mock · simulated motion',
+      profileId: profile.profileId, profileVersion: profile.profileVersion,
+      roles: Object.fromEntries(Object.entries(profile.inputs.roles).map(([role, value]) =>
+        [role, {implemented: value.implemented, max: value.max}])),
+      maxReferences: profile.inputs.maxReferences, combinations: profile.inputs.combinations,
+      distinctAssetsRequired: profile.inputs.distinctAssetsRequired};
+    assert.equal(legacyService.roles.last_frame?.implemented, true);
+    assert.equal(legacyService.roles.subject_reference?.implemented, true);
+    // A connected first frame is used, not reported unsupported.
+    const first = command(seeded, 'attach', {sourceNodeId: seeded.imageA.nodeId, role: 'first_frame'});
+    assert.equal((runSequenceSync(store, first.envelope) as Record<string, any>).ok, true);
+    const frames = planFormat5GenerationInputs(store, seeded.shotId, {legacyService});
+    assert.equal(frames.mode, 'frames');
+    assert.deepEqual(frames.images.map(image => image.role), ['first_frame']);
+    assert.equal(frames.entries.find(entry => entry.role === 'first_frame')?.status, 'used');
+    const legacySource = format5LegacyGenerationSource(frames, legacyService);
+    assert.deepEqual(legacySource.referenceAssetIds, [seeded.imageA.assetId]);
+    // A subject-only shot maps to Mock's subject_reference slot.
+    const last = command(seeded, 'detach', {edgeId: first.edgeId});
+    assert.equal((runSequenceSync(store, last.envelope) as Record<string, any>).ok, true);
+    const subject = createSubject(store, 'character', 'Mock 主体');
+    const state = prepareSequenceEditHistory(store);
+    const binding = buildSubjectBindingEnvelope(store, {kind: 'create', bindingId: randomUUID(),
+      shotId: seeded.shotId, subjectId: subject.subjectId, role: 'subject'},
+      {requestId: `ri-mock-subject-${randomUUID()}`, actionId: randomUUID(), edgeId: randomUUID(),
+        epoch: state.state.epoch, historyPosition: state.state.position, historyRevision: state.state.revision});
+    assert.equal((runSequenceSync(store, binding) as Record<string, any>).ok, true);
+    const references = planFormat5GenerationInputs(store, seeded.shotId, {legacyService});
+    assert.equal(references.mode, 'references');
+    const subjectEntry = references.entries.find(entry => entry.source === 'subject')!;
+    assert.equal(subjectEntry.status, 'used');
+    assert.equal(subjectEntry.appliedRole, 'subject_reference');
+    assert.equal(subjectEntry.subjectVersionId, subject.versions[0]!.id);
+    assert.deepEqual(references.images.map(image => image.role), ['subject_reference']);
+    const subjectSource = format5LegacyGenerationSource(references, legacyService);
+    assert.deepEqual(subjectSource.referenceAssetIds, [subject.versions[0]!.assetId]);
+    assert.equal(subjectSource.freeze.entries.find(entry => entry.source === 'subject')?.subjectVersionId,
+      subject.versions[0]!.id);
+    assert.equal(subjectSource.freeze.mode, 'references');
   } finally {
     store.close();
   }

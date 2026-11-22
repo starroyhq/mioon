@@ -11,7 +11,7 @@ import {projectHistoryResolveResultSchema} from '../../../contracts/src/project-
 import {projectHistorySwitchIntentSchema as intentSchema, projectHistorySwitchActiveSchema as activeSchema} from '../../../contracts/src/project-history-recovery-records.ts';
 import type {ProjectHistorySwitchIntent as Intent} from '../../../contracts/src/project-history-recovery-records.ts';
 import type {HistoryFileIdentity, ProjectHistoryResolveInput, ProjectHistoryResolveResult} from '../../../contracts/src/project-history-recovery.ts';
-import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {clearProjectProcessRevisions} from './schema/history-upgrades.ts';
 import {isProjectStore, openStagedProjectStore} from './store.ts';
@@ -33,11 +33,18 @@ export interface HistorySwitchOptions {
   readonly location: ProjectLocation;
   readonly assertMutationAllowed: () => void;
   readonly format4?: Format4Options;
+  /** Explicit format-5 kernel admission while the application still defaults to 4. */
+  readonly format5?: true;
   /** Trusted crash tests, never an HTTP/environment-controlled hook. */
   readonly onBoundary?: (boundary: HistorySwitchBoundary) => void;
 }
 const failure = (message: string, code = 'PROJECT_HISTORY_SWITCH_INVALID'): AppError => new AppError(code, message, 409);
 function historyVersionForProject(format: ProjectFileFormat, projectId: string, options: HistorySwitchOptions): number {
+  if (format === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    if (!options.format5) throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer', projectId,
+      formatVersion: format, supportedFormatVersion: FORMAT4_PROJECT_SCHEMA_VERSION});
+    return FORMAT5_HISTORY_SCHEMA_VERSION;
+  }
   if (format !== FORMAT4_PROJECT_SCHEMA_VERSION) return HISTORY_SCHEMA_VERSION;
   if (!options.format4) throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer', projectId,
     formatVersion: format, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
@@ -171,9 +178,9 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
   // This entry runs before the normal opener. Preserve the same format gate
   // even for a prepared switch: replacing the file with an old/forged format
   // must not clear a pointer or rename any local record first.
-  const recovery = recoverProjectFile(options.projectFile, options.format4);
+  const recovery = recoverProjectFile(options.projectFile, options.format5 ? {format5: true} : options.format4);
   if (recovery.state === 'invalid' || recovery.state === 'locked' || recovery.state === 'missing' || recovery.state === 'open-here' || recovery.state === 'access-denied') throw failure('项目文件暂不能安全完成本机记录切换，已保留所有文件。');
-  const project = inspectProjectFormatReadOnly(options.projectFile, options.format4);
+  const project = inspectProjectFormatReadOnly(options.projectFile, options.format5 ? {format5: true} : options.format4);
   const historyVersion = historyVersionForProject(project.formatVersion, project.projectId, options);
   if (project.projectId !== intent.input.projectId) throw failure('项目身份已变化，已保留所有文件。', 'PROJECT_HISTORY_BASELINE_CHANGED');
   if (intent.phase === 'prepared') {
@@ -197,7 +204,7 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
     if ((project.contentSequence !== intent.input.expected.contentSequence || project.contentToken !== intent.input.expected.contentToken)
       && !provesCommittedStage(staged, root, intent, project)) throw failure('项目在复制后变化，未处置。', 'PROJECT_HISTORY_BASELINE_CHANGED');
     const store = openStagedProjectStore({projectFile: options.projectFile, location: options.location, historyFile: staged, expectedStamp: intent.input.expected,
-      resolution: {requestId, digest: intent.digest}, ...(historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? {format4: options.format4} : {})});
+      resolution: {requestId, digest: intent.digest}, ...(historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION ? {format5: true as const} : historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? {format4: options.format4} : {})});
     try {
       const previous = store.db.prepare('SELECT requestId,digest,result FROM project_history_resolution WHERE singleton=1').get();
       if (previous) {

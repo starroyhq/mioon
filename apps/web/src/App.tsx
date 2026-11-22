@@ -219,6 +219,7 @@ import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
 import {format5GenerationInputService} from './board-ui/generation-input-request.ts';
+import {format5GenerationEntry} from './format5-generation-entry.ts';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
 import {boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent, projectLiveBoard,
@@ -2629,17 +2630,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function format5GenerateShot(shotId: string): void {
     if (!format5 || format5SessionBusy) return;
-    const shot = dataRef.current.shots.find(item => item.id === shotId);
+    const state = dataRef.current;
+    const shot = state.shots.find(item => item.id === shotId);
     if (!shot) return;
     const options = generationOptionsRef.current[shotId] ?? {};
     const selection = generationSelection(providers, options, shot as never);
     const provider = selection.provider;
     if (!provider) {notify(t('boardUi.inputs.serviceMissing'), 'warning'); return;}
-    // GP follow-up: the new shot panel sends the same defaulted parameters
-    // (native sound opens for dialogue on optional-audio models) as the shot
-    // inspector used to; the raw saved shot must never bypass them.
-    const shotForGeneration = shotWithGenerationParameters(shot as never, provider, options);
+    // Format 5 uses the same project-frame source as formats 3/4; the timeline
+    // frame transaction is always present for a format-5 project.
+    const frame = state.timelineFrameTransaction === true || format5 ? state.timeline : null;
+    const entry = format5GenerationEntry({shot: shot as never, provider, model: selection.model, options, frame});
+    if (entry.issue) {notify(entry.issue, 'error'); return;}
+    // Keep the shared sound default: the entry path already resolves
+    // generationParameters, but every board generation still goes through
+    // shotWithGenerationParameters so no caller can bypass the dialogue sound
+    // default. The project-frame aspectSource is passed alongside it.
+    const shotForGeneration = shotWithGenerationParameters(entry.shot as never, provider, options);
     const args: GenerationReviewArgs = {shot: shotForGeneration as never, providerId: provider.id,
+      ...(entry.aspectSource ? {aspectSource: entry.aspectSource} : {}),
       ...(provider.connectionId ? {connectionId: provider.connectionId,
         configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
         connectionName: provider.name, connectionEndpoint: (provider.videoConnection as {endpoint?: string} | undefined)?.endpoint} : {}),

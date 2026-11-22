@@ -310,6 +310,10 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /key === 'v'/);
   assert.match(timelineSource, /timeline-menu-paste/);
   assert.match(app, /onUpdateShot=\{format5BoardUpdateShot\} onGenerateShot=\{format5GenerateShot\}/);
+  assert.match(app, /format5GenerationEntry\(\{shot: shot as never/);
+  assert.match(app, /aspectSource: entry\.aspectSource/);
+  assert.match(app, /onGenerate=\{\(\) => format5GenerateShot\(editingGenerateShot\.id\)\}/);
+
   assert.match(app, /dialogueSubjects=\{format5DialogueSubjects\}/);
   assert.match(app, /dialogueCueCount=/);
   assert.match(app, /onDialogueApplied=/);

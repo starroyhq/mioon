@@ -82,6 +82,8 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   readonly openStore?: (options: OpenProjectConnectionOptions) => ProjectStore;
   /** Trusted host capability. Each in-place upgrade still requires a matching preview. */
   readonly format4?: Format4Options;
+  /** Explicit format-5 kernel admission while the application still defaults to 4. */
+  readonly format5?: true;
   readonly assertProjectFile?: (file: string) => void;
   /** Exceptions from it are ignored. */
   readonly onEvent?: (event: ProjectHostEvent) => void;
@@ -312,11 +314,11 @@ class RetryOpen extends Error {
 }
 
 export function createProjectHostManager<Runtime extends ProjectHostRuntime = ProjectHostRuntime>(options: ProjectHostManagerOptions<Runtime>): ProjectHostManager<Runtime> {
-  const {directories, registry, factory, format4, onEvent, assertProjectFile} = options;
+  const {directories, registry, factory, format4, format5, onEvent, assertProjectFile} = options;
   const identity = options.identity ?? statProjectFileIdentity;
   const taskIndex = options.taskIndex ?? createMemoryBackgroundTaskIndex();
   const hooks = options.hooks ?? [];
-  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile: file => recoverProjectFile(file, format4)};
+  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile: file => recoverProjectFile(file, format5 ? {format5: true} : format4)};
   const idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
   const drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_REQUEST_DRAIN_MS;
   const busyRecheckMs = options.busyRecheckMs ?? DEFAULT_BUSY_RECHECK_MS;
@@ -405,9 +407,9 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         return true;
       }}).store;
     }
-    return openStore({projectFile, locate: location, format4: formatAdmission(expected), checkCopy});
+    return openStore({projectFile, locate: location, format4: formatAdmission(expected), ...(format5 ? {format5: true as const} : {}), checkCopy});
   };
-  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
+  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4, format5, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
   const checkAdmittedFile = (file: string, projectId: string, admitted?: ProjectFileIdentity): void => {
     if (admitted && !sameProjectFileIdentity(identityOrNull(file), admitted)) throw projectFileMoved(projectId);
   };
@@ -1201,7 +1203,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         const receipt = completedHistoryResolution(config, input);
         if (receipt) { archiveTaskIndex(input, receipt); return receipt; }
       }
-      const store = openStore({projectFile: registration.projectFile, locate, format4, checkCopy: registeredCopyCheck(input.projectId)});
+      const store = openStore({projectFile: registration.projectFile, locate, format4, ...(format5 ? {format5: true as const} : {}), checkCopy: registeredCopyCheck(input.projectId)});
       try {
         const controller = new AbortController();
         const session = createProjectHistorySession({projectId: input.projectId, store, directories, signal: controller.signal, relocate: () => {}}, writeAllowed);
