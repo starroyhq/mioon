@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
+import {readFileSync} from 'node:fs';
 import {build} from 'esbuild';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {Locale, MessageArguments, MessageKey} from '../packages/i18n/src/index.ts';
@@ -106,6 +107,12 @@ test('12-25b keeps restore disabled while comparing and offers an unavailable-co
   const noPreview = render(status, versions, undefined as unknown as ProjectVersionPreviewResponse, 'versions', 'zh-Hans');
   assert.equal(disabled(noPreview, 'pf-history-recovery-restore-version'), true);
   assert.ok(noPreview.includes(text('projectFile.historyRecovery.comparing')) || noPreview.includes(text('projectFile.historyRecovery.compareUnavailable')));
+});
+
+test('12-25b footer keeps 返回 and 恢复这个版本 together on the right', () => {
+  const css = readFileSync(join(root, 'apps/web/src/project-file/project-history-recovery.css'), 'utf8');
+  assert.match(css, /\.pf-history-recovery-footer \{[^}]*justify-content: flex-end/u);
+  assert.doesNotMatch(css, /\[data-testid="pf-history-recovery-back"\]\s*\{[^}]*margin-right: auto/u);
 });
 
 test('the stale message is the exact user-facing sentence', () => {
