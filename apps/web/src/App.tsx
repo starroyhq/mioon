@@ -154,6 +154,7 @@ import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, proj
 import {formatUpgradeNotice, openProjectReadOnly, readProjectFormatUpgrade, upgradeProjectFormat} from './project-format-upgrade-client.ts';
 import type {ProjectFormatChoice, ProjectFormatNotice} from './project-format-upgrade-client.ts';
 import {ProjectFormatReadOnlyDialog, ProjectFormatUpgradeDialog} from './project-file/ProjectFormatUpgradeDialog.tsx';
+import {ProjectHistoryRecoveryDialog} from './project-file/ProjectHistoryRecoveryDialog.tsx';
 import type {ProjectFormatReadOnlyView, ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import Inspector from './Inspector.tsx';
 import SubjectVideoSummary from './SubjectVideoSummary.tsx';
@@ -601,6 +602,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const updateGenerationOptions = useCallback((shotId: string | null, options: GenerationOptionState) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
   const [loading, setLoading] = useState(false);
   const [projectOpening, setProjectOpening] = useState<ProjectOpening>({ phase: 'home', projectId: null, error: '' });
+  const [historyRecovery, setHistoryRecovery] = useState<{projectId: string; name: string | null; projectFile: string | null} | null>(null);
   const formatUpgradeFlight = useRef<WebFormatUpgrade | null>(null);
   const openedProject = useRef<unknown>(null);
   const projectCreateFlight = useRef<Record<string, unknown> | null>(null);
@@ -1339,6 +1341,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
             return false;
           }
         }
+        if ((e as {code?: string} | null)?.code === 'PROJECT_HISTORY_DIVERGED') {
+          setHistoryRecovery({projectId: id, name: projects.find(project => project.id === id)?.name ?? null, projectFile: projects.find(project => project.id === id)?.projectFile ?? null});
+          setProjectOpening({phase: nativeWindow ? 'error' : 'home', projectId: id, error: ''});
+          return false;
+        }
         const canRecover = canOfferBackupRecovery(e);
         setBackupFailure(canRecover ? {projectId: id, name: projects.find(project => project.id === id)?.name ?? t('projects.project'), admission: captureProjectFeatureAdmission(id)} : null);
         setProjectOpening({ phase: 'error', projectId: id, error: canRecover ? t('projectFile.open.invalid.body') : readableError(e),
@@ -1425,6 +1432,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     } catch (e) {
       if (!bootGuard.current!.isCurrent(ticket)) return;
       const nativeProjectId = nativeWindow?.context.initialProjectId;
+      if ((e as {code?: string} | null)?.code === 'PROJECT_HISTORY_DIVERGED' && nativeWindow && !nativeWindow.context.quitting
+        && !importSession.current.leaseRevoked && isProjectWindowId(nativeProjectId)) {
+        setHistoryRecovery({projectId: nativeProjectId, name: projects.find(project => project.id === nativeProjectId)?.name ?? null, projectFile: projects.find(project => project.id === nativeProjectId)?.projectFile ?? null});
+        setProjectOpening({phase: 'error', projectId: nativeProjectId, error: ''});
+        return;
+      }
       if (nativeWindow && !nativeWindow.context.quitting && !importSession.current.leaseRevoked && isProjectWindowId(nativeProjectId)) {
         setProjectOpening({phase: 'error', projectId: nativeProjectId, error: readableError(e), failure: projectWindowOpenFailure(e, nativeProjectId)});
       }
@@ -5044,6 +5057,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!nativeWindow || !data.project?.id || data.project.id !== currentProject.current) return;
     return claimProjectDocumentTitle(document, data.project.name);
   }, [nativeWindow?.context.contextId, data.project?.id, data.project?.name]);
+  const historyRecoveryLayer = historyRecovery && <ProjectHistoryRecoveryDialog key={historyRecovery.projectId} projectId={historyRecovery.projectId}
+    projectName={historyRecovery.name} projectFile={historyRecovery.projectFile} onClose={() => setHistoryRecovery(null)} onStale={() => {
+      setHistoryRecovery(null); notify(t('projectFile.historyRecovery.stale'));
+    }} onResolved={() => {
+      const target = historyRecovery.projectId; setHistoryRecovery(null);
+      if (nativeWindow) void nativeProjectEntry?.open(target);
+      else void selectProject(target, true, true, true);
+    }} />;
   const historyLayer = historyView && <ProjectHistoryDialog open projectId={historyView.projectId} projectName={historyView.name} projectFile={historyView.projectFile} pendingEdits={historyView.projectId === data.project?.id && (historyHasPendingEdits || Boolean(clipDraftRef.current?.hasPendingComposition()))} initialTab={historyView.tab} initialAction={historyView.initialAction} backupsOnly={historyView.backupsOnly}
       admission={historyView.admission} interactionBlocked={!historyView.admission.isCurrent()} nativeBackup={nativeBackup}
       onClose={() => {if (historyView.admission.isCurrent()) setHistoryView(null);}} onRestored={id => {if (historyView.admission.isCurrent() && currentProject.current === id) void refresh(id);}}
@@ -5055,7 +5076,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }} /> : null;
   if (auth === false && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <Login onLogin={boot} />;
   if ((auth === null || auth === 'error') && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
-  if (nativeWindow && !workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{historyLayer}<EditorWindowOpening recovery={backupRecovery} error={projectOpening.error} onRetry={() => { void selectProject((currentProject.current || nativeWindow.context.initialProjectId) as string, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} /></>;
+  if (nativeWindow && !workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{historyRecoveryLayer}{historyLayer}<EditorWindowOpening recovery={backupRecovery} error={projectOpening.error} onRetry={() => { void selectProject((currentProject.current || nativeWindow.context.initialProjectId) as string, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} /></>;
   const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} interactionBlocked={projectEntryIdentityRef.current!.getState().identityBlocked} connectionsAvailable={true} renderSettings={props => <SettingsConnectionForms {...props} projectId={workbenchReady ? currentProject.current : null} />} />;
   const upgrade = projectOpening.upgrade;
   const closeWebUpgrade = () => {
@@ -5066,7 +5087,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     : <ProjectFormatUpgradeDialog busy={upgrade.busy ?? null} notice={upgrade.notice} onClose={closeWebUpgrade}
       onChoose={choice => {void resolveWebFormatUpgrade(upgrade, choice);}} />) : null;
   const videoDirectoryNotice = videoDirectoryUnavailable ? <p className="notice warning" role="status" data-testid="video-directory-unavailable">{t('video.providers.directoryUnavailableHint')}</p> : null;
-  if (!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{webSettingsCenter}{historyLayer}{formatUpgradeLayer}<ProjectHome summaryEnabled={true} active={!webSettingsOpen && !formatUpgradeLayer} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} readDirectory={input => readProjectEntryIdentity(projectEntryIdentityRef.current!, input)} help={<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} />} status={backupRecovery || videoDirectoryNotice ? <>{backupRecovery}{videoDirectoryNotice}</> : null} settings={null} /></>;
+  if (!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{webSettingsCenter}{historyRecoveryLayer}{historyLayer}{formatUpgradeLayer}<ProjectHome summaryEnabled={true} active={!webSettingsOpen && !formatUpgradeLayer} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} readDirectory={input => readProjectEntryIdentity(projectEntryIdentityRef.current!, input)} help={<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} />} status={backupRecovery || videoDirectoryNotice ? <>{backupRecovery}{videoDirectoryNotice}</> : null} settings={null} /></>;
   return <ProjectMediaProvider media={projectMedia}>{webSettingsCenter}{retainWorkbenchForIdentity && <div className="notice warning" role="alert" data-testid="project-entry-identity-blocked">{t('projects.locatorKeepWindow')}</div>}<main inert={retainWorkbenchForIdentity || undefined} className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style as never}>
     {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     {nativeLeaseRevoked.current&&<div className="notice warning" role="status" data-testid="native-project-lease-revoked"><p>{t('shell.projectLeaseRevoked')}</p></div>}

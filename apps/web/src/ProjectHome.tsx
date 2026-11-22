@@ -20,6 +20,7 @@ import './launcher-home.css';
 export interface ProjectHomeProject {
   id: string;
   name: string;
+  projectFile?: string;
   description?: string;
   updatedAt: string;
   revision?: number;
