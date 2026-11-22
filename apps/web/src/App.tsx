@@ -200,7 +200,7 @@ import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.tsx';
 import type {TimelineGenerateTarget} from './Timeline.tsx';
 import GenerateInEditingPanel from './edit-ui/GenerateInEditingPanel.tsx';
-import {generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
+import {committedGenerateClip, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
 import TimelineInspector from './TimelineInspector.tsx';
 import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
@@ -2675,18 +2675,28 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     markBusy(currentProject.current, 'format5-generate-placeholder', true);
     try {
       const outcome = await format5BoardSession().runGenerate(generateIntent);
-      if (!outcome.ok) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;}
+      // A lost commit response is not a rejection: the service may have applied
+      // the new clip. Refresh once and continue only from the committed row;
+      // otherwise the panel would keep showing whichever clip was selected before
+      // (for example an older overlay clip) as if the new shot landed there.
+      let recoveredNext: Awaited<ReturnType<typeof refresh>> = null;
+      if (!outcome.ok) {
+        if (!('unconfirmed' in outcome)) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;}
+        recoveredNext = await refresh(currentProject.current);
+        if (!committedGenerateClip(recoveredNext?.timeline?.clips as never, clipId)) {
+          notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;
+        }
+      }
       setEditingGenerateShotId(shotId);
       await changeMode('editing');
       setPropertiesPage('inspector'); setRightDockTab('properties');
       setSelectedClipId(clipId);
       setPanelOpen('inspector', true, 'editing'); setPanelOpen('timeline', true, 'editing');
-      const next = await refresh(currentProject.current);
+      const next = recoveredNext ?? await refresh(currentProject.current);
       // The service decides where the shot lands (a split shot inserts before/after
       // its whole shot), so the playhead follows the committed clip, never the
       // pre-commit estimate.
-      const committedClip = (next?.timeline?.clips as readonly {id: string; startFrame: number}[] | undefined)
-        ?.find(clip => clip.id === clipId);
+      const committedClip = committedGenerateClip(next?.timeline?.clips as never, clipId);
       setPlayhead(committedClip?.startFrame ?? target.startFrame);
       await format5RefreshHistory();
       await format5LoadBoard();

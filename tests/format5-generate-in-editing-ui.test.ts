@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
 import {
-  generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement, timelineGenerateTargetForBlank,
+  committedGenerateClip, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement,
+  timelineGenerateTargetForBlank,
 } from '../apps/web/src/edit-ui/generate-in-editing.ts';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -114,4 +115,43 @@ test('GE-b: resizing a placeholder is one history step that restores the old len
   assert.equal(restored.clips.find((clip: any) => clip.id === clipId).durationFrames, 60);
   assert.equal(restored.clips.find((clip: any) => clip.id === clipId).name, '剪辑里生成的镜头');
   fixture.store.close(); fixture.library.close();
+});
+
+
+test('WT-1-18: a 40-shot scrolled timeline keeps the main end target main after overlay and audio right-clicks', () => {
+  const packed = Array.from({length: 40}, (_, index) => ({trackId: 'main', startFrame: index * 120, durationFrames: 120}));
+  const clips = [...packed, {trackId: 'v2', startFrame: 286, durationFrames: 120}];
+  const context = {mainTrackId: 'main', clips};
+  // The overlay entry only opens inside a main-track shot and stays a track target.
+  assert.deepEqual(timelineGenerateTargetForBlank({...context, trackId: 'v2', trackKind: 'video', frame: 1000}),
+    {trackId: 'v2', main: false, startFrame: 1000, beforeClipId: null});
+  // The main-track end entry is always the main placement, even after that
+  // overlay target and with the packed 40-shot track.
+  assert.deepEqual(timelineGenerateTargetForBlank({...context, trackId: 'main', trackKind: 'video', frame: 4800}),
+    {trackId: 'main', main: true, startFrame: 4800, beforeClipId: null});
+  // The main end never offers itself at the overlay track, and audio never
+  // offers generation at all.
+  assert.equal(timelineGenerateTargetForBlank({...context, trackId: 'v2', trackKind: 'video', frame: 4800}), null);
+  assert.equal(timelineGenerateTargetForBlank({...context, trackId: 'a1', trackKind: 'audio', frame: 300}), null);
+  assert.equal(timelineGenerateTargetForBlank({...context, trackId: 'main', trackKind: 'video', frame: 240}), null);
+  const mainTarget = timelineGenerateTargetForBlank({...context, trackId: 'main', trackKind: 'video', frame: 4800})!;
+  const overlayTarget = timelineGenerateTargetForBlank({...context, trackId: 'v2', trackKind: 'video', frame: 1000})!;
+  const intent = (value: typeof mainTarget) => generatePlaceholderIntent({target: value, settings: {},
+    shotId: '70000000-0000-4000-8000-000000000010', clipId: '70000000-0000-4000-8000-000000000011', title: '新镜头'});
+  const mainOperation = intent(mainTarget).operation;
+  const overlayOperation = intent(overlayTarget).operation;
+  assert.deepEqual(mainOperation.kind === 'generate-placeholder' ? mainOperation.placement : null,
+    {kind: 'main', beforeClipId: null});
+  assert.deepEqual(overlayOperation.kind === 'generate-placeholder' ? overlayOperation.placement : null,
+    {kind: 'track', trackId: 'v2', startFrame: 1000});
+});
+
+test('WT-1-18: a recovered lost commit seeks and selects the committed row, not the previously selected track', () => {
+  const clips = [
+    {id: 'old-overlay', startFrame: 286, trackId: 'v2'},
+    {id: 'new-main', startFrame: 4800, trackId: 'main'},
+  ];
+  assert.deepEqual(committedGenerateClip(clips, 'new-main'), {id: 'new-main', startFrame: 4800, trackId: 'main'});
+  assert.equal(committedGenerateClip(clips, 'missing'), null);
+  assert.equal(committedGenerateClip(undefined, 'new-main'), null);
 });
