@@ -234,3 +234,17 @@ button.board-input-footer > span {overflow:hidden;text-overflow:ellipsis;white-s
 .board-input-list {position:relative;z-index:2;}
 .board-input-menu {z-index:50;}
 .board-detached-inputs,.board-shot-duration-row,.board-service-picker {position:relative;z-index:1;}
+
+/* WT-? cancel/retry: the property panel owns the selected shot's running and
+ * failed generation entries, matching the task center and the pre-board inspector. */
+.board-shot-job {display:flex;align-items:center;gap:8px;min-width:0;padding:7px 8px;border:1px solid var(--wb-line,#3a3a3c);border-radius:7px;background:var(--wb-raised,#242426);color:var(--wb-muted);font-size:10px;}
+.board-shot-job-status {display:flex;align-items:center;gap:5px;min-width:0;color:var(--wb-text);}
+.board-shot-job-status svg {flex:none;}
+.board-shot-job-progress {margin-left:auto;color:var(--wb-muted);font-variant-numeric:tabular-nums;}
+.board-shot-job-error {min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.board-shot-job.is-failed {border-color:color-mix(in srgb,var(--wb-warning,#e8a33d) 55%,transparent);background:color-mix(in srgb,var(--wb-warning,#e8a33d) 12%,var(--wb-raised,#242426));}
+.board-shot-job.is-failed .board-shot-job-status {color:var(--wb-warning,#e8a33d);}
+.board-shot-job-cancel,.board-shot-job-retry {flex:none;border:0;border-radius:5px;background:transparent;color:var(--wb-text);font:inherit;font-size:10px;cursor:pointer;padding:3px 4px;}
+.board-shot-job-retry {display:flex;align-items:center;gap:4px;}
+.board-shot-job-cancel:hover:not(:disabled),.board-shot-job-retry:hover:not(:disabled) {background:var(--wb-hover,#2c2c2e);}
+.board-shot-job-cancel:disabled,.board-shot-job-retry:disabled {opacity:.5;cursor:default;}

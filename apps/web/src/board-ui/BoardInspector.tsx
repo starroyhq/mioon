@@ -10,7 +10,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
-import {providerDisplayName} from '../creation-i18n.ts';
+import {providerDisplayName, jobStatusDescriptor, taskErrorDescriptor} from '../creation-i18n.ts';
 import {generationSelection} from '../generation-settings.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
 import {BoardFilmOverview} from './BoardFilmComponents.tsx';
@@ -62,6 +62,11 @@ export interface BoardInspectorProps {
   readonly onUpdateShot?: (shotId: string, patch: {title?: string; prompt?: string; duration?: number},
     expectedRevision: number) => Promise<{readonly ok: boolean; readonly code?: string}>;
   readonly onGenerateShot?: (shotId: string) => void;
+  /** Generation jobs for this project; the selected shot's running/failed job
+   * owns the board-side cancel and retry entries. */
+  readonly jobs?: readonly Row[];
+  readonly onCancelJob?: (job: Row) => unknown;
+  readonly onRetryJob?: (job: Row) => unknown;
   readonly providers?: readonly GenerationProvider[];
   readonly generationOptions?: BoardGenerationOptions;
   readonly onGenerationOptionsChange?: (shotId: string, options: BoardGenerationOptions) => void;
@@ -75,7 +80,7 @@ interface DeleteRequest {readonly nodeId: string; readonly subjectId: string}
 interface InputMenu {readonly key: string; readonly entry: SequenceGenerationInputEntryView}
 
 export default function BoardInspector(props: BoardInspectorProps): React.ReactElement {
-  const {t, formatNumber} = useI18n();
+  const {t, formatNumber, renderMessage} = useI18n();
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const [confirm, setConfirm] = useState<DeleteRequest | null>(null);
   const [inputMenu, setInputMenu] = useState<InputMenu | null>(null);
@@ -88,6 +93,7 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const [shotSaved, setShotSaved] = useState(false);
   const [titleEditing, setTitleEditing] = useState(false);
   const [serviceMenu, setServiceMenu] = useState(false);
+  const [jobAction, setJobAction] = useState<string | null>(null);
   const draftRevision = useRef<number | null>(null);
   const lastShotId = useRef<string | null>(null);
   const dirtyRef = useRef(false);
@@ -101,6 +107,26 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     ?? props.board.projection.films[0])?.items.filter(item => item.kind === 'shot').map(item => item.nodeId) ?? [];
   const shotIndex = shot ? (filmShotIds.includes(shot.id) ? filmShotIds.indexOf(shot.id) : props.shots.findIndex(item => item.id === shot.id)) : -1;
   const shotNumber = shotIndex >= 0 ? String(shotIndex + 1).padStart(2, '0') : null;
+  const isActiveJob = (job: Row): boolean => ['queued', 'submitting', 'running', 'downloading'].includes(String(job.status));
+  const shotJobs = shot ? (props.jobs ?? []).filter(job => job.shotId === shot.id)
+    .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''))) : [];
+  const runningJob = shotJobs.find(isActiveJob) ?? null;
+  // Only the newest job owns the failure card: a successful retry must replace
+  // the old failure entry instead of leaving it visible beside a new version.
+  const latestJob = shotJobs[0] ?? null;
+  const failedJob = latestJob?.status === 'failed' ? latestJob : null;
+  const retryPending = Boolean(failedJob && shotJobs.some(job => job.retryOfJobId === failedJob.id
+    && (isActiveJob(job) || job.status === 'submission_unknown')));
+  const cancelGeneration = async (job: Row): Promise<void> => {
+    if (!props.onCancelJob || jobAction !== null) return;
+    setJobAction(`cancel:${job.id}`);
+    try { await props.onCancelJob(job); } finally { setJobAction(null); }
+  };
+  const retryGeneration = async (job: Row): Promise<void> => {
+    if (!props.onRetryJob || jobAction !== null || retryPending) return;
+    setJobAction(`retry:${job.id}`);
+    try { await props.onRetryJob(job); } finally { setJobAction(null); }
+  };
   useEffect(() => {
     if (!editableNode) {setNodeName(''); setNodeText(''); return;}
     setNodeName(editableNode.name);
@@ -367,6 +393,23 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       dialogueStatus={props.inputs && props.inputs.shotId === shot.id ? props.inputs.dialogue : null}
       disabled={props.busy || !props.onDialogueApplied}
       rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}
+    {runningJob && <section className="board-shot-job" data-testid="board-shot-job-running"
+      aria-label={renderMessage(jobStatusDescriptor(runningJob))}>
+      <span className="board-shot-job-status"><Icon name="clock" size={13}/>{renderMessage(jobStatusDescriptor(runningJob))}</span>
+      {typeof runningJob.progress === 'number' && <span className="board-shot-job-progress">{Math.round(runningJob.progress)}%</span>}
+      {props.onCancelJob && <button type="button" className="board-shot-job-cancel" data-testid="cancel-generation"
+        disabled={props.busy || jobAction !== null} onClick={() => { void cancelGeneration(runningJob); }}>
+        {t('redesign.board.cancelGeneration')}
+      </button>}
+    </section>}
+    {failedJob && <section className="board-shot-job is-failed" data-testid={`failed-version-${failedJob.id}`}>
+      <span className="board-shot-job-status"><Icon name="info" size={13}/>{t('redesign.board.failed')}</span>
+      <span className="board-shot-job-error" data-text-selectable>{renderMessage(taskErrorDescriptor(failedJob.error))}</span>
+      {props.onRetryJob && <button type="button" className="board-shot-job-retry" data-testid={`retry-failed-version-${failedJob.id}`}
+        disabled={props.busy || jobAction !== null || retryPending} onClick={() => { void retryGeneration(failedJob); }}>
+        <Icon name="refresh" size={12}/>{t('redesign.board.retry')}
+      </button>}
+    </section>}
     <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
       disabled={props.busy || !hasService || !props.onGenerateShot}
       onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>

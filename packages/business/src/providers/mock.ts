@@ -129,7 +129,13 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
       if (typeof requestId !== 'string' || !requestId || requestId.length > 256) throw error('INVALID_REQUEST_ID', 'A bounded request ID is required.');
       const value = snapshot as ProviderSnapshotView, parameters = object(value.parameters ?? {}) ?? {};
       const requestedScenario = parameters.scenario ?? 'success';
-      const scenario = typeof requestedScenario === 'string' ? (ALIASES[requestedScenario] ?? requestedScenario) : 'success';
+      const requested = typeof requestedScenario === 'string' ? (ALIASES[requestedScenario] ?? requestedScenario) : 'success';
+      // A simulated definitive failure is a one-shot test control: retrying the
+      // frozen job must be able to exercise the successful recovery path. Real
+      // providers keep their own retry semantics; this branch is Mock-only.
+      const retriedFailure = typeof context.retryOfJobId === 'string' && context.retryOfJobId.length > 0
+        && requested === 'failure';
+      const scenario = retriedFailure ? 'success' : requested;
       const delayMs = typeof parameters.delayMs === 'number' ? parameters.delayMs : (scenario === 'delay' ? 2000 : 250);
       const json = stable(snapshot), hash = createHash('sha256').update(json).digest('hex');
       const timestamp = now();

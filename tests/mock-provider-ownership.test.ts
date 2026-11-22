@@ -56,6 +56,17 @@ function revokeOnStart(t: test.TestContext, store: ReturnType<typeof openStore>)
     assert.equal(events.filter(event=>event.type==='exited').length,1);}};
 }
 
+test('mock failure retry is simulated as a successful rerun of the frozen request',async t=>{
+  const f = await fixture(t);
+  const failure = {...snapshot,parameters:{scenario:'failure',delayMs:0}};
+  const firstRequest = randomUUID(), retryRequest = randomUUID();
+  await f.provider.submit(failure,{requestId:firstRequest});
+  await f.provider.submit(failure,{requestId:retryRequest,jobId:'retry-job',retryOfJobId:'original-job'});
+  const scenario = (request:string) => (f.store.db.prepare('SELECT scenario FROM mock_provider_tasks WHERE request_id=?').get(request) as {scenario:string}).scenario;
+  assert.equal(scenario(firstRequest),'failure');
+  assert.equal(scenario(retryRequest),'success');
+});
+
 test('mock submit cannot write its ledger after beforeSubmit closes the real owner',async t=>{
   const f = await fixture(t);
   await assert.rejects(f.provider.submit(snapshot,{requestId:randomUUID(),beforeSubmit:()=>f.store.close()}),unverified);

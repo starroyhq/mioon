@@ -11,6 +11,8 @@ interface Render {
   inspector(locale: Locale, variant: 'full' | 'missing' | 'empty' | 'dialogue-unsupported' | 'dialogue-rejected'): string;
   textOnly(locale: Locale): string;
   loading(locale: Locale): string;
+  running(locale: Locale): string;
+  failed(locale: Locale): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
 let loaded: Promise<Render> | undefined;
@@ -65,7 +67,8 @@ const entry = `import React from 'react';
     onRestoreBinding:()=>{},onDeleteSubjectCard:()=>{},providers:[provider],
     generationOptions:{connectionId:provider.connectionId,configurationRevision:1,
       modelEntryId:'60000000-0000-4000-8000-000000000098',model:'kling-3.0'},
-    onInputRoleChange:()=>{},onInputDetach:()=>{},onInputPrimary:()=>{},rpc:async()=>({})};
+    onInputRoleChange:()=>{},onInputDetach:()=>{},onInputPrimary:()=>{},rpc:async()=>({}),jobs:[],
+    onCancelJob:()=>{},onRetryJob:()=>{}};
   function inspector(locale,variant){
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
       <BoardInspector {...base} inputs={variant==='missing'?missing:variant==='empty'?empty
@@ -82,7 +85,16 @@ const entry = `import React from 'react';
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
       <BoardInspector {...base} inputs={null}/></I18nProvider>);
   }
-  export {inspector, textOnly, loading};`;
+  function running(locale){
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={full} jobs={[{id:'job-running',shotId,status:'running',progress:38,createdAt:'2026-11-22T00:00:00.000Z',providerId:'mock',snapshot:{}}]}/></I18nProvider>);
+  }
+  function failed(locale){
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={full} jobs={[{id:'job-failed',shotId,status:'failed',providerId:'mock',
+        error:{code:'MOCK_GENERATION_FAILED',message:'Simulated generation failure.'},createdAt:'2026-11-22T00:00:00.000Z',snapshot:{}}]}/></I18nProvider>);
+  }
+  export {inspector, textOnly, loading, running, failed};`;
 
 function renderer(): Promise<Render> {
   return loaded ??= (async () => {
@@ -192,4 +204,21 @@ test('the new shot panel shows the dialogue service status and the overflow reas
   const english = render.inspector('en', 'dialogue-unsupported');
   assert.ok(english.includes('Not supported by this service'));
   assert.equal(english.includes('当前服务不支持'), false);
+});
+
+
+test('the board property panel owns the selected shot running cancel and failed retry entries', async () => {
+  const render = await renderer();
+  for (const locale of LOCALES) {
+    const running = render.running(locale);
+    assert.match(running, /data-testid="board-shot-job-running"/, locale);
+    assert.match(running, /data-testid="cancel-generation"/, locale);
+    assert.ok(running.includes(translate(locale, 'redesign.board.cancelGeneration')), locale);
+    const failed = render.failed(locale);
+    assert.match(failed, /data-testid="failed-version-job-failed"/, locale);
+    assert.match(failed, /data-testid="retry-failed-version-job-failed"/, locale);
+    assert.ok(failed.includes(translate(locale, 'redesign.board.failed')), locale);
+    assert.ok(failed.includes(translate(locale, 'redesign.board.retry')), locale);
+    assert.equal(render.inspector(locale, 'full').includes('data-testid="cancel-generation"'), false, locale);
+  }
 });
