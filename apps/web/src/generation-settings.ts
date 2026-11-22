@@ -537,6 +537,16 @@ export function defaultGenerateAudio(shot: GenerationShot, model: { audio?: stri
   return parameters;
 }
 
+/** GP follow-up: the shot payload a board/property-panel generation sends. It is
+ * the saved shot plus the shared parameter defaults (including the DL-b sound
+ * switch), so every entry point uses generationParameters instead of raw shot
+ * parameters. A provider without a connection keeps the legacy shot payload. */
+export function shotWithGenerationParameters(shot: GenerationShot,
+  provider: GenerationProvider | null | undefined, options: Record<string, unknown> = {}): GenerationShot {
+  if (!provider?.connectionId) return shot;
+  return {...shot, parameters: generationParameters(shot, provider, options)};
+}
+
 /** New connection-only controls stay in the current selection, outside legacy shot data. */
 export function generationParameters(shot: GenerationShot, provider: GenerationProvider | null | undefined, options: Record<string, unknown> = {}): Record<string, unknown> {
   if (!provider?.connectionId) return { ...(shot.parameters || {}) };

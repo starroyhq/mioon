@@ -201,7 +201,7 @@ import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.tsx';
 import type {TimelineGenerateTarget} from './Timeline.tsx';
 import GenerateInEditingPanel from './edit-ui/GenerateInEditingPanel.tsx';
-import {generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
+import {committedGenerateClip, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
 import TimelineInspector from './TimelineInspector.tsx';
 import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
@@ -220,6 +220,7 @@ import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
 import {format5GenerationInputService} from './board-ui/generation-input-request.ts';
+import {format5GenerationEntry} from './format5-generation-entry.ts';
 import {BoardUiSession} from './board-ui/live-session.ts';
 import type {BoardMountView, BoardOutcome} from './board-ui/live-session.ts';
 import {boardDeleteIntent, boardNodeCreateIntent, boardNodeUpdateIntent, boardRestoreIntent, boardShotUpdateIntent, boardVersionIntent, projectLiveBoard,
@@ -276,7 +277,7 @@ import { publishPrevisOutput } from './previs/previs-publication.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.ts';
-import { generationSelection, generationParameters, generationVideoInput, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
+import { generationSelection, generationParameters, generationVideoInput, shotWithGenerationParameters, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
 import { generationAspectError, generationFrameMatches, prepareGenerationAspect } from './generation-settings.ts';
 import { timelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import { isGenerationAspectNotApplied, isGenerationAspectResponse } from '../../../packages/contracts/src/generation-aspect.ts';
@@ -2642,12 +2643,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function format5GenerateShot(shotId: string): void {
     if (!format5 || format5SessionBusy) return;
-    const shot = dataRef.current.shots.find(item => item.id === shotId);
+    const state = dataRef.current;
+    const shot = state.shots.find(item => item.id === shotId);
     if (!shot) return;
-    const selection = generationSelection(providers, generationOptionsRef.current[shotId] ?? {}, shot as never);
+    const options = generationOptionsRef.current[shotId] ?? {};
+    const selection = generationSelection(providers, options, shot as never);
     const provider = selection.provider;
     if (!provider) {notify(t('boardUi.inputs.serviceMissing'), 'warning'); return;}
-    const args: GenerationReviewArgs = {shot: shot as never, providerId: provider.id,
+    // Format 5 uses the same project-frame source as formats 3/4; the timeline
+    // frame transaction is always present for a format-5 project.
+    const frame = state.timelineFrameTransaction === true || format5 ? state.timeline : null;
+    const entry = format5GenerationEntry({shot: shot as never, provider, model: selection.model, options, frame});
+    if (entry.issue) {notify(entry.issue, 'error'); return;}
+    // Keep the shared sound default: the entry path already resolves
+    // generationParameters, but every board generation still goes through
+    // shotWithGenerationParameters so no caller can bypass the dialogue sound
+    // default. The project-frame aspectSource is passed alongside it.
+    const shotForGeneration = shotWithGenerationParameters(entry.shot as never, provider, options);
+    const args: GenerationReviewArgs = {shot: shotForGeneration as never, providerId: provider.id,
+      ...(entry.aspectSource ? {aspectSource: entry.aspectSource} : {}),
       ...(provider.connectionId ? {connectionId: provider.connectionId,
         configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
         connectionName: provider.name, connectionEndpoint: (provider.videoConnection as {endpoint?: string} | undefined)?.endpoint} : {}),
@@ -2674,18 +2688,28 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     markBusy(currentProject.current, 'format5-generate-placeholder', true);
     try {
       const outcome = await format5BoardSession().runGenerate(generateIntent);
-      if (!outcome.ok) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;}
+      // A lost commit response is not a rejection: the service may have applied
+      // the new clip. Refresh once and continue only from the committed row;
+      // otherwise the panel would keep showing whichever clip was selected before
+      // (for example an older overlay clip) as if the new shot landed there.
+      let recoveredNext: Awaited<ReturnType<typeof refresh>> = null;
+      if (!outcome.ok) {
+        if (!('unconfirmed' in outcome)) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;}
+        recoveredNext = await refresh(currentProject.current);
+        if (!committedGenerateClip(recoveredNext?.timeline?.clips as never, clipId)) {
+          notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;
+        }
+      }
       setEditingGenerateShotId(shotId);
       await changeMode('editing');
       setPropertiesPage('inspector'); setRightDockTab('properties');
       setSelectedClipId(clipId);
       setPanelOpen('inspector', true, 'editing'); setPanelOpen('timeline', true, 'editing');
-      const next = await refresh(currentProject.current);
+      const next = recoveredNext ?? await refresh(currentProject.current);
       // The service decides where the shot lands (a split shot inserts before/after
       // its whole shot), so the playhead follows the committed clip, never the
       // pre-commit estimate.
-      const committedClip = (next?.timeline?.clips as readonly {id: string; startFrame: number}[] | undefined)
-        ?.find(clip => clip.id === clipId);
+      const committedClip = committedGenerateClip(next?.timeline?.clips as never, clipId);
       setPlayhead(committedClip?.startFrame ?? target.startFrame);
       await format5RefreshHistory();
       await format5LoadBoard();

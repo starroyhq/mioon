@@ -36,6 +36,15 @@ export function timelineGenerateTargetForBlank(context: TimelineBlankContext): T
   return mainClips.some(clip => occupiedAt(clip, frame))
     ? {trackId, main: false, startFrame: frame, beforeClipId: null} : null;
 }
+/** The clip a successful (or recovered unconfirmed) generate commit actually
+ * placed. The UI selects and seeks to this row from the refreshed timeline, so
+ * it can never present an older selected clip as the new placeholder. */
+export function committedGenerateClip(clips: readonly {readonly id: string; readonly startFrame: number;
+  readonly trackId: string}[] | undefined, clipId: string): {readonly id: string; readonly startFrame: number;
+  readonly trackId: string} | null {
+  return clips?.find(clip => clip.id === clipId) ?? null;
+}
+
 export interface GeneratePlaceholderInput {
   readonly target: TimelineGenerateTarget;
   readonly settings: Record<string, unknown>;

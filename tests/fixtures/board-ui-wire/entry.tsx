@@ -11,6 +11,7 @@ import './fixture.css';
 import {I18nProvider, createLanguageStore, useI18n} from '../../../apps/web/src/i18n/I18nProvider.tsx';
 import BoardUiLive from '../../../apps/web/src/board-ui/BoardUiLive.tsx';
 import BoardInspector from '../../../apps/web/src/board-ui/BoardInspector.tsx';
+import GenerateInEditingPanel from '../../../apps/web/src/edit-ui/GenerateInEditingPanel.tsx';
 import SubjectLibrary from '../../../apps/web/src/SubjectLibrary.tsx';
 import {useSubjects} from '../../../apps/web/src/use-subjects.ts';
 import {WorkspaceVisibilityProvider} from '../../../apps/web/src/workspace-visibility.tsx';
@@ -22,8 +23,9 @@ import {dragSubject} from '../../../apps/web/src/board-ui/subject-drag.ts';
 import {readGenerationProviderDirectory} from '../../../apps/web/src/video-provider-directory.ts';
 import {createPrevisNode} from '../../../apps/web/src/previs/previs-create.ts';
 import {createPrevisEditorRpc} from '../../../apps/web/src/previs/previs-format5-rpc.ts';
-import {generationSelection} from '../../../apps/web/src/generation-settings.ts';
+import {generationParameters, generationSelection, shotWithGenerationParameters} from '../../../apps/web/src/generation-settings.ts';
 import {format5GenerationInputService} from '../../../apps/web/src/board-ui/generation-input-request.ts';
+import {format5GenerationEntry} from '../../../apps/web/src/format5-generation-entry.ts';
 import type {GenerationProvider} from '../../../apps/web/src/generation-settings.ts';
 import {referenceAttachRequest, referenceDetachRequest, referenceReorderRequest, referenceRoleRequest} from '../../../apps/web/src/board-ui/inputs.ts';
 import type {BoardEditRequest, SequenceGenerationInputView} from '../../../apps/web/src/board-ui/inputs.ts';
@@ -39,6 +41,7 @@ const rpc = async (operation: string, input: unknown): Promise<any> => {
   const response = await fetch('/rpc', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({operation, input})});
   const body = await response.json() as {ok: boolean; data?: any; error?: {code?: string; message?: string}};
+  if (operation === 'generation.submit') (globalThis as any).__boardWireLastGeneration = input;
   if (!body.ok) throw Object.assign(new Error(body.error?.message ?? 'RPC failed'), {code: body.error?.code ?? 'RPC_FAILED'});
   return body.data;
 };
@@ -63,6 +66,8 @@ function Harness(): React.ReactElement {
   const [openedNode, setOpenedNode] = useState<string | null>(null);
   const [providers, setProviders] = useState<readonly GenerationProvider[]>([]);
   const [mockProviderInstalled, setMockProviderInstalled] = useState(false);
+  const [editingPanelShot, setEditingPanelShot] = useState<string | null>(null);
+  const [forceUnsupportedSubject, setForceUnsupportedSubject] = useState(false);
   const activeProviders = useMemo<readonly GenerationProvider[]>(() => mockProviderInstalled
     ? [...providers, {id: 'mock', name: 'Mock · simulated motion', models: ['mock-motion-v1'],
       mock: true, configured: true, enabled: true, status: 'available'}] : providers, [providers, mockProviderInstalled]);
@@ -81,7 +86,11 @@ function Harness(): React.ReactElement {
       const nextHistory = await rpc('sequence.history.get', {projectId});
       const nextMount = await rpc('sequence.board.get', {projectId});
       const directory = await readGenerationProviderDirectory(operation => rpc(operation, {}));
-      setData(next); setHistory(nextHistory); setMount(nextMount); setProviders(directory.providers);
+      // The driver installs the Mock provider on demand for the generation
+      // acceptance; keep it out of the default directory so no-service steps
+      // remain no-service.
+      setData(next); setHistory(nextHistory); setMount(nextMount);
+      setProviders(directory.providers.filter(provider => provider.id !== 'mock'));
     } catch (error) {
       console.error('board fixture refresh failed', error);
       (window as any).__boardWireError = String((error as Error)?.message ?? error);
@@ -173,14 +182,27 @@ function Harness(): React.ReactElement {
   useEffect(() => {
     const shot = data?.shots?.find((item: Row) => item.id === selectedNodeId);
     if (!shot) {setInputs(null); return;}
-    const selection = generationSelection(activeProviders, (generationOptions[selectedNodeId!] ?? {}) as never, shot as never);
+    const options = (generationOptions[selectedNodeId!] ?? {}) as never;
+    const selection = generationSelection(activeProviders, options, shot as never);
     const provider = selection.provider;
-    const request = {projectId, shotId: shot.id, ...format5GenerationInputService(provider, selection)};
+    // Same projection input as App: B #354's service identity (including Mock's
+    // reserved triple) plus the current 生成声音 switch defaulted by the shared
+    // generationParameters layer for a shot with dialogue.
+    const parameters = generationParameters(shot as never, provider, options);
+    const request = {projectId, shotId: shot.id, ...format5GenerationInputService(provider, selection),
+      ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
     let cancelled = false;
-    void rpc('sequence.generation-inputs.get', request).then(value => {if (!cancelled) setInputs(value as SequenceGenerationInputView);})
+    void rpc('sequence.generation-inputs.get', request).then(value => {
+      if (cancelled) return;
+      const view = value as SequenceGenerationInputView;
+      // Test-only projection for a service that has no subject slot; the
+      // binding menu/lifecycle is production behavior and stays board-side.
+      setInputs(forceUnsupportedSubject ? {...view, entries: view.entries.map(entry => entry.source === 'subject'
+        ? {...entry, status: 'unsupported', reason: 'UNSUPPORTED_REFERENCE_ROLE'} : entry)} : view);
+    })
       .catch(() => {if (!cancelled) setInputs(null);});
     return () => {cancelled = true;};
-  }, [data, activeProviders, generationOptions, selectedNodeId]);
+  }, [data, activeProviders, generationOptions, selectedNodeId, forceUnsupportedSubject]);
   useEffect(() => {
     const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     const update = (): void => setReduced(query?.matches === true);
@@ -264,24 +286,44 @@ function Harness(): React.ReactElement {
   }, [refresh, t]);
   const generateShot = useCallback((shotId: string): void => {
     const shot = data?.shots?.find((item: Row) => item.id === shotId);
-    const selection = shot ? generationSelection(providers, (generationOptions[shotId] ?? {}) as never, shot as never) : null;
+    const options = generationOptions[shotId] ?? {};
+    const selection = shot ? generationSelection(activeProviders, options as never, shot as never) : null;
     const provider = selection?.provider;
     if (!shot || !selection || !provider) return;
+    const entry = format5GenerationEntry({shot: shot as never, provider, model: selection.model, options,
+      frame: data?.timeline && (data.timelineFrameTransaction === true || true) ? data.timeline as never : null});
+    if (entry.issue) {(window as any).__boardWireGenerationError = 'FRAME'; return;}
+    // Mirrors App.format5GenerateShot: the project-frame aspect entry and the
+    // shared generation sound default are both applied before submit.
+    const shotForGeneration = shotWithGenerationParameters(entry.shot as never, provider, options);
     setBusy(true);
     void (async () => {
       try {
         try {
-          await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
-          providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
-            configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId} : {}),
+          const submitted = await rpc('generation.submit', {shotId, expectedRevision: shot.revision, requestId: uuid(),
+            ...(entry.aspectSource ? {aspectSource: entry.aspectSource} : {}),
+            providerId: provider.id, ...(provider.connectionId ? {connectionId: provider.connectionId,
+              configurationRevision: provider.configurationRevision, modelEntryId: selection.modelEntryId,
+              parameters: shotForGeneration.parameters} : {}),
             model: selection.model, ...(provider.id === 'mock' ? {parameters: {scenario: selection.scenario}} : {})});
+          // The headless driver starts a synthetic task worker on demand; poll
+          // the real project service so the fixture state sees terminal status,
+          // the written version and the followed main-track clip.
+          if (provider.id === 'mock' && submitted?.id) {
+            for (let attempt = 0; attempt < 120; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 250));
+              const next = await rpc('project.get', {projectId});
+              const current = (next.jobs ?? []).find((job: Row) => job.id === submitted.id);
+              if (current && ['succeeded', 'failed', 'cancelled'].includes(String(current.status))) break;
+            }
+          }
         } catch (error) {
           (window as any).__boardWireGenerationError = String((error as Error)?.message ?? error);
         }
         await refresh();
       } finally {setBusy(false);}
     })();
-  }, [data, providers, generationOptions, refresh]);
+  }, [data, activeProviders, generationOptions, refresh]);
   const changeInputRole = useCallback((edgeId: string, shotId: string, role: never): void => {
     void runReference(referenceRoleRequest(edgeId, shotId, role), t('boardUi.notice.roleChanged'));
   }, [runReference, t]);
@@ -315,6 +357,11 @@ function Harness(): React.ReactElement {
       },
       setGeneration: (shotId: string, patch: Record<string, unknown>) => updateGenerationOptions(shotId, patch),
       installMockProvider: () => setMockProviderInstalled(true),
+      openEditingGeneratePanel: (shotId: string) => {setSelectedNodeId(shotId); setEditingPanelShot(shotId);},
+      closeEditingGeneratePanel: () => setEditingPanelShot(null),
+      forceUnsupportedSubject: () => setForceUnsupportedSubject(true),
+      attachReference: (sourceNodeId: string, shotId: string, role?: string) => runReference(referenceAttachRequest(sourceNodeId, shotId, role as never), t('boardUi.notice.referenceAttached', {name: '参考'})),
+      refresh: () => refresh(),
       setInspectorTab: (tab: string) => setInspectorTab(tab === 'versions' ? 'versions' : 'settings'),
       clearSelection: () => setSelectedNodeId(null),
       updateShot: (shotId: string, patch: Record<string, unknown>, expectedRevision: number) => updateShot(shotId, patch as never, expectedRevision),
@@ -370,12 +417,17 @@ function Harness(): React.ReactElement {
       subjectGate: subjectGate.current,
 
       shots: (data?.shots ?? []).map((shot: Row) => ({id: shot.id, title: shot.title, prompt: shot.prompt,
-        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId})),
+        duration: shot.duration, aspectRatio: shot.aspectRatio, revision: shot.revision, selectedVersionId: shot.selectedVersionId,
+        dialogue: Array.isArray(shot.dialogue) ? shot.dialogue.map((line: Row) => ({id: line.id, text: line.text})) : []})),
       jobs: data?.jobs ?? [],
-      inputs: inputs ? {mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+      versions: (data?.versions ?? []).map((version: Row) => ({id: version.id, shotId: version.shotId, number: version.number})),
+      clips: ((data?.timeline as Row | null)?.clips ?? []).map((clip: Row) => ({id: clip.id, trackId: clip.trackId,
+        versionId: clip.versionId, sourceState: clip.sourceState, sequenceSource: clip.sequenceSource})),
+      inputs: inputs ? {shotId: inputs.shotId, mode: inputs.mode, usedCount: inputs.usedCount, service: inputs.service?.providerId ?? null,
+        dialogue: inputs.dialogue ?? null,
         entries: inputs.entries.map(entry => ({source: entry.source, status: entry.status, role: entry.role,
-          edgeId: entry.edgeId, bindingId: entry.bindingId, reason: entry.reason ?? null,
-          primary: entry.primary === true}))} : null,
+          edgeId: entry.edgeId, bindingId: entry.bindingId, subjectVersionNumber: entry.subjectVersionNumber,
+          label: entry.label, reason: entry.reason ?? null, primary: entry.primary === true}))} : null,
       providers: providers.map(provider => ({id: provider.id, connectionId: provider.connectionId ?? null}))};
     (window as any).__boardWireState = stateRef.current;
   }, [data, history, mount, selectedNodeId, notice, busy, reduced, openedNode, projection, inputs, providers, subjects.state]);
@@ -450,6 +502,21 @@ function Harness(): React.ReactElement {
       <span data-testid="fixture-history-redo">{history?.redo?.operation ?? ''}</span>
       <span data-testid="fixture-at-earliest">{history?.atEarliest ? 'true' : 'false'}</span>
     </div>
+    {editingPanelShot && (() => {
+      const shot = data?.shots?.find((item: Row) => item.id === editingPanelShot);
+      if (!shot) return null;
+      const job = (data?.jobs ?? []).find((item: Row) => item.shotId === shot.id);
+      return <div className="board-fixture-editing-generate">
+        <GenerateInEditingPanel shot={shot} shotLabel={String(Math.max(0, (data?.shots ?? []).findIndex((item: Row) => item.id === shot.id)) + 1).padStart(2, '0')}
+          inputs={inputs} subjectNames={{}} cueCount={0} jobStatus={job?.status ?? null} busy={busy}
+          generateBlocked={Boolean(job && ['queued','running','submitted','pending'].includes(String(job.status)))
+            || (data?.versions ?? []).some((version: Row) => version.shotId === shot.id)}
+          resizable onSavePrompt={prompt => updateShot(shot.id, {prompt}, Number(shot.revision) || 1)}
+          onResize={duration => updateShot(shot.id, {duration}, Number(shot.revision) || 1)}
+          onGenerate={() => generateShot(shot.id)} onRevealOnBoard={() => {}} rpc={(operation, input) => rpc(operation, input)}
+          onDialogueApplied={() => {void refresh();}}/>
+      </div>;
+    })()}
   </div>;
 }
 
