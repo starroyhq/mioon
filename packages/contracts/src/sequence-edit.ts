@@ -100,7 +100,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
-  'timeline.clip.splitAtScenes', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
+  'timeline.clip.splitAtScenes', 'timeline.clip.separateSound', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
   'timeline.generate.placeholder', 'timeline.generate.resize',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'subject.card.create', 'subject.card.delete',
@@ -278,6 +278,9 @@ export interface SequenceEditClipPropertiesPatch {
   readonly audioRole?: unknown;
   readonly volumeEnvelope?: unknown;
   readonly name?: string;
+  /** Mute the clip's own sound without touching its gain. `false` clears the
+   * persisted flag so a format-5 row never stores `muted:false`. */
+  readonly muted?: boolean;
 }
 export interface SequenceEditClipPropertyEdit {
   readonly clipId: string;
@@ -325,6 +328,32 @@ export interface SequenceEditTrackOperation {
 export interface SequenceEditTrackIntent {
   readonly side: 'timeline';
   readonly operation: SequenceEditTrackOperation;
+}
+
+/** FR-G separate sound: one action mutes the source clip and inserts a
+ * sound-only audio clip that references the same video asset. The server expands
+ * the minimal operation below: it allocates the audio clip id, picks the first
+ * audio track with a free gap (or creates one in the same action) and resolves
+ * the localized name prefix. The resolved ids travel in the accepted envelope
+ * so confirm/retry replay exactly the same rows.
+ *
+ * A resolved action has all three ids: the destination track is either an
+ * existing one (`createdTrackId` absent) or the track created by this action
+ * (`createdTrackId === audioTrackId`). An unresolved preview request omits them. */
+export interface SequenceEditSeparateSoundOperation {
+  readonly kind: 'separate-sound';
+  readonly clipId: string;
+  readonly audioClipId?: string;
+  readonly audioTrackId?: string;
+  readonly createdTrackId?: string;
+  /** New audio clip name; already localized by the caller (Mio omits it). */
+  readonly name?: string;
+  /** New track name; only used when this action creates the track. */
+  readonly trackName?: string;
+}
+export interface SequenceEditSeparateSoundIntent {
+  readonly side: 'timeline';
+  readonly operation: SequenceEditSeparateSoundOperation;
 }
 
 /** FR-B subtitle structure: one action may add, update and remove cues; every
@@ -493,9 +522,10 @@ export function sequenceEditTrackOperationName(operation: SequenceEditTrackOpera
 }
 
 export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
-  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent' | 'generateIntent'>): string {  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
+  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent' | 'soundIntent' | 'generateIntent'>): string {  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
+  if (envelope.soundIntent) return 'timeline.clip.separateSound';
   if (envelope.propertiesIntent) return 'timeline.clip.set-properties';
   if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
   if (envelope.dialogueIntent) return sequenceEditDialogueOperationName(envelope.dialogueIntent.operation);
@@ -641,6 +671,9 @@ export interface SequenceEditEnvelope {
   /** FR-B2 output-frame change; one intent family like properties. */
   readonly formatIntent?: SequenceEditFormatIntent;  /** FR-D track add/update; exactly one intent family is present. */
   readonly trackIntent?: SequenceEditTrackIntent;
+  /** FR-G separate sound; exactly one intent family is present. The operation
+   * carries the server-allocated audio clip/track ids so confirming replays them. */
+  readonly soundIntent?: SequenceEditSeparateSoundIntent;
   /** GE-a generation placement/resize; exactly one intent family is present. */
   readonly generateIntent?: SequenceEditGenerateIntent;
   readonly baseline: SequenceEditBaseline;
@@ -771,6 +804,7 @@ const clipPropertiesPatchSchema = z.object({
   audioRole: z.unknown().optional(),
   volumeEnvelope: z.unknown().optional(),
   name: z.string().min(1).max(200).optional(),
+  muted: z.boolean().optional(),
 }).strict().refine(value => Object.keys(value).length > 0, 'At least one clip property is required');
 export const sequenceEditClipPropertiesIntentSchema = z.object({
   side: z.literal('timeline'),
@@ -794,6 +828,18 @@ export const sequenceEditTrackIntentSchema = z.object({
   ])}).strict(),
 }).strict();
 const trackIntentSchema = sequenceEditTrackIntentSchema;
+export const sequenceEditSeparateSoundIntentSchema = z.object({
+  side: z.literal('timeline'),
+  operation: z.object({kind: z.literal('separate-sound'), clipId: uuidSchema,
+    audioClipId: uuidSchema.optional(), audioTrackId: uuidSchema.optional(), createdTrackId: uuidSchema.optional(),
+    name: z.string().min(1).max(200).optional(), trackName: z.string().min(1).max(150).optional(),
+  }).strict()
+    .refine(value => (value.audioClipId === undefined) === (value.audioTrackId === undefined),
+      'Separate-sound clip and track ids resolve together')
+    .refine(value => value.createdTrackId === undefined || value.createdTrackId === value.audioTrackId,
+      'A created track is the destination track'),
+}).strict();
+const soundIntentSchema = sequenceEditSeparateSoundIntentSchema;
 const propertiesIntentSchema = sequenceEditClipPropertiesIntentSchema;
 const formatIntentSchema = sequenceEditFormatIntentSchema;
 const previsLabelSchema = z.string().max(PREVIS_LIMITS.labelLength);
@@ -949,6 +995,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   subtitlesIntent: subtitlesIntentSchema.optional(),
   dialogueIntent: dialogueIntentSchema.optional(),
   trackIntent: trackIntentSchema.optional(),
+  soundIntent: soundIntentSchema.optional(),
   formatIntent: formatIntentSchema.optional(),
   generateIntent: generateIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
@@ -960,9 +1007,10 @@ export const sequenceEditEnvelopeSchema = z.object({
   const hasSubtitles = value.subtitlesIntent !== undefined;
   const hasDialogue = value.dialogueIntent !== undefined;
   const hasTrack = value.trackIntent !== undefined;
+  const hasSound = value.soundIntent !== undefined;
   const hasFormat = value.formatIntent !== undefined;
   const hasGenerate = value.generateIntent !== undefined;
-  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat, hasGenerate].filter(Boolean).length
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat, hasSound, hasGenerate].filter(Boolean).length
     + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
   if (hasSubtitles) {
@@ -993,6 +1041,21 @@ export const sequenceEditEnvelopeSchema = z.object({
   if (hasFormat) {
     if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A format action carries no CS/TS intent'});
     if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A format action is timeline-origin'});
+    return;
+  }
+  if (hasSound) {
+    if (value.intents.length !== 0) context.addIssue({code: z.ZodIssueCode.custom, message: 'A separate-sound action carries no CS/TS intent'});
+    if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A separate-sound action is timeline-origin'});
+    const operation = value.soundIntent!.operation;
+    // A resolved action names its new audio clip in the impact and, when it
+    // creates a track, that track too. An unresolved preview request may omit
+    // both; the service fills them before the envelope is hashed.
+    if (operation.audioClipId !== undefined && !value.impact.otherTrackItemIds.includes(operation.audioClipId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'Separate-sound impact must list the new audio clip'});
+    }
+    if (operation.createdTrackId !== undefined && !(value.impact.trackIds ?? []).includes(operation.createdTrackId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'Separate-sound impact must list the created track'});
+    }
     return;
   }
   if (hasTrack) {
@@ -1564,6 +1627,9 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  *   legally (the shot span has too few free frames, or a plain subtitle occupies
  *   every legal frame). The whole action is rejected with the affected ids; no
  *   text is truncated and no ordinary cue is renamed or moved (P5 D7).
+ * - `SEQUENCE_EDIT_SOUND_INVALID`: «separate sound» names a missing/wrong-track
+ *   clip, a placeholder, a source without an actual audio stream, or an audio
+ *   layout that cannot hold the new sound clip. Nothing is written.
  */
 export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CONTRACT_INVALID', 'SEQUENCE_EDIT_REQUEST_REUSED', 'SEQUENCE_EDIT_REVISION_CONFLICT',
@@ -1572,7 +1638,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_SUBJECT_VERSION_HIDDEN', 'SEQUENCE_EDIT_SUBJECT_BINDING_LIMIT',
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
   'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID', 'SEQUENCE_EDIT_DIALOGUE_INVALID',
-  'SEQUENCE_EDIT_DIALOGUE_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
+  'SEQUENCE_EDIT_DIALOGUE_CONFLICT', 'SEQUENCE_EDIT_SOUND_INVALID', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
   'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_GENERATION_INVALID',] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];

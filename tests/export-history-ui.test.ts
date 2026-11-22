@@ -143,7 +143,7 @@ test('App keeps history in the controlled export dialog with visibility, recover
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   // Typed App source spells the same frozen ordering formula with non-null assertions on the
   // already-parsed createdAt fields; keep asserting the exact descending-createdAt comparator.
-  assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.sort\(\(a, b\) => b\.createdAt!?\.localeCompare\(a\.createdAt!?\)\);/);
+  assert.match(app, /const orderedExports = \[\.\.\.data\.exports\]\.filter\(item => item\.mode !== 'clip-audio'\)\.sort\(\(a, b\) => b\.createdAt!?\.localeCompare\(a\.createdAt!?\)\);/);
   assert.match(app, /<DeliveryWorkspace page=\{showExports \? 'history' : 'compose'\}/);
   assert.match(app, /<AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible=\{showExports\}/);
   const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];

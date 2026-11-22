@@ -117,6 +117,10 @@ function speakerNames(store: ProjectStore, dialogue: readonly {readonly speakerS
 
 export interface PlanFormat5DialogueOptions {
   readonly binding?: VideoExecutionBinding;
+  /** Legacy provider capabilities when no configured connection exists (Mock).
+   * It is a selected service, so the dialogue status must not claim none was
+   * chosen; the built-in Mock never emits sound. */
+  readonly legacyService?: {readonly providerId: string};
   /** Saved shot prompt; the text the user already wrote for this shot. */
   readonly basePrompt: string;
   /** Explicit request switch; omitted means the dialogue default. */
@@ -130,6 +134,8 @@ export interface PlanDialogueGenerationInput {
   readonly lines: readonly Format5DialogueLineFreeze[];
   readonly basePrompt: string;
   readonly binding?: VideoExecutionBinding;
+  /** Legacy provider capabilities when no configured connection exists (Mock). */
+  readonly legacyService?: {readonly providerId: string};
   /** Explicit "生成声音" switch from the request; omitted means the service
    * default (open when the shot has dialogue and the model's audio is optional). */
   readonly generateAudio?: boolean;
@@ -142,10 +148,14 @@ export function planDialogueGeneration(input: PlanDialogueGenerationInput): Form
   const {shotId, shotRevision, lines, basePrompt} = input;
   const binding = input.binding ?? null;
   if (!binding) {
+    // A legacy provider (currently only the built-in Mock) is a selected service
+    // without a configured video connection. It never emits native sound, so the
+    // panel shows the same "service cannot speak" status as a silent video
+    // model instead of claiming that no service was selected.
     return {version: 1, shotId, shotRevision, binding: null, status: 'unsupported',
-      reason: FORMAT5_DIALOGUE_REASONS.serviceNotSelected, lines, basePrompt, prompt: basePrompt,
-      promptCodeUnits: basePrompt.length, maxPromptCodeUnits: 0, capability: null, audioRequest: null,
-      generateAudio: false};
+      reason: input.legacyService ? FORMAT5_DIALOGUE_REASONS.serviceDoesNotSpeak : FORMAT5_DIALOGUE_REASONS.serviceNotSelected,
+      lines, basePrompt, prompt: basePrompt, promptCodeUnits: basePrompt.length, maxPromptCodeUnits: 0,
+      capability: null, audioRequest: null, generateAudio: false};
   }
   const capability = dialogueGenerationCapability(binding);
   const maxPromptCodeUnits = videoInputProfile(binding).prompt.maxCodeUnits;
@@ -205,6 +215,7 @@ export function planFormat5DialogueGeneration(store: ProjectStore, shotId: strin
   }));
   return planDialogueGeneration({shotId, shotRevision: shot.revision, lines,
     basePrompt: options.basePrompt, ...(options.binding ? {binding: options.binding} : {}),
+    ...(options.legacyService ? {legacyService: options.legacyService} : {}),
     ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})});
 }
 

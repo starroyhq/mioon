@@ -8,9 +8,12 @@ import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 
 interface Render {
-  inspector(locale: Locale, variant: 'full' | 'missing' | 'empty'): string;
+  inspector(locale: Locale, variant: 'full' | 'missing' | 'empty' | 'dialogue-unsupported' | 'dialogue-rejected'): string;
   textOnly(locale: Locale): string;
   loading(locale: Locale): string;
+  running(locale: Locale): string;
+  failed(locale: Locale): string;
+  unknown(locale: Locale): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
 let loaded: Promise<Render> | undefined;
@@ -44,25 +47,33 @@ const entry = `import React from 'react';
        status:'used',label:'阿璃',subjectVersionNumber:3,orderIndex:4},
       {source:'previs',sourceNodeId:'60000000-0000-4000-8000-000000000035',sourceKind:'subject',role:'subject_reference',
        status:'used',label:'街口 · 阿璃',subjectVersionNumber:3,orderIndex:5}],
-    referenceCount:4};
+    referenceCount:4,
+    dialogue:{status:'used',lineCount:2,promptCodeUnits:40,maxPromptCodeUnits:5000,style:'seedance-braces',audioMode:'request-switch'}};
   const missing={...full,service:null,mode:'frames',usedCount:0,unsupportedCount:2,
     entries:full.entries.map(entry=>({...entry,status:'unsupported',reason:'SERVICE_NOT_SELECTED',primary:undefined})),
-    primaryEdgeId:null};
+    primaryEdgeId:null,
+    dialogue:{status:'unsupported',lineCount:2,reason:'SERVICE_NOT_SELECTED',promptCodeUnits:2,maxPromptCodeUnits:0}};
+  const dialogueUnsupported={...full,dialogue:{status:'unsupported',lineCount:2,reason:'SERVICE_DOES_NOT_SPEAK',
+    promptCodeUnits:20,maxPromptCodeUnits:1000}};
+  const dialogueRejected={...full,dialogue:{status:'rejected',lineCount:2,reason:'PROMPT_TOO_LONG',
+    promptCodeUnits:1200,maxPromptCodeUnits:1000,style:'seedance-braces',audioMode:'request-switch'}};
   const empty={...full,usedCount:0,unsupportedCount:0,primaryEdgeId:null,entries:[]};
   const provider={id:'kling',connectionId:'60000000-0000-4000-8000-000000000099',configurationRevision:1,
     name:'Kling',status:'available',enabled:true,configured:true,mock:false,
     models:[{id:'kling-3.0',modelId:'kling-3.0',modelEntryId:'60000000-0000-4000-8000-000000000098',
       name:'kling-3.0',inputModes:['text','image','reference'],aspectRatios:['9:16'],durations:[5]}]};
   const base={board,activeFilmId:rootId,mount:null,selectedNodeId:shotId,versions:[],
-    shots:[{id:shotId,title:'霓虹街头',duration:2}],busy:false,
+    shots:[{id:shotId,projectId:'60000000-0000-4000-8000-000000000001',title:'霓虹街头',duration:2}],busy:false,
     onSelectVersion:()=>{},onDelete:()=>{},onRestore:()=>{},onSetBindingMode:()=>{},onDetachBinding:()=>{},
     onRestoreBinding:()=>{},onDeleteSubjectCard:()=>{},providers:[provider],
     generationOptions:{connectionId:provider.connectionId,configurationRevision:1,
       modelEntryId:'60000000-0000-4000-8000-000000000098',model:'kling-3.0'},
-    onInputRoleChange:()=>{},onInputDetach:()=>{},onInputPrimary:()=>{}};
+    onInputRoleChange:()=>{},onInputDetach:()=>{},onInputPrimary:()=>{},rpc:async()=>({}),jobs:[],
+    onCancelJob:()=>{},onRetryJob:()=>{}};
   function inspector(locale,variant){
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
-      <BoardInspector {...base} inputs={variant==='missing'?missing:variant==='empty'?empty:full}/></I18nProvider>);
+      <BoardInspector {...base} inputs={variant==='missing'?missing:variant==='empty'?empty
+        :variant==='dialogue-unsupported'?dialogueUnsupported:variant==='dialogue-rejected'?dialogueRejected:full}/></I18nProvider>);
   }
   function textOnly(locale){
     const zero={...full,mode:'text',usedCount:0,unsupportedCount:0,primaryEdgeId:null,
@@ -75,7 +86,21 @@ const entry = `import React from 'react';
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
       <BoardInspector {...base} inputs={null}/></I18nProvider>);
   }
-  export {inspector, textOnly, loading};`;
+  function running(locale){
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={full} jobs={[{id:'job-running',shotId,status:'running',progress:38,createdAt:'2026-11-22T00:00:00.000Z',providerId:'kling',snapshot:{}}]}/></I18nProvider>);
+  }
+  function failed(locale){
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={full} jobs={[{id:'job-failed',shotId,status:'failed',providerId:'kling',
+        error:{code:'PROVIDER_GENERATION_FAILED',message:'Synthetic provider failure.'},createdAt:'2026-11-22T00:00:00.000Z',snapshot:{}}]}/></I18nProvider>);
+  }
+  function unknown(locale){
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={full} jobs={[{id:'job-unknown',shotId,status:'submission_unknown',providerId:'kling',
+        error:{code:'SUBMISSION_UNKNOWN'},createdAt:'2026-11-22T00:00:00.000Z',snapshot:{}}]}/></I18nProvider>);
+  }
+  export {inspector, textOnly, loading, running, failed, unknown};`;
 
 function renderer(): Promise<Render> {
   return loaded ??= (async () => {
@@ -164,4 +189,51 @@ test('the panel uses the confirmed copy: 未连接参考, 文生视频 and no co
   assert.equal(text.includes('用到'), false);
   const emptyEnglish = render.inspector('en', 'empty');
   assert.ok(emptyEnglish.includes('No reference connected'));
+});
+
+test('the new shot panel shows the dialogue service status and the overflow reason', async () => {
+  const render = await renderer();
+  const unsupported = render.inspector('zh-Hans', 'dialogue-unsupported');
+  assert.match(unsupported, /data-testid="shot-dialogue-generation-unsupported"/u);
+  assert.ok(unsupported.includes('当前服务不支持'));
+  const rejected = render.inspector('zh-Hans', 'dialogue-rejected');
+  assert.match(rejected, /data-testid="shot-dialogue-generation-rejected"/u);
+  assert.ok(rejected.includes('台词加进提示词后超出这个服务的上限'));
+  assert.equal(rejected.includes('不会截断'), false);
+  const missing = render.inspector('zh-Hans', 'missing');
+  assert.equal(missing.includes('shot-dialogue-generation-unsupported'), false,
+    'no service selected never shows the service limitation');
+  assert.equal(missing.includes('shot-dialogue-generation-rejected'), false);
+  const used = render.inspector('zh-Hans', 'full');
+  assert.equal(used.includes('shot-dialogue-generation-unsupported'), false);
+  assert.equal(used.includes('shot-dialogue-generation-rejected'), false);
+  const english = render.inspector('en', 'dialogue-unsupported');
+  assert.ok(english.includes('Not supported by this service'));
+  assert.equal(english.includes('当前服务不支持'), false);
+});
+
+
+test('the board property panel owns the selected shot running cancel and failed retry entries', async () => {
+  const render = await renderer();
+  for (const locale of LOCALES) {
+    const running = render.running(locale);
+    assert.match(running, /data-testid="board-shot-job-running"/, locale);
+    assert.match(running, /data-testid="cancel-generation"/, locale);
+    assert.match(running, /role="progressbar"/, locale);
+    assert.ok(running.includes(translate(locale, 'redesign.board.generating')), locale);
+    assert.ok(running.includes('Kling'), locale);
+    assert.equal(running.includes('data-testid="board-inspector-generate"'), false, locale);
+    const failed = render.failed(locale);
+    assert.match(failed, /data-testid="failed-version-job-failed"/, locale);
+    assert.match(failed, /data-testid="retry-failed-version-job-failed"/, locale);
+    assert.ok(failed.includes(translate(locale, 'redesign.board.retry')), locale);
+    assert.ok(failed.includes(translate(locale, 'redesign.board.failureReason',
+      {reason: translate(locale, 'tasks.error.providerNoVideo')})), locale);
+    assert.match(failed, /data-testid="board-inspector-generate"/, locale);
+    const unknown = render.unknown(locale);
+    assert.match(unknown, /data-testid="unknown-generation-job-unknown"/, locale);
+    assert.ok(unknown.includes(translate(locale, 'redesign.board.unknownOutcome')), locale);
+    assert.equal(unknown.includes('retry-failed-version-job-unknown'), false, locale);
+    assert.equal(render.inspector(locale, 'full').includes('data-testid="cancel-generation"'), false, locale);
+  }
 });

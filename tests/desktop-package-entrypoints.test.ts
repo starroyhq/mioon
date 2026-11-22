@@ -5,7 +5,7 @@ import {mkdir, mkdtemp, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath , pathToFileURL} from 'node:url';
 import { parseArguments, buildCommands } from '../scripts/lib/local-tooling.ts';
 import desktopIdentity from '../apps/desktop/identity.ts';
 import { verifySettingsWarmAssets } from '../apps/desktop/scripts/settings-warm-assets.ts';
@@ -53,7 +53,7 @@ for (const expected of channels) {
   test(`${expected.script} resolves the real tooling contract and plans Web before same-channel desktop staging`, () => {
     const { commands, config, viteEntry } = packagingPlan(manifest.scripts[expected.script] as string, expected);
     assert.deepEqual(commands, [
-      { command: process.execPath, args: ['--max-old-space-size=768', viteEntry, 'build'], cwd: path.join(root, 'apps/web') },
+      { command: process.execPath, args: ['--max-old-space-size=1024', `--import=${pathToFileURL(path.join(root, 'scripts/lib/build-heap-probe.ts')).href}`, viteEntry, 'build'], cwd: path.join(root, 'apps/web') },
       { command: process.execPath, args: [path.join(desktop, 'scripts/build.ts'), `--channel=${expected.channel}`], cwd: root },
     ]);
     assert.equal(realpathSync(commands[1].args[0]), realpathSync(path.join(desktop, 'scripts/build.ts')));

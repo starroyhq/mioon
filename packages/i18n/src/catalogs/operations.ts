@@ -117,6 +117,18 @@ export const operationMessages = {
     "en": "Read the verified location and metadata of an owned export file; accepts no caller-controlled path or shell action",
     "ja": "現在のプロジェクトが所有する検証済み書き出しファイルの場所とメタデータを読み取ります。呼び出し元が指定したパスやコマンドの実行は受け付けません"
   },
+  "operation.clip.audio.export": {
+    "zh-Hans": "把格式 5 片段当前范围的声音另存为项目内音频素材：AAC 原样拷贝，其他编码按导出音频设置转成 AAC。后台本地任务，可取消；完成后新增一个带来源范围与源哈希的音频素材，原素材和片段不变。不联网、不调用模型、不付费",
+    "zh-Hant": "把格式 5 片段目前範圍的聲音另存為專案內音訊素材：AAC 原樣拷貝，其他編碼依匯出音訊設定轉成 AAC。背景本機任務，可取消；完成後新增一個帶來源範圍與來源雜湊的音訊素材，原素材和片段不變。不連網、不呼叫模型、不收費",
+    "en": "Save the current range of a format-5 clip's sound as a project audio asset: copy AAC as-is or transcode other codecs with the export audio settings. Local background task that can be cancelled; on success one new audio asset carries the source range and source hash while the source asset and clip stay unchanged. No network, model or paid generation",
+    "ja": "フォーマット5クリップの現在範囲の音声をプロジェクト内の音声素材として保存します。AACはそのままコピーし、それ以外のコーデックは書き出し音声設定でAACに変換します。ローカルのバックグラウンドタスクでキャンセル可能。完了すると出所範囲とソースハッシュを持つ音声素材が1件増え、元の素材とクリップは変わりません。ネットワーク、モデル、有料生成は使いません"
+  },
+  "operation.clip.audio.export.get": {
+    "zh-Hans": "只读查询本条另存为音频素材任务的记录与本地进度；不启动、不取消、不重试任务",
+    "zh-Hant": "唯讀查詢本條另存為音訊素材任務的記錄與本機進度；不啟動、不取消、不重試任務",
+    "en": "Read one clip-audio save task's record and local progress without starting, cancelling or retrying it",
+    "ja": "この音声素材保存タスクの記録とローカル進捗を読み取り専用で取得します。タスクの開始、キャンセル、再試行は行いません"
+  },
   "operation.workspace.settings.get": {
     "zh-Hans": "读取旧版工作区设置客户端的兼容响应和修订号",
     "zh-Hant": "讀取舊版工作區設定用戶端的相容回應和修訂版號",

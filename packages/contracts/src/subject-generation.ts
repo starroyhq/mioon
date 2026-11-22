@@ -97,7 +97,7 @@ export function getSubjectGenerationSnapshotIssue(snapshot: unknown,options: Sub
 const jobFields=['id','projectId','shotId','requestId','providerId','model','revision','status','phase','progress','snapshot','providerJobId','submissionCount','error','createdAt','updatedAt','versionId','cancelScope','retryOfJobId'];
 const snapshotFields=['shotId','shotRevision','title','prompt','referenceAssetIds','referenceAssets','referenceConnections','aspectRatio','duration','providerId','model','parameters','capabilities','inputProfileVersion','inputProfileId','providerRegion','referenceBindings','subjectReference'];
 const statuses=['queued','submitting','running','downloading','submission_unknown','failed','cancelled','succeeded'];
-const scenarios=['success','failure','delay','timeout','unknown','reject','download_fail_once','rejected_before_accept','accepted_then_response_lost','poll_timeout_then_recover','terminal_failure'];
+const scenarios=['success','failure','failure_once','delay','timeout','unknown','reject','download_fail_once','rejected_before_accept','accepted_then_response_lost','poll_timeout_then_recover','terminal_failure'];
 const parameters=(value: unknown): boolean=>fields(value,[],['scenario','delayMs','seed'])&&(!own(value,'scenario')||scenarios.includes(value.scenario as string))&&(!own(value,'delayMs')||integer(value.delayMs,0,120000))&&(!own(value,'seed')||Number.isSafeInteger(value.seed));
 
 /** Opt-in receipt matching for explicit subject generation.submit only.

@@ -12,7 +12,7 @@ import {
   planFormat5DialogueGeneration, readFrozenFormat5Dialogue, FORMAT5_DIALOGUE_REASONS,
 } from '../packages/business/src/format5-dialogue-generation.ts';
 import {readFormat5GenerationInputView} from '../packages/business/src/format5-reference-inputs.ts';
-import {defaultGenerateAudio, shotHasDialogue} from '../apps/web/src/generation-settings.ts';
+import {defaultGenerateAudio, shotHasDialogue, shotWithGenerationParameters} from '../apps/web/src/generation-settings.ts';
 
 const shotId = '90000000-0000-4000-8000-000000000010';
 
@@ -209,4 +209,35 @@ test('the store wrapper and read-only projection use the same plan', (t) => {
   const readView = readFormat5GenerationInputView(world.store, shotId, {binding: bindingFor('ark')});
   assert.equal(readView.dialogue.status, 'used');
   assert.equal(readView.dialogue.lineCount, 0);
+});
+
+test('the GP board generate action sends the same defaulted sound switch as the shot inspector', () => {
+  const provider = {id: 'ark', connectionId: crypto.randomUUID(), configurationRevision: 1,
+    models: [], videoModel: {id: crypto.randomUUID(), name: 'Seedance 2.5', modelId: 'doubao-seedance-2-5-260628',
+      templateId: 'ark-v3', audio: 'optional', seed: false, inputModes: ['text'],
+      aspectRatios: ['9:16'], durationResolutionMap: [{duration: [4], resolution: ['720p']}]}} as never;
+  const shot = {id: 'shot', projectId: 'project', dialogue: [{id: 'line-1', text: '你好。'}], parameters: {}};
+  const defaulted = shotWithGenerationParameters(shot, provider, {} as never);
+  assert.equal((defaulted.parameters as Record<string, unknown>).generateAudio, true,
+    'a dialogue shot defaults native sound on before generation.submit');
+  const manualOff = shotWithGenerationParameters(shot, provider, {parameters: {generateAudio: false}});
+  assert.equal((manualOff.parameters as Record<string, unknown>).generateAudio, false,
+    'an explicit user choice still wins');
+  const noDialogue = shotWithGenerationParameters({id: 'shot', projectId: 'project', parameters: {}}, provider, {} as never);
+  assert.equal((noDialogue.parameters as Record<string, unknown>).generateAudio, undefined,
+    'a shot without dialogue keeps the model default');
+  assert.deepEqual(shotWithGenerationParameters({id: 'shot'}, null), {id: 'shot'},
+    'no provider keeps the legacy raw shot');
+});
+
+test('a selected legacy Mock service reports the unsupported-service reason, not "no service"', () => {
+  const mock = planDialogueGeneration({shotId, shotRevision: 1, lines: [], basePrompt: base,
+    legacyService: {providerId: 'mock'}});
+  assert.equal(mock.status, 'unsupported');
+  assert.equal(mock.reason, FORMAT5_DIALOGUE_REASONS.serviceDoesNotSpeak);
+  assert.equal(mock.prompt, base);
+  assert.equal(format5DialogueView(mock).reason, 'SERVICE_DOES_NOT_SPEAK');
+  const noService = planDialogueGeneration({shotId, shotRevision: 1, lines: [], basePrompt: base});
+  assert.equal(noService.reason, FORMAT5_DIALOGUE_REASONS.serviceNotSelected);
+
 });

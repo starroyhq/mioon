@@ -12,6 +12,7 @@ import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
 import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
 import type {TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
+import {timelineGenerateTargetForBlank} from '../apps/web/src/edit-ui/generate-in-editing.ts';
 
 const nodes=(tree:TestTree):CollapsedNode[]=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree as CollapsedNode,...nodes(tree.props?.children)]:[];
 function harness(locale: unknown='zh-Hans'){
@@ -36,6 +37,7 @@ function harness(locale: unknown='zh-Hans'){
   if(name==='./use-timeline-waveforms.ts')return{useTimelineWaveforms:(options?: unknown)=>{lastWaveform=options as {active:boolean};return{windows:[],entries:new Map(),setEnabled:(value?: unknown|string)=>calls.push(['waveform',value]),retry:()=>calls.push(['retry'])};}};
   if(name==='./waveform-state.ts')return{WAVEFORM_LIMITS:{entries:20}};
   if(name==='./TimelineWaveform.tsx')return{__esModule:true,default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls'};
+  if(name==='./edit-ui/generate-in-editing.ts')return{timelineGenerateTargetForBlank};
   if(name==='./edit-ui/status.tsx')return{EditUiClipTitle:'EditUiClipTitle'}; if(name==='./edit-ui/anchors.tsx')return{EditUiAnchorLayer:'EditUiAnchorLayer',EditUiDetachedAnchor:'EditUiDetachedAnchor'};
   if((name)!.endsWith('.css'))return{};
   if((name)!.startsWith('@mioon/ui/'))return new Proxy({},{get:(_,key)=>String(key)});
@@ -44,7 +46,8 @@ function harness(locale: unknown='zh-Hans'){
  },module,module.exports);
  const timeline={id:'t1',projectId:'p1',revision:2,fps:30,width:1080,height:1920,durationFrames:60,tracks:[{id:'v1',kind:'video',name:'Video1',orderIndex:0},{id:'a1',kind:'audio',name:'Audio1',orderIndex:1}],clips:[{id:'c1',trackId:'v1',assetId:'asset1',name:'Clip',startFrame:0,durationFrames:60,sourceInFrame:0,gain:1}]};
  const defaults={timeline,assets:[{id:'asset1',mimeType:'video/mp4',duration:10,hasAudio:true}],playhead:0,selectedClipId:'c1',historyState:{length:1,canUndo:true,canRedo:true},splitState:{canSplit:true},canSeed:true,visible:true,presentationVisible:true,collapsed:false,busy:false,onViewStateChange:(patch?: unknown|string)=>calls.push(['view',patch])};
- for(const name of (['onSeek','onCollapse','onHistory','onSplit','onTrackAdd','onSeed','onRender','onTrackUpdate','onSelectClip','onSelectSubtitle','onAddSubtitle','onMoveClip','onAddAsset','onRemove','onRippleRemove'] as const))(defaults as typeof defaults & Record<typeof name,(...args:unknown[])=>unknown>)[name]=(...args: unknown[])=>calls.push([name,...args]);
+ for(const name of (['onSeek','onCollapse','onHistory','onSplit','onTrackAdd','onSeed','onRender','onTrackUpdate','onSelectClip','onSelectSubtitle','onAddSubtitle','onMoveClip','onAddAsset','onRemove','onRippleRemove','onPasteClipboard'] as const))(defaults as typeof defaults & Record<typeof name,(...args:unknown[])=>unknown>)[name]=(...args: unknown[])=>calls.push([name,...args]);
+ (defaults as typeof defaults & {onGenerateInTimeline:(...args:unknown[])=>unknown}).onGenerateInTimeline=(...args: unknown[])=>calls.push(['onGenerateInTimeline',...args]);
  return{calls,defaults,get waveforms(){return lastWaveform;},get removal(){return removal;},render:(patch?: Record<string,unknown>)=>{cursor=0;const tree=(module.exports as {default:TestComponent}).default({...defaults,...(patch as Record<string, unknown>)});while(layouts.length)(layouts.shift())!();return{tree,all:nodes(tree),toolbar:(nodes(tree).find((n)=>n.type==='TimelineToolbar'))!.props,body:(nodes(tree).find((n)=>n.type==='CollapsibleContent'))!.props};},dispose:()=>{for(const slot of slots)(slot as HookCell)?.cleanup?.();}};
 }
 const lane=(view: ReturnType<ReturnType<typeof harness>['render']>)=>(view.all.find((node)=>node.props?.['data-testid']==='track-lane-v1'))!.props;
@@ -207,5 +210,43 @@ test('transition marks sit on video lanes and their callbacks follow the body ga
  assert.equal(gated!.disabled,true);
  gated!.onAdd!('c1','dissolve');gated!.onSelect('c1');marks!.onSelect('c1');
  assert.deepEqual(h.calls,[],'a hidden body and retained closures never dispatch');
+ h.dispose();
+});
+
+test('blank generation submits the main-track end target after an overlay right-click, never the previous overlay target',async t=>{
+ const prior=Object.getOwnPropertyDescriptor(globalThis,'getComputedStyle');Object.defineProperty(globalThis,'getComputedStyle',{configurable:true,value:(element: { offsetWidth: unknown })=>({width:`${element.offsetWidth}px`,boxSizing:'border-box',getPropertyValue:()=> '0'})});t.after(()=>{if(prior)Object.defineProperty(globalThis,'getComputedStyle',prior);else delete (globalThis as {getComputedStyle?: unknown}).getComputedStyle;});
+ const h=harness();
+ const timeline={...h.defaults.timeline,durationFrames:4800,mainTrack:{trackId:'v1'},tracks:[
+   {id:'v1',kind:'video',name:'Video1',orderIndex:0},{id:'v2',kind:'video',name:'Video2',orderIndex:1},{id:'a1',kind:'audio',name:'Audio1',orderIndex:2}],
+  clips:[{id:'c1',trackId:'v1',assetId:'asset1',name:'Clip 1',startFrame:0,durationFrames:2400,sourceInFrame:0,gain:1},
+   {id:'c2',trackId:'v1',assetId:'asset1',name:'Clip 2',startFrame:2400,durationFrames:2400,sourceInFrame:0,gain:1}]};
+ const targets: unknown[][]=[];
+ const event=(clientX: number)=>({clientX,currentTarget:{offsetWidth:1000,getBoundingClientRect:()=>({left:0,width:1000})},target:{closest:()=>null},preventDefault(){}});
+ const props=(view: ReturnType<ReturnType<typeof harness>['render']>,testId:string)=>view.all.find(node=>node.props?.['data-testid']===testId)!.props;
+ const lane=(view: ReturnType<ReturnType<typeof harness>['render']>,id:string)=>props(view,'track-lane-'+id) as unknown as {onContextMenu(event: unknown):void};
+ const render=()=>h.render({timeline,editUiProjection:{mainTrackId:'v1',clips:new Map()},onGenerateInTimeline:(target?: unknown)=>targets.push([target])});
+ let view=render();
+ // Overlay lane inside the first main shot: frame 120 at the default 76 px/s zoom.
+ lane(view,'v2').onContextMenu(event(120*76/30));
+ view=render();
+ const overlayNode=view.all.find(node=>node.props?.['data-testid']==='timeline-menu-generate')!;
+ assert.equal((overlayNode.props.children as unknown[])[1],'在这里生成镜头');
+ (overlayNode.props as {onClick():void}).onClick();
+ assert.deepEqual(targets.at(-1),[{trackId:'v2',main:false,startFrame:120,beforeClipId:null}]);
+ // Close the overlay menu, then right-click the main-track end: the label and
+ // the submitted target both come from the new right-click.
+ (props(view,'timeline-blank-menu') as unknown as {onClose():void}).onClose();
+ view=render();
+ lane(view,'v1').onContextMenu(event(4800*76/30));
+ view=render();
+ const endNode=view.all.find(node=>node.props?.['data-testid']==='timeline-menu-generate')!;
+ assert.equal((endNode.props.children as unknown[])[1],'在末尾生成镜头');
+ (endNode.props as {onClick():void}).onClick();
+ assert.deepEqual(targets.at(-1),[{trackId:'v1',main:true,startFrame:4800,beforeClipId:null}]);
+ // The main end still submits main even with overlay clips present and after a
+ // previous overlay target.
+ assert.deepEqual(timelineGenerateTargetForBlank({trackId:'v1',trackKind:'video',mainTrackId:'v1',frame:4800,clips:timeline.clips}),
+   {trackId:'v1',main:true,startFrame:4800,beforeClipId:null});
+ assert.equal(timelineGenerateTargetForBlank({trackId:'v2',trackKind:'video',mainTrackId:'v1',frame:4800,clips:timeline.clips}),null);
  h.dispose();
 });

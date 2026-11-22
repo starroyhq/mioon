@@ -4,8 +4,8 @@
  * project service builds the baseline, impact and any new clip/edge allocation.
  * One in-flight command per session prevents double clicks from writing twice.
  */
-import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditIntent, SequenceEditReceipt,
-  SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditGenerateIntent, SequenceEditIntent,
+  SequenceEditReceipt, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {format5RequestId} from '../edit-ui/session.ts';
 import type {BoardEditRequest} from './inputs.ts';
 import {isBoardEditRequest} from './inputs.ts';
@@ -173,6 +173,30 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
           ...payload}));
+      } catch (error) {return {ok: false, code: codeOf(error)};}
+      if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
+        ids: preview.ids as string[] | undefined};
+      const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
+      if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+      return await this.commitEnvelope(projectId, envelope, preview.planDigest);
+    } finally {this.inFlight = false;}
+  }
+  /** GE-b: place a generation placeholder (or resize one) through the same
+   * single preview/commit handshake; the service allocates the shot/clip ids
+   * returned in the envelope and the timeline intent is one history step. */
+  async runGenerate(generateIntent: SequenceEditGenerateIntent): Promise<BoardOutcome> {
+    const blocked = this.guardUnconfirmed();
+    if (blocked) return blocked;
+    if (this.inFlight) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+    this.inFlight = true;
+    try {
+      const projectId = this.projectId();
+      if (!projectId) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
+      let preview: Row | null;
+      try {
+        preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('generate-preview'),
+          generateIntent}));
       } catch (error) {return {ok: false, code: codeOf(error)};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),

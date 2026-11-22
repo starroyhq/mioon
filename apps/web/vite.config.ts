@@ -32,7 +32,10 @@ export default defineConfig(() => ({
   plugins: [loopbackOnly, tailwindcss(), projectExamplesPlugin(fileURLToPath(new URL('../../examples/project-file-v1', import.meta.url)))],
   resolve: {alias: {'@': fileURLToPath(new URL('./src', import.meta.url))}},
   server: {host: '127.0.0.1',port,strictPort:true,cors:false,proxy:{'/api':proxy(),'/media':proxy(),'/health':proxy()}},
-  build: {outDir: 'dist', emptyOutDir:true, rollupOptions: {input: {
+  // The gzip size report re-reads every emitted asset after rollup and pushed
+  // the web-bundle stage against its 768 MB old-space limit; the raw sizes stay
+  // in the bundle log, and release size checks are not derived from this report.
+  build: {outDir: 'dist', emptyOutDir:true, reportCompressedSize: false, rollupOptions: {input: {
     main: fileURLToPath(new URL('./index.html', import.meta.url)),
     settings: fileURLToPath(new URL('./settings.html', import.meta.url)),
   }}},

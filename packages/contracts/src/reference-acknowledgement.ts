@@ -61,7 +61,7 @@ const fields = (value: unknown, required: readonly string[], optional: readonly 
 const timestamp = (value: unknown): value is string => text(value, 1, 64) && Number.isFinite(Date.parse(value));
 const encoder = new TextEncoder();
 const withinBound = (value: unknown): boolean => encoder.encode(JSON.stringify(value)).byteLength <= REFERENCE_RESPONSE_BYTES;
-const scenarios = ['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure'];
+const scenarios = ['success', 'failure', 'failure_once', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure'];
 const oneOf = (value: unknown, allowed: readonly string[]): value is string => typeof value === 'string' && allowed.includes(value);
 const aspectRatios = ['9:16', '16:9', '1:1', '3:4', '4:3', '21:9'];
 const shotFields = ['id', 'projectId', 'title', 'prompt', 'referenceAssetIds', 'aspectRatio', 'duration', 'parameters', 'position', 'orderIndex', 'revision', 'selectedVersionId', 'createdAt', 'updatedAt'];

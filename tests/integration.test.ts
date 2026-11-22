@@ -1,7 +1,6 @@
 import {testEnv} from './helpers/test-env.ts';
 import type {ServiceResponse, MediaJob, MediaShot, GenerationSnapshot} from './helpers/strict-service-responses.ts';
 import type {FixtureVersion} from './helpers/strict-timeline-core-types.ts';
-import type {AddressInfo} from 'node:net';
 interface IntegrationVersion extends FixtureVersion {snapshot: GenerationSnapshot}
 type Success<O extends string> = O extends 'version.list' ? IntegrationVersion[] : ServiceResponse<O>;
 type RpcResult<O extends string, S extends number> = S extends 200 ? Success<O> : {code: string; message: string; details: Record<string, unknown>};
@@ -10,13 +9,12 @@ import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
-import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import net from 'node:net';
+import {startOwnedServer} from './helpers/owned-test-server.ts';
 import http from 'node:http';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -38,26 +36,22 @@ async function command(file: string, args?: readonly string[]|null|undefined) {
   try { const result = await exec(file, args, { env: testEnv(), maxBuffer: 8 * 1024 * 1024 }); records.commands.push({ file, args, startedAt, exitCode: 0, stdout: result.stdout, stderr: result.stderr }); return result.stdout; }
   catch (error) { records.commands.push({ file, args, startedAt, exitCode: (error as {code: unknown}).code, stdout: (error as {stdout: unknown}).stdout, stderr: (error as {stderr: unknown}).stderr }); throw error; }
 }
-async function freePort() { const server = net.createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening'); const port = (server.address() as AddressInfo).port; await new Promise(resolve => server.close(resolve)); return port; }
 async function fixture(t: test.TestContext) {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-http-')), port = await freePort();
-  const base = `http://127.0.0.1:${port}`; let processHandle: ChildProcess, processNumber = 0;
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-http-'));
+  let base = '', port = 0, processHandle: ChildProcess, server: Awaited<ReturnType<typeof startOwnedServer>> | undefined, processNumber = 0;
   // Ledger questions waiting for the running backend; a backend that exits answers none of them.
   const pending = new Map<string, PromiseWithResolvers<unknown>>();
   async function start() {
     const number = ++processNumber;
     // The backend starts as the CLI starts it and, over IPC, answers ledger questions on its own connection.
-    processHandle = spawn(process.execPath, [serverEntry], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
-    let stdout = '', stderr = ''; processHandle.stdout!.setEncoding('utf8').on('data', data => stdout += data); processHandle.stderr!.setEncoding('utf8').on('data', data => stderr += data);
-    const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
+    server = await startOwnedServer({repo, root, token, ipc: true, args: [serverEntry]});
+    processHandle = server.child; base = server.url; port = server.port;
+    const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout: server!.stdout(), stderr: server!.stderr() }));
     processHandle.on('message', (message: LedgerReply) => { const reply = message?.type === 'reply' && typeof message.id === 'string' ? pending.get(message.id) : undefined; if (!reply) return; if (message.error) reply.reject(Object.assign(Error(message.error.message), { code: message.error.code })); else reply.resolve(message.data); });
     processHandle.once('exit', () => { for (const reply of pending.values()) reply.reject(Error('The backend exited before it answered')); });
     records.processEvents.push({ action: 'spawn', number, pid: processHandle.pid, port, dataDirectory: root });
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) { if (processHandle.exitCode !== null) throw Error(`Backend exited: ${stderr}`); try { const r = await fetch(base + '/health'); if (r.ok) return; } catch {} await pause(40); }
-    throw Error(`Backend failed to start: ${stderr}`);
   }
-  async function stop(signal: NodeJS.Signals|number = 'SIGTERM') { if (!processHandle || processHandle.exitCode !== null || processHandle.signalCode) return; const child = processHandle; const ended = once(child, 'exit'); records.processEvents.push({ action: 'kill', pid: child.pid, signal }); child.kill(signal); await ended; }
+  async function stop(signal: NodeJS.Signals|number = 'SIGTERM') { if (!server || !processHandle || processHandle.exitCode !== null || processHandle.signalCode) return; records.processEvents.push({ action: 'kill', pid: processHandle.pid, signal }); await server.stop(signal as NodeJS.Signals); }
   async function rpc<O extends string, S extends number = 200>(operation: O, input: Record<string, unknown> = {}, expectedStatus: S = 200 as S, headers: HeadersInit = {}, projectId?: string): Promise<RpcResult<O, S>> {
     const response = await fetch(base + (operation === 'unregistered.operation' ? '/api/rpc' : rpcPathFor(operation, input, projectId)), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...headers }, body: JSON.stringify({ operation, input }) });
     const body = await response.json();
@@ -79,7 +73,7 @@ async function fixture(t: test.TestContext) {
   const ledger = (projectId: string, requestId: string) => requestInspection<LedgerRows>('ledger', projectId, requestId);
   const journalMode = (projectId: string) => requestInspection<{journal_mode: string}>('journal-mode', projectId);
   t.after(async () => { await stop(); await mkdir(evidence, { recursive: true }); records.finishedAt = new Date().toISOString(); records.result = records.assertions.length === 8 ? 'passed' : 'failed_or_incomplete'; await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2)); await rm(root, { recursive: true, force: true }); });
-  await start(); return { root, port, base, start, stop, rpc, until, journalMode, ledger };
+  await start(); return { root, get port() { return port; }, get base() { return base; }, start, stop, rpc, until, journalMode, ledger };
 }
 
 test('durable HTTP acceptance: real process restarts, provider side effects, media and security', { timeout: 240_000 }, async t => {

@@ -8,7 +8,7 @@ import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { Plus, RefreshCw, Search } from '@mioon/ui/components/workbench-icons';
 import { WorkbenchSelect } from './WorkspaceControls.tsx';
 import { assetUrl } from './api.ts';
-import { createSubjectController, subjectKinds, subjectKindDescriptor, subjectImage, filterSubjects } from './subject-state.ts';
+import { createSubjectController, normalizeSubjectAssets, subjectImageChoices, subjectKinds, subjectKindDescriptor, filterSubjects } from './subject-state.ts';
 import type { SubjectState } from './subject-state.ts';
 import { useSubjectInteraction } from './use-subjects.ts';
 import type { UseSubjectsResult } from './use-subjects.ts';
@@ -80,7 +80,11 @@ export default function SubjectLibrary({ subjects, assets = [], blocked = false,
   const view = state, control = controller;
   const admit = interaction.admit, scope = state.scope;
   const disabled = !interaction.visible || !scope || blocked || Boolean(state.saving || state.uncertain);
-  const images = assets.filter(asset => subjectImage(asset, state.projectId ?? null));
+  // WT-3-02: candidate images come from the controller context, which owns the
+  // open project id. A format-5 material view without its own `projectId` is
+  // normalized there; the raw prop can differ from that projection.
+  const candidateAssets = state.assets?.length ? state.assets : assets;
+  const images = subjectImageChoices(candidateAssets, state.projectId ?? null);
   const visible = filterSubjects(state.list.items || [], local);
   const highlighted = inspectedSubjectId === undefined ? state.selectedSubjectId : inspectedSubjectId;
   const createOpen = creation.scope === scope && creation.open || Boolean(draft?.name || draft?.assetId || draft?.kind !== 'character' && draft?.kind);

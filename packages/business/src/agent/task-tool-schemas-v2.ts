@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="2fab0df4fbc0d723de76cdb6aab2a5e16628cc834c96cd4da23f657c80c02b80";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="c06b478e18b9d124883407aec9dbd8e2f3d92c6e8facff67f59feb1b376c7905";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1654,6 +1654,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              "type": "string",
              "minLength": 1,
              "maxLength": 200
+            },
+            "muted": {
+             "type": "boolean"
             }
            },
            "additionalProperties": false
@@ -2728,6 +2731,60 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "soundIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "separate-sound"
+       },
+       "clipId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "audioClipId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "audioTrackId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "createdTrackId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+       },
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+       },
+       "trackName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 150
+       }
+      },
+      "required": [
+       "kind",
+       "clipId"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "formatIntent": {
     "type": "object",
     "properties": {
@@ -3597,6 +3654,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "string",
                "minLength": 1,
                "maxLength": 200
+              },
+              "muted": {
+               "type": "boolean"
               }
              },
              "additionalProperties": false
@@ -4671,6 +4731,60 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "soundIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "separate-sound"
+         },
+         "clipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "audioClipId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "audioTrackId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "createdTrackId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+         },
+         "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+         },
+         "trackName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+         }
+        },
+        "required": [
+         "kind",
+         "clipId"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "formatIntent": {
       "type": "object",
       "properties": {
@@ -5375,6 +5489,43 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
  "export.output.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "clip.audio.export": {
+  "type": "object",
+  "properties": {
+   "clipId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "outputLocale": {
+    "type": "string",
+    "enum": [
+     "zh-Hans",
+     "zh-Hant",
+     "en",
+     "ja"
+    ]
+   }
+  },
+  "required": [
+   "clipId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "clip.audio.export.get": {
   "type": "object",
   "properties": {
    "exportId": {
@@ -9311,6 +9462,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "enum": [
        "success",
        "failure",
+       "failure_once",
        "delay",
        "timeout",
        "unknown",
@@ -9423,6 +9575,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "enum": [
          "success",
          "failure",
+         "failure_once",
          "delay",
          "timeout",
          "unknown",
@@ -9815,6 +9968,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "enum": [
        "success",
        "failure",
+       "failure_once",
        "delay",
        "timeout",
        "unknown",
@@ -13991,6 +14145,24 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "separate-sound"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "generate"
      },
      "placement": {
@@ -14260,6 +14432,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "type": "string",
            "minLength": 1,
            "maxLength": 200
+          },
+          "muted": {
+           "type": "boolean"
           }
          },
          "additionalProperties": false

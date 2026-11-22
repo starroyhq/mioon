@@ -33,6 +33,7 @@ test('pure help preserves independent frozen content and ordering after explicit
     .replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",')
     .replace('"asset.disposition.set",', '"asset.disposition.set","asset.annotation.list","asset.annotation.set",')
     .replace('"provider.list",', '"provider.list","video.connection.list",')
+    .replace('"export.output.get",', '"export.output.get","clip.audio.export","clip.audio.export.get",')
     .replace('"subject.binding.list",', '"subject.binding.list","subject.variants.create","subject.variants.retry","subject.variants.undo","subject.variants.get","subject.variants.list","previs.create","previs.scene.set","previs.thumbnail.set","previs.thumbnail.get",')
     .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",')
     .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade","timeline.clip.setGains","timeline.clip.setTransform","timeline.clip.setTransition",')

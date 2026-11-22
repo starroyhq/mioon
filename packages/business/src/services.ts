@@ -12,6 +12,7 @@ import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.
 import {isAssetMediaOperation, assetMediaEffects} from '../../contracts/src/asset-media.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {createExportControlServices} from './export-controls.ts';
+import {getClipAudioExport,startClipAudioExport} from './clip-audio-export.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,assertTaskEffectOrigin,setAgentTaskJobStopper,withAgentTaskJobOrigin} from './agent/task-effects-v2.ts';
@@ -28,6 +29,7 @@ import {createLookPackInspectionServices,assertLookPackInspectInput} from './loo
 import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from './timeline-colour-source.ts';
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
+import {readFormat5RenderProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
 import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
@@ -44,6 +46,7 @@ import {generationServiceUnavailable,isMockGenerationProvider,normalizedCapabili
 import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
 import {FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,FORMAT5_MOCK_INPUT_CONNECTION_ID,FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID} from '../../contracts/src/sequence-inspection.ts';
+import {getCapabilityProfile} from '../../contracts/src/generation-input-profiles.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
 import {getWan30Capability,isWan30Binding,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
@@ -65,7 +68,7 @@ import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
-import {format5GenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
+import {format5GenerationSource,format5LegacyGenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
 import type {Format5LegacyGenerationService} from './format5-reference-inputs.ts';
 import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
@@ -80,7 +83,7 @@ import {createTimelineMixLoudnessServices} from './timeline-mix-loudness.ts';
 import {createTimelineMixLoudnessDecoder} from './timeline-mix-loudness-decoder.ts';
 import {ownsStoreLock,assertProjectStore} from './store-runtime.ts';
 import type {Store} from './store-contract.ts';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {readOwnedTimelineAsset,readTimelinePreflightSnapshot,readTimelineSourceGraph} from './timeline-sources.ts';
 import {validateManagedSource,verifiedManagedHash} from './managed-media.ts';
 import {run,runStreaming,runStreamingWithBackpressure,checkMediaEffect} from './media-runtime.ts';
@@ -296,6 +299,16 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const profilePolicy=usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
  const runtimeEnv=configuration.environment();
  const capabilitiesFor=(provider: Provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,runtimeEnv,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
+ const format5MockLegacyService=(): Format5LegacyGenerationService=>{
+  const profile=getCapabilityProfile('mock','mock-motion-v1','local');
+  if(!profile)throw new AppError('INPUT_PROFILE_UNAVAILABLE','Mock 输入档案不可用',409);
+  return {providerId:'mock',modelId:'mock-motion-v1',modelName:'Mock · simulated motion',
+    profileId:profile.profileId,profileVersion:profile.profileVersion,
+    roles:Object.fromEntries(Object.entries(profile.inputs.roles).map(([role,value])=>[role,
+      {implemented:value.implemented,max:value.max}])),
+    maxReferences:profile.inputs.maxReferences,combinations:profile.inputs.combinations,
+    distinctAssetsRequired:profile.inputs.distinctAssetsRequired};
+ };
  const videoConnections=()=>listVideoConnections(videoSettings,currentProfileDate());
  const availableProviders=()=>[...providers.values()].filter(provider=>mockAllowed||!isMockGenerationProvider(provider));
  const videoAvailable=(providerId?:string,model?:string):boolean=>{
@@ -527,7 +540,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   assertMockAllowed(input.providerId);
   let source: GenerationSource=retrySnapshot||shot as unknown as GenerationSource,subjectGraph: GenerationSubjectGraph|null=null;
   if(!retrySnapshot&&input.videoInput!==undefined)source={...source,videoInput:input.videoInput};
-  const subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
+  let subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
   let referenceConnections: unknown;
   if(subjectMode){
    subjectGraph=createOwnedMediaGraphReader(db,shot.projectId) as unknown as GenerationSubjectGraph;
@@ -552,6 +565,30 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // freezes the actual request; a retry keeps the original snapshot untouched.
   let format5Input: ReturnType<typeof format5GenerationSource>|null=null;
   let format5Dialogue: ReturnType<typeof planFormat5DialogueGeneration>|null=null;
+  if(format5Project&&!retrySnapshot&&!executionBinding&&input.providerId==='mock'){
+   // The built-in Mock adapter has no video connection. Use the same reviewed
+   // profile for the board plan/freeze so the client projection and the job
+   // snapshot cannot disagree (WT-3-04); subject slots use the real materialized
+   // subject reference so the Mock adapter can verify the frozen version.
+   const legacyService=format5MockLegacyService();
+   const plan=planFormat5GenerationInputs(store,shot.id,{legacyService});
+   const subjectEntry=plan.entries.find(entry=>entry.status==='used'&&entry.role==='subject_reference');
+   if(subjectEntry){
+    if(!subjectEntry.subjectVersionId)throw new AppError('INVALID_REFERENCE_MANIFEST','主体生成缺少冻结版本',400);
+    subjectGraph=createOwnedMediaGraphReader(db,shot.projectId) as unknown as GenerationSubjectGraph;
+    const subjectReference=subjectGraph.subjectReference(subjectEntry.subjectVersionId),version=subjectReference.subjectVersion;
+    source={...shot,subjectReference,referenceAssetIds:[version.assetId],lastFrameAssetId:null,
+      referenceConnections:[],referenceBindings:[{role:'subject_reference',assetId:version.assetId,sha256:version.sha256}]};
+    subjectMode=true;
+   }else{
+    const legacySource=format5LegacyGenerationSource(plan,legacyService);
+    source={...shot,referenceAssetIds:[...legacySource.referenceAssetIds],
+      lastFrameAssetId:legacySource.lastFrameAssetId,referenceConnections:[]};
+    format5Input=legacySource;
+   }
+   referenceConnections=[];
+   if(subjectEntry)format5Input=format5LegacyGenerationSource(plan,legacyService);
+  }
   if(format5Project&&!retrySnapshot&&executionBinding){
    const plan=planFormat5GenerationInputs(store,shot.id,{binding:executionBinding});
    format5Input=format5GenerationSource(plan,executionBinding);
@@ -612,7 +649,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
   recordOutputLocale(db,job.id,requestHash,outputLocale);
-  if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
+  // Board-derived format-5 subject inputs are frozen from the binding, not an
+  // explicit `subjectVersionId`; only the explicit-subject request path owns a
+  // subject replay identity.
+  if(subjectMode&&input.subjectVersionId!==undefined)replaySubjectJob(job,input,retryOfJobId);
   return job;
  };
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
@@ -625,7 +665,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
-  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createExportSamplePeakDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
@@ -633,13 +673,19 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }});
  const loudness=createExportLoudnessServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
-  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord,
+  ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
   readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(db,projectId,assetId),
   validateSource:validateManagedSource,hash:verifiedManagedHash,
   decode:createExportLoudnessDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const readSavedTimeline=(projectId: string)=>{
+  // Format 5 stores native rows; the preflight reader is a Format-3/4 aggregate.
+  if(isProjectStore(store)&&isFormat5Project(store)){
+   const projection=readFormat5RenderProjection(store);
+   if(!projection)return null;
+   return {timeline:projection.legacy,assets:[...projection.assets.values()]};
+  }
   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
   try{const {timeline:value}=readTimelinePreflightSnapshot(store,projectId,undefined);if(!value)return null;
    const assets=readTimelineSourceGraph(db,projectId,value);validateTimeline(value,assets,{structureOnly:true});
@@ -714,7 +760,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
  function subjectDisclosure(table: string,value: ServiceRow,projectId?: string,exportId?: string): ServiceRow {
-  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord,readOwnedAsset:(owner: string,id: string)=>readOwnedTimelineAsset(db,owner,id)});
+  if(table==='exports')assertFloatTimelineExportRead(db,value,{...(exportId===undefined?{}:{rowIdentity:{id:exportId,...(projectId===undefined?{}:{projectId})}}),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),readOwnedAsset:(owner: string,id: string)=>readOwnedTimelineAsset(db,owner,id)});
   if(table==='jobs'&&hasSubjectGeneration(value.snapshot)){
    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
    validateSubjectGenerationOwnership(db,value as unknown as GenerationJob);
@@ -763,6 +809,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...inspection.handlers,
   ...timeline.handlers,
   ...sequenceInspection.handlers,
+  'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
+  'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
@@ -781,13 +829,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    // still needs the same live projection/footer as any selected service.
    if(connectionId===FORMAT5_MOCK_INPUT_CONNECTION_ID&&configurationRevision===FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION
      &&modelEntryId===FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID){
-    // Mock has no configured video connection, but its reviewed capability is
-    // fixed and local; the read-only projection does not need provider I/O.
-    const legacyService: Format5LegacyGenerationService = {providerId:'mock', modelId:'mock-motion-v1',
-      modelName:'Mock · simulated motion', profileId:'mock:mock-motion-v1:v3', profileVersion:'mioon-input-profiles/3',
-      roles:{first_frame:{implemented:true},last_frame:{implemented:false},
-        reference_image:{implemented:false,max:0},subject_reference:{implemented:false},
-        reference_audio:{implemented:false,max:0}}};
+    // Mock has no configured video connection; resolve its roles and limits
+    // from the exact reviewed profile the job freeze also uses.
+    const legacyService=format5MockLegacyService();
     const generateAudio=typeof input.generateAudio==='boolean'?input.generateAudio:undefined;
     return readFormat5GenerationInputView(store,shotId,{legacyService,...(generateAudio!==undefined?{generateAudio}:{})});
    }

@@ -6,14 +6,19 @@ import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
 import {
-  moveSequenceSyncHistory, previewSequenceSync, readSequenceSyncProjection, runSequenceSync,
+  applySequenceEditTimelineDelta, moveSequenceSyncHistory, previewSequenceSync, readSequenceSyncProjection, runSequenceSync,
 } from '../packages/business/src/format5-sequence-sync.ts';
+import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
 import type {
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditHistoryCommand, SequenceEditPatch,
   SequenceEditTimelineCommit, SequenceEditTransactionFailure,
 } from '../packages/contracts/src/sequence-edit.ts';
 import {applySequenceEditBaselineChange, invertSequenceEditPatch} from '../packages/contracts/src/sequence-edit.ts';
+import {translate} from '../packages/i18n/src/index.ts';
+import type {Locale} from '../packages/i18n/src/index.ts';
+import {clipAudioAssetName, recordOutputLocale} from '../packages/business/src/output-asset-names.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `30000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -69,7 +74,8 @@ function fixture(t: test.TestContext): ProjectStore {
       {nodeId: imageNode, segmentGroupId: groupImage, clipId: clipImage, kind: 'media', assetId: imageAsset}]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'Synthetic TS sync', createdAt: at, updatedAt: at, revision: 1});
-    store.put('assets', {id: assetA, projectId, mimeType: 'video/mp4', duration: 2, sha256: sha('a')});
+    store.put('assets', {id: assetA, projectId, mimeType: 'video/mp4', duration: 2, sha256: sha('a'), hasAudio: true,
+      hasVideo: true, name: 'Shot A.mp4'});
     store.put('assets', {id: assetB, projectId, mimeType: 'video/mp4', duration: 3, sha256: sha('b')});
     store.put('assets', {id: imageAsset, projectId, mimeType: 'image/png', duration: null, sha256: sha('c')});
     store.put('assets', {id: audioAsset, projectId, mimeType: 'audio/wav', duration: 1, sha256: sha('d')});
@@ -120,6 +126,34 @@ const historyCommand = (result: Result, direction: 'undo' | 'redo'): SequenceEdi
   expected: {position: direction === 'undo' ? result.receipt.history.position : result.receipt.history.position,
     revision: result.receipt.history.revision},
 });
+
+/** Insert one occupied audio clip through the same production delta writer the
+ * separate-sound plan uses; this keeps the fixture honest (no raw SQL rows). */
+function occupyAudioGap(store: ProjectStore, clipId: string): void {
+  store.tx(() => {
+    // A two-second audio bed covers the whole first clip on the existing track.
+    store.put('assets', {id: id(14), projectId: store.projectId, mimeType: 'audio/wav', duration: 2,
+      sha256: sha('e'), hasAudio: true, hasVideo: false});
+    applySequenceEditTimelineDelta(store, {clips: [{id: clipId, trackId: audioTrack, name: 'Bed', startFrame: 0,
+      durationFrames: 60, sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1,
+      assetId: id(14), sourceState: 'ready', anchor: {clipId: clipA, offsetFrames: 0}}],
+      cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged' as const}});
+  });
+}
+function separatePreview(store: ProjectStore, requestId: string, clipId = clipA, locale?: Locale) {
+  return createFormat5SequenceEditService(store).preview({projectId: store.projectId, requestId,
+    ...(locale === undefined ? {} : {locale}),
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId}}}) as
+    | {ok: false; code: string; ids?: readonly string[]}
+    | {envelope: SequenceEditEnvelope; planDigest: string; warnings: readonly {code: string}[]};
+}
+function separateCommit(store: ProjectStore, prepared: {envelope: SequenceEditEnvelope; planDigest: string}): Result {
+  try {
+    const receipt = createFormat5SequenceEditService(store).commit({projectId: store.projectId,
+      envelope: prepared.envelope, expectedPlanDigest: prepared.planDigest}) as {actionId: string; operation: string};
+    return {ok: true, actionId: receipt.actionId, operation: receipt.operation, patch: null, receipt} as unknown as Result;
+  } catch (error) {throw new Error(`separate-sound commit failed: ${JSON.stringify({code: (error as {code?: string}).code, message: (error as Error).message, details: (error as {details?: unknown}).details})}`, {cause: error});}
+}
 
 test('a format-5 projection reads the root association, chain order and both sides of the baseline', t => {
   const store = fixture(t);
@@ -277,4 +311,194 @@ test('the shared history module is the only writer and replay keeps one receipt 
   assert.equal(first.receipt.history.undo?.actionId, first.actionId);
   assert.equal(second.receipt.history.undo?.actionId, second.actionId);
   assert.equal(second.receipt.history.position, 2);
+});
+
+test('separate-sound expands one intent into a muted source and an anchored sound-only clip', t => {
+  const store = fixture(t);
+  const prepared = separatePreview(store, 'separate-one');
+  assert.ok(!('ok' in prepared) || prepared.ok !== false, 'separate-sound preview must succeed');
+  const {envelope} = prepared as {envelope: SequenceEditEnvelope};
+  const operation = envelope.soundIntent!.operation;
+  assert.equal(envelope.intents.length, 0);
+  assert.equal(operation.kind, 'separate-sound');
+  assert.equal(operation.clipId, clipA);
+  assert.ok(operation.audioClipId && operation.audioTrackId);
+  assert.equal(operation.createdTrackId, undefined, 'the existing audio track has a gap');
+  assert.equal(operation.audioTrackId, audioTrack);
+  assert.equal(operation.name, 'Shot A · 声音');
+  assert.equal(operation.trackName, undefined, 'the existing audio track keeps its own name');
+  assert.deepEqual(envelope.impact.mainTrackClipIds, [clipA]);
+  assert.ok(envelope.impact.otherTrackItemIds.includes(operation.audioClipId!));
+  const result = separateCommit(store, prepared as {envelope: SequenceEditEnvelope; planDigest: string});
+  assert.ok(result.ok);
+  assert.equal(result.operation, 'timeline.clip.separateSound');
+  assert.equal(result.receipt.history.position, 1);
+  const timeline = readFormat5TimelineRecord(store.db, 'project')!;
+  const source = timeline.clips.find(clip => clip.id === clipA)!;
+  const sound = timeline.clips.find(clip => clip.id === operation.audioClipId)!;
+  assert.equal(source.muted, true);
+  assert.equal(source.gain, 1);
+  assert.equal(sound.muted, undefined);
+  assert.equal(sound.soundOnly, true);
+  assert.equal(sound.assetId, assetA);
+  assert.equal(sound.trackId, audioTrack);
+  assert.equal(sound.startFrame, source.startFrame);
+  assert.equal(sound.durationFrames, source.durationFrames);
+  assert.equal(sound.sourceInFrame, source.sourceInFrame);
+  assert.deepEqual(sound.anchor, {clipId: clipA, offsetFrames: 0});
+  assert.equal(sound.name, 'Shot A · 声音');
+  assert.equal(state(store).entries, 1);
+  // One undo restores the exact previous rows and removes the sound clip.
+  const originalSource = {...readFormat5TimelineRecord(store.db, 'project')!.clips.find(clip => clip.id === clipA)!} as Record<string, unknown>;
+  delete originalSource.muted;
+  const beforeUndo = state(store);
+  const undone = moveSequenceSyncHistory(store, historyCommand(result, 'undo'));
+  assert.ok(undone.ok);
+  const afterUndo = state(store);
+  assert.equal(afterUndo.clips.some(clip => clip.id === operation.audioClipId), false);
+  assert.equal(afterUndo.history.position, 0);
+  assert.equal(readFormat5TimelineRecord(store.db, 'project')!.tracks.find(track => track.id === audioTrack)!.muted, false);
+  assert.equal(Object.hasOwn(afterUndo.clips.find(clip => clip.id === clipA) as Record<string, unknown>, 'muted'), false);
+  const undoneSource = {...afterUndo.clips.find(clip => clip.id === clipA)!} as Record<string, unknown>;
+  assert.deepEqual(undoneSource, originalSource);
+  assert.equal(readFormat5TimelineRecord(store.db, 'project')!.tracks.length, 2);
+  const redone = moveSequenceSyncHistory(store, {...historyCommand(result, 'redo'), actionId: result.actionId,
+    expected: {position: undone.receipt.history.position, revision: undone.receipt.history.revision}});
+  assert.ok(redone.ok);
+  assert.equal(state(store).clips.find(clip => clip.id === clipA)!.muted, true);
+  assert.ok(state(store).clips.some(clip => clip.id === operation.audioClipId && clip.soundOnly === true));
+});
+
+test('separate-sound creates one audio track in the same intent when no audio track has a gap', t => {
+  const store = fixture(t);
+  occupyAudioGap(store, id(35));
+  const prepared = separatePreview(store, 'separate-new-track') as {envelope: SequenceEditEnvelope; planDigest: string};
+  const operation = prepared.envelope.soundIntent!.operation;
+  assert.ok(operation.createdTrackId, 'an occupied audio track forces a new one');
+  assert.equal(operation.createdTrackId, operation.audioTrackId);
+  assert.deepEqual(prepared.envelope.impact.trackIds, [operation.createdTrackId]);
+  const result = separateCommit(store, prepared);
+  assert.ok(result.ok);
+  assert.equal(result.receipt.affected.tracks, 1);
+  const timeline = readFormat5TimelineRecord(store.db, 'project')!;
+  assert.equal(timeline.tracks.length, 3);
+  const created = timeline.tracks.find(track => track.id === operation.createdTrackId)!;
+  assert.equal(created.kind, 'audio');
+  assert.equal(created.orderIndex, 2);
+  const sound = timeline.clips.find(clip => clip.id === operation.audioClipId)!;
+  assert.equal(sound.trackId, operation.createdTrackId);
+  // One undo removes both the created track and the sound clip.
+  const undone = moveSequenceSyncHistory(store, historyCommand(result, 'undo'));
+  assert.ok(undone.ok);
+  const afterUndo = readFormat5TimelineRecord(store.db, 'project')!;
+  assert.equal(afterUndo.tracks.length, 2);
+  assert.equal(afterUndo.clips.some(clip => clip.trackId === operation.createdTrackId), false);
+  assert.equal(afterUndo.clips.find(clip => clip.id === clipA)!.muted, undefined);
+});
+
+test('the separated audio follows its owner and stays muted after the audio clip is removed', t => {
+  const store = fixture(t);
+  const prepared = separatePreview(store, 'separate-follow') as {envelope: SequenceEditEnvelope; planDigest: string};
+  const operation = prepared.envelope.soundIntent!.operation;
+  const result = separateCommit(store, prepared);
+  assert.ok(result.ok);
+  // Reorder the main track (media segment to the front) so clipA starts at
+  // frame 60; the anchored sound clip must move with its owner.
+
+  const move = apply(store, {kind: 'clip-move', clipId: clipImage, beforeClipId: clipA});
+  const afterMove = state(store);
+  const owner = afterMove.clips.find(clip => clip.id === clipA)!;
+  const sound = afterMove.clips.find(clip => clip.id === operation.audioClipId)!;
+  assert.equal(owner.startFrame, 60);
+  assert.equal(sound.startFrame, owner.startFrame);
+  assert.deepEqual(sound.anchor, {clipId: clipA, offsetFrames: 0});
+  // Removing the separated audio is a separate action and never unmutes the source.
+  const removed = apply(store, {kind: 'clip-remove', clipId: operation.audioClipId!});
+  assert.ok(removed.ok);
+  assert.equal(state(store).clips.some(clip => clip.id === operation.audioClipId), false);
+  assert.equal(state(store).clips.find(clip => clip.id === clipA)!.muted, true);
+});
+
+test('separate-sound refuses silent sources, placeholders, audio clips and format 4', t => {
+  const store = fixture(t);
+  const service = createFormat5SequenceEditService(store);
+  const preview = (clipId: string) => service.preview({projectId: store.projectId, requestId: `separate-bad-${clipId}`,
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId}}}) as {ok: false; code: string};
+  assert.equal(preview(clipB).code, 'SEQUENCE_EDIT_SOUND_INVALID');       // placeholder
+  assert.equal(preview(clipImage).code, 'SEQUENCE_EDIT_SOUND_INVALID');   // image
+  assert.equal(preview(clipAudio).code, 'SEQUENCE_EDIT_SOUND_INVALID');   // audio-track clip
+  assert.equal(state(store).entries, 0);
+  // A ready video clip whose probed media has no audio stream is refused too.
+  const silentStore = fixture(t);
+  const silentTimeline = readFormat5TimelineRecord(silentStore.db, 'project')!;
+  const silentClip = silentTimeline.clips.find(clip => clip.id === clipB)! as unknown as Record<string, unknown>;
+  Object.assign(silentClip, {sourceState: 'ready', assetId: assetB, versionId: versionB, shotId: shotB});
+  delete silentClip.jobId;
+  silentStore.tx(() => {
+    silentStore.put('shots', {...(silentStore.get('shots', shotB) as Record<string, unknown>), selectedVersionId: versionB});
+    silentStore.put('timelines', {...silentTimeline, revision: silentTimeline.revision + 1});
+  });
+  const silentPreview = createFormat5SequenceEditService(silentStore).preview({projectId: silentStore.projectId,
+    requestId: 'separate-silent-video', soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipB}}}) as {ok: false; code: string};
+  assert.equal(silentPreview.code, 'SEQUENCE_EDIT_SOUND_INVALID');
+  assert.equal(state(silentStore).entries, 0);
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-sound-f4-'));
+  const format4 = createProjectStore({projectId: id(91), projectFile: path.join(root, 'project.mioon'), format4: {},
+    locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
+  t.after(() => {format4.close(); rmSync(root, {recursive: true, force: true});});
+  assert.throws(() => createFormat5SequenceEditService(format4).preview({projectId: id(91), requestId: 'separate-format4',
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipA}}}), {code: 'SEQUENCE_EDIT_CONTRACT_INVALID'});
+});
+
+test('separate-sound names use the caller language with a Simplified Chinese fallback', t => {
+  // A new audio track is forced so both generated names (clip and track) are
+  // visible in one action. No language means Simplified Chinese, the same
+  // fallback the generated asset names use.
+  const chinese = fixture(t);
+  occupyAudioGap(chinese, id(35));
+  const chinesePreview = separatePreview(chinese, 'separate-language-zh') as
+    {envelope: SequenceEditEnvelope; planDigest: string};
+  const chineseOperation = chinesePreview.envelope.soundIntent!.operation;
+  assert.ok(chineseOperation.createdTrackId, 'the occupied audio track forces a new one');
+  assert.equal(chineseOperation.name, 'Shot A · 声音');
+  assert.equal(chineseOperation.trackName, '声音');
+  assert.ok(separateCommit(chinese, chinesePreview).ok);
+  const chineseTimeline = readFormat5TimelineRecord(chinese.db, 'project')!;
+  assert.equal(chineseTimeline.tracks.find(track => track.id === chineseOperation.createdTrackId)!.name, '声音');
+  // The task language localizes both names through the same catalog.
+  for (const locale of ['en', 'ja'] as const) {
+    const localized = fixture(t);
+    occupyAudioGap(localized, id(35));
+    const preview = separatePreview(localized, `separate-language-${locale}`, clipA, locale) as
+      {envelope: SequenceEditEnvelope; planDigest: string};
+    const operation = preview.envelope.soundIntent!.operation;
+    assert.equal(operation.name, `Shot A · ${translate(locale, 'clipSound.nameSuffix')}`);
+    assert.equal(operation.trackName, translate(locale, 'clipSound.trackName'));
+    assert.ok(separateCommit(localized, preview).ok);
+    const timeline = readFormat5TimelineRecord(localized.db, 'project')!;
+    assert.equal(timeline.tracks.find(track => track.id === operation.createdTrackId)!.name,
+      translate(locale, 'clipSound.trackName'));
+  }
+  // An unrecognized language is not trusted for generated names.
+  const unknown = fixture(t);
+  occupyAudioGap(unknown, id(35));
+  const unknownPreview = createFormat5SequenceEditService(unknown).preview({projectId: unknown.projectId,
+    requestId: 'separate-language-unknown', locale: 'xx',
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: clipA}}}) as {envelope: SequenceEditEnvelope};
+  assert.equal(unknownPreview.envelope.soundIntent!.operation.name, 'Shot A · 声音');
+  assert.equal(unknownPreview.envelope.soundIntent!.operation.trackName, '声音');
+});
+
+test('clip audio asset names use the output language and fall back to Simplified Chinese', t => {
+  const store = fixture(t);
+  const plainId = id(95), englishId = id(96), japaneseId = id(97);
+  // The production task records the accepted output language in this store.
+  store.tx(() => {
+    recordOutputLocale(store.db, englishId, sha('f'), 'en');
+    recordOutputLocale(store.db, japaneseId, sha('f'), 'ja');
+  });
+  assert.equal(clipAudioAssetName(store.db, {id: plainId, projectId: store.projectId}, 'Shot A'), 'Shot A 的声音.m4a');
+  assert.equal(clipAudioAssetName(store.db, {id: englishId, projectId: store.projectId}, 'Shot A'), 'Shot A · Sound.m4a');
+  assert.equal(clipAudioAssetName(store.db, {id: japaneseId, projectId: store.projectId}, 'Shot A'),
+    `${translate('ja', 'clipSound.assetName', {name: 'Shot A'})}.m4a`);
 });

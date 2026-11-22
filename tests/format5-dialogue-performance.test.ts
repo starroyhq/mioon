@@ -7,6 +7,7 @@ import {createProjectStore} from '../packages/business/src/project-file/store.ts
 import {previewDialogueAction, runDialogueAction} from '../packages/business/src/format5-dialogue.ts';
 import {withK1BenchmarkLock} from './helpers/k1-benchmark-lock.ts';
 import {measureCommittedCall, summarizeTiming} from './helpers/commit-timing.ts';
+import {checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `70000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -95,7 +96,7 @@ test('K1 500 shots / 500 dialogue cues edit meets the local p95 budget', t => wi
   console.log(JSON.stringify({benchmark: 'format5-dialogue', shots, mainClips: shots, cues: shots,
     auxiliaryClips: auxiliary, buildMs, ...total, codePath, commit}));
   assert.ok(buildMs < 180_000, `fixture build took ${buildMs}ms`);
-  const budget = process.platform === 'linux' ? 200 : 100;
-  assert.ok(codePath.p95 <= budget, `K1 dialogue code path p95 ${codePath.p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
-  if (process.platform !== 'linux') assert.ok(total.p95 <= budget, `K1 dialogue p95 ${total.p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
+  const file = 'tests/format5-dialogue-performance.test.ts', budget = process.platform === 'linux' ? 200 : 100;
+  checkPerformanceBudget({file, name: 'K1 dialogue code path p95', actual: codePath.p95, budget, unit: 'ms'});
+  if (process.platform !== 'linux') checkPerformanceBudget({file, name: 'K1 dialogue p95 including COMMIT', actual: total.p95, budget, unit: 'ms'});
 }));

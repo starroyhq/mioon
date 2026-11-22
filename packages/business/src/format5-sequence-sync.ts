@@ -966,14 +966,27 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
   const meta = metadataOf(plan);
   const mainClips = plan.after.clips.map(clip => nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
   if (meta) for (const clip of mainClips) {const name = meta.clipNames.get(clip.id); if (name) clip.name = name;}
+  // GE-b: a generation placeholder is named after the shot it creates. The new
+  // shot is not in `context.shots` yet while the plan is projected, so the
+  // generic nodeName fallback would name the clip "Clip" in every locale.
+  const generatedShot = generatedShotMeta.get(plan)?.shot;
+  if (generatedShot && typeof generatedShot.title === 'string' && generatedShot.title) {
+    for (const clip of mainClips) if (clip.sequenceSource?.nodeId === generatedShot.id) clip.name = generatedShot.title;
+  }
   const ownerList = mainClips.map(clip => ({id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames}));
   const ownerSegments = new Map(ownerList.map(owner => [owner.id, owner] as const));
   const anchored = new Map(plan.after.anchored.map(item => [item.id, item]));
+  // Other-track rows this action removes are dropped from the projection; the
+  // patch carries the removal and undo restores the exact before row.
+  const removedAnchored = new Set<string>();
+  for (const change of plan.changes.anchored) {
+    if (change.before && !change.after) removedAnchored.add(change.before.id);
+  }
   const clips: Format5Clip[] = [...mainClips];
   const generatedOther = generatedShotMeta.get(plan)?.otherClip;
   if (generatedOther) clips.push(generatedOther);
   for (const clip of context.timeline.clips) {
-    if (clip.trackId === mainTrackId) continue;
+    if (clip.trackId === mainTrackId || removedAnchored.has(clip.id)) continue;
     const item = anchored.get(clip.id);
     const startFrame = item?.startFrame ?? clip.startFrame;
     clips.push({...clip, startFrame, anchor: item ? anchorForOwner(item, ownerSegments) ?? null : clip.anchor ?? null});
@@ -1469,10 +1482,12 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
     ...(header ? {fps: header.fps, width: header.width, height: header.height} : {}),
     tracks: delta.tracks ? [...delta.tracks] : current.tracks,
     clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
-  // Validate the rows against the frame the patch asks for: an undo restores
-  // the old header together with clips that intentionally have no layout.
-  const planState = header && state.header
-    ? {...state, header: {...state.header, raw: JSON.stringify({...JSON.parse(state.header.raw), ...header})}}
+  // Validate the rows against the header the patch asks for: an undo restores
+  // the old header together with clips that intentionally have no layout, and a
+  // track-adding action must validate its new clip against that same header.
+  const planHeader = {...(header ?? {}), ...(delta.tracks ? {tracks: delta.tracks} : {})};
+  const planState = (header || delta.tracks) && state.header
+    ? {...state, header: {...state.header, raw: JSON.stringify({...JSON.parse(state.header.raw), ...planHeader})}}
     : state;
   const update = planFormat5TimelineEntityUpdate(planState, {clips: delta.clips, cues: delta.cues,
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});

@@ -1,6 +1,8 @@
 import {toAssetMediaDto,publicMediaFingerprint} from './asset-media.ts';
 import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
+import {clipAudioExportSchemas,clipAudioExportDescriptions} from './clip-audio-export.ts';
 export * from './export-controls.ts';
+export * from './clip-audio-export.ts';
 import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
 export * from './workspace-configuration.ts';
 import {taskDispositionSchemas,taskDispositionDescriptions} from './task-dispositions.ts';
@@ -122,7 +124,7 @@ export {SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse, sourceRangeSc
 export {ASSET_DISPOSITIONS, ASSET_DISPOSITION_BATCH_LIMIT, assetDispositionSchemas, isAssetDispositionResponse, isAssetDispositionListResponse} from './asset-disposition.ts';
 export {WAVEFORM_ALGORITHM, WAVEFORM_FPS, WAVEFORM_SAMPLE_RATE, WAVEFORM_BINS_PER_SECOND, WAVEFORM_MAX_DURATION, WAVEFORM_MAX_SOURCE_FRAMES, WAVEFORM_MAX_POINTS, WAVEFORM_DEFAULT_POINTS, WAVEFORM_STATUSES, waveformSchemas, waveformResponseSchema, isWaveformResponse} from './waveforms.ts';
 export {TIMELINE_FADE_MAX_FRAMES, getTimelineFadeIssue} from './timeline-fades.ts';
-export {isTimelineReplacementResponse, isTimelineRecord, TIMELINE_RESPONSE_BYTES, TIMELINE_REPLACEMENT_RESPONSE_BYTES} from './timeline-replacement.ts';
+export {FORMAT5_TIMELINE_FORMAT, isTimelineReplacementResponse, isTimelineRecord, TIMELINE_RESPONSE_BYTES, TIMELINE_REPLACEMENT_RESPONSE_BYTES} from './timeline-replacement.ts';
 export {TIMELINE_MUTATION_OPERATIONS, TIMELINE_RENDER_RESPONSE_BYTES, isTimelineMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof} from './timeline-acknowledgement.ts';
 export {REFERENCE_MUTATION_OPERATIONS, REFERENCE_RESPONSE_BYTES, isReferenceMutationResponse, isReferenceShotRecord, isReferenceEdgeRecord} from './reference-acknowledgement.ts';
 export {exportPreflightSchemas, exportPreflightResponseSchema, isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from './export-preflight.ts';
@@ -153,6 +155,7 @@ export const schemas={
 ...sequenceInspectionSchemas,
 ...sequenceGenerationInputSchemas,
 ...exportControlSchemas,
+...clipAudioExportSchemas,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
 ...projectLifecycleSchemas,
@@ -259,6 +262,7 @@ export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K
 export const descriptions: Record<string, string> = {
  ...projectBackupDescriptions,...projectVersionDescriptions,
  ...exportControlDescriptions,
+ ...clipAudioExportDescriptions,
  'workspace.settings.get':'读取旧版工作区设置客户端的兼容响应',
  'workspace.settings.set':'推进旧版工作区设置的修订号',
  ...taskDispositionDescriptions,
@@ -485,7 +489,17 @@ export function getGenerationIssue(snapshot: unknown, capabilities: unknown): Ge
  if(modelParameters&&Object.keys(parameters).some(key=>!modelParameters.includes(key)))return issue('UNSUPPORTED_PARAMETER','此模型不支持所选高级参数');
  const seedRule = model.seed as {min: number; max: number} | undefined;
  if(parameters.seed!==undefined&&seedRule&&(typeof parameters.seed!=='number'||!Number.isInteger(parameters.seed)||parameters.seed<seedRule.min||parameters.seed>seedRule.max))return issue('INVALID_SEED',`随机种子须为 ${seedRule.min}–${seedRule.max} 之间的整数`);
- if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){const rich=getGenerationProfileIssue({...request,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);}
+ if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){
+  // All current reference roles are images. A null image `duration` is not a
+  // clip duration; strip a stray duration field before profile validation.
+  const references=Array.isArray(request.referenceAssets)?request.referenceAssets.map(asset=>{
+    if(!dataRecord(asset)||!Object.hasOwn(asset as object,'durationSeconds'))return asset;
+    const duration=(asset as Record<string,unknown>).durationSeconds;
+    if(typeof duration==='number'&&duration>0)return asset;
+    const {durationSeconds:_duration,...rest}=asset as Record<string,unknown>;void _duration;return rest;
+  }):request.referenceAssets;
+  const rich=getGenerationProfileIssue({...request,referenceAssets:references,model:model.id},capabilities);if(rich)return issue(rich.code,rich.message);
+ }
  return null;
 }
 

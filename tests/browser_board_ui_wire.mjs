@@ -8,8 +8,11 @@ import {tmpdir} from 'node:os';
 import {createRequire} from 'node:module';
 import {join, relative, sep} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {spawn} from 'node:child_process';
+import {execFileSync, spawn} from 'node:child_process';
+import {copyFileSync,mkdirSync} from 'node:fs';
 import {createBoardUiWireFixture} from './helpers/board-ui-wire-fixture.ts';
+import {createProviderRegistry, registerInputProfileWrapper} from '../packages/business/src/provider-registry.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
 import {testEnv} from './helpers/test-env.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -21,7 +24,30 @@ const scratch = await mkdtemp(join(root, '.board-wire-browser-'));
 const fixture = stress ? await import('./helpers/board-ui-wire-fixture.ts').then(module => module.createBoardUiWireStressFixture())
   : await createBoardUiWireFixture();
 const {store, services, library, projectId} = fixture;
+// The fixture image node points at a managed relative path; give the worker a
+// real file so first-frame publication checks exercise the normal path.
+mkdirSync(join(fixture.root, 'media'), {recursive: true});
+copyFileSync(join(root, 'tests/fixtures/board-ui-wire/reference.png'), join(fixture.root, 'media/ref.png'));
+copyFileSync(join(root, 'tests/fixtures/board-ui-wire/reference.png'), join(fixture.root, 'media/ref2.png'));
 const settings = fixture.settings;
+// The default FFmpeg on some walkthrough machines lacks drawtext, which the Mock
+// renderer needs. Keep the real worker/publication path but download a small
+// pre-rendered synthetic clip instead.
+const syntheticVideo = join(fixture.root, 'synthetic-generation.mp4');
+const fixtureEnv = testEnv();
+execFileSync(fixtureEnv.MIOON_FFMPEG_PATH ?? 'ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i',
+  'color=c=black:s=360x640:d=4:r=30', '-pix_fmt', 'yuv420p', '-y', syntheticVideo], {env: fixtureEnv});
+const baseMock = createProviderRegistry({db: store.db, root: fixture.root, env: {}}).get('mock');
+const mockProvider = registerInputProfileWrapper({
+  id: 'mock', capabilities: baseMock.capabilities, validate: baseMock.validate?.bind(baseMock),
+  async submit() { return {providerJobId: `synthetic-${Date.now()}`}; },
+  async reconcile() { return null; },
+  async poll() { return {status: 'succeeded', progress: 100}; },
+  async download(_id, destination) { copyFileSync(syntheticVideo, destination); return {}; },
+  async cancel() { return {}; },
+}, baseMock);
+fixture.providers.set('mock', mockProvider);
+let mockWorker = null;
 const contentTypes = {'.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.png': 'image/png',
   '.svg': 'image/svg+xml', '.webp': 'image/webp', '.woff2': 'font/woff2'};
 const require = createRequire(join(root, 'apps/web/package.json'));
@@ -57,6 +83,12 @@ let server;
 try {
   server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://fixture.invalid');
+    if (url.pathname === '/test/start-mock-worker' && request.method === 'POST') {
+      mockWorker ??= startWorker(store, services, fixture.providers);
+      response.writeHead(200, {'content-type': 'application/json'});
+      response.end(JSON.stringify({ok: true}));
+      return;
+    }
     if (url.pathname === '/rpc' && request.method === 'POST') {
       let raw = '', operation = '';
       for await (const chunk of request) raw += chunk;
@@ -89,6 +121,7 @@ try {
   const code = await new Promise(resolve => child.on('close', resolve));
   process.exitCode = code ?? 1;
 } finally {
+  if (mockWorker) await mockWorker.stop();
   if (server) await new Promise(resolve => server.close(resolve));
   await services.drain();
   if (settings) await settings.close();

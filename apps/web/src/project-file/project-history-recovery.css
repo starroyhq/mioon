@@ -1,0 +1,15 @@
+/* 12-25 / 12-25b: reconcile this computer's records with a copied project file. */
+.pf-history-recovery .pf-history-recovery-path { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 10px; margin: 2px 0 14px; border: 1px solid var(--wb-line); border-radius: 8px; background: var(--wb-panel-soft, rgba(255,255,255,.035)); color: var(--wb-text); overflow: hidden; }
+.pf-history-recovery .pf-history-recovery-path .pf-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;  }
+.pf-history-recovery .pf-history-recovery-copy { margin: 0 0 12px; color: var(--wb-text); line-height: 1.55; }
+.pf-history-recovery .pf-history-recovery-loading { margin: 0 0 12px; color: var(--wb-soft); }
+.pf-history-recovery .pf-history-recovery-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; }
+.pf-history-recovery .pf-history-recovery-footer > [data-testid="pf-history-recovery-close"] { margin-right: auto; }
+.pf-history-recovery .pf-history-recovery-versions { display: grid; gap: 2px; margin: 4px 0 14px; padding: 4px; list-style: none; border: 1px solid var(--wb-line); border-radius: 9px; max-height: 280px; overflow: auto; }
+.pf-history-recovery .pf-history-recovery-versions li { border-radius: 7px; }
+.pf-history-recovery .pf-history-recovery-versions li[data-selected] { background: var(--wb-panel-soft, rgba(255,255,255,.06)); }
+.pf-history-recovery .pf-history-recovery-versions label { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 7px 9px; cursor: pointer; }
+.pf-history-recovery .pf-history-recovery-versions input[type="radio"] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--wb-text); }
+.pf-history-recovery .pf-history-recovery-version-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-history-recovery .pf-history-recovery-versions time { margin-left: auto; padding-left: 12px; color: var(--wb-soft); font-size: var(--wb-text-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pf-history-recovery .pf-history-recovery-compare { margin: 0 0 12px; color: var(--wb-text); font-size: var(--wb-text-caption); }

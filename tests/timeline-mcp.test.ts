@@ -9,40 +9,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn, execFile } from 'node:child_process';
+import { execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import net from 'node:net';
+import {startOwnedServer} from './helpers/owned-test-server.ts';
 import path from 'node:path';
-import type { ChildProcessByStdio } from 'child_process';
-import type { Readable } from 'stream';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types';
 
 const exec = promisify(execFile), repo = fileURLToPath(new URL('..', import.meta.url));
 const evidence = path.join(repo, 'evidence/v2-tests/mcp');
 const token = 'timeline-mcp-regression-test-local-token';
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
-async function freePort() { const server = net.createServer().listen(0, '127.0.0.1'); await once(server, 'listening'); const port = ((server.address() as import('node:net').AddressInfo))!.port; await new Promise(resolve => server.close(resolve)); return port; }
 
 test('timeline official SDK protocol exercises strict tools, shared HTTP state, exact replay and real backend restart', { timeout: 120_000 }, async t => {
   await mkdir(evidence, { recursive: true });
   const root = await mkdtemp(path.join(tmpdir(), 'workbench-timeline-mcp-'));
-  const port = await freePort(), base = `http://127.0.0.1:${port}`;
+  let base = '';
   const traffic: ({ direction: string; at: string; message: JSONRPCMessage; })[] = [], report = { startedAt: new Date().toISOString(), runtime: process.version, implementation: 'Official MCP SDK Client + StdioClientTransport', calls: [], http: [], processes: [], checks: [] };
-  let backend!: ChildProcessByStdio<null,Readable,Readable>, client!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>, transport!: StdioClientTransport, mcpStderr = '';
+  let backend!: ChildProcess, server: Awaited<ReturnType<typeof startOwnedServer>> | undefined, client!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>, transport!: StdioClientTransport, mcpStderr = '';
   async function start() {
-    const record = { event: 'start', at: new Date().toISOString(), port, stdout: '', stderr: '' }; report.processes.push(((record) as unknown as Parameters<typeof report.processes.push>[0]));
-    backend = spawn(process.execPath, ['tests/fixtures/project-server-process.ts', '--format4-project'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
-    (record as typeof record & {pid:(number | undefined)}).pid = backend.pid; backend.stdout.setEncoding('utf8').on('data', bytes => record.stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => record.stderr += bytes); backend.on('exit', (code, signal) => Object.assign(record, { exitCode: code, signal }));
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) { if (backend.exitCode !== null) throw Error(record.stderr); try { if ((await fetch(base + '/health')).ok) return; } catch {} await pause(40); }
-    throw Error(`Backend startup timed out: ${record.stderr}`);
+    server = await startOwnedServer({repo, root, token, args: ['server/index.ts']});
+    backend = server.child; base = server.url;
+    const record = { event: 'start', at: new Date().toISOString(), port: server.port, stdout: '', stderr: '' }; report.processes.push(((record) as unknown as Parameters<typeof report.processes.push>[0]));
+    (record as typeof record & {pid:(number | undefined)}).pid = backend.pid; backend.on('exit', (code, signal) => Object.assign(record, { exitCode: code, signal, stdout: server!.stdout(), stderr: server!.stderr() }));
   }
-  async function stop() { if (!backend || backend.exitCode !== null || backend.signalCode) return; const child = backend, end = once(child, 'exit'); child.kill('SIGTERM'); await end; }
+  async function stop() { if (!server || backend.exitCode !== null || backend.signalCode) return; await server.stop(); }
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});
     await stop(); (report as typeof report & {finishedAt:(string)}).finishedAt = new Date().toISOString(); (report as typeof report & {mcpStderr:(string)}).mcpStderr = mcpStderr; (report as typeof report & {protocolMessageCount:(number)}).protocolMessageCount = traffic.length;
@@ -50,15 +44,18 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(report, null, 2)); await rm(root, { recursive: true, force: true });
   });
   await start();
-  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...testEnv(), MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
-  ((transport.stderr as import('node:stream').Readable|null))!.setEncoding('utf8').on('data', (bytes: string) => mcpStderr += bytes);
-  const wire:import('@modelcontextprotocol/sdk/shared/transport.js').Transport = {
-    onmessage: undefined, onerror: undefined, onclose: undefined,
-    async start() { transport.onmessage = message => { traffic.push({ direction: 'server-to-client', at: new Date().toISOString(), message }); wire.onmessage?.(message); }; transport.onerror = error => wire.onerror?.(error); transport.onclose = () => wire.onclose?.(); await transport.start(); },
-    send(message: JSONRPCMessage, options?: unknown) { traffic.push({ direction: 'client-to-server', at: new Date().toISOString(), message }); return (transport.send as (message:JSONRPCMessage,options?:unknown)=>Promise<void>)(message, options); },
-    close() { return transport.close(); }, get sessionId() { return (transport as StdioClientTransport & {sessionId?:string}).sessionId; },
-  };
-  client = new Client({ name: 'timeline-v2-regression', version: '2.0.0' }, { capabilities: {} }); await client.connect(wire);
+  async function connectMcp() {
+    transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...testEnv(), MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
+    ((transport.stderr as import('node:stream').Readable|null))!.setEncoding('utf8').on('data', (bytes: string) => mcpStderr += bytes);
+    const wire:import('@modelcontextprotocol/sdk/shared/transport.js').Transport = {
+      onmessage: undefined, onerror: undefined, onclose: undefined,
+      async start() { transport.onmessage = message => { traffic.push({ direction: 'server-to-client', at: new Date().toISOString(), message }); wire.onmessage?.(message); }; transport.onerror = error => wire.onerror?.(error); transport.onclose = () => wire.onclose?.(); await transport.start(); },
+      send(message: JSONRPCMessage, options?: unknown) { traffic.push({ direction: 'client-to-server', at: new Date().toISOString(), message }); return (transport.send as (message:JSONRPCMessage,options?:unknown)=>Promise<void>)(message, options); },
+      close() { return transport.close(); }, get sessionId() { return (transport as StdioClientTransport & {sessionId?:string}).sessionId; },
+    };
+    client = new Client({ name: 'timeline-v2-regression', version: '2.0.0' }, { capabilities: {} }); await client.connect(wire);
+  }
+  await connectMcp();
   const tools = ((await client.listTools() as {tools:TestTool[]})).tools; const names = tools.map(tool => tool.name);
   const requiredTools = ['timeline_get', 'timeline_track_add', 'timeline_track_update', 'timeline_clip_add', 'timeline_clip_update', 'timeline_clip_remove', 'timeline_seed', 'timeline_render'];
   for (const name of requiredTools) { assert.ok(names.includes(name), `Missing tool ${name}`); assert.equal((tools.find(tool => tool.name === name))!.inputSchema.additionalProperties, false, `${name} advertises strict schema`); }
@@ -129,7 +126,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   assert.equal(rendered.status, 'succeeded', JSON.stringify(rendered));
   assert.deepEqual(await call('timeline_render', renderArgs), queued, 'render replay remains the original queued response even after success');
   const firstPid = backend.pid; const preRestart = await http('project.get', { projectId });
-  await stop(); await start(); assert.notEqual(backend.pid, firstPid, 'a new HTTP process actually started');
+  await stop(); await client.close().catch(() => {}); await start(); assert.notEqual(backend.pid, firstPid, 'a new HTTP process actually started'); await connectMcp();
   assert.deepEqual(await http('project.get', { projectId }), preRestart, 'backend process restart preserves project, tracks, clips, imported media, and completed render');
   for (const item of history) assert.deepEqual(await call(item.name, item.args), item.result, `${item.name} exact original replay survives actual backend restart`);
   assert.deepEqual(await call('timeline_render', renderArgs), queued);

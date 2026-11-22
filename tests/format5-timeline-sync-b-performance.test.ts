@@ -11,6 +11,7 @@ import {
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
 import type {SequenceEditCommitResult, SequenceEditHistoryCommand} from '../packages/contracts/src/sequence-edit.ts';
 import {measureCommittedCall, summarizeTiming} from './helpers/commit-timing.ts';
+import {checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `70000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -127,10 +128,10 @@ test('K1 TSb track edits stay inside the local p95 and history budget', t => {
     cues, buildMs, sync: summary, historyEntries: historyBytes.length, averageHistoryBytes,
     maxHistoryBytes: Math.max(...historyBytes)}));
   assert.ok(buildMs < 180_000, `fixture build took ${buildMs}ms`);
-  const budget = process.platform === 'linux' ? 200 : 100;
+  const file = 'tests/format5-timeline-sync-b-performance.test.ts', budget = process.platform === 'linux' ? 200 : 100;
   for (const [name, value] of Object.entries(summary)) {
-    assert.ok(value.codePath.p95 <= budget, `${name} code path p95 ${value.codePath.p95}ms exceeds ${budget}ms`);
-    if (process.platform !== 'linux') assert.ok(value.p95 <= budget, `${name} p95 ${value.p95}ms exceeds ${budget}ms`);
+    checkPerformanceBudget({file, name: `${name} code path p95`, actual: value.codePath.p95, budget, unit: 'ms'});
+    if (process.platform !== 'linux') checkPerformanceBudget({file, name: `${name} p95`, actual: value.p95, budget, unit: 'ms'});
   }
-  assert.ok(averageHistoryBytes <= 256 * 1024, `average history entry ${averageHistoryBytes} bytes exceeds 256 KiB`);
+  checkPerformanceBudget({file, name: 'average history entry', actual: averageHistoryBytes, budget: 256 * 1024, unit: 'bytes'});
 });

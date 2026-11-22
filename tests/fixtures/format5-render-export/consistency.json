@@ -1,0 +1,29 @@
+{
+  "timeline": {
+    "durationFrames": 120,
+    "fps": 30,
+    "tracks": 3,
+    "clips": 3,
+    "videoClips": 2,
+    "audioClips": 1,
+    "subtitleCues": 1
+  },
+  "export": {
+    "durationSeconds": 4.0,
+    "video": {"codec": "h264", "width": 1080, "height": 1920, "fps": 30, "frames": 120},
+    "audio": {"codec": "aac", "sampleRate": 48000, "channels": 2},
+    "framesChecked": {
+      "0.5s": "with-audio test pattern (first clip)",
+      "1.5s": "with-audio test pattern + burned-in subtitle 导出字幕检查",
+      "2.5s": "silent.mp4 solid blue, no subtitle"
+    },
+    "audioChecked": {
+      "0-2s RMS": 0.10808,
+      "2-4s RMS": 0.0,
+      "source RMS": 0.08819,
+      "appliedClipGain": 1.2264611793251856,
+      "dominantFrequencyHz": 440.0,
+      "note": "first half carries only the separated sound at the matched gain; muted original contributes no audio"
+    }
+  }
+}

@@ -34,6 +34,7 @@ import type {ChainReferenceRole, ReferenceSourceKind} from '../../contracts/src/
 import {FRAME_REFERENCE_ROLES, REFERENCE_SOURCE_ROLES, defaultReferenceRole, referenceRoleAllowed} from '../../contracts/src/board-sequence.ts';
 import type {SequenceGenerationInputEntryView, SequenceGenerationInputMode, SequenceGenerationInputStatus,
   SequenceGenerationInputView} from '../../contracts/src/sequence-inspection.ts';
+import {FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,FORMAT5_MOCK_INPUT_CONNECTION_ID,FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID} from '../../contracts/src/sequence-inspection.ts';
 import type {PrevisNodeRecord} from '../../contracts/src/previs.ts';
 import {PREVIS_LIMITS, isPrevisNodeRecord} from '../../contracts/src/previs.ts';
 import type {
@@ -647,7 +648,7 @@ export interface Format5GenerationInputEntry extends Format5ReferenceCandidate {
   /** Stable reason code for UI/MT; present for every unsupported entry. */
   readonly reason?: string;
   /** The adapter slot the input was actually mapped to. */
-  readonly appliedRole?: 'first_frame' | 'last_frame' | 'reference_image' | 'reference_audio';
+  readonly appliedRole?: 'first_frame' | 'last_frame' | 'reference_image' | 'subject_reference' | 'reference_audio';
   readonly imageIndex?: number;
   readonly audioIndex?: number;
 }
@@ -659,7 +660,7 @@ export interface Format5GenerationInputPlan {
   readonly mode: Format5GenerationMode;
   readonly entries: readonly Format5GenerationInputEntry[];
   /** Actual request images in provider order (frame or reference slots). */
-  readonly images: readonly {readonly assetId: string; readonly sha256: string; readonly role: 'first_frame' | 'last_frame' | 'reference_image'; readonly edgeId?: string; readonly bindingId?: string}[];
+  readonly images: readonly {readonly assetId: string; readonly sha256: string; readonly role: 'first_frame' | 'last_frame' | 'reference_image' | 'subject_reference'; readonly edgeId?: string; readonly bindingId?: string}[];
   /** Actual request reference audio clips in provider order. */
   readonly audios: readonly {readonly assetId: string; readonly sha256: string; readonly role: 'reference_audio'; readonly edgeId: string}[];
   readonly unsupported: number;
@@ -718,16 +719,23 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
     const frameIssue = unsupportedReason('frames', binding, legacyService);
     const first = frames.find(candidate => candidate.role === 'first_frame');
     const last = frames.find(candidate => candidate.role === 'last_frame');
+    const legacyFramePair = legacyService ? (legacyService.combinations ?? []).some(combination =>
+      combination.includes('first_frame') && combination.includes('last_frame')) : true;
+    const firstImplemented = binding ? videoInputProfile(binding).inputs.roles.first_frame?.implemented !== false
+      : legacyService ? legacyService.roles.first_frame?.implemented !== false : true;
     const lastImplemented = binding ? videoInputProfile(binding).inputs.roles.last_frame?.implemented !== false
-      : legacyService ? legacyService.roles.last_frame?.implemented !== false : true;
+      : legacyService ? legacyFramePair && legacyService.roles.last_frame?.implemented !== false : true;
     for (const candidate of set.candidates) {
       if (candidate === first) {
         if (frameIssue) unsupported(candidate, frameIssue);
+        else if (!firstImplemented) unsupported(candidate, 'UNSUPPORTED_FIRST_FRAME');
         else entries.push({...candidate, status: 'used', appliedRole: 'first_frame', imageIndex: 1});
       } else if (candidate === last) {
         if (!first) unsupported(candidate, 'LAST_FRAME_WITHOUT_FIRST');
         else if (frameIssue) unsupported(candidate, 'UNSUPPORTED_LAST_FRAME');
         else if (!lastImplemented) unsupported(candidate, 'UNSUPPORTED_LAST_FRAME');
+        else if (legacyService?.distinctAssetsRequired && candidate.assetId === first.assetId)
+          unsupported(candidate, 'DUPLICATE_REFERENCE');
         else entries.push({...candidate, status: 'used', appliedRole: 'last_frame', imageIndex: 2});
       } else unsupported(candidate, 'EXCLUSIVE_MODE');
     }
@@ -736,24 +744,46 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
       if (FRAME_ROLES.has(candidate.role)) unsupported(candidate, 'EXCLUSIVE_MODE');
       else if (candidate.role === 'reference_video') unsupported(candidate, 'UNSUPPORTED_REFERENCE_VIDEO');
     }
-    const imageIssue = unsupportedReason('image', binding, legacyService);
-    const maxImages = binding ? Number(videoInputProfile(binding).inputs.roles.reference_image?.max ?? 0)
-      : legacyService ? Number(legacyService.roles.reference_image?.max ?? 0) : Number.MAX_SAFE_INTEGER;
-    const primaryId = options.primaryReferenceId;
-    const ordered = [...referenceCandidates].sort((left, right) => {
-      // Only an explicitly chosen id is a primary match; previs scene subjects
-      // carry no edge/binding id and must keep their dense board order.
-      const leftPrimary = primaryId !== undefined && (left.edgeId ?? left.bindingId) === primaryId ? 0 : 1;
-      const rightPrimary = primaryId !== undefined && (right.edgeId ?? right.bindingId) === primaryId ? 0 : 1;
-      return leftPrimary - rightPrimary || left.orderIndex - right.orderIndex
-        || (left.edgeId ?? left.bindingId ?? '').localeCompare(right.edgeId ?? right.bindingId ?? '');
-    });
-    let imageIndex = 0;
-    for (const candidate of ordered) {
-      imageIndex++;
-      if (imageIssue) unsupported(candidate, imageIssue);
-      else if (imageIndex > maxImages) unsupported(candidate, 'CAPACITY_EXCEEDED');
-      else entries.push({...candidate, status: 'used', appliedRole: 'reference_image', imageIndex});
+    if (legacyService) {
+      // Legacy providers (Mock) advertise exact combination slots. Their image
+      // profile may support a subject-reference slot with no generic reference
+      // images; map that slot directly instead of pretending it is a first frame.
+      const combinations = legacyService.combinations ?? [];
+      let subjectCount = 0;
+      for (const candidate of referenceCandidates) {
+        if (candidate.role === 'subject_reference') {
+          subjectCount++;
+          if (!legacyService.roles.subject_reference?.implemented
+            || !combinations.some(combination => combination.includes('subject_reference')))
+            unsupported(candidate, 'UNSUPPORTED_REFERENCE_ROLE');
+          else if (subjectCount > Number(legacyService.roles.subject_reference.max ?? 1))
+            unsupported(candidate, 'CAPACITY_EXCEEDED');
+          else entries.push({...candidate, status: 'used', appliedRole: 'subject_reference'});
+        } else if (candidate.role === 'reference_audio') {
+          if (!legacyService.roles.reference_audio?.implemented) unsupported(candidate, 'UNSUPPORTED_REFERENCE_AUDIO');
+          else entries.push({...candidate, status: 'used', appliedRole: 'reference_audio'});
+        } else unsupported(candidate, 'UNSUPPORTED_REFERENCE_IMAGES');
+      }
+    } else {
+      const imageIssue = unsupportedReason('image', binding, legacyService);
+      const maxImages = binding ? Number(videoInputProfile(binding).inputs.roles.reference_image?.max ?? 0)
+        : Number.MAX_SAFE_INTEGER;
+      const primaryId = options.primaryReferenceId;
+      const ordered = [...referenceCandidates].sort((left, right) => {
+        // Only an explicitly chosen id is a primary match; previs scene subjects
+        // carry no edge/binding id and must keep their dense board order.
+        const leftPrimary = primaryId !== undefined && (left.edgeId ?? left.bindingId) === primaryId ? 0 : 1;
+        const rightPrimary = primaryId !== undefined && (right.edgeId ?? right.bindingId) === primaryId ? 0 : 1;
+        return leftPrimary - rightPrimary || left.orderIndex - right.orderIndex
+          || (left.edgeId ?? left.bindingId ?? '').localeCompare(right.edgeId ?? right.bindingId ?? '');
+      });
+      let imageIndex = 0;
+      for (const candidate of ordered) {
+        imageIndex++;
+        if (imageIssue) unsupported(candidate, imageIssue);
+        else if (imageIndex > maxImages) unsupported(candidate, 'CAPACITY_EXCEEDED');
+        else entries.push({...candidate, status: 'used', appliedRole: 'reference_image', imageIndex});
+      }
     }
     const audioIssue = unsupportedReason('audio', binding, legacyService);
     const maxAudios = binding && isSeedance25Binding(binding) ? 10
@@ -782,7 +812,8 @@ export function planFormat5GenerationInputs(store: ProjectStore, shotId: string,
     (left.imageIndex ?? Number.MAX_SAFE_INTEGER) - (right.imageIndex ?? Number.MAX_SAFE_INTEGER)
     || (left.audioIndex ?? Number.MAX_SAFE_INTEGER) - (right.audioIndex ?? Number.MAX_SAFE_INTEGER));
   const images = used.filter(entry => entry.appliedRole !== 'reference_audio').map(entry =>
-    ({assetId: entry.assetId, sha256: entry.sha256, role: entry.appliedRole as 'first_frame' | 'last_frame' | 'reference_image',
+    ({assetId: entry.assetId, sha256: entry.sha256,
+      role: entry.appliedRole as 'first_frame' | 'last_frame' | 'reference_image' | 'subject_reference',
       ...(entry.edgeId ? {edgeId: entry.edgeId} : {}), ...(entry.bindingId ? {bindingId: entry.bindingId} : {})}));
   const audios = used.filter(entry => entry.appliedRole === 'reference_audio').map(entry =>
     ({assetId: entry.assetId, sha256: entry.sha256, role: 'reference_audio' as const, edgeId: entry.edgeId!}));
@@ -873,6 +904,46 @@ export function format5GenerationSource(plan: Format5GenerationInputPlan,
   return source;
 }
 
+/** Source fields for a legacy provider whose adapter reads the saved-shot
+ * projection instead of an explicit video binding (Mock). The freeze keeps the
+ * same plan the projection showed so WT-3-04 cannot drift from generation. */
+export function format5LegacyGenerationSource(plan: Format5GenerationInputPlan,
+  service: Format5LegacyGenerationService): Format5GenerationSource {
+  const first = plan.images.find(image => image.role === 'first_frame');
+  const last = plan.images.find(image => image.role === 'last_frame');
+  const subject = plan.images.find(image => image.role === 'subject_reference');
+  return {
+    referenceAssetIds: plan.mode === 'frames' ? (first ? [first.assetId] : [])
+      : subject ? [subject.assetId] : plan.images.map(image => image.assetId),
+    lastFrameAssetId: plan.mode === 'frames' ? (last?.assetId ?? null) : null,
+    freeze: freezeOfLegacy(plan, service),
+  };
+}
+
+function freezeOfLegacy(plan: Format5GenerationInputPlan,
+  service: Format5LegacyGenerationService): Format5ReferenceInputFreeze {
+  const first = plan.images.find(image => image.role === 'first_frame');
+  const last = plan.images.find(image => image.role === 'last_frame');
+  return {
+    version: 1, shotId: plan.shotId, shotRevision: plan.shotRevision, mode: plan.mode,
+    providerId: service.providerId, connectionId: FORMAT5_MOCK_INPUT_CONNECTION_ID,
+    configurationRevision: FORMAT5_MOCK_INPUT_CONFIGURATION_REVISION,
+    modelEntryId: FORMAT5_MOCK_INPUT_MODEL_ENTRY_ID, modelId: service.modelId,
+    profileId: service.profileId, profileVersion: service.profileVersion,
+    entries: plan.entries.map(entry => ({source: entry.source, ...(entry.edgeId ? {edgeId: entry.edgeId} : {}),
+      ...(entry.bindingId ? {bindingId: entry.bindingId} : {}), ...(entry.sourceNodeId ? {sourceNodeId: entry.sourceNodeId} : {}),
+      role: entry.role, ...(entry.appliedRole ? {appliedRole: entry.appliedRole} : {}), assetId: entry.assetId,
+      sha256: entry.sha256, mimeType: entry.mimeType, orderIndex: entry.orderIndex, status: entry.status,
+      ...(entry.reason ? {reason: entry.reason} : {}), ...(entry.subjectId ? {subjectId: entry.subjectId} : {}),
+      ...(entry.subjectVersionId ? {subjectVersionId: entry.subjectVersionId} : {}),
+      ...(entry.bindingMode ? {bindingMode: entry.bindingMode} : {})})),
+    actual: {firstFrameAssetId: first?.assetId ?? null, lastFrameAssetId: last?.assetId ?? null,
+      images: plan.images.map(image => ({assetId: image.assetId, sha256: image.sha256, role: image.role})),
+      audios: plan.audios.map(audio => ({assetId: audio.assetId, sha256: audio.sha256, role: audio.role}))},
+    primaryReferenceId: null,
+  };
+}
+
 function freezeOf(plan: Format5GenerationInputPlan, binding: VideoExecutionBinding,
   profileId: string, profileVersion: string): Format5ReferenceInputFreeze {
   const first = plan.images.find(image => image.role === 'first_frame');
@@ -926,6 +997,9 @@ export interface Format5LegacyGenerationService {
   readonly profileId: string;
   readonly profileVersion: string;
   readonly roles: Readonly<Record<string, {readonly implemented?: boolean; readonly max?: number}>>;
+  readonly maxReferences?: number;
+  readonly combinations?: readonly (readonly string[])[];
+  readonly distinctAssetsRequired?: boolean;
 }
 export interface ReadFormat5GenerationInputOptions {
   /** Exact selected video connection/model; omitted while no service is chosen,
@@ -974,7 +1048,8 @@ export function readFormat5GenerationInputView(store: ProjectStore, shotId: stri
     basePrompt = typeof data.prompt === 'string' ? data.prompt : '';
   } catch { basePrompt = ''; }
   const dialogue = format5DialogueView(planFormat5DialogueGeneration(store, shotId,
-    {...(options.binding ? {binding: options.binding} : {}), basePrompt,
+    {...(options.binding ? {binding: options.binding} : {}),
+     ...(options.legacyService ? {legacyService: {providerId: options.legacyService.providerId}} : {}), basePrompt,
      ...(options.generateAudio !== undefined ? {generateAudio: options.generateAudio} : {})}));
   return {
     projectId: store.projectId,

@@ -56,6 +56,33 @@ function revokeOnStart(t: test.TestContext, store: ReturnType<typeof openStore>)
     assert.equal(events.filter(event=>event.type==='exited').length,1);}};
 }
 
+test('mock failure remains definitive across repeated submissions of the same snapshot',async t=>{
+  const f = await fixture(t);
+  const failure = {...snapshot,parameters:{scenario:'failure',delayMs:0}};
+  const firstRequest = randomUUID(), secondRequest = randomUUID();
+  const first = await f.provider.submit(failure,{requestId:firstRequest});
+  assert.equal((await f.provider.poll(first.providerJobId)).status,'failed');
+  const second = await f.provider.submit(failure,{requestId:secondRequest});
+  assert.equal((await f.provider.poll(second.providerJobId)).status,'failed');
+  const scenario = (request:string) => (f.store.db.prepare('SELECT scenario FROM mock_provider_tasks WHERE request_id=?').get(request) as {scenario:string}).scenario;
+  assert.equal(scenario(firstRequest),'failure');
+  assert.equal(scenario(secondRequest),'failure');
+});
+
+test('mock failure_once fails the first submission and succeeds on the same frozen request',async t=>{
+  const f = await fixture(t);
+  const failureOnce = {...snapshot,parameters:{scenario:'failure_once',delayMs:0}};
+  const firstRequest = randomUUID(), retryRequest = randomUUID();
+  const first = await f.provider.submit(failureOnce,{requestId:firstRequest});
+  const firstPoll = await f.provider.poll(first.providerJobId);
+  assert.equal(firstPoll.status,'failed');
+  assert.equal((firstPoll.error as {code:string}).code,'MOCK_GENERATION_FAILED');
+  await f.provider.submit(failureOnce,{requestId:retryRequest});
+  const scenario = (request:string) => (f.store.db.prepare('SELECT scenario FROM mock_provider_tasks WHERE request_id=?').get(request) as {scenario:string}).scenario;
+  assert.equal(scenario(firstRequest),'failure_once');
+  assert.equal(scenario(retryRequest),'success');
+});
+
 test('mock submit cannot write its ledger after beforeSubmit closes the real owner',async t=>{
   const f = await fixture(t);
   await assert.rejects(f.provider.submit(snapshot,{requestId:randomUUID(),beforeSubmit:()=>f.store.close()}),unverified);

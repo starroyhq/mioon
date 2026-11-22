@@ -112,6 +112,26 @@ export function taskErrorDescriptor(error: unknown): DisplayMessage {
     default: return code ? message('tasks.error.unknown') : message('tasks.error.safeSummary');
   }
 }
+/** Translate the frozen generation error code into the concrete failure line
+ * shown by the property panel and the 21-09 panel. Unknown codes still identify
+ * the code instead of falling back to the generic “工作遇到问题”. */
+export function generationFailureDescriptor(error: unknown): DisplayMessage {
+  const code = safeTaskErrorCode(error);
+  switch (code) {
+    case 'MOCK_GENERATION_FAILED': return message('tasks.error.mockGenerationFailed');
+    case 'MOCK_RENDERER_UNSUPPORTED': return message('tasks.error.mockRendererUnsupported');
+    case 'PROVIDER_GENERATION_FAILED': case 'PROVIDER_FAILED': case 'PROVIDER_ERROR':
+    case 'PROVIDER_NOT_READY': case 'PROVIDER_NO_OUTPUT': return message('tasks.error.providerNoVideo');
+    case 'DOWNLOAD_FAILED': return message('tasks.error.downloadFailed');
+    case 'LOCAL_WAIT_STOPPED': case 'PROVIDER_CANCELLED': return message('tasks.error.generationCancelled');
+    case 'GENERATION_STATE_CHANGED': return message('tasks.error.generationStateChanged');
+    case 'SUBMISSION_UNKNOWN': return message('tasks.error.submissionUnknown');
+    case 'PROVIDER_TIMEOUT': case 'TIMEOUT': case 'NETWORK': case 'NETWORK_ERROR': return message('tasks.error.network');
+    case 'UNAUTHORIZED': case 'FORBIDDEN': case 'PROVIDER_AUTH_FAILED': return message('tasks.error.authorization');
+    default: return code ? message('tasks.error.generationFailedCode', {code}) : message('tasks.error.generationFailed');
+  }
+}
+
 export function safeTaskErrorCode(error: unknown): string | null {
   const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : null;
   return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,95}$/.test(code) ? code : null;

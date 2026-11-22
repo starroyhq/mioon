@@ -12,6 +12,7 @@ import {prepareSequenceEditHistory} from '../packages/business/src/format5-edito
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {randomUUID} from 'node:crypto';
 import type {SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
+import {checkPerformanceBudget} from './helpers/performance-budget.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -115,12 +116,12 @@ test('K1 500+500+1,000 board version selection meets the shared-transaction p95 
   console.log(JSON.stringify({benchmark: 'sequence-edit', shots, mainClips: shots, auxiliaryClips: auxiliary,
     cues, buildMs, ...total, codePath, commit}));
   assert.ok(buildMs < 180_000, `fixture build took ${buildMs}ms`);
-  const budget = process.platform === 'linux' ? 200 : 100;
+  const file = 'tests/sequence-edit-performance.test.ts', budget = process.platform === 'linux' ? 200 : 100;
   const singleMax = process.platform === 'linux' ? 400 : 200;
-  assert.ok(codePath.p95 <= budget, `K1 code path p95 ${codePath.p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
-  assert.ok(codePath.max <= singleMax, `K1 code path max ${codePath.max.toFixed(1)}ms exceeds the ${singleMax}ms single-call budget`);
+  checkPerformanceBudget({file, name: 'K1 code path p95', actual: codePath.p95, budget, unit: 'ms'});
+  checkPerformanceBudget({file, name: 'K1 code path max', actual: codePath.max, budget: singleMax, unit: 'ms'});
   if (process.platform !== 'linux') {
-    assert.ok(total.p95 <= budget, `K1 p95 ${total.p95.toFixed(1)}ms exceeds the ${budget}ms budget`);
-    assert.ok(total.max <= singleMax, `K1 max ${total.max.toFixed(1)}ms exceeds the ${singleMax}ms single-call budget`);
+    checkPerformanceBudget({file, name: 'K1 p95 including COMMIT', actual: total.p95, budget, unit: 'ms'});
+    checkPerformanceBudget({file, name: 'K1 max including COMMIT', actual: total.max, budget: singleMax, unit: 'ms'});
   }
 }));

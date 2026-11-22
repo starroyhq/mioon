@@ -16,6 +16,8 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.clip.refreshSources': message('timeline.history.sourcesRefresh'),
   'timeline.shots.append': message('timeline.history.shotsAppend'),
   'timeline.clip.splitAtScenes': message('timeline.history.splitAtScenes'),
+  'timeline.clip.separateSound': message('timeline.history.clipSeparateSound'),
+  'timeline.clip.set-properties': message('timeline.history.clipUpdate'),
   'timeline.clip.crossfade': message('timeline.history.crossfade'),
   'timeline.clip.setGains': message('timeline.history.setGains'),
   'timeline.clip.setTransform': message('timeline.history.setTransform'),

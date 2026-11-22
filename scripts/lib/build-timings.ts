@@ -14,17 +14,29 @@ export const BUILD_TIMING_STAGES = Object.freeze([
   'desktop-preload-bundle', 'desktop-resource-staging', 'desktop-native-staging', 'desktop-license-staging',
 ] as const);
 export type BuildTimingStage = typeof BUILD_TIMING_STAGES[number];
+export interface BuildHeapEvidence {
+  readonly peakOldSpaceBytes: number;
+  readonly maxOldSpaceBytes: number;
+  readonly peakHeapUsedBytes?: number;
+  readonly peakRssBytes?: number;
+  /** Peak old space as a one-decimal percentage of the configured limit. */
+  readonly percent: number;
+  readonly warning: boolean;
+}
 export interface BuildTimingRecord {
   readonly schema: 1;
   readonly stage: BuildTimingStage;
   readonly durationMs: number;
   readonly result: 'success' | 'failed';
   readonly exitCode?: number;
+  readonly heap?: BuildHeapEvidence;
 }
 interface TimingOptions<T> {
   readonly exitCode?: (value: T) => number;
   readonly now?: () => number;
   readonly report?: (record: BuildTimingRecord) => void;
+  /** Called after the run finishes; must return undefined rather than throw. */
+  readonly heap?: () => BuildHeapEvidence | undefined;
 }
 const desktopTypecheckTiming = new AsyncLocalStorage<boolean>();
 
@@ -49,7 +61,20 @@ export async function measureBuildStage<T>(stage: BuildTimingStage, run: () => P
     result = exitCode === undefined || exitCode === 0 ? 'success' : 'failed';
     return value;
   } finally {
+    const heap = (() => {try {return options.heap?.();} catch {return undefined;}})();
     report({schema: 1, stage, durationMs: Math.max(0, Math.round(now() - started)), result,
-      ...(exitCode === undefined ? {} : {exitCode})});
+      ...(exitCode === undefined ? {} : {exitCode}), ...(heap ? {heap} : {})});
   }
+}
+
+/** Validate a probe measurement and derive the visible margin. Values are
+ * bounded integers so a corrupt evidence file cannot fake a healthy build. */
+export function heapEvidence(measurement: {peakOldSpaceBytes: number; maxOldSpaceBytes: number; peakHeapUsedBytes?: number; peakRssBytes?: number}): BuildHeapEvidence {
+  const {peakOldSpaceBytes, maxOldSpaceBytes} = measurement;
+  if (!Number.isSafeInteger(peakOldSpaceBytes) || peakOldSpaceBytes < 0 || !Number.isSafeInteger(maxOldSpaceBytes) || maxOldSpaceBytes <= 0) throw new Error('Invalid build heap evidence.');
+  const optional = (value: number | undefined): number | undefined => Number.isSafeInteger(value) && value! >= 0 ? value : undefined;
+  const percent = Math.round((peakOldSpaceBytes / maxOldSpaceBytes) * 1000) / 10;
+  return {peakOldSpaceBytes, maxOldSpaceBytes, percent, warning: percent > 80,
+    ...(optional(measurement.peakHeapUsedBytes) === undefined ? {} : {peakHeapUsedBytes: optional(measurement.peakHeapUsedBytes)!}),
+    ...(optional(measurement.peakRssBytes) === undefined ? {} : {peakRssBytes: optional(measurement.peakRssBytes)!})};
 }

@@ -517,7 +517,8 @@ Scenarios:
 | --- | --- |
 | `success` | Runs briefly, then succeeds |
 | `delay` | Succeeds after `delayMs`; default 2 seconds |
-| `failure`, `terminal_failure` | Definitive failed remote task |
+| `failure`, `terminal_failure` | Definitive failed remote task; retrying the frozen request fails again |
+| `failure_once` | First submission of a snapshot fails; submitting the same frozen request again succeeds |
 | `reject`, `rejected_before_accept` | Definitive submission rejection, no remote task |
 | `timeout`, `poll_timeout_then_recover` | First two polls fail transiently; third poll resumes the same task |
 | `unknown` | Unresolved submission with no discoverable task; never automatically retry |
