@@ -56,6 +56,8 @@ jobs:
 
       - name: Prepare verified Windows media tools
         timeout-minutes: 8
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path artifacts/windows-development | Out-Null
@@ -86,13 +88,17 @@ jobs:
           $source = 'runner-image'
           $archiveEvidence = $null
           if ($toolPaths.Count -ne 2) {
-            $source = 'gyan-8.1.2'
+            $source = 'github-release-8.1.2'
             $version = '8.1.2'
             $rootName = 'ffmpeg-8.1.2-essentials_build'
-            $url = 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip'
+            # gyan.dev packages/ only keeps the newest builds; GyanD's GitHub
+            # release mirror keeps the exact versioned 8.1.2 archive.
+            $url = 'https://github.com/GyanD/codexffmpeg/releases/download/8.1.2/ffmpeg-8.1.2-essentials_build.zip'
+            $releaseUrl = "$env:GITHUB_API_URL/repos/GyanD/codexffmpeg/releases/tags/8.1.2"
             $expected = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
-            # The pinned publisher occasionally answers 503; retry the exact
-            # pinned URLs before treating the runner as unable to prepare tools.
+            # The publisher and the GitHub API occasionally answer transient
+            # failures; retry the exact pinned URLs before treating the runner
+            # as unable to prepare tools.
             function Get-PinnedMediaResponse([string]$Uri, [string]$OutFile = '') {
               for ($attempt = 1; $attempt -le 4; $attempt++) {
                 try {
@@ -107,8 +113,20 @@ jobs:
                 }
               }
             }
-            $published = (Get-PinnedMediaResponse ($url + '.sha256')).Trim().ToLowerInvariant()
-            if ($published -notmatch '^[a-f0-9]{64}$' -or $published -cne $expected) { throw 'Windows media publisher checksum differs from the reviewed pin.' }
+            function Get-PinnedMediaJson([string]$Uri) {
+              for ($attempt = 1; $attempt -le 4; $attempt++) {
+                try {
+                  return Invoke-RestMethod -Uri $Uri -Headers @{ Authorization = ('Bearer ' + $env:GITHUB_TOKEN); Accept = 'application/vnd.github+json' } -TimeoutSec 60
+                } catch {
+                  if ($attempt -eq 4) { throw }
+                  Start-Sleep -Seconds (5 * $attempt)
+                }
+              }
+            }
+            $release = Get-PinnedMediaJson $releaseUrl
+            $asset = @($release.assets | Where-Object { $_.name -ceq 'ffmpeg-8.1.2-essentials_build.zip' }) | Select-Object -First 1
+            $published = if ($null -eq $asset) { '' } else { [string]$asset.digest }
+            if ($published -notmatch '^sha256:([a-f0-9]{64})$' -or $Matches[1] -cne $expected) { throw 'Windows media publisher checksum differs from the reviewed pin.' }
             $staging = Join-Path $env:RUNNER_TEMP ('mioon-windows-media-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
             if (Test-Path -LiteralPath $staging) { throw 'Windows media staging must be new.' }
             New-Item -ItemType Directory -Path $staging | Out-Null
@@ -158,7 +176,7 @@ jobs:
               } finally { $stream.Dispose() }
               $toolPaths[$name] = $tool
             }
-            $archiveEvidence = @{ version = $version; url = $url; checksumUrl = ($url + '.sha256'); sha256 = $actual; publisherChecksum = $published }
+            $archiveEvidence = @{ version = $version; url = $url; checksumUrl = $releaseUrl; sha256 = $actual; publisherChecksum = $published }
           }
           $selected = @{}
           foreach ($name in @('ffmpeg', 'ffprobe')) {
@@ -168,7 +186,7 @@ jobs:
             $exit = $LASTEXITCODE
             $reported = if ($lines.Count -gt 0) { [string]$lines[0] } else { '' }
             if ($exit -ne 0 -or -not $reported.StartsWith($name + ' version ')) { throw 'Windows media version probe failed.' }
-            if ($source -eq 'gyan-8.1.2' -and $reported -notmatch ('^' + $name + ' version 8[.]1[.]2(?:[-\s])')) { throw 'Windows media executable version differs from the archive pin.' }
+            if ($source -eq 'github-release-8.1.2' -and $reported -notmatch ('^' + $name + ' version 8[.]1[.]2(?:[-\s])')) { throw 'Windows media executable version differs from the archive pin.' }
             $selected[$name] = @{ status = 'available'; name = ($name + '.exe'); version = $reported; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $tool).Hash.ToLowerInvariant(); hashScope = 'invoked-executable' }
             $variable = if ($name -eq 'ffmpeg') { 'MIOON_FFMPEG_PATH' } else { 'MIOON_FFPROBE_PATH' }
             Add-Content -LiteralPath $env:GITHUB_ENV -Value ($variable + '=' + $tool) -Encoding utf8
