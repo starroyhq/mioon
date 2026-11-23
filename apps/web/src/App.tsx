@@ -43,6 +43,7 @@ import {useCanvasEditing} from './use-canvas-editing.ts';
 import type {CanvasSelectionItem} from './CanvasEditingControls.tsx';
 import {canvasEditErrorCode} from './canvas-editing-state.ts';
 import {canvasClipboardInText, canvasClipboardShortcut, canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
+import {Format5DeleteDialog} from './CanvasEditingControls.tsx';
 import {createCanvasClipboard, eventCanvasClipboard, webCanvasClipboard} from './canvas-clipboard.ts';
 import type {CanvasClipboardReader, CanvasClipboardWriter} from './canvas-clipboard.ts';
 import {CANVAS_CLIPBOARD_LIMITS} from '../../../packages/contracts/src/canvas-editing.ts';
@@ -2433,6 +2434,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const format5SessionRef = useRef<Format5EditSession | null>(null);
   const [format5History, setFormat5History] = useState<SequenceHistoryView | null>(null);
   const [format5Notice, setFormat5Notice] = useState<EditUiNotice | null>(null);
+  const [format5DeleteReview, setFormat5DeleteReview] = useState<{readonly nodeId: string; readonly count: number} | null>(null);
   const [format5CopyRequest, setFormat5CopyRequest] = useState<EditUiCopyMoveRequest | null>(null);
   // ED timeline clipboard: internal, format-5 only. It stores the source clip
   // identity; paste re-reads the clip server-side and allocates new identities.
@@ -2495,6 +2497,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }).catch(() => {});
     return () => {cancelled = true;};
   }, [format5, data.project?.id, timeline?.id, timeline?.revision, format5History?.position, format5History?.revision]);
+  function format5BoardFailureMessage(failure: {code?: string; reason?: string}): string {
+    // Keep specific bounded reasons visible instead of collapsing every format-5
+    // validation refusal into the generic "operation did not complete" notice.
+    if (failure.code === 'PROJECT_INVALID' && failure.reason === 'metadata') return t('boardUi.error.projectInvalid');
+    return t(format5CommandErrorMessageKey(failure.code) as never);
+  }
   async function format5BoardRun(intent: Parameters<BoardUiSession['run']>[0], noticeMessage: string): Promise<BoardOutcome> {
     if (!format5) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
     setFormat5BoardBusy(true);
@@ -2507,7 +2515,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await format5RefreshHistory();
         await format5LoadBoard();
       } else if (!outcome.ok) {
-        notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+        notify(format5BoardFailureMessage(outcome), 'error');
       }
       return outcome;
     } finally {setFormat5BoardBusy(false);}
@@ -2556,7 +2564,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const view = await format5BoardSession().history();
     if (!view?.undo || view.undo.actionId !== actionId) {setFormat5Notice(null); return false;}
     const outcome = await format5BoardSession().undo(view);
-    if (!outcome.ok) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return false;}
+    if (!outcome.ok) {notify(format5BoardFailureMessage(outcome), 'error'); return false;}
     setFormat5Notice(null); setFormat5NoticeActionId(null);
     await refresh(currentProject.current); await format5RefreshHistory(); await format5LoadBoard();
     return true;
@@ -2573,7 +2581,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await refresh(currentProject.current);
         await format5RefreshHistory();
         await format5LoadBoard();
-      } else if (!outcome.ok) notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+      } else if (!outcome.ok) notify(format5BoardFailureMessage(outcome), 'error');
       return outcome;
     } finally {setFormat5BoardBusy(false);}
   }
@@ -2616,7 +2624,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await format5RefreshHistory();
         await format5LoadBoard();
       } else if (!outcome.ok) {
-        notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+        notify(format5BoardFailureMessage(outcome), 'error');
       }
       return outcome;
     } finally {setFormat5BoardBusy(false);}
@@ -2679,8 +2687,24 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     await format5BoardRun(boardVersionIntent(nodeId, versionId), t('boardUi.notice.version', {name}));
   }
   async function format5BoardDeleteNode(nodeId: string): Promise<void> {
-    const name = format5BoardProjection?.nodes.find(node => node.id === nodeId)?.name ?? '';
-    await format5BoardRun(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name}));
+    const state = dataRef.current;
+    const shot = state.shots.find(item => item.id === nodeId);
+    const timeline = state.timeline as unknown as {clips?: readonly {sequenceSource?: {nodeId?: string}}[]} | null;
+    const generated = Boolean(shot && state.versions.some(version => version.shotId === nodeId));
+    const usedOnMainTrack = Boolean(shot && timeline?.clips?.some(clip => clip.sequenceSource?.nodeId === nodeId));
+    if (!shot || !(generated || usedOnMainTrack)) {
+      await format5BoardRun(boardDeleteIntent(nodeId), t('boardUi.notice.deletedCount', {count: 1}));
+      return;
+    }
+    // Design 18-02 (format 5): a shot with generated video or a main-track
+    // segment needs one confirmation for the whole delete.
+    setFormat5DeleteReview({nodeId, count: 1});
+  }
+  async function format5BoardConfirmDelete(): Promise<void> {
+    const review = format5DeleteReview;
+    if (!review) return;
+    setFormat5DeleteReview(null);
+    await format5BoardRun(boardDeleteIntent(review.nodeId), t('boardUi.notice.deletedCount', {count: review.count}));
   }
   async function format5BoardRestore(archivedId: string, name: string): Promise<void> {
     const kind = format5BoardMount?.archived.find(item => item.id === archivedId)?.kind ?? 'node';
@@ -5280,7 +5304,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} onDelete={nodeId => { void format5BoardDeleteNode(nodeId); }} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
           onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}
           onAddPrevis={() => { void addPrevis(); }} addingPrevis={Boolean(busy['previs-create'])} previsDisabled={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
@@ -5451,6 +5475,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <TargetMarkLayer marks={changeMarks.marks} label={t('agent.mark.label')} ariaLabel={t('agent.mark.open')} onActivate={revealTaskChange} />
     <TargetMarkLayer marks={reviewMarks.marks} label={t('agent.review.mark')} icon="search" describe={owner => { const category = reviewMarks.category(owner); return category ? t('agent.review.markTitle', { category: t(`agent.review.category.${category}`) }) : undefined; }} onActivate={revealReviewIssueCard} />
     {data.project && <ProjectRulesController admission={rulesAdmission ?? undefined} interactionBlocked={!rulesAdmission?.isCurrent()} open={rulesOpen} projectId={data.project.id} projectFile={projectRegistration?.projectId === data.project.id ? projectRegistration.projectFile : undefined} onClose={() => {if (rulesAdmission?.isCurrent()) setRulesOpen(false);}} />}
+    {format5 && format5DeleteReview && <Format5DeleteDialog count={format5DeleteReview.count} busy={format5BoardBusy}
+      onCancel={() => setFormat5DeleteReview(null)} onConfirm={() => { void format5BoardConfirmDelete(); }} />}
     {historyLayer}
     {previsEditor}
     <ProjectMediaDialogs media={projectMedia} projectName={data.project?.name ?? ''} />
