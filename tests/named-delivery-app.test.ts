@@ -94,6 +94,8 @@ async function coordinatedRenderHarness(t: test.TestContext,{preparation,executi
    stored={...stored,intentRevision:stored.intentRevision+1,intent:{...stored.intent!,outcome:{status:'accepted',exportId:response.id,responseSha256:'d'.repeat(64),resolvedAt:stamp}},draftRevision:stored.draftRevision+1,draft:null,draftTargetStatus:'unset'};return {envelope:structuredClone(stored),response};},
   async discard(){assert.fail('Export acknowledgement must not discard through the draft API');},
   async recover(){assert.fail('Fresh export must not replay through recovery');},
+  async check(){assert.fail('Fresh export must not check a pending intent');},
+  async discardIntent(){assert.fail('Fresh export must not discard an intent');},
  };
  const rangeController=createExportRangeController();rangeController.setContext({scope:f.live.scope,projectId:id,timelineId:h.environment.dataRef.current.timeline.id,revision:7,durationFrames:30,enabled:true});
  const localEnvironment={...h.environment,projectSessionReady:()=>projectReady,workbenchReady:projectReady,projectEpoch:{current:1},navigationEpoch:{current:0},exportSettings:{controller:{getVersion:()=>1}},exportRange:{controller:rangeController},online:true,auth:true,loading:false,showDelivery:true,showExports:false,deliveryName:{controller:f.controller}};

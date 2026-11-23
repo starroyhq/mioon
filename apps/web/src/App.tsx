@@ -181,7 +181,7 @@ import { useAssetDispositions } from './use-asset-dispositions.ts';
 import { dispositionKey } from './asset-disposition-state.ts';
 import ExportHistoryList from './ExportHistoryList.tsx';
 import DeliveryWorkspace from './DeliveryWorkspace.tsx';
-import TimelineExportPreflight from './TimelineExportPreflight.tsx';
+import TimelineExportPreflight, {type PendingExportCheckView} from './TimelineExportPreflight.tsx';
 import { useExportPreflight } from './use-export-preflight.ts';
 import { useExportSamplePeak } from './use-export-sample-peak.ts';
 import { useExportLoudness } from './use-export-loudness.ts';
@@ -635,6 +635,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [regenerationJobId, setRegenerationJobId] = useState<string | undefined>();
   const [showDelivery, setShowDelivery] = useState(false);
   const [deliveryAttempt, setDeliveryAttempt] = useState<{projectId: string; id: string} | null>(null);
+  const [pendingExportCheck, setPendingExportCheck] = useState<PendingExportCheckView | null>(null);
+  const pendingExportCheckFlight = useRef<string | null>(null);
   const [deliveryReviewVersion, setDeliveryReviewVersion] = useState(0);
   const [showImage, setShowImage] = useState(false);
   const [sceneTarget, setSceneTarget] = useState<{projectId: string; assetId: string; autoStart: boolean; choice?: {resultId: string; segments: readonly number[]} | null} | null>(null);
@@ -3005,6 +3007,68 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onRestore: (draft: {raw: {deliveryName: string}}, captured: {scope: string; nameVersion: number}) => deliveryNameRef.current?.controller.choose(draft.raw.deliveryName, captured.scope, captured.nameVersion) === true,
     onAccepted: async ({ intent }: {intent: {input: {projectId: string}}}) => { if (currentProject.current === intent.input.projectId) await refresh(intent.input.projectId); } } as unknown as Parameters<typeof useLocalDelivery>[0]) as unknown as LocalDeliveryRuntime;
   localDeliveryRef.current = localDelivery;
+  async function runPendingExportCheck(intentId: string, force = false): Promise<void> {
+    if (!force && pendingExportCheckFlight.current === intentId) return;
+    pendingExportCheckFlight.current = intentId;
+    const projectId = currentProject.current;
+    if (!projectId) return;
+    try {
+      const result = await localDeliveryRef.current!.controller.checkIntent();
+      if (!result || result.intentId !== intentId || currentProject.current !== projectId) {
+        if (currentProject.current === projectId && localDeliveryRef.current?.state.intent?.intentId === intentId) setPendingExportCheck({kind: 'unavailable'});
+        return;
+      }
+      if (result.status === 'executing') {
+        // The current window is already running this export. Poll the read-only
+        // check rather than starting another execution.
+        setPendingExportCheck(null);
+        window.setTimeout(() => { if (currentProject.current === projectId && localDeliveryRef.current?.state.intent?.intentId === intentId) void runPendingExportCheck(intentId, true); }, 800);
+        return;
+      }
+      if (result.status === 'accepted') {
+        const token = localDeliveryRef.current!.controller.capture();
+        await localDeliveryRef.current!.controller.recover(token);
+        if (currentProject.current === projectId) {
+          await refresh(projectId);
+          setDeliveryAttempt({projectId, id: result.exportId});
+          setShowExports(false);
+          setPendingExportCheck(null);
+        }
+        return;
+      }
+      if (result.status === 'not_executed') {
+        const state = localDeliveryRef.current!.state, intent = state.intent;
+        const changed = !intent || dataRef.current.timeline?.revision !== intent.baseRevision;
+        setPendingExportCheck({kind: changed ? 'timeline_changed' : 'not_executed'});
+        return;
+      }
+      setPendingExportCheck({kind: 'unavailable'});
+    } finally {
+      if (pendingExportCheckFlight.current === intentId) pendingExportCheckFlight.current = null;
+    }
+  }
+  async function continuePendingExport(): Promise<void> {
+    const state = localDeliveryRef.current!.controller.getState(), intent = state.intent;
+    if (!intent || intent.outcome.status !== 'pending') return;
+    if (dataRef.current.timeline?.revision !== intent.baseRevision) { setPendingExportCheck({kind: 'timeline_changed'}); return; }
+    const projectId = currentProject.current; if (!projectId) return;
+    const token = localDeliveryRef.current!.controller.capture();
+    const result = await localDeliveryRef.current!.controller.recover(token) as {id?: string} | null;
+    const after = localDeliveryRef.current!.controller.getState();
+    if (currentProject.current !== projectId) return;
+    if (result && after.intent?.outcome.status === 'accepted') {
+      await refresh(projectId);
+      setDeliveryAttempt({projectId, id: after.intent.outcome.exportId});
+      setShowExports(false); setPendingExportCheck(null);
+      return;
+    }
+    if (after.intent?.outcome.status === 'not_applied') { setPendingExportCheck({kind: 'not_executed_reason', errorCode: after.intent.outcome.code}); return; }
+    setPendingExportCheck({kind: 'unavailable'});
+  }
+  async function discardPendingExport(): Promise<void> {
+    const ok = await localDeliveryRef.current!.controller.discardIntent();
+    if (ok) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); }
+  }
   function exportCheckContext(): Record<string, unknown> & {scope: string} {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current!.timeline?.id, revision: dataRef.current!.timeline?.revision, connected: workbenchReady && online && auth === true && !loading,
@@ -3019,6 +3083,31 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const canOpenExport = Boolean(data.project && timeline?.id && !loading);
   const canCheckExport = Boolean(canOpenExport && Number.isSafeInteger(timeline!.revision) && timeline!.revision > 0 && online && auth === true && !deliveryName.error && !exportRange.error && (!localDelivery.state.baselineConflict && !localDelivery.state.candidate));
   const pendingTimelineExport = activePending.some(entry => entry.key === 'timeline:render:export') || (localDelivery.state.pending);
+  // Opening export checks a retained intent exactly once. The read-only check
+  // never renders; only an accepted receipt is adopted through the original
+  // request replay, which cannot create a second export.
+  useEffect(() => {
+    const state = localDeliveryRef.current?.state, intent = state?.intent;
+    if (!showDelivery) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); return; }
+    if (showExports || !workbenchReady || !online || auth !== true || loading || state?.busy || state?.phase === 'loading' ||
+        (state?.projectId && currentProject.current && state.projectId !== currentProject.current)) return;
+    if (intent?.outcome.status === 'accepted') {
+      if (deliveryAttempt?.projectId !== currentProject.current || deliveryAttempt.id !== intent.outcome.exportId) {
+        const projectId = currentProject.current;
+        if (projectId) { setDeliveryAttempt({projectId, id: intent.outcome.exportId}); void refresh(projectId); }
+      }
+      setPendingExportCheck(null);
+      return;
+    }
+    if (!intent || intent.outcome.status !== 'pending') {
+      if (!intent) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); }
+      return;
+    }
+    if (pendingExportCheckFlight.current === intent.intentId) return;
+    void runPendingExportCheck(intent.intentId);
+  }, [showDelivery, showExports, workbenchReady, online, auth, loading, deliveryAttempt?.projectId, deliveryAttempt?.id,
+    localDelivery.state.busy, localDelivery.state.phase, localDelivery.state.intent?.intentId,
+    localDelivery.state.intent?.outcome.status]);
   const [exportPreviewAttempt, setExportPreviewAttempt] = useState<{scope: string; timelineId: string; contextKey: string | null; input: Record<string, unknown>; submitting: boolean; exportId: string | null; receipt: unknown} | null>(null);
   const [sampleRangeDraft, setSampleRangeDraft] = useState<DraftRangeInput | null>(null);
   const sampleRangeDraftRef = useRef(sampleRangeDraft);
@@ -5287,7 +5376,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       preflightState={sampleExportPreflight.state as never}
       onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
-    />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
+    />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
     <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}

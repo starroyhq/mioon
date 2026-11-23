@@ -77,7 +77,7 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
     {state.draftError && <p role="alert" data-testid="delivery-draft-error">{renderMessage(state.draftErrorDisplay) || t('recovery.notice.unconfirmed')}</p>}
     {state.draftFailure?.kind === 'refused' && !state.leaveWithoutSaving && <Button type="button" size="sm" variant="outline" data-testid="leave-without-saving-delivery-name" disabled={blocked || state.phase === 'saving'} onClick={() => controller.allowLeaveWithoutSaving()}>{t('recovery.delivery.leave')}</Button>}
     {(state.phase === 'error' || state.autosavePaused || state.intentUncertain || state.intentFailure) && <Button type="button" size="sm" variant="ghost" data-testid="reload-local-delivery" disabled={blocked} onClick={() => { void controller.load(); }}>{t('recovery.common.recheck')}</Button>}
-    {(original || state.intentUncertain || state.intentPhase === 'preparing') && <div data-testid="delivery-original-intent">
+    {(state.intentUncertain || state.intentPhase === 'preparing' || unconfirmedPreparation) && <div data-testid="delivery-original-intent">
       <p role="status" aria-live="polite">{intentLabel}</p>
       {originalInput && <details open={recoveryNeeded || original?.outcome.status !== 'accepted'}>
         <summary>{t('recovery.delivery.originalDetails')}</summary>

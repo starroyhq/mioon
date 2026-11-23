@@ -307,7 +307,7 @@ test('accessible topbar export action opens recovery even when a candidate, base
   for (const patch of [{ data: { project: null } }, { timeline: null }, { loading: true }]) assert.equal(gate(patch).canOpenExport, false);
 });
 
-test('blocked Check retains accessible recovery controls and pending copy points to the original request entry', () => {
+test('blocked Check keeps draft recovery while a pending export intent is handled in step 1', () => {
   const recoverySource = readFileSync(new URL('../apps/web/src/DeliveryDraftRecovery.tsx', import.meta.url), 'utf8');
   const module = { exports: {} }, disclosure = { exports: {} }, rangeSummary = { exports: {} };
   const react: Record<string, unknown> = { createElement: (type: unknown, props: Record<string, unknown>, ...children: unknown[]) => [(disclosure.exports as {default?: unknown}).default, (rangeSummary.exports as {default?: unknown}).default].includes(type) ? (type as (props: Record<string, unknown>) => unknown)({ ...props, children }) : element(type, props, ...children) }; react.default = react;
@@ -338,13 +338,12 @@ test('blocked Check retains accessible recovery controls and pending copy points
   const tree = renderPanel({ recovery, canCheck: false, deliveryNameError: 'Invalid name', pendingExport: true });
   assert.equal(findNode(tree, 'delivery-draft-recovery').props['aria-label'], '本地交付草稿与原导出请求');
   const restore = findNode(tree, 'restore-delivery-draft');
-  const recover = findNode(tree, 'recover-original-delivery');
   assert.equal(restore.type, 'Button'); assert.equal(restore.props.type, 'button'); assert.equal(restore.props.disabled, false);
-  assert.equal(recover.type, 'Button'); assert.equal(recover.props.type, 'button'); assert.equal(recover.props.disabled, false);
-  assert.equal(textOf(recover), '确认恢复同一原请求'); assert.equal(findNode(tree, 'preflight-check').props.disabled, true);
+  assert.equal(nodes(tree).some(item => item.props['data-testid'] === 'recover-original-delivery'), false);
+  assert.equal(findNode(tree, 'preflight-check').props.disabled, true);
   assert.equal(findNode(tree, 'preflight-export').props.disabled, true);
-  assert.match(textOf(tree), /请使用原请求旁的恢复入口核对同一请求；重新检查不会重发导出/);
-  assert.doesNotMatch(textOf(tree), /请在任务面板恢复同一请求/); assert.deepEqual(events, []);
+  assert.doesNotMatch(textOf(tree), /请使用原请求旁的恢复入口核对同一请求|重新检查不会重发导出/);
+  assert.deepEqual(events, []);
 });
 
 test('actual dock view keeps the unsaved status and uses the checked snapshot without initiating reads', async () => {

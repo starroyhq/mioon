@@ -4,6 +4,7 @@ import path from 'node:path';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {TEST_STORE_LAYOUT} from '../../../contracts/src/project-file.ts';
 import {createProjectFile} from './connection.ts';
+import type {ProjectFileFormat} from './schema/databases.ts';
 import type {OpenProjectConnectionOptions, ProjectLocation} from './connection.ts';
 import {isProjectStore, openProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
@@ -35,13 +36,13 @@ export function registerTestStoreCloseCompanion(store: ProjectStore, close: () =
  * directory with `project.mioon`, and the local records, cache and temporary
  * directories share `root/.mioon-store/`. The project file is created on the
  * first call, so this replaces db.ts's `openStore(root)` one for one. */
-export function openStore(root: string): ProjectStore {
+export function openStore(root: string, targetFormat?: ProjectFileFormat): ProjectStore {
   root = path.resolve(root);
   // Validate every ancestor before creating a project file. The portable
   // project folder may be 0755; its TEST companions must remain private.
   ensurePrivateDirectory(path.join(root, '.mioon-store'), {create: true});
   const projectFile = path.join(root, ...TEST_STORE_LAYOUT.projectFile);
-  if (!lstatSync(projectFile, {throwIfNoEntry: false})) createProjectFile(projectFile);
+  if (!lstatSync(projectFile, {throwIfNoEntry: false})) createProjectFile(projectFile, {targetFormat});
   const location: ProjectLocation = {
     localDir: path.join(root, ...TEST_STORE_LAYOUT.localDir),
     cacheDir: path.join(root, ...TEST_STORE_LAYOUT.cacheDir),

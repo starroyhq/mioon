@@ -13,7 +13,7 @@ interface HttpResponse {handled?: boolean; status?: number; body: HttpBody; head
 interface HttpFixture {calls: HttpCall[]; delivery: Record<string, unknown>; request(route: string, options?: HttpRequestOptions): Promise<HttpResponse>}
 function fixture(): HttpFixture {
   const calls: HttpCall[]=[],value={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'};
-  const delivery=Object.fromEntries(['get','put','discard','prepare','execute','recover'].map(method=>[method,(input: unknown)=>{calls.push({method,input});return ['execute','recover'].includes(method)?Promise.resolve({envelope:value,response:null}):value;}])) as Record<string, unknown>;
+  const delivery=Object.fromEntries(['get','put','discard','prepare','execute','recover','check','discardIntent'].map(method=>[method,(input: unknown)=>{calls.push({method,input});return ['execute','recover'].includes(method)?Promise.resolve({envelope:value,response:null}):value;}])) as Record<string, unknown>;
   const handler=createLocalDeliveryHttp({delivery: delivery as never});
   async function request(route: string, {method='GET',input,raw,headers={},chunks}: HttpRequestOptions={}): Promise<HttpResponse> {
     const payload=raw??(input===undefined?'':JSON.stringify(input)),req=Readable.from(chunks??[Buffer.from(payload)]);
@@ -27,10 +27,10 @@ function fixture(): HttpFixture {
 test('narrow local routes use fixed methods and GET never invokes execution',async()=>{
   const f=fixture(),projectId='e2d2c38d-56ae-4ec8-8391-ff763086ff1c';
   const read=await f.request(`/api/local-delivery?projectId=${projectId}`);assert.equal(read.status,200);assert.equal(read.headers['cache-control'],'no-store');assert.deepEqual(f.calls,[{method:'get',input:{projectId}}]);
-  for(const [route,method,service]of [['draft','PUT','put'],['draft','DELETE','discard'],['prepare','POST','prepare'],['execute','POST','execute'],['recover','POST','recover']]){
+  for(const [route,method,service]of [['draft','PUT','put'],['draft','DELETE','discard'],['prepare','POST','prepare'],['execute','POST','execute'],['recover','POST','recover'],['check','POST','check'],['discard-intent','POST','discardIntent']]){
     const response=await f.request(`/api/local-delivery/${route}`,{method,input:{test:service}});assert.equal(response.status,200);assert.deepEqual(f.calls.at(-1),{method:service,input:{test:service}});
   }
-  const before=f.calls.length;assert.equal((await f.request('/api/local-delivery/execute')).status,405);assert.equal((await f.request('/api/local-delivery/settle',{method:'POST',input:{}})).status,404);assert.equal((await f.request('/api/local-delivery/execute',{method:'PUT',input:{}})).status,405);assert.equal(f.calls.length,before);assert.equal((await f.request('/api/unrelated')).handled,false);
+  const before=f.calls.length;assert.equal((await f.request('/api/local-delivery/execute')).status,405);assert.equal((await f.request('/api/local-delivery/check')).status,405);assert.equal((await f.request('/api/local-delivery/settle',{method:'POST',input:{}})).status,404);assert.equal((await f.request('/api/local-delivery/execute',{method:'PUT',input:{}})).status,405);assert.equal(f.calls.length,before);assert.equal((await f.request('/api/unrelated')).handled,false);
 });
 test('bounded query and body rejection occurs before service invocation',async()=>{
   const f=fixture();

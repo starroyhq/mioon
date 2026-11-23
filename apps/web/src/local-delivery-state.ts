@@ -3,7 +3,7 @@ import type { Locale, MessageDescriptor } from '../../../packages/i18n/src/index
 import { recoveryDisplayError, recoveryErrorMessage } from './recovery-display.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createLocalDeliverySchemas, localDeliveryDraftPutSchema, LOCAL_DELIVERY_LIMITS } from '@mioon/contracts/local-delivery';
-import type { LocalDeliveryDraftPut, LocalDeliveryDraftValue, LocalDeliveryEnvelope, LocalDeliveryIntent, LocalDeliveryPrepare, LocalDeliveryRenderInput } from '@mioon/contracts/local-delivery';
+import type { LocalDeliveryDraftPut, LocalDeliveryDraftValue, LocalDeliveryEnvelope, LocalDeliveryIntent, LocalDeliveryPrepare, LocalDeliveryRenderInput, LocalDeliveryCheckResult } from '@mioon/contracts/local-delivery';
 import { createLocalDeliveryClient, LocalDeliveryRequestError, localDeliveryFailure, localDeliveryProtocolError } from './local-delivery-client.ts';
 import type { LocalDeliveryClient, LocalDeliveryFailure } from './local-delivery-client.ts';
 import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
@@ -308,6 +308,35 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       if (timer) clearTimeout(timer); timer = undefined;
       serial++; suppressNextNameChange = true; emit({ dirty: false, autosavePaused: true, leaveWithoutSaving: true }); return true;
     },
+    /** Read-only status check for the retained intent. It never renders, and
+     * the caller decides how to present `accepted`/`not_executed`/`unavailable`. */
+    async checkIntent(token = capture()): Promise<LocalDeliveryCheckResult | null> {
+      if (!isCurrent(token) || operation || saving || draftRetryFlight || !loaded || !envelope?.intent || !transport.check) return null;
+      const intent = copy(envelope.intent);
+      try {
+        const result = await transport.check({ ...authority(envelope), projectId: envelope.projectId, intentId: intent.intentId });
+        if (!isCurrent(token) || result.projectId !== envelope?.projectId || result.intentId !== intent.intentId) return null;
+        return result;
+      } catch { return { status: 'unavailable', projectId: envelope?.projectId ?? context.projectId ?? '', intentId: intent.intentId }; }
+    },
+    /** Clear the retained intent with its CAS revision. Drafts, receipts,
+     * exports and files remain untouched; only the companion slot changes. */
+    async discardIntent(token = capture()): Promise<boolean> {
+      if (!isCurrent(token) || operation || saving || draftRetryFlight || !loaded || !envelope?.intent || !transport.discardIntent) return false;
+      const previous = copy(envelope), retained = envelope.intent;
+      const owner = generation;
+      operation = {}; readSerial++; emit({ busy: true, intentError: '', intentErrorDisplay: undefined });
+      try {
+        const result = await transport.discardIntent({ ...authority(previous), projectId: previous.projectId,
+          intentId: retained.intentId, expectedIntentRevision: previous.intentRevision });
+        sync(); if (!belongs(owner)) return false;
+        const next = validateEnvelope(result, previous.projectId);
+        if (next.intent !== null || next.intentRevision <= previous.intentRevision) throw localDeliveryProtocolError();
+        receive(next, previous); emit({ intent: null, intentPhase: 'idle', intentUncertain: false, intentFailure: null,
+          intentError: '', intentErrorDisplay: undefined }); return true;
+      } catch (error) { sync(); if (belongs(owner)) intentFailure(error, false); return false; }
+      finally { operation = null; if (belongs(owner)) { emit({ busy: false }); schedule(); } }
+    },
     async submit(input: LocalDeliveryRenderInput, {canExecute, nameCapture, outputLocale}: {canExecute?: () => boolean; nameCapture?: unknown; outputLocale?: Locale} = {}): Promise<unknown | null> {
       if (!canPrepare() || !context.projectId || !context.timelineId || !context.timelineRevision || !isRenderInput(input) || input.projectId !== context.projectId || input.expectedRevision !== context.timelineRevision || input.purpose !== 'export' ||
           (context.deliveryName === '' ? Object.hasOwn(input, 'deliveryName') : input.deliveryName !== context.deliveryName)) return null;
@@ -356,7 +385,9 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
           receive(next, previous, 'intent'); previous = copy(next);
         }
         if (!previous.intent || retained && (previous.intent.intentId !== retained.intentId || !sameRenderRequest(previous.intent, retained))) throw localDeliveryProtocolError();
-        if (!isCurrent(token) || !context.visible || !context.connected || context.busy || context.timelineId !== token.timelineId || context.timelineRevision !== token.baseRevision) return null;
+        const accepted = previous.intent.outcome.status === 'accepted';
+        if (!isCurrent(token) || !context.visible || !context.connected || context.busy || context.timelineId !== token.timelineId ||
+            (!accepted && context.timelineRevision !== token.baseRevision)) return null;
         return await executeOriginal(previous, token, true, null);
       } catch (error) { sync(); if (belongs(owner)) intentFailure(error, state.intentUncertain); return null; }
       finally { if (operation === lock) operation = null; if (belongs(owner)) { emit({ busy: false }); schedule(); } }
