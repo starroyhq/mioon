@@ -161,3 +161,11 @@ test('checking, a running sample, unknown outcome and disabled admission cannot 
   assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-details'), null, 'no explanatory disclosure is rendered');
   h.unmount();
 });
+
+test('sample completion wording uses the normal export term in every locale', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const text = (translate as (locale: Parameters<typeof translate>[0], key: Parameters<typeof translate>[1]) => string)(locale, 'export.sample.phase.succeeded');
+    assert.doesNotMatch(text, /试导出|試導出|導出/, `${locale}: ${text}`);
+  }
+  assert.equal((translate as (locale: Parameters<typeof translate>[0], key: Parameters<typeof translate>[1]) => string)('zh-Hant', 'export.sample.phase.succeeded'), '樣片匯出完成');
+});

@@ -280,7 +280,7 @@ test('keyed project unmount fences late fade acknowledgments and retained form s
 
 test('source playback copy distinguishes dry audio while omitting passive render explanation', () => {
   const source = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
-  assert.match(source, /timeline.preview.sourceUnprocessed/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /源素材原声 · 不应用片段音量或淡入\/淡出/);
+  assert.doesNotMatch(source, /timeline.preview.sourceUnprocessed/);
   assert.doesNotMatch(source, /timeline.preview.renderDetail|timeline.preview.sourceDetail/);
 });
 

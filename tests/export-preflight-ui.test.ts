@@ -559,3 +559,12 @@ test('export dialog removes explanatory copy and disclosure labels in every loca
     'export.preflight.capability.available', 'export.preflight.sourceScope', 'export.preflight.checkedAssets',
     'export.preflight.subtitleScope', 'export.content.storyboardDetail']) assert.equal(Object.hasOwn(i18n.catalogs, key), false, key);
 });
+
+test('confirmation file field shows the actual default or named output filename', () => {
+  const ready = { phase: 'ready', report: { timelineRevision: 1, checkedAt: '2026-10-11T00:00:00Z', issues: [], summary: null, checks: { checkedAssets: 0, totalAssets: 0, bytesHashed: 0 } } };
+  const tree = renderPanel({ state: ready, projectName: 'Mioon混剪' });
+  assert.match(textOf(tree), /Mioon混剪\.mp4/);
+  assert.doesNotMatch(textOf(tree), /留空，使用默认文件名|使用預設檔名/);
+  const named = renderPanel({ state: ready, projectName: 'Mioon混剪', deliveryName: '我的成片' });
+  assert.match(textOf(named), /我的成片\.mp4/);
+});

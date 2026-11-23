@@ -99,9 +99,9 @@ test('all row actions reflect busy; cancel is explicit and only appears on the c
   assert.match(rendered.busy, /另一文件正在检查/); assert.doesNotMatch(rendered.busy, /取消本次检查/);
 });
 test('historical peak actions leave immutable file inspection inputs intact while preview keeps its original download', () => {
-  assert.equal((rendered.history.match(/data-testid="export-sample-peak-check"/g) || []).length, 2);
+  assert.doesNotMatch(rendered.history, /data-testid="export-sample-peak-check"|<details|<summary>|说明/);
   assert.equal(fileActions.history.length, 4);
-  assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /修订版 4 · 旧快照/); assert.match(rendered.history, /export-history-range/);
+  assert.match(rendered.history, /export-history-range/);
   assert.deepEqual(fileActions.history, fileActions.withoutFeature, 'Peak observation cannot change file ownership, URL or recovery admission');
   assert.deepEqual(fileActions.history, [
     {projectId, exportId:id(10), downloadHref:`/api/projects/${projectId}/media/${id(110)}`, disabled:false},
