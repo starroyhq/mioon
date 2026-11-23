@@ -1408,12 +1408,6 @@ export const timelineDeliveryMessages = {
     "en": "No valid snapshot has been obtained; export is unavailable for now",
     "ja": "有効なスナップショットがないため、現在は書き出せません"
   },
-  "export.preflight.pending": {
-    "zh-Hans": "已有导出请求结果待确认。请使用原请求旁的恢复入口核对同一请求；重新检查不会重发导出",
-    "zh-Hant": "已有匯出請求結果待確認。請使用原請求旁的還原入口核對同一請求；重新檢查不會重送匯出",
-    "en": "An export request already awaits outcome confirmation. Use recovery beside the original request to check that same request. Rechecking will not resubmit the export",
-    "ja": "すでに書き出しリクエストの結果が確認待ちです。元のリクエスト横の復元操作で同じリクエストを確認してください。再検査では書き出しを再送信しません"
-  },
   "export.preflight.attempted": {
     "zh-Hans": "已发起一次导出提交。请在任务或导出记录查看结果；此报告不代表导出已完成",
     "zh-Hant": "已發起一次匯出提交。請在工作或匯出記錄查看結果；此報告不代表匯出已完成",
@@ -3166,5 +3160,65 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "時間軸預覽 · 修訂版 {revision}{snapshot}",
     "en": "Timeline preview · revision {revision}{snapshot}",
     "ja": "タイムラインプレビュー · リビジョン {revision}{snapshot}"
+  },
+  "export.pending.notStarted": {
+    "zh-Hans": "上次的导出没有开始",
+    "zh-Hant": "上次的匯出沒有開始",
+    "en": "The last export has not started",
+    "ja": "前回の書き出しは始まっていません"
+  },
+  "export.pending.notExecuted": {
+    "zh-Hans": "上次的导出没有执行：{reason}",
+    "zh-Hant": "上次的匯出沒有執行：{reason}",
+    "en": "The last export was not started: {reason}",
+    "ja": "前回の書き出しは実行されませんでした：{reason}"
+  },
+  "export.pending.continue": {
+    "zh-Hans": "继续上次的导出",
+    "zh-Hant": "繼續上次的匯出",
+    "en": "Continue the last export",
+    "ja": "前回の書き出しを続ける"
+  },
+  "export.pending.discard": {
+    "zh-Hans": "放弃",
+    "zh-Hant": "放棄",
+    "en": "Discard",
+    "ja": "破棄"
+  },
+  "export.pending.timelineChanged": {
+    "zh-Hans": "时间线已经改过，上次的导出不能继续",
+    "zh-Hant": "時間軸已經改過，上次的匯出不能繼續",
+    "en": "The timeline has changed, so the last export cannot continue",
+    "ja": "タイムラインが変更されたため、前回の書き出しは続行できません"
+  },
+  "export.pending.unavailable": {
+    "zh-Hans": "暂时查不到上次的导出",
+    "zh-Hant": "暫時查不到上次的匯出",
+    "en": "The last export cannot be checked right now",
+    "ja": "前回の書き出しを今は確認できません"
+  },
+  "export.pending.retry": {
+    "zh-Hans": "再试一次",
+    "zh-Hant": "再試一次",
+    "en": "Try again",
+    "ja": "もう一度試す"
+  },
+  "export.pending.reasonConflict": {
+    "zh-Hans": "时间线已经改过",
+    "zh-Hant": "時間軸已經改過",
+    "en": "the timeline has changed",
+    "ja": "タイムラインが変更されました"
+  },
+  "export.pending.reasonBlocked": {
+    "zh-Hans": "时间线还没有准备好导出",
+    "zh-Hant": "時間軸還沒有準備好匯出",
+    "en": "the timeline is not ready to export",
+    "ja": "タイムラインはまだ書き出せる状態ではありません"
+  },
+  "export.pending.reasonGeneric": {
+    "zh-Hans": "导出没有开始",
+    "zh-Hant": "匯出沒有開始",
+    "en": "the export did not start",
+    "ja": "書き出しは開始されませんでした"
   }
 } as const satisfies MessageCatalog;

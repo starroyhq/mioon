@@ -14,6 +14,7 @@ export interface PreflightIssueView { code: string; severity: string; assetId?: 
 export interface PreflightSummaryView { deliveryName?: unknown; width?: number; height?: number; fps?: number; delivery?: { effective?: { width?: number; height?: number; fps?: number } } | null; exportRange?: unknown; durationFrames: number; trackCount?: number; clipCount?: number; assetCount?: number; visualClipCount?: number; audibleClipCount?: number; mutedTrackCount?: number; hiddenVideoTrackCount?: number; [key: string]: unknown }
 export interface PreflightReportView { summary?: PreflightSummaryView | null; timelineRevision?: unknown; issues: readonly PreflightIssueView[]; checkedAt: string; checks: { subtitles?: { fontVerified?: boolean } | null; checkedAssets: number; totalAssets: number; bytesHashed: number }; [key: string]: unknown }
 export interface PreflightStateView { phase?: string; report?: PreflightReportView | null; binding?: unknown; uncheckedIntent?: unknown; attempted?: boolean; capabilityPhase?: string; error?: boolean; errorCode?: string | null; checkingStep?: string; [key: string]: unknown }
+export interface PendingExportCheckView { kind: 'not_executed' | 'not_executed_reason' | 'timeline_changed' | 'unavailable'; errorCode?: string }
 /** The settings step's content choice, offered once the timeline has clips. App owns the value; this view stays stateless. */
 export interface ExportContentChoice { value: 'timeline' | 'storyboard'; onChange: (value: 'timeline' | 'storyboard') => unknown; storyboardDisabledReason?: string | null; storyboardBusy?: boolean; onStoryboardExport: () => unknown }
 export interface TimelineExportPreflightProps {
@@ -28,6 +29,7 @@ export interface TimelineExportPreflightProps {
   onExport: (binding: unknown) => unknown; onUncheckedExport: (intent: unknown) => unknown; renderRecord?: unknown;
   onTasks: () => unknown; downloadEnabled?: boolean; fileRecoveryEnabled?:boolean; reviewVersion?: unknown;
   projectId?:string|null; activity?:ExportActivity|null; output?:ExportOutput|null; onCancel?:()=>unknown; cancelBusy?:boolean; onClose?:()=>void; onHistory?:()=>void; onReexport?:()=>void; onLocateClip?:(clipId:string)=>void;
+  pendingExportCheck?: PendingExportCheckView | null; onContinuePending?: ()=>unknown; onDiscardPending?: ()=>unknown; onRetryPending?: ()=>unknown;
 }
 import ExportWorkflow, { ExportWorkflowSection, ExportWorkflowBack } from './ExportWorkflow.tsx';
 import ExportRangeControls from './ExportRangeControls.tsx';
@@ -44,7 +46,7 @@ import './export-content-choice.css';
 
 // Presentation only: the parent owns the saved context, explicit read, and
 // durable render submission. Hidden tabs retain this view without starting work.
-export default function TimelineExportPreflight({ contentChoice = null, preview, recovery,recoveryRequired=true,loudness, state, projectName, timeline, exportSettings, settingsDisabled, aspectFrameRatio, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport, renderRecord, onTasks, downloadEnabled,fileRecoveryEnabled, reviewVersion,projectId,activity,output,onCancel,cancelBusy,onClose,onHistory,onReexport,onLocateClip }: TimelineExportPreflightProps): React.ReactElement {
+export default function TimelineExportPreflight({ contentChoice = null, preview, recovery,recoveryRequired=true,loudness, state, projectName, timeline, exportSettings, settingsDisabled, aspectFrameRatio, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport, renderRecord, onTasks, downloadEnabled,fileRecoveryEnabled, reviewVersion,projectId,activity,output,onCancel,cancelBusy,onClose,onHistory,onReexport,onLocateClip,pendingExportCheck,onContinuePending,onDiscardPending,onRetryPending }: TimelineExportPreflightProps): React.ReactElement {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const phase = state?.phase || 'idle', report = state?.report ?? null, summary = report?.summary;
   const oldReport = Boolean(report && ['checking', 'stale', 'error'].includes(phase));
@@ -67,6 +69,24 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
     {option('timeline',<><strong><Icon name="film" size={14} />{t('export.content.timeline')}</strong><small>{t('export.content.timelineMeta',{count:timeline?.clips?.length??0,tracks:trackCount,duration:displayTimelineFrame(timeline?.durationFrames??0,fps)})}</small></>)}
     {option('storyboard',<><strong>{t('export.content.storyboard')}<span className="export-content-tag">{t('export.content.storyboardTag')}</span></strong>{storyboard&&contentChoice.storyboardDisabledReason&&<small className="is-blocked">{contentChoice.storyboardDisabledReason}</small>}</>)}
   </div>;
+  const pendingReason = (code?: string): string => code === 'REVISION_CONFLICT' || code === 'PREFLIGHT_STALE' ? t('export.pending.reasonConflict')
+    : code === 'EXPORT_BLOCKED' || code === 'PLACEHOLDER_CLIP' || code === 'EXPORT_RANGE_BOUNDS' ? t('export.pending.reasonBlocked')
+      : t('export.pending.reasonGeneric');
+  const pendingBanner = pendingExportCheck ? (() => {
+    const kind = pendingExportCheck.kind;
+    const title = kind === 'timeline_changed' ? t('export.pending.timelineChanged')
+      : kind === 'unavailable' ? t('export.pending.unavailable')
+        : kind === 'not_executed_reason' ? t('export.pending.notExecuted', {reason: pendingReason(pendingExportCheck.errorCode)})
+          : t('export.pending.notStarted');
+    return <div className="notice warning export-pending-export" data-testid="export-pending-recovery" data-kind={kind} role="status" aria-live="polite">
+      <strong>{title}</strong>
+      <div className="export-pending-actions">
+        {kind === 'not_executed' && onContinuePending && <Button type="button" variant="outline" size="sm" data-testid="continue-pending-export" disabled={exportBusy} onClick={() => onContinuePending()}>{t('export.pending.continue')}</Button>}
+        {(kind === 'not_executed' || kind === 'timeline_changed') && onDiscardPending && <Button type="button" variant="ghost" size="sm" data-testid="discard-pending-export" disabled={exportBusy} onClick={() => onDiscardPending()}>{t('export.pending.discard')}</Button>}
+        {kind === 'unavailable' && onRetryPending && <Button type="button" variant="outline" size="sm" data-testid="retry-pending-export" disabled={exportBusy} onClick={() => onRetryPending()}>{t('export.pending.retry')}</Button>}
+      </div>
+    </div>;
+  })() : null;
   const storyboardAction=contentChoice&&<Button variant="ghost" className="button primary" data-testid="export-storyboard-draft" disabled={Boolean(contentChoice.storyboardDisabledReason)||Boolean(contentChoice.storyboardBusy)} title={contentChoice.storyboardDisabledReason??undefined} onClick={()=>contentChoice.onStoryboardExport()}><Icon name="download" size={14} />{t('export.content.storyboardAction')}</Button>;
   return <ExportWorkflow nextAction={storyboard?storyboardAction:undefined} checkAction={storyboard?<ExportWorkflowSection steps={[1]}>{checkAction}</ExportWorkflowSection>:checkAction} settingsEstimate={storyboard?null:settingsEstimate} projectId={projectId} activity={activity} output={output} onCancel={onCancel} cancelBusy={cancelBusy} onClose={onClose} onHistory={onHistory} onReexport={onReexport} preview={preview} phase={phase} attempted={state?.attempted} exportBusy={exportBusy} pendingExport={pendingExport} record={pass(renderRecord)} resultDetails={resultRecord && <><strong>{completedDelivery?.name || t('recovery.delivery.defaultName')}</strong>{completedPicture && <span>{completedPicture.ratio} · {t('redesign.export.resultFormat', completedPicture)}</span>}</>} onTasks={onTasks} downloadEnabled={downloadEnabled} fileRecoveryEnabled={fileRecoveryEnabled} reviewVersion={pass(reviewVersion)}><aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label={t('export.preflight.label')}>
     <header className="export-preflight-heading"><div><h2>{t('export.preflight.title')}</h2><p title={projectName ?? undefined}>{projectName || t('export.preflight.selectProject')}</p></div><Icon name="info" size={15} /></header>
@@ -78,6 +98,7 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
       {loudness&&<div className="export-settings-field export-loudness-row" data-testid="export-loudness-row"><span>{t('redesign.export.loudnessLabel')}</span><div>{loudness}</div></div>}</div></ExportWorkflowSection>
       <ExportWorkflowSection steps={[2]} className="export-settings-recovery"><details open={recoveryRequired} data-testid="export-recovery-details"><summary>{t('recovery.delivery.label')}</summary>{recovery}</details></ExportWorkflowSection>
       <ExportWorkflowSection steps={[1]}>
+      {pendingBanner}
       <div className="export-check-result" data-state={phase} data-testid="export-check-result"><Icon name={phase==='ready'?'check':phase==='checking'?'refresh':'info'} size={17}/><strong>{t(`export.preflight.phase.${phase}` as MessageKey)}</strong>{report&&<span>{t('redesign.export.attentionCount',{count:report.issues.length})}</span>}</div>
       <h3 className="export-check-group-title">{t('redesign.export.encodingChecks')}</h3>
       {exportSettings && <div className={`export-capability-status is-${state?.capabilityPhase || 'idle'}`} data-testid="export-capability-status" data-status={state?.capabilityPhase || 'idle'} role="status" aria-live="polite"><strong>{t('export.preflight.capability')}</strong>{exportCapabilityMessage(state?.capabilityPhase || 'idle', locale) && <p>{exportCapabilityMessage(state?.capabilityPhase || 'idle', locale)}</p>}</div>}
@@ -94,14 +115,13 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
         <p className="export-preflight-checked"><time dateTime={report.checkedAt}>{formatDate(report.checkedAt, { dateStyle: 'medium', timeStyle: 'medium' })}</time></p>
       </div>}
       {phase === 'incomplete' && <p className="notice warning" data-testid="preflight-incomplete-warning">{t('export.preflight.incompleteWarning')}{state?.binding ? t('export.preflight.tryBound') : state?.uncheckedIntent ? t('export.preflight.tryUnchecked') : t('export.preflight.noSnapshot')}</p>}
-      {pendingExport && <p className="notice warning">{t('export.preflight.pending')}</p>}
       {Boolean(state?.attempted) && <p className="export-preflight-note" role="status">{t('export.preflight.attempted')}</p>}
       </ExportWorkflowSection>
       <ExportWorkflowSection steps={[3]} className="export-confirmation">
         <div className="export-confirmation-metrics" data-testid="export-confirmation-metrics"><div><span>{t('redesign.export.sizeLabel')}</span><strong>{estimatedSize}</strong></div><div><span>{t('redesign.export.timeLabel')}</span><strong>—</strong></div><div><span>{t('export.preflight.duration')}</span><strong>{t('redesign.export.secondsShort',{seconds:formatNumber(durationSeconds,{maximumFractionDigits:2})})}</strong></div></div>
         <dl className="export-confirmation-details"><div><dt>{t('redesign.export.fileLabel')}</dt><dd>{filename}</dd></div><div><dt>{t('redesign.export.saveTo')}</dt><dd>{t('redesign.export.managedLocation')}</dd></div><div><dt>{t('redesign.export.formatLabel')}</dt><dd>{t('redesign.export.codecFormat')}</dd></div><div><dt>{t('export.settings.output')}</dt><dd>{summary?.delivery?.effective?t('redesign.export.pictureFormat',{dimensions:`${summary.delivery.effective.width} × ${summary.delivery.effective.height}`,fps:summary.delivery.effective.fps??30}):draftOutput?t('redesign.export.pictureFormat',{dimensions:draftOutput.dimensions,fps:30}):t('export.history.frozenUnavailable')}</dd></div><div><dt>{t('export.range.title')}</dt><dd><ExportRangeSummary input={summary??{exportRange}} durationFrames={summary?.durationFrames??timeline?.durationFrames} showWhole label={t('export.range.label')} testId="export-confirmation-range" /></dd></div><div><dt>{t('redesign.export.audioLabel')}</dt><dd>{t('redesign.export.audioCodec')}</dd></div></dl>
         {report&&report.issues.length>0&&<div className="export-confirmation-warnings" role="status">{report.issues.map((issue,index)=><div key={index}><Icon name="warning" size={15}/><p>{issue.code==='SUBTITLE_RESOURCE_UNAVAILABLE'?t('export.preflight.subtitleUnavailable'):preflightIssueMessage(issue,locale) as string}</p>{issue.clipId&&onLocateClip&&<Button variant="ghost" className="button small" onClick={()=>onLocateClip(issue.clipId as string)}>{t('redesign.export.locateClip')}</Button>}</div>)}</div>}
-        {phase==='incomplete'&&<p className="notice warning">{t('export.preflight.incompleteWarning')}{state?.binding?t('export.preflight.tryBound'):state?.uncheckedIntent?t('export.preflight.tryUnchecked'):t('export.preflight.noSnapshot')}</p>}{phase==='stale'&&<p className="notice warning">{t('export.preflight.stale')}</p>}{pendingExport&&<p className="notice warning">{t('export.preflight.pending')}</p>}
+        {phase==='incomplete'&&<p className="notice warning">{t('export.preflight.incompleteWarning')}{state?.binding?t('export.preflight.tryBound'):state?.uncheckedIntent?t('export.preflight.tryUnchecked'):t('export.preflight.noSnapshot')}</p>}{phase==='stale'&&<p className="notice warning">{t('export.preflight.stale')}</p>}
       </ExportWorkflowSection>
     </div>
     <footer className="export-preflight-actions"><ExportWorkflowSection steps={[3]}><ExportWorkflowBack/>{!state?.uncheckedIntent && <Button variant="ghost" className={`button ${phase === 'incomplete' ? 'preflight-attempt' : 'primary'}`} data-testid="preflight-export" disabled={!canExport} onClick={() => onExport((state as PreflightStateView).binding)}><Icon name="download" size={14} />{exportBusy ? t('export.preflight.submitting') : phase === 'incomplete' ? t('export.preflight.attempt') : t('redesign.export.start')}</Button>}{Boolean(state?.uncheckedIntent) && <Button variant="ghost" className="button preflight-attempt" data-testid="preflight-export-unchecked" disabled={!canExportUnchecked} onClick={() => onUncheckedExport((state as PreflightStateView).uncheckedIntent)}><Icon name="download" size={14} />{t('export.preflight.unchecked')}</Button>}</ExportWorkflowSection></footer>

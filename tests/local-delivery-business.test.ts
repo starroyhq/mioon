@@ -55,7 +55,7 @@ async function fixture(t: test.TestContext,{mimeType='image/png'}={}){
     draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
     input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})},...patch});
   return {root:localRoot(),file:path.join(localRoot(),LOCAL_DELIVERY_FILENAME),project,asset,timeline,get,put,prepare,start,originalRender,get store(){return store;},get services(){return services;},get delivery(){return delivery;},get calls(){return calls;},
-    setFault(fn: (point:string)=>void){fault=fn;},setRender(fn: (input:LocalDeliveryRenderInput)=>Promise<unknown>){render=fn;},setExportInspect(inspect: { (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; }){services=(createServices(store,new Map(),{exportOptions:{inspect}}) as TypedServices);},setGuards(value: Partial<Pick<import('../packages/business/src/local-delivery.ts').LocalDeliveryGuards,'ownsLock'>>){extraGuards=value;start();},
+    setFault(fn: (point:string)=>void){fault=fn;},setRender(fn: (input:LocalDeliveryRenderInput)=>Promise<unknown>){render=fn;},setExportInspect(inspect: { (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; }){services=(createServices(store,new Map(),{exportOptions:{inspect}}) as TypedServices);},setGuards(value: Partial<LocalDeliveryGuards>){extraGuards=value;start();},
     restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
     draftState(){return JSON.stringify(store.db.prepare('SELECT * FROM local_delivery_drafts ORDER BY ordinal').all());},
     draftRows(){return store.db.prepare('SELECT data FROM local_delivery_drafts ORDER BY ordinal').all().map(row=>JSON.parse(String(row.data))) as {intent:{outcome:{status:string}};draftRevision:number}[];},
@@ -336,4 +336,38 @@ test('transaction rechecks preserve editing and explicit discard of an existing 
     const result=f.delivery.put(f.put(saved,'Later raw'));f.setFault(()=>{});assert.equal(entered,true);assert.equal(result.draftTargetStatus,status);assert.equal(result.draftRevision,saved.draftRevision+1);
     const discarded=f.delivery.discard({...authority(result),expectedDraftRevision:result.draftRevision,draftId:result.draft!.draftId});assert.equal(discarded.draft,null);assert.equal(discarded.draftRevision,result.draftRevision+1);assert.equal(f.calls.length,0);
   }
+});
+
+
+test('read-only check returns accepted, executing, not_executed and unavailable without writing or rendering',async t=>{
+  const f=await fixture(t),saved=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(saved)),intent=prepared.intent!;
+  const checkInput=()=>{const live=f.get();if(!live.supported||!live.intent)throw Error('expected retained intent');return {workspaceScope:live.workspaceScope,instanceId:live.instanceId,projectId:f.project.id,intentId:live.intent.intentId};};
+  f.setGuards({readExportReceipt:()=>null});
+  const beforeRows=f.draftState(),beforeSnapshot=f.snapshot(),beforeCounts=f.counts(),beforeProject=readFileSync((f.store as unknown as {projectFile: string}).projectFile);
+  const notExecuted=f.delivery.check(checkInput());assert.equal(notExecuted.status,'not_executed');assert.equal(f.calls.length,0);assert.equal(f.draftState(),beforeRows);assert.equal(f.snapshot(),beforeSnapshot);assert.deepEqual(readFileSync((f.store as unknown as {projectFile: string}).projectFile),beforeProject);assert.deepEqual(f.counts(),beforeCounts);
+  f.setGuards({readExportReceipt:()=>({exportId:randomUUID(),exportStatus:'running'})});
+  const accepted=f.delivery.check(checkInput());assert.equal(accepted.status,'accepted');assert.equal(f.calls.length,0);
+  f.setGuards({readExportReceipt:()=>{throw Error('PRIVATE database unavailable');}});
+  const unavailable=f.delivery.check(checkInput());assert.equal(unavailable.status,'unavailable');assert.equal(f.calls.length,0);
+  f.setGuards({readExportReceipt:()=>({exportId:randomUUID(),exportStatus:'queued'})});
+  const gate=deferred(),entered=deferred();f.setRender(async (input: LocalDeliveryRenderInput)=>{const result=await f.originalRender(input);entered.resolve();await gate.promise;return result;});
+  const live=f.get();const flight=f.delivery.execute(action(live));await entered.promise;
+  assert.equal(f.delivery.check(checkInput()).status,'executing');
+  gate.resolve();await flight;
+  assert.equal(f.calls.length,1);
+});
+
+test('discardIntent clears only the retained intent with CAS, refuses execution and permits a fresh prepare',async t=>{
+  const f=await fixture(t),draft=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(draft)),intent=prepared.intent!;
+  f.setGuards({});
+  const live=f.get();if(!live.supported||!live.draft||!live.intent)throw Error('expected retained intent');
+  const counts=f.counts(),discard={workspaceScope:live.workspaceScope,instanceId:live.instanceId,projectId:f.project.id,intentId:live.intent.intentId,expectedIntentRevision:live.intentRevision};
+  assert.throws(()=>f.delivery.discardIntent({...discard,expectedIntentRevision:99}),code('LOCAL_DELIVERY_CONFLICT'));
+  const cleared=f.delivery.discardIntent(discard);assert.ok(cleared.supported);assert.equal(cleared.intent,null);assert.equal(cleared.intentRevision,2);assert.deepEqual(cleared.draft,live.draft);assert.deepEqual(f.counts(),counts);const again=f.delivery.discardIntent(discard);assert.ok(again.supported&&again.intent===null);
+  const next=f.delivery.prepare({...f.prepare(cleared as OrdinaryDeliveryEnvelope),intentId:randomUUID()});assert.equal(next.intent!.outcome.status,'pending');assert.notEqual(next.intent!.intentId,intent.intentId);
+  assert.equal(f.calls.length,0);
+  const gate=deferred(),entered=deferred();f.setRender(async (input: LocalDeliveryRenderInput)=>{const result=await f.originalRender(input);entered.resolve();await gate.promise;return result;});
+  const flight=f.delivery.execute(action(next));await entered.promise;
+  assert.throws(()=>f.delivery.discardIntent({...discard,workspaceScope:next.workspaceScope,instanceId:next.instanceId,intentId:next.intent!.intentId,expectedIntentRevision:next.intentRevision}),code('LOCAL_DELIVERY_CONFLICT'));
+  gate.resolve();await flight;assert.equal(f.calls.length,1);
 });

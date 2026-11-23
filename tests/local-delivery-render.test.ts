@@ -61,8 +61,10 @@ test('capacity refusal and unknown write have distinct safe choices and inline a
   assert.match(rendered.unknown, /本次保存结果未知/); assert.doesNotMatch(rendered.unknown, /允许离开，不保存当前名称/); assert.match(rendered.unknown, /重新核对本地记录/);
 });
 
-test('saved and unacknowledged original intents disclose execution authority and exact original request', () => {
-  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-request-unchanged/); assert.ok(html.includes(translate('zh-Hans', 'export.revision', { revision: 2 }))); assert.match(html, /恢复可能会首次提交原导出/); assert.match(html, /确认恢复同一原请求/); assert.doesNotMatch(html, /不会改用当前名称或输出规格/); }
+test('pending intents leave the step-2 recovery panel and only unacknowledged preparation remains', () => {
+  assert.doesNotMatch(rendered.pending, /data-testid="delivery-original-intent"/);
+  assert.doesNotMatch(rendered.pending, /恢复可能会首次提交原导出|确认恢复同一原请求/);
+  assert.match(rendered.lostPrepare, /original-request-unchanged/); assert.ok(rendered.lostPrepare.includes(translate('zh-Hans', 'export.revision', { revision: 2 }))); assert.match(rendered.lostPrepare, /恢复可能会首次提交原导出/); assert.match(rendered.lostPrepare, /确认恢复同一原请求/);
   assert.match(rendered.lostPrepare, /即使读取结果为空/); assert.match(rendered.lostPrepare, /同一编号和原参数再次确认保存/);
 });
 
@@ -85,14 +87,11 @@ test('explicit title retry is separate from export and distinguishes local valid
 
 test('long provenance is collapsed while frozen output settings remain visible in original-request summary', () => {
   assert.match(rendered.candidate, /<details data-testid="delivery-draft-provenance"><summary>查看草稿来源/);
-  assert.match(rendered.pending, /<details data-testid="delivery-intent-provenance"><summary>查看原请求与完整参数/); assert.match(rendered.pending, /原有默认编码设置/);
-  assert.match(rendered.profiled, /短边 1080 像素/); assert.match(rendered.profiled, /平均目标 8 Mb\/s/); assert.match(rendered.profiled, /white-space:pre-wrap;overflow-wrap:anywhere/); assertCollapsedProvenance(rendered.profiled,'delivery-intent-provenance');
-  assert.match(rendered.profiled,/<details open=""><summary>查看原请求与完整参数/,'Pending original-request summary stays visible without expanding its technical provenance');
+  assert.doesNotMatch(rendered.pending, /delivery-intent-provenance/);
+  assert.doesNotMatch(rendered.profiled, /delivery-intent-provenance/);
 });
 
 
-test('terminal request copy does not imply another execution and keeps provenance collapsed', () => {
-  assert.match(rendered.accepted, /原导出请求已确认接受/); assert.doesNotMatch(rendered.accepted, /是否完成渲染，请查看导出记录|恢复可能会首次提交原导出|确认恢复同一原请求/);
-  assert.match(rendered.notApplied, /原导出请求已确认未应用/); assert.doesNotMatch(rendered.notApplied, /恢复可能会首次提交原导出|确认恢复同一原请求/);
-  for (const html of [rendered.accepted, rendered.notApplied]) assertCollapsedProvenance(html,'delivery-intent-provenance');
+test('terminal intents are handled outside the step-2 recovery panel', () => {
+  for (const html of [rendered.accepted, rendered.notApplied]) assert.doesNotMatch(html, /delivery-original-intent|delivery-intent-provenance/);
 });
