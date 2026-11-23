@@ -3137,23 +3137,31 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!showDelivery) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); return; }
     if (showExports || !workbenchReady || !online || auth !== true || loading || state?.busy || state?.phase === 'loading' ||
         (state?.projectId && currentProject.current && state.projectId !== currentProject.current)) return;
-    if (intent?.outcome.status === 'accepted') {
-      if (deliveryAttempt?.projectId !== currentProject.current || deliveryAttempt.id !== intent.outcome.exportId) {
-        const projectId = currentProject.current;
-        if (projectId) { setDeliveryAttempt({projectId, id: intent.outcome.exportId}); void refresh(projectId); }
-      }
-      setPendingExportCheck(null);
-      return;
-    }
+    // An already accepted intent is history, not a fresh query result. Opening
+    // export starts at step 1 so "重新导出"/"再导出一份" can prepare a new
+    // intent; the previous result stays in export history. Only a pending intent
+    // resolved by this open's check adopts its result once.
+    if (intent?.outcome.status === 'accepted') return;
     if (!intent || intent.outcome.status !== 'pending') {
       if (!intent) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); }
       return;
     }
     if (pendingExportCheckFlight.current === intent.intentId) return;
     void runPendingExportCheck(intent.intentId);
-  }, [showDelivery, showExports, workbenchReady, online, auth, loading, deliveryAttempt?.projectId, deliveryAttempt?.id,
+  }, [showDelivery, showExports, workbenchReady, online, auth, loading,
     localDelivery.state.busy, localDelivery.state.phase, localDelivery.state.intent?.intentId,
     localDelivery.state.intent?.outcome.status]);
+  // Closing the export dialog ends this display session. Reopening starts at
+  // step 1 so a completed or failed export can be repeated explicitly; the
+  // durable result remains in export history and no accepted local intent is
+  // re-adopted. Reset the retained preflight review and workflow step too.
+  useEffect(() => {
+    if (showDelivery) return;
+    setDeliveryAttempt(null);
+    exportPreflight.controller.resetReview();
+    sampleExportPreflight.controller.resetReview();
+    setDeliveryReviewVersion(value => value + 1);
+  }, [showDelivery]);
   const [exportPreviewAttempt, setExportPreviewAttempt] = useState<{scope: string; timelineId: string; contextKey: string | null; input: Record<string, unknown>; submitting: boolean; exportId: string | null; receipt: unknown} | null>(null);
   const [sampleRangeDraft, setSampleRangeDraft] = useState<DraftRangeInput | null>(null);
   const sampleRangeDraftRef = useRef(sampleRangeDraft);
