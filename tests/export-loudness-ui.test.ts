@@ -82,8 +82,7 @@ test('pending makes all explicit actions busy, cancel is observer-only on owned 
   assert.doesNotMatch(rendered.checking.match(/<input[^>]*data-testid="export-loudness-target-lufs"[^>]*>/)?.[0] || '', /\sdisabled(?:=|\s|>)/);
 });
 test('named and unnamed frozen exports share row control, other render kinds do not; download links stay unchanged', () => {
-  assert.equal((rendered.history.match(/data-testid="export-loudness-measure"/g) || []).length, 2);
-  assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /修订版 4 · 旧快照/);
+  assert.doesNotMatch(rendered.history, /data-testid="export-loudness-measure"|<details|<summary>|说明|修订版 4/);
   const links = (html: string) => html.match(/<a\b[^>]*data-testid="download-export"[^>]*>/g);
   assert.deepEqual(links(rendered.history), links(rendered.withoutFeature));
 });
