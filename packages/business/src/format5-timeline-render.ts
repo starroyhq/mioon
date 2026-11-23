@@ -8,6 +8,7 @@
  */
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
+import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {TimelineRecord, TimelineClipRecord, TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 import {freezeTimelineSnapshot} from './timeline-inputs.ts';
 import type {ManagedAssetRecord} from './timeline-inputs.ts';
@@ -68,6 +69,10 @@ export function readFormat5RenderProjection(store: ProjectStore): Format5RenderP
       ...(subtitles.basisPresetId !== undefined ? {basisPresetId: subtitles.basisPresetId} : {}), cues}} : {})} as TimelineRecord;
   const assets = new Map<string, ManagedAssetRecord>();
   for (const clip of legacyClips) {
+    // A format-5 placeholder has no source yet. The render/export admission
+    // boundary reports it as a named blocker before this projection is frozen;
+    // the projection itself must not turn every whole-timeline read into 404.
+    if ((clip as {assetId?: unknown}).assetId === null) continue;
     if (typeof clip.assetId !== 'string') throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线还有未生成片段，不能导出。', 409, {clipId: clip.id});
     if (!assets.has(clip.assetId)) {
       const asset = readFormat5Asset(store, clip.assetId);
@@ -76,6 +81,35 @@ export function readFormat5RenderProjection(store: ProjectStore): Format5RenderP
     }
   }
   return {format5: timeline, legacy, assets};
+}
+
+/** Audio-only projection. It validates the whole format-5 aggregate, then omits
+ * placeholders (they have no source to decode) instead of rejecting the entire
+ * timeline. Single-clip loudness still validates its selected clip's own source;
+ * mix/preview audio reads the remaining real clips and treats placeholder spans
+ * as silence. Render/export keeps the stricter projection above. */
+export function readFormat5AudioProjection(store: ProjectStore): {legacy: TimelineRecord; assets: ReadonlyMap<string, ManagedAssetRecord>} | null {
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  if (!timeline) return null;
+  const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId});
+  if (issue) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线数据不可用。', 409, {clipIds: issue.ids ?? []});
+  const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
+  const ready = clips.filter(clip => clip.sourceState !== 'placeholder' && clip.assetId !== null);
+  const legacyClips = ready.map(stripClip);
+  const cues = subtitles?.cues.map(stripCue) ?? [];
+  const legacy: TimelineRecord = {...header, clips: legacyClips,
+    ...(subtitles && cues.length ? {subtitles: {profileId: subtitles.profileId,
+      ...(subtitles.basisPresetId !== undefined ? {basisPresetId: subtitles.basisPresetId} : {}), cues}} : {})} as TimelineRecord;
+  const assets = new Map<string, ManagedAssetRecord>();
+  for (const clip of ready) {
+    if (typeof clip.assetId !== 'string') throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用。', 409, {clipId: clip.id});
+    if (!assets.has(clip.assetId)) {
+      const asset = readFormat5Asset(store, clip.assetId);
+      if (!asset) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用。', 409, {clipId: clip.id});
+      assets.set(clip.assetId, asset as unknown as ManagedAssetRecord);
+    }
+  }
+  return {legacy, assets};
 }
 
 /** Freeze the legacy render snapshot, refusing blocked exports first. */
@@ -98,7 +132,10 @@ export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
   const range = exportRange(input);
   const blockers = format5ExportBlockersFromTimeline(store.db, timeline, range);
   if (blockers.length) {
-    throw new AppError('EXPORT_BLOCKED', '时间线还有未生成片段或待选版本的片段，不能导出。', 409, {blockers});
+    const placeholder = blockers.find(blocker => blocker.code === 'PLACEHOLDER_CLIP');
+    throw new AppError('EXPORT_BLOCKED', placeholder?.shotTitle
+      ? `镜头「${placeholder.shotTitle}」还没生成，先补上素材再导出。`
+      : '时间线还有未生成片段或待选版本的片段，不能导出。', 409, {blockers});
   }
   if (!projection.legacy.clips.length) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
   const frozen = freezeTimelineSnapshot(projection.legacy, projection.assets, input.exportSettings, input) as Row;

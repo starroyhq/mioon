@@ -2549,6 +2549,12 @@ export const timelineDeliveryMessages = {
     "en": "The export range contains a placeholder segment.",
     "ja": "書き出し範囲に未生成のプレースホルダーがあります。"
   },
+  "export.preflight.issue.PLACEHOLDER_CLIP_NAMED": {
+    "zh-Hans": "镜头「{name}」还没生成，先补上素材再导出。",
+    "zh-Hant": "鏡頭「{name}」還沒生成，先補上素材再匯出。",
+    "en": "Shot “{name}” has not been generated yet. Add its media before exporting.",
+    "ja": "ショット「{name}」がまだ生成されていません。素材を追加してから書き出してください。"
+  },
   "export.preflight.issue.VERSION_TOO_SHORT": {
     "zh-Hans": "跟随的版本比这一段的长度短，先选可用版本或锁定。",
     "zh-Hant": "跟隨的版本比這一段的長度短，先選可用版本或鎖定。",
