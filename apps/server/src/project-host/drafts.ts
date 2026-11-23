@@ -66,7 +66,17 @@ export function createProjectDraftsFactory({store, channel, services, call, owns
       readTimeline: projectId => createTimelineRecoveryBoundary(store.db, {projectId}).read({sourceSemantics: false}),
       isRenderInput: value => schemas['timeline.render'].safeParse(value).success,
       isRenderResponse: (input, value) => isTimelineMutationResponseFor(store.db, 'timeline.render', input, value),
-      isNotApplied: (input, error) => hasRequestNotAppliedProof(error, input, {operation: 'timeline.render'}),
+      isNotApplied: (input, error) => {
+        if (hasRequestNotAppliedProof(error, input, {operation: 'timeline.render'})) return true;
+        // `timeline.render` writes its queue row and request receipt in one
+        // transaction. A bounded 4xx business refusal after the call therefore
+        // means no receipt exists; treating it as a durable not-applied outcome
+        // gives local delivery a reason instead of leaving the intent pending.
+        const failure = error as {code?: unknown; status?: unknown};
+        if (typeof failure?.code !== 'string' || !/^[A-Z][A-Z0-9_]{1,90}$/u.test(failure.code) ||
+            typeof failure.status !== 'number' || failure.status < 400 || failure.status > 499) return false;
+        return readTimelineReceipt(store.db, input, 'timeline.render') == null;
+      },
       readReceipt: input => {
         const saved = readTimelineReceipt(store.db, input, 'timeline.render');
         if (!saved) return null;
