@@ -34,6 +34,8 @@ interface NativeCloseOptions {
   isSystemShutdown?(): boolean;
   /** Native 12-26 work decision. True exits; false cancels the whole quit. */
   onQuitWork?(work: readonly NativeQuitWorkItem[], facts: {readonly dirty: boolean; readonly unknown: boolean}): boolean | Promise<boolean>;
+  /** Native 12-26 work decision for an ordinary window close. True closes it. */
+  onCloseWork?(work: readonly NativeQuitWorkItem[], facts: {readonly dirty: boolean; readonly unknown: boolean}): boolean | Promise<boolean>;
   /** Native 12-26b decision for a page that did not answer the quit probe. */
   onQuitUnresponsive?(): 'quit' | 'wait' | Promise<'quit' | 'wait'>;
   /** The user chose quit and no renderer answer can be obtained. */
@@ -289,6 +291,26 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       forceQuit(attempt);
     } catch { cancel(attempt); }
   }
+  async function proceedWindowWork(attempt: Attempt, captured: NativeCloseInspection): Promise<void> {
+    try {
+      const drained = await bounded(() => contents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + QUIT_FLUSH_TIMEOUT_MS);
+      if (!current(attempt)) { cancel(attempt); return; }
+      const saved = drained.ok && drained.value === true;
+      const dirty = captured.disposition === 'dirty' || captured.disposition === 'unknown-dirty';
+      if (dirty && !saved) {
+        if (!options.confirmDiscard) { cancel(attempt); return; }
+        const accepted = await options.confirmDiscard('close');
+        if (!current(attempt)) { cancel(attempt); return; }
+        if (accepted !== true) { cancel(attempt); return; }
+      }
+      let work = captured.work ?? [];
+      if (work.length === 0) work = [{kind: 'pending', count: 1}];
+      if (!options.onCloseWork) { cancel(attempt, 'blocked'); return; }
+      const accepted = await options.onCloseWork(work, {dirty, unknown: captured.disposition === 'unknown' || captured.disposition === 'unknown-dirty'});
+      if (!current(attempt)) { cancel(attempt); return; }
+      if (accepted === true) forceQuit(attempt); else cancel(attempt);
+    } catch { cancel(attempt); }
+  }
   async function loadCurrentUrl(attempt: Attempt) {
     if (!current(attempt)) { cancel(attempt); return; }
     attempt.reloadStarted = true;
@@ -332,7 +354,10 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       const captured = result.ok ? inspection(result.value) : null;
       if (!captured) { cancel(attempt, 'unavailable'); return; }
       attempt.token = captured.token;
-      if (captured.disposition === 'blocked') { cancel(attempt, 'blocked'); return; }
+      if (captured.disposition === 'blocked') {
+        if (attempt.action === 'close' && options.onCloseWork) { await proceedWindowWork(attempt, captured); return; }
+        cancel(attempt, 'blocked'); return;
+      }
 
       const unknown = captured.disposition === 'unknown' || captured.disposition === 'unknown-dirty';
       let saved = true;

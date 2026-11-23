@@ -28,7 +28,7 @@ import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagn
 import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
 import { createWindowsProjectVolumeReaderFromFile } from '../../../packages/node-host/src/windows-project-volume.ts';
@@ -318,6 +318,7 @@ function revealQuitWindow(window: BrowserWindow): void {
     window.show();
     window.focus();
     window.moveTop?.();
+    try { app.focus({steal: true}); } catch { /* Platform focus refusal must not block the dialog. */ }
   } catch { /* A destroyed or platform-refused window is handled by the dialog call. */ }
 }
 
@@ -354,6 +355,21 @@ function quitWorkLines(work: readonly NativeQuitWorkItem[]): string[] {
   const lines = work.slice(0, 3).map(line);
   if (work.length > 3) return [...lines.slice(0, 2), nt('native.quitWorkMore', {count: work.length - 2})];
   return lines;
+}
+
+function quitDialogWindowName(window: BrowserWindow): string {
+  try {
+    const title = window.getTitle().replace(/\s+[·-]\s+Mioon(?:\s+Dev)?\s*$/u, '').trim();
+    if (title && title !== identity.productName && !title.startsWith(`${identity.productName} `)) return title;
+  } catch { /* Fall through to the product name. */ }
+  return identity.productName;
+}
+
+function quitDialogIcon(): ReturnType<typeof nativeImage.createFromPath> | undefined {
+  try {
+    const image = nativeImage.createFromPath(path.join(app.getAppPath(), 'icons/icon.png'));
+    return image.isEmpty() ? undefined : image;
+  } catch { return undefined; }
 }
 
 /** A quit retry is only scheduled after the user explicitly chose “wait”.
@@ -1091,10 +1107,10 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
         if (decision === 'cancel') return false;
         if (decision === 'quit') return true;
       }
-      const response = await showQuitDialog(window, {type: 'warning',
-        title: nt('native.quitWorkTitle', {count: work.length}),
-        message: facts.dirty && !facts.unknown ? nt('native.unsavedQuitMessage') : '',
-        detail: quitWorkLines(work).join('\n'),
+      const title = nt('native.quitWorkTitle', {count: work.length});
+      const icon = quitDialogIcon();
+      const response = await showQuitDialog(window, {...(icon ? {icon} : {}), type: 'none',
+        title, message: title, detail: quitWorkLines(work).join('\n'),
         buttons: [nt('native.cancel'), nt('native.quit')], defaultId: 1, cancelId: 0});
       return response === 1;
     },
@@ -1103,14 +1119,28 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
         const decision = process.env.MIOON_DESKTOP_SMOKE_QUIT_UNRESPONSIVE;
         if (decision === 'quit' || decision === 'wait') return decision;
       }
-      const title = (() => { try { return window.getTitle() || identity.productName; } catch { return identity.productName; } })();
-      const response = await showQuitDialog(window, {type: 'warning',
-        title: nt('native.quitUnresponsiveTitle', {name: title}),
-        message: nt('native.quitUnresponsiveMessage'),
-        buttons: [nt('native.quit'), nt('native.quitWait')], defaultId: 1, cancelId: 1});
+      const name = quitDialogWindowName(window);
+      const title = nt('native.quitUnresponsiveTitle', {name});
+      const icon = quitDialogIcon();
+      const response = await showQuitDialog(window, {...(icon ? {icon} : {}), type: 'none',
+        title, message: title, detail: nt('native.quitUnresponsiveMessage'),
+        buttons: [nt('native.quit'), nt('native.quitWait')], defaultId: 1, cancelId: 0});
       if (response === 0) return 'quit';
       scheduleQuitRetry(window);
       return 'wait';
+    },
+    onCloseWork: async work => {
+      if (smokeOutput) {
+        const decision = process.env.MIOON_DESKTOP_SMOKE_CLOSE_WORK;
+        if (decision === 'cancel') return false;
+        if (decision === 'close') return true;
+      }
+      const title = nt('native.closeWorkTitle', {count: work.length});
+      const icon = quitDialogIcon();
+      const response = await showQuitDialog(window, {...(icon ? {icon} : {}), type: 'none',
+        title, message: title, detail: quitWorkLines(work).join('\n'),
+        buttons: [nt('native.cancel'), nt('native.closeWindow')], defaultId: 1, cancelId: 0});
+      return response === 1;
     },
     forceClose: () => { if (!window.isDestroyed()) window.destroy(); },
     confirmClose: action => !updateQuit?.closing && (Boolean(smokeOutput) || closeDialog({ type: 'warning', title: nt('native.draftTitle'),
@@ -1118,11 +1148,11 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       detail: nt(action === 'reload' ? 'native.draftReloadDetail' : 'native.draftQuitDetail'),
       buttons: [action === 'reload' ? nt('native.reloadAnyway') : nt('native.quitAnyway'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0)),
     confirmUnknown: () => !updateQuit?.closing && closeDialog({ type: 'warning', title: nt('native.unknownQuitTitle'),
-      message: nt('native.unknownQuitMessage'), detail: nt('native.unknownQuitDetail'),
-      buttons: [nt('native.unknownQuit'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
+      message: nt('native.unknownQuitTitle'), detail: nt('native.unknownCloseDetail'),
+      buttons: [nt('native.cancel'), nt('native.unknownQuit')], defaultId: 0, cancelId: 0 }).then(response => response === 1),
     confirmDiscard: action => updateQuit?.closing ? false : smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : action === 'close' && quitRouter.isPending
-      ? closeDialog({type: 'question', title: nt('native.unsavedQuitTitle'), message: nt('native.unsavedQuitMessage'),
-        buttons: [nt('native.discardQuit'), nt('native.keepEditing')], defaultId: 1, cancelId: 1}).then(response => response === 0)
+      ? closeDialog({type: 'question', title: nt('native.unsavedQuitTitle'), message: nt('native.unsavedQuitTitle'),
+        detail: nt('native.unsavedQuitMessage'), buttons: [nt('native.discardQuit'), nt('native.keepEditing')], defaultId: 1, cancelId: 1}).then(response => response === 0)
       : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
         message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'),
         detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
@@ -1703,6 +1733,15 @@ else {
     }
     const report = await start(projectsAfterUpdate);
     trayHost?.refresh(); refreshApplicationMenu();
+    if (smokeOutput && process.env.MIOON_DESKTOP_SMOKE_CLOSE_FILE) {
+      const closeFile = process.env.MIOON_DESKTOP_SMOKE_CLOSE_FILE;
+      const timer = setInterval(() => {
+        void readFile(closeFile).then(() => {
+          clearInterval(timer);
+          if (win && !win.isDestroyed()) win.close();
+        }).catch(() => {});
+      }, 200);
+    }
     if (smokeOutput) {
       const output = smokeOutput;
       if (process.env.MIOON_DESKTOP_QUIT_SMOKE === '1') {

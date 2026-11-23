@@ -916,10 +916,11 @@ test('a blocked candidate close warns only its originating launcher and preserve
   const sender = {sender: candidate.webContents, senderFrame: candidate.webContents.mainFrame};
   const contextId = host.contextFor(candidate).contextId, failure = {code: 'PROJECT_MISSING'};
   assert.equal(f.r.bridge!(sender, {action: 'editor-status', contextId, projectId, phase: 'failed', failure}), true);
-  await until(() => f.r.dialogs.some(item => item.title === '暂时无法安全离开'));
-  const notice = f.r.dialogs.findIndex(item => item.title === '暂时无法安全离开');
-  assert.equal(f.r.dialogParents[notice], launcher);
-  assert.equal(candidate.destroyed, false); assert.equal(candidate.shows, 0);
+  const closeWorkTitle = '还有 1 项工作没完成，要关闭窗口吗？';
+  await until(() => f.r.dialogs.some(item => item.title === closeWorkTitle));
+  const notice = f.r.dialogs.findIndex(item => item.title === closeWorkTitle);
+  assert.equal(f.r.dialogParents[notice], candidate);
+  assert.equal(candidate.destroyed, false); assert.equal(candidate.shows, 1);
   assert.equal(launcher.visible, true); assert.equal(settled, false);
   candidate.disposition = 'clean';
   assert.equal(f.r.bridge!(sender, {action: 'editor-status', contextId, projectId, phase: 'ready'}), false);
@@ -927,7 +928,7 @@ test('a blocked candidate close warns only its originating launcher and preserve
   assert.equal(candidate.closedDelivered, true);
   assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure});
   assert.deepEqual(host.contextFor(launcher).entryReceipt, {entryToken, result});
-  assert.equal(candidate.shows, 0); assert.equal(launcher.visible, true);
+  assert.equal(candidate.shows, 1); assert.equal(launcher.visible, true);
 });
 
 test('actual main centers and titles the launcher with its own window state', async t => {
@@ -1390,7 +1391,7 @@ test('overlapping native dialogs retain the hide guard until both exact tokens s
 });
 
 for (const kind of ['renderer-recovery', 'blocked-leave'] as const) test(`an active ${kind} native dialog denies tray entry actions and Show restores its exact owner`, async t => {
-  const response = deferred(), title = kind === 'renderer-recovery' ? '界面需要重新载入' : '暂时无法安全离开';
+  const response = deferred(), title = kind === 'renderer-recovery' ? '界面需要重新载入' : '还有 1 项工作没完成，要关闭窗口吗？';
   const f = await harness(t, {disposition: index => kind === 'blocked-leave' && index === 1 ? 'blocked' : 'clean',
     dialog: value => value.title === title ? response.promise : {response: 0}, release: () => response.resolve({response: 2})});
   await f.initial(); const {editor} = await openOwnedEditor(f), host = f.get('windowHost');

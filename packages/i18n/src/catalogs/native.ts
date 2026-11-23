@@ -327,6 +327,12 @@ export const nativeMessages = {
     "en": "Reload anyway",
     "ja": "それでも再読み込み"
   },
+  "native.closeWorkTitle": {
+    "zh-Hans": "还有 {count} 项工作没完成，要关闭窗口吗？",
+    "zh-Hant": "還有 {count} 項工作沒完成，要關閉視窗嗎？",
+    "en": "{count} tasks are still unfinished. Close this window?",
+    "ja": "まだ {count} 件の作業が終わっていません。このウィンドウを閉じますか？"
+  },
   "native.quitWorkTitle": {
     "zh-Hans": "还有 {count} 项工作没完成，要退出吗？",
     "zh-Hant": "還有 {count} 項工作沒完成，要結束嗎？",
@@ -434,6 +440,12 @@ export const nativeMessages = {
     "zh-Hant": "有操作還沒確認結果。",
     "en": "An operation has not confirmed its result.",
     "ja": "結果未確認の操作があります。"
+  },
+  "native.unknownCloseDetail": {
+    "zh-Hans": "关闭后可能无法再核对这次操作。",
+    "zh-Hant": "關閉後可能無法再核對這次操作。",
+    "en": "After closing, this operation may no longer be verifiable.",
+    "ja": "閉じた後はこの操作を再確認できなくなる可能性があります。"
   },
   "native.unknownQuitDetail": {
     "zh-Hans": "退出后可能无法再核对这次操作。",

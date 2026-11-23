@@ -35,7 +35,7 @@ interface CloseFixtureOptions {
  beforeReload?(signal: AbortSignal): unknown; reloadPreparationTimeoutMs?: number; timeoutMs?: number;
  canAct?(action: NativeCloseAction): boolean;
  confirmDiscard?(action: NativeCloseAction): unknown; confirmClose?(action: NativeCloseAction): unknown; requestQuit?(coordinator: QuitCoordinator): unknown;
- quit?: boolean; work?: readonly NativeQuitWorkItem[]; onQuitWork?(work: readonly NativeQuitWorkItem[]): unknown;
+ quit?: boolean; work?: readonly NativeQuitWorkItem[]; onQuitWork?(work: readonly NativeQuitWorkItem[]): unknown; onCloseWork?(work: readonly NativeQuitWorkItem[]): unknown;
  onQuitUnresponsive?(): unknown; forceClose?(): void; shutdown?: boolean;
 }
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
@@ -143,12 +143,13 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
   };
   const coordinator = new QuitCoordinator({ getWindow: () => win,
     stop: async () => { stopped++; events.push('stop'); await options.stop?.(); }, finish: () => { finished++; events.push('finish'); } });
-  let quitWorkCalls = 0, quitUnresponsiveCalls = 0, forceCloseCalls = 0; const quitWorkSeen: (readonly NativeQuitWorkItem[])[] = [];
+  let quitWorkCalls = 0, quitUnresponsiveCalls = 0, forceCloseCalls = 0, closeWorkCalls = 0; const quitWorkSeen: (readonly NativeQuitWorkItem[])[] = [], closeWorkSeen: (readonly NativeQuitWorkItem[])[] = [];
   const installed = installNativeCloseAdmission(win, {
     timeoutMs: options.timeoutMs ?? 200,
     isQuitRequest: () => options.quit === true,
     isSystemShutdown: () => options.shutdown === true,
     ...(options.onQuitWork ? {onQuitWork: async (work: readonly NativeQuitWorkItem[]) => { quitWorkCalls++; events.push('quit-work'); quitWorkSeen.push(work); return await options.onQuitWork!(work) as boolean; }} : {}),
+    ...(options.onCloseWork ? {onCloseWork: async (work: readonly NativeQuitWorkItem[]) => { closeWorkCalls++; events.push('close-work'); closeWorkSeen.push(work); return await options.onCloseWork!(work) as boolean; }} : {}),
     ...(options.onQuitUnresponsive ? {onQuitUnresponsive: async () => { quitUnresponsiveCalls++; events.push('quit-unresponsive'); return await options.onQuitUnresponsive!() as 'quit' | 'wait'; }} : {}),
     forceClose: () => { forceCloseCalls++; events.push('force-close'); if (options.forceClose) options.forceClose(); else { win.destroyed = true; win.emit('closed'); } },
     isCurrent: () => owns && allowed,
@@ -173,8 +174,8 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
       documentId++; revision++; captured = null; armed = null;
     },
     get armed() { return armed; },
-    quitWorkSeen,
-    stats: () => ({ cancelCount, discardCount, drainDecisionCount, stopped, finished, vetoOverrides, quitWorkCalls, quitUnresponsiveCalls, forceCloseCalls }),
+    quitWorkSeen, closeWorkSeen,
+    stats: () => ({ cancelCount, discardCount, drainDecisionCount, stopped, finished, vetoOverrides, quitWorkCalls, quitUnresponsiveCalls, forceCloseCalls, closeWorkCalls }),
   };
 }
 
@@ -203,7 +204,7 @@ test('clean close drains then arms and closes once before stopping backend', asy
   const f = fixture(t);
   assert.equal(await f.coordinator.request(), true);
   assert.deepEqual(f.events, ['inspect', 'flush', 'commit', 'closed', 'stop', 'finish']);
-  assert.deepEqual(f.stats(), { cancelCount: 0, discardCount: 0, drainDecisionCount: 0, stopped: 1, finished: 1, vetoOverrides: 0, quitWorkCalls: 0, quitUnresponsiveCalls: 0, forceCloseCalls: 0 });
+  assert.deepEqual(f.stats(), { cancelCount: 0, discardCount: 0, drainDecisionCount: 0, stopped: 1, finished: 1, vetoOverrides: 0, quitWorkCalls: 0, quitUnresponsiveCalls: 0, forceCloseCalls: 0, closeWorkCalls: 0 });
   assert.equal(f.commits[0].choice.discardDirty, false);
   assert.equal(f.commits[0].choice.allowDrainFailure, false);
   assert.ok(Number.isFinite(f.commits[0].choice.expiresAt));
@@ -217,7 +218,7 @@ for (const label of ['busy owner', 'unknown owner']) {
     assert.equal(f.win.destroyed, false);
     assert.deepEqual(f.notices, ['blocked']);
     assert.equal(f.events.includes('flush'), false);
-    assert.deepEqual(f.stats(), { cancelCount: 1, discardCount: 0, drainDecisionCount: 0, stopped: 0, finished: 0, vetoOverrides: 0, quitWorkCalls: 0, quitUnresponsiveCalls: 0, forceCloseCalls: 0 });
+    assert.deepEqual(f.stats(), { cancelCount: 1, discardCount: 0, drainDecisionCount: 0, stopped: 0, finished: 0, vetoOverrides: 0, quitWorkCalls: 0, quitUnresponsiveCalls: 0, forceCloseCalls: 0, closeWorkCalls: 0 });
   });
 }
 
@@ -1094,8 +1095,8 @@ for (const kind of ['confirmClose', 'confirmDiscard', 'confirmUnknown', 'onBlock
     void choice.then(() => { settled = true; });
     await ping;
     assert.equal(heartbeat, 1); assert.equal(settled, false, 'A pending native dialog must not synchronously return or block utility processing');
-    assert.equal((presented)!.cancelId, kind === 'onBlocked' ? 0 : 1);
-    gate.resolve({ response: 0 });
+    assert.equal((presented)!.cancelId, kind === 'onBlocked' || kind === 'confirmUnknown' ? 0 : 1);
+    gate.resolve({ response: kind === 'confirmUnknown' ? 1 : 0 });
     const result = await choice;
     if (kind !== 'onBlocked') assert.equal(result, true);
   });
@@ -1385,6 +1386,7 @@ test('actual main 12-26 work dialog lists bounded consequences with an exit defa
   assert.equal(accepted, true);
   assert.ok(presented);
   assert.match(String(presented.title), /2 .*工作/);
+  assert.equal(presented.message, presented.title, 'macOS shows the same sentence in message');
   assert.match(String(presented.detail), /(匯出|导出).*中斷|(匯出|导出).*中断/);
   assert.match(String(presented.detail), /(結果|结果).*未知/);
   assert.deepEqual([...presented.buttons], [nativeText('native.cancel'), nativeText('native.quit')]);
@@ -1399,4 +1401,56 @@ test('actual main 12-26 collapses more than three work rows into a bounded third
   await callbacks.onQuitWork?.([{kind: 'export', count: 1}, {kind: 'preview', count: 1}, {kind: 'mio', count: 1}, {kind: 'import', count: 1}], {dirty: false, unknown: false});
   const lines = String(presented!.detail).split('\n');
   assert.equal(lines.length, 3); assert.match(lines[2], /還有 2 項工作|还有 2 项工作/);
+});
+
+
+test('ordinary close with work uses 12-26 and an explicit close-window decision', async t => {
+  const accepted = fixture(t, {blocked: true, work: [{kind: 'export', count: 1}], onCloseWork: () => true});
+  accepted.win.close();
+  await until(() => accepted.win.destroyed);
+  assert.deepEqual(accepted.closeWorkSeen, [[{kind: 'export', count: 1}]]);
+  assert.equal(accepted.stats().closeWorkCalls, 1); assert.equal(accepted.stats().forceCloseCalls, 1);
+  assert.deepEqual(accepted.notices, []);
+  const cancelled = fixture(t, {blocked: true, work: [{kind: 'mio', count: 1}], onCloseWork: () => false});
+  cancelled.win.close();
+  await until(() => cancelled.stats().closeWorkCalls === 1);
+  assert.equal(cancelled.win.destroyed, false); assert.equal(cancelled.stats().forceCloseCalls, 0);
+  assert.equal(cancelled.stats().cancelCount, 1); assert.deepEqual(cancelled.notices, []);
+});
+
+test('actual main 12-26b and close-work dialogs put the design sentence in message', async () => {
+  let work: DialogOptions | undefined, close: DialogOptions | undefined;
+  const window = {isDestroyed: () => false};
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {
+    if (String(options.title).includes('窗口没有回应')) work = options; else close = options;
+    return Promise.resolve({response: 0});
+  }, showMessageBoxSync() {assert.fail('Quit uses asynchronous owned dialogs');}}, window, () => true,
+  {quitRouter: {isPending: true}, restarting: false, quitting: false, identity: {productName: 'Mioon'}});
+  await callbacks.onQuitUnresponsive?.();
+  assert.ok(work); assert.equal(work.message, work.title); assert.match(String(work.detail), /还没保存/);
+  assert.deepEqual([...work.buttons], [nativeText('native.quit'), nativeText('native.quitWait')]);
+  const closeCallbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {close = options; return Promise.resolve({response: 0});},
+    showMessageBoxSync() {assert.fail('Close uses asynchronous owned dialog');}}, window, () => true,
+    {quitRouter: {isPending: false}, restarting: false, quitting: false});
+  await closeCallbacks.onCloseWork?.([{kind: 'export', count: 1}], {dirty: false, unknown: false});
+  assert.ok(close); assert.match(String(close.message), /1 .*关闭窗口/);
+  assert.equal(close.message, close.title);
+  assert.deepEqual([...close.buttons], [nativeText('native.cancel'), nativeText('native.closeWindow')]);
+});
+
+test('actual main unknown-close and quit-unsaved dialogs use message for the main question', async () => {
+  const unknown = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {
+    assert.equal(options.title, nativeText('native.unknownQuitTitle')); assert.equal(options.message, options.title);
+    assert.equal(options.detail, nativeText('native.unknownCloseDetail'));
+    assert.deepEqual([...options.buttons], [nativeText('native.cancel'), nativeText('native.unknownQuit')]);
+    assert.equal(options.defaultId, 0); assert.equal(options.cancelId, 0); return Promise.resolve({response: 1});
+  }, showMessageBoxSync() {assert.fail();}}, {isDestroyed: () => false}, () => true, {quitRouter: {isPending: false}, restarting: false, quitting: false});
+  await unknown.confirmUnknown?.();
+  let unsaved: DialogOptions | undefined;
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {unsaved = options; return Promise.resolve({response: 1});},
+    showMessageBoxSync() {assert.fail();}}, {isDestroyed: () => false}, () => true, {quitRouter: {isPending: true}, restarting: false, quitting: false});
+  await callbacks.confirmDiscard?.('close');
+  assert.ok(unsaved); assert.equal(unsaved.message, nativeText('native.unsavedQuitTitle'));
+  assert.equal(unsaved.title, nativeText('native.unsavedQuitTitle'));
+  assert.equal(unsaved.detail, nativeText('native.unsavedQuitMessage'));
 });
