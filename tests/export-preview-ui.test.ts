@@ -169,3 +169,18 @@ test('sample completion wording uses the normal export term in every locale', ()
   }
   assert.equal((translate as (locale: Parameters<typeof translate>[0], key: Parameters<typeof translate>[1]) => string)('zh-Hant', 'export.sample.phase.succeeded'), '樣片匯出完成');
 });
+
+test('a failed formal export preview states that it did not finish instead of claiming to encode', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const h = harness(locale);
+    h.setWorkflow(4, { id: 'failed-export', status: 'failed' }, false);
+    h.render();
+    const section = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview');
+    assert.ok(section, locale);
+    assert.equal(section!.props['aria-label'], translate(locale, 'redesign.export.failedPreview'));
+    const help = h.find((node: PreviewNode) => node.type === 'p' && JSON.stringify(node.children).includes(translate(locale, 'redesign.export.failedPreviewHelp').slice(0, 8)));
+    assert.ok(help, `${locale}: failed preview help`);
+    assert.doesNotMatch(JSON.stringify(help!.children), /正在編碼|正在编码|Encoding/);
+    h.unmount();
+  }
+});

@@ -374,6 +374,16 @@ test('discardIntent clears only the retained intent with CAS, refuses execution 
 });
 
 
+test('discarding a pending intent clears the uncertain marker so a fresh prepare is allowed',async t=>{
+  const f=await fixture(t),prepared=f.delivery.prepare(f.prepare());
+  f.setFault((point: string)=>{if(point==='afterDispatch')throw Error('PRIVATE dropped response');});
+  await assert.rejects(f.delivery.execute(action(prepared)));f.setFault(()=>{});
+  const live=f.get();if(!live.supported||!live.intent)throw Error('expected pending intent');
+  assert.equal(live.intent.outcome.status,'pending');
+  const cleared=f.delivery.discardIntent({workspaceScope:live.workspaceScope,instanceId:live.instanceId,projectId:f.project.id,intentId:live.intent.intentId,expectedIntentRevision:live.intentRevision});
+  assert.ok(cleared.supported);assert.equal(cleared.intent,null);
+  const next=f.delivery.prepare({...f.prepare(cleared as OrdinaryDeliveryEnvelope),intentId:randomUUID()});assert.equal(next.intent!.outcome.status,'pending');
+});
 test('format-4 project supports the same check and discard intent path',async t=>{
   const f=await fixture(t,{format:FORMAT4_PROJECT_SCHEMA_VERSION}),draft=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(draft));
   f.setGuards({readExportReceipt:()=>null});

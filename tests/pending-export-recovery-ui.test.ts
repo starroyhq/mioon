@@ -34,12 +34,26 @@ test('four-locale pending copy uses plain product language', () => {
   }
 });
 
-test('the production dialog wires automatic check, continue, discard and the failed-record reexport', () => {
+test('the production dialog wires automatic check, continue and discard', () => {
   for (const fragment of ['runPendingExportCheck', 'pendingExportCheckFlight', 'setPendingExportCheck',
     'pendingExportCheck={pendingExportCheck}', 'onContinuePending=', 'onDiscardPending=', 'onRetryPending=',
-    "setDeliveryAttempt({projectId, id: after.intent.outcome.exportId})", "intent?.outcome.status === 'accepted'",
-    "setDeliveryAttempt({projectId, id: intent.outcome.exportId})"]) assert.ok(app.includes(fragment), fragment);
-  // A settled pending intent no longer freezes the history re-export button.
+    "setDeliveryAttempt({projectId, id: after.intent.outcome.exportId})"]) assert.ok(app.includes(fragment), fragment);
   assert.match(app, /reexportDisabled=\{!timeline\?\.clips\.length \|\| pendingTimelineExport/u);
   assert.match(app, /const pendingTimelineExport = activePending\.some\(entry => entry\.key === 'timeline:render:export'\) \|\| \(localDelivery\.state\.pending\)/u);
+});
+
+test('opening export never re-adopts an already accepted intent into the result view', () => {
+  // The #384 regression: an accepted local intent plus a deliveryAttempt
+  // dependency fed the old result back after re-export cleared it.
+  assert.doesNotMatch(app, /if \(intent\?\.outcome\.status === 'accepted'\) \{[\s\S]{0,400}setDeliveryAttempt/u);
+  assert.doesNotMatch(app, /deliveryAttempt\?\.projectId, deliveryAttempt\?\.id/u);
+  assert.match(app, /if \(intent\?\.outcome\.status === 'accepted'\) return;/u);
+  assert.match(app, /if \(!intent \|\| intent\.outcome\.status !== 'pending'\)/u);
+});
+
+test('closing the dialog keeps a queued or running export visible on reopen', () => {
+  assert.match(app, /const running = Boolean\(attempt && \(!record \|\| \['queued', 'running', 'pending', 'submitting'\]\.includes/u);
+  assert.match(app, /if \(\(!wasOpen && !attempt\) \|\| running\) return;/u);
+  assert.match(app, /if \(!wasOpen && attempt && !running\) resetExportAttemptView\(\);/u);
+  assert.match(app, /exportDialogWasOpen/u);
 });

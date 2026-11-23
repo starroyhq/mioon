@@ -268,7 +268,7 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
       if(prior===null||prior.outcome.status==='not_applied'&&prior.outcome.code===DISCARDED_INTENT_CODE){
         // A repeated explicit discard is idempotent; a stale revision beyond
         // the current one is not a valid prior identity.
-        if(row.intentRevision>=args.expectedIntentRevision)return response(row);
+        if(row.intentRevision>=args.expectedIntentRevision){uncertain.delete(args.projectId);return response(row);}
         fail('LOCAL_DELIVERY_CONFLICT');
       }
       if(prior.intentId!==args.intentId||row.intentRevision!==args.expectedIntentRevision)fail('LOCAL_DELIVERY_CONFLICT');
@@ -280,7 +280,7 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
       replace(disk,next);
       // The repository's full-file digest CAS is the concurrency fence. The
       // intent revision was compared under the same read above.
-      persist(disk);
+      persist(disk);uncertain.delete(args.projectId);
       return response({...next,intent:null});
     });
   }
