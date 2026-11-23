@@ -18,41 +18,33 @@ test('uncertain newer preparation displays the coherent request that recovery wi
   assert.match(text, /保存结果待确认/); assert.match(text, /确认恢复同一原请求/); assert.deepEqual(state, before);
 });
 
-test('recovered pending intent shows its frozen selected range while the current session form is whole timeline', () => {
+test('pending retention is handled in step 1, not duplicated in the passive recovery panel', () => {
   const Recovery = component('DeliveryDraftRecovery.tsx').default, Controls = component('ExportRangeControls.tsx').default;
   const original = { ...retained, outcome: { status: 'pending' } };
   const recovery = Recovery({ state: { phase: 'ready', busy: false, intent: original, retainedPreparation: null, intentUncertain: false, intentPhase: 'pending', pending: true }, controller: {} });
   const form = Controls({ draft: { mode: 'whole', startText: '', endText: '' }, durationFrames: 999 });
-  const frozen = nodes(recovery).find(node => node.props['data-testid'] === 'delivery-original-range');
-  assert.match(textOf(frozen), /第 30 帧（含）至第 90 帧（不含）.*60 帧.*2.00 秒/);
-  assert.doesNotMatch(textOf(frozen), /999/);
+  assert.equal(nodes(recovery).some(node => node.props['data-testid'] === 'delivery-original-intent'), false);
+  assert.equal(nodes(recovery).some(node => node.props['data-testid'] === 'delivery-original-range'), false);
   assert.equal(nodes(form).find(node => node.props['data-testid'] === 'export-range-whole')!.props['aria-pressed'], true);
-  assert.match(textOf(recovery), /已保存原导出请求，结果待确认/); assert.match(textOf(recovery), /恢复可能会首次提交原导出/);
+  assert.doesNotMatch(textOf(recovery), /已保存原导出请求，结果待确认|恢复可能会首次提交原导出/);
 });
 
-test('legacy original range omission stays whole-original without borrowing current bounds, and terminal range never implies recovery', () => {
+test('terminal intents no longer render a duplicate range or recovery panel', () => {
   const View = component('DeliveryDraftRecovery.tsx').default;
   const legacy = { ...prior, input: { ...prior.input } }; delete (legacy.input as {exportRange?: unknown}).exportRange;
-  const tree = View({ state: { phase: 'ready', busy: false, intent: legacy, intentPhase: 'accepted' }, controller: {} });
-  assert.equal(textOf(nodes(tree).find(node => node.props['data-testid'] === 'delivery-original-range')), '原请求范围：全部原时间线');
-  assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'recover-original-delivery'), false);
-  assert.match(textOf(tree), /已确认接受/);
-  const terminal = View({ state: { phase: 'ready', busy: false, intent: prior, intentPhase: 'accepted' }, controller: {} });
-  assert.match(textOf(nodes(terminal).find(node => node.props['data-testid'] === 'delivery-original-range')), /第 0 帧.*第 30 帧/);
+  for (const intent of [legacy, prior]) {
+    const tree = View({ state: { phase: 'ready', busy: false, intent, intentPhase: 'accepted' }, controller: {} });
+    assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'delivery-original-intent'), false);
+    assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'recover-original-delivery'), false);
+  }
 });
 
-test('not-applied delivery conclusion offers the normal re-export entry and never creates a request', () => {
+test('not-applied outcome is concluded in step 1 without a duplicate step-2 re-export entry', () => {
   const View = component('DeliveryDraftRecovery.tsx').default;
-  const calls: string[] = [];
   const notApplied = { ...prior, outcome: { status: 'not_applied', code: 'REVISION_CONFLICT' } };
   const state = { phase: 'ready', busy: false, intent: notApplied, retainedPreparation: null, intentUncertain: false, intentPhase: 'idle', pending: false };
-  const tree = View({ state, controller: new Proxy({}, { get: () => () => assert.fail('Passive recovery view invoked a controller') }), onReexport: () => calls.push('reexport') });
-  const button = nodes(tree).find(node => node.props['data-testid'] === 'reexport-not-applied-delivery');
-  assert.ok(button, 'The re-export entry must be visible for a confirmed not-applied delivery');
-  assert.match(textOf(nodes(tree).find(node => node.props['data-testid'] === 'delivery-original-intent') ?? tree), /原导出请求已确认未应用/);
+  const tree = View({ state, controller: {} });
+  assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'delivery-original-intent'), false);
+  assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'reexport-not-applied-delivery'), false);
   assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'recover-original-delivery'), false);
-  (button!.props.onClick as ()=>void)();
-  assert.deepEqual(calls, ['reexport']);
-  const absent = View({ state, controller: {} });
-  assert.equal(nodes(absent).some(node => node.props['data-testid'] === 'reexport-not-applied-delivery'), false);
 });
