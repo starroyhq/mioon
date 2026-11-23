@@ -164,6 +164,7 @@ function format5SequenceEvidence(db: DatabaseSync,projectId: string): Record<str
 function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decodeCursor,timelineGeometry='frame'}: InspectionReaderOptions={}): InspectionReader {
     const cache = new Map<string, InspectionRecord>(), validatedVersions = new Set<string>(), validatedAssets = new Set<string>(), assetVersions = new Map<string, InspectionRecord>(), imageSources = new Map<string, unknown>(), frameSources = new Map<string, unknown>(), sceneSources = new Map<string, unknown>(), frameTasks = new Set<string>(), pendingFrameTasks = new Set<string>();
     const pendingAssets=new Set<string>(),imageTasks=new Set<string>(),pendingImageTasks=new Set<string>();
+    const format5 = db.prepare("SELECT 1 AS present FROM project.sqlite_schema WHERE type='table' AND name='timeline_clips' LIMIT 1").get() !== undefined;
     let readBytes = 0, readRecords = 0, frameDepth = 0;
     const consume=(text: unknown): void=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text as string))>INSPECTION_LIMITS.maxReadBytes)exhausted();};
     const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume,validateSource:validateImageTask});
@@ -437,8 +438,19 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
           if (assetVersions.get(asset.id as string)?.shotId !== shot.id) unavailable();
         }
         if (Object.hasOwn(clip, 'jobId')) {
-          const job = get('jobs', id(clip.jobId)), version = validateVersion(id(job.versionId), job.shotId, asset.id);
-          if (version.jobId !== job.id || (Object.hasOwn(clip, 'shotId') && clip.shotId !== job.shotId) || (Object.hasOwn(clip, 'versionId') && clip.versionId !== version.id)) unavailable();
+          const jobId = id(clip.jobId);
+          // Portable project copies and format-4 upgrades keep the immutable
+          // clip/version provenance but may not carry the old local execution
+          // job. The frozen version (portable publication proof) is the owner
+          // then; inventing a missing local job would make every render read
+          // fail with INSPECTION_UNAVAILABLE.
+          if (format5 && !db.prepare('SELECT 1 FROM jobs WHERE id=? LIMIT 1').get(jobId)) {
+            const version = Object.hasOwn(clip, 'versionId') ? validateVersion(id(clip.versionId), clip.shotId, asset.id) : assetVersions.get(asset.id as string);
+            if (!version || version.jobId !== jobId) unavailable();
+          } else {
+            const job = get('jobs', jobId), version = validateVersion(id(job.versionId), job.shotId, asset.id);
+            if (version.jobId !== job.id || (Object.hasOwn(clip, 'shotId') && clip.shotId !== job.shotId) || (Object.hasOwn(clip, 'versionId') && clip.versionId !== version.id)) unavailable();
+          }
         }
       return asset;
     }
