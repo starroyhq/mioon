@@ -3151,17 +3151,29 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }, [showDelivery, showExports, workbenchReady, online, auth, loading,
     localDelivery.state.busy, localDelivery.state.phase, localDelivery.state.intent?.intentId,
     localDelivery.state.intent?.outcome.status]);
-  // Closing the export dialog ends this display session. Reopening starts at
-  // step 1 so a completed or failed export can be repeated explicitly; the
-  // durable result remains in export history and no accepted local intent is
-  // re-adopted. Reset the retained preflight review and workflow step too.
-  useEffect(() => {
-    if (showDelivery) return;
+  // Closing the export dialog does not cancel an accepted export. A queued or
+  // running attempt keeps its result view so reopening shows the live progress;
+  // only a terminal success/failure/cancellation starts the next visit at step 1.
+  const exportDialogWasOpen = useRef(showDelivery);
+  const resetExportAttemptView = () => {
     setDeliveryAttempt(null);
     exportPreflight.controller.resetReview();
     sampleExportPreflight.controller.resetReview();
     setDeliveryReviewVersion(value => value + 1);
-  }, [showDelivery]);
+  };
+  useEffect(() => {
+    const wasOpen = exportDialogWasOpen.current;
+    exportDialogWasOpen.current = showDelivery;
+    const attempt = deliveryAttempt, projectId = data.project?.id;
+    const record = attempt && attempt.projectId === projectId ? data.exports.find(item => item.id === attempt.id) : null;
+    const running = Boolean(attempt && (!record || ['queued', 'running', 'pending', 'submitting'].includes(String(record.status))));
+    if (!showDelivery) {
+      if ((!wasOpen && !attempt) || running) return;
+      resetExportAttemptView();
+      return;
+    }
+    if (!wasOpen && attempt && !running) resetExportAttemptView();
+  }, [showDelivery, deliveryAttempt?.id, data.project?.id, data.exports]);
   const [exportPreviewAttempt, setExportPreviewAttempt] = useState<{scope: string; timelineId: string; contextKey: string | null; input: Record<string, unknown>; submitting: boolean; exportId: string | null; receipt: unknown} | null>(null);
   const [sampleRangeDraft, setSampleRangeDraft] = useState<DraftRangeInput | null>(null);
   const sampleRangeDraftRef = useRef(sampleRangeDraft);

@@ -49,5 +49,11 @@ test('opening export never re-adopts an already accepted intent into the result 
   assert.doesNotMatch(app, /deliveryAttempt\?\.projectId, deliveryAttempt\?\.id/u);
   assert.match(app, /if \(intent\?\.outcome\.status === 'accepted'\) return;/u);
   assert.match(app, /if \(!intent \|\| intent\.outcome\.status !== 'pending'\)/u);
-  assert.match(app, /if \(showDelivery\) return;[\s\S]{0,300}setDeliveryAttempt\(null\);[\s\S]{0,300}resetReview\(\)/u);
+});
+
+test('closing the dialog keeps a queued or running export visible on reopen', () => {
+  assert.match(app, /const running = Boolean\(attempt && \(!record \|\| \['queued', 'running', 'pending', 'submitting'\]\.includes/u);
+  assert.match(app, /if \(\(!wasOpen && !attempt\) \|\| running\) return;/u);
+  assert.match(app, /if \(!wasOpen && attempt && !running\) resetExportAttemptView\(\);/u);
+  assert.match(app, /exportDialogWasOpen/u);
 });
