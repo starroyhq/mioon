@@ -99,12 +99,22 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
     });
   }
   await onStep('list');
-  const clicked = await evaluate(launcher, `(() => {
-    const button = document.querySelector(${JSON.stringify(button)});
-    if (!(button instanceof HTMLElement)) return false;
-    button.click();
-    return true;
-  })()`);
+  // The launcher home can re-render between the readiness probe and the click
+  // (async recent-list refresh); retry the same exact button within a bounded
+  // window instead of failing on one transiently detached element.
+  let clicked = false;
+  const clickDeadline = Date.now() + 10000;
+  while (!clicked && Date.now() < clickDeadline) {
+    try {
+      clicked = await evaluate(launcher, `(() => {
+        const button = document.querySelector(${JSON.stringify(button)});
+        if (!(button instanceof HTMLElement)) return false;
+        button.click();
+        return true;
+      })()`) as boolean;
+    } catch { clicked = false; }
+    if (!clicked) await new Promise(resolve => setTimeout(resolve, 100));
+  }
   assert.equal(clicked, true, 'The launcher project open button was unavailable');
   const expectedUrl = new URL(`/?project=${projectId}`, backendUrl).href;
   await waitForWindowCondition(launcher, async () => Promise.resolve(BrowserWindowRuntime.getAllWindows()
