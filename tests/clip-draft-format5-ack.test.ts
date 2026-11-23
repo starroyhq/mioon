@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createEditUiWireFixture, WIRE_IDS} from './helpers/edit-ui-wire-fixture.ts';
 import {createClipDraftController, clipDraftRaw} from '../apps/web/src/clip-draft-state.ts';
-import {clipDraftTimelineAccepted} from '../apps/web/src/clip-draft-timeline.ts';
 import {clipGainDbText} from '../apps/web/src/clip-audio-state.ts';
 import {isTimelineRecord} from '@mioon/contracts';
 import {isFormat5Timeline} from '@mioon/contracts/project-format5';
@@ -13,7 +12,7 @@ test('format-5 clip draft acknowledgement validates the board projection instead
   const timeline = fixture.store.get('timelines', WIRE_IDS.timeline) as Record<string, unknown>;
   assert.equal(isTimelineRecord(timeline, {projectId: WIRE_IDS.project, format: 5}), false, 'legacy validator rejects format-5 sourceState/sequenceSource/mainTrack');
   assert.equal(isFormat5Timeline(timeline, {projectId: WIRE_IDS.project}), true);
-  assert.equal(clipDraftTimelineAccepted(timeline, WIRE_IDS.project, true), true);
+  assert.equal(isFormat5Timeline(timeline, {projectId: WIRE_IDS.project}), true);
   const legacy = {id: WIRE_IDS.timeline, projectId: WIRE_IDS.project, revision: 1, width: 720, height: 1280, fps: 30,
     durationFrames: 30, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     tracks: [{id: '90000000-0000-4000-8000-000000000060', name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
@@ -21,7 +20,7 @@ test('format-5 clip draft acknowledgement validates the board projection instead
       assetId: WIRE_IDS.assetA, name: 'Legacy clip', startFrame: 0, durationFrames: 30, sourceInFrame: 0,
       rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1}]};
   assert.equal(isTimelineRecord(legacy, {projectId: WIRE_IDS.project}), true);
-  assert.equal(clipDraftTimelineAccepted(legacy, WIRE_IDS.project, false), true, 'format 4 keeps the legacy validator');
+  assert.equal(isTimelineRecord(legacy, {projectId: WIRE_IDS.project}), true, 'format 4 keeps the legacy validator');
 });
 
 test('an exact matched gain survives draft, request, saved projection and confirmation without rounding', async t => {
@@ -36,7 +35,7 @@ test('an exact matched gain survives draft, request, saved projection and confir
   const controller = createClipDraftController({
     context: {...key, scope: 'clip', connected: true, visible: true, busy: false, timelineRevision: Number(timeline.revision),
       source: {assetId: WIRE_IDS.assetA, assetSha256: 'a'.repeat(64), versionId: WIRE_IDS.versionA, shotId: WIRE_IDS.shotA}, saved}, delay: 100000,
-    validateTimeline: value => clipDraftTimelineAccepted(value, WIRE_IDS.project, true),
+    validateTimeline: value => value !== null && isFormat5Timeline(value, {projectId: WIRE_IDS.project}),
     client: {async get() { return record; }, async put(input: any) { return {...record, revision: input.expectedRevision + 1, draft: {baseRevision: input.baseRevision, source: input.source, raw: input.raw, updatedAt: '2026-01-01T00:00:00.000Z'}}; }, async remove(input: any) { return {...record, revision: input.expectedRevision + 1, draft: null}; }} as never,
   });
   t.after(() => controller.dispose());

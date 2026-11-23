@@ -24,7 +24,8 @@ import { Volume2, VolumeX } from '@mioon/ui/components/workbench-icons';
 import { clipSoundEntriesVisible } from './clip-sound-state.ts';
 import './clip-sound.css';
 import Icon from './icons.tsx';
-import { sourceFrameCount } from '@mioon/contracts';
+import { isTimelineRecord, sourceFrameCount } from '@mioon/contracts';
+import { isFormat5Timeline } from '@mioon/contracts/project-format5';
 import ClipAudioRoleControls from './ClipAudioRoleControls.tsx';
 import { clipAudioRoleChanged } from './clip-audio-role-state.ts';
 import ClipVolumeEnvelopeControls from './ClipVolumeEnvelopeControls.tsx';
@@ -49,7 +50,6 @@ import { timelineRectIssue, timelineRectMessage } from './timeline-format-state.
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { useClipDraft } from './clip-draft-hook.ts';
 import { clipDraftRaw, clipDraftSource, clipDraftPatch } from './clip-draft-state.ts';
-import { clipDraftTimelineAccepted } from './clip-draft-timeline.ts';
 import ClipDraftRecovery from './ClipDraftRecovery.tsx';
 import { staleSourceSentence } from './timeline-source-freshness.ts';
 import type { ClipDraftController, ClipDraftState } from './clip-draft-state.ts';
@@ -133,7 +133,7 @@ export default function TimelineInspector({ crossfadeCandidates, onCrossfade, tr
     volumeEnvelopeEditable: draftContext?.volumeEnvelopeEditable === true && asset?.hasAudio === true && (['audio', 'video'] as string[]).includes(assetKind(asset) as string),
     audioRoleEditable: draftContext?.audioRoleEditable === true && (['audio', 'video'] as string[]).includes(assetKind(asset) as string),
     collaboration: draftContext?.collaboration, timelineRevision: timeline.revision, source: clipDraftSource(pass(clip), pass(asset)), saved: savedRaw, layout: clip.layout,
-  }, onDirtyChange, onDraftController, onReviewBlockedChange, onCompositionPendingChange, validateTimeline: (value: unknown, projectId: string) => clipDraftTimelineAccepted(value, projectId, Boolean(format5)) }));
+  }, onDirtyChange, onDraftController, onReviewBlockedChange, onCompositionPendingChange, validateTimeline: (value: unknown, projectId: string) => value !== null && (format5 ? isFormat5Timeline(value, {projectId}) : isTimelineRecord(value, {projectId})) }));
   const state: ClipDraftState = draftResult.state, controller: ClipDraftController = draftResult.controller;
   busy = Boolean(busy || controller.isDiscarding());
   const draft = state.raw, dirty = state.dirty, conflict = state.conflict;
