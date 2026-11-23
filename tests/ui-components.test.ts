@@ -320,6 +320,10 @@ test('renderer uses shared components for ordinary controls and modal confirmati
   assert.match(app, /workbench-panel-detail/);
   assert.match(app, /onAddPrevis=\{\(\) => \{ void addPrevis\(\); \}\}/);
   assert.match(app, /addingPrevis=\{Boolean\(busy\['previs-create'\]\)\}/);
+  assert.match(app, /previsInspector=\{previsPanel\}/);
+  assert.match(app, /format5BoardUpdateNode\(chosenPrevis\.id, \{name: label\}/);
+  assert.match(app, /releaseCreate\(\);\s*if \(await inspect\(outcome\.node\.id\)\)/s);
+  assert.match(app, /finally \{ releaseCreate\(\); \}/);
   const boardUiSource = readFileSync(new URL('../apps/web/src/board-ui/BoardUiLive.tsx', import.meta.url), 'utf8');
   assert.match(boardUiSource, /data-testid="board-ui-add-previs"/);
   assert.match(boardUiSource, /onAddPrevis\?/);
