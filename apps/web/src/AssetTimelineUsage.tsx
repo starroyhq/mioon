@@ -79,6 +79,9 @@ export default function AssetTimelineUsage(props: AssetTimelineUsageProps) {
   const open = same && expanded.open;
   const { admit, isCurrent } = useUsageInteraction(props, `${assetId}:${open}`);
   const listId = useId();
+  // A grid card has no room for an explanatory sentence over its thumbnail.
+  // The toolbar still reports that the timeline snapshot is unavailable.
+  if (compact && uses === null) return null;
   return <div className={`asset-disposition-controls ${compact ? 'asset-usage-compact' : ''}`} data-testid={`asset-timeline-usage-${assetId}`} data-no-asset-drag draggable={false}
     onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
     {uses === null ? <span className="asset-disposition-label unknown" role="status">{t('assets.usage.unknown')}</span>

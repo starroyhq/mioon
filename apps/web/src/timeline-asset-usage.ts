@@ -139,21 +139,30 @@ export function deriveTimelineAssetUsage({ projectId, assets, timeline, ready }:
     if (!object(clip)) return unknown();
     const clipId = read(clip, 'id'), assetId = read(clip, 'assetId'), trackId = read(clip, 'trackId');
     const name = read(clip, 'name'), startFrame = read(clip, 'startFrame'), duration = read(clip, 'durationFrames'), sourceInFrame = read(clip, 'sourceInFrame');
-    if (!uuid(clipId) || clipIds.has(clipId) || !uuid(assetId) || !assetIds.has(assetId) || !uuid(trackId) ||
+    // Format-5 generation placeholders have no source asset yet. They still
+    // consume timeline frames but are not a use of any loaded asset, so they
+    // must not turn the whole snapshot into unknown and hide every other use.
+    const placeholder = read(clip, 'sourceState') === 'placeholder' && assetId === null;
+    if (!uuid(clipId) || clipIds.has(clipId) || !placeholder && !uuid(assetId) || !uuid(trackId) ||
         (Object.hasOwn(clip, 'name') && !text(name, 200)) ||
         !integer(startFrame, 0, MAX_FRAMES) || !integer(duration, 1, MAX_FRAMES) || startFrame + duration > MAX_FRAMES ||
         !integer(sourceInFrame, 0, Number.MAX_SAFE_INTEGER - MAX_FRAMES) || !sameOptionalOwner(clip, projectId, timelineId)) return unknown();
     const track = tracksById.get(trackId);
-    const source = assetsById.get(assetId);
-    if (!track || !source) return unknown();
-    const identity = sourceIdentity(source, clip, track);
-    if (identity === null) return unknown();
+    if (!track) return unknown();
+    const identity = placeholder ? null : (() => {
+      const sourceId = assetId as string;
+      if (!assetIds.has(sourceId)) return null;
+      const source = assetsById.get(sourceId);
+      return source ? sourceIdentity(source, clip, track) : null;
+    })();
+    if (!placeholder && identity === null) return unknown();
     clipIds.add(clipId);
     observedDuration = Math.max(observedDuration, startFrame + duration);
     // Name text is preserved verbatim and rendered by React as text. Legacy
     // missing names receive a label without modifying the saved record.
-    track.uses.push(Object.freeze({ projectId, timelineId, timelineRevision, assetId, clipId, trackId,
-      clipName: typeof name === 'string' ? name : '未命名片段', ...(typeof name === 'string' ? {} : { clipNameMissing: true as const }), trackName: track.name, startFrame, durationFrames: duration, sourceInFrame, sourceIdentity: identity }));
+    const usedAssetId = assetId as string;
+    if (!placeholder) track.uses.push(Object.freeze({ projectId, timelineId, timelineRevision, assetId: usedAssetId, clipId, trackId,
+      clipName: typeof name === 'string' ? name : '未命名片段', ...(typeof name === 'string' ? {} : { clipNameMissing: true as const }), trackName: track.name, startFrame, durationFrames: duration, sourceInFrame, sourceIdentity: identity! }));
   }
   if (observedDuration !== durationFrames) return unknown();
 

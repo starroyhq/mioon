@@ -2077,6 +2077,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const captured = context(), projectId = captured.projectId as string, state = dataRef.current;
     if (!projectId || isBusy('previs-create', projectId)) return;
     markBusy(projectId, 'previs-create', true);
+    // Navigation below is part of this create, not another pending operation.
+    // Release our own marker before selecting the new card; the finally block
+    // still clears it on every early return and failure path.
+    let createReleased = false;
+    const releaseCreate = () => { if (createReleased) return; createReleased = true; markBusy(projectId, 'previs-create', false); };
     try {
       const saved = viewRef.current!.canvas.viewport;
       // The format-5 board owns its viewport; place the new card by the live
@@ -2094,6 +2099,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (currentProject.current === projectId) await refresh(projectId);
       if (!isCurrent(captured)) return;
       if (outcome.status === 'created') {
+        releaseCreate();
         if (await inspect(outcome.node.id)) {
           if (state.projectFormatVersion === 5) setFormat5RevealNodeId(outcome.node.id);
           else revealCanvas(outcome.node.id);
@@ -2101,7 +2107,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       else if (outcome.status === 'unknown') notify(msg('previs.create.unknown'), 'warning');
       else notify(msg(outcome.code === 'PREVIS_CAPACITY' ? 'previs.create.limit' : 'previs.create.failed'), 'error');
-    } finally { markBusy(projectId, 'previs-create', false); }
+    } finally { releaseCreate(); }
   }
   function openPrevis(nodeId: string): void {
     const record = dataRef.current!.nodes.find(node => node.id === nodeId), projectId = dataRef.current!.project?.id;
@@ -4537,7 +4543,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const previsPanel = chosenPrevis && data.project ? <PrevisInspector key={`previs:${data.project.id}:${chosenPrevis.id}`} node={chosenPrevis} frame={previsFrameInfo} readOnly={false} busy={Boolean(busy[`save:${chosenPrevis.id}`])}
     protectEditing={content => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={data.project?.id} targets={[{kind:'node',id:chosenPrevis.id,revision:chosenPrevis.revision}]} canRelease={() => !isBusy(`save:${chosenPrevis.id}`)}>{content}</AgentEditingBoundary>}
     shots={data.shots} edges={data.edges} keyframeThumbnails={previsKeyframeThumbs}
-    onRename={label => saveNode(chosenPrevis.id, chosenPrevis.revision, { label })} onOpen={() => openPrevis(chosenPrevis.id)} /> : null;
+    onRename={label => format5
+      ? format5BoardUpdateNode(chosenPrevis.id, {name: label}, Number(chosenPrevis.revision) || 0)
+      : saveNode(chosenPrevis.id, chosenPrevis.revision, { label })} onOpen={() => openPrevis(chosenPrevis.id)} /> : null;
   const selectedCanvasAsset = chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0] || (!chosenNode && !chosenShot && canvasAssetSelectionRef.current?.projectId === currentProject.current && canvasAssetSelectionRef.current?.epoch === projectEpoch.current ? canvasAssetSelectionRef.current.id : null);
   const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === selectedCanvasAsset);
   const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => generationReferences(shot).references.map(reference => reference.assetId)), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));
@@ -5363,6 +5371,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onRestoreBinding={format5RestoreBinding} onDeleteSubjectCard={format5DeleteSubjectCard} onUpdateNode={format5BoardUpdateNode}
       onUpdateShot={format5BoardUpdateShot} onGenerateShot={format5GenerateShot}
       jobs={jobs}
+      previsInspector={previsPanel}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status

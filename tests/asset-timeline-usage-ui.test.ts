@@ -167,6 +167,16 @@ test('unchanged saved polling preserves expansion and pending choice; changed so
   assert.equal(find(tree, `asset-usage-expand-${assetId}`)!.props['aria-expanded'], false); assert.equal(calls[0][1](), false);
 });
 
+test('compact grid cards omit an unknown usage sentence instead of covering the thumbnail', () => {
+  const h = harness();
+  for (const usageValue of [undefined, { ...usage, status: 'unknown' }]) {
+    const tree = h.render(h.usage.default, { ...scopeProps, usage: usageValue, assetId, assetName: '源', compact: true });
+    assert.equal(tree, null);
+  }
+  const nonCompact = h.render(h.usage.default, { ...scopeProps, usage: undefined, assetId, assetName: '源' });
+  assert.match(text(nonCompact), /当前时间线 · 使用情况未知/);
+});
+
 test('unknown, unavailable and foreign assets cannot claim unused or expose destinations', () => {
   for (const patch of [{ usage: undefined }, { usage: { ...usage, status: 'unknown' } }, { projectId: otherProject }, { assetId: id(99) }]) {
     const h = harness(), tree = h.render(h.usage.default, { ...scopeProps, assetId, assetName: '源', ...patch });

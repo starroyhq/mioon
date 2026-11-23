@@ -18,7 +18,12 @@ export async function prepareTimelineReferenceHashes(store: {db: DatabaseSync; r
  validateSelection?.(value as Record<string,unknown>);
  const ids = new Set<string>();
  for (const clip of value.clips) {
-  if (!clip || typeof clip !== 'object' || typeof clip.id !== 'string' || typeof clip.assetId !== 'string') throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用', 409);
+  if (!clip || typeof clip !== 'object' || typeof clip.id !== 'string') throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用', 409);
+  // A format-5 placeholder deliberately has no source. Whole-timeline audio
+  // readers skip it; render/export admission reports it as a named blocker
+  // before media preparation. Never admit an arbitrary null id as a placeholder.
+  if ((clip as {assetId?: unknown}).assetId === null && (clip as {sourceState?: unknown}).sourceState === 'placeholder') continue;
+  if (typeof clip.assetId !== 'string') throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用', 409);
   if (clipId === undefined || clip.id === clipId) ids.add(clip.assetId);
  }
  let total = 0, preparedBytes = 0;

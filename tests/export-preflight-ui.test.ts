@@ -534,6 +534,12 @@ test('compact dock keeps the dirty warning and shows blocking issues before stat
   assert.match(css, /\.export-preflight-body\{min-height:0;flex:1;overflow:auto;/);
 });
 
+test('a placeholder blocker names the exact shot in the preflight issue message', () => {
+  assert.match(preflightIssueMessage({code: 'PLACEHOLDER_CLIP', severity: 'error', shotTitle: '路口俯拍'}, 'zh-Hans'), /镜头「路口俯拍」还没生成/);
+  assert.match(preflightIssueMessage({code: 'PLACEHOLDER_CLIP', severity: 'error', shotTitle: 'Road crossing'}, 'en'), /Shot “Road crossing” has not been generated/);
+  assert.match(preflightIssueMessage({code: 'PLACEHOLDER_CLIP', severity: 'error'}, 'zh-Hans'), /占位片段|佔位片段/);
+});
+
 test('check instructions are omitted and the current state and explicit action remain visible', () => {
   let checks = 0;
   const tree = renderPanel({ state: { phase: 'idle' }, canCheck: true, exportBusy: false, onCheck: () => { checks++; } });
