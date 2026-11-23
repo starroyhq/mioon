@@ -10,6 +10,7 @@ import type {Locale} from '../packages/i18n/src/index.ts';
 interface Scenes {
   render(kind: 'strip'|'overview'|'floating', locale: Locale, state?: 'collapsed'|'empty'|'unknown'|'partial'): string;
   clock(frames: number): string;
+  video(locale: Locale): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
 let loaded: Promise<Scenes> | undefined;
@@ -21,6 +22,12 @@ function scenes(): Promise<Scenes> {
       import {BoardFilmOverview,BoardFilmStrip,BoardFloatingLabel,boardFrameTime} from './src/board-ui/BoardFilmComponents.tsx';
       import {boardScene} from '../../tests/fixtures/board-ui-static/scenes.ts';
       export const clock=boardFrameTime;
+      export function video(locale){
+        const projection=boardScene().projection;
+        const film=projection.films[0];
+        const items=film.items.map((item,index)=>index===0?{...item,thumbnailKind:'video'}:item);
+        return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}><BoardFilmStrip film={{...film,items}} open selectedNodeId="shot-1" onOpenChange={()=>{}} onLocateNode={()=>{}} onAddShot={()=>{}}/></I18nProvider>);
+      }
       export function render(kind,locale,state){
         const projection=boardScene().projection;
         const film=projection.films[0];
@@ -100,4 +107,11 @@ test('frame clocks retain partial frames rather than rounding short clips to zer
   assert.equal(clock(1), '0:00:01');
   assert.equal(clock(59), '0:01:29');
   assert.equal(clock(1800), '1:00');
+});
+
+
+test('video film thumbnails render through a video element instead of a broken image', async () => {
+  const html = (await scenes()).video('zh-Hans');
+  assert.match(html, /<video[^>]*src="data:image\/svg\+xml,/u);
+  assert.match(html, /<video[^>]*muted=""[^>]*playsInline=""/u);
 });

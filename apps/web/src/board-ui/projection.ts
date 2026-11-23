@@ -11,6 +11,9 @@ export interface BoardUiNode {
   readonly durationFrames?: number | null;
   readonly status?: BoardGenerationStatus;
   readonly thumbnailUrl?: string | null;
+  /** Video thumbnails must render through `<video>`; a video file in `<img>`
+   * shows the browser's broken-image glyph even though the media is readable. */
+  readonly thumbnailKind?: 'image' | 'video';
   /** SB-b: the retained subject row behind a `subject` card. */
   readonly subjectId?: string;
   readonly subjectKind?: 'character' | 'product' | 'location' | 'look';
@@ -23,6 +26,7 @@ export interface BoardFilmItem {
   readonly durationFrames: number | null;
   readonly status: BoardGenerationStatus;
   readonly thumbnailUrl: string | null;
+  readonly thumbnailKind?: 'image' | 'video';
 }
 
 export interface BoardFilmOverview {
@@ -121,6 +125,7 @@ export function projectBoardUi(
         durationFrames: duration(node),
         status: node.status ?? 'pending',
         thumbnailUrl: node.thumbnailUrl ?? null,
+        ...(node.thumbnailKind ? {thumbnailKind: node.thumbnailKind} : {}),
       };
       itemsById.set(id, item);
       return item;

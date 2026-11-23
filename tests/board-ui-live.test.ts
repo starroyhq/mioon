@@ -384,3 +384,22 @@ test('a lost subject commit retries the same envelope and never re-previews', as
   assert.deepEqual(commits[1]!.input.envelope, commits[0]!.input.envelope);
   assert.equal(h.previews(), 1);
 });
+
+
+test('the film chain uses trimmed main-track clip lengths and marks video thumbnails', () => {
+  const input = rows();
+  const versionA = id(20), assetA = id(10);
+  const board = projectLiveBoard({...input,
+    clips: [
+      {id: id(80), trackId: id(90), durationFrames: 90, sequenceSource: {kind: 'shot', nodeId: shotA}},
+      {id: id(81), trackId: id(90), durationFrames: 60, sequenceSource: {kind: 'shot', nodeId: shotB}},
+    ],
+    assets: [{id: assetA, duration: 4, mimeType: 'video/mp4'}],
+    versions: [{id: versionA, shotId: shotA, assetId: assetA, number: 1}],
+    thumbnailFor: () => 'thumb-video'});
+  assert.equal(board.projection.films[0]!.durationFrames, 90 + 60);
+  const a = board.nodes.find(node => node.id === shotA)!;
+  assert.equal(a.durationFrames, 90);
+  assert.equal(a.thumbnailKind, 'video');
+  assert.equal(board.nodes.find(node => node.id === shotB)!.durationFrames, 60);
+});

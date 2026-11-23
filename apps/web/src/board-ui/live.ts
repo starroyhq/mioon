@@ -55,10 +55,13 @@ const NODE_KINDS: Readonly<Record<string, BoardUiNode['kind'] | undefined>> = {
  * unreadable version still reports the shot's declared duration. */
 export function shotDurationFrames(shot: Row, versions: readonly Row[], assets: readonly Row[],
   clipFrames: number | null = null): number | null {
+  // The board film chain is synced to the timeline: the applied clip's trimmed
+  // length wins over the version's original asset length. Only a shot without a
+  // timeline clip falls back to the immutable version, then the declared shot.
+  if (clipFrames !== null) return clipFrames;
   const selected = text(shot.selectedVersionId) ? versions.find(version => version.id === shot.selectedVersionId) : undefined;
   const asset = selected && text(selected.assetId) ? assets.find(item => item.id === selected.assetId) : undefined;
   if (asset && Number.isFinite(asset.duration) && Number(asset.duration) > 0) return Math.round(Number(asset.duration) * 30);
-  if (clipFrames !== null) return clipFrames;
   if (Number.isFinite(shot.duration) && Number(shot.duration) > 0) return Math.round(Number(shot.duration) * 30);
   return null;
 }
@@ -83,6 +86,10 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
   };
   const assetThumb = (assetId: unknown): string | null => typeof assetId === 'string' && input.thumbnailFor
     ? input.thumbnailFor(assetId) : null;
+  const assetThumbKind = (assetId: unknown): 'image' | 'video' | undefined => {
+    const asset = typeof assetId === 'string' ? assets.find(item => item.id === assetId) : undefined;
+    return typeof asset?.mimeType === 'string' && asset.mimeType.startsWith('video/') ? 'video' : asset ? 'image' : undefined;
+  };
   const nodes: BoardUiNode[] = [];
   const positions: Record<string, {x: number; y: number}> = {};
   const seen = new Set<string>();
@@ -93,7 +100,8 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
     const selected = text(shot.selectedVersionId) ? versions.find(version => version.id === shot.selectedVersionId) : undefined;
     nodes.push({id, kind: 'shot', name: text(shot.title) ?? 'Shot',
       aspectRatio: text(shot.aspectRatio), durationFrames: shotDurationFrames(shot, versions, assets, clipDuration(id)),
-      status: shotStatus(shot, versions, jobs), thumbnailUrl: assetThumb(selected?.assetId)});
+      status: shotStatus(shot, versions, jobs), thumbnailUrl: assetThumb(selected?.assetId),
+      thumbnailKind: assetThumbKind(selected?.assetId)});
     const position = point(shot.position);
     if (position) positions[id] = position;
   }
@@ -110,7 +118,9 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
       ...(kind === 'shot' ? {} : {durationFrames: clipDuration(id)}),
       ...(kind === 'subject' && subject ? {subjectId: subject.id, subjectKind: subject.kind} : {}),
       thumbnailUrl: kind === 'subject' ? assetThumb(subject?.headAssetId) :
-        kind === 'image' || kind === 'video' || kind === 'previs' ? assetThumb(node.assetId) : null});
+        kind === 'image' || kind === 'video' || kind === 'previs' ? assetThumb(node.assetId) : null,
+      thumbnailKind: kind === 'subject' ? 'image' :
+        kind === 'image' || kind === 'video' || kind === 'previs' ? assetThumbKind(node.assetId) : undefined});
     const position = point(node.position);
     if (position) positions[id] = position;
   }
