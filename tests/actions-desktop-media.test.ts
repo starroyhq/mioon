@@ -5,6 +5,7 @@ import {mkdtemp, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startServer} from './helpers/test-server.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {command, executable, probeMediaCli} from '../.github/scripts/media-environment.ts';
 import {exerciseComposition, smokeEnvironment} from '../.github/scripts/desktop-smoke.ts';
 
@@ -28,12 +29,14 @@ test('native CI composition recipe uses real shared HTTP and produces authentica
     const video = path.join(directory, 'synthetic.mp4'), audio = path.join(directory, 'synthetic.wav');
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=2', '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=2', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-n', video], 'SYNTHETIC_VIDEO_FAILED', {env});
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2', '-c:a', 'pcm_s16le', '-n', audio], 'SYNTHETIC_AUDIO_FAILED', {env});
-    server = await startServer({dataDir: path.join(directory, 'workspace'), port: 0});
+    // Same format-5 write/export recipe as the native smoke; activation projects
+    // are the production default after AC, so the dev backend must be format 5.
+    server = await startServer({dataDir: path.join(directory, 'workspace'), port: 0, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION});
     const checks: string[] = [], phases: string[] = [];
     const result = await exerciseComposition({origin: server.url, token: server.token, video, audio, ffprobe, directory, env,
       onCheck: name => { checks.push(name); }, onPhase: phase => { phases.push(phase); }});
     assert.deepEqual(phases, ['seed', 'render']);
-    assert.deepEqual(checks, ['anonymous-http-rpc-denied', 'project-import-and-multitrack-edit-through-public-http-rpc', 'real-authenticated-mp4-with-video-audio-and-expected-geometry']);
+    assert.deepEqual(checks, ['anonymous-http-rpc-denied', 'project-import-and-multitrack-edit-through-public-http-rpc', 'format5-export-capability-and-preflight-ready', 'real-authenticated-mp4-with-video-audio-and-expected-geometry']);
     assert.equal(result.width, 1280); assert.equal(result.height, 720); assert.ok(result.bytes > 1000);
   } finally {
     await server?.close();
