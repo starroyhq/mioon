@@ -14,6 +14,14 @@ test('format-5 clip draft acknowledgement validates the board projection instead
   assert.equal(isTimelineRecord(timeline, {projectId: WIRE_IDS.project, format: 5}), false, 'legacy validator rejects format-5 sourceState/sequenceSource/mainTrack');
   assert.equal(isFormat5Timeline(timeline, {projectId: WIRE_IDS.project}), true);
   assert.equal(clipDraftTimelineAccepted(timeline, WIRE_IDS.project, true), true);
+  const legacy = {id: WIRE_IDS.timeline, projectId: WIRE_IDS.project, revision: 1, width: 720, height: 1280, fps: 30,
+    durationFrames: 30, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    tracks: [{id: '90000000-0000-4000-8000-000000000060', name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
+    clips: [{id: '90000000-0000-4000-8000-000000000030', trackId: '90000000-0000-4000-8000-000000000060',
+      assetId: WIRE_IDS.assetA, name: 'Legacy clip', startFrame: 0, durationFrames: 30, sourceInFrame: 0,
+      rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1}]};
+  assert.equal(isTimelineRecord(legacy, {projectId: WIRE_IDS.project}), true);
+  assert.equal(clipDraftTimelineAccepted(legacy, WIRE_IDS.project, false), true, 'format 4 keeps the legacy validator');
 });
 
 test('an exact matched gain survives draft, request, saved projection and confirmation without rounding', async t => {
