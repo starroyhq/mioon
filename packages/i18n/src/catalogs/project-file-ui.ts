@@ -6,7 +6,7 @@ import type { MessageCatalog } from '../types.ts';
  * contract constants. */
 export const projectFileUiMessages = {
   'projectFile.upgrade.title': {'zh-Hans':'升级项目格式','zh-Hant':'升級專案格式',en:'Upgrade project format',ja:'プロジェクト形式をアップグレード'},
-  'projectFile.upgrade.body': {'zh-Hans':"升级后，Mioon 0.1 无法打开此项目。",'zh-Hant':"升級後，Mioon 0.1 無法開啟此專案。",en:"Mioon 0.1 cannot open this project after the upgrade.",ja:"アップグレード後は Mioon 0.1 でこのプロジェクトを開けません。"},
+  'projectFile.upgrade.body': {'zh-Hans':"升级后，Mioon 0.2 版及更早版本无法打开此项目。",'zh-Hant':"升級後，Mioon 0.2 版及更早版本無法開啟此專案。",en:"Mioon 0.2 and earlier cannot open this project after the upgrade.",ja:"アップグレード後は Mioon 0.2 以前のバージョンでこのプロジェクトを開けません。"},
   'projectFile.upgrade.backup': {'zh-Hans':'升级前会自动保存一份原格式备份','zh-Hant':'升級前會自動儲存一份原格式備份',en:'A backup of the original format is saved before upgrading',ja:'アップグレード前に元の形式のバックアップを自動保存します'},
   'projectFile.upgrade.readOnly': {'zh-Hans':'以只读方式打开','zh-Hant':'以唯讀方式開啟',en:'Open read-only',ja:'読み取り専用で開く'},
   'projectFile.upgrade.open': {'zh-Hans':'升级并打开','zh-Hant':'升級並開啟',en:'Upgrade and open',ja:'アップグレードして開く'},

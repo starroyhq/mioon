@@ -64,14 +64,21 @@ export function copyProjectVersionsToNewProjectInside(source: DatabaseSync, targ
   if (targetHistory.length !== 1 || typeof targetHistory[0].version !== 'number') throw invalid('target-history-format');
   for (const table of historyTablesForVersion(targetHistory[0].version)) {
     if (table === 'mio_storage_counters') continue;
-    if (table === 'canvas_receipt_window') {
-      // Opening an isolated format 4 target can initialize its own epoch.
+    if (table === 'canvas_receipt_window' || table === 'editor_receipt_window') {
+      // Opening an isolated format 4/5 target can initialize its own epoch.
       // A populated cutoff still means the target has been used.
-      const window = target.prepare('SELECT singleton,epoch,floor FROM main.canvas_receipt_window LIMIT 2').all();
+      const window = target.prepare(`SELECT singleton,epoch,floor FROM main.${quote(table)} LIMIT 2`).all();
       if (window.length > 1 || window.some(row => row.singleton !== 1 || row.floor !== 0 ||
         typeof row.epoch !== 'string' || !/^[0-9a-f]{32}$/u.test(row.epoch))) throw invalid('target-not-empty');
       continue;
     }
+    if (table === 'editor_storage_counters') {
+      const counters = target.prepare('SELECT singleton,historyEntries,historyBytes,receiptRows,receiptBytes FROM main.editor_storage_counters LIMIT 2').all();
+      if (counters.length !== 1 || counters.some(row => row.singleton !== 1 || row.historyEntries !== 0 ||
+        row.historyBytes !== 0 || row.receiptRows !== 0 || row.receiptBytes !== 0)) throw invalid('target-not-empty');
+      continue;
+    }
+    if (table === 'editor_history_state') continue;
     if (target.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get()) throw invalid('target-not-empty');
   }
   const counters = target.prepare('SELECT bytes,rows FROM main.mio_storage_counters').all();

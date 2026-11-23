@@ -28,7 +28,7 @@ const detection = async (input: any) => {input.beforeSpawn(input.signal); return
 
 test('format 5 scene split: all tracks, skips, anchor/group, undo and stale result', async t => {
   const rootDir = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-format5-scene-'));
-  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), targetFormat: 5 as const,
     locate: () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')})});
     const library = openAppLibrary({dataDir: path.join(rootDir, 'app')});
   const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),

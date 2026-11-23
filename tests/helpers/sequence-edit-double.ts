@@ -119,7 +119,7 @@ function baselineFrom(timeline: Format5Timeline, shots: ReadonlyMap<string, Row>
 export function createChainWorld(t: test.TestContext, spec: ChainWorldSpec): ChainWorld {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-sequence-edit-'));
   const projectId = uuid(), rootId = spec.rootId ?? uuid(), timelineId = spec.timelineId ?? uuid(), mainTrackId = spec.mainTrackId ?? uuid();
-  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId, projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const shots = new Map<string, Row>(), nodes = new Map<string, Row>(), versions = new Map<string, Row>(), assets = new Map<string, Row>();

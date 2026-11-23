@@ -1,3 +1,4 @@
+import {startOwnedServer} from './helpers/owned-test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
@@ -6,13 +7,13 @@ import type {McpData,WireResult} from './helpers/strict-timeline-transport-types
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import {startOwnedServer} from './helpers/owned-test-server.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import type { BinaryLike } from 'crypto';
 
@@ -43,7 +44,7 @@ const ffmpeg = (args: string[]) => command('ffmpeg', ['-hide_banner', '-loglevel
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-split-media-'));
   await mkdir(evidence, { recursive: true });
-  const server = await startOwnedServer({repo, root, token, args: ['server/index.ts']});
+  const server = await startOwnedServer({repo, root, token, args: ['tests/fixtures/project-server-process.ts', '--format4-project']});
   const base = server.url;
   records.server = { pid: server.child.pid, port: server.port, stdout: '', stderr: '' };
   t.after(async () => {

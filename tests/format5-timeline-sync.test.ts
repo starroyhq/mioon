@@ -34,7 +34,7 @@ type Result = SequenceEditCommitResult;
 
 function fixture(t: test.TestContext): ProjectStore {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-sync-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const projectId = store.projectId;

@@ -115,7 +115,7 @@ function distribution(values: readonly number[]) {
 
 for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing budget with ${total} clips`, t => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-format5-performance-'));
-  const options = {projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true as const,
+  const options = {projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5 as const,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})};
   let store = createProjectStore(options);
   try {

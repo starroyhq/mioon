@@ -3,7 +3,8 @@ import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError, sameContentStamp} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError, sameContentStamp} from '@mioon/business/project-file/index';
+import type {ProjectFileFormat} from '@mioon/business/project-file/index';
 import {readClosedProjectForFormatUpgrade} from '../../../packages/business/src/project-file/closed-copy.ts';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
@@ -60,7 +61,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, targetFormat = PROJECT_FILE_SCHEMA_VERSION, catalogClient, catalogTimeoutMs, updateActivity}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, targetFormat = FORMAT5_PROJECT_SCHEMA_VERSION, catalogClient, catalogTimeoutMs, updateActivity}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -79,9 +80,11 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
   readonly trash?: ProjectTrashActions;
-  readonly targetFormat?: typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION;
+  readonly targetFormat?: ProjectFileFormat;
 }) {
+  targetFormat ??= FORMAT5_PROJECT_SCHEMA_VERSION;
   const format4 = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+  const supportsFormatUpgrades = targetFormat >= FORMAT4_PROJECT_SCHEMA_VERSION;
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
   const windows = new Map<string, WindowSlot<Runtime>>();
@@ -109,7 +112,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   // for existing registrations, while header hints and responses are scoped
   // to the web project root.
   const inspectCatalog = createProjectCatalog({client: catalogClient, guard: assertProjectFile, signal, checkpoint: scope,
-    timeoutMs: catalogTimeoutMs, format4: Boolean(format4)});
+    timeoutMs: catalogTimeoutMs, targetFormat});
   const readCatalog = async (coversAll: boolean) => {
     const before = scope();
     refreshSummaries();
@@ -144,7 +147,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     assertProjectFile?.(file);
     const before=sourceMetadata(file);
     for(const suffix of ['-journal','-wal','-shm'])if(lstatSync(file+suffix,{throwIfNoEntry:false}))sourceMetadata(file+suffix);
-    const stamp=inspectProjectFileReadOnly(file, format4);
+    const stamp=inspectProjectFileReadOnly(file);
     const metadata=inspectCopiedProjectFile(file);
     const after=sourceMetadata(file);
     if(generation(before)!==generation(after)||stamp.projectId!==metadata.projectId||stamp.contentSequence!==metadata.contentSequence||stamp.contentToken!==metadata.contentToken)throw unavailable();
@@ -153,7 +156,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   const registeredFormatSource = (projectId: string): RecentProject => {
     scope();
     const entry = registry.get(projectId);
-    if (!format4 || channel !== 'web' || !entry || !projectEntryWithinRoot(projectsDir, entry.projectFile)) {
+    if (!supportsFormatUpgrades || channel !== 'web' || !entry || !projectEntryWithinRoot(projectsDir, entry.projectFile)) {
       throw new AppError('PROJECT_NOT_FOUND', '项目未登记', 404, {projectId});
     }
     assertProjectFile?.(entry.projectFile);
@@ -165,7 +168,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   };
   const readOnly = (projectId: string, file: string, identity: RecentProject['fileIdentity'], preview?: ProjectFormatUpgradePreview) => {
     const current = scope();
-    if (!format4) throw unavailable();
+    if (!supportsFormatUpgrades) throw unavailable();
     assertProjectFile?.(file);
     if (!sameProjectFileIdentity(fileIdentity(file), identity)) throw projectFileMoved(projectId);
     const view = readClosedProjectForFormatUpgrade(file, projectId, preview);
@@ -284,7 +287,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     observeFormat: async raw => {
       scope();
       const {projectFile, preview} = parse(projectEntryObserveFormatInputSchema, raw);
-      if (!format4) throw unavailable();
+      if (!supportsFormatUpgrades) throw unavailable();
       const {metadata, identity} = observeFile(projectFile);
       if (metadata.projectId !== preview.projectId || metadata.formatVersion !== preview.projectVersion || !sameContentStamp(metadata, preview)) throw projectFileMoved(preview.projectId);
       scope();

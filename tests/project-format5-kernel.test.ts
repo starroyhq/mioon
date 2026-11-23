@@ -182,10 +182,10 @@ for (const release of releases) for (const withHistory of [true, false]) test(`p
     assert.equal(prepared.plan.summary.compactedGapFrames, 6);
     after = format5KernelSnapshot(store);
   } finally {store.close();}
-  assert.equal(inspectProjectFormatReadOnly(f.projectFile, {format5: true}).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(inspectProjectFormatReadOnly(f.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
   assert.throws(() => inspectProjectFormatReadOnly(f.projectFile, {}), {code: 'PROJECT_FORMAT_NEWER'});
   assertOldReleaseRejectsNewer(f.source, f.projectFile, path.join(f.root, 'old-client.json'));
-  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location, format5: true});
+  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
   try {
     assert.deepEqual(parsed(format5KernelSnapshot(reopened)), parsed(after!));
     // Every legacy direct reader now resolves through the shared storage reader.
@@ -238,7 +238,7 @@ for (const portable of [false, true]) test(`actual generated-version ownership p
     assert.equal(store.db.prepare('SELECT count(*) AS n FROM main.jobs').get()!.n, portable ? 0 : 2);
     assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.versions').get()!.n, 2);
   } finally {store.close();}
-  const reopened = openProjectStore({projectFile: paths.projectFile, locate: () => paths.location, format5: true});
+  const reopened = openProjectStore({projectFile: paths.projectFile, locate: () => paths.location});
   try {
     const stored = reopened.get('versions', first.id); assert.ok(object(stored)); assert.equal(stored.sha256, first.sha256);
     assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM main.jobs').get()!.n, portable ? 0 : 2);
@@ -262,7 +262,7 @@ test('a real generated source owned by an archived shot becomes fixed media with
     store.tx(() => applyFormat5ConversionInside(store, prepared));
     assert.deepEqual(store.db.prepare('SELECT * FROM project.shots WHERE id=?').get(String(f.evidence.shot.id)), archived);
   } finally {store.close();}
-  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location, format5: true});
+  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
   try {assert.deepEqual(reopened.db.prepare('SELECT * FROM project.shots WHERE id=?').get(String(f.evidence.shot.id)), archived);}
   finally {reopened.close();}
 });
@@ -322,7 +322,7 @@ test('an archived shot and its hidden first-frame edge survive conversion and a 
     assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.edges WHERE id=?').get(referenceEdge)!.n, 1);
     assert.equal(prepared.plan.timeline!.clips.some(clip => clip.sequenceSource?.kind === 'shot'), false);
   } finally {store.close();}
-  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location, format5: true});
+  const reopened = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
   try {assert.deepEqual(reopened.db.prepare('SELECT * FROM project.shots WHERE id=?').get(String(f.evidence.shot.id)), archived);}
   finally {reopened.close();}
 });
@@ -358,7 +358,7 @@ test('a copied 0.2.0 bundled example converts through the kernel and stays writa
     assert.deepEqual(headerVersions(store), expected);
     assert.equal(prepared.plan.timeline!.clips.filter(clip => clip.trackId === prepared.plan.timeline!.mainTrack.trackId).length, 2);
   } finally {store.close();}
-  const reopened = openProjectStore({projectFile, locate: () => location, format5: true});
+  const reopened = openProjectStore({projectFile, locate: () => location});
   try {
     assert.equal(reopened.projectId, projectId!);
     const project = reopened.get('projects', reopened.projectId); assert.ok(object(project));

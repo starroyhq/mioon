@@ -37,7 +37,7 @@ test('ripple HTTP durable tasks, actual CLI and official MCP agree on strict sch
  let timeline=await services.call('timeline.get',{projectId});
  for(const startFrame of ([0,30] as const))timeline=await services.call('timeline.clip.add',{...request(timeline),assetId,trackId:timeline.tracks[0].id,startFrame,durationFrames:10});
  const clipId=timeline.clips[0].id,following=timeline.clips[1].id;await services.drain();store.close();library.close();
- const backend=spawn(process.execPath,[path.join(repo,'apps/server/src/cli.ts')],{cwd:repo,env:{...env,MIOON_DATA_DIR:root,PORT:'0',MIOON_TOKEN:token},stdio:['ignore','pipe','pipe']});
+ const backend=spawn(process.execPath,[path.join(repo,'tests/fixtures/project-server-process.ts'),'--format4-project'],{cwd:repo,env:{...env,MIOON_DATA_DIR:root,PORT:'0',MIOON_TOKEN:token},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';
  backend.stdout.setEncoding('utf8').on('data',value=>stdout+=value);backend.stderr.setEncoding('utf8').on('data',value=>stderr+=value);
  t.after(async()=>{

@@ -18,7 +18,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {openProjectStore, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {DRAFT_TABLES} from '../packages/business/src/project-file/schema/domains/drafts.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
@@ -74,7 +74,8 @@ async function fixture(t: TestContext) {
   let boundary: ServerOptions['projectCopyBoundaryForTest'];
   const gates: Array<() => void> = [];
   const server = await startServer({dataDir, projectsDir, port: 0, token, inspectApplication: received => {application = received;},
-    inspectProject: received => {inspect = received;}, projectCopyBoundaryForTest: (phase, input) => boundary?.(phase, input)});
+    inspectProject: received => {inspect = received;}, projectCopyBoundaryForTest: (phase, input) => boundary?.(phase, input),
+    projectFormatForTest: FORMAT4_PROJECT_SCHEMA_VERSION});
   t.after(async () => {for (const release of gates) release(); await server.close(); rmSync(root, {recursive: true, force: true});});
   const native = server.projectEntries;
   assert.ok(native.duplicate); assert.ok(native.saveAs);

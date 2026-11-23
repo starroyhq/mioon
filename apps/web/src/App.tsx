@@ -1,4 +1,5 @@
 import {assetMediaPrepareResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
+import type {NewProjectFormatVersion} from '../../../packages/contracts/src/project-entry.ts';
 import {useProjectMedia} from './use-project-media.ts';
 import type {ProjectMediaOwner} from './project-media-state.ts';
 import {sameMediaOwner} from './project-media-state.ts';
@@ -472,7 +473,7 @@ export interface AppProps {
   nativeProjectEntry?: NativeProjectEntryLike | null;
 }
 export interface ModalProps {title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; onClose: () => void; wide?: boolean}
-export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean; newProjectFormatVersion?: 3 | 4}
+export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean; newProjectFormatVersion?: NewProjectFormatVersion}
 declare global {
   interface Window {
     __mioonAssetImport?:AssetImportBridge;
@@ -537,7 +538,7 @@ function Modal({ title, subtitle, children, onClose, wide = false }: ModalProps)
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className={`modal ${wide ? 'wide' : ''}`} showCloseButton={false}><header className="modal-header"><div><DialogTitle>{title}</DialogTitle><DialogDescription className={subtitle ? '' : 'sr-only'}>{subtitle || title}</DialogDescription></div><DialogClose render={<Button variant="ghost" className="icon-button" aria-label={t('shell.closeDialog')} />}><Icon name="close" /></DialogClose></header>{children}</DialogContent></Dialog>;
 }
 function CreateProject({ onClose, onCreate, busy, newProjectFormatVersion }: CreateProjectProps) {
-  const format4 = newProjectFormatVersion === 4;
+  const format4 = (newProjectFormatVersion ?? 3) >= 4;
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [name, setName] = useState(''); const [description, setDescription] = useState('');
   return <Modal title={t('projects.newStory')} onClose={onClose}><form className="modal-form" onSubmit={e => { e.preventDefault(); onCreate(name.trim(), format4 ? '' : description.trim(), format4 ? 'portrait_1080' : undefined); }}><Label className="field-label" htmlFor="project-name">{t('projects.name')}</Label><Input id="project-name" data-testid="project-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('projects.namePlaceholder')} maxLength={150} required autoFocus />{!format4 && <><Label className="field-label" htmlFor="project-description">{t('projects.direction')}<span className="optional">{t('shell.optional')}</span></Label><Textarea id="project-description" rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('projects.directionPlaceholder')} /></>}<Button variant="ghost" className="button primary full" data-testid="create-project-submit" disabled={!name.trim() || busy} type="submit"><Icon name="plus" size={16} />{t('projects.create')}</Button></form></Modal>;
@@ -1918,7 +1919,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (!settingsCurrent() || !await guardProjectNavigation(msg('shell.confirm.createProject'), false, settingsCurrent) || !settingsCurrent()) return false;
       try {
         const directory = await readProjectEntryIdentity(projectEntryIdentityRef.current!);
-        if (directory.newProjectFormatVersion === 4) { description = ''; timelinePresetId = 'portrait_1080'; }
+        if ((directory.newProjectFormatVersion ?? 3) >= 4) { description = ''; timelinePresetId = 'portrait_1080'; }
       }
       catch (error) {
         if (current()) {

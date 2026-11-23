@@ -104,7 +104,7 @@ function assertTriggerGraph(catalog: Catalog) {
 
 for (const format of [PROJECT_FILE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION]) test(`fresh K1 format ${format} connection trigger writes are acyclic, never self-write and cannot implicitly REPLACE`, t => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-trigger-graph-'));
-  const store = format !== PROJECT_FILE_SCHEMA_VERSION ? createProjectStore({projectFile: join(root, 'candidate.mioon'), ...(format === FORMAT5_PROJECT_SCHEMA_VERSION ? {format5: true as const} : {format4: {}}),
+  const store = format !== PROJECT_FILE_SCHEMA_VERSION ? createProjectStore({projectFile: join(root, 'candidate.mioon'), ...(format === FORMAT5_PROJECT_SCHEMA_VERSION ? {targetFormat: 5 as const} : {format4: {}}),
     locate: () => ({localDir: join(root, 'records'), cacheDir: join(root, 'cache'), tempDir: join(root, 'temp')})}) : openStore(root);
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   assert.equal(store.db.prepare('PRAGMA recursive_triggers').get()!.recursive_triggers, 1);

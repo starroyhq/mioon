@@ -20,7 +20,7 @@ const sha = (letter: string): string => letter.repeat(64);
  * separate read-only step a real UI/MT caller runs before confirmation. */
 test('K1 500+500+1,000 format-5 synchronization meets the local p95 budget', t => withK1BenchmarkLock(() => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-perf-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), format5: true,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const projectId = store.projectId;

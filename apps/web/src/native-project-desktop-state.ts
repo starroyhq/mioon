@@ -333,7 +333,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   async function create() {
     if (!editable() || !state.capabilities?.ready || !state.capabilities.create || !state.selection || !state.selection.facts.isLocal || state.selection.facts.volumeReadOnly) return false;
     const selection = state.selection, values = state.values, serial = generation;
-    const format4 = state.newProjectFormatVersion === 4;
+    const format4 = (state.newProjectFormatVersion ?? 3) >= 4;
     const input = {
       token: selection.token, name: values.name.trim(), description: format4 ? '' : values.description,
       timelinePresetId: format4 ? DEFAULT_TIMELINE_OUTPUT_PRESET : values.presetId, createFolder: values.createFolder,
@@ -419,7 +419,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     observeError: fail,
     dismissRisk() {dismissedRisk = true; emit({risks: []});},
     bridge: client,
-    readCloseSnapshot() {return {dirty: !knownCreated && Boolean(state.values.name || state.newProjectFormatVersion !== 4 && state.values.description), busy: state.busy, unknown: Boolean(retry) || retiredWrites.size > 0, identity: [generation, state.createOpen, state.values, state.selection?.token, knownCreated, state.action, retiredWrites.size]};},
+    readCloseSnapshot() {return {dirty: !knownCreated && Boolean(state.values.name || (state.newProjectFormatVersion ?? 3) < 4 && state.values.description), busy: state.busy, unknown: Boolean(retry) || retiredWrites.size > 0, identity: [generation, state.createOpen, state.values, state.selection?.token, knownCreated, state.action, retiredWrites.size]};},
   };
 }
 export type NativeProjectDesktopController = ReturnType<typeof createNativeProjectDesktopController>;

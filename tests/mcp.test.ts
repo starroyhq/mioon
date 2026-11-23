@@ -1,4 +1,5 @@
 import {testEnv} from './helpers/test-env.ts';
+import {startOwnedServer} from './helpers/owned-test-server.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test, {type TestContext} from 'node:test';
@@ -6,13 +7,12 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { execFile } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import {startOwnedServer} from './helpers/owned-test-server.ts';
 import path from 'node:path';
 interface TrafficRecord {at: string; direction: 'client-to-server' | 'server-to-client'; message: {method?: string; params?: {name?: string}; [key: string]: unknown}}
 interface BackendRecord {command: string; args: string[]; port: number; dataDirectory: string; liveProviderEnabled: boolean; stdout?: string; stderr?: string}
@@ -31,12 +31,11 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   const persist = process.env.MIOON_MCP_PERSIST_DIR ? path.resolve(process.env.MIOON_MCP_PERSIST_DIR) : null;
   const root = persist || await mkdtemp(path.join(tmpdir(), 'mioon-mcp-'));
   await mkdir(root, { recursive: true });
-  const server = await startOwnedServer({repo, root, token, args: ['server/index.ts']});
+  const server = await startOwnedServer({repo, root, token, args: ['tests/fixtures/project-server-process.ts', '--format4-project']});
   const base = server.url;
-  const traffic: TrafficRecord[] = [], report: Report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.ts'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['server/index.ts'], port: server.port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
+  const traffic: TrafficRecord[] = [], report: Report = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/mcp.test.ts'] }, implementation: 'Official @modelcontextprotocol/sdk Client and StdioClientTransport', protocolCapture: 'Transport.send and Transport.onmessage wrapper captures actual JSON-RPC handshake and tool calls', backend: { command: process.execPath, args: ['tests/fixtures/project-server-process.ts', '--format4-project'], port: server.port, dataDirectory: root, liveProviderEnabled: false }, calls: [], commands: [] };
   let mcpStderr = '';
   let client: Client | undefined, transport: StdioClientTransport | undefined;
-  const backend = server.child;
   t.after(async () => {
     if (client) await client.close().catch(() => {}); else if (transport) await transport.close().catch(() => {});
     await server.stop();

@@ -85,7 +85,7 @@ test('the legacy package cannot collect or import a live format 4 project',t=>{
 test('the legacy package refuses a live format 5 project with its real format number',t=>{
  const root=scratch(t);
  const target=path.join(root,'candidate5');mkdirSync(target,{mode:0o700});
- const store=createProjectStore({projectFile:path.join(target,'project.mioon'),format5:true,locate:()=>({
+ const store=createProjectStore({projectFile:path.join(target,'project.mioon'),targetFormat:5,locate:()=>({
   localDir:path.join(target,'local'),cacheDir:path.join(target,'cache'),tempDir:path.join(target,'tmp'),
  })});
  t.after(()=>store.close());

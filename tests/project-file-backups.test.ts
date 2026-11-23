@@ -175,8 +175,11 @@ test('format 4 backup copies upgrade only the selected target and retain archive
     assert.equal((restored.get('nodes', nodeId) as {projectId: string}).projectId, copied.projectId);
   } finally {restored.close();}
 
-  for (const targetFormat of [undefined, PROJECT_FILE_SCHEMA_VERSION] as const) {
-    const downgrade = path.join(root, targetFormat === undefined ? 'default-downgrade' : 'explicit-downgrade', 'project.mioon');
+  const defaultCopy = await copyProjectBackup({backupFile: candidateBackup,
+    sourceProjectDir: path.dirname(upgraded.projectFile), projectFile: destination(root, 'default-copy')});
+  assert.equal(defaultCopy.formatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  for (const targetFormat of [PROJECT_FILE_SCHEMA_VERSION] as const) {
+    const downgrade = path.join(root, 'explicit-downgrade', 'project.mioon');
     await assert.rejects(copyProjectBackup({backupFile: candidateBackup, sourceProjectDir: path.dirname(upgraded.projectFile), projectFile: downgrade,
       targetFormat}), {code: 'PROJECT_FORMAT_NEWER', details: {database: 'project', reason: 'format-newer',
       formatVersion: FORMAT4_PROJECT_SCHEMA_VERSION, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION}});

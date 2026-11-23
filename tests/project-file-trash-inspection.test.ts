@@ -165,7 +165,7 @@ test('unknown history profiles are refused instead of treating a failed Mio quer
  const empty=new DatabaseSync(':memory:');try{assert.throws(()=>hasBlockingMioRun(empty,f.projectId),{code:'PROJECT_INVALID'});}finally{empty.close();}
 });
 
-test('default trash admission refuses real candidate project and history files without changing either',t=>{
+test('default trash admission accepts real released-format candidate project and history files without changing either',t=>{
  const f=fixture(t),format4={},projectFile=path.join(f.projectDir,'candidate.mioon');
  const location={localDir:path.join(f.root,'candidate-records'),cacheDir:path.join(f.root,'candidate-cache'),tempDir:path.join(f.root,'candidate-temp')};
  createProjectFile(projectFile,{format4,projectId:f.projectId});
@@ -173,10 +173,9 @@ test('default trash admission refuses real candidate project and history files w
  try{store.put('projects',{id:f.projectId,name:'Candidate project',revision:1});}finally{store.close();}
  const historyFile=()=>path.join(location.localDir,'history.db'),before=evidence(f.root);
  const opts={projectFile,historyFile};
- assert.throws(()=>inspectClosedProjectForTrash(opts),{code:'PROJECT_FORMAT_NEWER',
-  details:{database:'project',reason:'format-newer',formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
- assert.throws(()=>inspectClosedProjectForTrash({projectFile:f.projectFile,historyFile}),{code:'PROJECT_FORMAT_NEWER',
-  details:{database:'history',reason:'format-newer',formatVersion:FORMAT4_HISTORY_SCHEMA_VERSION,supportedFormatVersion:HISTORY_SCHEMA_VERSION}});
+ const acceptedByDefault=inspectClosedProjectForTrash(opts);
+ assert.equal(acceptedByDefault.identity.formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.equal(acceptedByDefault.history?.formatVersion,FORMAT4_HISTORY_SCHEMA_VERSION);
  const accepted=inspectClosedProjectForTrash({...opts,format4});
  assert.equal(accepted.identity.formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
  assert.equal(accepted.history?.formatVersion,FORMAT4_HISTORY_SCHEMA_VERSION);

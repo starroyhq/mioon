@@ -63,13 +63,13 @@ function held(info: BigIntStats): CatalogRecovery | undefined {
   if (isAppLibraryHeld(identity)) return {result: {state: 'invalid', reason: 'not-a-project-file'}};
 }
 
-export function createProjectCatalog({client = createNodeProjectCatalogClient(), guard, signal, checkpoint, timeoutMs = catalogTimeoutMs, format4 = false}: {
+export function createProjectCatalog({client = createNodeProjectCatalogClient(), guard, signal, checkpoint, timeoutMs = catalogTimeoutMs, targetFormat = 5}: {
   readonly client?: ProjectCatalogClient;
   readonly guard?: ApplicationFileGuard;
   readonly signal: AbortSignal;
   readonly checkpoint: () => unknown;
   readonly timeoutMs?: number;
-  readonly format4?: boolean;
+  readonly targetFormat?: number;
 }) {
   signal.addEventListener('abort', () => client.close(), {once: true});
   const formats = new Map<string, NonNullable<ProjectCatalogScanResult['format']>>();
@@ -145,7 +145,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
           journalGeneration: journal ? catalogFileGeneration(journal) : null,
           checkHeader: info.nlink === 1n && mayInspectHeader(file)
             && (info.ino === 0n || !formats.has(file) || !!journal?.isFile() && journal.size > 0n),
-          ...(format4 ? {format4: true} : {}),
+          targetFormat,
         }});
       } catch (error) {
         scanSignal.throwIfAborted();

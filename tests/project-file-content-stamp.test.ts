@@ -10,6 +10,7 @@ import {createProjectFile,inspectProjectFileReadOnly,openProjectConnection} from
 import {openProjectStore,openStagedProjectStore} from '../packages/business/src/project-file/store.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {V1_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
@@ -77,10 +78,10 @@ for(const version of [2,3,4,5,6,7] as const)test(`exact frozen history ${version
  assert.equal(s.db.prepare('SELECT version FROM main.schema_version').get()?.version,10);assert.deepEqual(readSchemaManifest(s.db,'main'),SCHEMA_MANIFEST.history.entries);assert.equal(hash(f.projectFile),before);s.close();
 });
 
-for(const format of [0,1,2,4] as const)test(`header format ${format} refuses before locate and leaves every source/companion byte unchanged`,t=>{
+for(const format of [0,1,2,FORMAT5_PROJECT_SCHEMA_VERSION+1] as const)test(`header format ${format} refuses before locate and leaves every source/companion byte unchanged`,t=>{
  const f=fixture(t),db=new DatabaseSync(f.projectFile);db.exec(`PRAGMA user_version=${format}`);db.close();
  writeFileSync(f.projectFile+'-journal',Buffer.from([1,2,3,4]));const source=readFileSync(f.projectFile),journal=readFileSync(f.projectFile+'-journal'),files=readdirSync(f.root);let located=false;
- assert.throws(()=>openProjectConnection({projectFile:f.projectFile,locate:()=>{located=true;return f.location;}}),code(format>3?'PROJECT_FORMAT_NEWER':'PROJECT_INVALID'));
+ assert.throws(()=>openProjectConnection({projectFile:f.projectFile,locate:()=>{located=true;return f.location;}}),code(format>FORMAT5_PROJECT_SCHEMA_VERSION?'PROJECT_FORMAT_NEWER':'PROJECT_INVALID'));
  assert.equal(located,false);assert.deepEqual(readFileSync(f.projectFile),source);assert.deepEqual(readFileSync(f.projectFile+'-journal'),journal);assert.deepEqual(readdirSync(f.root),files);
 });
 
