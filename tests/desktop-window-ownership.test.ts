@@ -1063,7 +1063,7 @@ for (const source of ['menu', 'settings'] as const) {
 test('011 restart cancelled by an editor close leaves the original backend running', async t => {
   const f = await harness(t, {
     disposition: index => index === 1 ? 'dirty' : 'clean', flush: index => index !== 1,
-    dialog: value => ({response: value.title === '有修改还没保存' ? 1 : 0}),
+    dialog: value => ({response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0}),
   });
   await f.initial();
   const {editor} = await openOwnedEditor(f);
@@ -1296,7 +1296,7 @@ test('actual main retains one application tray across backend restart and destro
 
 for (const disposition of ['dirty', 'unknown']) test(`actual hidden ${disposition} editor is presented before native inspection and cancelling Quit retains tray and backend`, async t => {
   const f = await harness(t, {disposition: index => index === 1 ? disposition : 'clean', flush: () => false,
-    dialog: value => ({response: value.title === '有修改还没保存' ? 1 : 0})}); await f.initial();
+    dialog: value => ({response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0})}); await f.initial();
   const {editor} = await openOwnedEditor(f), tray = f.nativeTray.trays[0];
   await f.get('performTrayAction')('hide'); assert.equal(editor.visible, false);
   tray.menu.at(-1)!.click!(); await until(() => f.r.dialogParents.includes(editor)); await tick();
@@ -1479,7 +1479,7 @@ test('actual main creates a parent-bound settings modal and blocks parent close/
   assert.notEqual(reloadedContext.contextId, firstSettingsContext.contextId);
   const closeSettings = () => f.r.bridge!({ sender: settings.webContents, senderFrame: settings.webContents.mainFrame },
     { action: 'settings-close', contextId: host.contextFor(settings).contextId });
-  settings.disposition = 'dirty'; assert.equal(closeSettings(), true); await until(() => f.r.dialogs.some(item => item.title === '有修改还没保存'));
+  settings.disposition = 'dirty'; assert.equal(closeSettings(), true); await until(() => f.r.dialogs.some(item => item.title === '尚有未保存的修改'));
   await tick(); assert.equal(settings.destroyed, false); assert.equal(host.contextFor(parent).settingsModalOpen, true);
   settings.disposition = 'clean'; assert.equal(closeSettings(), true); await until(() => settings.destroyed);
   assert.equal(host.contextFor(parent).settingsModalOpen, false); assert.equal(parent.destroyed, false);
@@ -1488,7 +1488,7 @@ test('actual main creates a parent-bound settings modal and blocks parent close/
 
 test('actual Quit and Restart ask the dirty settings child before its parent and retain both on cancellation', async t => {
   for (const action of ['quit', 'restart'] as const) {
-    const f = await harness(t, {disposition: index => index === 1 ? 'dirty' : 'clean', flush: () => false, dialog: value => ({response: value.title === '有修改还没保存' ? 1 : 0})});
+    const f = await harness(t, {disposition: index => index === 1 ? 'dirty' : 'clean', flush: () => false, dialog: value => ({response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0})});
     await f.initial(); const parent = f.r.windows[0], host = f.get('windowHost');
     assert.equal(host.showSettings('agent', parent), true); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
     if (action === 'quit') { f.app.quit(); assert.equal(await f.get('quitRouter.pending'), false); }
@@ -1516,7 +1516,7 @@ test('actual main retains the modal fence for a destroyed settings handle until 
 for (const disposition of ['dirty', 'unknown']) {
   test(`actual before-quit inspects focused editor ${disposition} first and cancellation retains both owners and backend`, async t => {
     const f = await harness(t, { disposition: (index: number) => index === 1 ? disposition : 'clean', flush: () => false,
-      dialog: (value: {title: string}) => ({ response: value.title === '有修改还没保存' ? 1 : 0 }) });
+      dialog: (value: {title: string}) => ({ response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0 }) });
     await f.initial(); const { launcher, editor } = await openOwnedEditor(f);
     f.app.quit(); assert.equal(await f.get('quitRouter.pending'), false);
     assert.deepEqual(f.r.nativeChecks, [editor], 'focused source must be admitted before any unrelated owner');

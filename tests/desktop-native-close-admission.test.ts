@@ -1047,7 +1047,7 @@ async function actualMainAdmissionCallbacks(dialog: {showMessageBox?(parent: obj
   const context = vm.createContext({ nt: nativeText, window, context: { ready: { url: 'http://127.0.0.1:45000' } },
     owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}, isCandidate: () => false},
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window: object, value: NativeOptions) => { callbacks = value; return {}; },
-    ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined, updateQuit: undefined,
+    ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined, updateQuit: undefined, quitRouter: {isPending: false},
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
   installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);

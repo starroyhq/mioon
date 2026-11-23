@@ -1120,11 +1120,12 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
     confirmUnknown: () => !updateQuit?.closing && closeDialog({ type: 'warning', title: nt('native.unknownQuitTitle'),
       message: nt('native.unknownQuitMessage'), detail: nt('native.unknownQuitDetail'),
       buttons: [nt('native.unknownQuit'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    confirmDiscard: action => updateQuit?.closing ? false : smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : action === 'close'
+    confirmDiscard: action => updateQuit?.closing ? false : smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : action === 'close' && quitRouter.isPending
       ? closeDialog({type: 'question', title: nt('native.unsavedQuitTitle'), message: nt('native.unsavedQuitMessage'),
         buttons: [nt('native.discardQuit'), nt('native.keepEditing')], defaultId: 1, cancelId: 1}).then(response => response === 0)
       : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
-        message: nt('native.discardReloadMessage'), detail: nt('native.discardReloadDetail'),
+        message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'),
+        detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
         buttons: [nt('native.discard'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
     onBlocked: async reason => {
       if (smokeOutput || updateQuit?.closing) return;
