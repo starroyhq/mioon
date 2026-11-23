@@ -149,6 +149,7 @@ import BrandMark from './BrandMark.tsx';
 import ProjectHome from './ProjectHomeDirectoryScreen.tsx';
 import './project-home.css';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';
+import type {NativeQuitWorkItem, NativeQuitWorkKind} from './native-close-state.ts';
 import { readNativeLegacyClose } from './native-close-legacy.ts';
 import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from './project-open-state.ts';
@@ -1508,6 +1509,51 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return editorInputs.current!.read({ clip: clipDraftRef.current, shot: shotTextRef.current, delivery: localDeliveryRef.current?.controller,
       busy: busyRef.current, navigation, settings: exportSettingsRef.current, range: exportRangeRef.current, defaultSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS });
   }
+  /** Bounded work summary for the native quit dialog. It contains kinds and
+   * counts only; no project data, paths, filenames, prompts or credentials. */
+  function readQuitWork(): readonly NativeQuitWorkItem[] {
+    const projectId = currentProject.current;
+    const items = new Map<NativeQuitWorkKind, {count: number; unknown: boolean}>();
+    const add = (kind: NativeQuitWorkKind, count: number, unknown = false): void => {
+      if (!Number.isSafeInteger(count) || count < 1) return;
+      const previous = items.get(kind);
+      items.set(kind, {count: Math.min(999, (previous?.count ?? 0) + count), unknown: Boolean(previous?.unknown || unknown)});
+    };
+    const busy = busyRef.current;
+    const activeJobs = (dataRef.current.jobs ?? []).filter(job => ['queued', 'submitting', 'running', 'downloading', 'submission_unknown'].includes(job.status));
+    if (activeJobs.length) add('generation', activeJobs.length, activeJobs.some(job => job.status === 'submission_unknown'));
+    const exports = dataRef.current.exports ?? [];
+    for (const item of exports) {
+      if (!['queued', 'running', 'preparing', 'encoding', 'finalizing', 'submission_unknown', 'cancelling'].includes(item.status)) continue;
+      const purpose = typeof item.purpose === 'string' ? item.purpose : null;
+      add(purpose === 'preview' ? 'preview' : 'export', 1, item.status === 'submission_unknown');
+    }
+    try {
+      const state = tasksRef.current?.getState(projectId ?? '') as {items?: readonly {status?: unknown}[]} | null;
+      const active = (state?.items ?? []).filter(task => ['accepted', 'running', 'paused', 'awaiting_approval', 'awaiting_answer'].includes(String(task.status)));
+      if (active.length) add('mio', active.length);
+    } catch { /* A project without a loaded task snapshot has no listed Mio work. */ }
+    for (const key of busy) {
+      const suffix = key.slice(key.indexOf(':') + 1);
+      if (suffix === 'import') add('import', 1);
+      else if (suffix === 'timeline:render:export') add('export', 1);
+      else if (suffix === 'timeline:render:preview') add('preview', 1);
+      else if (suffix === 'format5-generate-placeholder') add('generation', 1);
+    }
+    try {
+      const snapshot = readEditorWindowInputs(false) as {unknown?: unknown; busy?: unknown};
+      if (snapshot.unknown === true) add('unknown', 1, true);
+      if (items.size === 0 && snapshot.busy === true) add('pending', 1);
+    } catch { /* The main process still uses its bounded unavailable dialog. */ }
+    if (items.size === 0) {
+      try {
+        const additional = nativeProjectEntry?.readCloseSnapshot() as {busy?: unknown; unknown?: unknown} | null | undefined;
+        if (additional?.unknown === true) add('unknown', 1, true);
+        else if (additional?.busy === true) add('pending', 1);
+      } catch { /* Optional native snapshot stays absent. */ }
+    }
+    return Object.freeze([...items].map(([kind, value]) => Object.freeze({kind, count: value.count, ...(value.unknown ? {unknown: true} : {})})));
+  }
   function editorWindowCanNavigate(): boolean {
     const snapshot = readEditorWindowInputs(true) as {busy?: unknown; unknown?: unknown};
     if (!snapshot.busy && !snapshot.unknown) return true;
@@ -1516,7 +1562,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   useEffect(() => installNativeCloseAdmission(window as unknown as Parameters<typeof installNativeCloseAdmission>[0], {
     registry: nativeCloseRegistry.current, settings: settingsNavigation.current,
-    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), onObservationPause: (value: boolean) => { projectMediaRef.current.controller.pauseObservation(value); nativeSettingsScope?.pauseObservation(value); } } : {}),
+    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), readQuitWork, onObservationPause: (value: boolean) => { projectMediaRef.current.controller.pauseObservation(value); nativeSettingsScope?.pauseObservation(value); } } : {}),
     readScope: () => JSON.stringify([importSession.current.active, currentProject.current, projectEpoch.current, navigationEpoch.current, editorSession.current]),
     readDocumentURL: () => window.location.href,
     readLegacySnapshot: () => readNativeLegacyClose({ inspectorDirty: dirtyRef.current,

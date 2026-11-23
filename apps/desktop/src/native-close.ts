@@ -1,12 +1,17 @@
 /** Native close admission carries only bounded lifecycle metadata. It exposes no
  * IPC, filesystem, credential, provider, or business-operation capability. */
 export interface NativeCloseInspection {
-  readonly version: 1;
+  readonly version: 1 | 2;
   readonly token: string;
   readonly disposition: 'clean' | 'dirty' | 'blocked' | 'unknown' | 'unknown-dirty';
+  /** Bounded quit work summary; present only in version 2. */
+  readonly work?: readonly NativeQuitWorkItem[];
 }
 export type NativeCloseBlockReason = 'blocked' | 'unavailable' | 'changed';
 export type NativeCloseAction = 'close' | 'reload';
+export const NATIVE_QUIT_WORK_KINDS = Object.freeze(['export', 'preview', 'generation', 'mio', 'import', 'pending', 'unknown'] as const);
+export type NativeQuitWorkKind = typeof NATIVE_QUIT_WORK_KINDS[number];
+export interface NativeQuitWorkItem { readonly kind: NativeQuitWorkKind; readonly count: number; readonly unknown?: boolean }
 type Listener = (...args: unknown[]) => void;
 interface EventSource {
   on(event: string, listener: Listener): unknown;
@@ -15,6 +20,7 @@ interface EventSource {
 interface NativeCloseWindow extends EventSource {
   isDestroyed(): boolean;
   close(): void;
+  destroy?(): void;
   webContents: EventSource & {
     getURL(): string;
     loadURL(url: string): Promise<unknown>;
@@ -22,6 +28,18 @@ interface NativeCloseWindow extends EventSource {
   };
 }
 interface NativeCloseOptions {
+  /** True while the application-wide Quit coordinator owns these closes. */
+  isQuitRequest?(): boolean;
+  /** System shutdown/logout/reboot: autosave only, no 12-26 work prompt. */
+  isSystemShutdown?(): boolean;
+  /** Native 12-26 work decision. True exits; false cancels the whole quit. */
+  onQuitWork?(work: readonly NativeQuitWorkItem[], facts: {readonly dirty: boolean; readonly unknown: boolean}): boolean | Promise<boolean>;
+  /** Native 12-26b decision for a page that did not answer the quit probe. */
+  onQuitUnresponsive?(): 'quit' | 'wait' | Promise<'quit' | 'wait'>;
+  /** The user chose quit and no renderer answer can be obtained. */
+  forceClose?(): void;
+  quitInspectTimeoutMs?: number;
+  quitFlushTimeoutMs?: number;
   /** The captured BrowserWindow, startup, backend, session and allowed origin. */
   isCurrent(): boolean;
   /** Synchronous presentation dependency, separate from window ownership. A
@@ -60,6 +78,7 @@ interface Attempt {
   readonly result: Promise<boolean>;
   readonly resolve: (accepted: boolean) => void;
   readonly reject: (error: unknown) => void;
+  quit?: boolean;
   reloadStarted?: boolean;
   reloadNavigationSeen?: boolean;
   committedDocument?: number;
@@ -78,20 +97,42 @@ interface RendererIncident {
 }
 type BoundedResult = { ok: true; value: unknown } | { ok: false };
 const DEFAULT_TIMEOUT_MS = 1500;
+const QUIT_INSPECT_TIMEOUT_MS = 5000;
+const QUIT_FLUSH_TIMEOUT_MS = 3000;
 const RELOAD_PREPARATION_TIMEOUT_MS = 10000;
 const flushScript = "typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : false";
 const inspectScript = (action: NativeCloseAction, targetUrl: string | null) =>
   `typeof globalThis.__mioonNativeCloseAdmission?.inspect === 'function' ? globalThis.__mioonNativeCloseAdmission.inspect(${JSON.stringify(action)},${JSON.stringify(targetUrl)}) : null`;
 const checkSavedScript = "typeof globalThis.__mioonNativeCloseAdmission?.isSavedForUpdate === 'function' && globalThis.__mioonNativeCloseAdmission.isSavedForUpdate() === true";
 
+function quitWork(value: unknown): readonly NativeQuitWorkItem[] | null {
+  if (!Array.isArray(value) || value.length > 6) return null;
+  const seen = new Set<string>(), result: NativeQuitWorkItem[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const record = item as Record<string, unknown>;
+    if (Object.keys(record).some(key => !['kind', 'count', 'unknown'].includes(key)) ||
+        !NATIVE_QUIT_WORK_KINDS.includes(record.kind as NativeQuitWorkKind) || !Number.isSafeInteger(record.count) ||
+        (record.count as number) < 1 || (record.count as number) > 999 ||
+        record.unknown !== undefined && typeof record.unknown !== 'boolean' || seen.has(record.kind as string)) return null;
+    seen.add(record.kind as string);
+    result.push(Object.freeze({kind: record.kind as NativeQuitWorkKind, count: record.count as number,
+      ...(record.unknown === true ? {unknown: true} : {})}));
+  }
+  return Object.freeze(result);
+}
 function inspection(value: unknown): NativeCloseInspection | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).length !== 3 || !['version', 'token', 'disposition'].every(key => Object.hasOwn(record, key)) ||
-      record.version !== 1 || typeof record.token !== 'string' ||
-      !/^[A-Za-z0-9_.:-]{1,128}$/.test(record.token) ||
+  const version = record.version;
+  if (version !== 1 && version !== 2 || !['version', 'token', 'disposition'].every(key => Object.hasOwn(record, key)) ||
+      Object.keys(record).some(key => !['version', 'token', 'disposition'].includes(key) && !(version === 2 && key === 'work')) ||
+      typeof record.token !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(record.token) ||
       !['clean', 'dirty', 'blocked', 'unknown', 'unknown-dirty'].includes(record.disposition as string)) return null;
-  return { version: 1, token: record.token, disposition: record.disposition as NativeCloseInspection['disposition'] };
+  const work = version === 2 ? quitWork(record.work) : null;
+  if (version === 2 && work === null) return null;
+  return {version, token: record.token, disposition: record.disposition as NativeCloseInspection['disposition'],
+    ...(work === null ? {} : {work})};
 }
 
 /** A deadline abandons observation, never retries or cancels a business write.
@@ -186,6 +227,62 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       try { void Promise.resolve(options.onBlocked(reason, attempt.action)).catch(() => {}); }
       catch { /* An unavailable notice is not permission to close. */ }
     }
+  }
+  function forceQuit(attempt: Attempt): void {
+    if (active !== attempt) return;
+    active = null; allowOnce = null;
+    attempt.abort.abort();
+    if (attempt.closingTimer !== undefined) clearTimeout(attempt.closingTimer);
+    revoke(attempt);
+    attempt.resolve(true);
+    try { options.forceClose?.(); } catch { /* The window may already be gone. */ }
+  }
+  async function quitUnresponsive(attempt: Attempt): Promise<void> {
+    let decision: 'quit' | 'wait' = 'quit';
+    try {
+      decision = await (options.onQuitUnresponsive?.() ?? 'quit');
+    } catch { decision = 'quit'; }
+    if (active !== attempt) return;
+    if (decision === 'quit') forceQuit(attempt);
+    else cancel(attempt);
+  }
+  async function proceedQuit(attempt: Attempt): Promise<void> {
+    try {
+      const flushMs = Math.max(1, Math.min(QUIT_FLUSH_TIMEOUT_MS, Math.floor(options.quitFlushTimeoutMs ?? QUIT_FLUSH_TIMEOUT_MS)));
+      const drained = await bounded(() => contents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + flushMs);
+      if (!current(attempt)) { cancel(attempt); return; }
+      const saved = drained.ok && drained.value === true;
+      const inspectMs = Math.max(1, Math.min(QUIT_INSPECT_TIMEOUT_MS, Math.floor(options.quitInspectTimeoutMs ?? QUIT_INSPECT_TIMEOUT_MS)));
+      const shutdown = options.isSystemShutdown?.() === true;
+      const inspected = await bounded(() => contents.executeJavaScript(inspectScript('close', null)), attempt.abort.signal, Date.now() + inspectMs);
+      if (!current(attempt)) { cancel(attempt); return; }
+      const captured = inspected.ok ? inspection(inspected.value) : null;
+      if (!captured) {
+        if (shutdown) forceQuit(attempt); else await quitUnresponsive(attempt);
+        return;
+      }
+      attempt.token = captured.token;
+      const dirty = captured.disposition === 'dirty' || captured.disposition === 'unknown-dirty';
+      const unknown = captured.disposition === 'unknown' || captured.disposition === 'unknown-dirty';
+      if (dirty && !saved) {
+        if (!options.confirmDiscard) { cancel(attempt); return; }
+        const accepted = await options.confirmDiscard('close');
+        if (!current(attempt)) { cancel(attempt); return; }
+        if (accepted !== true) { cancel(attempt); return; }
+      }
+      let work = captured.work ?? [];
+      // A renderer that could report only `blocked` still gets a truthful exit
+      // row instead of the old one-button dead end.
+      if (work.length === 0 && ['blocked', 'unknown', 'unknown-dirty'].includes(captured.disposition)) work = [{kind: 'pending', count: 1}];
+      if (!current(attempt)) { cancel(attempt); return; }
+      if (work.length > 0 && !shutdown) {
+        if (!options.onQuitWork) { await quitUnresponsive(attempt); return; }
+        const accepted = await options.onQuitWork(work, {dirty, unknown});
+        if (!current(attempt)) { cancel(attempt); return; }
+        if (accepted !== true) { cancel(attempt); return; }
+      }
+      forceQuit(attempt);
+    } catch { cancel(attempt); }
   }
   async function loadCurrentUrl(attempt: Attempt) {
     if (!current(attempt)) { cancel(attempt); return; }
@@ -291,7 +388,8 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     let resolve!: Attempt['resolve'], reject!: Attempt['reject'];
     const result = new Promise<boolean>((accept, fail) => { resolve = accept; reject = fail; });
     const attempt: Attempt = { id: ++serial, document: documentGeneration, abort: new AbortController(), token: null,
-      action, sourceUrl, targetUrl: action === 'reload' ? sourceUrl : null, result, resolve, reject };
+      action, sourceUrl, targetUrl: action === 'reload' ? sourceUrl : null, result, resolve, reject,
+      quit: action === 'close' && options.isQuitRequest?.() === true };
     active = attempt;
     if (action === 'close') { try { options.onCloseStateChange?.('closing'); } catch { /* Metadata cannot change admission. */ } }
     if (mode === 'gone-reload') void loadCurrentUrl(attempt).catch(() => cancel(attempt, 'unavailable'));
@@ -299,6 +397,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       attempt.expiresAt = Date.now() + timeoutMs;
       attempt.closingTimer = setTimeout(() => cancel(attempt, 'changed'), timeoutMs);
     }
+    else if (attempt.quit) void proceedQuit(attempt);
     else void proceed(attempt);
     return attempt;
   }
