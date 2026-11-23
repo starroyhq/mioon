@@ -144,3 +144,45 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
   assert.ok(detached.length >= 3, `expected original plus two detached copies, got ${detached.length}`);
 });
 
+
+test('restored shot length is clamped to the source frames so rounded display duration cannot fail the format-5 fence', (t) => {
+  const root = '20000000-0000-4000-8000-000000000001';
+  const a = '20000000-0000-4000-8000-000000000010', b = '20000000-0000-4000-8000-000000000011';
+  const va = '20000000-0000-4000-8000-000000000050', vb = '20000000-0000-4000-8000-000000000051';
+  const aa = '20000000-0000-4000-8000-000000000060', ab = '20000000-0000-4000-8000-000000000061';
+  const ca = '20000000-0000-4000-8000-000000000020', cb = '20000000-0000-4000-8000-000000000021';
+  const world = createChainWorld(t, {rootId: root,
+    shots: [{id: a, title: 'A', versionId: va}, {id: b, title: 'B', versionId: vb}],
+    versions: [{versionId: va, assetId: aa, sha256: 'a'.repeat(64), durationSeconds: 2},
+      {versionId: vb, assetId: ab, sha256: 'b'.repeat(64), durationSeconds: 4.459}],
+    clips: [{nodeId: a, clipId: ca, startFrame: 0, durationFrames: 60, versionId: va},
+      {nodeId: b, clipId: cb, startFrame: 60, durationFrames: 133, versionId: vb}],
+    edges: [{id: '20000000-0000-4000-8000-000000000030', fromId: root, toId: a},
+      {id: '20000000-0000-4000-8000-000000000031', fromId: a, toId: b}]});
+  // The upgraded project rounds the displayed shot duration to 4.46 s while the
+  // exact asset duration is 4.459 s (133.77 frames). The restore result must
+  // stay within the source range instead of inventing frame 134.
+  world.store.tx(() => {
+    const row = JSON.parse(String((world.store.db.prepare('SELECT data FROM project.shots WHERE id=?').get(b) as {data: string}).data)) as Record<string, unknown>;
+    world.store.put('shots', {...row, duration: 4.46});
+  });
+  const service = createFormat5SequenceEditService(world.store);
+  run(service, world.projectId, 'fr-c-round-delete', [{side: 'board', operation: {kind: 'board',
+    edit: {kind: 'delete', nodeId: b}}}]);
+  const restore = service.preview({projectId: world.projectId, requestId: 'fr-c-round-restore',
+    intents: [{side: 'board', operation: {kind: 'board.restore', items: [{kind: 'shot', id: b}]}}]}) as {envelope: unknown; planDigest: string};
+  assert.ok(restore.envelope);
+  const receipt = service.commit({projectId: world.projectId, envelope: restore.envelope,
+    expectedPlanDigest: restore.planDigest}) as {status: string; actionId: string};
+  assert.equal(receipt.status, 'applied');
+  const clip = sql(world, "SELECT json_extract(data,'$.durationFrames') AS durationFrames FROM project.timeline_clips WHERE sourceNodeId=?", b)!;
+  assert.equal(clip.durationFrames, 133);
+  const timeline = sql(world, "SELECT json_extract(data,'$.durationFrames') AS durationFrames FROM project.timelines")!;
+  assert.equal(timeline.durationFrames, 193);
+  // Restore is one undoable history step, like the other board actions.
+  const history = service.history({projectId: world.projectId}) as SequenceEditHistoryView;
+  assert.equal(history.undo?.actionId, receipt.actionId);
+  service.undo({projectId: world.projectId, requestId: 'fr-c-round-restore-undo', actionId: receipt.actionId,
+    expected: {position: history.position, revision: history.revision}});
+  assert.equal(sql(world, "SELECT json_extract(data,'$.durationFrames') AS durationFrames FROM project.timelines")!.durationFrames, 60);
+});
