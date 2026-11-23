@@ -28,7 +28,7 @@ import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagn
 import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
 import { createWindowsProjectVolumeReaderFromFile } from '../../../packages/node-host/src/windows-project-volume.ts';
@@ -1733,15 +1733,6 @@ else {
     }
     const report = await start(projectsAfterUpdate);
     trayHost?.refresh(); refreshApplicationMenu();
-    if (smokeOutput && process.env.MIOON_DESKTOP_SMOKE_CLOSE_FILE) {
-      const closeFile = process.env.MIOON_DESKTOP_SMOKE_CLOSE_FILE;
-      const timer = setInterval(() => {
-        void readFile(closeFile).then(() => {
-          clearInterval(timer);
-          if (win && !win.isDestroyed()) win.close();
-        }).catch(() => {});
-      }, 200);
-    }
     if (smokeOutput) {
       const output = smokeOutput;
       if (process.env.MIOON_DESKTOP_QUIT_SMOKE === '1') {
