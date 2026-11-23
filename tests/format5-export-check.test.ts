@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
+import {freezeFormat5RenderSnapshot, readFormat5AudioProjection, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
+import {prepareTimelineReferenceHashes} from '../packages/business/src/timeline-reference-prepare.ts';
 
 /** WT-1-05: a saved Format-5 timeline whose native rows are not a legacy
  * TimelineRecord must still reach the export capability/preflight boundary.
@@ -16,6 +18,32 @@ test('format-5 capability check accepts a saved timeline and blocks placeholders
     {projectId, expectedRevision: 1, exportSettings: settings});
   assert.equal(before.status, 'blocked');
   assert.equal(before.issues[0]?.code, 'PLACEHOLDER_CLIP', 'a placeholder is still a product blocker');
+
+  // The board fixture carries synthetic asset rows; add the same relative
+  // locator a managed import carries so the audio projection can resolve it.
+  f.store.tx(() => {
+    const asset = f.store.get('assets', BOARD_IDS.assetA) as any;
+    f.store.put('assets', {...asset, sizeBytes: 1024, reference: {pathForm: 'relative', path: 'media/a.mp4',
+      volume: null, sizeBytes: 1024, mtimeMs: 0, sampledSha256: 'a'.repeat(64), fullSha256: 'a'.repeat(64)}});
+  });
+  // Whole-timeline audio reads omit the placeholder instead of rejecting every
+  // clip; render admission still reports the exact shot title.
+  const audio = readFormat5AudioProjection(f.store)!;
+  assert.deepEqual(audio.legacy.clips.map(clip => clip.id), [BOARD_IDS.clipA]);
+  const render = readFormat5RenderProjection(f.store)!;
+  assert.equal(render.legacy.clips.length, 2);
+  assert.throws(() => freezeFormat5RenderSnapshot(f.store),
+    (error: {code?: string; details?: {blockers?: {code: string; shotTitle?: string}[]}}) =>
+      error.code === 'EXPORT_BLOCKED' && error.details?.blockers?.[0]?.code === 'PLACEHOLDER_CLIP'
+      && error.details.blockers[0].shotTitle === '路口俯拍');
+  assert.throws(() => freezeFormat5RenderSnapshot(f.store), (error: {message?: string}) => /路口俯拍/.test(error.message ?? ''));
+  const preflightBlocked: any = await f.services.call('timeline.export.preflight',
+    {projectId, expectedRevision: 1, exportSettings: settings});
+  assert.equal(preflightBlocked.issues[0]?.code, 'PLACEHOLDER_CLIP');
+  assert.equal(preflightBlocked.issues[0]?.shotTitle, '路口俯拍');
+  // Reference preparation must skip the placeholder rather than rejecting the
+  // selected-clip read; an unrelated clip's missing source is not opened here.
+  assert.equal((await prepareTimelineReferenceHashes(f.store, projectId, {clipId: BOARD_IDS.clipB})).preparedBytes, 0);
 
   // Put the shot's selected version on the main track through the real
   // sequence write path; no native rows are patched by the test.

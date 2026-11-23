@@ -129,7 +129,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
     if(blockers.length){
      report.status='blocked';
      report.issues=blockers.slice(0,EXPORT_PREFLIGHT_LIMITS.issues).map(blocker=>({code:blocker.code,severity:'error',
-       message:messages[blocker.code],clipId:blocker.clipId}));
+       message:messages[blocker.code],clipId:blocker.clipId,...(blocker.shotTitle?{shotTitle:blocker.shotTitle}:{})}));
      return report;
     }
    }

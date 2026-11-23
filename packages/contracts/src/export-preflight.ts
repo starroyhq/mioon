@@ -68,6 +68,7 @@ export const exportPreflightResponseSchema = z.object({
     message: z.string().min(1).max(240),
     assetId: id.optional(),
     clipId: id.optional(),
+    shotTitle: z.string().min(1).max(200).optional(),
   }).strict()).max(EXPORT_PREFLIGHT_LIMITS.issues),
 }).strict().superRefine((value, context) => {
   const fail = (path: (string | number)[], message: string) => context.addIssue({code: z.ZodIssueCode.custom, path, message});
