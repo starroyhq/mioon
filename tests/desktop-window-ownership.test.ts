@@ -916,10 +916,11 @@ test('a blocked candidate close warns only its originating launcher and preserve
   const sender = {sender: candidate.webContents, senderFrame: candidate.webContents.mainFrame};
   const contextId = host.contextFor(candidate).contextId, failure = {code: 'PROJECT_MISSING'};
   assert.equal(f.r.bridge!(sender, {action: 'editor-status', contextId, projectId, phase: 'failed', failure}), true);
-  await until(() => f.r.dialogs.some(item => item.title === '暂时无法安全离开'));
-  const notice = f.r.dialogs.findIndex(item => item.title === '暂时无法安全离开');
-  assert.equal(f.r.dialogParents[notice], launcher);
-  assert.equal(candidate.destroyed, false); assert.equal(candidate.shows, 0);
+  const closeWorkTitle = '还有 1 项工作没完成，要关闭窗口吗？';
+  await until(() => f.r.dialogs.some(item => item.title === closeWorkTitle));
+  const notice = f.r.dialogs.findIndex(item => item.title === closeWorkTitle);
+  assert.equal(f.r.dialogParents[notice], candidate);
+  assert.equal(candidate.destroyed, false); assert.equal(candidate.shows, 1);
   assert.equal(launcher.visible, true); assert.equal(settled, false);
   candidate.disposition = 'clean';
   assert.equal(f.r.bridge!(sender, {action: 'editor-status', contextId, projectId, phase: 'ready'}), false);
@@ -927,7 +928,7 @@ test('a blocked candidate close warns only its originating launcher and preserve
   assert.equal(candidate.closedDelivered, true);
   assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure});
   assert.deepEqual(host.contextFor(launcher).entryReceipt, {entryToken, result});
-  assert.equal(candidate.shows, 0); assert.equal(launcher.visible, true);
+  assert.equal(candidate.shows, 1); assert.equal(launcher.visible, true);
 });
 
 test('actual main centers and titles the launcher with its own window state', async t => {
@@ -1062,8 +1063,8 @@ for (const source of ['menu', 'settings'] as const) {
 
 test('011 restart cancelled by an editor close leaves the original backend running', async t => {
   const f = await harness(t, {
-    disposition: index => index === 1 ? 'dirty' : 'clean',
-    dialog: value => ({response: value.title === '尚有未保存的修改' ? 1 : 0}),
+    disposition: index => index === 1 ? 'dirty' : 'clean', flush: index => index !== 1,
+    dialog: value => ({response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0}),
   });
   await f.initial();
   const {editor} = await openOwnedEditor(f);
@@ -1295,7 +1296,8 @@ test('actual main retains one application tray across backend restart and destro
 });
 
 for (const disposition of ['dirty', 'unknown']) test(`actual hidden ${disposition} editor is presented before native inspection and cancelling Quit retains tray and backend`, async t => {
-  const f = await harness(t, {disposition: index => index === 1 ? disposition : 'clean', dialog: () => ({response: 1})}); await f.initial();
+  const f = await harness(t, {disposition: index => index === 1 ? disposition : 'clean', flush: () => false,
+    dialog: value => ({response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0})}); await f.initial();
   const {editor} = await openOwnedEditor(f), tray = f.nativeTray.trays[0];
   await f.get('performTrayAction')('hide'); assert.equal(editor.visible, false);
   tray.menu.at(-1)!.click!(); await until(() => f.r.dialogParents.includes(editor)); await tick();
@@ -1389,7 +1391,7 @@ test('overlapping native dialogs retain the hide guard until both exact tokens s
 });
 
 for (const kind of ['renderer-recovery', 'blocked-leave'] as const) test(`an active ${kind} native dialog denies tray entry actions and Show restores its exact owner`, async t => {
-  const response = deferred(), title = kind === 'renderer-recovery' ? '界面需要重新载入' : '暂时无法安全离开';
+  const response = deferred(), title = kind === 'renderer-recovery' ? '界面需要重新载入' : '还有 1 项工作没完成，要关闭窗口吗？';
   const f = await harness(t, {disposition: index => kind === 'blocked-leave' && index === 1 ? 'blocked' : 'clean',
     dialog: value => value.title === title ? response.promise : {response: 0}, release: () => response.resolve({response: 2})});
   await f.initial(); const {editor} = await openOwnedEditor(f), host = f.get('windowHost');
@@ -1487,7 +1489,7 @@ test('actual main creates a parent-bound settings modal and blocks parent close/
 
 test('actual Quit and Restart ask the dirty settings child before its parent and retain both on cancellation', async t => {
   for (const action of ['quit', 'restart'] as const) {
-    const f = await harness(t, {disposition: index => index === 1 ? 'dirty' : 'clean', dialog: value => ({response: value.title === '尚有未保存的修改' ? 1 : 0})});
+    const f = await harness(t, {disposition: index => index === 1 ? 'dirty' : 'clean', flush: () => false, dialog: value => ({response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0})});
     await f.initial(); const parent = f.r.windows[0], host = f.get('windowHost');
     assert.equal(host.showSettings('agent', parent), true); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
     if (action === 'quit') { f.app.quit(); assert.equal(await f.get('quitRouter.pending'), false); }
@@ -1514,12 +1516,13 @@ test('actual main retains the modal fence for a destroyed settings handle until 
 
 for (const disposition of ['dirty', 'unknown']) {
   test(`actual before-quit inspects focused editor ${disposition} first and cancellation retains both owners and backend`, async t => {
-    const f = await harness(t, { disposition: (index: number) => index === 1 ? disposition : 'clean', dialog: () => ({ response: 1 }) });
+    const f = await harness(t, { disposition: (index: number) => index === 1 ? disposition : 'clean', flush: () => false,
+      dialog: (value: {title: string}) => ({ response: ['有修改还没保存', '尚有未保存的修改'].includes(value.title) ? 1 : 0 }) });
     await f.initial(); const { launcher, editor } = await openOwnedEditor(f);
     f.app.quit(); assert.equal(await f.get('quitRouter.pending'), false);
     assert.deepEqual(f.r.nativeChecks, [editor], 'focused source must be admitted before any unrelated owner');
     assert.equal(f.r.dialogParents[0], editor);
-    assert.equal(f.r.dialogs[0].title, disposition === 'dirty' ? '尚有未保存的修改' : '此窗口还有结果未知的操作');
+    assert.equal(f.r.dialogs[0].title, disposition === 'dirty' ? '有修改还没保存' : '还有 1 项工作没完成，要退出吗？');
     assert.equal(launcher.destroyed, false); assert.equal(editor.destroyed, false);
     assert.equal(f.r.drains, 0); assert.equal(f.r.children[0].messages.includes('stop'), false);
     assert.equal(f.r.settingsCloses, 0); assert.equal(f.r.finished, 0);
@@ -1558,11 +1561,11 @@ for (const frame of ['replaced', 'uncommitted']) {
 
 test('actual focused editor close reaches later launcher dirty prompt; cancelling partial quit retains its backend', async t => {
   const gate = deferred(); let decision = gate.promise;
-  const f = await harness(t, { disposition: (index: number) => index === 0 ? 'dirty' : 'clean',
-    dialog: (value: { title: string; }) => value.title === '尚有未保存的修改' ? decision : { response: 0 }, release: () => gate.resolve({ response: 1 }) });
+  const f = await harness(t, { disposition: (index: number) => index === 0 ? 'dirty' : 'clean', flush: index => index !== 0,
+    dialog: (value: { title: string; }) => value.title === '有修改还没保存' ? decision : { response: 0 }, release: () => gate.resolve({ response: 1 }) });
   await f.initial(); const { launcher, editor } = await openOwnedEditor(f);
   f.app.quit(); const pending = f.get('quitRouter.pending');
-  await until(() => f.r.dialogs.some(value => value.title === '尚有未保存的修改'));
+  await until(() => f.r.dialogs.some(value => value.title === '有修改还没保存'));
   assert.deepEqual(f.r.nativeChecks, [editor, launcher]);
   assert.equal(editor.closedDelivered, true, 'later owner is prompted only after actual focused editor closure');
   assert.equal(launcher.destroyed, false); assert.equal(f.r.dialogParents.at(-1), launcher);
@@ -1572,7 +1575,7 @@ test('actual focused editor close reaches later launcher dirty prompt; cancellin
   assert.equal(f.r.settingsCloses, 0); assert.equal(f.r.finished, 0);
   assert.equal(f.get('quitCoordinator.state'), 'idle'); assert.equal(f.get('quitRouter.isPending'), false);
   decision = Promise.resolve({ response: 0 }); f.app.quit(); assert.equal(await f.get('quitRouter.pending'), true);
-  assert.equal(launcher.closedDelivered, true); assert.equal(f.r.finished, 1);
+  await until(() => launcher.closedDelivered); assert.equal(launcher.closedDelivered, true); assert.equal(f.r.finished, 1);
   assert.equal(f.r.children[0].messages.filter((type: string) => type === 'stop').length, 1);
 });
 

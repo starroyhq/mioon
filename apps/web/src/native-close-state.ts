@@ -73,7 +73,10 @@ type Ticket = {
   disposition: Disposition;
 };
 interface CommitOptions { discardDirty: boolean; allowDrainFailure: boolean; allowUnknown?: boolean; expiresAt: number; action?: NativeCloseAction; targetUrl?: string | null }
-export interface NativeCloseInspection { version: 1; token: string; disposition: Disposition }
+export const NATIVE_QUIT_WORK_KINDS = Object.freeze(['export', 'preview', 'generation', 'mio', 'import', 'pending', 'unknown'] as const);
+export type NativeQuitWorkKind = typeof NATIVE_QUIT_WORK_KINDS[number];
+export interface NativeQuitWorkItem { readonly kind: NativeQuitWorkKind; readonly count: number; readonly unknown?: boolean }
+export interface NativeCloseInspection { version: 1 | 2; token: string; disposition: Disposition; work?: readonly NativeQuitWorkItem[] }
 interface UnloadEvent { preventDefault(): void; returnValue: string }
 interface LifecycleEvent { readonly type: string }
 type ArmedClose = { ticket: Ticket; expiresAt: number; revoked: boolean; discardDirty: boolean; allowUnknown: boolean };
@@ -82,6 +85,7 @@ type ArmedClose = { ticket: Ticket; expiresAt: number; revoked: boolean; discard
  * approve business work. Main receives only an opaque token and disposition. */
 export function createNativeCloseAdmission({ registry, settings, readScope, readLegacyDirty = () => false, readLegacySnapshot = () => ({ dirty: readLegacyDirty(), identity: [] }), readDocumentURL = () => '',
   readAdditionalSnapshot = () => ({ dirty: false, busy: false, unknown: false, identity: [] }),
+  readQuitWork,
   onObservationPause,
   now = Date.now, newToken = () => globalThis.crypto.randomUUID(), maxLeaseMs = 2000,
 }: {
@@ -92,6 +96,8 @@ export function createNativeCloseAdmission({ registry, settings, readScope, read
   readLegacySnapshot?: () => NativeLegacyCloseSnapshot;
   readDocumentURL?: () => string;
   readAdditionalSnapshot?: () => NativeAdditionalCloseSnapshot;
+  /** Bounded, renderer-local work summary for the native 12-26 dialog. */
+  readQuitWork?: () => readonly NativeQuitWorkItem[];
   onObservationPause?: (paused: boolean) => void;
   now?: () => number;
   newToken?: () => string;
@@ -131,6 +137,21 @@ export function createNativeCloseAdmission({ registry, settings, readScope, read
   };
   const current = (value: Ticket) => ticket === value && matchesCapture(value);
   const block = (event: UnloadEvent) => { event.preventDefault(); event.returnValue = ''; return false; };
+  function quitWork(): readonly NativeQuitWorkItem[] | null {
+    if (!readQuitWork) return null;
+    try {
+      const value = readQuitWork();
+      if (!Array.isArray(value) || value.length > 6) return null;
+      const seen = new Set<string>(), result: NativeQuitWorkItem[] = [];
+      for (const item of value) {
+        if (!item || typeof item !== 'object' || !NATIVE_QUIT_WORK_KINDS.includes(item.kind as NativeQuitWorkKind) ||
+            !Number.isSafeInteger(item.count) || item.count < 1 || item.count > 999 || seen.has(item.kind) ||
+            item.unknown !== undefined && typeof item.unknown !== 'boolean') return null;
+        seen.add(item.kind); result.push(Object.freeze({kind: item.kind, count: item.count, ...(item.unknown === true ? {unknown: true} : {})}));
+      }
+      return Object.freeze(result);
+    } catch { return null; }
+  }
   function captureDisposition(action: NativeCloseAction, targetUrl: string | null, observationReady: boolean) {
     const documentURL = readDocumentURL();
     const validAction = action === 'close' ? targetUrl === null : action === 'reload' &&
@@ -161,7 +182,9 @@ export function createNativeCloseAdmission({ registry, settings, readScope, read
       try {
         const observed = captureDisposition(action, targetUrl, observationReady);
         ticket = {token, ...observed, scope: readScope(), action, targetUrl, interaction};
-        return Object.freeze({version: 1, token, disposition: observed.disposition});
+        const work = action === 'close' ? quitWork() : null;
+        return work === null ? Object.freeze({version: 1, token, disposition: observed.disposition})
+          : Object.freeze({version: 2, token, disposition: observed.disposition, work});
       } catch {
         // Preserve the opaque cancellation handle even if a pure owner reader
         // fails, so main can resume this exact observation without guessing.

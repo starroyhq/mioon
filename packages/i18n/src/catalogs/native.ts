@@ -327,6 +327,138 @@ export const nativeMessages = {
     "en": "Reload anyway",
     "ja": "それでも再読み込み"
   },
+  "native.closeWorkTitle": {
+    "zh-Hans": "还有 {count} 项工作没完成，要关闭窗口吗？",
+    "zh-Hant": "還有 {count} 項工作沒完成，要關閉視窗嗎？",
+    "en": "{count} tasks are still unfinished. Close this window?",
+    "ja": "まだ {count} 件の作業が終わっていません。このウィンドウを閉じますか？"
+  },
+  "native.quitWorkTitle": {
+    "zh-Hans": "还有 {count} 项工作没完成，要退出吗？",
+    "zh-Hant": "還有 {count} 項工作沒完成，要結束嗎？",
+    "en": "{count} tasks are still unfinished. Quit anyway?",
+    "ja": "まだ {count} 件の作業が終わっていません。終了しますか？"
+  },
+  "native.quitWorkExport": {
+    "zh-Hans": "导出会中断，下次打开可以重新导出。",
+    "zh-Hant": "匯出會中斷，下次開啟可以重新匯出。",
+    "en": "Exports will stop. You can export again next time.",
+    "ja": "書き出しは中断されます。次回開いたときにやり直せます。"
+  },
+  "native.quitWorkPreview": {
+    "zh-Hans": "时间线预览会中断，下次打开可以重新预览。",
+    "zh-Hant": "時間線預覽會中斷，下次開啟可以重新預覽。",
+    "en": "Timeline previews will stop. You can preview again next time.",
+    "ja": "タイムラインのプレビューは中断されます。次回開いたときにやり直せます。"
+  },
+  "native.quitWorkGeneration": {
+    "zh-Hans": "有 {count} 个生成任务还在进行；已交给服务商的会继续，下次打开时取回结果，还没交出去的不会提交。",
+    "zh-Hant": "有 {count} 個生成工作還在進行；已交給服務商的會繼續，下次開啟時取回結果，還沒交出去的不會提交。",
+    "en": "{count} generation tasks are still running. Tasks already sent to the provider continue and will be collected next time; tasks not yet sent will not be submitted.",
+    "ja": "{count} 件の生成タスクが実行中です。プロバイダーに送信済みのものは続行され、次回結果を取得します。未送信のものは送信されません。"
+  },
+  "native.quitWorkGenerationUnknown": {
+    "zh-Hans": "有 {count} 个生成任务结果未知；退出后不再跟进，下次打开会再核对。",
+    "zh-Hant": "有 {count} 個生成工作結果未知；結束後不再跟進，下次開啟會再核對。",
+    "en": "{count} generation tasks have unknown results. Quitting stops following up; they are checked again next time.",
+    "ja": "{count} 件の生成タスクは結果不明です。終了後は追跡せず、次回開いたときに再確認します。"
+  },
+  "native.quitWorkMio": {
+    "zh-Hans": "Mio 的任务会停下，下次打开能看到停在哪一步。",
+    "zh-Hant": "Mio 的工作會停下，下次開啟能看到停在哪一步。",
+    "en": "Mio tasks will stop. Next time you open the project you can see where they stopped.",
+    "ja": "Mio のタスクは停止します。次回開いたときにどこで止まったかを確認できます。"
+  },
+  "native.quitWorkImport": {
+    "zh-Hans": "导入会中断，没导完的要重新导入。",
+    "zh-Hant": "匯入會中斷，沒匯完的要重新匯入。",
+    "en": "Imports will stop. Imports that did not finish must be started again.",
+    "ja": "読み込みは中断されます。完了していない読み込みはやり直してください。"
+  },
+  "native.quitWorkPending": {
+    "zh-Hans": "有操作结果还没确认；退出后下次打开会再核对。",
+    "zh-Hant": "有操作結果還沒確認；結束後下次開啟會再核對。",
+    "en": "An operation has not confirmed its result. It is checked again next time.",
+    "ja": "結果未確認の操作があります。次回開いたときに再確認します。"
+  },
+  "native.quitWorkUnknown": {
+    "zh-Hans": "有操作结果还没确认；退出后可能无法再核对。",
+    "zh-Hant": "有操作結果還沒確認；結束後可能無法再核對。",
+    "en": "An operation has not confirmed its result. It may not be possible to check it again after quitting.",
+    "ja": "結果未確認の操作があります。終了後は再確認できない可能性があります。"
+  },
+  "native.quitWorkMore": {
+    "zh-Hans": "还有 {count} 项工作",
+    "zh-Hant": "還有 {count} 項工作",
+    "en": "{count} more tasks",
+    "ja": "さらに {count} 件の作業"
+  },
+  "native.quitUnresponsiveTitle": {
+    "zh-Hans": "“{name}” 窗口没有回应",
+    "zh-Hant": "「{name}」視窗沒有回應",
+    "en": "“{name}” is not responding",
+    "ja": "「{name}」が応答していません"
+  },
+  "native.quitUnresponsiveMessage": {
+    "zh-Hans": "现在退出，还没保存上的修改可能会丢失。",
+    "zh-Hant": "現在結束，還沒儲存上的修改可能會遺失。",
+    "en": "Quitting now may lose changes that are not saved yet.",
+    "ja": "今終了すると、まだ保存されていない変更が失われる可能性があります。"
+  },
+  "native.quitWait": {
+    "zh-Hans": "再等等",
+    "zh-Hant": "再等等",
+    "en": "Wait",
+    "ja": "もう少し待つ"
+  },
+  "native.unsavedQuitTitle": {
+    "zh-Hans": "有修改还没保存",
+    "zh-Hant": "有修改還沒儲存",
+    "en": "Changes are not saved",
+    "ja": "保存されていない変更があります"
+  },
+  "native.unsavedQuitMessage": {
+    "zh-Hans": "退出会丢掉这些修改。",
+    "zh-Hant": "結束會遺失這些修改。",
+    "en": "Quitting will lose these changes.",
+    "ja": "終了するとこれらの変更が失われます。"
+  },
+  "native.discardQuit": {
+    "zh-Hans": "放弃并退出",
+    "zh-Hant": "捨棄並結束",
+    "en": "Discard and quit",
+    "ja": "破棄して終了"
+  },
+  "native.unknownQuitTitle": {
+    "zh-Hans": "有操作还没确认结果",
+    "zh-Hant": "有操作還沒確認結果",
+    "en": "An operation has no confirmed result",
+    "ja": "結果が未確認の操作があります"
+  },
+  "native.unknownQuitMessage": {
+    "zh-Hans": "有操作还没确认结果。",
+    "zh-Hant": "有操作還沒確認結果。",
+    "en": "An operation has not confirmed its result.",
+    "ja": "結果未確認の操作があります。"
+  },
+  "native.unknownCloseDetail": {
+    "zh-Hans": "关闭后可能无法再核对这次操作。",
+    "zh-Hant": "關閉後可能無法再核對這次操作。",
+    "en": "After closing, this operation may no longer be verifiable.",
+    "ja": "閉じた後はこの操作を再確認できなくなる可能性があります。"
+  },
+  "native.unknownQuitDetail": {
+    "zh-Hans": "退出后可能无法再核对这次操作。",
+    "zh-Hant": "結束後可能無法再核對這次操作。",
+    "en": "After quitting, this operation may no longer be verifiable.",
+    "ja": "終了後はこの操作を再確認できなくなる可能性があります。"
+  },
+  "native.unknownQuit": {
+    "zh-Hans": "仍然退出",
+    "zh-Hant": "仍然結束",
+    "en": "Quit anyway",
+    "ja": "それでも終了"
+  },
   "native.quitAnyway": {
     "zh-Hans": "仍然退出",
     "zh-Hant": "仍然結束",

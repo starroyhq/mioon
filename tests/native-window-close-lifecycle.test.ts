@@ -61,7 +61,7 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
     nativeSettingsScope: { pauseObservation(paused: unknown) { pauses.push(paused); } },
     window, document, globalThis: global, useEffect: (callback: () => ()=>void) => cleanups.push(callback()), installNativeCloseAdmission,
     nativeCloseRegistry: { current: createNativeCloseRegistry() }, settingsNavigation: { current: createSettingsNavigationRegistry() },
-    readEditorWindowInputs: () => additional, readNativeLegacyClose: () => ({ dirty: false, identity: [] }),
+    readEditorWindowInputs: () => additional, readQuitWork: () => [], readNativeLegacyClose: () => ({ dirty: false, identity: [] }),
     preferencesRef: { current: { flush: () => write('preferences-put'), hasUnsaved: () => false } },
     lastProjectRef: { current: { flush: () => write('locator-put') } },
     localDeliveryRef: { current: { controller: { hasUnsaved: () => { calls.push('title-sync'); return true; }, flush: () => write('title-put') } } },
