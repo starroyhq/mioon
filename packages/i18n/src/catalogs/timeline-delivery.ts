@@ -1384,12 +1384,6 @@ export const timelineDeliveryMessages = {
     "en": "Fixed font not yet verified",
     "ja": "固定フォントは未検証"
   },
-  "export.preflight.sourceScope": {
-    "zh-Hans": "素材检查范围",
-    "zh-Hant": "素材檢查範圍",
-    "en": "Asset check scope",
-    "ja": "素材の確認範囲"
-  },
   "export.preflight.incompleteWarning": {
     "zh-Hans": "检查未完成",
     "zh-Hant": "檢查未完成",
@@ -1965,18 +1959,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "{seconds} 秒 · {frames} 影格",
     "en": "{seconds} seconds · {frames} frames",
     "ja": "{seconds} 秒 · {frames} フレーム"
-  },
-  "export.preflight.subtitleScope": {
-    "zh-Hans": "字幕：{status}。本次不测量实际文字宽高；渲染时逐条测量，超出安全区域会拒绝导出，不缩小、换行或截断文字",
-    "zh-Hant": "字幕：{status}。本次不測量實際文字寬高；算繪時逐條測量，超出安全區域將拒絕匯出，不會縮小、換行或截斷文字",
-    "en": "Subtitles: {status}. Actual text width and height are not measured now. Each subtitle is measured when rendering; text outside the safe area blocks export rather than being shrunk, wrapped or truncated",
-    "ja": "字幕：{status}。今回は実際の文字の幅と高さを測定しません。レンダリング時に字幕ごとに測定し、安全領域を超える場合は書き出しを拒否します。文字の縮小、折り返し、切り詰めは行いません"
-  },
-  "export.preflight.checkedAssets": {
-    "zh-Hans": "已检查 {checked} / {total} 个素材 · 已校验 {bytes}",
-    "zh-Hant": "已檢查 {checked} / {total} 個素材 · 已驗證 {bytes}",
-    "en": "Checked {checked} / {total} assets · Verified {bytes}",
-    "ja": "素材 {checked} / {total} 件を確認 · {bytes} を検証済み"
   },
   "recovery.storage.durableCount": {
     "zh-Hans": "{count} 类本地编辑请求由现有 SQLite 任务台账保留原编号与完整参数。最多保留 4096 个请求身份，已完成并关闭的记录也占容量；尚未提供归档或槽位清理，不会自动删除旧身份。达到上限会阻止新建此类任务，不表示磁盘已满，也不是整个数据库或 WAL 的大小上限",
@@ -2770,12 +2752,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "正在使用目前設定進行有限額的本機編碼檢查…",
     "en": "Running a bounded local encoding check with current settings…",
     "ja": "現在の設定で上限付きのローカルエンコード検査を実行中…"
-  },
-  "export.preflight.capability.available": {
-    "zh-Hans": "当前设置已通过本地编码检查。实际导出时仍会重新验证",
-    "zh-Hant": "目前設定已通過本機編碼檢查。實際匯出時仍會重新驗證",
-    "en": "Current settings passed the local encoding check. Actual export will revalidate them",
-    "ja": "現在の設定はローカルのエンコード検査に合格しました。実際の書き出し時にも再検証します"
   },
   "export.preflight.capability.unavailable": {
     "zh-Hans": "本机编码工具不可用，或缺少当前导出所需的能力。请检查 FFmpeg 配置后重新检查",

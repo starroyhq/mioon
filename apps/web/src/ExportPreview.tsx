@@ -7,16 +7,14 @@ import type { PreviewResult } from './export-preview-state.ts';
 import {useExportWorkflowStep,useExportWorkflowMedia} from './ExportWorkflow.tsx';
 import Icon from './icons.tsx';
 import { mediaUrl } from './api.ts';
-import ExportRangeSummary from './ExportRangeSummary.tsx';
 
 /** This player owns only its exact real output. It never drives editor playback. */
-export default function ExportPreview({ result, visible, canSelect, canGenerate, onSelect, onGenerate, onBeforePlay, onRegisterMediaPause, rangeDraft, onRangeChange, preflightState, canCheck, onCheck, checkDetails }: {
+export default function ExportPreview({ result, visible, canSelect, canGenerate, onGenerate, onBeforePlay, onRegisterMediaPause, rangeDraft, onRangeChange, preflightState }: {
   rangeDraft: { startText: string; endText: string } | null;
   onRangeChange: (draft: { startText: string; endText: string }) => void;
-  checkDetails?: React.ReactNode;
-  preflightState: { phase: 'idle' | 'checking' | 'ready' | 'incomplete' | 'blocked' | 'error' | 'stale'; error?: unknown } | null; canCheck: boolean; onCheck: () => void;
+  preflightState: { phase: 'idle' | 'checking' | 'ready' | 'incomplete' | 'blocked' | 'error' | 'stale'; error?: unknown } | null;
   result: PreviewResult; visible: boolean; canSelect: boolean; canGenerate: boolean;
-  onSelect: () => void; onGenerate: () => void | Promise<unknown>; onBeforePlay: () => void;
+  onGenerate: () => void | Promise<unknown>; onBeforePlay: () => void;
   onRegisterMediaPause: (pause: () => void) => () => void;
 }) {
   const { t } = useI18n(), step=useExportWorkflowStep(), formal=useExportWorkflowMedia();
@@ -56,7 +54,7 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
   const canRequest = canGenerate && !preparing && !running && result.phase !== 'unknown';
   // A retained control must not dispatch through a newer render's owner. The
   // application repeats the project/intent checks after its asynchronous check.
-  const actions = { visible, step, canRequest, canSelect, canCheck, onGenerate, onSelect, onCheck, onRangeChange };
+  const actions = { visible, step, canRequest, canSelect, onGenerate, onRangeChange };
   const currentActions = useRef(actions);
   useLayoutEffect(() => { currentActions.current = actions; });
   const actionCurrent = () => currentActions.current === actions && actions.visible && actions.step <= 3;
@@ -86,22 +84,10 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
         <label><span className="sr-only">{t('export.sample.end')}</span><input type="number" min="1" step="1" placeholder="300" value={rangeDraft?.endText || ''} disabled={!canSelect || requesting || !visible} onChange={event => { if (actionCurrent() && actions.canSelect && !generationFlight.current) actions.onRangeChange({ startText: rangeDraft?.startText || '', endText: event.target.value }); }} /></label>
         <Button className="button" disabled={!canRequest || !visible} onClick={generateSample} data-testid="export-preview-generate">{t(preparing?'redesign.export.samplePreparing':running?'redesign.export.sampleRendering':'redesign.export.generateSampleCompact')}</Button>
       </div>
-      <p className="export-sample-note">{t('redesign.export.sampleScope')}</p>
       {preparing && <p role="status" className="export-sample-status">{t('redesign.export.samplePreparing')}</p>}
       {result.phase !== 'idle' && <p role="status" aria-live="polite" className="export-sample-status" data-testid="export-preview-status">{t(`export.sample.phase.${result.phase}`)}</p>}
       {result.stale && <p className="notice warning" data-testid="export-preview-stale">{t('redesign.export.sampleStale')}</p>}
       {mediaError && <p className="notice warning">{t('export.sample.mediaError')}</p>}
-      <details className="export-settings-help export-sample-details" data-testid="export-preview-details" open={['blocked', 'error'].includes(preflightState?.phase || '') || undefined}>
-        <summary>{t('redesign.export.details')}</summary>
-        <div className="export-preview-actions">
-          <Button variant="ghost" className="button" disabled={!canSelect || requesting || !visible} onClick={() => { if (actionCurrent() && actions.canSelect && !generationFlight.current) actions.onSelect(); }} data-testid="export-preview-select">{t('export.sample.select')}</Button>
-          <Button variant="ghost" className="button" disabled={!canCheck || preparing || !visible} onClick={() => { if (actionCurrent() && actions.canCheck && !generationFlight.current) actions.onCheck(); }} data-testid="export-preview-check">{t('export.sample.check')}</Button>
-        </div>
-        {preflightState && preflightState.phase !== 'idle' && <p role="status">{t('export.sample.checkState', { state: t(`export.preflight.phase.${preflightState.phase}`) })}</p>}
-        {checkDetails}
-        {result.record && <><ExportRangeSummary input={result.record.snapshot} snapshot testId="export-preview-range" /><small className="export-frozen-settings">{t('export.sample.receipt', { id: result.record.id })}</small></>}
-        {result.url && <Button variant="ghost" className="button" onClick={() => { if (actionCurrent()) setClosed(value => !value); }}>{t(closed ? 'export.sample.reopen' : 'export.sample.close')}</Button>}
-      </details>
     </>}
   </section>;
 }
