@@ -53,3 +53,13 @@ test('a format-5 commit rejection keeps its bounded reason for the specific rest
     {database: 'project', reason: 'metadata'}, true, 422));
   assert.deepEqual(failure, {kind: 'rejected', code: 'PROJECT_INVALID', reason: 'metadata'});
 });
+
+test('board right-click and Delete-key deletion go through the workbench delete decision', () => {
+  const board = readFileSync(new URL('../apps/web/src/board-ui/BoardUiLive.tsx', import.meta.url), 'utf8');
+  assert.match(board, /readonly onDelete\?: \(nodeId: string\) => void/u);
+  assert.match(board, /data-testid="board-menu-delete"[^>]*onClick=\{\(\) => deleteNode\(menuNode\.id, menuNode\.name\)\}/u);
+  assert.match(board, /event\.key === 'Delete' \|\| event\.key === 'Backspace'[\s\S]*?deleteNode\(node\.id, node\.name\)/u);
+  const fixture = readFileSync(new URL('./fixtures/board-ui-wire/entry.tsx', import.meta.url), 'utf8');
+  assert.match(fixture, /onDelete=\{nodeId => \{void run\(boardDeleteIntent\(nodeId\)/u,
+    'the real board wire fixture exercises the same delete callback');
+});
