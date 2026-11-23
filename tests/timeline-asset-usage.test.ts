@@ -378,3 +378,22 @@ test('projection source has no storage, RPC, mutation or untyped-boundary escape
   assert.doesNotMatch(source, /^import\s/m, 'pure dependency-free projection');
   assert.doesNotMatch(source, /\b(?:fetch|localStorage|sessionStorage|indexedDB)\b|@ts-ignore|@ts-nocheck|\bas\s+(?:unknown|any)\b|:\s*any\b/);
 });
+
+
+test('generation placeholders keep other asset uses known and are not counted as uses', () => {
+  const input = fixture();
+  input.timeline.clips.push({...clip(id(8), {startFrame: 30}), assetId: null, sourceState: 'placeholder',
+    versionId: null, jobId: null} as never);
+  input.timeline.durationFrames = 60;
+  const result = deriveTimelineAssetUsage(input);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.usesByAssetId[firstAssetId].length, 1);
+  assert.equal(result.usesByAssetId[firstAssetId][0].sourceInFrame, 15);
+});
+
+test('a null clip asset is only tolerated when it is an explicit placeholder', () => {
+  const input = fixture();
+  input.timeline.clips.push({...clip(id(8), {startFrame: 30}), assetId: null} as never);
+  input.timeline.durationFrames = 60;
+  assertUnknown(input);
+});

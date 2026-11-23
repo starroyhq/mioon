@@ -72,6 +72,9 @@ export interface BoardInspectorProps {
   readonly generationOptions?: BoardGenerationOptions;
   readonly onGenerationOptionsChange?: (shotId: string, options: BoardGenerationOptions) => void;
   readonly inputs?: SequenceGenerationInputView | null;
+  /** Format-5 previs selection: reuse the same PrevisInspector as formats 3/4
+   * instead of the generic node card, so its keyframes and open entry are shown. */
+  readonly previsInspector?: React.ReactNode;
   readonly onInputRoleChange?: (edgeId: string, shotId: string, role: ChainReferenceRole) => void;
   readonly onInputDetach?: (entry: SequenceGenerationInputEntryView, shotId: string) => void;
   readonly onInputPrimary?: (edgeId: string, shotId: string) => void;
@@ -430,6 +433,9 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       </button>
     </>}
   </div> : null;
+  // A previs card owns the exact same inspector as formats 3/4 (keyframe
+  // thumbnails, output links and 打开预演), including its own aside wrapper.
+  if (selected?.kind === 'previs' && props.previsInspector) return <>{props.previsInspector}</>;
   return <aside className="inspector board-inspector" data-testid="board-inspector" aria-label={t('shell.properties')}>
     {!selected ? <>
       <BoardFilmOverview overview={props.board.projection.overview}/>
