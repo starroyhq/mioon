@@ -248,13 +248,18 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
   }
   async function proceedQuit(attempt: Attempt): Promise<void> {
     try {
+      const startedAt = Date.now();
       const flushMs = Math.max(1, Math.min(QUIT_FLUSH_TIMEOUT_MS, Math.floor(options.quitFlushTimeoutMs ?? QUIT_FLUSH_TIMEOUT_MS)));
       const drained = await bounded(() => contents.executeJavaScript(flushScript), attempt.abort.signal, Date.now() + flushMs);
       if (!current(attempt)) { cancel(attempt); return; }
       const saved = drained.ok && drained.value === true;
       const inspectMs = Math.max(1, Math.min(QUIT_INSPECT_TIMEOUT_MS, Math.floor(options.quitInspectTimeoutMs ?? QUIT_INSPECT_TIMEOUT_MS)));
+      // The 5-second “page did not answer” budget starts when Quit starts, not
+      // after the 3-second autosave. A slow save cannot move the unresponsive
+      // dialog past the documented deadline.
+      const inspectDeadline = Math.min(startedAt + inspectMs, Date.now() + inspectMs);
       const shutdown = options.isSystemShutdown?.() === true;
-      const inspected = await bounded(() => contents.executeJavaScript(inspectScript('close', null)), attempt.abort.signal, Date.now() + inspectMs);
+      const inspected = await bounded(() => contents.executeJavaScript(inspectScript('close', null)), attempt.abort.signal, inspectDeadline);
       if (!current(attempt)) { cancel(attempt); return; }
       const captured = inspected.ok ? inspection(inspected.value) : null;
       if (!captured) {
