@@ -16,7 +16,7 @@ test('film strip follows SA chain order rather than presentation enumeration', (
     {...node('second', 'shot', 90), status: 'generating'},
     {...node('film', 'film'), name: 'Evening', aspectRatio: '9:16', durationFrames: 999},
     {...node('last', 'shot', 150), status: 'pending'},
-    {...node('first', 'shot', 120), status: 'ready', thumbnailUrl: 'synthetic:first'},
+    {...node('first', 'shot', 120), status: 'ready', thumbnailUrl: 'synthetic:first', thumbnailKind: 'video'},
     {...node('third', 'shot', 90), status: 'ready'},
   ];
   const derivation = deriveFilmChains({nodes, edges: [
@@ -29,6 +29,7 @@ test('film strip follows SA chain order rather than presentation enumeration', (
   assert.equal(projection.films[0]!.aspectRatio, '9:16');
   assert.equal(projection.films[0]!.durationFrames, 450, 'the root display does not override the derived duration');
   assert.equal(projection.films[0]!.items[0]!.thumbnailUrl, 'synthetic:first');
+  assert.equal(projection.films[0]!.items[0]!.thumbnailKind, 'video');
   assert.deepEqual(projection.overview, {
     shotCount: 4, completedCount: 2, generatingCount: 1, pendingCount: 1, floatingCount: 0, durationFrames: 450,
   });
