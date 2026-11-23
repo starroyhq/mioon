@@ -51,6 +51,5 @@ export const canvasTimelineMessages = {
   'export.content.timelineMeta': { 'zh-Hans': { one: '{count} 个片段 · {tracks} 条轨道 · {duration}', other: '{count} 个片段 · {tracks} 条轨道 · {duration}' }, 'zh-Hant': { one: '{count} 個片段 · {tracks} 條軌道 · {duration}', other: '{count} 個片段 · {tracks} 條軌道 · {duration}' }, en: { one: '{count} clip · {tracks} tracks · {duration}', other: '{count} clips · {tracks} tracks · {duration}' }, ja: { one: '{count} クリップ · {tracks} トラック · {duration}', other: '{count} クリップ · {tracks} トラック · {duration}' } },
   'export.content.storyboard': { 'zh-Hans': '按分镜导出', 'zh-Hant': '依分鏡匯出', en: 'Export by storyboard', ja: 'ストーリーボード順に書き出す' },
   'export.content.storyboardTag': { 'zh-Hans': '分镜草稿', 'zh-Hant': '分鏡草稿', en: 'Storyboard draft', ja: 'ストーリーボード下書き' },
-  'export.content.storyboardDetail': { 'zh-Hans': "仅拼接镜头的选用版本", 'zh-Hant': "僅拼接鏡頭的選用版本", en: "Joins selected shot versions", ja: "選択中のショットバージョンを連結" },
   'export.content.storyboardAction': { 'zh-Hans': '导出分镜草稿', 'zh-Hant': '匯出分鏡草稿', en: 'Export storyboard draft', ja: 'ストーリーボード下書きを書き出す' },
 } as const satisfies MessageCatalog;

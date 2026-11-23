@@ -105,7 +105,8 @@ export function preflightIssueMessage(issue: unknown,locale: Locale = 'zh-Hans')
 }
 
 export function exportCapabilityMessage(status: unknown,locale: Locale = 'zh-Hans'): string {
-  return ({ idle: translate(locale, 'export.preflight.capability.idle'), checking: translate(locale, 'export.preflight.capability.checking'), available: translate(locale, 'export.preflight.capability.available'), unavailable: translate(locale, 'export.preflight.capability.unavailable'), incomplete: translate(locale, 'export.preflight.capability.incomplete'), stale: translate(locale, 'export.preflight.capability.stale'), blocked: translate(locale, 'export.preflight.capability.blocked') } as Readonly<Record<string,string>>)[String(status)] || translate(locale, 'export.preflight.capability.unknown');
+  if (status === 'available') return '';
+  return ({ idle: translate(locale, 'export.preflight.capability.idle'), checking: translate(locale, 'export.preflight.capability.checking'), unavailable: translate(locale, 'export.preflight.capability.unavailable'), incomplete: translate(locale, 'export.preflight.capability.incomplete'), stale: translate(locale, 'export.preflight.capability.stale'), blocked: translate(locale, 'export.preflight.capability.blocked') } as Readonly<Record<string,string>>)[String(status)] || translate(locale, 'export.preflight.capability.unknown');
 }
 
 function boundReport(report: ExportPreflightReport,context: Record<string, unknown>): boolean {

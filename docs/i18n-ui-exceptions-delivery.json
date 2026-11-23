@@ -23,13 +23,6 @@
       "reason": "SHA-256 is the standard technical checksum algorithm label; the following digest is original report evidence. Surrounding explanation is localized. Reviewed original literal: \"SHA-256：\"."
     },
     {
-      "file": "apps/web/src/TimelineExportPreflight.tsx",
-      "category": "visible-jsx",
-      "hash": "af09eb60a1a56d2daa60f608d2304b2e214cd905f8c9f9d29a2424d4fe551143",
-      "owner": "delivery",
-      "reason": "Fixed media unit/codec notation (fps, Mb/s, AAC, kb/s), preserving exact supported output settings. The surrounding labels and explanatory sentences use export catalog keys. Reviewed original literal: \"fps\"."
-    },
-    {
       "file": "apps/web/src/TimelineExportSettings.tsx",
       "category": "visible-jsx",
       "hash": "dd118fdd342f0d8eca7753979d646797e9e81079b382b44f086b05ed6c72e392",

@@ -350,7 +350,7 @@ test('blocked Check retains accessible recovery controls and pending copy points
 test('actual dock view keeps the unsaved status and uses the checked snapshot without initiating reads', async () => {
   const f = fixture(); await f.ready(); const tree = renderPanel({ state: f.state(), projectName: '片名', dirty: true });
   const text = textOf(tree);
-  for (const expected of ['未保存修改', '720 × 1280', '30 fps']) assert.ok(text.includes(expected), expected);
+  for (const expected of ['未保存修改']) assert.ok(text.includes(expected), expected); assert.doesNotMatch(text, /720 × 1280|30 fps 的检查摘要|说明/);
   assert.doesNotMatch(text, /镜头、片段和源范围|检查报告不是导出成功凭据/);
   assert.equal(findNode(tree, 'preflight-export').props.disabled, false);
   assert.doesNotMatch(panelSource, /useEffect|useState|\bfetch\s*\(|\brpc\s*\(|localStorage|sessionStorage|role="dialog"/);
@@ -527,7 +527,6 @@ test('compact dock keeps the dirty warning and shows blocking issues before stat
   assert.match(textOf(dirty), /本次不包含/);
   const issues = all.findIndex(node => node.props['data-testid'] === 'preflight-issues');
   assert.ok(issues > 0); assert.ok(issues < all.findIndex(node => node.props.className === 'export-preflight-checked'));
-  assert.ok(issues < all.findIndex(node => node.props.className === 'export-preflight-summary'));
   assert.match(textOf(all[issues]), /源素材缺失/);
   const body = all.find(node => node.props.className === 'export-preflight-body')!, footer = all.find(node => node.type === 'footer')!;
   assert.equal(nodes(body).includes(footer), false, 'Actions stay outside report scroll');
@@ -549,4 +548,14 @@ test('check instructions are omitted and the current state and explicit action r
   assert.equal(checks, 1);
   const ready = renderPanel({ state: { phase: 'ready' } });
   assert.doesNotMatch(textOf(ready), /打开面板不会开始检查|短时合成编码与 MP4 封装/);
+});
+
+test('export dialog removes explanatory copy and disclosure labels in every locale catalog', () => {
+  const f = fixture();
+  const tree = renderPanel({ state: { ...f.state(), phase: 'ready' } });
+  const text = textOf(tree);
+  for (const value of ['检查结果为准', '素材检查范围', '最多 300', '依设备与内容而定', '说明']) assert.doesNotMatch(text, new RegExp(value), value);
+  for (const key of ['redesign.export.sampleScope', 'redesign.export.verifiedWithCapability', 'redesign.export.timeUnknown',
+    'export.preflight.capability.available', 'export.preflight.sourceScope', 'export.preflight.checkedAssets',
+    'export.preflight.subtitleScope', 'export.content.storyboardDetail']) assert.equal(Object.hasOwn(i18n.catalogs, key), false, key);
 });

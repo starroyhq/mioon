@@ -67,23 +67,22 @@ test('actual TSX guards both play events and reciprocal pause without autoplay',
   video!.props.onPlaying({ currentTarget: detached }); assert.equal(detached.pauseCount, 1); assert.equal(h.ownerCalls(), 2);
   h.unmount();
 });
-test('late events cannot restart hidden, closed, stale, background or unmounted media', () => {
-  for (const mode of ['hidden', 'closed', 'stale', 'background', 'unmounted']) {
+test('late events cannot restart hidden, stale, background or unmounted media', () => {
+  for (const mode of ['hidden', 'stale', 'background', 'unmounted']) {
     const h = harness(), video = h.render(), element = h.element();
     if (mode === 'hidden') h.render({ visible: false });
-    if (mode === 'closed') { h.find((node: PreviewNode) => node.type === 'button' && node.children.includes('Close player'))!.props.onClick(); h.render(); }
     if (mode === 'stale') h.render({ result: { ...h.props.result, stale: true, url: null } });
     if (mode === 'background') { h.document.visibilityState = 'hidden'; h.events.get('visibilitychange')(); }
     if (mode === 'unmounted') { h.unmount(); }
     video!.props.onPlaying({ currentTarget: element }); assert.equal(h.ownerCalls(), 0, mode); assert.ok((element!.paused as unknown as number)>0, mode);
   }
 });
-test('close/reopen only changes player presentation and all four locales render standalone', () => {
+test('all four locales render the player without explanatory disclosures', () => {
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
     const h = harness(locale); let generated = 0, changed = 0;
     const video = h.render({ onGenerate: () => generated++, onRangeChange: () => changed++ }); assert.ok(video);
-    const button = h.find((node: PreviewNode) => node.type === 'button' && node.children.includes((translate as (locale:Parameters<typeof translate>[0],key:Parameters<typeof translate>[1],params?:Readonly<Record<string,string|number>>)=>string)((locale as unknown as Parameters<typeof translate>[0]), 'export.sample.close'))); button!.props.onClick(); h.render();
-    assert.equal(generated, 0); assert.equal(changed, 0); assert.equal(h.find((node: PreviewNode) => node.type === 'video'), null);
+    assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-details'), null);
+    assert.equal(generated, 0); assert.equal(changed, 0);
     h.unmount();
   }
 });
@@ -114,8 +113,6 @@ test('all three review steps expose a real empty-player action and one compact r
       const range = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-range-controls');
       const generate = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-generate');
       assert.ok(empty); assert.equal(empty.props.disabled, false); assert.ok(range); assert.ok(generate);
-      assert.ok(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-details'));
-      assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-details')!.props.open, undefined);
       await empty.props.onClick();
       assert.deepEqual(calls, ['generate']);
       h.render();
@@ -160,7 +157,7 @@ test('checking, a running sample, unknown outcome and disabled admission cannot 
     await generate!.props.onClick(); assert.equal(calls, 0); h.unmount();
   }
   const h = harness();
-  h.render({ preflightState: { phase: 'error' }, checkDetails: 'safe capability explanation' });
-  assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-details')!.props.open, true, 'blocking diagnostics stay visible');
+  h.render({ preflightState: { phase: 'error' } });
+  assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-details'), null, 'no explanatory disclosure is rendered');
   h.unmount();
 });
