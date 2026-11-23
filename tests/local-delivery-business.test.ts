@@ -13,6 +13,7 @@ import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,symlin
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -29,8 +30,8 @@ const code=(value: string)=>(error: { code: string; message: string|string[]; })
 const authority=(value: Pick<OrdinaryDeliveryEnvelope, 'workspaceScope'|'instanceId'|'projectId'>)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
 const action=(value:OrdinaryDeliveryEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const deferred=<T=void>()=>Promise.withResolvers<T>();
-async function fixture(t: test.TestContext,{mimeType='image/png'}={}){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:LocalDeliveryGuards['render'],extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
+async function fixture(t: test.TestContext,{mimeType='image/png',format}:{mimeType?:string;format?:4}={}){
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=openStore;let store=(open(root,format) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:LocalDeliveryGuards['render'],extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
   const project=await services.call('project.create',{name:'Local delivery'}),assetId=randomUUID();
   const media=writeStubMediaFixture(root,assetId,mimeType);
   store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType,duration:mimeType.startsWith('video/')?3:0,width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',...media,createdAt:new Date().toISOString()});
@@ -370,4 +371,16 @@ test('discardIntent clears only the retained intent with CAS, refuses execution 
   const flight=f.delivery.execute(action(next));await entered.promise;
   assert.throws(()=>f.delivery.discardIntent({...discard,workspaceScope:next.workspaceScope,instanceId:next.instanceId,intentId:next.intent!.intentId,expectedIntentRevision:next.intentRevision}),code('LOCAL_DELIVERY_CONFLICT'));
   gate.resolve();await flight;assert.equal(f.calls.length,1);
+});
+
+
+test('format-4 project supports the same check and discard intent path',async t=>{
+  const f=await fixture(t,{format:FORMAT4_PROJECT_SCHEMA_VERSION}),draft=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(draft));
+  f.setGuards({readExportReceipt:()=>null});
+  const live=f.get();if(!live.supported||!live.intent)throw Error('expected retained intent');
+  const check=f.delivery.check({workspaceScope:live.workspaceScope,instanceId:live.instanceId,projectId:f.project.id,intentId:live.intent.intentId});
+  assert.equal(check.status,'not_executed');
+  const cleared=f.delivery.discardIntent({workspaceScope:live.workspaceScope,instanceId:live.instanceId,projectId:f.project.id,intentId:live.intent.intentId,expectedIntentRevision:live.intentRevision});
+  assert.ok(cleared.supported);assert.equal(cleared.intent,null);assert.equal(cleared.intentRevision,live.intentRevision+1);
+  const next=f.delivery.prepare({...f.prepare(cleared as OrdinaryDeliveryEnvelope),intentId:randomUUID()});assert.equal(next.intent!.outcome.status,'pending');
 });
