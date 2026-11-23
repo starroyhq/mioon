@@ -97,7 +97,11 @@ export function readFormat5AudioProjection(store: ProjectStore): {legacy: Timeli
   const ready = clips.filter(clip => clip.sourceState !== 'placeholder' && clip.assetId !== null);
   const legacyClips = ready.map(stripClip);
   const cues = subtitles?.cues.map(stripCue) ?? [];
-  const legacy: TimelineRecord = {...header, clips: legacyClips,
+  // The audio range ends at the last clip that actually has a source. A trailing
+  // placeholder is silence and must not make the mix decoder reject a timeline
+  // whose final audible frame is earlier.
+  const durationFrames = ready.reduce((end, clip) => Math.max(end, clip.startFrame + clip.durationFrames), 0);
+  const legacy: TimelineRecord = {...header, durationFrames, clips: legacyClips,
     ...(subtitles && cues.length ? {subtitles: {profileId: subtitles.profileId,
       ...(subtitles.basisPresetId !== undefined ? {basisPresetId: subtitles.basisPresetId} : {}), cues}} : {})} as TimelineRecord;
   const assets = new Map<string, ManagedAssetRecord>();
