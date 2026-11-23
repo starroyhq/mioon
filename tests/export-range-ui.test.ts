@@ -124,11 +124,11 @@ test('range controls use labelled shared inputs, half-open semantics and disable
   assert.ok(nodes(broken).some(node => node.props.role === 'alert'));
 });
 
-test('preflight shows frozen selected duration separately from full composition and checks all source scope', () => {
+test('confirmation shows the frozen selected range and checks all source scope', () => {
   const View = component('TimelineExportPreflight.tsx').default;
   const tree = View({ state: { phase: 'ready', report: report(range), binding: {} }, exportRange: { startFrame: 0, endFrame: 1 }, rangeDraft: draft('0', '1'), canCheck: true });
-  const frozen = nodes(tree).find(node => node.props['data-testid'] === 'preflight-export-range'); assert.match(textOf(frozen), /第 30 帧.*第 90 帧.*60 帧.*2.00 秒/);
-  assert.match(textOf(tree), /完整时间线时长.*120 帧/); assert.doesNotMatch(textOf(tree), /范围外素材/);
+  const frozen = nodes(tree).find(node => node.props['data-testid'] === 'export-confirmation-range'); assert.match(textOf(frozen), /第 30 帧.*第 90 帧.*60 帧.*2.00 秒/);
+  assert.doesNotMatch(textOf(tree), /范围外素材/);
   const invalid = View({ rangeError: 'Invalid range', canCheck: true }); assert.equal(nodes(invalid).find(node => node.props['data-testid'] === 'preflight-check')!.props.disabled, true);
 });
 

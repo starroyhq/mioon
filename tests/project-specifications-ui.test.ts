@@ -246,12 +246,12 @@ test('actual preview labels legacy frozen job dimensions, never the new current 
   assert.match(textOf(nodes(missing).find((node: ElementNode) => node.props.className === 'edit-preview-format')), /快照规格不可用/);
 });
 
-test('actual monitor header and preflight summary use their own saved dimensions', () => {
+test('actual monitor header and confirmation use their own saved dimensions', () => {
   const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', mediaUrl }, './Timeline.tsx': { assetKind: () => 'video' } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080'), playhead: 0 });
   assert.equal(textOf(nodes(tree).find((node: ElementNode) => node.props.className === 'edit-preview-format')), '1920 × 1080 · 30 fps');
   const Panel = component('TimelineExportPreflight.tsx').default;
-  const summary = { fps: 30, width: 1080, height: 1080, durationFrames: 90, trackCount: 1, clipCount: 1, assetCount: 1 };
+  const summary = { fps: 30, width: 1080, height: 1080, durationFrames: 90, trackCount: 1, clipCount: 1, assetCount: 1, delivery: { effective: { width: 1080, height: 1080, fps: 30 } } };
   const report = Panel({ state: { phase: 'ready', report: { timelineRevision: 1, checkedAt: '2026-10-11T00:00:00Z', issues: [], summary, checks: { checkedAssets: 1, totalAssets: 1, bytesHashed: 0 } } } });
   assert.match(textOf(report), /1080 × 1080 · 30 fps/); assert.doesNotMatch(textOf(report), /1920/);
 });
