@@ -18,7 +18,6 @@ import {attachMacDmg, detachMacDmg, macBundleExecutable, macDmgEvidence, uniqueM
 import type {MacDmgEvidence} from './mac-dmg.ts';
 
 interface Discovery {appId: string; channel: string; url: string; pid: number; tokenFile: string}
-interface Timeline {revision: number; tracks: Array<{id: string; kind: string}>; clips: unknown[]}
 interface Job {id: string; status: string; url?: string; assetId?: string}
 interface Outcome {code: number | null; signal: NodeJS.Signals | null}
 interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; package?: MacDmgEvidence; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
@@ -188,21 +187,68 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
   const denied = await fetch(`${origin}/api/rpc`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({operation: 'project.list'}), signal: AbortSignal.timeout(10000)});
   if (denied.status !== 401) fail('ANONYMOUS_RPC_NOT_DENIED'); check('anonymous-http-rpc-denied');
   options.onPhase?.('seed');
-  const project = await rpc<{id: string; revision: number}>('project.create', {name: 'CI synthetic local composition', timelinePresetId: 'portrait_1080'});
+  // Format 5 projects are created by default after AC. Seed them through the
+  // public sequence write entries; the legacy timeline.get/format.set/clip.add
+  // writes are rejected by the FR-0 gate on a format-5 project.
+  const project = await rpc<{id: string; revision: number}>('project.create', {name: 'CI synthetic local composition'});
   projectContext = project.id;
-  let timeline = await rpc<Timeline>('timeline.get', {projectId: project.id});
-  const projectView = await rpc<{project: {revision: number}}>('project.get', {projectId: project.id});
-  await rpc<unknown>('timeline.format.set', {projectId: project.id, expectedProjectRevision: projectView.project.revision, expectedRevision: timeline.revision, requestId: randomUUID(), presetId: 'landscape_1080'});
-  timeline = await rpc<Timeline>('timeline.get', {projectId: project.id});
-  for (const [file, mimeType, kind] of [[video, 'video/mp4', 'video'], [audio, 'audio/wav', 'audio']] as const) {
-    const asset = await rpc<{id: string}>('asset.import', {projectId: project.id, name: path.basename(file), mimeType, dataBase64: (await readFile(file)).toString('base64')});
-    const track = timeline.tracks.find(item => item.kind === kind); if (!track) fail('DEFAULT_TRACK_MISSING');
-    timeline = await rpc<Timeline>('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: asset.id, trackId: track.id, startFrame: 0, durationFrames: 30, gain: 0.5, name: `Synthetic ${kind}`});
-  }
-  if (timeline.clips.length !== 2) fail('SYNTHETIC_CLIP_COUNT_MISMATCH'); check('project-import-and-multitrack-edit-through-public-http-rpc');
+  const projectId = project.id;
+  const sequenceCommit = async (payload: Record<string, unknown>): Promise<void> => {
+    const requestId = `smoke-${randomUUID()}`;
+    const preview = await rpc<{ok?: unknown; code?: unknown; envelope?: unknown; planDigest?: unknown}>('sequence.preview', {projectId, requestId, ...payload});
+    if (preview.ok === false) {
+      const code = typeof preview.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/u.test(preview.code) ? preview.code : 'FAILED';
+      fail(`SEQUENCE_PREVIEW_${code}`);
+    }
+    if (!preview.envelope || typeof preview.planDigest !== 'string') fail('SEQUENCE_PREVIEW_INVALID');
+    const committed = await rpc<{status?: unknown}>('sequence.commit', {projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest});
+    if (committed.status !== 'applied') fail('SEQUENCE_COMMIT_NOT_APPLIED');
+  };
+  type SmokeProject = {projectFormatVersion?: unknown; timeline?: {revision?: unknown; tracks?: Array<{id: string; kind: string}>; clips?: Array<{id: string; trackId?: string}>}; project?: {revision?: number}};
+  let state = await rpc<SmokeProject>('project.get', {projectId: project.id});
+  // The host runtime appends projectFormatVersion to project.get; the direct
+  // test-server fixture has the same format-5 store without that projection.
+  if (state.projectFormatVersion !== undefined && state.projectFormatVersion !== 5) fail('FORMAT5_PROJECT_REQUIRED');
+  // FR-D format intent: explicit 16:9 / landscape 720 through the format-5 entry.
+  await sequenceCommit({formatIntent: {side: 'timeline', operation: {kind: 'timeline-format', presetId: 'landscape_1080'}}});
+  // FR-D track intent: create the A1 audio track the fixture inserts into.
+  const audioTrackId = randomUUID();
+  await sequenceCommit({trackIntent: {side: 'timeline', operation: {kind: 'track-structure',
+    edit: {kind: 'add', trackId: audioTrackId, trackKind: 'audio', name: 'A1'}}}});
+  state = await rpc<SmokeProject>('project.get', {projectId: project.id});
+  if (!state.timeline?.tracks?.some(track => track.id === audioTrackId && track.kind === 'audio')) fail('AUDIO_TRACK_MISSING');
+  const videoAsset = await rpc<{id: string}>('asset.import', {projectId: project.id, name: path.basename(video), mimeType: 'video/mp4', dataBase64: (await readFile(video)).toString('base64')});
+  const audioAsset = await rpc<{id: string}>('asset.import', {projectId: project.id, name: path.basename(audio), mimeType: 'audio/wav', dataBase64: (await readFile(audio)).toString('base64')});
+  // Uploaded assets carry a sampled fingerprint; prepare the full hash before
+  // the sequence entries put them on a timeline (the production import path does
+  // the same before accepting an insert).
+  await rpc<unknown>('asset.media.prepare', {projectId: project.id, purpose: 'timeline',
+    assets: [{assetId: videoAsset.id, referenceRevision: 1}, {assetId: audioAsset.id, referenceRevision: 1}]});
+  // Main track: the video clip keeps its own audio and lands on the main track.
+  await sequenceCommit({intents: [{side: 'timeline', operation: {kind: 'track',
+    edit: {kind: 'insert-asset', assetId: videoAsset.id, trackId: null, startFrame: 0}}}]});
+  // A1: the imported WAV is inserted as an anchored overlay on the audio track.
+  await sequenceCommit({intents: [{side: 'timeline', operation: {kind: 'track',
+    edit: {kind: 'insert-asset', assetId: audioAsset.id, trackId: audioTrackId, startFrame: 0}}}]});
+  state = await rpc<SmokeProject>('project.get', {projectId: project.id});
+  if (state.timeline?.clips?.length !== 2) fail('SYNTHETIC_CLIP_COUNT_MISMATCH');
+  check('project-import-and-multitrack-edit-through-public-http-rpc');
   options.onPhase?.('render'); renderDeadline = Date.now() + smokeTimeouts.render;
-  const queued = await rpc<Job>('timeline.render', {projectId: project.id, expectedRevision: timeline.revision, purpose: 'export', requestId: randomUUID(),
-    exportSettings: {...TIMELINE_EXPORT_DEFAULT_SETTINGS, resolution: 'short_720'}});
+  const revision = state.timeline.revision;
+  if (!Number.isSafeInteger(revision) || (revision as number) < 1) fail('TIMELINE_REVISION_MISSING');
+  // landscape_1080 keeps the project tier; the fixed delivery profile scales it
+  // to the same 1280x720 smoke output as before.
+  const exportSettings = {...TIMELINE_EXPORT_DEFAULT_SETTINGS, resolution: 'short_720' as const};
+  const capability = await rpc<{status?: unknown; delivery?: {effective?: {width?: number; height?: number}}}>('timeline.export.capabilities',
+    {projectId: project.id, expectedRevision: revision, exportSettings});
+  if (capability.status !== 'available') fail('EXPORT_CAPABILITY_UNAVAILABLE');
+  const preflight = await rpc<{status?: unknown; snapshotHash?: unknown; summary?: {width?: number; height?: number} | null}>('timeline.export.preflight',
+    {projectId: project.id, expectedRevision: revision, exportSettings});
+  if (preflight.status !== 'ready' || typeof preflight.snapshotHash !== 'string') fail('EXPORT_PREFLIGHT_NOT_READY');
+  if (capability.delivery?.effective?.width !== 1280 || capability.delivery.effective.height !== 720) fail('EXPORT_GEOMETRY_MISMATCH');
+  check('format5-export-capability-and-preflight-ready');
+  const queued = await rpc<Job>('timeline.render', {projectId: project.id, expectedRevision: revision, purpose: 'export', requestId: randomUUID(),
+    exportSettings, preflightSnapshotHash: preflight.snapshotHash});
   const completed = await boundedPoll(async () => {
     const current = await rpc<Job>('export.get', {exportId: queued.id});
     if (current.status === 'failed') fail('LOCAL_RENDER_FAILED'); return current.status === 'succeeded' ? current : false;
