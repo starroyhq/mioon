@@ -6,7 +6,7 @@ import {mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile} from 
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {APPLE_SECRET_FLAGS, isFrozenBranchCandidate, pushedTagForEvent, requireAppleSecrets, resolvePreflight} from '../.github/scripts/release-preflight.ts';
-import {decideChecks, findSuccessfulMainCI} from '../.github/scripts/release-ci-evidence.ts';
+import {collectMacosEvidence, decideChecks, findDesktopGroupEvidence, findSuccessfulMainCI, findSuccessfulMacosNightly, renderMacosEvidence} from '../.github/scripts/release-ci-evidence.ts';
 import {stageRelease, validatePackageReport} from '../.github/scripts/stage-release.ts';
 import {collectReleaseBundle, ownershipMarker, publishRelease, validateDraft} from '../.github/scripts/publish-release.ts';
 import type {DraftRelease, PublishTransport, ReleaseBundle, RemoteAsset, UploadFile} from '../.github/scripts/publish-release.ts';
@@ -51,6 +51,76 @@ test('forced, unmatched, incompatible or unavailable evidence requires full chec
     {mode: 'full', reason: 'lookup-unavailable'});
   assert.deepEqual(await decideChecks(ciLookup, false, true, async () => ({workflow_runs: [ciRun]})),
     {mode: 'reuse', run: {runId: 42, attempt: 1, url: ciRun.html_url}});
+});
+
+const nightlyRun = {
+  id: 77, run_attempt: 1, html_url: 'https://github.com/owner/repo/actions/runs/77',
+  head_sha: sha, head_branch: 'main', event: 'schedule', status: 'completed', conclusion: 'success',
+  name: 'macOS nightly full', path: '.github/workflows/macos-nightly.yml',
+  repository: {full_name: ciLookup.repository}, head_repository: {full_name: ciLookup.repository},
+};
+const desktopJob = {
+  id: 4242, name: 'Source checks / macOS portable and desktop checks', conclusion: 'success',
+  html_url: 'https://github.com/owner/repo/actions/runs/42/job/4242',
+};
+const reuseDecision = {mode: 'reuse' as const, run: {runId: 42, attempt: 1, url: ciRun.html_url}};
+const fullDecision = {mode: 'full' as const, reason: 'no-match' as const};
+
+test('only a successful main-branch nightly for the exact source can supply macOS evidence', () => {
+  const invalid = [
+    {path: '.github/workflows/ci.yml'}, {name: 'CI'}, {head_sha: changedSha}, {head_branch: 'release'},
+    {status: 'in_progress'}, {conclusion: 'failure'}, {conclusion: 'cancelled'},
+    {repository: {full_name: 'owner/other'}}, {head_repository: {full_name: 'fork/repo'}},
+    {id: '77'}, {run_attempt: 0}, {html_url: 'https://example.test/actions/runs/77'},
+  ].map(patch => ({...nightlyRun, ...patch}));
+  assert.equal(findSuccessfulMacosNightly({workflow_runs: invalid}, ciLookup), undefined);
+  assert.deepEqual(findSuccessfulMacosNightly({workflow_runs: [...invalid, {...nightlyRun, run_attempt: 2}]}, ciLookup),
+    {runId: 77, attempt: 2, url: nightlyRun.html_url});
+});
+
+test('the reused main CI desktop group is recorded from its exact job', () => {
+  assert.deepEqual(findDesktopGroupEvidence({jobs: [desktopJob]}, ciLookup, reuseDecision.run), {
+    route: 'desktop-group', source: 'main-ci', status: 'completed',
+    jobName: 'Source checks / macOS portable and desktop checks', conclusion: 'success', url: desktopJob.html_url,
+  });
+  const invalid = [
+    {name: 'Other job'}, {conclusion: 'mystery'}, {html_url: 'https://example.test/job/4242'}, {id: '4242'},
+  ].map(patch => ({...desktopJob, ...patch}));
+  assert.equal(findDesktopGroupEvidence({jobs: invalid}, ciLookup, reuseDecision.run), undefined);
+  assert.throws(() => findDesktopGroupEvidence({}, ciLookup, reuseDecision.run), /Invalid workflow job list/);
+});
+
+test('macOS evidence prefers the nightly then falls back to the desktop group without new blocking', async () => {
+  const unused = async (): Promise<never> => assert.fail('the desktop lookup must not be called');
+  assert.deepEqual(await collectMacosEvidence(ciLookup, reuseDecision, async () => ({workflow_runs: [nightlyRun]}), unused),
+    {route: 'nightly', runId: 77, attempt: 1, url: nightlyRun.html_url});
+  assert.deepEqual(await collectMacosEvidence(ciLookup, reuseDecision, async () => ({workflow_runs: []}),
+    async () => ({jobs: [desktopJob]})), {route: 'desktop-group', source: 'main-ci', status: 'completed',
+    jobName: desktopJob.name, conclusion: 'success', url: desktopJob.html_url});
+  assert.deepEqual(await collectMacosEvidence(ciLookup, fullDecision, async () => ({workflow_runs: []}), unused),
+    {route: 'desktop-group', source: 'release-checks', status: 'pending'});
+  assert.deepEqual(await collectMacosEvidence(ciLookup, fullDecision, async () => ({workflow_runs: [nightlyRun]}), unused),
+    {route: 'nightly', runId: 77, attempt: 1, url: nightlyRun.html_url});
+});
+
+test('macOS evidence lookup failures degrade to recorded fallbacks, never to a new failure', async () => {
+  assert.deepEqual(await collectMacosEvidence(ciLookup, reuseDecision, async () => {throw Error('nightly API error');},
+    async () => ({jobs: [desktopJob]})), {route: 'desktop-group', source: 'main-ci', status: 'completed',
+    jobName: desktopJob.name, conclusion: 'success', url: desktopJob.html_url});
+  assert.deepEqual(await collectMacosEvidence(ciLookup, reuseDecision, async () => ({workflow_runs: []}),
+    async () => {throw Error('jobs API error');}), {route: 'desktop-group', source: 'main-ci', status: 'unavailable'});
+  assert.deepEqual(await collectMacosEvidence(ciLookup, reuseDecision, async () => {throw Error('nightly API error');},
+    async () => ({jobs: []})), {route: 'desktop-group', source: 'main-ci', status: 'unavailable'});
+  assert.deepEqual(await collectMacosEvidence(ciLookup, fullDecision, async () => {throw Error('nightly API error');}, async () => {throw Error('jobs');}),
+    {route: 'desktop-group', source: 'release-checks', status: 'pending'});
+});
+
+test('macOS evidence summaries name the route, run, attempt and desktop job', () => {
+  assert.match(renderMacosEvidence({route: 'nightly', runId: 77, attempt: 2, url: nightlyRun.html_url}), /nightly .*77.*attempt 2/i);
+  assert.match(renderMacosEvidence({route: 'desktop-group', source: 'main-ci', status: 'completed',
+    jobName: desktopJob.name, conclusion: 'success', url: desktopJob.html_url}), /desktop group from reused main CI job.*success.*job\/4242/i);
+  assert.match(renderMacosEvidence({route: 'desktop-group', source: 'main-ci', status: 'unavailable'}), /unavailable/i);
+  assert.match(renderMacosEvidence({route: 'desktop-group', source: 'release-checks', status: 'pending'}), /this release's complete checks/i);
 });
 
 test('release preflight freezes a valid release tag and main SHA', () => {
