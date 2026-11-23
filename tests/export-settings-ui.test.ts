@@ -289,7 +289,7 @@ test('history renders the actual frozen settings and output dimensions; old reco
   const custom = { ...legacy, id: id(41), assetId: id(51), url: `/media/${id(51)}`, snapshot: { timeline, delivery: resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 8000 } })) } };
   assert.equal(settingsState.exportHistoryDelivery(legacy), null);
   const oldTree = View({ orderedExports: [legacy], projectName: '作品', timelineRevision: 4 });
-  assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.match(textOf(oldTree), /9:16 · 720 × 1280/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
+  assert.match(textOf(oldTree), /9:16 · 720 × 1280/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080|修订版|说明/);
   const tree = View({ orderedExports: [custom], projectName: '作品', timelineRevision: 4 });
   assert.match(textOf(tree), /9:16 · 1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
   assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string')!.props.downloadHref, `/api/projects/${projectId}/media/${custom.assetId}`);

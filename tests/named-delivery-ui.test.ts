@@ -95,7 +95,7 @@ test('invalid visible text remains exact and emits an accessible bounded validat
 test('named history shows frozen title/time/revision/dimensions/quality after project rename and revision change', () => {
   for (const html of [rendered.named, rendered.renamedAgain]) {
     assert.match(html, /冻结名称 &lt;script&gt; &quot; &amp; \/ .mp4/);
-    assert.match(html, /修订版 4 · 旧快照/); assert.match(html, /1080 × 1920/); assert.match(html, /平均目标 8 Mb\/s/); assert.match(html, /AAC 128 kb\/s/);
+    assert.match(html, /1080 × 1920/); assert.match(html, /平均目标 8 Mb\/s/); assert.doesNotMatch(html, /<details|<summary>|说明|修订版 4/);
     assert.ok(html.includes(createdAt)); assert.ok(html.includes(formatDate('zh-Hans', createdAt, { dateStyle: 'short', timeStyle: 'short' })));
     assert.doesNotMatch(html, /项目已改名|另一个新名称|<script>|filename=forged/);
   }
@@ -150,9 +150,8 @@ test('unnamed legacy and storyboard rows retain display fallbacks and their proj
   assert.deepEqual(fileActions.legacyMissingProject, []);
   assert.match(fileActions.legacy[0], /data-testid="export-file-check"/);
   assert.doesNotMatch(fileActions.legacy[0], /download-export|href=|download=/);
-  assert.doesNotMatch(rendered.legacy, /named-delivery-history|delivery-history-name|冻结名称|CRF|AAC/);
+  assert.doesNotMatch(rendered.legacy, /named-delivery-history|delivery-history-name|冻结名称|CRF|AAC|<details|<summary>|说明/);
   assert.match(rendered.legacyQuality, /平均目标 8 Mb\/s/); assert.match(rendered.legacyQuality, /1080 × 1920/);
-  assert.match(rendered.storyboard, /分镜顺序导出 · 1 个镜头/);
   assert.deepEqual(actions.storyboard, [{projectId:id(1), exportId:id(3), downloadHref:`/api/projects/${id(1)}/media/${id(13)}`, disabled:false}]);
   assert.match(fileActions.storyboard[0], /data-testid="export-file-check"/);
   assert.doesNotMatch(fileActions.storyboard[0], /download-export|href=|download=/);

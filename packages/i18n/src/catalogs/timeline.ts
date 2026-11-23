@@ -26,12 +26,6 @@ const timelineCoreMessages = {
     "en": "{ratio} square",
     "ja": "{ratio} 正方形"
   },
-  "timeline.aspectFrame.menuHint": {
-    "zh-Hans": "改比例时，每段素材重新放进画框，你做过的缩放和偏移会保留",
-    "zh-Hant": "改比例時，每段素材重新放進畫框，你做過的縮放和偏移會保留",
-    "en": "Changing the aspect ratio reframes each clip and preserves your scale and offset edits",
-    "ja": "比率を変えると各クリップが画枠に収まり、調整した拡大率と位置は保持されます"
-  },
   "timeline.aspectFrame.changed": {
     "zh-Hans": "已改为 {frame} · {count} 个片段已重新放进画框",
     "zh-Hant": "已改為 {frame} · {count} 個片段已重新放進畫框",
@@ -55,12 +49,6 @@ const timelineCoreMessages = {
     "zh-Hant": "保持 {ratio}",
     "en": "Keep {ratio}",
     "ja": "{ratio} のまま"
-  },
-  "timeline.aspectFrame.exportHint": {
-    "zh-Hans": "（在剪辑中修改）",
-    "zh-Hant": "（在剪輯中修改）",
-    "en": "(change in Editing)",
-    "ja": "（編集で変更）"
   },
   "timeline.aspectFrame.locked": {
     "zh-Hans": "先确认待处理的时间线编辑",
@@ -86,60 +74,15 @@ const timelineCoreMessages = {
     "en": "Rec.709 SDR · Creative LUT",
     "ja": "Rec.709 SDR · クリエイティブ LUT"
   },
-  "colour.lut.videoLimits": {
-    "zh-Hans": "当前仅提供受限的 Rec.709 SDR 处理，不支持 Log 技术转换、HDR 输出或自动色彩管理。创意 LUT 不能代替技术转换",
-    "zh-Hant": "目前僅提供有限的 Rec.709 SDR 處理，不支援 Log 技術轉換、HDR 輸出或自動色彩管理。創意 LUT 不能取代技術轉換",
-    "en": "Only the restricted Rec.709 SDR workflow is available. Log technical conversion, HDR output and automatic color management are unsupported. A creative LUT does not replace a technical transform",
-    "ja": "現在は限定的な Rec.709 SDR 処理のみ利用できます。Log の技術変換、HDR 出力、自動カラーマネジメントには対応していません。クリエイティブ LUT は技術変換の代わりにはなりません"
-  },
-  "colour.lut.sourceUninspected": {
-    "zh-Hans": "尚无当前素材的本次色彩检查结果。已保存的来源解释是用户声明；未检查或缺失标签不能默认视为 SDR。选择片段不会自动探测，点击检查来源才会探测",
-    "zh-Hant": "尚無目前素材的本次色彩檢查結果。已儲存的來源解讀是使用者聲明；未檢查或缺少標記不能預設視為 SDR。選取片段不會自動探測，點擊檢查來源才會探測",
-    "en": "There is no current color inspection for this source. A saved source interpretation is a user declaration. Uninspected or untagged does not mean SDR. Selecting a clip does not probe; choosing the source check does",
-    "ja": "このソースの今回の色検査結果はまだありません。保存済みのソース解釈はユーザーの宣言です。未検査やタグなしを SDR と見なしません。クリップの選択では検査せず、ソース検査を押すと検査します"
-  },
-  "colour.lut.videoBitDepth": {
-    "zh-Hans": "所选视频流 {stream} · 位深：{depth}（探测值或已识别像素格式推导；未知不补默认值）",
-    "zh-Hant": "所選影片串流 {stream} · 位元深度：{depth}（探測值或由已識別像素格式推導；未知不補預設值）",
-    "en": "Selected video stream {stream} · bit depth: {depth} (reported or derived from a recognized pixel layout; unknown stays unknown)",
-    "ja": "選択した動画ストリーム {stream} · ビット深度：{depth}（報告値または識別されたピクセル形式からの推定値。不明な値に既定値は補いません）"
-  },
-  "colour.lut.videoEvidenceLimits": {
-    "zh-Hans": "以上是绑定素材字节与所选流的探测信息，不是色彩转换结果，也不保证标签描述了真实编码。标签兼容、10 位或未报告 HDR 侧数据都不能证明为 SDR；流级检查不能排除逐帧 HDR 信息或未标记的相机 Log。不按文件名或厂商品牌识别 Log",
-    "zh-Hant": "以上是綁定素材位元組與所選串流的探測資訊，並非色彩轉換結果，也不保證標記描述了實際編碼。標記相容、10 位元或未報告 HDR 側資料都不能證明為 SDR；串流層級檢查不能排除逐幀 HDR 資訊或未標記的相機 Log。不按檔名或廠商品牌識別 Log",
-    "en": "These observations are bound to the source bytes and selected stream. They are not a color transform and do not establish that the tags describe the actual encoding. Compatible tags, 10-bit depth or no reported HDR side data do not prove SDR. Stream metadata cannot exclude frame-only HDR data or untagged camera Log. Log is not inferred from filenames or brands",
-    "ja": "これは素材のバイト列と選択したストリームに紐づく検査情報です。色変換の結果ではなく、タグが実際の符号化を表す保証もありません。互換タグ、10 ビット、HDR サイドデータの報告なしだけでは SDR と証明できません。ストリーム情報だけではフレーム内 HDR 情報やタグのないカメラ Log を除外できず、ファイル名やメーカー名から Log を推測しません"
-  },
-  "colour.lut.renderDisclosure": {
-    "zh-Hans": "保存片段后，重新渲染的时间线预览与导出才会应用。源素材快速查看始终是原始、未调色画面",
-    "zh-Hant": "儲存片段後，重新算繪的時間軸預覽與匯出才會套用。來源素材快速查看始終是原始、未調色畫面",
-    "en": "After saving the clip, changes apply only to newly rendered timeline previews and exports. Quick source previews always show the original, ungraded image",
-    "ja": "クリップを保存した後、新たにレンダリングするタイムラインのプレビューと書き出しにのみ適用されます。ソース素材のクイックプレビューは常に未調整の元の映像です"
-  },
-  "colour.lut.adoptionWarning": {
-    "zh-Hans": "当前保持原有色彩路径，不会自动迁移。明确启用后，整条时间线使用 Rec.709 SDR 流程：所有可见视频都必须逐一确认 Rec.709 解释，图片必须是已检查并明确声明为 sRGB 的受支持 PNG 或基线 JFIF JPEG。HDR / Log、ICC、EXIF（包括旋转信息）、渐进式 JPEG 与技术转换 LUT 不在此范围内",
-    "zh-Hant": "目前保留原有色彩處理方式，不會自動轉換。明確啟用後，整條時間軸使用 Rec.709 SDR 流程：所有可見影片都須逐一確認 Rec.709 解讀；圖片必須是已檢查並明確聲明為 sRGB 的受支援 PNG 或基線 JFIF JPEG。不支援 HDR / Log、ICC、EXIF（包括旋轉資訊）、漸進式 JPEG 或技術轉換 LUT",
-    "en": "The existing color pipeline is preserved without automatic migration. Explicitly enabling this switches the entire timeline to Rec.709 SDR: every visible video must have its Rec.709 interpretation confirmed, and images must be inspected, supported PNG or baseline JFIF JPEG files explicitly declared as sRGB. HDR / Log, ICC, EXIF (including rotation), progressive JPEG, and technical-conversion LUTs are not supported",
-    "ja": "既存の色処理を維持し、自動移行は行いません。明示的に有効にすると、タイムライン全体が Rec.709 SDR 処理になります。表示される各動画の Rec.709 解釈を個別に確認する必要があります。画像は検査済みの対応 PNG またはベースライン JFIF JPEG で、sRGB と明示的に宣言する必要があります。HDR / Log、ICC、EXIF（回転情報を含む）、プログレッシブ JPEG、技術変換 LUT は対象外です"
-  },
+  "colour.lut.videoBitDepth": {"zh-Hans": "所选视频流 {stream} · 位深：{depth}", "zh-Hant": "所選影片串流 {stream} · 位元深度：{depth}", "en": "Selected video stream {stream} · bit depth: {depth}", "ja": "選択した動画ストリーム {stream} · ビット深度：{depth}"},
   "colour.lut.reconfirmSource": {
     "zh-Hans": "来源已替换，色彩解释已失效。LUT、启用状态与强度保留；请重新检查并确认新来源，否则不能渲染",
     "zh-Hant": "來源已替換，色彩解讀已失效。LUT、啟用狀態與強度保留；請重新檢查並確認新來源，否則無法算繪",
     "en": "The source was replaced, invalidating its color interpretation. The LUT, enabled state, and strength are preserved. Inspect and confirm the new source before rendering",
     "ja": "ソースの差し替えにより、色の解釈が無効になりました。LUT、有効状態、強度は保持されています。レンダリングするには、新しいソースを再検査して確認してください"
   },
-  "colour.lut.sourceImage": {
-    "zh-Hans": "已声明：sRGB {format} · {width} × {height} · {alpha}。这是用户解释，文件检查不会自动替你声明",
-    "zh-Hant": "已聲明：sRGB {format} · {width} × {height} · {alpha}。這是使用者的解讀，檔案檢查不會自動代為聲明",
-    "en": "Declared: sRGB {format} · {width} × {height} · {alpha}. This is your interpretation; inspecting the file does not declare it for you",
-    "ja": "宣言済み：sRGB {format} · {width} × {height} · {alpha}。これはユーザーによる解釈です。ファイル検査では自動的に宣言されません"
-  },
-  "colour.lut.sourceVideo": {
-    "zh-Hans": "已声明：Rec.709 SDR · {range} · 视频流 {stream}。这是用户解释，文件检查不会自动替你声明",
-    "zh-Hant": "已聲明：Rec.709 SDR · {range} · 影片串流 {stream}。這是使用者的解讀，檔案檢查不會自動代為聲明",
-    "en": "Declared: Rec.709 SDR · {range} · Video stream {stream}. This is your interpretation; inspecting the file does not declare it for you",
-    "ja": "宣言済み：Rec.709 SDR · {range} · 動画ストリーム {stream}。これはユーザーによる解釈です。ファイル検査では自動的に宣言されません"
-  },
+  "colour.lut.sourceImage": {"zh-Hans": "已声明：sRGB {format} · {width} × {height} · {alpha}", "zh-Hant": "已聲明：sRGB {format} · {width} × {height} · {alpha}", "en": "Declared: sRGB {format} · {width} × {height} · {alpha}", "ja": "宣言済み：sRGB {format} · {width} × {height} · {alpha}"},
+  "colour.lut.sourceVideo": {"zh-Hans": "已声明：Rec.709 SDR · {range} · 视频流 {stream}", "zh-Hant": "已聲明：Rec.709 SDR · {range} · 影片串流 {stream}", "en": "Declared: Rec.709 SDR · {range} · Video stream {stream}", "ja": "宣言済み：Rec.709 SDR · {range} · 動画ストリーム {stream}"},
   "colour.lut.alphaPreserved": {
     "zh-Hans": "透明通道独立保留",
     "zh-Hant": "透明色版獨立保留",
@@ -151,12 +94,6 @@ const timelineCoreMessages = {
     "zh-Hant": "不透明",
     "en": "Opaque",
     "ja": "不透明"
-  },
-  "colour.lut.imageDisclosure": {
-    "zh-Hans": "JPEG 仅支持无 EXIF、无 ICC 的基线 JFIF，标记本身不代表 sRGB。图片按 sRGB 解释，并转换到 Rec.709 / Gamma 2.4 相对参考显示（黑位 0、白位 1），再应用创意 LUT。透明度不参与调色，预乘后以双线性方式缩放。同一时段最多显示 2 个受管理的图片片段（PNG 与 JPEG 合计），可错开放置更多图片。当前合成是 8 位编码 RGB，不是线性光或 HDR；实际预览观感受播放器、系统和显示器设置影响",
-    "zh-Hant": "JPEG 僅支援不含 EXIF、ICC 的基線 JFIF，標記本身不代表 sRGB。圖片按 sRGB 解讀，轉換至 Rec.709 / Gamma 2.4 相對參考顯示（黑位 0、白位 1）後，再套用創意 LUT。透明度不參與調色，預乘後以雙線性方式縮放。同一時段最多顯示 2 個受管理的圖片片段（PNG 與 JPEG 合計），可錯開放置更多圖片。目前合成為 8 位元編碼 RGB，並非線性光或 HDR；實際預覽觀感受播放器、系統與顯示器設定影響",
-    "en": "JPEG support is limited to baseline JFIF without EXIF or ICC; its markers do not establish sRGB. Images are interpreted as sRGB and converted to Rec.709 / Gamma 2.4 relative reference display (black 0, white 1) before applying the creative LUT. Alpha is not color graded; scaling is bilinear after premultiplication. At most 2 managed image clips (PNG and JPEG combined) may be visible at once; more can be placed at different times. Compositing uses 8-bit encoded RGB, not linear light or HDR. Actual preview appearance depends on the player, system, and display settings",
-    "ja": "JPEG は EXIF と ICC を含まないベースライン JFIF のみ対応します。マーカーだけでは sRGB と確認できません。画像を sRGB と解釈し、Rec.709 / Gamma 2.4 の相対参照表示（黒 0、白 1）に変換してからクリエイティブ LUT を適用します。アルファは色調整せず、乗算済みにした後にバイリニアで拡大縮小します。同時に表示できる管理対象画像クリップは PNG と JPEG 合計で 2 個までです。時間をずらせばさらに配置できます。合成は 8 ビット符号化 RGB で、リニアライトや HDR ではありません。実際のプレビューの見え方はプレーヤー、システム、ディスプレイの設定に依存します"
   },
 
   "colour.lut.inspectAdjust": {
@@ -423,18 +360,6 @@ const timelineCoreMessages = {
     "en": "I confirm that this source is Rec.709 SDR with the range selected above. HDR / Log must not be interpreted as SDR",
     "ja": "このソースが Rec.709 SDR で、上記のレンジであることを確認します。HDR / Log を SDR として解釈しません"
   },
-  "colour.lut.creativeOnly": {
-    "zh-Hans": "资源格式验证不代表色彩适用性。只使用输入、输出均为 Rec.709 SDR 的创意 LUT，不使用 Log 转换或 HDR 色调映射 LUT",
-    "zh-Hant": "資源格式驗證不代表色彩適用性。僅使用輸入與輸出皆為 Rec.709 SDR 的創意 LUT，不使用 Log 轉換或 HDR 色調映射 LUT",
-    "en": "Validating the resource format does not establish color suitability. Use only creative LUTs with Rec.709 SDR input and output, not LUTs for Log conversion or HDR tone mapping",
-    "ja": "リソース形式の検証は、色の扱いが適切であることを保証するものではありません。入出力ともに Rec.709 SDR のクリエイティブ LUT のみを使用してください。Log 変換や HDR トーンマッピング用の LUT は使用しないでください"
-  },
-  "colour.lut.domainDisclosure": {
-    "zh-Hans": "创意 LUT 会将归一化 RGB 中小于 0 或大于 1 的值裁到 0–1 范围，不适合保留 HDR / Log 高光细节。关闭 LUT 或设为 0% 只绕过创意外观，已启用的 Rec.709 SDR 转换仍会执行",
-    "zh-Hant": "創意 LUT 會將正規化 RGB 中小於 0 或大於 1 的值裁至 0–1 範圍，不適合保留 HDR / Log 高光細節。關閉 LUT 或設為 0% 僅略過創意外觀，已啟用的 Rec.709 SDR 轉換仍會執行",
-    "en": "The creative LUT clips normalized RGB values below 0 or above 1 to the 0–1 range, so it is unsuitable for preserving HDR / Log highlight detail. Disabling the LUT or setting it to 0% bypasses only the creative look; enabled Rec.709 SDR conversion still runs",
-    "ja": "クリエイティブ LUT は正規化 RGB の 0 未満または 1 超の値を 0–1 にクリップするため、HDR / Log のハイライトの詳細を保持する用途には適しません。LUT の無効化や 0% 設定で省略されるのはクリエイティブ Look のみです。有効になっている Rec.709 SDR 変換は引き続き実行されます"
-  },
   "colour.lut.imported": {
     "zh-Hans": "资源“{name}”已导入项目，尚未应用或保存到片段。请在下方选择、声明用途并保存片段",
     "zh-Hant": "資源「{name}」已匯入專案，尚未套用或儲存至片段。請在下方選擇、聲明用途並儲存片段",
@@ -446,12 +371,6 @@ const timelineCoreMessages = {
     "zh-Hant": "檔案未匯入",
     "en": "The file was not imported",
     "ja": "ファイルは追加されませんでした"
-  },
-  "colour.lut.recoveryDisclosure": {
-      "zh-Hans": "导入前只保存原请求编号、文件名、大小、SHA-256 与项目/工作区标识，不保存 LUT 内容或路径。桌面版将记录保存在当前应用的私有本地存储中，正常退出重启或本地地址变化后仍可恢复；网页版仍仅支持同一站点地址的浏览器存储。重新选择完全相同的文件后，必须明确重试原请求；不会自动导入或应用。清除相应本地数据会丢失记录，更换工作区不会读取原工作区的记录",
-      "zh-Hant": "匯入前只保存原請求編號、檔名、大小、SHA-256 與專案／工作區識別碼，不保存 LUT 內容或路徑。桌面版將記錄保存在目前應用程式的私有本機儲存空間，正常結束後重新啟動或本機位址改變仍可還原；網頁版仍僅支援同一網站位址的瀏覽器儲存空間。重新選擇完全相同的檔案後，必須明確重試原請求；不會自動匯入或套用。清除對應的本機資料會遺失記錄，切換工作區不會讀取原工作區的記錄",
-      "en": "Before import, only the original request ID, filename, size, SHA-256 and project/workspace IDs are saved, never LUT contents or paths. Desktop records use this app’s private local storage and survive an ordinary app restart or local address change. Web records still require browser storage at the same site address. Reselect the exact same file, then explicitly retry the original request; nothing is imported or applied automatically. Clearing the relevant local data loses these records. Switching workspaces does not expose the original workspace’s records",
-      "ja": "読み込み前に保存するのは元のリクエスト ID、ファイル名、サイズ、SHA-256、プロジェクト／ワークスペース ID のみです。LUT の内容やパスは保存しません。デスクトップ版ではアプリの非公開ローカルストレージを使い、通常のアプリ再起動やローカルアドレスの変更後も復元できます。Web 版では引き続き同じサイトアドレスのブラウザーストレージが必要です。完全に同じファイルを再選択し、元のリクエストを明示的に再試行してください。自動で追加や適用はしません。該当するローカルデータを消去すると記録は失われます。別のワークスペースから元の記録を読み取ることはできません"
   },
   "colour.lut.pendingOriginal": {
     "zh-Hans": "原导入请求待核对：{name} · {bytes} 字节。不会创建新编号；先恢复这一条请求，再导入其他文件",
@@ -476,18 +395,6 @@ const timelineCoreMessages = {
     "zh-Hant": "LUT 強度 · {percent}%",
     "en": "LUT strength · {percent}%",
     "ja": "LUT 強度 · {percent}%"
-  },
-  "colour.lut.strengthHint": {
-    "zh-Hans": "0% 为无创意外观，100% 为完整 LUT；关闭 LUT 不会取消已确认的 SDR 来源流程",
-    "zh-Hant": "0% 為無創意外觀，100% 為完整 LUT；關閉 LUT 不會取消已確認的 SDR 來源流程",
-    "en": "0% means no creative look; 100% applies the full LUT. Disabling the LUT does not cancel the confirmed SDR source pipeline",
-    "ja": "0% はクリエイティブ Look なし、100% は LUT を完全適用します。LUT を無効にしても、確認済みの SDR ソース処理は無効になりません"
-  },
-  "colour.lut.saveReminder": {
-    "zh-Hans": "所有片段设置仍是草稿。使用下方“保存片段”提交；保存后的调整可通过时间线撤销恢复。若其他片段仍启用 SDR，返回原有路径的可见片段会阻止整条时间线渲染",
-    "zh-Hant": "所有片段設定仍為草稿。使用下方「儲存片段」提交；儲存後的調整可透過時間軸復原。如果其他片段仍啟用 SDR，返回原有處理方式的可見片段會阻止整條時間軸算繪",
-    "en": "All clip settings are still drafts. Submit them with “Save clip” below; saved adjustments can be undone through timeline history. If other clips still use SDR, a visible clip returned to its original pipeline will block rendering of the entire timeline",
-    "ja": "すべてのクリップ設定はまだ下書きです。下の「クリップを保存」で送信してください。保存後の調整はタイムラインの取り消しで戻せます。他のクリップで SDR が有効なままの場合、元の色処理に戻した可視クリップがあると、タイムライン全体をレンダリングできません"
   },
   "colour.error.inspectFirst": {
     "zh-Hans": "请先检查当前来源",
@@ -3875,12 +3782,6 @@ const timelineCoreMessages = {
     "en": "Extract this frame · PNG",
     "ja": "このフレームを抽出 · PNG"
   },
-  "timeline.preview.captureHint": {
-    "zh-Hans": "暂停后提取 · 30 fps 编辑时间点 · 最长边 1024 · 保持比例、不放大",
-    "zh-Hant": "暫停後擷取 · 30 fps 編輯時間點 · 最長邊 1024 · 保持比例、不放大",
-    "en": "Pause to extract · 30 fps editing time point · Longest edge 1024 · Preserve aspect ratio, no upscaling",
-    "ja": "一時停止して抽出 · 30 fps 編集時点 · 長辺 1024 · 縦横比を維持、拡大なし"
-  },
   "timeline.preview.main": {
     "zh-Hans": "主工作区预览",
     "zh-Hant": "主工作區預覽",
@@ -3922,12 +3823,6 @@ const timelineCoreMessages = {
     "zh-Hant": "編輯預覽 · 原始尺寸與預設畫質",
     "en": "Editing preview · Original size and default quality",
     "ja": "編集プレビュー · 元のサイズと既定の画質"
-  },
-  "timeline.preview.sourceUnprocessed": {
-    "zh-Hans": "源素材原声 · 不应用片段音量或淡入/淡出；原始画面未调色，不应用片段 LUT",
-    "zh-Hant": "來源素材原聲 · 不套用片段音量或淡入／淡出；原始畫面未調色，不套用片段 LUT",
-    "en": "Original source audio · No clip gain or fades; original image without color grading or clip LUT",
-    "ja": "ソース素材の元の音声 · クリップの音量やフェードは適用しません。映像は未調整で、クリップの LUT も適用しません"
   },
   "timeline.preview.stale": {
     "zh-Hans": "旧快照 修订版 {rendered} · 当前时间线 修订版 {current}，请重新渲染",
@@ -3995,18 +3890,6 @@ const timelineCoreMessages = {
     "zh-Hant": "目前",
     "en": "Current",
     "ja": "最新"
-  },
-  "timeline.preview.clipOriginal": {
-    "zh-Hans": "片段原始源素材 · 未调色，非合成画面",
-    "zh-Hant": "片段原始來源素材 · 未調色，非合成畫面",
-    "en": "Original clip source · Ungraded, not composited",
-    "ja": "クリップの元のソース素材 · 未調整、合成前"
-  },
-  "timeline.preview.original": {
-    "zh-Hans": "原始源素材 · 未调色",
-    "zh-Hant": "原始來源素材 · 未調色",
-    "en": "Original source · Ungraded",
-    "ja": "元のソース素材 · 未調整"
   },
   "timeline.preview.preparing": {
     "zh-Hans": "正在生成可播放的合成预览",

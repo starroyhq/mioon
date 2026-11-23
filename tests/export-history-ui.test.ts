@@ -100,10 +100,9 @@ test('ready rows pass their project media address and identity to the async file
   }
   assert.ok(rendered.success.includes(formatDate('zh-Hans', date, { dateStyle: 'short', timeStyle: 'short' })));
 });
-test('snapshot labels preserve preview/export/storyboard and strict revision comparison', () => {
-  assert.match(rendered.snapshots, /时间线预览 · 修订版 7 · 当前/); assert.match(rendered.snapshots, /时间线导出 · 修订版 6 · 旧快照/);
-  assert.match(rendered.snapshots, /时间线导出 · 修订版 7 · 旧快照/); assert.match(rendered.snapshots, /分镜顺序导出 · 2 个镜头/);
-  assert.match(rendered.snapshots, /分镜顺序导出 · 0 个镜头/);
+test('rows omit snapshot diagnostics and keep preview/export download behavior', () => {
+  assert.doesNotMatch(rendered.snapshots, /时间线预览 · 修订版|时间线导出 · 修订版|分镜顺序导出/);
+  assert.doesNotMatch(rendered.snapshots, /<details|<summary>|说明/);
   assert.equal(actions.snapshots[0].disabled, true, 'Preview downloads bypass the export-only recovery API');
   assert.ok(fileActions.snapshots[0].includes(`href="${media(ORIGINAL, 'preview')}"`));
   assert.match(fileActions.snapshots[0], /data-testid="download-export"/);
@@ -182,4 +181,12 @@ test('history filters actual retained rows locally and a project switch discards
  const filter=(value: string)=>nodes(tree).find((node: ElementNode)=>node.props['data-testid']===`export-history-filter-${value}`);
  assert.equal(render().length,4);filter('complete')!.props.onClick();assert.equal(render().length,1);filter('failed')!.props.onClick();let rows=render();assert.equal(rows.length,1);assert.equal(rows[0].props['data-status'],'failed');
  const old=filter('failed')!.props.onClick;render({projectId:'two'});old();assert.equal(render().length,4);assert.equal(filter('all')!.props['aria-pressed'],true);assert.equal(JSON.stringify(props.orderedExports),original);
+});
+
+test('history omits retained-settings footer and per-row disclosures while keeping failure text visible', () => {
+  for (const key of ['empty', 'statuses', 'success', 'snapshots']) {
+    assert.doesNotMatch(rendered[key], /导出记录保留原始规格|重新导出会从当前设置重新检查/, key);
+    assert.doesNotMatch(rendered[key], /<details|<summary>|>说明</, key);
+  }
+  assert.match(rendered.statuses, /导出失败/);
 });
