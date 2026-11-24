@@ -122,6 +122,11 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     if (value.status === 'cancelled') return false;
     if (value.status === 'opened') {emit({failure: null, action: {kind: 'idle'}}); onOpened(); return true;}
     if (value.status === 'upgrade-required') {presentFormatUpgrade(value); return false;}
+    if (value.status === 'history-diverged') {
+      const issue: ProjectOpenIssue = {code: 'PROJECT_HISTORY_DIVERGED', projectId: value.projectId, projectFile: value.projectFile};
+      emit({failure: {issue, name: value.name ?? null, projectId: value.projectId}, selectionInvalid: false, action: {kind: 'idle'}});
+      return false;
+    }
     if (value.expiresAt !== undefined && now() >= value.expiresAt) return false;
     const issue: ProjectOpenIssue = value.status === 'copy'
       ? {code: 'PROJECT_FILE_COPY', projectFile: null, projectId: null, originalProjectFile: value.original?.displayPath ?? null, originalProjectId: null}

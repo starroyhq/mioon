@@ -37,6 +37,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   desktopClient = null, readAdditionalSnapshot = () => ({dirty: false, busy: false, unknown: false, identity: [] as unknown[]}),
   onNativeOpenError, onNativeUpgradeRequired,
   readNativeDraftVersion = () => 0,
+  probeHistory,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
 }: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; identity?: ProjectEntryIdentityOwner | null; manageIdentityLifecycle?: boolean;
   explicitProjectId?: string | null; desktopClient?: ProjectEntriesDesktopBridge | null;
@@ -44,6 +45,8 @@ export function createProjectEntryController({ client, bridge, context: initialC
   onNativeOpenError?: (error: unknown, projectId: string) => void;
   onNativeUpgradeRequired?: (result: Extract<Awaited<ReturnType<ProjectEntriesDesktopBridge['openRecent']>>, {status: 'upgrade-required'}>) => void;
   readNativeDraftVersion?: () => number;
+  /** Read-only 12-25 probe after a native open failed without an open-failure DTO. */
+  probeHistory?: (projectId: string) => Promise<boolean>;
   confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
   if (initialContext.role !== 'launcher' && initialContext.role !== 'editor') throw new Error('Project entry requires an owned entry window');
   let context = initialContext, active = false, lifetime = 0, readSerial = 0, intent = 0, interactionSerial = 0, localVersion = 0, contextVersion = 0;
@@ -137,8 +140,21 @@ export function createProjectEntryController({ client, bridge, context: initialC
       else if (native.status === 'opened') {
         if (native.projectId !== projectId) throw new Error('Native recent acknowledgement does not match its sealed entry');
         result = {ok: true, reason: 'accepted', targetWindowId: native.windowId, targetPhase: null};
-      } else result = {ok: false, reason: native.status === 'cancelled' ? 'cancelled' : native.reason, targetWindowId: null, targetPhase: null,
-        ...(native.status === 'failed' && 'failure' in native && native.failure ? {failure: native.failure} : {})};
+      } else {
+        result = {ok: false, reason: native.status === 'cancelled' ? 'cancelled' : native.reason, targetWindowId: null, targetPhase: null,
+          ...(native.status === 'failed' && 'failure' in native && native.failure ? {failure: native.failure} : {})};
+        // A native open of a diverged project can fail without an open-failure
+        // DTO. The history status endpoint is the existing read-only authority;
+        // consult it only after the native attempt has already failed.
+        if (native.status === 'failed' && !result.failure && probeHistory) {
+          const diverged = await probeHistory(projectId);
+          if (!alive(attempt.owner)) return false;
+          if (diverged) {
+            onNativeOpenError?.({code: 'PROJECT_HISTORY_DIVERGED'}, projectId);
+            result = {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure: {code: 'PROJECT_HISTORY_DIVERGED'}};
+          }
+        }
+      }
       if (!alive(attempt.owner)) return false;
       // A matching subscription receipt may have arrived before invoke returned.
       return attempt.result?.ok ?? settle(attempt, result);

@@ -9,6 +9,7 @@ import {createProjectEntryIdentityOwner, readProjectEntryIdentity} from './proje
 import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import {readProjectEntryDesktopClient} from './project-entry-desktop-client.ts';
 import {createNativeProjectDesktopController} from './native-project-desktop-state.ts';
+import {projectHistoryRecoveryClient} from './project-history-recovery-client.ts';
 import type {NativeProjectDesktopController} from './native-project-desktop-state.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 export interface NativeProjectEntryActions {
@@ -39,6 +40,10 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
     onNativeOpenError: (error, id) => desktopRef.current?.observeError(error, 'open', id),
     onNativeUpgradeRequired: result => desktopRef.current?.presentFormatUpgrade(result),
     readNativeDraftVersion: () => desktopRef.current?.getDraftVersion() ?? 0,
+    probeHistory: async projectId => {
+      try { return (await projectHistoryRecoveryClient.status(projectId)).state === 'diverged'; }
+      catch { return false; }
+    },
     explicitProjectId: context.role === 'launcher' ? new URLSearchParams(window.location.search).get('project') : null,
     confirm, onChange: () => rerender(value => value + 1) }));
   const [desktop] = useState(() => desktopClient ? createNativeProjectDesktopController({client: desktopClient, identity,

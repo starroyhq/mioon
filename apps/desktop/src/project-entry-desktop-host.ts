@@ -93,6 +93,11 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   const token=put({kind:'upgrade',source,facts,owner,registered,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs});
   return projectDesktopFormatUpgradeRequiredSchema.parse({status:'upgrade-required',token,preview});
  }
+ function isHistoryDiverged(error:unknown):boolean{
+  if(error===null||typeof error!=='object'||!('code'in error))return false;
+  const details='details'in error&&error.details!==null&&typeof error.details==='object'?error.details as Record<string,unknown>:{};
+  return error.code==='PROJECT_HISTORY_DIVERGED'||error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_HISTORY_DIVERGED';
+ }
  function copyFromObservation(owner:ProjectEntryDesktopOwner<W>,observed:ReturnType<typeof projectEntrySourceObservationSchema.parse>,admittedFacts?:ProjectLocationFacts):Extract<ProjectDesktopOpenResult,{status:'copy'}>{
   const expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs,token=put({kind:'copy',source:observed.source,original:observed.original,
    ...(admittedFacts?{admittedFacts}:{}),owner,expires});
@@ -131,6 +136,12 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
    if(error===null||typeof error!=='object'||!('code'in error))throw error;
    const details='details'in error&&error.details!==null&&typeof error.details==='object'?error.details as Record<string,unknown>:{};
    if(error.code==='PROJECT_INVALID'&&details.reason==='read-only'||error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_INVALID'&&details.invalidReason==='read-only')return await copySource('read-only');
+   if(isHistoryDiverged(error)){
+    // The project never opens: surface the existing 12-25 decision through the
+    // launcher instead of turning it into a generic OS-open failure sheet.
+    const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
+    return {status:'history-diverged',projectId:observed.source.sourceProjectId,projectFile:observed.source.sourceFile,name:observed.name};
+   }
    if(error.code!=='PROJECT_FILE_COPY')throw error;
    return await observeCopy(owner,file,facts);
   }

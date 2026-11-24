@@ -636,3 +636,35 @@ test('definite copy and moved refusals during adoptCopy never enter the unknown-
     assert.equal(f.controller.readCloseSnapshot().unknown, false);
   }
 });
+
+test('a home card open that returns a diverged failure surfaces the existing recovery issue', async t => {
+  let entry: ReturnType<typeof createProjectEntryController>;
+  const f = await fixture(t, {openRecent: request => {
+    entry.consume(String(request.entryToken), String(request.projectId));
+    return {status: 'failed', reason: 'unavailable', failure: {code: 'PROJECT_HISTORY_DIVERGED'}};
+  }});
+  const context: ProjectWindowContext = {version: 2, role: 'launcher', windowId: id(30), contextId: id(31), backendId: PROJECT_ENTRY_TEST_INSTANCE, initialProjectId: null, autoOpen: false, editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false};
+  entry = createProjectEntryController({context, bridge: {context: async () => context} as unknown as ProjectWindowBridge, desktopClient: f.client, identity: f.identity, manageIdentityLifecycle: false,
+    client: createLauncherClient(async () => assert.fail('No project RPC'), {parseCreateInput: value => value, readDirectory: () => readProjectEntryIdentity(f.identity)}),
+    onNativeOpenError: (error, projectId) => f.controller.observeError(error, 'open', projectId), confirm: async () => true, newToken: () => id(40)});
+  entry.activate(); t.after(() => entry.dispose()); await entry.boot(); entry.reportCreate({dirty: true, busy: false, version: 1});
+  assert.equal(await entry.open(projectId), false);
+  assert.equal(f.controller.getState().failure?.issue.code, 'PROJECT_HISTORY_DIVERGED');
+  assert.equal(entry.getState().openUnknown, false);
+});
+
+test('a generic native open failure is resolved to 12-25 by the read-only history probe', async t => {
+  let entry: ReturnType<typeof createProjectEntryController>;
+  const f = await fixture(t, {openRecent: request => {entry.consume(String(request.entryToken), String(request.projectId)); return {status: 'failed', reason: 'unavailable'};}});
+  const context: ProjectWindowContext = {version: 2, role: 'launcher', windowId: id(30), contextId: id(31), backendId: PROJECT_ENTRY_TEST_INSTANCE, initialProjectId: null, autoOpen: false, editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false};
+  let probes = 0;
+  entry = createProjectEntryController({context, bridge: {context: async () => context} as unknown as ProjectWindowBridge, desktopClient: f.client, identity: f.identity, manageIdentityLifecycle: false,
+    client: createLauncherClient(async () => assert.fail('No project RPC'), {parseCreateInput: value => value, readDirectory: () => readProjectEntryIdentity(f.identity)}),
+    probeHistory: async () => {probes++; return true;},
+    onNativeOpenError: (error, projectId) => f.controller.observeError(error, 'open', projectId), confirm: async () => true, newToken: () => id(40)});
+  entry.activate(); t.after(() => entry.dispose()); await entry.boot(); entry.reportCreate({dirty: true, busy: false, version: 1});
+  assert.equal(await entry.open(projectId), false);
+  assert.equal(probes, 1);
+  assert.equal(f.controller.getState().failure?.issue.code, 'PROJECT_HISTORY_DIVERGED');
+  assert.equal(entry.getState().openUnknown, false);
+});

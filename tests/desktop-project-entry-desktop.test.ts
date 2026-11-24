@@ -445,3 +445,16 @@ test('resolveFormatUpgrade turns a PROJECT_FILE_COPY refusal after approval into
   assert.equal(result.status, 'copy');
   assert.equal(f.adopted.length, 0);
 });
+
+test('a selected project whose file and local records diverged returns the 12-25 recovery status before any window opens', async t => {
+  const f = await fixture(t, port => ({...port, openPath: async () => {
+    throw Object.assign(new Error('Project records diverged'), {code: 'PROJECT_HISTORY_DIVERGED', status: 409, details: {}});
+  }}));
+  const result = await f.bridge.openSelectedFile();
+  assert.equal(result.status, 'history-diverged');
+  if (result.status !== 'history-diverged') return;
+  assert.equal(result.projectId, f.projectId);
+  assert.equal(result.projectFile, f.file);
+  assert.equal(result.name, 'Original');
+  assert.equal(f.adopted.length, 0, 'divergence must not open an editor');
+});
