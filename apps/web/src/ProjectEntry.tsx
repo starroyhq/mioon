@@ -70,7 +70,8 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
       onRetry={async () => { if (state.openUnknown) {await controller.reconcileOpen(); return !controller.getState().openUnknown;} return state.openingProjectId ? controller.open(state.openingProjectId) : false; }}
       onRefresh={async () => { controller.interacted(); const ready = await controller.refresh(); if (ready) await desktop?.initialize(editor); return ready; }} onCreate={controller.create} settings={null} status={status} help={help}
       createDisabledReason={disabled} onCreateStateChange={controller.reportCreate} canMutateEntry={controller.canMutate} createIntentVersion={desktop ? 0 : state.formIntent} />
-    <NativeProjectEntryDialogs desktop={desktop} formIntent={state.formIntent} />
+    <NativeProjectEntryDialogs desktop={desktop} formIntent={state.formIntent}
+      onHistoryResolved={projectId => {void controller.open(projectId);}} />
   </>;
   if (!editor) return contents;
   return <Dialog open={state.shown} onOpenChange={(open, details) => {

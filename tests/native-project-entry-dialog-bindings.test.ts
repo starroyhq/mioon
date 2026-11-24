@@ -129,3 +129,24 @@ test('expired COPY and read-only actions keep the actual native dialog closable 
     assert.equal(requests.filter(action => action === (kind === 'copy' ? 'adoptCopy' : 'copyTo')).length, 1);
   });
 });
+
+test('the native launcher renders the existing 12-25 recovery dialog for a diverged project failure', async t => {
+  const id = (n: number) => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const projectId = id(1);
+  const rows = projectEntryFixture([{id: projectId}]), identity = projectEntryOwnerFixture(() => rows, []);
+  const preload = createProjectEntriesDesktopBridge(async (_channel, value) => {
+    const request = value as {action: string};
+    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: false, open: true, saveAs: false, duplicate: false, copyTo: false, adoptCopy: false}};
+    if (request.action === 'takePendingOpen') return {ok: true, data: null};
+    return {ok: true, data: null};
+  });
+  const client = readProjectEntryDesktopClient({__mioonProjectEntries: preload}); assert.ok(client);
+  const controller = createNativeProjectDesktopController({client, identity, beforeAction: async () => true, openCreated: async () => false, message: () => ''});
+  controller.activate(); t.after(() => {controller.dispose(); identity.dispose();});
+  await controller.initialize(false);
+  controller.observeError({code: 'PROJECT_HISTORY_DIVERGED', status: 409, details: {projectId}}, 'open', projectId);
+  const state = controller.getState(); assert.equal(state.failure?.issue.code, 'PROJECT_HISTORY_DIVERGED');
+  const html = ui.html('native', {desktop: controller});
+  assert.match(html, /data-testid="pf-history-recovery"/);
+  assert.doesNotMatch(html, /data-testid="pf-open-dialog"/);
+});

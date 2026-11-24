@@ -31,6 +31,9 @@ const desktopCancelled=z.object({status:z.literal('cancelled')}).strict();
 export const projectDesktopFormatUpgradeRequiredSchema=z.object({status:z.literal('upgrade-required'),token:uuid,preview:projectFormatUpgradePreviewSchema}).strict();
 const desktopReadOnly=z.object({status:z.literal('read-only'),view:projectFormatReadOnlyViewSchema}).strict();
 const desktopCopy=z.object({status:z.literal('copy'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),original:z.object({name:line,displayPath:z.string().min(1).max(4096)}).strict().optional()}).strict();
+/** A project whose file and local records diverged: the renderer must show the
+ * existing history-recovery decision instead of opening an editor. */
+const desktopHistoryDiverged=z.object({status:z.literal('history-diverged'),projectId:projectIdSchema,projectFile:z.string().min(1).max(4096),name:line.optional()}).strict();
 /** A choice resolution can discover that the approved target became a copy of
  * another registered project after the upgrade prompt was issued. */
 export const projectDesktopFormatUpgradeResultSchema=z.discriminatedUnion('status',[desktopOpened,desktopCancelled,desktopReadOnly,projectDesktopFormatUpgradeRequiredSchema,desktopCopy]);
@@ -40,6 +43,7 @@ export const projectDesktopOpenResultSchema=z.discriminatedUnion('status',[
  desktopCancelled,
  projectDesktopFormatUpgradeRequiredSchema,
  desktopCopy,
+ desktopHistoryDiverged,
  z.object({status:z.literal('copy-source'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),displayPath:z.string().min(1).max(4096),reason:z.enum(['read-only','network']),facts:projectLocationFactsSchema}).strict(),
 ]);
 export type ProjectDesktopOpenResult=z.infer<typeof projectDesktopOpenResultSchema>;
