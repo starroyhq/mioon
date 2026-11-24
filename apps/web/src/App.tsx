@@ -204,7 +204,7 @@ import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.tsx';
 import type {TimelineGenerateTarget} from './Timeline.tsx';
 import GenerateInEditingPanel from './edit-ui/GenerateInEditingPanel.tsx';
-import {committedGenerateClip, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
+import {committedGenerateClip, editingPlaceholderPanelShotId, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
 import TimelineInspector from './TimelineInspector.tsx';
 import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
@@ -675,7 +675,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [clipCompositionPending, setClipCompositionPending] = useState(false);
   // GE-b: the shot whose editing-side generation panel is open (set when a
   // placeholder is created from the timeline blank menu).
-  const [editingGenerateShotId, setEditingGenerateShotId] = useState<string | null>(null);
   const clipInspectorRetention = useRef<ClipInspectorRetention>({ snapshot: null, retained: false });
   const clipConnectionBlocked = useRef(false);
   const [agentClipDraftBlocked, setAgentClipDraftBlocked] = useState(true);
@@ -2644,7 +2643,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return {shotId, ...format5GenerationInputService(provider, selection),
       ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
   };
-  const format5InputShotId = format5 && workspaceMode === 'editing' && editingGenerateShotId ? editingGenerateShotId : selectedId;
+  // Q-13: the 21-09 panel follows the selected placeholder itself, not a one-shot
+  // state left by the placement action. Main-track placeholders use the shot node
+  // id from sequenceSource, other-track placeholders use clip.shotId.
+  function format5EditingPlaceholderShotId(): string | null {
+    if (!format5 || workspaceMode !== 'editing' || !selectedClipId) return null;
+    const clip = (timeline?.clips ?? []).find(item => item.id === selectedClipId) as never;
+    return editingPlaceholderPanelShotId(clip, shotId => data.shots.some(shot => shot.id === shotId));
+  }
+  const format5InputShotId = format5 && workspaceMode === 'editing'
+    ? format5EditingPlaceholderShotId() ?? selectedId : selectedId;
   const format5InputRequestKey = format5 && format5InputShotId && data.shots.some(shot => shot.id === format5InputShotId)
     ? JSON.stringify(format5InputRequest(format5InputShotId)) : '';
   useEffect(() => {
@@ -2748,19 +2756,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (provider.mock) void submitGeneration(args);
     else void reviewGeneration(args);
   }
-  /** GE-b: places one generation placeholder from the timeline blank menu.
-   * The service plans the new shot/node/edge + packed clip and submits the
-   * frozen generation call inside the same commit; the UI then selects the new
-   * clip and opens its generation panel. */
+  /** GE-b: places one generation placeholder from the timeline menu. This only
+   * adds the shot/node/edge + clip in one history step; it never submits a
+   * generation job, so it also works before a service is chosen. The panel's
+   * Generate button goes through the same reviewed path as the board property
+   * bar (WT-3 / Q-13). */
   async function format5PlaceGeneration(target: TimelineGenerateTarget): Promise<void> {
     if (!format5 || format5SessionBusy || !online || auth !== true) return;
-    const selection = generationSelection(providers, {}, {});
-    const provider = selection.provider;
-    const model = selection.model;
-    if (!provider || !model) {notify(t('boardUi.inputs.serviceMissing'), 'warning'); return;}
     const shotId = globalThis.crypto.randomUUID(), clipId = globalThis.crypto.randomUUID();
-    const settings = {requestId: globalThis.crypto.randomUUID(), providerId: provider.id, model,
-      region: String((provider as {region?: unknown}).region ?? 'local'), prompt: '',
+    const settings = {requestId: globalThis.crypto.randomUUID(), prompt: '',
       aspectRatio: (frame?.ratio ?? '9:16') as string, duration: 4, parameters: {}};
     const generateIntent: SequenceEditGenerateIntent = generatePlaceholderIntent({target, settings, shotId, clipId,
       title: t('timeline.generate.newShotTitle')});
@@ -2779,7 +2783,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;
         }
       }
-      setEditingGenerateShotId(shotId);
       await changeMode('editing');
       setPropertiesPage('inspector'); setRightDockTab('properties');
       setSelectedClipId(clipId);
@@ -2812,7 +2815,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     await format5LoadBoard();
   }
   function format5RevealGenerationShot(shotId: string): void {
-    setEditingGenerateShotId(null);
     void changeMode('canvas');
     setSelectedId(shotId);
     setPropertiesPage('inspector'); setRightDockTab('properties'); setTab('settings');
@@ -4578,23 +4580,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const previewJob = timelineJobs.find(e => !e.snapshot?.exportRange && ['succeeded','completed','ready'].includes(e.status));
   const latestRender = timelineJobs[0];
   const jobs = useMemo(() => [...data.jobs].sort((a, b) => b.createdAt!.localeCompare(a.createdAt!)), [data.jobs]);
-  // GE-b: the editing generation panel is bound to the selected placeholder clip.
-  const editingGenerateShot = format5 && editingGenerateShotId
-    ? data.shots.find(shot => shot.id === editingGenerateShotId) ?? null : null;
-  const editingGenerateClip = editingGenerateShot
-    ? (timeline?.clips.find(item => item.id === selectedClipId) as {id: string;
-      sequenceSource?: {kind?: string; nodeId?: string}} | undefined)?.sequenceSource?.kind === 'shot'
-      && (timeline!.clips.find(item => item.id === selectedClipId) as {sequenceSource?: {nodeId?: string}}).sequenceSource?.nodeId === editingGenerateShot.id
-      ? timeline!.clips.find(item => item.id === selectedClipId) ?? null : null : null;
+  // GE-b/Q-13: the editing generation panel is bound to the selected placeholder
+  // clip and stays available when the user selects it again later.
+  const editingPlaceholderShotId = format5EditingPlaceholderShotId();
+  const editingGenerateShot = editingPlaceholderShotId
+    ? data.shots.find(shot => shot.id === editingPlaceholderShotId) ?? null : null;
+  const editingGenerateClip = editingGenerateShot && selectedClipId
+    ? timeline?.clips.find(item => item.id === selectedClipId) ?? null : null;
   const editingGenerateJob = editingGenerateShot
     ? [...jobs].filter(job => job.shotId === editingGenerateShot.id)
       .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')))[0] ?? null : null;
-  useEffect(() => {
-    if (!editingGenerateShotId || isBusy('format5-generate-placeholder')) return;
-    if (!editingGenerateClip && viewRef.current?.activeMode === 'editing' && selectedClipId) {
-      setEditingGenerateShotId(null);
-    }
-  }, [editingGenerateShotId, editingGenerateClip, selectedClipId]);
   const activeCount = jobs.filter(activeJob).length;
   const activeRenderCount = timelineJobs.filter(item => ['queued','running'].includes(item.status)).length;
   // «Save clip sound» tasks share the exports channel but never appear in the
@@ -5418,6 +5413,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       resizable={(editingGenerateClip as {sourceState?: string}).sourceState === 'placeholder'}
       onSavePrompt={prompt => format5BoardUpdateShot(editingGenerateShot.id, {prompt}, Number(editingGenerateShot.revision) || 1)}
       onResize={duration => format5ResizeGeneration(editingGenerateShot.id, duration)}
+      providers={providers as never}
+      generationOptions={(generationOptions[editingGenerateShot.id] ?? {}) as Record<string, unknown>}
+      onGenerationOptionsChange={options => updateGenerationOptions(editingGenerateShot.id, options as GenerationOptionState)}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status

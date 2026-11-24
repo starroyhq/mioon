@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="c06b478e18b9d124883407aec9dbd8e2f3d92c6e8facff67f59feb1b376c7905";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="890e3ed7cb3f96a61ea1302bfc6bb18bfad8512291023833a21cae28fea7cf06";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -2945,9 +2945,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            }
           },
           "required": [
-           "providerId",
-           "model",
-           "region",
            "prompt",
            "aspectRatio",
            "duration"
@@ -2966,6 +2963,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+         },
+         "submit": {
+          "type": "boolean"
          },
          "position": {
           "type": "object",
@@ -4945,9 +4945,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
              }
             },
             "required": [
-             "providerId",
-             "model",
-             "region",
              "prompt",
              "aspectRatio",
              "duration"
@@ -4966,6 +4963,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+           },
+           "submit": {
+            "type": "boolean"
            },
            "position": {
             "type": "object",
