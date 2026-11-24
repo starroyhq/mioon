@@ -123,6 +123,59 @@ export function format5PatchCommand(clip: Pick<AppTimelineClip, 'id' | 'trackId'
   return {unsupported: ['patch']};
 }
 
+/** User-facing reasons carried by format-5 preview failures. Unknown reasons
+ * fall through to the operation-level message rather than inventing a cause. */
+const referenceReasonKeys: Readonly<Record<string, string>> = {
+  PREVIS_OUTPUT_REQUIRED: 'boardUi.error.referencePrevisOutput',
+  ASSET_NOT_READY: 'boardUi.error.referenceAssetNotReady',
+  ASSET_UNVERIFIED: 'boardUi.error.referenceAssetUnverified',
+  PREVIS_OUTPUT_UNVERIFIED: 'boardUi.error.referenceAssetUnverified',
+  ASSET_TYPE_MISMATCH: 'boardUi.error.referenceRoleNotAllowed',
+  ROLE_NOT_ALLOWED: 'boardUi.error.referenceRoleNotAllowed',
+  NODE_MISSING: 'boardUi.error.referenceMissing',
+  SHOT_MISSING: 'boardUi.error.referenceMissing',
+  EDGE_MISSING: 'boardUi.error.referenceMissing',
+  TIMELINE_ROOT_MISSING: 'boardUi.error.referenceMissing',
+  NODE_ARCHIVED: 'boardUi.error.referenceArchived',
+  SHOT_ARCHIVED: 'boardUi.error.referenceArchived',
+  EDGE_ARCHIVED: 'boardUi.error.referenceArchived',
+  NODE_INVALID: 'boardUi.error.referenceInvalid',
+  SHOT_INVALID: 'boardUi.error.referenceInvalid',
+  EDGE_INVALID: 'boardUi.error.referenceInvalid',
+  PREVIS_INVALID: 'boardUi.error.referenceInvalid',
+  REFERENCE_INVALID: 'boardUi.error.referenceInvalid',
+  EDGE_ID_CONFLICT: 'boardUi.error.referenceInvalid',
+  EDGE_ALLOCATION_REQUIRED: 'boardUi.error.referenceInvalid',
+  EDGE_TARGET_MISMATCH: 'boardUi.error.referenceTargetMismatch',
+  SOURCE_TYPE_INVALID: 'boardUi.error.referenceSourceType',
+  SUBJECT_BINDING_REQUIRED: 'boardUi.error.referenceSubjectBinding',
+  LAST_FRAME_REQUIRES_FIRST: 'boardUi.error.referenceLastFrameFirst',
+  FIRST_FRAME_BLOCKED_BY_LAST: 'boardUi.error.referenceFirstFrameBlocked',
+  LAST_FRAME_DETACH_FIRST: 'boardUi.error.referenceLastFrameDetach',
+  ORDER_SET_MISMATCH: 'boardUi.error.referenceOrderChanged',
+  SUBJECT_MISSING: 'boardUi.error.referenceSubjectMissing',
+  SUBJECT_VERSION_MISSING: 'boardUi.error.referenceSubjectMissing',
+};
+const boardCodeKeys: Readonly<Record<string, string>> = {
+  SEQUENCE_EDIT_REFERENCE_INVALID: 'boardUi.error.referenceFailed',
+  SEQUENCE_EDIT_SUBJECT_BINDING_INVALID: 'boardUi.error.subjectBindingFailed',
+  FORMAT5_CAPACITY: 'boardUi.error.capacity',
+  NODE_ALREADY_LINKED: 'boardUi.error.sequenceAlreadyLinked',
+  MULTIPLE_PREDECESSORS: 'boardUi.error.sequenceMultiplePredecessors',
+  MULTIPLE_SUCCESSORS: 'boardUi.error.sequenceMultipleSuccessors',
+  FILM_MUST_START: 'boardUi.error.sequenceFilmStart',
+  INVALID_SEQUENCE_TYPES: 'boardUi.error.sequenceInvalidTypes',
+  TEXT_IS_ANNOTATION: 'boardUi.error.sequenceTextAnnotation',
+  CYCLE: 'boardUi.error.sequenceCycle',
+  MISSING_NODE: 'boardUi.error.sequenceMissingNode',
+  DUPLICATE_EDGE: 'boardUi.error.sequenceDuplicateEdge',
+};
+export function format5BoardFailureMessageKey(code: string | undefined, reason?: string): string {
+  if (reason && referenceReasonKeys[reason]) return referenceReasonKeys[reason]!;
+  if (code && boardCodeKeys[code]) return boardCodeKeys[code]!;
+  return format5CommandErrorMessageKey(code);
+}
+
 export function format5CommandErrorMessageKey(code: string | undefined): string {
   switch (code) {
     case UNCONFIRMED_CODE: return 'editUi.error.EDIT_RESULT_UNCONFIRMED';

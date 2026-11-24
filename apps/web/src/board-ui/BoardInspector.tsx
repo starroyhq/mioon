@@ -20,6 +20,7 @@ import type {SequenceGenerationInputEntryView, SequenceGenerationInputView} from
 import {generationModeKeys, isPrimaryCandidate, referenceRoleKey, referenceRoleOptions, sourceKindIcons,
   unsupportedReasonKey} from './inputs.ts';
 import ShotDialogue from '../ShotDialogue.tsx';
+import GenerationServiceMenu from '../GenerationServiceMenu.tsx';
 import {reconcileShotDraft} from './shot-draft.ts';
 import type {ShotDraftState} from './shot-draft.ts';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
@@ -70,6 +71,8 @@ export interface BoardInspectorProps {
   readonly onOpenTaskCenter?: (jobId: string) => unknown;
   readonly providers?: readonly GenerationProvider[];
   readonly generationOptions?: BoardGenerationOptions;
+  /** Opens Generation services settings from the no-available-service menu. */
+  readonly onOpenGenerationSettings?: (() => void) | undefined;
   readonly onGenerationOptionsChange?: (shotId: string, options: BoardGenerationOptions) => void;
   readonly inputs?: SequenceGenerationInputView | null;
   /** Format-5 previs selection: reuse the same PrevisInspector as formats 3/4
@@ -304,20 +307,11 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
                 ...(inputs.usedCount > 0 ? [t('boardUi.inputs.used', {count: inputs.usedCount})] : [])].join(' · ')
             : t('boardUi.inputs.serviceMissing')}</span>
         </button>
-        {serviceMenu && <div className="board-service-menu" role="menu" data-testid="board-service-menu">
-          {generationProviders.flatMap(provider => {
-            const models = (provider.models ?? []) as readonly Record<string, unknown>[];
-            return (models.length ? models : [undefined]).map((model, index) =>
-              <button type="button" role="menuitem" key={`${provider.id}:${index}`}
-                data-testid={`board-service-${provider.id}${model ? `-${String(model.modelEntryId ?? model.id ?? index)}` : ''}`}
-                disabled={props.busy}
-                onClick={() => {setServiceMenu(false);
-                  props.onGenerationOptionsChange?.(selected.id, serviceChoice(provider, model));}}>
-                <span>{providerDisplayName(provider, t)}</span>
-                {model && <small>{String(model.name ?? model.modelId ?? model.id ?? '')}</small>}
-              </button>);
-          })}
-        </div>}
+        {serviceMenu && <GenerationServiceMenu providers={generationProviders} disabled={props.busy}
+          menuClassName="board-service-menu" menuTestId="board-service-menu" itemTestIdPrefix="board-service"
+          onChoose={choice => {setServiceMenu(false);
+            props.onGenerationOptionsChange?.(selected.id, serviceChoice(choice.provider, choice.model));}}
+          onOpenSettings={() => {setServiceMenu(false); props.onOpenGenerationSettings?.();}}/>}
       </div>
     </> : <p className="board-input-empty" data-testid="board-input-loading">{t('boardUi.inputs.loading')}</p>}
   </section> : null;
