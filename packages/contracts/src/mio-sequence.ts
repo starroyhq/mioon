@@ -204,7 +204,7 @@ export function mioSequenceActionKindsForOperation(operation: MioSequenceGroupOp
 function groupProjectSchema(group: MioSequenceActionGroup) {
   const branches = actionBranches(MIO_SEQUENCE_ACTION_GROUPS[group])
     .map(branch => (branch as unknown as z.ZodObject<z.ZodRawShape>).extend({projectId: uuid}).strict());
-  return z.discriminatedUnion('kind', branches as never).superRefine(dialogueActionRefinement);
+  return z.union(branches as never).superRefine(dialogueActionRefinement);
 }
 const MIO_SEQUENCE_PUBLIC_OPERATIONS: Readonly<Record<string, MioSequenceActionGroup>> = Object.freeze({
   'sequence.action.edit': 'basics', 'sequence.board.edit': 'board', 'sequence.reference.edit': 'reference',

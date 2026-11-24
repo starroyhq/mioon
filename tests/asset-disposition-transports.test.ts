@@ -343,7 +343,7 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
         assert.equal(resolved.format, 'uuid', 'shared UUID references retain their discovery constraint');
       }
     }
-    assert.deepEqual(optionalRequestIdOperations(catalog), [...oldMutations, 'asset.import'].sort());
+    assert.deepEqual(optionalRequestIdOperations(catalog), [...oldMutations, 'asset.import', 'sequence.undo-action'].sort());
     await backend.unchanged(before, 'discovery');
   });
 

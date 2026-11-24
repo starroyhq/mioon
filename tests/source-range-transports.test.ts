@@ -281,7 +281,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
         assert.equal(definition.inputSchema.properties.requestId.maxLength, 200);
       }
     }
-    assert.deepEqual(optionalRequestIdOperations(catalog), ['asset.import',...oldMutations].sort(),'only S1 public upload joins the six original optional mutation keys');
+    assert.deepEqual(optionalRequestIdOperations(catalog), ['asset.import',...oldMutations,'sequence.undo-action'].sort(),'only S1 public upload joins the six original optional mutation keys');
     await backend.unchanged(before, 'discovery');
   });
 
