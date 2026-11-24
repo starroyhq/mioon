@@ -2748,19 +2748,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (provider.mock) void submitGeneration(args);
     else void reviewGeneration(args);
   }
-  /** GE-b: places one generation placeholder from the timeline blank menu.
-   * The service plans the new shot/node/edge + packed clip and submits the
-   * frozen generation call inside the same commit; the UI then selects the new
-   * clip and opens its generation panel. */
+  /** GE-b: places one generation placeholder from the timeline menu. This only
+   * adds the shot/node/edge + clip in one history step; it never submits a
+   * generation job, so it also works before a service is chosen. The panel's
+   * Generate button goes through the same reviewed path as the board property
+   * bar (WT-3 / Q-13). */
   async function format5PlaceGeneration(target: TimelineGenerateTarget): Promise<void> {
     if (!format5 || format5SessionBusy || !online || auth !== true) return;
-    const selection = generationSelection(providers, {}, {});
-    const provider = selection.provider;
-    const model = selection.model;
-    if (!provider || !model) {notify(t('boardUi.inputs.serviceMissing'), 'warning'); return;}
     const shotId = globalThis.crypto.randomUUID(), clipId = globalThis.crypto.randomUUID();
-    const settings = {requestId: globalThis.crypto.randomUUID(), providerId: provider.id, model,
-      region: String((provider as {region?: unknown}).region ?? 'local'), prompt: '',
+    const settings = {requestId: globalThis.crypto.randomUUID(), prompt: '',
       aspectRatio: (frame?.ratio ?? '9:16') as string, duration: 4, parameters: {}};
     const generateIntent: SequenceEditGenerateIntent = generatePlaceholderIntent({target, settings, shotId, clipId,
       title: t('timeline.generate.newShotTitle')});
@@ -5418,6 +5414,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       resizable={(editingGenerateClip as {sourceState?: string}).sourceState === 'placeholder'}
       onSavePrompt={prompt => format5BoardUpdateShot(editingGenerateShot.id, {prompt}, Number(editingGenerateShot.revision) || 1)}
       onResize={duration => format5ResizeGeneration(editingGenerateShot.id, duration)}
+      providers={providers as never}
+      generationOptions={(generationOptions[editingGenerateShot.id] ?? {}) as Record<string, unknown>}
+      onGenerationOptionsChange={options => updateGenerationOptions(editingGenerateShot.id, options as GenerationOptionState)}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status

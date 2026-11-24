@@ -878,9 +878,11 @@ export const sequenceEditSubtitlesIntentSchema = z.object({
 const subtitlesIntentSchema = sequenceEditSubtitlesIntentSchema;
 const generationSettingsSchema = z.object({
   requestId: z.string().min(8).max(200),
-  providerId: z.string().min(1).max(120),
-  model: z.string().min(1).max(200),
-  region: z.string().min(1).max(120),
+  // UI placement leaves the service open (the panel picks it and starts the
+  // paid call); Mio's paid action requires and freezes the service here.
+  providerId: z.string().min(1).max(120).optional(),
+  model: z.string().min(1).max(200).optional(),
+  region: z.string().min(1).max(120).optional(),
   prompt: z.string().max(5000),
   aspectRatio: z.string().min(1).max(40),
   duration: z.number().int().min(1).max(60),
@@ -904,6 +906,10 @@ export const sequenceEditGenerateIntentSchema = z.object({
       ]),
       settings: generationSettingsSchema,
       shotId: uuidSchema, clipId: uuidSchema, title: z.string().min(1).max(200),
+      // The UI only places the placeholder. Mio's approved action sets this so
+      // the same commit also submits the frozen generation call; the RPC
+      // sequence service has no submit port for UI placements.
+      submit: z.boolean().optional(),
       position: z.object({x: z.number().finite(), y: z.number().finite()}).strict().optional()}).strict(),
     z.object({kind: z.literal('generate-resize'), shotId: uuidSchema,
       duration: z.number().int().min(1).max(60)}).strict(),
@@ -917,7 +923,7 @@ export interface SequenceEditGenerateIntent {
         readonly placement: {readonly kind: 'main'; readonly beforeClipId: string | null}
           | {readonly kind: 'track'; readonly trackId: string; readonly startFrame: number};
         readonly settings: SequenceEditGenerateGeneration; readonly shotId: string; readonly clipId: string;
-        readonly title: string; readonly position?: BoardPosition}
+        readonly title: string; readonly submit?: boolean; readonly position?: BoardPosition}
     | {readonly kind: 'generate-resize'; readonly shotId: string; readonly duration: number};
 }
 const generateIntentSchema = sequenceEditGenerateIntentSchema;

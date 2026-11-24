@@ -306,8 +306,15 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     const intents = envelope.intents;
     if (envelope.generateIntent) {
       const operation = envelope.generateIntent.operation;
+      // Only the explicit submit flag submits: UI placements leave it unset and
+      // the UI sequence service has no generationSubmit port at all, so opening
+      // the panel can never become a paid call. Mio's approved action sets it.
+      const submit = operation.kind === 'generate-placeholder' && operation.submit === true;
+      if (submit && (!operation.settings.providerId || !operation.settings.model || !operation.settings.region)) {
+        throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '生成提交缺少服务。', 409);
+      }
       const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest,
-        ...(operation.kind === 'generate-placeholder' && options.generationSubmit ? {afterApply: () => {
+        ...(submit && options.generationSubmit ? {afterApply: () => {
           options.generationSubmit!({shotId: operation.shotId, expectedRevision: 1,
             requestId: operation.settings.requestId, providerId: operation.settings.providerId,
             model: operation.settings.model, parameters: operation.settings.parameters ?? {},

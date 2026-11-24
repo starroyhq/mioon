@@ -118,6 +118,30 @@ test('GE-b: resizing a placeholder is one history step that restores the old len
 });
 
 
+test('Q-13: the editing placement intent carries no submit and no service, and the commit creates no task', async () => {
+  const fixture = await createBoardUiWireFixture();
+  const services = createServices(fixture.store, new Map(), {env: {},
+    application: createProjectServiceApplication(fixture.library, undefined, {})});
+  const shotId = randomUUID(), clipId = randomUUID(), requestId = randomUUID();
+  const generateIntent = generatePlaceholderIntent({target: {trackId: 'main', main: true, startFrame: 120, beforeClipId: null},
+    settings: {requestId, prompt: '', aspectRatio: '9:16', duration: 4, parameters: {}}, shotId, clipId, title: '新镜头'});
+  const operation = generateIntent.operation;
+  assert.equal(operation.kind, 'generate-placeholder');
+  if (operation.kind !== 'generate-placeholder') return;
+  assert.equal(operation.submit, undefined);
+  assert.equal(operation.settings.providerId, undefined);
+  assert.equal(operation.settings.model, undefined);
+  assert.equal(operation.settings.region, undefined);
+  const preview = await services.call('sequence.preview', {projectId: fixture.projectId, requestId: `ui-${requestId}`,
+    generateIntent}) as any;
+  assert.ok(preview?.envelope, JSON.stringify(preview));
+  await services.call('sequence.commit', {projectId: fixture.projectId, envelope: preview.envelope,
+    expectedPlanDigest: preview.planDigest});
+  assert.equal((fixture.store.list('jobs') as any[]).filter(job => job.shotId === shotId).length, 0,
+    'placing the placeholder must not start generation');
+  fixture.store.close(); fixture.library.close();
+});
+
 test('WT-1-18: a 40-shot scrolled timeline keeps the main end target main after overlay and audio right-clicks', () => {
   const packed = Array.from({length: 40}, (_, index) => ({trackId: 'main', startFrame: index * 120, durationFrames: 120}));
   const clips = [...packed, {trackId: 'v2', startFrame: 286, durationFrames: 120}];

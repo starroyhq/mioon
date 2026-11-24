@@ -515,6 +515,7 @@ function Harness(): React.ReactElement {
             || (data?.versions ?? []).some((version: Row) => version.shotId === shot.id)}
           resizable onSavePrompt={prompt => updateShot(shot.id, {prompt}, Number(shot.revision) || 1)}
           onResize={duration => updateShot(shot.id, {duration}, Number(shot.revision) || 1)}
+          providers={[]} generationOptions={{}} onGenerationOptionsChange={() => {}}
           onGenerate={() => generateShot(shot.id)} onRevealOnBoard={() => {}} rpc={(operation, input) => rpc(operation, input)}
           onDialogueApplied={() => {void refresh();}}/>
       </div>;
