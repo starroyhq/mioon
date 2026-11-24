@@ -97,7 +97,8 @@ export function preflightErrorMessage(error: unknown,locale: Locale = 'zh-Hans')
 }
 
 export function preflightIssueMessage(issue: unknown,locale: Locale = 'zh-Hans'): string {
-  const code=property(issue,'code');
+  const code=property(issue,'code'), shotTitle=property(issue,'shotTitle');
+  if (code==='PLACEHOLDER_CLIP'&&typeof shotTitle==='string'&&shotTitle) return translate(locale,'export.preflight.issue.PLACEHOLDER_CLIP_NAMED',{name:shotTitle});
   if (typeof code==='string'&&knownIssueCodes.has(code)) return translate(locale, `export.preflight.issue.${code}` as never);
   // Unknown server messages must not leak paths, probe output or credentials.
   // Preserve the bounded issue code and source ID beside a safe explanation.

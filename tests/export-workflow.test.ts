@@ -6,6 +6,7 @@ import {message} from '../packages/i18n/src/index.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 import {mediaUrl} from '../apps/web/src/api.ts';
 import type {ExportWorkflowRecord} from '../apps/web/src/ExportWorkflow.tsx';
+import {exportFailureKey} from '../apps/web/src/export-failure.ts';
 const source=readFileSync(new URL('../apps/web/src/ExportWorkflow.tsx',import.meta.url),'utf8');
 const PROJECT='e1000000-0000-4000-8000-000000000001',ASSET='e1000000-0000-4000-8000-000000000002';
 interface UiNode {readonly type?: unknown; readonly props: Record<string, any> & {children?: unknown}}
@@ -19,7 +20,7 @@ function harness(initial: Record<string, unknown> = {}) {
   useMemo(fn:()=>unknown,deps:unknown[]){const i=cursor++,old=slots[i] as {deps:unknown[];value:unknown}|undefined;if(!old||deps.some((value,n)=>!Object.is(value,old.deps[n])))slots[i]={deps,value:fn()};return (slots[i] as {value:unknown}).value;},
   useRef(value: unknown){const i=cursor++;return slots[i]??=( {current:value} );},useState(value: unknown){const i=cursor++;if(!(i in slots))slots[i]=typeof value==='function'?(value as ()=>unknown)():value;return[slots[i],(next: unknown)=>{slots[i]=typeof next==='function'?(next as (current: unknown)=>unknown)(slots[i]):next;}];},
   useEffect(run: ()=>unknown,deps: unknown[]){const i=cursor++,before=slots[i] as unknown[]|undefined;if(before&&deps.every((value,n)=>Object.is(value,before[n])))return;slots[i]=deps;effects.push(()=>{cleanups.get(i)?.();const cleanup=run();if(typeof cleanup==='function')cleanups.set(i,cleanup as ()=>void);});}};
- const mod: {exports: {default: Render; ExportWorkflowSection: Render}}={exports:{default:()=>null,ExportWorkflowSection:()=>null}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)(mod,mod.exports,(name: string)=>name==='react'?react:name.endsWith('I18nProvider.tsx')?i18nTestModule():name.endsWith('workspace-visibility.tsx')?{useWorkspaceVisibility:()=>visible}:name.endsWith('workbench-confirm')?{useConfirmation:()=>confirmation}:name.endsWith('packages/i18n/src/index.ts')?{message}:name.endsWith('ExportFileActions.tsx')?{default:'ExportFileActions'}:name==='./api.ts'?{mediaUrl}:name.endsWith('.css')?{}:{WorkbenchButton:'Button',WorkbenchProgress:'Progress',WorkbenchIcon:'WorkbenchIcon'});
+ const mod: {exports: {default: Render; ExportWorkflowSection: Render}}={exports:{default:()=>null,ExportWorkflowSection:()=>null}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)(mod,mod.exports,(name: string)=>name==='react'?react:name.endsWith('I18nProvider.tsx')?i18nTestModule():name.endsWith('workspace-visibility.tsx')?{useWorkspaceVisibility:()=>visible}:name.endsWith('workbench-confirm')?{useConfirmation:()=>confirmation}:name.endsWith('packages/i18n/src/index.ts')?{message}:name.endsWith('ExportFileActions.tsx')?{default:'ExportFileActions'}:name==='./api.ts'?{mediaUrl}:name==='./export-failure.ts'?{exportFailureKey}:name.endsWith('.css')?{}:{WorkbenchButton:'Button',WorkbenchProgress:'Progress',WorkbenchIcon:'WorkbenchIcon'});
  return{calls,setConfirmation(fn:()=>Promise<boolean>){confirmation=fn;},setVisible(value:boolean){visible=value;},unmount(){for(const fn of cleanups.values())fn();},render(patch: Record<string, unknown> = {}){props={...props,...patch};cursor=0;let tree=mod.exports.default(props);for(const run of effects.splice(0))run();cursor=0;tree=mod.exports.default(props);return tree;},section(step: number,values: unknown): UiNode{context=step;return mod.exports.ExportWorkflowSection({steps:values,children:'retained'}) as UiNode;}};
 }
 test('workflow opens passively and latest check phase fences retained next handlers',()=>{
@@ -57,6 +58,12 @@ test('pending and completed exports show their bound result without automaticall
  assert.deepEqual(h.calls,['tasks']);
 });
 
+test('a failed receipt maps its bounded code to plain language without exposing the code',()=>{
+  const record={id:'blocked-export',projectId:PROJECT,status:'failed',error:{code:'EXPORT_BLOCKED',message:'PRIVATE path /Users/private',retryable:true}};
+  const h=harness({projectId:PROJECT,record,attempted:true,phase:'ready'});const tree=h.render();
+  const reason=find(tree,'export-failure-reason').props.children as string;
+  assert.match(reason,/素材或范围/);assert.doesNotMatch(reason,/EXPORT_BLOCKED|PRIVATE|\/Users\//);
+});
 test('failed and cancelled exports return to step one for an explicit new check and confirmation',()=>{
  for (const code of ['INVALID_MEDIA','EXPORT_CANCELLED']) {
   let record:ExportWorkflowRecord|null={id:'first-export',projectId:PROJECT,status:'failed',error:{code,retryable:code==='INVALID_MEDIA'}};
@@ -70,6 +77,9 @@ test('failed and cancelled exports return to step one for an explicit new check 
   }});
   let tree=h.render();
   assert.equal(find(tree,'export-workflow').props['data-step'],4);
+  const reason=find(tree,'export-failure-reason').props.children as string;
+  assert.match(reason, code==='EXPORT_CANCELLED' ? /已取消/ : /没有完成/);
+  assert.doesNotMatch(reason, new RegExp(code));
   const retry=find(tree,'export-workflow-reexport');
   assert.ok(retry,'a terminal failure must offer a direct way to start another export');
   assert.equal(retry.props.children,'重新导出');

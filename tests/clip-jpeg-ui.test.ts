@@ -187,20 +187,18 @@ function renderControls(state: ClipLutState, ctx: ClipLutContext) {
 }
 const nodes = (tree: TestTree): TestNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const textOf = (tree: TestTree): string => Array.isArray(tree) ? tree.map(textOf).join(' ') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : (tree ?? '') as string;
-test('actual JPEG controls disclose format, interpretation limits, draft-only save and no video range control', async t => {
+test('actual JPEG controls keep format evidence and draft-only save without explanatory copy', async t => {
   const h = harness(t); h.controller.open(); await tick();
   let tree = renderControls(h.state(), h.live());
   const byId = (id: string) => nodes(tree).find(node => node.props?.['data-testid'] === id);
   assert.match(textOf(byId('clip-image-source-evidence')), /JFIF JPEG/);
   assert.doesNotMatch(textOf(byId('clip-image-source-evidence')), /已核验 PNG/);
-  assert.match(textOf(byId('clip-image-colour-disclosure')), /无 EXIF、无 ICC.*基线 JFIF/);
-  assert.match(textOf(byId('clip-image-colour-disclosure')), /标记本身不代表 sRGB/);
-  assert.match(textOf(byId('clip-image-colour-disclosure')), /PNG 与 JPEG 合计/);
-  assert.match(textOf(byId('clip-lut-save-reminder')), /草稿.*保存片段/);
+  assert.equal(byId('clip-image-colour-disclosure'), undefined);
+  assert.equal(byId('clip-lut-save-reminder'), undefined);
   assert.equal(byId('clip-lut-source-range'), undefined);
   assert.equal(byId('confirm-clip-colour-source')!.props.disabled, true);
   h.controller.declareSource(true); assert.equal(h.controller.confirmSource(), true);
   tree = renderControls(h.state(), h.live());
-  assert.match(textOf(byId('clip-lut-source-confirmed')), /sRGB JFIF JPEG.*用户解释/);
+  assert.match(textOf(byId('clip-lut-source-confirmed')), /已声明：sRGB JFIF JPEG/);
   assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8'), /mimeType: asset\?\.mimeType/);
 });

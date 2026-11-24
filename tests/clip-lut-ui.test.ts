@@ -211,26 +211,23 @@ function renderControls(state: ClipLutState, ctx = context(), kind: string = 'vi
 const nodes = (tree: TestTree): TestNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const textOf = (tree: TestTree): string => Array.isArray(tree) ? tree.map(textOf).join(' ') : tree && typeof tree === 'object' ? textOf(tree.props?.children) : (tree ?? '') as string;
 test('actual controls disclose whole-timeline adoption, source-ungraded status and import versus save', async t => {
-  const h = harness(t); let tree = renderControls(h.state()); assert.match(textOf(tree), /不会自动迁移/); assert.match(textOf(tree), /所有可见视频/); assert.match(textOf(tree), /原始、未调色/);
-  assert.equal(renderControls(h.state(), context(), 'audio'), null); assert.match(textOf(renderControls(h.state(), context(), 'image')), /sRGB.*Rec.709 \/ Gamma 2.4/);
+  const h = harness(t); let tree = renderControls(h.state()); assert.equal(nodes(tree).some(node => node.props?.['data-testid'] === 'clip-lut-render-disclosure'), false); assert.equal(nodes(tree).some(node => node.props?.['data-testid'] === 'clip-lut-adoption-warning'), false);
+  assert.equal(renderControls(h.state(), context(), 'audio'), null);
   h.controller.open(); await tick(); const record = await prepareClipLutImport(file(), projectId, id(20)); record.phase = 'imported'; record.resource = resource();
   tree = renderControls({ ...h.state(), importRecord: record }, context({ colour: colour({ source: null, look }) }));
   const byId = (id: string) => nodes(tree).find(node => node.props?.['data-testid'] === id);
   assert.match(textOf(tree), /色彩解释已失效/); assert.match(textOf(byId('clip-lut-import-success')), /尚未应用或保存到片段/);
   assert.equal(byId('confirm-clip-colour-source')!.props.disabled, true); assert.equal(byId('apply-clip-lut')!.props.disabled, true);
-  assert.match(textOf(byId('clip-lut-domain-disclosure')), /小于 0 或大于 1/); assert.match(textOf(byId('clip-lut-domain-disclosure')), /转换仍会执行/);
+  assert.equal(byId('clip-lut-domain-disclosure'), undefined);
   assert.equal(byId('clip-lut-file')!.props.accept, '.cube'); assert.equal(byId('clip-lut-strength')!.props.min, 0); assert.equal(byId('clip-lut-strength')!.props.max, 100);
   assert.equal(nodes(tree).filter(node => String(node.type).includes('button')).every(node => node.props.type === 'button'), true);
   assert.match(readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8'), /<ClipLutControls/);
-  assert.match(translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /未调色，不应用片段 LUT/);
 });
 
-test('actual source Preview visibly discloses unprocessed audio and image while rendered timeline output does not', () => {
+test('source Preview keeps the media stage free of unprocessed-score disclosures in every locale', () => {
   const code = transformSync(readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8'), {loader:'tsx', format:'cjs'}).code;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const noop = () => {}, module = {exports:{} as {default: TestComponent}};
-    // Only render-phase wiring is exercised here; the existing playback and
-    // visibility suites own media lifecycle and asynchronous browser events.
     const react = {createElement: (type: unknown, props: TestElementProps, ...children: TestTree[]) => ({type, props:{...props, children}}), useRef:(value: unknown) => ({current:value}), useState:(value: unknown) => [value, noop], useEffect:noop, useLayoutEffect:noop};
     (react as typeof react & {default: unknown}).default = react;
     Function('require', 'module', 'exports', code)((name: string) => {
@@ -252,23 +249,12 @@ test('actual source Preview visibly discloses unprocessed audio and image while 
     for (const mimeType of ['video/mp4', 'image/png', 'audio/wav'] as const) for (const clip of [undefined, {id:clipId, startFrame:0, sourceInFrame:0, durationFrames:30}] as const) {
       const asset = {id:assetId, projectId, mimeType, name:'Owned original', url:'/media/owned-original', duration:1, width:720, height:1280};
       const tree = module.exports.default({...base, asset, clip});
-      const notice = nodes(tree).find(node => node.props?.['data-testid'] === 'preview-source-unprocessed');
-      assert.ok(notice, `${locale} ${mimeType} source disclosure`);
-      assert.equal(textOf(notice), translate(locale, 'timeline.preview.sourceUnprocessed'));
-      assert.equal(notice.type,'p');assert.equal(notice.props.className,'preview-source-disclosure');
-      assert.equal(notice.props.hidden, undefined); assert.equal(notice.props['aria-hidden'], undefined);
-      const stage=nodes(tree).find(node=>String(node.props?.className||'').split(' ').includes('preview-stage'));
-      assert.ok(stage);assert.equal(nodes(stage).includes(notice),false,'Source qualification must stay outside the media stage rather than cover the player');
-      const css=readFileSync(new URL('../apps/web/src/timeline-editing.css',import.meta.url),'utf8');
-      const rule=css.match(/\.central-preview\.edit-preview \.preview-source-disclosure\s*\{([^}]+)\}/)?.[1];assert.ok(rule);
-      assert.match(rule,/white-space:\s*normal/,'The visible source disclosure wraps instead of hiding its LUT qualification');assert.match(rule,/position:\s*static/);
-      assert.doesNotMatch(rule,/display:\s*none|visibility:\s*hidden|overflow:\s*hidden|text-overflow:\s*ellipsis/);
+      assert.equal(nodes(tree).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
+      assert.equal(nodes(tree).some(node => node.props?.className === 'preview-stage-label'), false);
       assert.equal(nodes(tree).find(node => ['video','audio','img'].includes(node.type as string))?.props.src, mediaUrl(projectId, assetId));
     }
     const rendered = module.exports.default({...base, kind:'timeline', job:{id:id(90), status:'succeeded', timelineRevision:1, url:'/media/frozen-render', snapshot:{timeline}}});
     assert.equal(nodes(rendered).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
-    const empty = module.exports.default(base);
-    assert.equal(nodes(empty).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);
   }
 });
 
@@ -398,10 +384,7 @@ test('actual reopened controls require reselect and explicit retry and disclose 
   const original = await pendingRecovery(t), h = harness(t, { recoveryStore: original.recoveryStore }); h.controller.open(); await tick();
   const tree = renderControls(h.state()), byId = (id: string) => nodes(tree).find(node => node.props?.['data-testid'] === id);
   assert.ok(byId('clip-lut-reselect')); assert.equal(byId('clip-lut-file')!.props.disabled, true); assert.equal(byId('retry-clip-lut-import'), undefined);
-  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /不保存 LUT 内容或路径/); assert.match(textOf(byId('clip-lut-recovery-disclosure')), /不会自动导入或应用/);
-  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /网页版仍仅支持同一站点地址/);
-  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /正常退出重启或本地地址变化后仍可恢复/);
-  assert.match(textOf(byId('clip-lut-recovery-disclosure')), /清除相应本地数据会丢失记录/);
+  assert.equal(byId('clip-lut-recovery-disclosure'), undefined);
 });
 
 test('browser storage requires cross-window lock support and preserves one canonical pending request under concurrent reserve', async () => {
@@ -454,9 +437,9 @@ test('PNG reply cannot widen colour, lose byte binding or survive kind/source ch
  for(const response of [imageInspection({assetSha256:'f'.repeat(64)}),imageInspection({status:'compatible'}),imageInspection({evidence:{...imageInspection().evidence,colourTag:'icc'}})] as const){const h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?response:undefined});h.controller.open();await tick();assert.equal(h.state().sourcePhase,'error');h.controller.declareSource(true);assert.equal(h.controller.confirmSource(),false);}
  const gate=deferred(),h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?gate.promise:undefined});h.controller.open();h.set({kind:'video'});gate.resolve(imageInspection());await tick();assert.equal(h.state().inspection,null);assert.deepEqual(h.edits,[]);
 });
-test('image controls disclose reference display, strict PNG admission, alpha and encoded composition',async t=>{
+test('image controls keep strict PNG admission, alpha and encoded composition without explanatory copy',async t=>{
  const h=harness(t,{current:context({kind:'image'}),handler:op=>op==='timeline.colour.image.inspect'?imageInspection():undefined});h.controller.open();await tick();const tree=renderControls(h.state(),h.live(),'image'),all=textOf(tree);
- assert.match(all,/Gamma 2.4/);assert.match(all,/不是线性光或 HDR/);assert.match(all,/没有 sRGB 标签/);assert.match(all,/ICC \/ P3 \/ HDR/);assert.match(all,/系统和显示器/);assert.equal(nodes(tree).some(node=>node.props?.['data-testid']==='clip-lut-source-range'),false);
+ assert.doesNotMatch(all,/Gamma 2.4|不是线性光或 HDR|系统和显示器/);assert.equal(nodes(tree).some(node=>node.props?.['data-testid']==='clip-image-colour-disclosure'),false);assert.equal(nodes(tree).some(node=>node.props?.['data-testid']==='clip-lut-source-range'),false);
  const declaration=nodes(tree).find(node=>node.props?.['data-testid']==='clip-lut-source-declaration');assert.equal(declaration!.props.checked,false);assert.equal(declaration!.props.disabled,false);
 });
 
@@ -552,8 +535,7 @@ for (const locale of sourceInfoLocales) test(`video limits and unknown source ar
   for (const savedColour of [undefined, colour()] as const) {
     const h = harness(t, { current: context({ colour: savedColour }) });
     const tree = renderLiveControls(h, locale);
-    assertControlMessage(tree, 'clip-lut-video-limits', locale, 'colour.lut.videoLimits');
-    assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+    assert.equal(controlById(tree, 'clip-lut-video-limits'), undefined); assert.equal(controlById(tree, 'clip-lut-source-uninspected'), undefined);
     assertNoProbeEvidence(tree);
     assert.equal(Boolean(controlById(tree, 'clip-lut-source-confirmed')), Boolean(savedColour), 'saved user interpretation is separate from probe evidence');
     assert.equal(controlById(tree, 'open-clip-lut')!.props.type, 'button');
@@ -572,9 +554,9 @@ for (const locale of sourceInfoLocales) for (const depth of [8, 10, null] as con
   await tick();
   assert.equal(h.state().sourcePhase, 'ready', 'the fixture is accepted by the existing inspection contract');
   tree = renderLiveControls(h, locale);
-  assertControlMessage(tree, 'clip-lut-video-limits', locale, 'colour.lut.videoLimits');
+  assert.equal(controlById(tree, 'clip-lut-video-limits'), undefined);
   assertControlMessage(tree, 'clip-lut-source-depth', locale, 'colour.lut.videoBitDepth', { stream: 3, depth: depth ?? translate(locale, 'colour.lut.unknown') });
-  assertControlMessage(tree, 'clip-lut-source-provenance', locale, 'colour.lut.videoEvidenceLimits');
+  assert.equal(controlById(tree, 'clip-lut-source-provenance'), undefined);
   assertControlMessage(tree, 'clip-lut-source-evidence', locale, 'colour.lut.videoEvidence', {
     primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'limited', pixel: response.evidence.pixelFormat, hdr: translate(locale, 'colour.lut.noHdrMetadata'),
   });
@@ -623,14 +605,10 @@ test('missing tags and no reported HDR side data stay observations, with no auto
     assert.equal((h.state().inspection as TimelineColourSourceInspection).evidence.primaries, null);
     assert.ok(evidence.includes(translate(locale, 'colour.lut.untagged')));
     assert.ok(evidence.includes(translate(locale, 'colour.lut.noHdrMetadata')));
-    assertControlMessage(tree, 'clip-lut-source-provenance', locale, 'colour.lut.videoEvidenceLimits');
     assert.equal(h.state().range, ''); assert.equal(h.state().sourceDeclared, false);
     assert.equal(controlById(tree, 'confirm-clip-colour-source')!.props.disabled, true);
     assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
   }
-  assert.match(translate('en', 'colour.lut.videoEvidenceLimits'), /10-bit depth or no reported HDR side data do not prove SDR/);
-  assert.match(translate('en', 'colour.lut.videoEvidenceLimits'), /Log is not inferred from filenames or brands/);
-  assert.match(translate('en', 'colour.lut.sourceUninspected'), /user declaration.*does not mean SDR/);
 });
 
 test('10-bit inspection remains read-only until the original range and declaration buttons are used', async t => {
@@ -662,7 +640,7 @@ test('explicit reinspection clears old observations while loading and after prob
   assert.equal(h.state().sourcePhase, 'loading');
   for (const locale of sourceInfoLocales) {
     tree = renderLiveControls(h, locale);
-    assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+    assert.equal(controlById(tree, 'clip-lut-source-uninspected'), undefined);
     assertNoProbeEvidence(tree);
     assert.equal(controlById(tree, 'inspect-clip-colour-source')!.props.disabled, true);
   }
@@ -670,7 +648,7 @@ test('explicit reinspection clears old observations while loading and after prob
   assert.equal(h.state().sourcePhase, 'error');
   for (const locale of sourceInfoLocales) {
     tree = renderLiveControls(h, locale);
-    assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+    assert.equal(controlById(tree, 'clip-lut-source-uninspected'), undefined);
     assertNoProbeEvidence(tree);
     assert.equal(controlById(tree, 'confirm-clip-colour-source')!.props.disabled, true);
   }
@@ -684,7 +662,7 @@ test('a retained observed snapshot never displays probe evidence for a different
   for (const patch of [{ projectId: id(90) }, { assetId: id(91) }, { assetSha256: 'f'.repeat(64) }] as const) {
     for (const locale of sourceInfoLocales) {
       const tree = renderControls(observed, context(patch), 'video', locale);
-      assertControlMessage(tree, 'clip-lut-source-uninspected', locale, 'colour.lut.sourceUninspected');
+      assert.equal(controlById(tree, 'clip-lut-source-uninspected'), undefined);
       assertNoProbeEvidence(tree);
       assert.equal(controlById(tree, 'clip-lut-source-issue'), undefined, 'no old-source interpretation issue is attributed to the new source');
       assert.equal(controlById(tree, 'clip-lut-source-range')!.props.disabled, true);
@@ -702,7 +680,7 @@ test('source replacement drops late responses and requires an explicit check of 
   gate.resolve(inspection()); await tick();
   let tree = renderLiveControls(h);
   assert.equal(h.state().inspection, null); assertNoProbeEvidence(tree);
-  assertControlMessage(tree, 'clip-lut-source-uninspected', 'en', 'colour.lut.sourceUninspected');
+  assert.equal(controlById(tree, 'clip-lut-source-uninspected'), undefined);
   assertReadOnlySourceCalls(h, ['timeline.colour.source.inspect', 'lut.list']);
   controlById(tree, 'open-clip-lut')!.props.onClick(); await tick(); tree = renderLiveControls(h);
   assert.equal(h.state().inspection!.assetId, id(91)); assert.equal(h.state().inspection!.assetSha256, nextHash);

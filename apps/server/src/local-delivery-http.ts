@@ -1,6 +1,6 @@
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import {LOCAL_DELIVERY_LIMITS} from '@mioon/contracts/local-delivery';
-import type {LocalDeliveryEnvelope,LocalDeliveryExecution} from '@mioon/contracts/local-delivery';
+import type {LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryCheckResult} from '@mioon/contracts/local-delivery';
 import {LocalDeliveryError,safeLocalDeliveryError} from '@mioon/business/local-delivery';
 import {rejectProjectMismatch} from './project-host/request.ts';
 import type {ProjectAddress} from './project-host/request.ts';
@@ -9,6 +9,7 @@ export interface LocalDeliveryHttpService{
   get(input:unknown):LocalDeliveryEnvelope;put(input:unknown):LocalDeliveryEnvelope;
   discard(input:unknown):LocalDeliveryEnvelope;prepare(input:unknown):LocalDeliveryEnvelope;
   execute(input:unknown):Promise<LocalDeliveryExecution>;recover(input:unknown):Promise<LocalDeliveryExecution>;
+  check(input:unknown):LocalDeliveryCheckResult;discardIntent(input:unknown):LocalDeliveryEnvelope;
 }
 const invalid=():never=>{throw new LocalDeliveryError('LOCAL_DELIVERY_VALIDATION');};
 function query(url:URL,allowed:string[]):Record<string,string>{
@@ -41,11 +42,11 @@ export function createLocalDeliveryHttp({delivery,signal}:{delivery:LocalDeliver
     try{
       if(Buffer.byteLength(req.url||'')>LOCAL_DELIVERY_LIMITS.urlBytes)throw new LocalDeliveryError('LOCAL_DELIVERY_LIMIT');
       const route=url.pathname.slice('/api/local-delivery'.length);
-      const methods=route===''?['GET']:route==='/draft'?['PUT','DELETE']:['/prepare','/execute','/recover'].includes(route)?['POST']:null;
+      const methods=route===''?['GET']:route==='/draft'?['PUT','DELETE']:['/prepare','/execute','/recover','/check','/discard-intent'].includes(route)?['POST']:null;
       if(methods===null)throw new LocalDeliveryError('LOCAL_DELIVERY_NOT_FOUND');
       if(!methods.includes(req.method||'')){res.setHeader('Allow',methods.join(', '));send(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'此接口不支持该请求方法。',details:{},retryable:false}});return true;}
       if(signal?.aborted)throw new LocalDeliveryError('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
-      let result:LocalDeliveryEnvelope|LocalDeliveryExecution;
+      let result:LocalDeliveryEnvelope|LocalDeliveryExecution|LocalDeliveryCheckResult;
       if(req.method==='GET')result=delivery.get(query(url,['projectId']));
       else{
         query(url,[]);const input=await body(req,res);
@@ -53,6 +54,8 @@ export function createLocalDeliveryHttp({delivery,signal}:{delivery:LocalDeliver
         if(signal?.aborted)throw new LocalDeliveryError('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
         if(route==='/draft')result=req.method==='PUT'?delivery.put(input):delivery.discard(input);
         else if(route==='/prepare')result=delivery.prepare(input);
+        else if(route==='/check')result=delivery.check(input);
+        else if(route==='/discard-intent')result=delivery.discardIntent(input);
         else result=await (route==='/execute'?delivery.execute(input):delivery.recover(input));
       }
       const bytes=JSON.stringify({ok:true,data:result});

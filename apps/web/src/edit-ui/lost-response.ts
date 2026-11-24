@@ -28,7 +28,7 @@ export interface RetainedSequenceEdit {
 export interface LostResponseView {readonly projectId: string; readonly requestId: string}
 
 export type CommitFailure =
-  | {readonly kind: 'rejected'; readonly code: string; readonly ids?: readonly string[]}
+  | {readonly kind: 'rejected'; readonly code: string; readonly ids?: readonly string[]; readonly reason?: string}
   | {readonly kind: 'unknown'};
 
 export type LostVerdict =
@@ -61,7 +61,9 @@ export function classifyCommitFailure(error: unknown): CommitFailure {
     || (typeof status === 'number' && status >= 400 && status < 500 && definitive !== false);
   if (!rejected) return {kind: 'unknown'};
   const ids = isRecord(error) && Array.isArray(error.ids) ? error.ids.filter((id): id is string => typeof id === 'string') : undefined;
-  return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {})};
+  const details = isRecord(error) ? error.details : error instanceof ApiError ? error.details : undefined;
+  const reason = isRecord(details) && typeof details.reason === 'string' && details.reason ? details.reason : undefined;
+  return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {}), ...(reason ? {reason} : {})};
 }
 
 /** An explicit `not_applied` receipt is a definite conclusion; a missing

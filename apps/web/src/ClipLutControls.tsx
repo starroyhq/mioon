@@ -39,13 +39,8 @@ export default function ClipLutControls({ context, kind,  onEdit, rpc, Select }:
   return <section data-testid="clip-lut-controls" aria-labelledby="clip-lut-title">
     <Separator className="section-divider" />
     <div className="section-heading"><span id="clip-lut-title">{t('colour.lut.title')}</span></div>
-    <p className="input-hint" data-testid="clip-lut-render-disclosure">{t('colour.lut.renderDisclosure')}</p>
-    {!image && <p className="notice warning" data-testid="clip-lut-video-limits">{t('colour.lut.videoLimits')}</p>}
-    {!image && !videoInspection && <p className="input-hint" data-testid="clip-lut-source-uninspected">{t('colour.lut.sourceUninspected')}</p>}
-    {!colour && <p className="notice warning" data-testid="clip-lut-adoption-warning">{t('colour.lut.adoptionWarning')}</p>}
     {colour && !source && <p className="notice warning" role="alert" data-testid="clip-lut-reconfirm-source">{t('colour.lut.reconfirmSource')}</p>}
     {source && <p className="input-hint" data-testid="clip-lut-source-confirmed">{'evidence' in source ? t('colour.lut.sourceImage', { format: source.evidence.profileId === 'jfif-ycbcr8-srgb-v1' ? 'JFIF JPEG' : 'PNG', width: source.evidence.width, height: source.evidence.height, alpha: source.evidence.alphaMode === 'straight' ? t('colour.lut.alphaPreserved') : t('colour.lut.opaque') }) : t('colour.lut.sourceVideo', { range: source.range === 'limited' ? 'Limited' : 'Full', stream: source.streamIndex })}</p>}
-    {image && <p className="input-hint" data-testid="clip-image-colour-disclosure">{t('colour.lut.imageDisclosure')}</p>}
     {false}
     {!state.opened ? <Button variant="outline" size="sm" type="button" data-testid="open-clip-lut" disabled={blocked} onClick={() => controller.open()}>{colour ? t('colour.lut.inspectAdjust') : t('colour.lut.inspectEnable')}</Button> : <>
       <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: 0 }}>
@@ -54,7 +49,6 @@ export default function ClipLutControls({ context, kind,  onEdit, rpc, Select }:
         {videoInspection && <p className="input-hint" data-testid="clip-lut-source-evidence">{t('colour.lut.videoEvidence', { primaries: videoInspection.evidence.primaries ?? t('colour.lut.untagged'), transfer: videoInspection.evidence.transfer ?? t('colour.lut.untagged'), matrix: videoInspection.evidence.matrix ?? t('colour.lut.untagged'), range: videoInspection.evidence.range ?? t('colour.lut.untagged'), pixel: videoInspection.evidence.pixelFormat ?? t('colour.lut.unknown'), hdr: t(videoInspection.evidence.hdrMetadata ? 'colour.lut.hdrMetadata' : 'colour.lut.noHdrMetadata') })}</p>}
         {videoInspection && <>
           <p className="input-hint" data-testid="clip-lut-source-depth">{t('colour.lut.videoBitDepth', { stream: videoInspection.streamIndex ?? t('colour.lut.unknown'), depth: videoInspection.evidence.bitDepth ?? t('colour.lut.unknown') })}</p>
-          <p className="input-hint" data-testid="clip-lut-source-provenance">{t('colour.lut.videoEvidenceLimits')}</p>
         </>}
         {imageInspection && <p className="input-hint" data-testid="clip-image-source-evidence">{t('colour.lut.imageEvidence', { verification: t(imageInspection.evidence.profileId === 'jfif-ycbcr8-srgb-v1' ? 'colour.lut.jpegVerified' : 'colour.lut.pngVerified'), width: imageInspection.evidence.width, height: imageInspection.evidence.height, alpha: imageInspection.evidence.alphaMode === 'straight' ? 'Straight alpha' : t('colour.lut.noAlpha'), tag: t(imageInspection.evidence.colourTag === 'srgb' ? 'colour.lut.srgbTag' : 'colour.lut.noSrgbTag') })}</p>}
         {state.sourceError && <p className="notice warning" role="alert">{state.sourceErrorMessage ? renderMessage(state.sourceErrorMessage) : t('colour.error.sourceCheckFailed')}</p>}
@@ -68,8 +62,6 @@ export default function ClipLutControls({ context, kind,  onEdit, rpc, Select }:
       </fieldset>
       <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: '16px 0 0' }}>
         <legend className="field-label">{t('colour.lut.lookLegend')}</legend>
-        <p className="input-hint">{t('colour.lut.creativeOnly')}</p>
-        <p className="input-hint" data-testid="clip-lut-domain-disclosure">{t('colour.lut.domainDisclosure')}</p>
         <LookPackControls scope={identity} disabled={blocked || importUnavailable} adopt={file => controller.importFile(file, { lookPackConfirmed: true })} />
         <Label className="field-label" htmlFor="clip-lut-file">{t('colour.lut.importLabel')}</Label>
         <Input id="clip-lut-file" data-testid="clip-lut-file" type="file" accept=".cube" disabled={importUnavailable} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void controller.importFile(file); }} />
@@ -77,7 +69,6 @@ export default function ClipLutControls({ context, kind,  onEdit, rpc, Select }:
         {state.importError && <p className="notice warning" role="alert">{state.importErrorMessage ? renderMessage(state.importErrorMessage) : t('colour.error.importUnconfirmed')}</p>}
         {importRecord?.phase === 'imported' && <p className="notice" role="status" data-testid="clip-lut-import-success">{t('colour.lut.imported', { name: importRecord.resource?.name ?? '' })}</p>}
         {importRecord?.phase === 'rejected' && <p className="notice warning" role="alert">{t('colour.lut.importRejected')}{importRecord.errorMessage && <span> {renderMessage(importRecord.errorMessage)}</span>}</p>}
-        <p className="input-hint" data-testid="clip-lut-recovery-disclosure">{t('colour.lut.recoveryDisclosure')}</p>
         {state.recoveryPhase === 'loading' && <p className="input-hint" role="status">{t('colour.lut.checkingRecovery')}</p>}
         {state.recoveryError && <p className="notice warning" role="alert" data-testid="clip-lut-recovery-error">{state.recoveryErrorMessage ? renderMessage(state.recoveryErrorMessage) : t('colour.error.recoveryCheckFailed')}</p>}
         {(state.recoveryPhase === 'error' || state.recovery) && <Button variant="outline" size="sm" type="button" data-testid="check-clip-lut-recovery" disabled={state.importing} onClick={() => { void controller.checkRecovery(); }}>{t('colour.lut.recheckRecovery')}</Button>}
@@ -109,11 +100,9 @@ export default function ClipLutControls({ context, kind,  onEdit, rpc, Select }:
           <label className="field-label"><input type="checkbox" data-testid="clip-lut-enabled" checked={look.enabled} onChange={event => controller.changeLook({ enabled: event.target.checked })} />{t('colour.lut.enableLut')}</label>
           <Label className="field-label" htmlFor="clip-lut-strength">{t('colour.lut.strength', { percent: Math.round(look.strength * 100) })}</Label>
           <Input id="clip-lut-strength" data-testid="clip-lut-strength" type="range" min={0} max={100} step={1} value={look.strength * 100} onChange={event => controller.changeLook({ strength: Number(event.target.value) / 100 })} />
-          <p className="input-hint">{t('colour.lut.strengthHint')}</p>
-          <Button variant="ghost" size="sm" type="button" data-testid="remove-clip-lut" onClick={() => controller.removeLook()}>{t('colour.lut.remove')}</Button>
+            <Button variant="ghost" size="sm" type="button" data-testid="remove-clip-lut" onClick={() => controller.removeLook()}>{t('colour.lut.remove')}</Button>
         </>}
         {colour && <Button variant="ghost" size="sm" type="button" data-testid="disable-clip-colour" onClick={() => controller.disableColour()}>{t('colour.lut.disableColour')}</Button>}
-        <p className="input-hint" data-testid="clip-lut-save-reminder">{t('colour.lut.saveReminder')}</p>
       </fieldset>
     </>}
   </section>;

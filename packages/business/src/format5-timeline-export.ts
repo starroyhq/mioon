@@ -28,6 +28,8 @@ export interface Format5ExportBlocker {
   readonly code: Format5ExportBlockerCode;
   readonly clipId: string;
   readonly nodeId: string;
+  /** Human-readable shot title when the board row provides one. */
+  readonly shotTitle?: string;
   /** Present for VERSION_TOO_SHORT: the selected-but-unsynced version. */
   readonly versionId?: string;
   readonly shortByFrames?: number;
@@ -98,7 +100,9 @@ export function format5ExportBlockersFromTimeline(db: ProjectStore['db'], timeli
     const source = clip.sequenceSource;
     if (!source) continue;
     if (clip.sourceState === 'placeholder') {
-      blockers.push({code: 'PLACEHOLDER_CLIP', clipId: clip.id, nodeId: source.nodeId});
+      const shot = shots.get(source.nodeId);
+      const shotTitle = typeof shot?.title === 'string' && shot.title ? shot.title : undefined;
+      blockers.push({code: 'PLACEHOLDER_CLIP', clipId: clip.id, nodeId: source.nodeId, ...(shotTitle ? {shotTitle} : {})});
       continue;
     }
     if (source.kind !== 'shot' || source.versionMode !== 'follow') continue;
@@ -164,8 +168,10 @@ export function recheckFormat5ExportTicket(store: ProjectStore, ticket: Format5E
  * follow versions block the whole export with the concrete clip/node ids. */
 export function assertFormat5ExportAdmissible(ticket: Format5ExportTicket): void {
   if (ticket.blockers.length === 0) return;
-  throw new AppError('EXPORT_BLOCKED', '时间线还有未生成片段或待选版本的片段，不能导出。', 409,
-    {blockers: ticket.blockers});
+  const placeholder = ticket.blockers.find(blocker => blocker.code === 'PLACEHOLDER_CLIP');
+  throw new AppError('EXPORT_BLOCKED', placeholder?.shotTitle
+    ? `镜头「${placeholder.shotTitle}」还没生成，先补上素材再导出。`
+    : '时间线还有未生成片段或待选版本的片段，不能导出。', 409, {blockers: ticket.blockers});
 }
 
 export type {Format5Clip, Format5Timeline};

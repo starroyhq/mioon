@@ -278,7 +278,7 @@ test('frame menu offers exactly six choices in either short-edge tier and only s
     assert.match(textOf(options[0]), /9:16 竖屏/);
     assert.match(textOf(options[1]), /16:9 横屏/);
     assert.match(textOf(options[2]), /1:1 方形/);
-    assert.match(textOf(tree), /缩放和偏移会保留/);
+    assert.doesNotMatch(textOf(tree), /缩放和偏移会保留/);
     const group = nodes(tree).find(node => node.type === 'DropdownMenuRadioGroup')!;
     assert.equal(group.props.value, props.ratio);
     group.props.onValueChange('follow');
@@ -358,7 +358,7 @@ test('monitor and export settings keep the legacy UI unless authoritative aspect
   assert.ok(nodes(legacy).every(node => node.type !== controls.AspectFrameExportRatio));
   const ratioView = controls.AspectFrameExportRatio(row.props);
   assert.equal(ratioView.type, 'dl');
-  assert.match(textOf(ratioView), /画面比例16:9（在剪辑中修改）/);
+  assert.equal(textOf(ratioView), '画面比例16:9');
   assert.ok(nodes(ratioView).every(node => !['Button', 'button', 'input', 'select', 'WorkbenchSelect'].includes(String(node.type))));
   assert.ok(byTestId(legacy, 'export-resolution'));
   assert.ok(byTestId(current, 'export-resolution'));

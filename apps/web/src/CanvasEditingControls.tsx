@@ -207,6 +207,25 @@ export function CanvasDeleteDialog({review, busy, onCancel, onConfirm}: {
   </Dialog>;
 }
 
+export function Format5DeleteDialog({count, busy, onCancel, onConfirm}: {
+  readonly count: number;
+  readonly busy: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  const {t} = useI18n();
+  const cancelButton = useRef<HTMLButtonElement | null>(null);
+  return <Dialog open onOpenChange={open => {if (!open && !busy) onCancel();}}>
+    <WorkbenchDialogContent data-testid="format5-delete-dialog" size="confirm" className="canvas-delete-dialog"
+      initialFocus={cancelButton} showCloseButton={false}
+      title={<><span className="canvas-delete-icon"><Trash2 size={18} aria-hidden="true" /></span>{t('canvas.edit.deleteTitle', {count})}</>}
+      description={t('boardUi.delete.format5Impact')}
+      footer={<><WorkbenchButton ref={cancelButton} data-testid="format5-delete-cancel" disabled={busy} onClick={onCancel}>{t('boardUi.delete.cancel')}</WorkbenchButton>
+        <WorkbenchButton variant="danger" loading={busy} data-testid="format5-delete-confirm" onClick={onConfirm}>{t('boardUi.delete.confirm')}</WorkbenchButton></>}
+    />
+  </Dialog>;
+}
+
 export function CanvasArchivePopover({scope, visible: requestedVisible, count, items, loading, error, busy, readOnly = false, canRestoreAll, onOpen, onRestore, onRestoreAll, onRetry, onLoadMore, renderPreview}: {
   readonly scope: string;
   readonly visible: boolean;

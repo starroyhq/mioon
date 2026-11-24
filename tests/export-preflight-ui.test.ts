@@ -307,7 +307,7 @@ test('accessible topbar export action opens recovery even when a candidate, base
   for (const patch of [{ data: { project: null } }, { timeline: null }, { loading: true }]) assert.equal(gate(patch).canOpenExport, false);
 });
 
-test('blocked Check retains accessible recovery controls and pending copy points to the original request entry', () => {
+test('blocked Check keeps draft recovery while a pending export intent is handled in step 1', () => {
   const recoverySource = readFileSync(new URL('../apps/web/src/DeliveryDraftRecovery.tsx', import.meta.url), 'utf8');
   const module = { exports: {} }, disclosure = { exports: {} }, rangeSummary = { exports: {} };
   const react: Record<string, unknown> = { createElement: (type: unknown, props: Record<string, unknown>, ...children: unknown[]) => [(disclosure.exports as {default?: unknown}).default, (rangeSummary.exports as {default?: unknown}).default].includes(type) ? (type as (props: Record<string, unknown>) => unknown)({ ...props, children }) : element(type, props, ...children) }; react.default = react;
@@ -338,13 +338,12 @@ test('blocked Check retains accessible recovery controls and pending copy points
   const tree = renderPanel({ recovery, canCheck: false, deliveryNameError: 'Invalid name', pendingExport: true });
   assert.equal(findNode(tree, 'delivery-draft-recovery').props['aria-label'], '本地交付草稿与原导出请求');
   const restore = findNode(tree, 'restore-delivery-draft');
-  const recover = findNode(tree, 'recover-original-delivery');
   assert.equal(restore.type, 'Button'); assert.equal(restore.props.type, 'button'); assert.equal(restore.props.disabled, false);
-  assert.equal(recover.type, 'Button'); assert.equal(recover.props.type, 'button'); assert.equal(recover.props.disabled, false);
-  assert.equal(textOf(recover), '确认恢复同一原请求'); assert.equal(findNode(tree, 'preflight-check').props.disabled, true);
+  assert.equal(nodes(tree).some(item => item.props['data-testid'] === 'recover-original-delivery'), false);
+  assert.equal(findNode(tree, 'preflight-check').props.disabled, true);
   assert.equal(findNode(tree, 'preflight-export').props.disabled, true);
-  assert.match(textOf(tree), /请使用原请求旁的恢复入口核对同一请求；重新检查不会重发导出/);
-  assert.doesNotMatch(textOf(tree), /请在任务面板恢复同一请求/); assert.deepEqual(events, []);
+  assert.doesNotMatch(textOf(tree), /请使用原请求旁的恢复入口核对同一请求|重新检查不会重发导出/);
+  assert.deepEqual(events, []);
 });
 
 test('actual dock view keeps the unsaved status and uses the checked snapshot without initiating reads', async () => {
@@ -535,6 +534,12 @@ test('compact dock keeps the dirty warning and shows blocking issues before stat
   assert.match(css, /\.export-preflight-body\{min-height:0;flex:1;overflow:auto;/);
 });
 
+test('a placeholder blocker names the exact shot in the preflight issue message', () => {
+  assert.match(preflightIssueMessage({code: 'PLACEHOLDER_CLIP', severity: 'error', shotTitle: '路口俯拍'}, 'zh-Hans'), /镜头「路口俯拍」还没生成/);
+  assert.match(preflightIssueMessage({code: 'PLACEHOLDER_CLIP', severity: 'error', shotTitle: 'Road crossing'}, 'en'), /Shot “Road crossing” has not been generated/);
+  assert.match(preflightIssueMessage({code: 'PLACEHOLDER_CLIP', severity: 'error'}, 'zh-Hans'), /占位片段|佔位片段/);
+});
+
 test('check instructions are omitted and the current state and explicit action remain visible', () => {
   let checks = 0;
   const tree = renderPanel({ state: { phase: 'idle' }, canCheck: true, exportBusy: false, onCheck: () => { checks++; } });
@@ -558,4 +563,13 @@ test('export dialog removes explanatory copy and disclosure labels in every loca
   for (const key of ['redesign.export.sampleScope', 'redesign.export.verifiedWithCapability', 'redesign.export.timeUnknown',
     'export.preflight.capability.available', 'export.preflight.sourceScope', 'export.preflight.checkedAssets',
     'export.preflight.subtitleScope', 'export.content.storyboardDetail']) assert.equal(Object.hasOwn(i18n.catalogs, key), false, key);
+});
+
+test('confirmation file field shows the actual default or named output filename', () => {
+  const ready = { phase: 'ready', report: { timelineRevision: 1, checkedAt: '2026-10-11T00:00:00Z', issues: [], summary: null, checks: { checkedAssets: 0, totalAssets: 0, bytesHashed: 0 } } };
+  const tree = renderPanel({ state: ready, projectName: 'Mioon混剪' });
+  assert.match(textOf(tree), /Mioon混剪\.mp4/);
+  assert.doesNotMatch(textOf(tree), /留空，使用默认文件名|使用預設檔名/);
+  const named = renderPanel({ state: ready, projectName: 'Mioon混剪', deliveryName: '我的成片' });
+  assert.match(textOf(named), /我的成片\.mp4/);
 });

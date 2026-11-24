@@ -101,6 +101,8 @@ async function harness(t: test.TestContext, {gates = {}, projectReady = true}:{g
     async execute(input: Parameters<LocalDeliveryClient['execute']>[0]) { record('execute', input); return settle('execute'); },
     async recover(input: Parameters<LocalDeliveryClient['recover']>[0]) { record('recover', input); return settle('recover'); },
     async discard() { assert.fail('Range changes cannot discard the title through transport'); },
+    async check() { assert.fail('Range changes cannot check a pending export'); },
+    async discardIntent() { assert.fail('Range changes cannot discard an export intent'); },
   };
   const environment = {msg, locale: 'en', schemas, isTimelineMutationResponse, hasRequestNotAppliedProof,
     dataRef, currentProject: {current: projectId}, projectEpoch: {current: 1}, navigationEpoch: {current: 0}, panelIntent: {current: 0},

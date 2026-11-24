@@ -44,6 +44,8 @@ function fixture(t: test.TestContext, options: {context?: Partial<ReadyDeliveryC
       stored = { ...stored, intentRevision: stored.intentRevision + 1, intent: { intentId: input.intentId, timelineId: input.timelineId, baseRevision: input.baseRevision, draft: copy(input.draft), input: copy(input.input), ...(input.outputLocale ? {outputLocale: input.outputLocale} : {}), createdAt: stamp, outcome: { status: 'pending' } }, intentTargetStatus: 'matching' }; return copy(stored); },
     async execute(input: Parameters<LocalDeliveryClient['execute']>[0]) { calls.push({ method: 'execute', input: copy(input) }); return overrides.execute ? overrides.execute(input) : settle(); },
     async recover(input: Parameters<LocalDeliveryClient['recover']>[0]) { calls.push({ method: 'recover', input: copy(input) }); return overrides.recover ? overrides.recover(input) : settle(); },
+    async check(input: Parameters<LocalDeliveryClient['check']>[0]) { calls.push({ method: 'check', input: copy(input) }); return overrides.check ? overrides.check(input) : { status: 'not_executed' as const, projectId: input.projectId, intentId: input.intentId }; },
+    async discardIntent(input: Parameters<LocalDeliveryClient['discardIntent']>[0]) { calls.push({ method: 'discardIntent', input: copy(input) }); if (overrides.discardIntent) return overrides.discardIntent(input); stored = { ...stored, intentRevision: stored.intentRevision + 1, intent: null, intentTargetStatus: 'unset' }; return copy(stored); },
   };
   function settle() { const response = receipt(stored.intent!.input); stored = { ...stored, intentRevision: stored.intentRevision + 1, intent: { ...stored.intent!, outcome: { status: 'accepted', exportId: response.id, responseSha256: 'd'.repeat(64), resolvedAt: stamp } }, ...(stored.draft ? { draftRevision: stored.draftRevision + 1, draft: null, draftTargetStatus: 'unset' } : {}) }; return { envelope: copy(stored), response }; }
   const controller = createLocalDeliveryController({ context, getContext: () => context, client: client as LocalDeliveryClient, isRenderInput: inputValid, validateResponse: (input, result) => isTimelineMutationResponse('timeline.render', input, result),
@@ -61,6 +63,24 @@ test('load and reconnect discover drafts without restoring, writing or exporting
   assert.equal(f.state().deliveryName, ''); assert.equal(f.state().candidate!.raw.deliveryName, 'bad\nname'); assert.deepEqual(f.calls.map(call => call.method), ['get']);
   f.set({ connected: false, visible: false }); f.set({ connected: true, visible: true }); assert.equal(f.calls.length, 1);
   assert.equal(f.controller.restore(), true); assert.equal(f.state().deliveryName, 'bad\nname'); assert.deepEqual(f.state().baseline, { timelineId, baseRevision: 4 }); assert.equal(f.calls.length, 1);
+});
+
+const pendingSupport = (): LocalDeliverySupported => ({...empty(), intentRevision: 1, intentTargetStatus: 'matching',
+  intent: {intentId: id(70), timelineId, baseRevision: 4, draft: null, createdAt: stamp,
+    input: {projectId, expectedRevision: 4, requestId: 'original-request', purpose: 'export'}, outcome: {status: 'pending'}}});
+
+test('controller checks a retained intent read-only and discards it through the dedicated operation', async t => {
+  const f = fixture(t, {stored: pendingSupport()}); await f.controller.load();
+  assert.equal((await f.controller.checkIntent())!.status, 'not_executed');
+  assert.deepEqual(f.calls.map(call => call.method), ['get', 'check']);
+  assert.equal(f.stored().intent!.outcome.status, 'pending');
+  f.overrides.check = () => ({status: 'accepted', projectId, intentId: id(70), exportId: id(71), exportStatus: 'failed', errorCode: 'EXPORT_FAILED'});
+  const accepted = await f.controller.checkIntent(); assert.equal(accepted!.status, 'accepted');
+  assert.equal(f.controller.getState().pending, true);
+  assert.equal(await f.controller.discardIntent(), true);
+  assert.deepEqual(f.calls.map(call => call.method).slice(-1), ['discardIntent']);
+  assert.equal(f.state().intent, null); assert.equal(f.state().pending, false);
+  assert.equal(f.controller.canPrepare(), true);
 });
 
 test('restore replaces only explicitly selected raw input and retains original timeline baseline', async t => {
@@ -382,7 +402,7 @@ function realNameLifecycle(t: test.TestContext, saved = empty()) {
     client: {
       async get(value: Parameters<LocalDeliveryClient['get']>[0]) { reads.push(value); return copy(stored); },
       async put(input: Parameters<LocalDeliveryClient['put']>[0]) { writes.push(copy(input)); stored = { ...stored, draftRevision: input.expectedDraftRevision + 1, draft: { draftId: input.draftId, timelineId: input.timelineId, baseRevision: input.baseRevision, raw: input.raw, updatedAt: stamp }, draftTargetStatus: 'matching' }; return copy(stored); },
-      async discard() { throw Error('Unexpected discard'); }, async prepare() { throw Error('Unexpected export preparation'); }, async execute() { throw Error('Unexpected execution'); }, async recover() { throw Error('Unexpected recovery'); },
+      async discard() { throw Error('Unexpected discard'); }, async prepare() { throw Error('Unexpected export preparation'); }, async execute() { throw Error('Unexpected execution'); }, async recover() { throw Error('Unexpected recovery'); }, async check() { throw Error('Unexpected check'); }, async discardIntent() { throw Error('Unexpected intent discard'); },
     } });
   t.after(() => local.dispose());
   return { name, local, writes, reads, context, stored: () => copy(stored),

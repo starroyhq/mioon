@@ -52,7 +52,9 @@ export interface BoardSuccess {readonly ok: true; readonly actionId: string | nu
   readonly status: 'applied'; readonly receipt?: SequenceEditReceipt;
   /** Settled by the receipt read, not by the lost commit response. */
   readonly resolvedFromReceipt?: true}
-export interface BoardFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]}
+export interface BoardFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[];
+  /** Bounded server detail for a specific user-facing reason, never raw data. */
+  readonly reason?: string}
 /** A board commit whose result was lost and whose receipt could not settle it. */
 export interface BoardUnconfirmed {readonly ok: false; readonly code: typeof UNCONFIRMED_CODE; readonly unconfirmed: true}
 export type BoardOutcome = BoardSuccess | BoardFailure | BoardUnconfirmed;
@@ -111,7 +113,7 @@ export class BoardUiSession {
       row = await this.endpoint('sequence.commit')({projectId, envelope, expectedPlanDigest: planDigest});
     } catch (error) {
       const failure = classifyCommitFailure(error);
-      if (failure.kind === 'rejected') {this.lost.clear(); return {ok: false, code: failure.code, ids: failure.ids};}
+      if (failure.kind === 'rejected') {this.lost.clear(); return {ok: false, code: failure.code, ids: failure.ids, ...(failure.reason ? {reason: failure.reason} : {})};}
       return this.retainUnconfirmed(envelope, planDigest);
     }
     const parsed = parseSequenceCommit(row);
