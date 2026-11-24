@@ -9,6 +9,18 @@ import {readBoundedJsonResponse} from './project-entry-directory-client.ts';
 export type ProjectFormatChoice = 'read-only' | 'upgrade';
 export type ProjectFormatNotice = 'backupFailed' | 'changed' | 'failed';
 
+/** A backend refusal is definite when the host returned a bounded 4xx result.
+ * Timeouts, lost ACKs and generic bridge failures stay unknown and must keep
+ * the exact retry state; a definite refusal must release the dialog instead. */
+export function formatUpgradeRejectionIsDefinite(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const code = 'code' in error ? error.code : undefined;
+  if (code === 'PROJECT_ENTRY_OUTCOME_UNKNOWN' || code === 'PROJECT_ENTRY_UNAVAILABLE') return false;
+  if (['PROJECT_FILE_COPY', 'PROJECT_FILE_MOVED', 'PROJECT_FORMAT_BACKUP_FAILED', 'PROJECT_FORMAT_UPGRADE_REQUIRED',
+    'PROJECT_ENTRY_TICKET_EXPIRED', 'PROJECT_COPY_SOURCE_CHANGED'].includes(String(code))) return true;
+  const status = 'status' in error ? error.status : undefined;
+  return typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 500;
+}
 export function formatUpgradeNotice(error: unknown): ProjectFormatNotice {
   const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
   if (code === 'PROJECT_FORMAT_BACKUP_FAILED') return 'backupFailed';
