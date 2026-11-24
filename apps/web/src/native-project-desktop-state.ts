@@ -11,7 +11,7 @@ import type {ProjectOpenIssue} from './project-file/project-open-issue.ts';
 import type {ProjectOpenFailureAction, ProjectOpenFailureActionState} from './project-file/ProjectOpenFailureDialog.tsx';
 import type {ProjectLocationRisk, OpenedProjectLocationRisk} from './project-file/ProjectLocationRisk.tsx';
 import type {ProjectFormatReadOnlyView} from '../../../packages/contracts/src/project-format-upgrade.ts';
-import {formatUpgradeNotice} from './project-format-upgrade-client.ts';
+import {formatUpgradeNotice, formatUpgradeRejectionIsDefinite} from './project-format-upgrade-client.ts';
 import type {ProjectFormatChoice, ProjectFormatNotice} from './project-format-upgrade-client.ts';
 
 export function projectLocationRisks(facts: ProjectLocationFacts): readonly ProjectLocationRisk[] {
@@ -65,7 +65,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     (error.code === 'PROJECT_ENTRY_UNAVAILABLE' && (mutation === 'createAtSelection' || mutation === 'duplicate' || mutation === 'copyTo') ||
       expiredTicket(error) && (mutation === 'createAtSelection' || mutation === 'duplicate'));
   const rejected = (error: unknown, action: ProjectOpenFailureAction, mutation?: Mutation) => object(error) && typeof error.code === 'string' &&
-    (['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID'].includes(error.code) ||
+    (['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_FILE_COPY', 'PROJECT_FILE_MOVED', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID'].includes(error.code) ||
       error.code === 'PROJECT_ENTRY_BUSY' && (error.status === 409 || error.status === 503) || action === 'copyTo' && error.code === 'PROJECT_HOST_BUSY' && error.status === 409 || unavailableSelection(error, mutation) || expiredTicket(error));
   function retireWrites(): boolean {
     const pending = [...dispatchedWrites, ...(retryIntent ? [retryIntent] : [])].filter(intent => !intent.acknowledged && !intent.retired);
@@ -137,7 +137,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     const upgrade = state.formatUpgrade, serial = generation;
     if (!upgrade || !client.resolveFormatUpgrade || !startable() || state.busy || retry || state.formatNotice === 'changed') return false;
     emit({formatChoice: choice, formatNotice: undefined});
-    const result = await run('retry', async dispatched => {
+    const completed = await run('retry', async dispatched => {
       if (state.formatUpgrade !== upgrade) return false;
       if (choice === 'upgrade') dispatched();
       try {
@@ -152,6 +152,12 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
           return false;
         }
         if (value.status === 'upgrade-required') throw new Error('Unexpected project format preview acknowledgement');
+        if (value.status === 'copy') {
+          // The approved target became a copy after the prompt. This is a
+          // definite new decision, not an unknown upgrade write.
+          emit({formatUpgrade: undefined, formatChoice: undefined});
+          return result(value, serial);
+        }
         const projectId = value.status === 'read-only' ? value.view.projectId : value.projectId;
         if (projectId !== upgrade.preview.projectId || (choice === 'read-only') !== (value.status === 'read-only')) throw new Error('Unexpected project format choice acknowledgement');
         emit({formatUpgrade: undefined, formatChoice: undefined, ...(value.status === 'read-only' ? {readOnlyProject: value.view} : {})});
@@ -159,17 +165,19 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
         return true;
       } catch (error) {
         if (!current(serial) || state.formatUpgrade !== upgrade) return false;
-        const notice = formatUpgradeNotice(error);
-        if (notice === 'failed' && choice === 'upgrade') throw error;
-        emit({formatChoice: undefined, formatNotice: notice});
+        // Only a genuinely unclassified bridge/timeout outcome stays unknown.
+        // Explicit backend refusals are definitive and must leave the dialog
+        // available (including a close/back path).
+        if (!formatUpgradeRejectionIsDefinite(error)) throw error;
+        emit({formatChoice: undefined, formatNotice: formatUpgradeNotice(error)});
         return false;
       }
     }, {preserveDraft: true});
     if (current(serial) && state.formatUpgrade === upgrade) emit({formatChoice: undefined});
-    return result;
+    return completed;
   }
   function closeFormatUpgrade() {
-    if (!startable() || state.busy || retry) return;
+    if (!startable() || state.busy || retry && state.action.kind !== 'unknown') return;
     const upgrade = state.formatUpgrade;
     emit({formatUpgrade: undefined, formatChoice: undefined, formatNotice: undefined, readOnlyProject: undefined});
     if (upgrade) void client.discardFormatUpgrade?.({token: upgrade.token}).catch(() => {});
