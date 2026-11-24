@@ -93,6 +93,20 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   const token=put({kind:'upgrade',source,facts,owner,registered,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs});
   return projectDesktopFormatUpgradeRequiredSchema.parse({status:'upgrade-required',token,preview});
  }
+ function isHistoryDiverged(error:unknown):boolean{
+  if(error===null||typeof error!=='object'||!('code'in error))return false;
+  const details='details'in error&&error.details!==null&&typeof error.details==='object'?error.details as Record<string,unknown>:{};
+  return error.code==='PROJECT_HISTORY_DIVERGED'||error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_HISTORY_DIVERGED';
+ }
+ function copyFromObservation(owner:ProjectEntryDesktopOwner<W>,observed:ReturnType<typeof projectEntrySourceObservationSchema.parse>,admittedFacts?:ProjectLocationFacts):Extract<ProjectDesktopOpenResult,{status:'copy'}>{
+  const expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs,token=put({kind:'copy',source:observed.source,original:observed.original,
+   ...(admittedFacts?{admittedFacts}:{}),owner,expires});
+  return {status:'copy',token,name:observed.name,expiresAt:expires,...(observed.original?{original:{name:observed.original.name,displayPath:observed.original.projectFile}}:{})};
+ }
+ async function observeCopy(owner:ProjectEntryDesktopOwner<W>,file:string,admittedFacts?:ProjectLocationFacts):Promise<Extract<ProjectDesktopOpenResult,{status:'copy'}>>{
+  const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
+  return copyFromObservation(owner,observed,admittedFacts);
+ }
  async function selectedOpen(owner:ProjectEntryDesktopOwner<W>,file:string,admission?:ProjectEntryLocationAdmission<W>):Promise<ProjectDesktopOpenResult>{
   const facts=await probe(owner,file,'open',false);check(owner);
   // Only the trusted OS-open caller may reuse its confirmation. Re-observe
@@ -111,14 +125,25 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   catch(error){
    check(owner);
    const preview=projectFormatUpgradeFromError(error);
-   if(preview)return await upgradeRequired(owner,file,preview,facts,false);
+   if(preview){
+    // A copied legacy folder must be identified before the upgrade prompt: the
+    // copy decision comes first, and its own project identity decides whether
+    // (and how) an upgrade is still needed.
+    const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
+    if(observed.original)return copyFromObservation(owner,observed,facts);
+    return await upgradeRequired(owner,file,preview,facts,false);
+   }
    if(error===null||typeof error!=='object'||!('code'in error))throw error;
    const details='details'in error&&error.details!==null&&typeof error.details==='object'?error.details as Record<string,unknown>:{};
    if(error.code==='PROJECT_INVALID'&&details.reason==='read-only'||error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_INVALID'&&details.invalidReason==='read-only')return await copySource('read-only');
+   if(isHistoryDiverged(error)){
+    // The project never opens: surface the existing 12-25 decision through the
+    // launcher instead of turning it into a generic OS-open failure sheet.
+    const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
+    return {status:'history-diverged',projectId:observed.source.sourceProjectId,projectFile:observed.source.sourceFile,name:observed.name};
+   }
    if(error.code!=='PROJECT_FILE_COPY')throw error;
-   const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
-   const expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs,token=put({kind:'copy',source:observed.source,original:observed.original,admittedFacts:facts,owner,expires});
-   return {status:'copy',token,name:observed.name,expiresAt:expires,...(observed.original?{original:{name:observed.original.name,displayPath:observed.original.projectFile}}:{})};
+   return await observeCopy(owner,file,facts);
   }
  }
  async function mutate(token:string,owner:ProjectEntryDesktopOwner<W>,request:ProjectEntryDesktopRequest,run:(ticket:Ticket<W>)=>Promise<unknown>):Promise<unknown>{
@@ -282,6 +307,13 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
       if(result.status==='opened')ticket.opened=result;
       return result;
      }catch(error){
+      // Approving the upgrade is a definite request. If the path became a copy
+      // after the prompt appeared, return the ordinary copy decision instead
+      // of leaving the renderer in an unknown-write state.
+      if(error!==null&&typeof error==='object'&&'code'in error&&error.code==='PROJECT_FILE_COPY'){
+       clearUpgrade(owner);
+       return await observeCopy(owner,projectFile,facts);
+      }
       const preview=projectFormatUpgradeFromError(error);
       if(!preview||tickets.get(request.token)!==ticket)throw error;
       return await upgradeRequired(owner,projectFile,preview,facts,ticket.registered);
@@ -291,8 +323,20 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      if(ticket.kind!=='copy')throw unavailable();
      const facts=await probe(owner,ticket.source.sourceFile,'open',false);check(owner);
      if(!ticket.admittedFacts||!sameFacts(ticket.admittedFacts,facts))throw unavailable('PROJECT_COPY_SOURCE_CHANGED');
-     const result=await options.backend.adoptCopy({...ticket.source,requestId:randomUUID(),windowId:randomUUID()});
-     return await opened(owner,result.window);
+     try{
+      const result=await options.backend.adoptCopy({...ticket.source,requestId:randomUUID(),windowId:randomUUID()});
+      return await opened(owner,result.window);
+     }catch(error){
+      // The copied file is already a new project identity, but it can still be
+      // in an older format. Carry that exact new identity into the normal
+      // upgrade prompt; never retry the copy mutation.
+      check(owner);
+      const preview=projectFormatUpgradeFromError(error);
+      if(!preview)throw error;
+      const project=await options.backend.prepareAcquire({projectId:preview.projectId});check(owner);
+      const facts=await probe(owner,project.projectFile,'open',false);
+      return await upgradeRequired(owner,project.projectFile,preview,facts,true);
+     }
     });
     if(request.action==='saveAs'||request.action==='duplicate')return await mutate(request.token,owner,request,async ticket=>{
      if(ticket.kind!=='storage'||ticket.purpose!==(request.action==='saveAs'?'save-as':'duplicate'))throw unavailable();

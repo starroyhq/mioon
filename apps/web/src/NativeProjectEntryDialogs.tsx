@@ -5,6 +5,7 @@ import {NewProjectFileDialog} from './project-file/NewProjectFileDialog.tsx';
 import {ProjectOpenFailureDialog} from './project-file/ProjectOpenFailureDialog.tsx';
 import {ProjectLocationRiskBanner} from './project-file/ProjectLocationRisk.tsx';
 import {ProjectFormatReadOnlyDialog, ProjectFormatUpgradeDialog} from './project-file/ProjectFormatUpgradeDialog.tsx';
+import {ProjectHistoryRecoveryDialog} from './project-file/ProjectHistoryRecoveryDialog.tsx';
 import {useI18n} from './i18n/I18nProvider.tsx';
 
 function useDesktop(desktop: NativeProjectDesktopController | null) {
@@ -16,7 +17,10 @@ export function NativeProjectLocationRisk({desktop}: {readonly desktop: NativePr
   const state = useDesktop(desktop);
   return state && desktop ? <ProjectLocationRiskBanner risks={state.risks} onDismiss={desktop.dismissRisk} /> : null;
 }
-export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly desktop: NativeProjectDesktopController | null; readonly formIntent?: number}) {
+export function NativeProjectEntryDialogs({desktop, formIntent = 0, onHistoryResolved}: {readonly desktop: NativeProjectDesktopController | null; readonly formIntent?: number;
+  /** The launcher owner reopens the project after 12-25 resolves; the owner, not
+   * this presentation, decides whether the project window may start. */
+  readonly onHistoryResolved?: (projectId: string) => void}) {
   const {t} = useI18n();
   const state = useDesktop(desktop);
   const handledFormIntent = useRef(0);
@@ -26,6 +30,8 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly d
   if (!state || !desktop) return null;
   const capabilities = state.capabilities, enabled = Boolean(capabilities?.ready) && !state.blocked;
   const failure = state.failure;
+  const historyDiverged = failure?.issue.code === 'PROJECT_HISTORY_DIVERGED' ? failure.issue : null;
+  const historyProjectId = historyDiverged?.projectId ?? null;
   return <>
     {state.formatUpgrade && <ProjectFormatUpgradeDialog busy={state.busy ? state.formatChoice ?? 'upgrade' : null}
       notice={state.formatNotice} blocked={state.blocked} recheck={state.action.kind === 'unknown' ? () => {void desktop.recheck();} : undefined}
@@ -36,7 +42,10 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly d
       onChooseLocation={enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}
       onSubmit={() => {void desktop.create();}} onClose={desktop.closeCreate}
       onRecheck={() => {void desktop.recheck();}} onRetryOpen={() => {void desktop.retryOpen();}} />
-    {failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action} notice={failure.entryExpired ? t('nativeEntry.requestExpired') : state.selectionInvalid ? t(failure.reselect === 'open-file' ? 'nativeEntry.copySelectionExpired' : 'nativeEntry.selectionExpired') : undefined}
+    {historyProjectId ? <ProjectHistoryRecoveryDialog projectId={historyProjectId} projectName={failure?.name ?? null}
+      projectFile={historyDiverged?.projectFile ?? null} onClose={desktop.closeFailure} onStale={desktop.closeFailure}
+      onResolved={() => {desktop.closeFailure(); onHistoryResolved?.(historyProjectId);}} />
+      : failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action} notice={failure.entryExpired ? t('nativeEntry.requestExpired') : state.selectionInvalid ? t(failure.reselect === 'open-file' ? 'nativeEntry.copySelectionExpired' : 'nativeEntry.selectionExpired') : undefined}
       onClose={desktop.closeFailure}
       onOpenSystemSettings={enabled && capabilities?.help ? () => {void desktop.openPrivacySettings();} : undefined}
       onChooseLocation={failure.issue.code === 'PROJECT_ACCESS_DENIED' && 'context' in failure.issue && failure.issue.context === 'create' && enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}

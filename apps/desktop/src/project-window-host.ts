@@ -907,9 +907,13 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
         }
       } catch (error) {
         const preview = projectFormatUpgradeFromError(error);
+        const divergence = error !== null && typeof error === 'object' && 'code' in error &&
+          (error.code === 'PROJECT_HISTORY_DIVERGED' || error.code === 'PROJECT_UNAVAILABLE' &&
+            'details' in error && error.details !== null && typeof error.details === 'object' && 'reason' in error.details &&
+            error.details.reason === 'PROJECT_HISTORY_DIVERGED');
         result = !isCurrent() ? refused('busy') : preview?.projectId === projectId.toLowerCase()
           ? Object.freeze({...refused('unavailable'), formatUpgrade: preview})
-          : refused('unavailable',projectWindowOpenFailure(error,projectId.toLowerCase()));
+          : refused('unavailable',projectWindowOpenFailure(error,projectId.toLowerCase()) ?? (divergence ? {code: 'PROJECT_HISTORY_DIVERGED'} : undefined));
       }
       attempt.result = result;
       if (owner.isCurrent() && record.entryAttempt === attempt && record.contextId === attempt.contextId) {

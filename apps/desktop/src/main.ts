@@ -915,9 +915,34 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     });
     const relink=ownedRelinkHost;
     context.startup.signal.addEventListener('abort',()=>{relink.dispose();if(assetRelinkHost===relink)assetRelinkHost=null;},{once:true});
+    const historyDivergedForFile=async(file:string):Promise<{projectId:string;name:string|null}|null>=>{
+      // Only a registered path can have a history decision. Keeping the catalog
+      // gate here means an arbitrary selected file takes the ordinary open path.
+      try{
+        const listed=await ownedBackend.projectEntries.listRecent();
+        if(!listed.registered.some(entry=>path.resolve(entry.project.projectFile)===path.resolve(file)))return null;
+      }catch{return null;}
+      // The status endpoint is the same read-only authority the 12-25 dialog uses.
+      let observed;
+      try{observed=await ownedBackend.projectEntries.observeSource({projectFile:file});}catch{return null;}
+      try{
+        const response=await fetch(new URL(`/api/projects/${observed.source.sourceProjectId}/history/status`,started.url),{
+          headers:{authorization:`Bearer ${token}`},signal:context.startup.signal,redirect:'error'});
+        if(!response.ok)return null;
+        const body=await response.json() as {ok?:unknown;data?:{state?:unknown}};
+        return body.ok===true&&body.data?.state==='diverged'?{projectId:observed.source.sourceProjectId,name:observed.name}:null;
+      }catch{return null;}
+    };
     const openSelected=async(file:string)=>{
       nativeBackendCurrent();
       if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+      const historyDiverged=await historyDivergedForFile(file); nativeBackendCurrent();
+      if(historyDiverged){
+        await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
+        const owner=parent?nativeOwner(parent):null;
+        if(owner){entries.rememberPendingOpen(owner,{status:'history-diverged',projectId:historyDiverged.projectId,projectFile:file,...(historyDiverged.name?{name:historyDiverged.name}:{})});return;}
+      }
       const facts=await probeDesktopProjectLocation({path:file,purpose:'open',isDirectory:false});
       let admission:ProjectEntryLocationAdmission<BrowserWindow>|undefined;
       nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
@@ -945,11 +970,21 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       }
       catch(error){
         const failure=codedFailure(error),readOnly=failure.code==='PROJECT_INVALID'&&failure.details?.reason==='read-only'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_INVALID'&&failure.details?.invalidReason==='read-only';
-        if(failure.code!=='PROJECT_FILE_COPY'&&failure.code!=='PROJECT_FORMAT_UPGRADE_REQUIRED'&&!readOnly)throw error;
+        const historyDiverged=failure.code==='PROJECT_HISTORY_DIVERGED'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_HISTORY_DIVERGED';
+        if(failure.code!=='PROJECT_FILE_COPY'&&failure.code!=='PROJECT_FORMAT_UPGRADE_REQUIRED'&&!readOnly&&!historyDiverged)throw error;
         await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
         const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
         const owner=parent?nativeOwner(parent):null;
         if(!owner)throw new Error('Copy confirmation owner unavailable');
+        if(historyDiverged){
+          // The divergence authority is the registered path's history state; do
+          // not ask an editor candidate to open merely to discover it again.
+          const detailProjectId=(failure.details as Record<string,unknown>|undefined)?.projectId;
+          const projectId=typeof detailProjectId==='string'?detailProjectId:
+            (await ownedBackend.projectEntries.observeSource({projectFile:file})).source.sourceProjectId;
+          entries.rememberPendingOpen(owner,{status:'history-diverged',projectId,projectFile:file});
+          return;
+        }
         const result=await entries.openPath(owner,file,admission);entries.rememberPendingOpen(owner,result);
       }
     };
@@ -976,6 +1011,15 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
         const owner = parent ? nativeOwner(parent, true) : null;
         if (!owner || !await admit(owner, facts)) throw new Error('Project location rejected');
         nativeBackendCurrent();
+        const historyDiverged = await historyDivergedForFile(project.projectFile);
+        if (historyDiverged) {
+          const parent = ownedWindowHost.ensureLauncher();
+          const owner = parent ? nativeOwner(parent, true) : null;
+          if (owner) {
+            entries.rememberPendingOpen(owner, {status: 'history-diverged', projectId: historyDiverged.projectId, projectFile: project.projectFile, ...(historyDiverged.name ? {name: historyDiverged.name} : {})});
+            continue;
+          }
+        }
         const restored = await ownedWindowHost.restoreProject(saved.projectId, project.projectFile);
         nativeBackendCurrent();
         if (!restored.ok) throw new Error('Project window restoration unavailable');
@@ -985,6 +1029,19 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
         const failure = codedFailure(error), underlying = failure.details?.reason;
         const code = failure.code === 'PROJECT_UNAVAILABLE' && typeof underlying === 'string' ? underlying :
           failure.code === 'EACCES' || failure.code === 'EPERM' ? 'PROJECT_ACCESS_DENIED' : failure.code ?? 'UNAVAILABLE';
+        if (code === 'PROJECT_HISTORY_DIVERGED') {
+          // Startup restoration and Finder share the launcher's existing recovery
+          // surface; no second native error sheet and no editor opening.
+          const parent = ownedWindowHost.ensureLauncher();
+          const owner = parent ? nativeOwner(parent, true) : null;
+          if (owner) {
+            try {
+              const registered = await prepareRegisteredProject(saved.projectId);
+              entries.rememberPendingOpen(owner, {status: 'history-diverged', projectId: saved.projectId, projectFile: registered.projectFile});
+              continue;
+            } catch { /* Fall through to the bounded native failure notice. */ }
+          }
+        }
         const readOnly = code === 'PROJECT_INVALID' && (underlying === 'read-only' || failure.details?.invalidReason === 'read-only');
         failures.push({name, code, ...(readOnly ? {reason: 'read-only'} : {})});
       }

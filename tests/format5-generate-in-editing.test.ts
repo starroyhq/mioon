@@ -48,9 +48,9 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
   assert.equal(clip.name, '剪辑里生成的镜头');
   const shots = f.store.list('shots').filter((shot: any) => shot.id === shotId);
   assert.equal(shots.length, 1);
+  // Q-13: placing a placeholder from the UI timeline never starts generation.
   const jobs = f.store.list('jobs').filter((job: any) => job.shotId === shotId);
-  assert.equal(jobs.length, 1);
-  assert.equal((jobs[0] as any).requestId, requestId);
+  assert.equal(jobs.length, 0, 'UI placement must not create a task');
   // Resize the placeholder by two seconds; following clips move with it.
   const before = f.store.get('timelines', BOARD_IDS.timeline) as any;
   const generated = before.clips.find((item: any) => item.id === clipId) as any;
@@ -91,10 +91,13 @@ test('GE-a preview and commit a main-track generation placeholder', async () => 
     expected: {position: redoHistory.position, revision: redoHistory.revision}});
   const placementRedone = f.store.get('timelines', BOARD_IDS.timeline) as any;
   assert.equal(placementRedone.clips.find((item: any) => item.id === clipId).sourceState, 'placeholder');
+  // A generation task only exists after the panel's reviewed Generate path; the
+  // placement above stays a placeholder until then.
+  const job = services.createGenerationJobInside({shotId, expectedRevision: 1, requestId: `job-${requestId}`,
+    providerId: 'mock', model: 'mock-motion-v1'}) as any;
   // Editing the shot (revision/title) while the job runs must not block adoption.
   f.store.put('shots', {...(f.store.get('shots', shotId) as any), revision: 2, title: '生成期间改过标题'});
   // First successful version: adopt it into the placeholder in the same transaction.
-  const job = (f.store.list('jobs') as any[]).find(item => item.shotId === shotId)!;
   const beforeAdopt = f.store.get('timelines', BOARD_IDS.timeline) as any;
   const shifted = beforeAdopt.clips.filter((item: any) => item.trackId === beforeAdopt.mainTrack.trackId
     && item.startFrame >= beforeAdopt.clips.find((generated: any) => generated.id === clipId).startFrame + 60)
@@ -192,7 +195,10 @@ test('GE-a generates on another track as a free shot and replaces in place', asy
   assert.equal(shot.selectedVersionId, null);
   const edges = f.store.list('edges').filter((edge: any) => edge.source === shotId || edge.target === shotId);
   assert.equal(edges.length, 0);
-  const job = (f.store.list('jobs') as any[]).find(item => item.shotId === shotId)!;
+  assert.equal((f.store.list('jobs') as any[]).filter(item => item.shotId === shotId).length, 0,
+    'overlay UI placement must not create a task');
+  const job = services.createGenerationJobInside({shotId, expectedRevision: 1, requestId: `overlay-${requestId}`,
+    providerId: 'mock', model: 'mock-motion-v1'}) as any;
   const assetId = randomUUID(), versionId = randomUUID();
   let adopted = false;
   f.store.tx(() => {
@@ -231,6 +237,8 @@ test('GE-a Mio action previews and commits the same placeholder envelope', async
   let submitted: any = null;
   const receipt = commitMioSequenceAction(f.store, plan, {generationSubmit: (input) => {submitted = input; return {};}});
   assert.equal(receipt.status, 'applied');
+  assert.equal(plan.envelope.generateIntent?.operation.kind === 'generate-placeholder'
+    ? plan.envelope.generateIntent.operation.submit : null, true, 'Mio carries the submit flag');
   const allocation = plan.envelope.allocation.clips[0]!;
   const timeline = f.store.get('timelines', BOARD_IDS.timeline) as any;
   const clip = timeline.clips.find((item: any) => item.id === allocation.clipId);
@@ -255,7 +263,10 @@ test('GE-a cancellation leaves the placeholder and its exported range blocked', 
         prompt: 'Cancelable generation', aspectRatio: '9:16', duration: 2},
       shotId, clipId, title: '可取消镜头'}}}) as any;
   await services.call('sequence.commit', {projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest});
-  const job = (f.store.list('jobs') as any[]).find(item => item.shotId === shotId)!;
+  assert.equal((f.store.list('jobs') as any[]).filter(item => item.shotId === shotId).length, 0,
+    'UI placement must not create a task');
+  const job = services.createGenerationJobInside({shotId, expectedRevision: 1, requestId: `cancel-job-${requestId}`,
+    providerId: 'mock', model: 'mock-motion-v1'}) as any;
   const cancelled = await services.call('job.cancel', {jobId: job.id}) as any;
   assert.equal(cancelled.status, 'cancelled');
   const timeline = f.store.get('timelines', BOARD_IDS.timeline) as any;
@@ -276,6 +287,49 @@ test('GE-a cancellation leaves the placeholder and its exported range blocked', 
 });
 
 
+
+test('Q-13 the UI sequence service only places; Mio submit port alone creates the task', async () => {
+  const f = await createBoardUiWireFixture();
+  const projectId = f.projectId;
+  const provider = {id: 'mock', capabilities: {models: ['mock-motion-v1'], inputModes: ['text'], aspectRatios: ['9:16'],
+    durations: [2], mock: true, configured: true, enabled: true}, async submit() {return {providerJobId: 'synthetic-job'};},
+    async reconcile() {return null;}, async poll() {return {status: 'running' as const};},
+    async download() {throw new Error('No synthetic output requested');}};
+  const services = createServices(f.store, new Map([['mock', provider as never]]), {env: {},
+    application: createProjectServiceApplication(f.library, undefined, {})});
+  const place = async (requestId: string, extra: Record<string, unknown> = {}) => {
+    const shotId = randomUUID(), clipId = randomUUID();
+    const preview = await services.call('sequence.preview', {projectId, requestId: `preview-${requestId}`,
+      generateIntent: {side: 'timeline', operation: {kind: 'generate-placeholder',
+        placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB},
+        settings: {requestId, prompt: '还没点生成', aspectRatio: '9:16', duration: 2},
+        shotId, clipId, title: '面板里再生成', ...extra}}}) as any;
+    assert.ok(preview?.envelope, JSON.stringify(preview));
+    await services.call('sequence.commit', {projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest});
+    return shotId;
+  };
+  // UI placement without a service: placeholder only, no task.
+  const firstShot = await place(randomUUID());
+  assert.equal((f.store.list('jobs') as any[]).filter(job => job.shotId === firstShot).length, 0,
+    'opening the panel must not start generation');
+  // Even a forged submit flag over the UI RPC has no submit port.
+  const forgedShot = await place(randomUUID(), {submit: true, settings: {requestId: randomUUID(),
+    prompt: '伪装提交', aspectRatio: '9:16', duration: 2, providerId: 'mock', model: 'mock-motion-v1', region: 'local'}});
+  assert.equal((f.store.list('jobs') as any[]).filter(job => job.shotId === forgedShot).length, 0,
+    'the UI sequence service has no generationSubmit port');
+  // Mio's approved action carries submit:true and its own commit port, so the
+  // same action places and submits one frozen task.
+  const plan = previewMioSequenceAction(f.store, projectId, 'mio-q13-preview', {kind: 'generate',
+    placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB}, title: 'Mio 剪辑生成',
+    providerId: 'mock', model: 'mock-motion-v1', region: 'local', prompt: 'Mio 一次提交', aspectRatio: '9:16', duration: 2});
+  let submitted: any = null;
+  commitMioSequenceAction(f.store, plan, {generationSubmit: input => {submitted = input; return {};}});
+  assert.ok(submitted, 'Mio commit must call the explicit submit port');
+  assert.equal(submitted.providerId, 'mock');
+  assert.equal(submitted.requestId, plan.envelope.generateIntent?.operation.kind === 'generate-placeholder'
+    ? plan.envelope.generateIntent.operation.settings.requestId : null);
+  f.store.close();
+});
 
 test('GE-a real worker publishes a synthetic version into the placeholder', async (t) => {
   const f = await createBoardUiWireFixture();
@@ -306,7 +360,10 @@ test('GE-a real worker publishes a synthetic version into the placeholder', asyn
   await f.services.call('sequence.commit', {projectId: f.projectId, envelope: preview.envelope,
     expectedPlanDigest: preview.planDigest});
   const historyBefore = await f.services.call('sequence.history.get', {projectId: f.projectId}) as any;
-  const submitted = (f.store.list('jobs') as any[]).find(item => item.shotId === shotId)!;
+  assert.equal((f.store.list('jobs') as any[]).filter(item => item.shotId === shotId).length, 0,
+    'UI placement must not create a task');
+  const submitted = f.services.createGenerationJobInside({shotId, expectedRevision: 1,
+    requestId: `worker-${requestId}`, providerId: 'mock', model: 'mock-motion-v1'}) as any;
   for (let attempt = 0; attempt < 120; attempt++) {
     await worker.tick();
     const job = (f.store.get('jobs', submitted.id) as any);

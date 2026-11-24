@@ -4,7 +4,7 @@
  * surrounding workbench supplies data, session and refresh. */
 import React, {useCallback, useEffect, useState} from 'react';
 import {useI18n} from '../i18n/I18nProvider.tsx';
-import {format5CommandErrorMessageKey} from '../edit-ui/session.ts';
+import {format5BoardFailureMessageKey} from '../edit-ui/session.ts';
 import EditUiNoticeBar from '../edit-ui/EditUiNotice.tsx';
 import type {EditUiNotice} from '../edit-ui/EditUiNotice.tsx';
 import BoardUiStatic from './BoardUiStatic.tsx';
@@ -62,8 +62,8 @@ export interface BoardUiLiveProps {
   readonly previsDisabled?: boolean;
 }
 
-function messageOf(t: ReturnType<typeof useI18n>['t'], code: string): string {
-  return t(format5CommandErrorMessageKey(code) as never);
+function messageOf(t: ReturnType<typeof useI18n>['t'], failure: {code: string; reason?: string}): string {
+  return t(format5BoardFailureMessageKey(failure.code, failure.reason) as never);
 }
 
 export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement {
@@ -71,7 +71,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [subjectPicker, setSubjectPicker] = useState(false);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{code: string; reason?: string} | null>(null);
   const [copied, setCopied] = useState<readonly {kind: 'shot' | 'node'; id: string}[]>([]);
   const [menu, setMenu] = useState<{x: number; y: number; nodeId: string} | null>(null);
   const [paneMenu, setPaneMenu] = useState<{x: number; y: number; position: {x: number; y: number}} | null>(null);
@@ -80,9 +80,9 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const selectedEdge = selectedEdgeId ? props.board.edges.find(edge => edge.id === selectedEdgeId) ?? null : null;
   const film = props.board.projection.films.find(item => item.id === props.activeFilmId) ?? props.board.projection.films[0] ?? null;
   const call = useCallback(async (intent: SequenceEditIntent, noticeMessage: string): Promise<void> => {
-    setErrorCode(null);
+    setFailure(null);
     const outcome = await props.run(intent, noticeMessage);
-    if (!outcome.ok) { if (!('unconfirmed' in outcome)) setErrorCode(outcome.code); }
+    if (!outcome.ok && !('unconfirmed' in outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
   }, [props.run]);
   const edit = (intent: SequenceEditIntent, noticeMessage: string): void => { if (!busy) void call(intent, noticeMessage); };
   const deleteNode = (nodeId: string, name: string): void => {
@@ -93,16 +93,16 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   };
   const subjectOp = useCallback(async (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string): Promise<void> => {
-    setErrorCode(null);
+    setFailure(null);
     const outcome = await props.runSubject(operation, allocation, noticeMessage);
-    if (!outcome.ok) { if (!('unconfirmed' in outcome)) setErrorCode(outcome.code); }
+    if (!outcome.ok && !('unconfirmed' in outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
   }, [props.runSubject]);
   const editSubject = (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string): void => { if (!busy) void subjectOp(operation, allocation, noticeMessage); };
   const referenceOp = useCallback(async (request: BoardEditRequest, noticeMessage: string): Promise<void> => {
-    setErrorCode(null);
+    setFailure(null);
     const outcome = await props.runReference(request, noticeMessage);
-    if (!outcome.ok) { if (!('unconfirmed' in outcome)) setErrorCode(outcome.code); }
+    if (!outcome.ok && !('unconfirmed' in outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
   }, [props.runReference]);
   const editReference = (request: BoardEditRequest, noticeMessage: string): void => {
     if (!busy) void referenceOp(request, noticeMessage);
@@ -123,7 +123,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     }
     // SB-b: a subject card's reference line to a shot is one subject binding.
     if (source?.kind !== 'subject' || !source.subjectId || target?.kind !== 'shot') {
-      setErrorCode('REFERENCE_READONLY');
+      setFailure({code: 'REFERENCE_READONLY'});
       return;
     }
     const role = source.subjectKind === 'look' ? 'style' : 'subject' as const;
@@ -137,7 +137,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
         t('boardUi.notice.subjectLinked', {name: source.name}));
       return;
     }
-    if (existing) {setErrorCode('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'); return;}
+    if (existing) {setFailure({code: 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'}); return;}
     editSubject(subjectBindingCreateOperation(uuid(), target.id, source.subjectId, role), allocation,
       t('boardUi.notice.subjectLinked', {name: source.name}));
   };
@@ -145,12 +145,12 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     if (!selectedEdge || selectedEdge.kind !== 'reference') return;
     if (selectedEdge.role === 'subject_reference' || selectedEdge.role === 'style_reference') {
       const binding = props.mount?.bindings.find(item => item.edgeId === selectedEdge.id);
-      if (!binding) {setErrorCode('SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'); return;}
+      if (!binding) {setFailure({code: 'SEQUENCE_EDIT_SUBJECT_BINDING_INVALID'}); return;}
       editSubject(subjectBindingDetachOperation(binding.id), undefined, t('boardUi.notice.subjectDetached'));
       setSelectedEdgeId(null);
       return;
     }
-    if (selectedEdge.sourceAssetId === undefined) {setErrorCode('REFERENCE_READONLY'); return;}
+    if (selectedEdge.sourceAssetId === undefined) {setFailure({code: 'REFERENCE_READONLY'}); return;}
     const target = props.board.nodes.find(node => node.id === selectedEdge.targetId);
     editReference(referenceDetachRequest(selectedEdge.id, selectedEdge.targetId),
       t('boardUi.notice.referenceDetached', {name: target?.name ?? ''}));
@@ -245,8 +245,8 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   }, [busy, copied, props.onDelete, props.selectedNodeId, props.board.nodes]);
   const archived = props.mount?.archived ?? [];
   const unsupportedEdges = unsupportedReferenceEdgeIds(props.inputs, props.board.edges);
-  const error = errorCode === 'REFERENCE_READONLY' ? t('boardUi.referenceReadonly')
-    : errorCode ? messageOf(t, errorCode) : null;
+  const error = failure?.code === 'REFERENCE_READONLY' ? t('boardUi.referenceReadonly')
+    : failure ? messageOf(t, failure) : null;
   const contextMenu = (event: React.MouseEvent<HTMLDivElement>): void => {
     const target = (event.target as HTMLElement).closest('[data-testid^="board-card-"]');
     const nodeId = target?.getAttribute('data-testid')?.replace('board-card-', '') ?? null;
