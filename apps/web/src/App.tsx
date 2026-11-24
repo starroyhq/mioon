@@ -5417,6 +5417,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       providers={providers as never}
       generationOptions={(generationOptions[editingGenerateShot.id] ?? {}) as Record<string, unknown>}
       onGenerationOptionsChange={options => updateGenerationOptions(editingGenerateShot.id, options as GenerationOptionState)}
+      onOpenGenerationSettings={() => openGlobalSettings('models')}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status

@@ -1,7 +1,7 @@
 /** Pure service filtering/labelling shared by the board and the 21-09 panel.
  * The availability rule is the same as Generation services settings. */
 import {providerDisplayName} from './creation-i18n.ts';
-import {isGenerationProviderCandidate, providerModels, providerStatus} from './generation-settings.ts';
+import {generationProviderForModel, isGenerationProviderCandidate, providerModels, providerStatus} from './generation-settings.ts';
 import type {GenerationModelCapability, GenerationProvider} from './generation-settings.ts';
 
 export type ServicePickerTranslate = (key: string, params?: Record<string, unknown>) => string;
@@ -18,8 +18,10 @@ const modelLabel = (model: GenerationModelCapability): string => String(model.na
 
 export function generationServiceChoices(providers: readonly GenerationProvider[],
   t: ServicePickerTranslate): readonly GenerationServiceChoice[] {
-  const available = providers.filter(provider => isGenerationProviderCandidate(provider)
-    && providerStatus(provider) === 'available' && providerModels(provider).length > 0);
+  const availableModels = (provider: GenerationProvider): GenerationModelCapability[] => providerModels(provider)
+    .filter(model => Boolean(model.id) && providerStatus(generationProviderForModel(provider, model.id!, model.modelEntryId)) === 'available');
+  const available = providers.filter(provider => isGenerationProviderCandidate(provider) && provider.enabled !== false
+    && availableModels(provider).length > 0);
   const baseLabels = new Map(available.map(provider => [provider, providerDisplayName(provider, t as never)]));
   const counts = new Map<string, number>();
   for (const label of baseLabels.values()) counts.set(label, (counts.get(label) ?? 0) + 1);
@@ -35,7 +37,7 @@ export function generationServiceChoices(providers: readonly GenerationProvider[
       if (used.has(label)) label = `${label} · ${shortId(provider.connectionId || provider.id)}`;
     }
     used.add(label);
-    for (const model of providerModels(provider)) {
+    for (const model of availableModels(provider)) {
       const modelKey = String(model.modelEntryId ?? model.id ?? provider.id);
       choices.push({provider, model, key: `${provider.connectionId ?? provider.id}:${modelKey}`,
         testId: `${provider.id}-${modelKey}`, label, ...(modelLabel(model) ? {detail: modelLabel(model)} : {})});

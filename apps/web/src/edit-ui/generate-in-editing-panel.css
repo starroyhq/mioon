@@ -38,3 +38,7 @@
 .generate-in-editing-failure-label {min-width:0;flex:1;line-height:1.5;overflow-wrap:anywhere}
 .generate-in-editing-retry {flex:none}
 .generate-in-editing-unknown {width:100%;border:1px solid var(--wb-warning,#e8a33d);border-radius:8px;background:color-mix(in srgb,var(--wb-warning,#e8a33d) 12%,var(--wb-raised,#242426));color:var(--wb-warning,#e8a33d);font:inherit;font-size:12px;line-height:1.5;text-align:start;padding:9px 10px;cursor:pointer}
+.generate-in-editing-service-menu [role="menuitem"] {display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--text-primary);font:inherit;font-size:12px;text-align:start;cursor:pointer}
+.generate-in-editing-service-menu [role="menuitem"]:hover {background:var(--surface-raised)}
+.generate-in-editing-service-menu [role="menuitem"] small {font-size:10px;color:var(--text-muted)}
+.generate-in-editing-service-menu [role="menuitem"]:disabled {color:var(--text-muted);cursor:default}

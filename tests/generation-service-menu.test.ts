@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {build} from 'esbuild';
+import {readFileSync} from 'node:fs';
 import {translate} from '../packages/i18n/src/index.ts';
 import {generationServiceChoices} from '../apps/web/src/generation-service-choices.ts';
 import type {GenerationProvider} from '../apps/web/src/generation-settings.ts';
@@ -66,4 +67,14 @@ test('an empty available-service list offers only the settings entry', async () 
   assert.match(html, /data-testid="choice-open-settings"/u);
   assert.match(html, /去设置生成服务/u);
   assert.doesNotMatch(html, /data-testid="choice-minimax/u);
+});
+
+
+test('the board and 21-09 panel use the same service menu component', () => {
+  const board = readFileSync(new URL('../apps/web/src/board-ui/BoardInspector.tsx', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../apps/web/src/edit-ui/GenerateInEditingPanel.tsx', import.meta.url), 'utf8');
+  for (const source of [board, panel]) {
+    assert.match(source, /import GenerationServiceMenu from '..\/GenerationServiceMenu.tsx'/u);
+    assert.match(source, /<GenerationServiceMenu /u);
+  }
 });

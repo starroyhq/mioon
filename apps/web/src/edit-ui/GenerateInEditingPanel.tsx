@@ -12,6 +12,7 @@ import {generationModeKeys, referenceRoleKey, unsupportedReasonKey} from '../boa
 import {generationFailureDescriptor, providerDisplayName} from '../creation-i18n.ts';
 import {generationSelection} from '../generation-settings.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
+import GenerationServiceMenu from '../GenerationServiceMenu.tsx';
 import type {SequenceGenerationInputView} from '../../../../packages/contracts/src/sequence-inspection.ts';
 import type {MessageKey} from '../../../../packages/i18n/src/index.ts';
 import './generate-in-editing-panel.css';
@@ -35,6 +36,7 @@ export interface GenerateInEditingPanelProps {
   readonly providers: readonly GenerationProvider[];
   readonly generationOptions: Readonly<Record<string, unknown>>;
   readonly onGenerationOptionsChange: (options: Record<string, unknown>) => unknown;
+  readonly onOpenGenerationSettings?: (() => void) | undefined;
   readonly onGenerate: () => unknown;
   readonly onRevealOnBoard: () => unknown;
   readonly rpc: (operation: string, input: unknown) => Promise<unknown>;
@@ -124,19 +126,12 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
               ? <span>{serviceLabel} · {t(generationModeKeys[inputs.mode] as MessageKey)}{inputs.usedCount > 0 ? ` · ${t('boardUi.inputs.used', {count: inputs.usedCount})}` : ''}</span>
               : <span>{t('boardUi.inputs.serviceMissing')}</span>}
           </button>
-          {serviceMenu && <div className="generate-in-editing-service-menu" role="menu" data-testid="editing-generate-service-menu">
-            {props.providers.flatMap(provider => {
-              const models = (provider.models ?? []) as readonly Record<string, unknown>[];
-              return (models.length ? models : [undefined]).map((model, index) =>
-                <button type="button" role="menuitem" key={`${provider.id}:${index}`}
-                  data-testid={`editing-generate-service-${provider.id}${model ? `-${String(model.modelEntryId ?? model.id ?? index)}` : ''}`}
-                  disabled={props.busy}
-                  onClick={() => {setServiceMenu(false); void props.onGenerationOptionsChange(serviceChoice(provider, model));}}>
-                  <span>{providerDisplayName(provider, t)}</span>
-                  {model && <small>{String(model.name ?? model.modelId ?? model.id ?? '')}</small>}
-                </button>);
-            })}
-          </div>}
+          {serviceMenu && <GenerationServiceMenu providers={props.providers} disabled={props.busy}
+            menuClassName="generate-in-editing-service-menu" menuTestId="editing-generate-service-menu"
+            itemTestIdPrefix="editing-generate-service"
+            onChoose={choice => {setServiceMenu(false);
+              void props.onGenerationOptionsChange(serviceChoice(choice.provider, choice.model));}}
+            onOpenSettings={() => {setServiceMenu(false); props.onOpenGenerationSettings?.();}}/>}
         </div>
       </> : <p className="generate-in-editing-empty" data-testid="editing-generate-inputs-loading">{t('boardUi.inputs.loading')}</p>}
     </section>
