@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
 import {
-  committedGenerateClip, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement,
-  timelineGenerateTargetForBlank,
+  committedGenerateClip, editingPlaceholderPanelShotId, generatePlaceholderIntent, generateResizeIntent,
+  mainTrackGenerateAroundPlacement, placeholderShotIdForClip, timelineGenerateTargetForBlank,
 } from '../apps/web/src/edit-ui/generate-in-editing.ts';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -117,6 +117,34 @@ test('GE-b: resizing a placeholder is one history step that restores the old len
   fixture.store.close(); fixture.library.close();
 });
 
+
+test('Q-13: a placeholder in either track resolves its shot by sequenceSource or shotId; ready clips do not', () => {
+  assert.equal(placeholderShotIdForClip({sourceState: 'placeholder',
+    sequenceSource: {kind: 'shot', nodeId: 'main-shot'}}), 'main-shot');
+  assert.equal(placeholderShotIdForClip({sourceState: 'placeholder', sequenceSource: null,
+    shotId: 'overlay-shot'}), 'overlay-shot');
+  // Main track wins if a main placeholder also carries the mirror shotId.
+  assert.equal(placeholderShotIdForClip({sourceState: 'placeholder',
+    sequenceSource: {kind: 'shot', nodeId: 'main-shot'}, shotId: 'mirror'}), 'main-shot');
+  assert.equal(placeholderShotIdForClip({sourceState: 'ready',
+    sequenceSource: {kind: 'shot', nodeId: 'main-shot'}}), null);
+  assert.equal(placeholderShotIdForClip({sourceState: 'generating', shotId: 'overlay-shot'}), null);
+  assert.equal(placeholderShotIdForClip(null), null);
+});
+
+test('Q-13: reselecting a main or overlay placeholder resolves the panel shot; ready clips do not', () => {
+  const shots = new Set(['main-shot', 'overlay-shot']);
+  const exists = (shotId: string) => shots.has(shotId);
+  assert.equal(editingPlaceholderPanelShotId({sourceState: 'placeholder',
+    sequenceSource: {kind: 'shot', nodeId: 'main-shot'}}, exists), 'main-shot');
+  assert.equal(editingPlaceholderPanelShotId({sourceState: 'placeholder', sequenceSource: null,
+    shotId: 'overlay-shot'}, exists), 'overlay-shot');
+  assert.equal(editingPlaceholderPanelShotId({sourceState: 'ready',
+    sequenceSource: {kind: 'shot', nodeId: 'main-shot'}}, exists), null);
+  assert.equal(editingPlaceholderPanelShotId({sourceState: 'placeholder',
+    sequenceSource: {kind: 'shot', nodeId: 'deleted-shot'}}, exists), null);
+  assert.equal(editingPlaceholderPanelShotId(null, exists), null);
+});
 
 test('Q-13: the editing placement intent carries no submit and no service, and the commit creates no task', async () => {
   const fixture = await createBoardUiWireFixture();
