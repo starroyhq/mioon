@@ -154,6 +154,9 @@ const forbiddenOperations=[
  // UI-E2-only sequence-edit entry points. Mio's format-5 tools are a separate
  // card (MT); keeping these forbidden here means no new Mio tool surface.
  'sequence.preview','sequence.commit','sequence.history.get','sequence.board.get','sequence.undo','sequence.redo',
+ // External CLI/MCP action wrappers; Mio uses its own loaded format-5 action tools.
+ 'sequence.action.edit','sequence.board.edit','sequence.reference.edit','sequence.subject.edit','sequence.previs.edit',
+ 'sequence.timeline.edit','sequence.clip.edit','sequence.action.commit','sequence.undo-action',
  // Transforms are user-driven for now; Mio still reads them in the timeline.
  'timeline.clip.setTransform',
  // Transitions likewise: Mio reads them and cannot change them yet.

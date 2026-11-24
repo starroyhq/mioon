@@ -31,7 +31,7 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length,167); // Retired notes stay absent; UI-E2 five, MT sequence.inspect, UI-B2 sequence.board.get, RI-b sequence.generation-inputs.get, FR-G clip.audio.export(.get).
+  assert.equal(operations.length,176); // Retired notes stay absent; UI-E2 five, MT sequence.inspect, UI-B2 sequence.board.get, RI-b sequence.generation-inputs.get, FR-G clip.audio.export(.get).
   for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list'])assert.ok(operations.includes(operation),operation);
   assert.equal(operations.includes('project.notes.set'), false);
   for (const operation of PREVIS_OUTPUT_OPERATIONS) {

@@ -55,6 +55,15 @@ export const MIO_DEFERRED_OPERATIONS=Object.freeze({
  'previs.output.lookup':'建议后续补只读有界发布证明投影，与 publish 一起确定结果契约',
 });
 export const MIO_WRAPPED_OPERATIONS=Object.freeze({
+ 'sequence.action.edit':{tools:['sequence.tool.edit'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.board.edit':{tools:['sequence.tool.board'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.reference.edit':{tools:['sequence.tool.reference'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.subject.edit':{tools:['sequence.tool.subject'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.previs.edit':{tools:['sequence.tool.previs'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.timeline.edit':{tools:['sequence.tool.timeline'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.clip.edit':{tools:['sequence.tool.clip'],reason:'命令行/MCP 的预览入口复用同一 Mio 动作规划；Mio 模型使用加载后的单元工具'},
+ 'sequence.action.commit':{tools:['sequence.tool.edit','sequence.tool.board','sequence.tool.reference','sequence.tool.subject','sequence.tool.previs','sequence.tool.timeline','sequence.tool.clip'],reason:'命令行/MCP 只提交已预览的共享 envelope；Mio 动作工具共用同一提交实现'},
+ 'sequence.undo-action':{tools:['sequence.tool.undo'],reason:'命令行/MCP 的 Mio 撤销入口复用同一历史边界'},
  'asset.import':{tools:['asset.import'],reason:'同名受限输入只允许项目相对文件或用户已选句柄，禁止原始字节和绝对路径'},
  'asset.import.path':{tools:['asset.importProjectFile','asset.importSelected'],reason:'绝对路径只留可信宿主；模型通过项目内路径或用户所选句柄导入'},
  'lut.import':{tools:['lut.importSelected'],reason:'只导入用户已选择且受大小、类型约束的 LUT 句柄'},

@@ -117,6 +117,53 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   // a shot still goes through `sequence.preview/commit`.
   'subject.binding.set': 'sequence.preview/commit',
 });
+/** Concrete CLI/MCP replacement for every gated format-5 entry. These are
+ * command names, not authority: every write still previews and commits through
+ * the unified sequence contract. */
+export const FORMAT5_LEGACY_WRITE_COMMANDS: Readonly<Record<string, string>> = Object.freeze({
+  'timeline.get':'sequence board get（读取当前画板挂载投影）',
+  'timeline.track.add':'sequence timeline edit（动作 track-add）',
+  'timeline.track.update':'sequence timeline edit（动作 track-update）',
+  'timeline.clip.add':'sequence timeline edit（动作 insert-asset）或 sequence edit（动作 insert）',
+  'timeline.clip.update':'sequence clip edit（动作 clip-properties）',
+  'timeline.clip.replaceSource':'sequence board edit（动作 board-version）或 sequence edit（动作 set-mode）',
+  'timeline.clip.remove':'sequence edit（动作 remove）',
+  'timeline.clip.rippleRemove':'sequence edit（动作 remove）',
+  'timeline.clip.split':'sequence edit（动作 split）',
+  'timeline.clip.splitAtScenes':'sequence timeline edit（动作 split-at-scenes）',
+  'timeline.clip.crossfade':'sequence clip edit（动作 clip-properties）',
+  'timeline.clip.setGains':'sequence clip edit（动作 clip-properties）',
+  'timeline.clip.setTransform':'sequence clip edit（动作 clip-properties）',
+  'timeline.clip.setTransition':'sequence clip edit（动作 clip-properties）',
+  'timeline.loudness.apply':'sequence clip edit（动作 clip-properties）',
+  'timeline.subtitle.add':'sequence timeline edit（动作 subtitles）',
+  'timeline.subtitle.update':'sequence timeline edit（动作 subtitles）',
+  'timeline.subtitle.remove':'sequence timeline edit（动作 subtitles）',
+  'timeline.seed':'sequence timeline edit（动作 insert-asset）',
+  'timeline.shots.append':'sequence timeline edit（动作 insert-asset）',
+  'timeline.clip.refreshSources':'sequence edit（动作 set-mode）',
+  'timeline.format.set':'sequence timeline edit（动作 format-set）',
+  'timeline.history.get':'sequence history get',
+  'timeline.undo':'sequence undo',
+  'timeline.redo':'sequence redo',
+  'canvas.apply':'sequence board edit（动作 board-layout-move）',
+  'canvas.history.get':'sequence history get',
+  'canvas.history.undo':'sequence undo',
+  'canvas.history.redo':'sequence redo',
+  'edge.create':'sequence edit（动作 connect）',
+  'edge.delete':'sequence edit（动作 disconnect）',
+  'shot.reorder':'sequence edit（动作 reorder）',
+  'version.select':'sequence edit（动作 set-mode）',
+  'shot.create':'sequence board edit（动作 board-shot-append）',
+  'shot.update':'sequence board edit（动作 board-shot-update）',
+  'node.create':'sequence board edit（动作 board-node-create）',
+  'node.update':'sequence board edit（动作 board-node-update）',
+  'reference.attach':'sequence reference edit（动作 reference-attach）',
+  'reference.detach':'sequence reference edit（动作 reference-detach）',
+  'previs.create':'sequence previs edit（动作 previs-create）',
+  'previs.scene.set':'sequence previs edit（动作 previs-scene-set）',
+  'subject.binding.set':'sequence subject edit（动作 subject-binding）',
+});
 export function format5LegacyWriteUse(operation: string): Format5LegacyWriteUse | null {
   return Object.hasOwn(FORMAT5_LEGACY_WRITE_USES, operation) ? FORMAT5_LEGACY_WRITE_USES[operation]! : null;
 }
@@ -126,7 +173,8 @@ export function format5LegacyWriteUse(operation: string): Format5LegacyWriteUse 
 export function assertFormat5LegacyWriteAllowed(store: ProjectStore, operation: string): void {
   const use = format5LegacyWriteUse(operation);
   if (!use || !isFormat5Project(store)) return;
-  throw new AppError('UNSUPPORTED_OPERATION', '格式 5 的这个编辑入口暂不开放，请使用统一序列入口。', 409, {use});
+  const command=FORMAT5_LEGACY_WRITE_COMMANDS[operation]??String(use);
+  throw new AppError('UNSUPPORTED_OPERATION', `格式 5 的这个编辑入口暂不开放，请使用命令：${command}。`, 409, {use,command});
 }
 export function assertLegacyCanvasWriteAllowed(store: ProjectStore, use: LegacyCanvasWrite): void {
   if (!isFormat5Project(store)) return;

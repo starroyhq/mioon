@@ -1140,3 +1140,38 @@ S2 的 `previs output publish` 和 `previs output lookup` 复用公共严格 sch
 项目外目录未确认时加 `--confirm-outside`：它明确确认当前项目读取文件所在目录本身，不含子目录，stderr逐项输出确认目录。没有这个参数的普通路径导入不授予许可。需传输字节时用显式 `--upload`，上限仍30 MiB，不能与目录确认一起使用。客户端现有连接策略仍只接受本机 HTTP origin；本机转发到另一机器时应使用上传模式，不能发送本机文件路径。LUT导入仍读取本地字节，限制不变。
 
 `asset media status list` 和 `asset media prepare` 提供状态及强快照准备；位置和目录确认由专用用户操作接口提供，不是模型工具。
+
+## 格式 5：统一序列动作（外部 Agent）
+
+格式 5 项目的画板和时间线修改统一走 `sequence.*`。命令行操作名和 `schema` 的输入形状就是契约来源；格式 3/4 的旧入口保持不变。
+
+只读：
+
+```sh
+mioon sequence inspect --input '{"projectId":"PROJECT_UUID"}'
+mioon sequence board get --input '{"projectId":"PROJECT_UUID"}'
+mioon sequence generation-inputs get --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID"}'
+mioon sequence history get --input '{"projectId":"PROJECT_UUID"}'
+```
+
+写动作分预览和确认两步。预览命令只规划，返回 `envelope`、`planDigest` 和 `summary`；确认时把这两个凭据原样交给 `sequence action commit`，计划仍在才提交：
+
+```sh
+# 1. 预览一个画板动作；动作字段与 Mio 的 sequence 工具一致
+mioon sequence board edit --input '{"projectId":"PROJECT_UUID","kind":"board-root-create","name":"Film","position":{"x":0,"y":0}}'
+# 2. 用返回的 envelope 和 planDigest 确认
+mioon sequence action commit --input '{"projectId":"PROJECT_UUID","envelope":{...},"expectedPlanDigest":"..."}'
+```
+
+| 预览命令 | Mio 工具 | 动作域 |
+| --- | --- | --- |
+| `sequence action edit` | `mioon_sequence_edit` | 连接/断开/插入/删除节点、成片内重排/移除/切开/跟随锁定/复制挪动 |
+| `sequence board edit` | `mioon_sequence_board_edit` | 画板根/镜头/节点、布局、归档恢复、复制 |
+| `sequence reference edit` | `mioon_sequence_reference_edit` | 素材引用线连接/角色/断开/排序 |
+| `sequence subject edit` | `mioon_sequence_subject_edit` | 主体绑定与主体卡 |
+| `sequence previs edit` | `mioon_sequence_previs_edit` | 预演节点与场景 |
+| `sequence timeline edit` | `mioon_sequence_timeline_edit` | 字幕、台词、画幅、场景切开、分离声音、轨道、素材入轨、剪辑里生成 |
+| `sequence clip edit` | `mioon_sequence_clip_edit` | 片段变换、转场、增益、淡入淡出、颜色、音频角色、音量包络、名称 |
+| `sequence undo-action` | `mioon_sequence_undo` | 撤销当前栈顶 Mio 动作 |
+
+统一历史也可直接使用 `sequence undo` / `sequence redo`；`sequence action commit` 的生成动作按 `generation.submit` 的稳定 requestId、付费和未知结果规则执行，客户端不自动重试。动作字段可用 `mioon schema sequence board edit` 查看；旧入口在格式 5 上报错时会写出应改用的新命令。

@@ -2,6 +2,7 @@ import {mioTable} from './agent/mio-table-layout.ts';
 import {createProjectBackgroundState} from './background-task-state.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
+import type {ProjectStore} from './project-file/store.ts';
 import {usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {currentProjectRecord,mutateProjectRecord} from './project-record-mutations.ts';
 import {testProjectServiceApplication} from './project-service-application.ts';
@@ -68,6 +69,11 @@ import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
+import {previewMioSequenceAction,commitMioSequenceAction,prepareMioSequenceUndo,applyMioSequenceUndo} from './format5-mio-sequence.ts';
+import {mioSequenceEditSchemas} from '../../contracts/src/mio-sequence.ts';
+import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
+import type {MioSequencePlan} from './format5-mio-sequence.ts';
+
 import {format5GenerationSource,format5LegacyGenerationSource,planFormat5GenerationInputs,readFormat5GenerationInputView} from './format5-reference-inputs.ts';
 import type {Format5LegacyGenerationService} from './format5-reference-inputs.ts';
 import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
@@ -662,6 +668,20 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // Generate button goes through the reviewed board generation path. Mio's
   // approved action supplies the submit port at its own commit call.
   const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths});
+  const sequenceActionInput=(input: ServiceRow): {projectId:string;action:ServiceRow}=>{
+    if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
+    const projectId=stringValue(input.projectId);
+    if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
+    const {projectId:_address,...action}=input;
+    return {projectId,action};
+  };
+  const previewSequenceAction=(operation: keyof typeof mioSequenceEditSchemas)=>(input: ServiceRow)=>{
+    const {projectId,action}=sequenceActionInput(input);
+    const parsed=mioSequenceEditSchemas[operation].safeParse(action);
+    if(!parsed.success)throw new AppError('VALIDATION_ERROR','序列动作参数无效，请按 schema 使用列出的动作和目标字段。',400);
+    const plan=previewMioSequenceAction(store as ProjectStore,projectId,randomUUID(),parsed.data as MioSequenceAction);
+    return {projectId,envelope:plan.envelope,planDigest:plan.planDigest,summary:plan.summary};
+  };
  const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
@@ -823,6 +843,30 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
+  'sequence.action.edit':previewSequenceAction('sequence.tool.edit'),
+  'sequence.board.edit':previewSequenceAction('sequence.tool.board'),
+  'sequence.reference.edit':previewSequenceAction('sequence.tool.reference'),
+  'sequence.subject.edit':previewSequenceAction('sequence.tool.subject'),
+  'sequence.previs.edit':previewSequenceAction('sequence.tool.previs'),
+  'sequence.timeline.edit':previewSequenceAction('sequence.tool.timeline'),
+  'sequence.clip.edit':previewSequenceAction('sequence.tool.clip'),
+  'sequence.action.commit':(input: ServiceRow)=>{
+    if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
+    const projectId=stringValue(input.projectId);
+    if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
+    const envelope=input.envelope as {projectId?:unknown};
+    if(!envelope||envelope.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与序列动作不一致。',409);
+    const plan={envelope:input.envelope,planDigest:stringValue(input.expectedPlanDigest),summary:{action:'commit',affected:[],counts:{nodes:0,edges:0,clips:0,other:0},warnings:0}} as MioSequencePlan;
+    return commitMioSequenceAction(store as ProjectStore,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
+  },
+  'sequence.undo-action':(input: ServiceRow)=>{
+    if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
+    const projectId=stringValue(input.projectId);
+    if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
+    const requestId=typeof input.requestId==='string'?input.requestId:randomUUID();
+    const actionId=typeof input.actionId==='string'?input.actionId:undefined;
+    return applyMioSequenceUndo(store as ProjectStore,prepareMioSequenceUndo(store as ProjectStore,projectId,requestId,actionId));
+  },
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
   'sequence.generation-inputs.get':(input: ServiceRow)=>{

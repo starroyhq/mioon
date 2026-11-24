@@ -197,3 +197,21 @@ const MIO_SEQUENCE_OPERATION_GROUP: Readonly<Record<MioSequenceGroupOperation, M
 export function mioSequenceActionKindsForOperation(operation: MioSequenceGroupOperation): readonly MioSequenceAction['kind'][] {
   return MIO_SEQUENCE_ACTION_GROUPS[MIO_SEQUENCE_OPERATION_GROUP[operation]];
 }
+
+/** Public CLI/MCP counterparts of the Mio action groups: the same action
+ * branches, with the project address added as a business field because these
+ * operations are project-level RPCs. */
+function groupProjectSchema(group: MioSequenceActionGroup) {
+  const branches = actionBranches(MIO_SEQUENCE_ACTION_GROUPS[group])
+    .map(branch => (branch as unknown as z.ZodObject<z.ZodRawShape>).extend({projectId: uuid}).strict());
+  return z.discriminatedUnion('kind', branches as never).superRefine(dialogueActionRefinement);
+}
+const MIO_SEQUENCE_PUBLIC_OPERATIONS: Readonly<Record<string, MioSequenceActionGroup>> = Object.freeze({
+  'sequence.action.edit': 'basics', 'sequence.board.edit': 'board', 'sequence.reference.edit': 'reference',
+  'sequence.subject.edit': 'subject', 'sequence.previs.edit': 'previs', 'sequence.timeline.edit': 'timeline',
+  'sequence.clip.edit': 'clip',
+});
+export const mioSequenceProjectSchemas = Object.freeze(Object.fromEntries(
+  Object.entries(MIO_SEQUENCE_PUBLIC_OPERATIONS).map(([operation, group]) => [operation, groupProjectSchema(group)]),
+)) as Readonly<Record<keyof typeof MIO_SEQUENCE_PUBLIC_OPERATIONS, z.ZodTypeAny>>;
+export type MioSequencePublicOperation = keyof typeof MIO_SEQUENCE_PUBLIC_OPERATIONS;

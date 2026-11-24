@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {
-  FORMAT5_LEGACY_WRITE_USES, assertFormat5LegacyWriteAllowed, assertLegacyCanvasWriteAllowed,
+  FORMAT5_LEGACY_WRITE_USES, FORMAT5_LEGACY_WRITE_COMMANDS, assertFormat5LegacyWriteAllowed, assertLegacyCanvasWriteAllowed,
   format5LegacyWriteUse,
 } from '../packages/business/src/sequence-edit.ts';
 import {createChainWorld} from './helpers/sequence-edit-double.ts';
@@ -49,10 +49,12 @@ test('every FR-0 legacy writer is gated once under format 5 and stays untouched 
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   try {
     assert.deepEqual(Object.keys(FORMAT5_LEGACY_WRITE_USES).sort(), Object.keys(EXPECTED).sort());
+    assert.deepEqual(Object.keys(FORMAT5_LEGACY_WRITE_COMMANDS).sort(), Object.keys(EXPECTED).sort());
     for (const [operation, use] of Object.entries(EXPECTED)) {
       assert.equal(format5LegacyWriteUse(operation), use, operation);
-      assert.throws(() => assertFormat5LegacyWriteAllowed(world.store, operation), (error: {code?: string; details?: {use?: string}}) =>
-        error.code === 'UNSUPPORTED_OPERATION' && error.details?.use === use, operation);
+      assert.throws(() => assertFormat5LegacyWriteAllowed(world.store, operation), (error: {code?: string; details?: {use?: string; command?: string}; message?: string}) =>
+        error.code === 'UNSUPPORTED_OPERATION' && error.details?.use === use && typeof error.details?.command === 'string' &&
+        /sequence|project/.test(error.details.command) && Boolean(error.message?.includes(error.details.command)), operation);
       assert.doesNotThrow(() => assertFormat5LegacyWriteAllowed(format4, operation), `format 4 ${operation}`);
     }
     for (const operation of READ_ONLY) {
