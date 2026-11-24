@@ -60,7 +60,12 @@ const requireFormat5 = (store: ProjectStore): void => {
 const projectCheck = (store: ProjectStore, projectId: string): void => {
   if (projectId !== store.projectId) throw new AppError('PROJECT_ID_MISMATCH', '项目地址与请求不一致。', 409);
 };
-const failure = (code: string, ids: readonly string[] = []): {ok: false; code: string; ids: readonly string[]} => ({ok: false, code, ids});
+const failure = (code: string, ids: readonly string[] = [], reason?: string): {ok: false; code: string; ids: readonly string[]; reason?: string} =>
+  ({ok: false, code, ids, ...(reason ? {reason} : {})});
+const failureReason = (error: AppError): string | undefined => {
+  const reason = (error.details as Row | undefined)?.reason;
+  return typeof reason === 'string' && reason ? reason : undefined;
+};
 const historyState = (store: ProjectStore) => {
   const prepared = prepareSequenceEditHistory(store);
   return {epoch: prepared.state.epoch, position: prepared.state.position, revision: prepared.state.revision};
@@ -178,15 +183,16 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     const command = subjectCommand(intent);
     const edgeId = (input.allocation?.edges ?? []).find((edge: Row) => uuid(edge?.id))?.id as string | undefined
       ?? randomUUID();
-    const envelope: SequenceEditEnvelope = {...buildSubjectBindingEnvelope(store as never, command as never, {
-      requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
-      historyPosition: state.position, historyRevision: state.revision, edgeId}), ...(input.origin ? {origin: input.origin} : {})};
-    try { planSubjectBindingAction(store as never, envelope); }
-    catch (error) {
-      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
+    try {
+      const envelope: SequenceEditEnvelope = {...buildSubjectBindingEnvelope(store as never, command as never, {
+        requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
+        historyPosition: state.position, historyRevision: state.revision, edgeId}), ...(input.origin ? {origin: input.origin} : {})};
+      planSubjectBindingAction(store as never, envelope);
+      return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+    } catch (error) {
+      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? [], failureReason(error));
       throw error;
     }
-    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   }
 
   function referencePreview(input: any): unknown {
@@ -207,15 +213,16 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
         : edit.kind === 'reorder'
           ? {kind: 'reorder' as const, shotId: edit.shotId, edgeIds: edit.edgeIds}
           : {kind: 'detach' as const, edgeId, shotId: edit.shotId};
-    const envelope: SequenceEditEnvelope = {...buildReferenceEdgeEnvelope(store, command, {
-      requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
-      historyPosition: state.position, historyRevision: state.revision}), ...(input.origin ? {origin: input.origin} : {})};
-    try { planReferenceEdgeAction(store, envelope); }
-    catch (error) {
-      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? []);
+    try {
+      const envelope: SequenceEditEnvelope = {...buildReferenceEdgeEnvelope(store, command, {
+        requestId: input.requestId, actionId: input.actionId ?? randomUUID(), epoch: state.epoch,
+        historyPosition: state.position, historyRevision: state.revision}), ...(input.origin ? {origin: input.origin} : {})};
+      planReferenceEdgeAction(store, envelope);
+      return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
+    } catch (error) {
+      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? [], failureReason(error));
       throw error;
     }
-    return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   }
 
   function timelinePreview(input: any, intents: SequenceEditIntent[]): unknown {
@@ -224,7 +231,8 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     if (!command) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
     const result = previewSequenceSync(store, command, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {})}) as Row;
-    if (result.ok === false) return failure(String(result.code), (result.ids as string[]) ?? []);
+    if (result.ok === false) return failure(String(result.code), (result.ids as string[]) ?? [],
+      typeof (result as Row).reason === 'string' ? String((result as Row).reason) : undefined);
     return result;
   }
 
@@ -232,7 +240,12 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     const context = readSequenceEditContext(store as never);
     const state = historyState(store);
     const content = readProjectContentStamp(store.db).contentSequence;
-    const prepared = previewSequenceBoardAction(store, intents, allocationOf(input), options.clipboardOwner);
+    let prepared: ReturnType<typeof previewSequenceBoardAction>;
+    try { prepared = previewSequenceBoardAction(store, intents, allocationOf(input), options.clipboardOwner); }
+    catch (error) {
+      if (error instanceof AppError) return failure(error.code, (error.details as Row | undefined)?.ids as string[] ?? [], failureReason(error));
+      throw error;
+    }
     if (prepared.ok === false) return failure(prepared.code, prepared.ids);
     const envelope: SequenceEditEnvelope = {
       contractVersion: 1, projectId: store.projectId, epoch: state.epoch,

@@ -403,3 +403,11 @@ test('the film chain uses trimmed main-track clip lengths and marks video thumbn
   assert.equal(a.thumbnailKind, 'video');
   assert.equal(board.nodes.find(node => node.id === shotB)!.durationFrames, 60);
 });
+
+test('a preview refusal carries its bounded reason into the board outcome', async () => {
+  const session = new BoardUiSession(async () => ({ok: false, code: 'SEQUENCE_EDIT_REFERENCE_INVALID',
+    reason: 'PREVIS_OUTPUT_REQUIRED', ids: []}), () => projectId);
+  const outcome = await session.run(boardConnectIntent(shotA, shotB));
+  assert.deepEqual(outcome, {ok: false, code: 'SEQUENCE_EDIT_REFERENCE_INVALID',
+    reason: 'PREVIS_OUTPUT_REQUIRED', ids: []});
+});

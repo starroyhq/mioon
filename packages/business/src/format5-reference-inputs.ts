@@ -67,8 +67,49 @@ export function format5ReferenceInputs(store: ProjectStore): boolean {
   return Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
 }
 
+/** Every reference refusal gets a stable reason for the UI. The map keeps the
+ * internal messages single-sourced while the public response only carries a
+ * bounded reason code. */
+const referenceInvalidReasons: Readonly<Record<string, string>> = {
+  '主体不存在或不属于当前项目': 'SUBJECT_MISSING',
+  '主体卡连线走主体绑定（subject.binding）动作，不重复建引用边': 'SUBJECT_BINDING_REQUIRED',
+  '主体引用边走主体绑定动作': 'SUBJECT_BINDING_REQUIRED',
+  '主体版本缺少素材': 'SUBJECT_VERSION_MISSING',
+  '先把尾帧改成其他角色或断开，首帧才能退出': 'FIRST_FRAME_BLOCKED_BY_LAST',
+  '先断开尾帧，再断开首帧': 'LAST_FRAME_DETACH_FIRST',
+  '参考素材类型与连线用途不符': 'ASSET_TYPE_MISMATCH',
+  '参考素材缺少可信指纹': 'ASSET_UNVERIFIED',
+  '尾帧需要先连一个首帧': 'LAST_FRAME_REQUIRES_FIRST',
+  '引用动作必须且只能携带一个 reference intent': 'REFERENCE_INVALID',
+  '引用线 ID 已被使用': 'EDGE_ID_CONFLICT',
+  '引用线不存在': 'EDGE_MISSING',
+  '引用线不属于这个镜头': 'EDGE_TARGET_MISMATCH',
+  '引用线内容无效': 'EDGE_INVALID',
+  '引用线已删除，请先恢复': 'EDGE_ARCHIVED',
+  '引用线来源已不可用': 'SOURCE_TYPE_INVALID',
+  '引用线标识无效': 'REFERENCE_INVALID',
+  '引用线缺少素材身份': 'EDGE_INVALID',
+  '引用线顺序清单与当前连线不一致，请重新读取': 'ORDER_SET_MISMATCH',
+  '引用线顺序清单无效': 'ORDER_SET_MISMATCH',
+  '新建引用线需要预分配的连线 ID': 'EDGE_ALLOCATION_REQUIRED',
+  '时间线缺少顺序根': 'TIMELINE_ROOT_MISSING',
+  '画板节点不存在或不属于当前项目': 'NODE_MISSING',
+  '画板节点内容无效': 'NODE_INVALID',
+  '画板节点已删除，请先恢复': 'NODE_ARCHIVED',
+  '画板节点类型不能作为引用线来源': 'SOURCE_TYPE_INVALID',
+  '素材节点还没有可用的托管素材': 'ASSET_NOT_READY',
+  '这个素材类型不能用所选引用角色': 'ROLE_NOT_ALLOWED',
+  '镜头不存在或不属于当前项目': 'SHOT_MISSING',
+  '镜头内容无效': 'SHOT_INVALID',
+  '镜头已删除，请先恢复': 'SHOT_ARCHIVED',
+  '预演节点记录无法验证': 'PREVIS_INVALID',
+  '预演输出缺少可信指纹': 'PREVIS_OUTPUT_UNVERIFIED',
+  '预演还没有可核验的输出图，请先生成并保存预演画面': 'PREVIS_OUTPUT_REQUIRED',
+};
 function referenceInvalid(message: string, details: Row = {}): never {
-  throw new AppError('SEQUENCE_EDIT_REFERENCE_INVALID', message, 409, details);
+  const explicit = typeof details.reason === 'string' && details.reason ? details.reason : undefined;
+  const reason = explicit ?? referenceInvalidReasons[message];
+  throw new AppError('SEQUENCE_EDIT_REFERENCE_INVALID', message, 409, {...details, ...(reason ? {reason} : {})});
 }
 function conflict(message: string, details: Row = {}): never {
   throw new AppError('SEQUENCE_EDIT_REVISION_CONFLICT', message, 409, details);

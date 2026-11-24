@@ -218,7 +218,7 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
@@ -2500,7 +2500,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // Keep specific bounded reasons visible instead of collapsing every format-5
     // validation refusal into the generic "operation did not complete" notice.
     if (failure.code === 'PROJECT_INVALID' && failure.reason === 'metadata') return t('boardUi.error.projectInvalid');
-    return t(format5CommandErrorMessageKey(failure.code) as never);
+    return t(format5BoardFailureMessageKey(failure.code, failure.reason) as never);
   }
   async function format5BoardRun(intent: Parameters<BoardUiSession['run']>[0], noticeMessage: string): Promise<BoardOutcome> {
     if (!format5) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
@@ -5391,6 +5391,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onUpdateShot={format5BoardUpdateShot} onGenerateShot={format5GenerateShot}
       jobs={jobs}
       previsInspector={previsPanel}
+      onOpenGenerationSettings={() => openGlobalSettings('models')}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status
@@ -5416,6 +5417,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       providers={providers as never}
       generationOptions={(generationOptions[editingGenerateShot.id] ?? {}) as Record<string, unknown>}
       onGenerationOptionsChange={options => updateGenerationOptions(editingGenerateShot.id, options as GenerationOptionState)}
+      onOpenGenerationSettings={() => openGlobalSettings('models')}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status

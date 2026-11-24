@@ -69,6 +69,14 @@ const record = (value: unknown): Row | null => value !== null && typeof value ==
   ? value as Row : null;
 const codeOf = (error: unknown): string => (error as {code?: unknown})?.code !== undefined
   ? String((error as {code?: unknown}).code) : 'GENERIC';
+const reasonOf = (value: unknown): string | undefined => {
+  const details = (value as {details?: unknown})?.details;
+  const reason = details && typeof details === 'object' ? (details as {reason?: unknown}).reason : undefined;
+  return typeof reason === 'string' && reason ? reason : undefined;
+};
+const previewFailure = (preview: Row): BoardFailure => ({ok: false,
+  code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'), ids: preview.ids as string[] | undefined,
+  ...(typeof preview.reason === 'string' && preview.reason ? {reason: preview.reason} : {})});
 
 /** Undo/redo answers: the same three states, with a definite not-applied
  * receipt surfaced as a rejection instead of an applied outcome. */
@@ -175,10 +183,9 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
           ...payload}));
-      } catch (error) {return {ok: false, code: codeOf(error)};}
+      } catch (error) {return {ok: false, code: codeOf(error), ...(reasonOf(error) ? {reason: reasonOf(error)} : {})};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: preview.ids as string[] | undefined};
+      if (preview.ok === false) return previewFailure(preview);
       const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
       if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       return await this.commitEnvelope(projectId, envelope, preview.planDigest);
@@ -199,10 +206,9 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('generate-preview'),
           generateIntent}));
-      } catch (error) {return {ok: false, code: codeOf(error)};}
+      } catch (error) {return {ok: false, code: codeOf(error), ...(reasonOf(error) ? {reason: reasonOf(error)} : {})};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: preview.ids as string[] | undefined};
+      if (preview.ok === false) return previewFailure(preview);
       const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
       if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       return await this.commitEnvelope(projectId, envelope, preview.planDigest);
@@ -220,10 +226,9 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('subject-preview'),
           subjectIntent: {side: 'board', operation}, ...(allocation ? {allocation} : {})}));
-      } catch (error) {return {ok: false, code: codeOf(error)};}
+      } catch (error) {return {ok: false, code: codeOf(error), ...(reasonOf(error) ? {reason: reasonOf(error)} : {})};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: preview.ids as string[] | undefined};
+      if (preview.ok === false) return previewFailure(preview);
       const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
       if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       return await this.commitEnvelope(projectId, envelope, preview.planDigest);
