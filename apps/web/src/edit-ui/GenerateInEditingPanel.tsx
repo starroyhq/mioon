@@ -12,7 +12,7 @@ import {generationModeKeys, referenceRoleKey, unsupportedReasonKey} from '../boa
 import {generationFailureDescriptor, providerDisplayName} from '../creation-i18n.ts';
 import {generationSelection} from '../generation-settings.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
-import GenerationServiceMenu from '../GenerationServiceMenu.tsx';
+import GenerationServiceMenu from '../board-ui/GenerationServiceMenu.tsx';
 import type {SequenceGenerationInputView} from '../../../../packages/contracts/src/sequence-inspection.ts';
 import type {MessageKey} from '../../../../packages/i18n/src/index.ts';
 import './generate-in-editing-panel.css';

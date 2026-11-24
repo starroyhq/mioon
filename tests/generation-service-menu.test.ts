@@ -48,7 +48,7 @@ function renderer(): Promise<Render> {
     const entry = `import React from 'react';
       import {renderToStaticMarkup} from 'react-dom/server';
       import {I18nProvider,createLanguageStore} from './src/i18n/I18nProvider.tsx';
-      import GenerationServiceMenu from './src/GenerationServiceMenu.tsx';
+      import GenerationServiceMenu from './src/board-ui/GenerationServiceMenu.tsx';
       export function menu(locale, providers){
         return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
           <GenerationServiceMenu providers={providers} menuClassName="menu" menuTestId="menu" itemTestIdPrefix="choice"
@@ -73,8 +73,7 @@ test('an empty available-service list offers only the settings entry', async () 
 test('the board and 21-09 panel use the same service menu component', () => {
   const board = readFileSync(new URL('../apps/web/src/board-ui/BoardInspector.tsx', import.meta.url), 'utf8');
   const panel = readFileSync(new URL('../apps/web/src/edit-ui/GenerateInEditingPanel.tsx', import.meta.url), 'utf8');
-  for (const source of [board, panel]) {
-    assert.match(source, /import GenerationServiceMenu from '..\/GenerationServiceMenu.tsx'/u);
-    assert.match(source, /<GenerationServiceMenu /u);
-  }
+  assert.match(board, /import GenerationServiceMenu from '\.\/GenerationServiceMenu.tsx'/u);
+  assert.match(panel, /import GenerationServiceMenu from '\.\.\/board-ui\/GenerationServiceMenu.tsx'/u);
+  for (const source of [board, panel]) assert.match(source, /<GenerationServiceMenu /u);
 });

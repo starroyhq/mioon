@@ -1,8 +1,8 @@
 import React from 'react';
-import {useI18n} from './i18n/I18nProvider.tsx';
-import {generationServiceChoices} from './generation-service-choices.ts';
-import type {GenerationServiceChoice} from './generation-service-choices.ts';
-import type {GenerationProvider} from './generation-settings.ts';
+import {useI18n} from '../i18n/I18nProvider.tsx';
+import {generationServiceChoices} from '../generation-service-choices.ts';
+import type {GenerationServiceChoice} from '../generation-service-choices.ts';
+import type {GenerationProvider} from '../generation-settings.ts';
 
 
 export interface GenerationServiceMenuProps {
@@ -33,5 +33,5 @@ export default function GenerationServiceMenu({providers, disabled, menuClassNam
   </div>;
 }
 
-export {generationServiceChoices} from './generation-service-choices.ts';
-export type {GenerationServiceChoice} from './generation-service-choices.ts';
+export {generationServiceChoices} from '../generation-service-choices.ts';
+export type {GenerationServiceChoice} from '../generation-service-choices.ts';

@@ -20,7 +20,7 @@ import type {SequenceGenerationInputEntryView, SequenceGenerationInputView} from
 import {generationModeKeys, isPrimaryCandidate, referenceRoleKey, referenceRoleOptions, sourceKindIcons,
   unsupportedReasonKey} from './inputs.ts';
 import ShotDialogue from '../ShotDialogue.tsx';
-import GenerationServiceMenu from '../GenerationServiceMenu.tsx';
+import GenerationServiceMenu from './GenerationServiceMenu.tsx';
 import {reconcileShotDraft} from './shot-draft.ts';
 import type {ShotDraftState} from './shot-draft.ts';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
