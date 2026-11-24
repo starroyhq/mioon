@@ -55,6 +55,7 @@ function fixture({ initialContext = context(), visible = true, list, open, cance
     if (name === './project-entry-identity.ts') return identityModule;
     if (name === './project-entry-desktop-client.ts') return desktopClientModule;
     if (name === './native-project-desktop-state.ts') return desktopStateModule;
+    if (name === './project-history-recovery-client.ts') return {projectHistoryRecoveryClient: {status: async () => ({state: 'current'})}};
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     assert.fail(`Unexpected hook dependency ${name}`);
   }, module, module.exports, window, document);
