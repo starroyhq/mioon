@@ -8,13 +8,14 @@ import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { isSettingsConnectionPage, normalizeSettingsPage } from './settings-window-state.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { SettingsAbout, SettingsShortcuts } from './SettingsExtraPages.tsx';
-import { settingsCategories, settingsCategoryFor } from './settings-categories.ts';
+import { settingsCategoryFor, visibleSettingsCategories } from './settings-categories.ts';
 import type { SettingsCategory as Category } from './settings-categories.ts';
 
 export type HomeConnectionSlot = SettingsConnectionPage;
 const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', models: 'sparkle', about: 'info' };
 const categoryIconPaths: Partial<Record<Category, ReactNode>> = {
   agent: <><rect x="5" y="7" width="14" height="13" rx="3" /><path d="M12 3v4M2 12h3m14 0h3M9 12v2m6-2v2m-6 3h6" /></>,
+  'external-agents': <><path d="m4 17 6-6-6-6" /><path d="M12 19h8" /></>,
   shortcuts: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8" /></>,
 };
 function SettingsCategoryIcon({ category }: { category: Category }) {
@@ -25,26 +26,31 @@ const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensio
 
 /** Retained form owners keep their original identity and admission. Fixed
  * native page intentions never grant a category its own connection identity. */
-export default function ProjectHomeConnections({ selected, page: requestedPage = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, generationServices }: {
+export default function ProjectHomeConnections({ selected, page: requestedPage = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, generationServices, externalAgents, externalAgentsAvailable = Boolean(externalAgents) }: {
   selected: HomeConnectionSlot; page?: SettingsPage; onSelect: (slot: HomeConnectionSlot) => void; onPage?: (page: SettingsPage) => void;
   panes: Readonly<Partial<Record<HomeConnectionSlot, ReactNode>>>; general?: ReactNode; connectionsAvailable?: boolean; active?: boolean;
-  workspace?: ReactNode; videoTools?: ReactNode; generationServices?: ReactNode;
+  workspace?: ReactNode; videoTools?: ReactNode; generationServices?: ReactNode; externalAgents?: ReactNode; externalAgentsAvailable?: boolean;
 }) {
   const { t, formatNumber } = useI18n();
-  const page = normalizeSettingsPage(requestedPage);
+  const normalizedPage = normalizeSettingsPage(requestedPage);
+  const page: SettingsPage = normalizedPage === 'external-agents' && !externalAgentsAvailable ? 'general' : normalizedPage;
   const heading = useId(), opened = useRef({ agent: false, generation: false });
   const category = settingsCategoryFor(page);
+  const categories = visibleSettingsCategories(externalAgentsAvailable);
   if (connectionsAvailable && page === 'agent') opened.current.agent = true;
   if (connectionsAvailable && category === 'models') opened.current.generation = true;
-  const selectPage = (next: SettingsPage) => { next = normalizeSettingsPage(next); if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
+  const selectPage = (next: SettingsPage) => { next = normalizeSettingsPage(next); if (next === 'external-agents' && !externalAgentsAvailable) return; if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
   const categoryLabel = (id: Category) => t(id === 'general' ? 'settings.general' : `redesign.settings.${id}`);
   return <section className="settings-center" data-testid="settings-center" data-page={page} aria-label={t('settings.title')}>
     <nav className="settings-center-nav" aria-label={t('settings.categories')}>
       <span className="settings-center-nav-label">{t('settings.title')}</span>
-      {settingsCategories.map(id => <Button key={id} type="button" variant="ghost" data-testid={`settings-category-${id}`} disabled={connectionCategory(id) && !connectionsAvailable} aria-current={category === id ? 'page' : undefined} onClick={() => selectPage(id)}><span className="settings-category-icon" data-testid={`settings-category-icon-${id}`}><SettingsCategoryIcon category={id} /></span><span>{categoryLabel(id)}</span></Button>)}
+      {categories.map(id => <Button key={id} type="button" variant="ghost" data-testid={`settings-category-${id}`} disabled={connectionCategory(id) && !connectionsAvailable} aria-current={category === id ? 'page' : undefined} onClick={() => selectPage(id)}><span className="settings-category-icon" data-testid={`settings-category-icon-${id}`}><SettingsCategoryIcon category={id} /></span><span>{categoryLabel(id)}</span></Button>)}
     </nav>
     <div className="settings-center-content" aria-labelledby={heading}>
-      <header className="settings-center-heading"><h1 id={heading}>{categoryLabel(category)}</h1></header>
+      <header className="settings-center-heading">
+        <h1 id={heading}>{categoryLabel(category)}</h1>
+        {category === 'external-agents' && <p className="settings-center-subtitle" data-testid="settings-external-agents-subtitle">{t('externalAgents.subtitle')}</p>}
+      </header>
       <section hidden={page !== 'general'} inert={page !== 'general'} className="settings-general" data-testid="settings-general">
         <h2 className="settings-section-title">{t('redesign.settings.languageSection')}</h2>
         <div className="settings-preference"><h3>{t('language.label')}</h3><LanguageControl visible={active && page === 'general'} /></div>
@@ -54,6 +60,9 @@ export default function ProjectHomeConnections({ selected, page: requestedPage =
         <WorkspaceVisibilityProvider visible={active && page === 'workspace'}>{workspace}</WorkspaceVisibilityProvider>
       </section>
       <section hidden={page !== 'video-tools'} inert={page !== 'video-tools'}>{videoTools}</section>
+      {externalAgentsAvailable && <section hidden={page !== 'external-agents'} inert={page !== 'external-agents'} data-testid="settings-external-agents">
+        <WorkspaceVisibilityProvider visible={active && page === 'external-agents'}>{externalAgents}</WorkspaceVisibilityProvider>
+      </section>}
       <section hidden={page !== 'shortcuts'} inert={page !== 'shortcuts'}><SettingsShortcuts /></section>
       <section hidden={page !== 'about'} inert={page !== 'about'}><SettingsAbout active={active && page === 'about'} /></section>
       <div className="settings-connection-panes" hidden={!connectionCategory(page)} inert={!connectionCategory(page)}>
