@@ -9,8 +9,8 @@ import Icon from '../icons.tsx';
 import ShotDialogue from '../ShotDialogue.tsx';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {generationModeKeys, referenceRoleKey, unsupportedReasonKey} from '../board-ui/inputs.ts';
-import {generationFailureDescriptor, providerDisplayName} from '../creation-i18n.ts';
-import {generationSelection} from '../generation-settings.ts';
+import {canRetryGenerationFailure, formatBoardGenerationFailure, jobServiceDisplayName, providerDisplayName} from '../creation-i18n.ts';
+import {resolveBoardGenerationSelection} from '../generation-service-choices.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
 import GenerationServiceMenu from '../board-ui/GenerationServiceMenu.tsx';
 import type {SequenceGenerationInputView} from '../../../../packages/contracts/src/sequence-inspection.ts';
@@ -25,6 +25,8 @@ export interface GenerateInEditingPanelProps {
   readonly subjectNames: Record<string, string>;
   readonly cueCount: number;
   readonly job?: Row | null;
+  readonly jobs?: readonly Row[];
+  readonly versions?: readonly Row[];
   readonly busy: boolean;
   readonly generateBlocked?: boolean;
   readonly resizable?: boolean;
@@ -60,8 +62,14 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
   const activeJob = latestJob && ['queued', 'submitting', 'running', 'downloading'].includes(String(latestJob.status)) ? latestJob : null;
   const failedJob = latestJob?.status === 'failed' ? latestJob : null;
   const unknownJob = latestJob?.status === 'submission_unknown' ? latestJob : null;
-  const jobServiceName = latestJob ? providerDisplayName({id: String(latestJob.providerId ?? '')}, t) : '';
-  const selection = generationSelection(props.providers, props.generationOptions, shot as never);
+  const jobServiceName = latestJob ? jobServiceDisplayName(latestJob, t, props.providers) : '';
+  const historyJobs = props.jobs ?? (latestJob ? [latestJob] : []);
+  const selection = resolveBoardGenerationSelection(
+    props.providers,
+    props.generationOptions as Parameters<typeof resolveBoardGenerationSelection>[1],
+    shot as never,
+    {shotId: String(shot.id ?? ''), jobs: historyJobs, versions: props.versions},
+  );
   const selectedProvider = selection.provider;
   const serviceLabel = selectedProvider ? providerDisplayName(selectedProvider, t) : '';
   const serviceChoice = (provider: GenerationProvider, model?: Record<string, unknown>): Record<string, unknown> => ({
@@ -153,9 +161,9 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
           aria-valuenow={Math.round(Number(activeJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(activeJob.progress) || 0)))}%`}}/></div>
       </section> : <>
         {failedJob && <section className="generate-in-editing-failure" data-testid="editing-generate-failure" role="alert">
-          <span className="generate-in-editing-failure-label" data-text-selectable>{t('redesign.board.failureReason',
-            {reason: renderMessage(generationFailureDescriptor(failedJob.error))})}</span>
-          {props.onRetryJob && <Button type="button" size="sm" className="generate-in-editing-retry" data-testid="editing-generate-retry"
+          <span className="generate-in-editing-failure-label" data-text-selectable>{formatBoardGenerationFailure(
+            failedJob.error, jobServiceDisplayName(failedJob, t, props.providers), t, renderMessage)}</span>
+          {props.onRetryJob && canRetryGenerationFailure(failedJob.error) && <Button type="button" size="sm" className="generate-in-editing-retry" data-testid="editing-generate-retry"
             disabled={props.busy || jobAction !== null} onClick={() => { void retryJob(failedJob); }}>
             <Icon name="refresh" size={12}/>{t('redesign.board.retry')}</Button>}
         </section>}

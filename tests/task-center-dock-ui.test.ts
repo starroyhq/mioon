@@ -537,3 +537,42 @@ test('session pending copies its original request ID and never fabricates a back
   tree=h.render({pending:[{...entry,input:{}}]});assert.equal((find(tree,'task-copy-id'))!.props.disabled,true);assert.match(text(find(tree,'task-detail-summary')),/无后台任务 ID/);await (find(tree,'task-copy-id'))!.props.onClick();assert.deepEqual(writes,[requestId]);
  }finally{if(prior)Object.defineProperty(navigator,'clipboard',prior);else delete (navigator as unknown as {clipboard?: Clipboard}).clipboard;}
 });
+
+test('task center translates HTTP failures in main body, hides raw code inside details, and gates retry on retryable', async () => {
+  const base402 = {
+    ...job(21, 'failed'),
+    providerId: 'minimax',
+    snapshot: {duration: 4, aspectRatio: '16:9', executionConnectionName: 'MiniMax', executionBinding: {connectionId: 'conn-1', providerId: 'minimax'}},
+    error: {code: 'PROVIDER_HTTP_402', message: 'RAW_BALANCE_ERROR', retryable: false, providerFailure: {httpStatus: 402, providerType: 'minimax'}},
+  };
+  const base429 = {
+    ...job(22, 'failed'),
+    providerId: 'minimax',
+    snapshot: {duration: 4, aspectRatio: '16:9', executionConnectionName: 'MiniMax', executionBinding: {connectionId: 'conn-1', providerId: 'minimax'}},
+    error: {code: 'PROVIDER_HTTP_429', message: 'RAW_RATE_LIMIT', retryable: true, providerFailure: {httpStatus: 429, providerType: 'minimax'}},
+  };
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const store = createLanguageStore({systemLanguages: [locale]});
+    await store.setPreference(locale);
+    const h = harness(store), ctx = createI18nTestContext(locale);
+    const tree402 = h.render({jobs: [base402], selectedTaskId: base402.id});
+    const card402 = find(tree402, `job-${base402.id}`)!;
+    const err402 = nodes(card402).find((node: RootNode) => node.props?.className === 'job-error');
+    const details402 = nodes(card402).find((node: RootNode) => node.type === 'details');
+    assert.ok(text(err402).includes(ctx.t('tasks.error.providerHttp402', {service: 'MiniMax'})), locale);
+    assert.equal(text(err402).includes('PROVIDER_HTTP_402'), false, locale);
+    assert.equal(text(err402).includes('RAW_BALANCE_ERROR'), false, locale);
+    assert.ok(text(details402).includes(ctx.t('tasks.error.diagnosticCode', {code: 'PROVIDER_HTTP_402'})), locale);
+    assert.equal(find(card402, `retry-job-${base402.id}`), undefined, locale);
+
+    const tree429 = h.render({jobs: [base429], selectedTaskId: base429.id});
+    const card429 = find(tree429, `job-${base429.id}`)!;
+    const err429 = nodes(card429).find((node: RootNode) => node.props?.className === 'job-error');
+    const details429 = nodes(card429).find((node: RootNode) => node.type === 'details');
+    assert.ok(text(err429).includes(ctx.t('tasks.error.providerHttp429', {service: 'MiniMax'})), locale);
+    assert.equal(text(err429).includes('PROVIDER_HTTP_429'), false, locale);
+    assert.ok(text(details429).includes(ctx.t('tasks.error.diagnosticCode', {code: 'PROVIDER_HTTP_429'})), locale);
+    assert.ok(find(card429, `retry-job-${base429.id}`), locale);
+    h.unmount(); store.dispose();
+  }
+});

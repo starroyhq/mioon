@@ -330,6 +330,8 @@ test('actual format-5 action entry keeps one unconfirmed state and reports one r
     setFormat5Notice: () => {}, setFormat5NoticeActionId: () => {},
     refresh: async () => {notices.push('refresh');}, format5RefreshHistory: async () => {notices.push('history');},
     notify: (message: DisplayMessage | string) => notices.push(renderCoreMessage('zh-Hans', message)),
+    clearFormat5ConflictToast: () => {},
+    notifyFormat5CommandFailure: (result: {code?: string}) => notices.push(renderCoreMessage('zh-Hans', translate('zh-Hans', format5CommandErrorMessageKey(result.code) as never))),
   };
   const runPolicy = compile(section('async function format5RunPolicy(', 'async function format5RemoveTimelineClip('),
     'format5RunPolicy', scope);
@@ -359,6 +361,8 @@ function sceneSplitHarness(outcome: unknown, format: 3 | 5 = 5) {
     mutateTimeline: async (...args: unknown[]) => {calls.mutations.push(args); return format === 3 ? {split: [1, 2], skipped: []} : null;},
     sceneSplitError: (error: Error) => error.message,
     notify: (message: DisplayMessage | string, type = 'info') => calls.notices.push({message: renderCoreMessage('zh-Hans', message), type}),
+    clearFormat5ConflictToast: () => {},
+    notifyFormat5CommandFailure: (result: {code?: string}) => calls.notices.push({message: renderCoreMessage('zh-Hans', translate('zh-Hans', format5CommandErrorMessageKey(result.code) as never)), type: 'error'}),
     setFormat5Notice: (notice: {id: string; message: string} | null) => {calls.notice = notice;},
     setFormat5NoticeActionId: (id: string | null) => {calls.noticeActionId = id;},
     setSceneTarget: (target: unknown) => {calls.sceneTarget = target;},

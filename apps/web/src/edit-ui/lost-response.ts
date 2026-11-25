@@ -51,6 +51,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const codeOf = (value: unknown): string | null => isRecord(value) && typeof value.code === 'string' && value.code ? value.code : null;
 
+export function extractSequenceErrorIds(error: unknown): readonly string[] | undefined {
+  if (!isRecord(error)) return undefined;
+  const details = isRecord(error.details) ? error.details : undefined;
+  const raw = Array.isArray(error.ids) ? error.ids : details && Array.isArray(details.ids) ? details.ids : null;
+  if (!raw) return undefined;
+  const ids = raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  return ids.length ? ids : undefined;
+}
+
 /** Only a definite rejection (HTTP 4xx business error) counts as the server
  * having decided. Network failures, timeouts, 5xx and protocol errors stay
  * unknown: the write may already be applied, so its envelope is retained. */
@@ -60,7 +69,7 @@ export function classifyCommitFailure(error: unknown): CommitFailure {
   const rejected = definitive === true
     || (typeof status === 'number' && status >= 400 && status < 500 && definitive !== false);
   if (!rejected) return {kind: 'unknown'};
-  const ids = isRecord(error) && Array.isArray(error.ids) ? error.ids.filter((id): id is string => typeof id === 'string') : undefined;
+  const ids = extractSequenceErrorIds(error);
   const details = isRecord(error) ? error.details : error instanceof ApiError ? error.details : undefined;
   const reason = isRecord(details) && typeof details.reason === 'string' && details.reason ? details.reason : undefined;
   return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {}), ...(reason ? {reason} : {})};
