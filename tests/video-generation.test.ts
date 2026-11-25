@@ -606,6 +606,8 @@ test('Q17-C a replacement account that cannot find the paid task pauses until an
  await f.tick();
  const waiting=f.job(submitted.id);
  await desktopTaskDiagnostic(f,waiting,'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT','user_action');
+ assert.equal((waiting.error as ServiceRow).code,'PROVIDER_HTTP_404');
+ assert.deepEqual((waiting.error as ServiceRow).providerFailure,{httpStatus:404});
  assert.doesNotMatch(JSON.stringify(waiting.error),/private service detail|other-account/);
  assert.equal(waiting.phase,'connection_required');assert.equal(f.calls.length,3);assertIdentity();
  t.mock.timers.setTime(Date.now()+600_000);
@@ -628,6 +630,8 @@ test('Q17-C an original account task lookup 404 pauses without trying the replac
  await f.tick();
  const paused=f.job(job.id);
  await desktopTaskDiagnostic(f,paused,'VIDEO_TASK_NOT_FOUND','user_action');
+ assert.equal((paused.error as ServiceRow).code,'PROVIDER_HTTP_404');
+ assert.deepEqual((paused.error as ServiceRow).providerFailure,{httpStatus:404});
  assert.equal(paused.status,'running');
  assert.equal(paused.phase,'connection_required');
  assert.equal(paused.providerJobId,submitted.providerJobId);
@@ -991,6 +995,8 @@ test('Q17-C a fresh Kling receipt tolerates an empty task list within one minute
  assert.equal(paused.providerAcceptedAt,accepted.providerAcceptedAt);
  assert.deepEqual(paused.snapshot,accepted.snapshot);
  assert.deepEqual(f.calls.map(({init})=>init.method),['POST','GET','GET']);
+ assert.equal((paused.error as ServiceRow).code,'VIDEO_TASK_NOT_FOUND');
+ assert.equal((paused.error as ServiceRow).providerFailure,undefined);
 });
 
 test('old environment generations do not acquire a newly configured UI connection',async t=>{
@@ -1024,11 +1030,74 @@ for(const [httpStatus,code,message] of [
  await f.tick();await f.stop();
  const saved=f.job(job.id);
  assert.equal(saved.status,'failed');assert.equal(saved.submissionCount,1);assert.equal(saved.providerJobId,null);
+ assert.equal((saved.error as ServiceRow).code,`PROVIDER_HTTP_${httpStatus}`);
+ assert.equal((saved.error as ServiceRow).retryable,httpStatus===429);
  assert.deepEqual((saved.error as ServiceRow).providerFailure,{providerType:code,code,message,httpStatus});
  const exposed=await f.services.call('job.get',{jobId:job.id}) as JobRecord;
  assert.deepEqual(exposed.error,saved.error);
  assert.doesNotMatch(JSON.stringify(saved.error),/original-synthetic-key|private\.example/);
  assert.equal(f.calls.length,1);
+});
+
+for(const [method,httpStatus,retryable] of [
+ ['POST',402,false],['POST',429,true],['GET',402,false],['GET',429,true],['GET',501,true],
+] as const)test(`configured MiniMax ${method} HTTP ${httpStatus} exposes structured retryability through job.get`,async t=>{
+ const f=await fixture(t);
+ f.reply((_url,init)=>init.method===method
+  ? json({message:'original-synthetic-key https://private.example/source'},httpStatus)
+  : json({task_id:'original-task'}));
+ const job=await f.submit();
+ await f.tick();
+ if(method==='GET')await f.tick();
+ await f.stop();
+ const saved=f.job(job.id);
+ assert.equal(saved.status,method==='POST'?'failed':'running');
+ assert.equal(saved.providerJobId,method==='POST'?null:'original-task');
+ assert.equal(saved.submissionCount,1);
+ const exposed=await f.services.call('job.get',{jobId:job.id}) as JobRecord;
+ assert.deepEqual(exposed.error,saved.error);
+ assert.equal((exposed.error as ServiceRow).code,`PROVIDER_HTTP_${httpStatus}`);
+ assert.equal((exposed.error as ServiceRow).retryable,retryable);
+ assert.deepEqual((exposed.error as ServiceRow).providerFailure,{httpStatus});
+ assert.doesNotMatch(JSON.stringify(exposed.error),/original-synthetic-key|private\.example/);
+ assert.deepEqual(f.calls.map(({init})=>init.method),method==='POST'?['POST']:['POST','GET']);
+});
+
+test('configured MiniMax POST HTTP 503 keeps unconfirmed acceptance and never reposts',async t=>{
+ const f=await fixture(t);
+ f.reply(()=>json({},503));
+ const job=await f.submit();
+ await f.tick();await f.stop();
+ const saved=f.job(job.id);
+ assert.equal(saved.status,'submission_unknown');
+ assert.equal((saved.error as ServiceRow).code,'SUBMISSION_UNKNOWN');
+ assert.equal(saved.submissionCount,1);
+ assert.deepEqual((saved.error as ServiceRow).providerFailure,{httpStatus:503});
+ await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});
+ await f.restart();await f.tick();await f.stop();
+ assert.equal(f.job(job.id).status,'submission_unknown');
+ assert.deepEqual(f.calls.map(({init})=>init.method),['POST']);
+});
+
+test('configured MiniMax CDN HTTP 403 gives the job HTTP evidence without pausing the original credential',async t=>{
+ const f=await fixture(t), outputUrl='https://output.example/output.mp4';
+ f.reply((url,init)=>{
+  if(init.method==='POST')return json({task_id:'original-task'});
+  if(url===outputUrl)return json({detail:'synthetic CDN diagnostic'},403);
+  return json({task:{id:'original-task',status:'succeeded',content:{url:outputUrl}}});
+ });
+ const job=await f.submit();
+ await f.tick();await f.tick();await f.stop();
+ const saved=f.job(job.id),failure=saved.error as ServiceRow;
+ assert.equal(saved.status,'downloading');
+ assert.equal(saved.phase,'downloading');
+ assert.equal(saved.originalResultCredentialRejected,undefined);
+ assert.equal(failure.code,'PROVIDER_HTTP_403');
+ assert.equal(failure.retryable,false);
+ assert.deepEqual(failure.providerFailure,{httpStatus:403});
+ assert.equal(failure.diagnostic,undefined);
+ assert.doesNotMatch(JSON.stringify(failure),/synthetic CDN diagnostic/);
+ assert.deepEqual(f.calls.map(({init})=>init.method),['POST','GET','GET']);
 });
 
 test('Google Omni accepted content refusal keeps its interaction identity and provider evidence across reopening',async t=>{
@@ -1069,6 +1138,8 @@ test('Google Omni query authentication keeps redacted vendor evidence alongside 
  const job=await f.submit();await f.tick();await f.tick();await f.stop();
  const saved=f.job(job.id);
  assert.equal(saved.phase,'connection_required');assert.equal(saved.providerJobId,id);assert.equal(saved.submissionCount,1);
+ assert.equal((saved.error as ServiceRow).code,'PROVIDER_HTTP_401');
+ assert.equal((saved.error as ServiceRow).retryable,false);
  assert.deepEqual((saved.error as ServiceRow).providerFailure,{providerType:'authentication',code:'authentication',message:'Invalid API key',httpStatus:401});
  assert.equal(((saved.error as ServiceRow).diagnostic as ServiceRow).kind,'video_credential');
  assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);

@@ -6,6 +6,7 @@ import {registeredProjectAssetReferences, registeredProjectStore} from '../proje
 import {validateManagedSource, sameManagedFile} from '../managed-media.ts';
 import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
 import {resolveJobOutputDestination} from '../output-artifact-storage.ts';
+import type {VideoProviderFailure} from '../../../contracts/src/video-provider-failure.ts';
 
 export interface ProviderError extends Error {
   code: string;
@@ -54,7 +55,6 @@ export interface OutputDownload {mimeType: 'video/mp4'; sizeBytes: number; isMoc
 export interface JsonRequestOptions {method?: string; body?: unknown; raw?: {bytes: Uint8Array; contentType: string}; context?: ProviderContext}
 export interface JsonRequestFactoryOptions {
   api: string; headers: Readonly<Record<string, string>>; fetchImpl: typeof fetch; ensureEnabled: () => void; name: string;
-  isRetryableStatus?: (status: number) => boolean;
 }
 export interface ManagedImageOptions {
   root: string; asset: ProviderReferenceAsset; approvedHashes: ReadonlySet<string>; maxBytes?: number; signal?: AbortSignal; validateCurrent?: () => unknown;
@@ -66,6 +66,40 @@ export interface DownloadMp4Options {
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
 const codeOf = (error: unknown): string | undefined => {const value = object(error); return value && typeof value.code === 'string' ? value.code : undefined;};
 export const providerError = (code: string, message: string, tags: Record<string, unknown> = {}): ProviderError => Object.assign(new Error(message), { code, ...tags }) as ProviderError;
+interface ProviderHttpFailure {
+  code: string;
+  retryable: boolean;
+  providerFailure: Readonly<VideoProviderFailure & {httpStatus: number}>;
+}
+const httpFailures = new WeakMap<object, Readonly<ProviderHttpFailure>>();
+const definiteSubmissionRejections = new Set([400, 401, 402, 403, 404, 405, 413, 415, 422, 429]);
+
+export function providerHttpError({status, method, message, uncertainMessage = message, detail, errorCode}: {
+  status: number; method: string; message: string; uncertainMessage?: string; detail?: VideoProviderFailure; errorCode?: string;
+}): ProviderError {
+  // An unrecognized POST response cannot prove that no paid task exists.
+  const uncertain = method === 'POST' && !definiteSubmissionRejections.has(status);
+  const code = uncertain ? 'SUBMISSION_UNKNOWN' : `PROVIDER_HTTP_${status}`;
+  const retryable = status === 429 || method === 'GET' && (status === 408 || status >= 500 && status <= 599);
+  const error = providerError(errorCode ?? code, uncertain ? uncertainMessage : detail?.message ?? message,
+    {uncertain, retryable, httpStatus: status});
+  if (status >= 400 && status <= 599) {
+    httpFailures.set(error, Object.freeze({code, retryable, providerFailure: Object.freeze({...detail, httpStatus: status})}));
+  }
+  return error;
+}
+
+export function getProviderHttpFailure(error: unknown): Readonly<ProviderHttpFailure> | undefined {
+  return error !== null && typeof error === 'object' ? httpFailures.get(error) : undefined;
+}
+
+/** Keep trusted HTTP evidence through internal task and credential diagnostics. */
+export function retainProviderHttpFailure<T extends object>(source: unknown, target: T): T {
+  const failure = getProviderHttpFailure(source);
+  if (failure) httpFailures.set(target, failure);
+  return target;
+}
+
 const inside = (base: string, file: string): boolean => file !== base && file.startsWith(`${base}${path.sep}`);
 const MAX_DOWNLOAD = 128 * 1024 * 1024;
 export const timeoutSignal = (context: ProviderContext | undefined, milliseconds: number): AbortSignal => context?.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(milliseconds)]) : AbortSignal.timeout(milliseconds);
@@ -109,7 +143,7 @@ export function liveConfiguration(env: NodeJS.ProcessEnv, keyName: string, prefi
 }
 
 /** Never forward provider bodies, network errors, request data, or credentials. */
-export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name, isRetryableStatus = () => true }: JsonRequestFactoryOptions) {
+export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name }: JsonRequestFactoryOptions) {
   return async (endpoint: string, { method = 'GET', body, raw, context = {} }: JsonRequestOptions = {}): Promise<Record<string, unknown>> => {
     // This check is deliberately outside the fetch catch. No fetch was invoked,
     // so only this explicit path can certify an unsubmitted POST on shutdown.
@@ -133,10 +167,8 @@ export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
-      // Only unambiguous request/auth/quota rejection codes are safe failures.
-      // An unrecognized status (including conflict/redirect) cannot prove no task exists.
-      const uncertain = method === 'POST' && ![400, 401, 402, 403, 404, 405, 413, 415, 422, 429].includes(response.status);
-      throw providerError(uncertain ? 'SUBMISSION_UNKNOWN' : `PROVIDER_HTTP_${response.status}`, uncertain ? `${name} returned an inconclusive submission response. Do not resubmit.` : `${name} request was rejected (HTTP ${response.status}).`, { uncertain, retryable: method !== 'POST' && isRetryableStatus(response.status), httpStatus: response.status });
+      throw providerHttpError({status: response.status, method, message: `${name} request was rejected (HTTP ${response.status}).`,
+        uncertainMessage: `${name} returned an inconclusive submission response. Do not resubmit.`});
     }
     try {
       const data = await boundedJson(response, context.signal);
@@ -371,7 +403,9 @@ export async function downloadMp4({ root, destination, url, fetchImpl, headers, 
       currentHeaders = undefined;
       current = next;
     }
-    if (!response.ok || !response.body) throw providerError('DOWNLOAD_FAILED', 'Output download is unavailable; refresh the existing task and retry.', { retryable: true });
+    if (!response.ok) throw providerHttpError({status: response.status, method: 'GET', errorCode: 'DOWNLOAD_FAILED',
+      message: 'The provider rejected the output download.'});
+    if (!response.body) throw providerError('DOWNLOAD_FAILED', 'Output download is unavailable; refresh the existing task and retry.', { retryable: true });
     const declaredSize = Number(response.headers.get('content-length'));
     if (declaredSize > MAX_DOWNLOAD) throw providerError('OUTPUT_TOO_LARGE', 'Output exceeds the managed download limit.');
     reader = response.body.getReader();

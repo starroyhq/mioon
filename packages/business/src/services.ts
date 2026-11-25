@@ -61,7 +61,7 @@ import {generationImageServiceSchemas} from '../../contracts/src/generation-imag
 import type {GenerationImageServiceOperation} from '../../contracts/src/generation-image-services.ts';
 import {createConfiguredVideoProvider} from './video/runtime.ts';
 import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareConfiguredVideoInputs} from './video/generation.ts';
-import {retainOmniFailure} from './video/gemini-omni-errors.ts';
+import {retainProviderHttpFailure} from './providers/live-common.ts';
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob,readGenerationLinkedJobForDisclosure} from './generation-inputs.ts';
 import type {GenerationAsset,GenerationJob,GenerationRecord,GenerationShot,GenerationSource,GenerationSubjectGraph} from './generation-inputs.ts';
 import {createTimelineServices} from './timeline.ts';
@@ -394,7 +394,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     catch(error){
      if(taskMissing(error)){
       if(previousRejection||originalRejection)originalRejection=null;
-      throw new AppError('VIDEO_TASK_NOT_FOUND','服务商找不到这个任务。',404);
+      throw retainProviderHttpFailure(error,new AppError('VIDEO_TASK_NOT_FOUND','服务商找不到这个任务。',404));
      }
      const denied=rejected(error);
      if(denied)originalRejection=originalIdentity;
@@ -402,7 +402,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
      if(!denied&&
         cause!=='VIDEO_SETTINGS_CORRUPT'&&cause!=='VIDEO_SETTINGS_NOT_CONFIGURED'&&
         cause!=='VIDEO_CREDENTIAL_INVALID'&&cause!=='VIDEO_CREDENTIAL_UNAVAILABLE')throw error;
-     if(!provider)throw denied?retainOmniFailure(error,originalUnavailable()):error;
+     if(!provider)throw denied?retainProviderHttpFailure(error,originalUnavailable()):error;
     }
    }
    if(!provider)throw originalUnavailable();
@@ -413,9 +413,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     return value;
    }
    catch(error){
-    if(rejected(error))throw retainOmniFailure(error,new AppError('VIDEO_REPLACEMENT_NOT_AUTHORIZED','新密钥也没有权限查询这个任务。',409));
+    if(rejected(error))throw retainProviderHttpFailure(error,new AppError('VIDEO_REPLACEMENT_NOT_AUTHORIZED','新密钥也没有权限查询这个任务。',409));
     if(taskMissing(error))
-     throw new AppError('VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT','新密钥查不到原任务。请使用原账户密钥，或到原服务商获取结果。',409);
+     throw retainProviderHttpFailure(error,new AppError('VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT','新密钥查不到原任务。请使用原账户密钥，或到原服务商获取结果。',409));
     throw error;
    }
   }
