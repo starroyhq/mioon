@@ -403,8 +403,14 @@ export async function downloadMp4({ root, destination, url, fetchImpl, headers, 
       currentHeaders = undefined;
       current = next;
     }
-    if (!response.ok) throw providerHttpError({status: response.status, method: 'GET', errorCode: 'DOWNLOAD_FAILED',
-      message: 'The provider rejected the output download.'});
+    if (!response.ok) {
+      const error = providerHttpError({status: response.status, method: 'GET', errorCode: 'DOWNLOAD_FAILED',
+        message: 'Output download is unavailable; refresh the existing task and retry.'});
+      // A download can refresh its URL from the existing task. The separately
+      // recorded HTTP evidence governs retry visibility on the job.
+      error.retryable = true;
+      throw error;
+    }
     if (!response.body) throw providerError('DOWNLOAD_FAILED', 'Output download is unavailable; refresh the existing task and retry.', { retryable: true });
     const declaredSize = Number(response.headers.get('content-length'));
     if (declaredSize > MAX_DOWNLOAD) throw providerError('OUTPUT_TOO_LARGE', 'Output exceeds the managed download limit.');
