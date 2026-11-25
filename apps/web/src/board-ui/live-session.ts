@@ -52,7 +52,9 @@ export interface BoardSuccess {readonly ok: true; readonly actionId: string | nu
   readonly status: 'applied'; readonly receipt?: SequenceEditReceipt;
   /** Settled by the receipt read, not by the lost commit response. */
   readonly resolvedFromReceipt?: true}
-export interface BoardFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]}
+export interface BoardFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[];
+  /** Bounded server detail for a specific user-facing reason, never raw data. */
+  readonly reason?: string}
 /** A board commit whose result was lost and whose receipt could not settle it. */
 export interface BoardUnconfirmed {readonly ok: false; readonly code: typeof UNCONFIRMED_CODE; readonly unconfirmed: true}
 export type BoardOutcome = BoardSuccess | BoardFailure | BoardUnconfirmed;
@@ -67,6 +69,14 @@ const record = (value: unknown): Row | null => value !== null && typeof value ==
   ? value as Row : null;
 const codeOf = (error: unknown): string => (error as {code?: unknown})?.code !== undefined
   ? String((error as {code?: unknown}).code) : 'GENERIC';
+const reasonOf = (value: unknown): string | undefined => {
+  const details = (value as {details?: unknown})?.details;
+  const reason = details && typeof details === 'object' ? (details as {reason?: unknown}).reason : undefined;
+  return typeof reason === 'string' && reason ? reason : undefined;
+};
+const previewFailure = (preview: Row): BoardFailure => ({ok: false,
+  code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'), ids: preview.ids as string[] | undefined,
+  ...(typeof preview.reason === 'string' && preview.reason ? {reason: preview.reason} : {})});
 
 /** Undo/redo answers: the same three states, with a definite not-applied
  * receipt surfaced as a rejection instead of an applied outcome. */
@@ -111,7 +121,7 @@ export class BoardUiSession {
       row = await this.endpoint('sequence.commit')({projectId, envelope, expectedPlanDigest: planDigest});
     } catch (error) {
       const failure = classifyCommitFailure(error);
-      if (failure.kind === 'rejected') {this.lost.clear(); return {ok: false, code: failure.code, ids: failure.ids};}
+      if (failure.kind === 'rejected') {this.lost.clear(); return {ok: false, code: failure.code, ids: failure.ids, ...(failure.reason ? {reason: failure.reason} : {})};}
       return this.retainUnconfirmed(envelope, planDigest);
     }
     const parsed = parseSequenceCommit(row);
@@ -173,10 +183,9 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('board-preview'),
           ...payload}));
-      } catch (error) {return {ok: false, code: codeOf(error)};}
+      } catch (error) {return {ok: false, code: codeOf(error), ...(reasonOf(error) ? {reason: reasonOf(error)} : {})};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: preview.ids as string[] | undefined};
+      if (preview.ok === false) return previewFailure(preview);
       const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
       if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       return await this.commitEnvelope(projectId, envelope, preview.planDigest);
@@ -197,10 +206,9 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('generate-preview'),
           generateIntent}));
-      } catch (error) {return {ok: false, code: codeOf(error)};}
+      } catch (error) {return {ok: false, code: codeOf(error), ...(reasonOf(error) ? {reason: reasonOf(error)} : {})};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: preview.ids as string[] | undefined};
+      if (preview.ok === false) return previewFailure(preview);
       const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
       if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       return await this.commitEnvelope(projectId, envelope, preview.planDigest);
@@ -218,10 +226,9 @@ export class BoardUiSession {
       try {
         preview = record(await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('subject-preview'),
           subjectIntent: {side: 'board', operation}, ...(allocation ? {allocation} : {})}));
-      } catch (error) {return {ok: false, code: codeOf(error)};}
+      } catch (error) {return {ok: false, code: codeOf(error), ...(reasonOf(error) ? {reason: reasonOf(error)} : {})};}
       if (!preview) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
-      if (preview.ok === false) return {ok: false, code: String(preview.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: preview.ids as string[] | undefined};
+      if (preview.ok === false) return previewFailure(preview);
       const envelope = record(preview.envelope) as unknown as SequenceEditEnvelope | null;
       if (!envelope || typeof preview.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       return await this.commitEnvelope(projectId, envelope, preview.planDigest);

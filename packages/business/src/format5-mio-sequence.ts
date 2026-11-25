@@ -224,6 +224,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
     placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',
+    // Mio's approved paid action places and submits in one commit.
+    submit: true,
     settings: {requestId: `mio-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
       region: action.region, prompt: action.prompt, aspectRatio: action.aspectRatio, duration: action.duration,
       ...(action.parameters ? {parameters: action.parameters} : {}),

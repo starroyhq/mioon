@@ -457,9 +457,15 @@ function boardIntentPreparation(context: EditContext, store: ProjectStore, inten
           const selectedId = typeof archived.selectedVersionId === 'string' ? archived.selectedVersionId : null;
           const version = selectedId === null ? undefined : context.rows.versions.get(selectedId);
           const asset = version && typeof version.assetId === 'string' ? context.rows.assets.get(version.assetId) : undefined;
-          createdMedia.push({nodeId: item.id, selectedVersion: version ? {id: String(version.id),
-            sourceFrames: Number.isFinite(asset?.duration) ? Math.round(Number(asset!.duration) * 30) : null} : null,
-            durationFrames: Number.isFinite(archived.duration) ? Math.max(1, Math.round(Number(archived.duration) * 30)) : 120});
+          // Source ranges are half-open frames into the exact asset duration:
+          // 4.459 s supplies 133 frames, never 134. A restored shot's rounded
+          // displayed duration (for example 4.46 s) must not invent one frame
+          // beyond the source and fail the format-5 commit fence.
+          const sourceFrames = Number.isFinite(asset?.duration) ? Math.max(1, Math.floor(Number(asset!.duration) * 30)) : null;
+          const requestedFrames = Number.isFinite(archived.duration)
+            ? Math.max(1, Math.round(Number(archived.duration) * 30)) : 120;
+          createdMedia.push({nodeId: item.id, selectedVersion: version ? {id: String(version.id), sourceFrames} : null,
+            durationFrames: sourceFrames === null ? requestedFrames : Math.min(requestedFrames, sourceFrames)});
           if (!allocation.clips.some(pair => pair.nodeId === item.id)) allocation.clips.push({nodeId: item.id, clipId: randomUUID()});
           tail = item.id;
         }

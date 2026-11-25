@@ -14,6 +14,7 @@ interface Render {
   running(locale: Locale): string;
   failed(locale: Locale): string;
   unknown(locale: Locale): string;
+  previs(locale: Locale): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
 let loaded: Promise<Render> | undefined;
@@ -22,12 +23,13 @@ const entry = `import React from 'react';
   import {I18nProvider,createLanguageStore} from './src/i18n/I18nProvider.tsx';
   import BoardInspector from './src/board-ui/BoardInspector.tsx';
   import {projectLiveBoard} from './src/board-ui/live.ts';
-  const shotId='60000000-0000-4000-8000-000000000010', rootId='60000000-0000-4000-8000-000000000001';
+  const shotId='60000000-0000-4000-8000-000000000010', rootId='60000000-0000-4000-8000-000000000001', previsId='60000000-0000-4000-8000-000000000050';
   const imageA='60000000-0000-4000-8000-000000000020', edgeA='60000000-0000-4000-8000-000000000030';
   const board=projectLiveBoard({
     shots:[{id:shotId,title:'霓虹街头',position:{x:0,y:0},aspectRatio:'9:16',duration:2}],
     nodes:[{id:rootId,type:'sequence_root',name:'成片',position:{x:-300,y:0}},
-      {id:imageA,type:'image',label:'参考图 · 街景',position:{x:0,y:300}}],
+      {id:imageA,type:'image',label:'参考图 · 街景',position:{x:0,y:300}},
+      {id:previsId,type:'previs',label:'机位预演',position:{x:0,y:600}}],
     edges:[{id:'60000000-0000-4000-8000-000000000040',kind:'sequence',source:rootId,target:shotId},
       {id:edgeA,kind:'reference',role:'reference_image',source:imageA,target:shotId}],
     versions:[],assets:[],jobs:[],clips:[]});
@@ -62,7 +64,7 @@ const entry = `import React from 'react';
     name:'Kling',status:'available',enabled:true,configured:true,mock:false,
     models:[{id:'kling-3.0',modelId:'kling-3.0',modelEntryId:'60000000-0000-4000-8000-000000000098',
       name:'kling-3.0',inputModes:['text','image','reference'],aspectRatios:['9:16'],durations:[5]}]};
-  const base={board,activeFilmId:rootId,mount:null,selectedNodeId:shotId,versions:[],
+  const base={board,activeFilmId:rootId,mount:null,selectedNodeId:shotId,versions:[],nodes:[{id:previsId,projectId:'60000000-0000-4000-8000-000000000001',type:'previs',label:'机位预演',revision:1}],
     shots:[{id:shotId,projectId:'60000000-0000-4000-8000-000000000001',title:'霓虹街头',duration:2}],busy:false,
     onSelectVersion:()=>{},onDelete:()=>{},onRestore:()=>{},onSetBindingMode:()=>{},onDetachBinding:()=>{},
     onRestoreBinding:()=>{},onDeleteSubjectCard:()=>{},providers:[provider],
@@ -100,7 +102,12 @@ const entry = `import React from 'react';
       <BoardInspector {...base} inputs={full} jobs={[{id:'job-unknown',shotId,status:'submission_unknown',providerId:'kling',
         error:{code:'SUBMISSION_UNKNOWN'},createdAt:'2026-11-22T00:00:00.000Z',snapshot:{}}]}/></I18nProvider>);
   }
-  export {inspector, textOnly, loading, running, failed, unknown};`;
+  function previs(locale){
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} selectedNodeId={previsId} previsInspector={<div data-testid="previs-inspector-marker">OPEN</div>}/>
+    </I18nProvider>);
+  }
+  export {inspector, textOnly, loading, running, failed, unknown, previs};`;
 
 function renderer(): Promise<Render> {
   return loaded ??= (async () => {
@@ -235,5 +242,15 @@ test('the board property panel owns the selected shot running cancel and failed 
     assert.ok(unknown.includes(translate(locale, 'redesign.board.unknownOutcome')), locale);
     assert.equal(unknown.includes('retry-failed-version-job-unknown'), false, locale);
     assert.equal(render.inspector(locale, 'full').includes('data-testid="cancel-generation"'), false, locale);
+  }
+});
+
+
+test('a selected format-5 previs card uses the supplied PrevisInspector', async () => {
+  const render = await renderer();
+  for (const locale of LOCALES) {
+    const html = render.previs(locale);
+    assert.match(html, /data-testid="previs-inspector-marker"/u, locale);
+    assert.equal(html.includes('board-inspector-node-edit'), false, locale);
   }
 });

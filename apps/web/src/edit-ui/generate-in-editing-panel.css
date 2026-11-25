@@ -15,7 +15,13 @@
 .generate-in-editing-duration {display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted)}
 .generate-in-editing-duration>label {white-space:nowrap;flex:0 0 auto}
 .generate-in-editing-duration select {min-width:120px}
-.generate-in-editing-service {display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)}
+.generate-in-editing-service {position:relative;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)}
+.generate-in-editing-service-button {display:inline-flex;align-items:center;gap:6px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:start;cursor:pointer}
+.generate-in-editing-service-button:disabled {cursor:default}
+.generate-in-editing-service-menu {position:absolute;inset-inline-start:0;bottom:calc(100% + 4px);z-index:30;display:flex;flex-direction:column;min-width:220px;padding:4px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-raised);box-shadow:0 10px 30px rgb(0 0 0 / 25%)}
+.generate-in-editing-service-menu button {display:flex;flex-direction:column;gap:1px;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;text-align:start;cursor:pointer}
+.generate-in-editing-service-menu button:hover:not(:disabled) {background:var(--surface-hover, rgb(255 255 255 / 6%))}
+.generate-in-editing-service-menu small {color:var(--text-muted)}
 .generate-in-editing-note {margin:0;font-size:12px;color:var(--warning-text)}
 .generate-in-editing-dialogue {border-top:1px solid var(--border-subtle);padding-top:12px}
 .generate-in-editing-footer {margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:8px}
@@ -32,3 +38,7 @@
 .generate-in-editing-failure-label {min-width:0;flex:1;line-height:1.5;overflow-wrap:anywhere}
 .generate-in-editing-retry {flex:none}
 .generate-in-editing-unknown {width:100%;border:1px solid var(--wb-warning,#e8a33d);border-radius:8px;background:color-mix(in srgb,var(--wb-warning,#e8a33d) 12%,var(--wb-raised,#242426));color:var(--wb-warning,#e8a33d);font:inherit;font-size:12px;line-height:1.5;text-align:start;padding:9px 10px;cursor:pointer}
+.generate-in-editing-service-menu [role="menuitem"] {display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--text-primary);font:inherit;font-size:12px;text-align:start;cursor:pointer}
+.generate-in-editing-service-menu [role="menuitem"]:hover {background:var(--surface-raised)}
+.generate-in-editing-service-menu [role="menuitem"] small {font-size:10px;color:var(--text-muted)}
+.generate-in-editing-service-menu [role="menuitem"]:disabled {color:var(--text-muted);cursor:default}

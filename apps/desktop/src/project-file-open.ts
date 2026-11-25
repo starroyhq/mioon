@@ -3,7 +3,7 @@ import {PROJECT_OPEN_ERROR_CODES} from '../../../packages/contracts/src/project-
 import {projectEntryOpenFailure} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 
 export const PROJECT_FILE_EXTENSION='.mioon';
-export type ProjectFileOpenFailure=typeof PROJECT_OPEN_ERROR_CODES[number]|'PROJECT_LOCATION_INVALID'|'PROJECT_LOCATION_REJECTED'|'UNAVAILABLE';
+export type ProjectFileOpenFailure=typeof PROJECT_OPEN_ERROR_CODES[number]|'PROJECT_LOCATION_INVALID'|'PROJECT_LOCATION_REJECTED'|'PROJECT_HISTORY_DIVERGED'|'UNAVAILABLE';
 export type ProjectFileOpen=(file:string)=>Promise<void>;
 export class ProjectFileOpenError extends Error {
  readonly code:ProjectFileOpenFailure;

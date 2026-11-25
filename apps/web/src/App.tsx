@@ -43,6 +43,7 @@ import {useCanvasEditing} from './use-canvas-editing.ts';
 import type {CanvasSelectionItem} from './CanvasEditingControls.tsx';
 import {canvasEditErrorCode} from './canvas-editing-state.ts';
 import {canvasClipboardInText, canvasClipboardShortcut, canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
+import {Format5DeleteDialog} from './CanvasEditingControls.tsx';
 import {createCanvasClipboard, eventCanvasClipboard, webCanvasClipboard} from './canvas-clipboard.ts';
 import type {CanvasClipboardReader, CanvasClipboardWriter} from './canvas-clipboard.ts';
 import {CANVAS_CLIPBOARD_LIMITS} from '../../../packages/contracts/src/canvas-editing.ts';
@@ -149,6 +150,7 @@ import BrandMark from './BrandMark.tsx';
 import ProjectHome from './ProjectHomeDirectoryScreen.tsx';
 import './project-home.css';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';
+import type {NativeQuitWorkItem, NativeQuitWorkKind} from './native-close-state.ts';
 import { readNativeLegacyClose } from './native-close-legacy.ts';
 import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from './project-open-state.ts';
@@ -181,7 +183,7 @@ import { useAssetDispositions } from './use-asset-dispositions.ts';
 import { dispositionKey } from './asset-disposition-state.ts';
 import ExportHistoryList from './ExportHistoryList.tsx';
 import DeliveryWorkspace from './DeliveryWorkspace.tsx';
-import TimelineExportPreflight from './TimelineExportPreflight.tsx';
+import TimelineExportPreflight, {type PendingExportCheckView} from './TimelineExportPreflight.tsx';
 import { useExportPreflight } from './use-export-preflight.ts';
 import { useExportSamplePeak } from './use-export-sample-peak.ts';
 import { useExportLoudness } from './use-export-loudness.ts';
@@ -202,7 +204,7 @@ import DeliveryDraftRecovery from './DeliveryDraftRecovery.tsx';
 import Timeline, { ASSET_DRAG, assetKind, dragAsset } from './Timeline.tsx';
 import type {TimelineGenerateTarget} from './Timeline.tsx';
 import GenerateInEditingPanel from './edit-ui/GenerateInEditingPanel.tsx';
-import {committedGenerateClip, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
+import {committedGenerateClip, editingPlaceholderPanelShotId, generatePlaceholderIntent, generateResizeIntent, mainTrackGenerateAroundPlacement} from './edit-ui/generate-in-editing.ts';
 import TimelineInspector from './TimelineInspector.tsx';
 import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
@@ -216,7 +218,7 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
@@ -635,6 +637,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [regenerationJobId, setRegenerationJobId] = useState<string | undefined>();
   const [showDelivery, setShowDelivery] = useState(false);
   const [deliveryAttempt, setDeliveryAttempt] = useState<{projectId: string; id: string} | null>(null);
+  const [pendingExportCheck, setPendingExportCheck] = useState<PendingExportCheckView | null>(null);
+  const pendingExportCheckFlight = useRef<string | null>(null);
   const [deliveryReviewVersion, setDeliveryReviewVersion] = useState(0);
   const [showImage, setShowImage] = useState(false);
   const [sceneTarget, setSceneTarget] = useState<{projectId: string; assetId: string; autoStart: boolean; choice?: {resultId: string; segments: readonly number[]} | null} | null>(null);
@@ -671,7 +675,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [clipCompositionPending, setClipCompositionPending] = useState(false);
   // GE-b: the shot whose editing-side generation panel is open (set when a
   // placeholder is created from the timeline blank menu).
-  const [editingGenerateShotId, setEditingGenerateShotId] = useState<string | null>(null);
   const clipInspectorRetention = useRef<ClipInspectorRetention>({ snapshot: null, retained: false });
   const clipConnectionBlocked = useRef(false);
   const [agentClipDraftBlocked, setAgentClipDraftBlocked] = useState(true);
@@ -1508,6 +1511,51 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return editorInputs.current!.read({ clip: clipDraftRef.current, shot: shotTextRef.current, delivery: localDeliveryRef.current?.controller,
       busy: busyRef.current, navigation, settings: exportSettingsRef.current, range: exportRangeRef.current, defaultSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS });
   }
+  /** Bounded work summary for the native quit dialog. It contains kinds and
+   * counts only; no project data, paths, filenames, prompts or credentials. */
+  function readQuitWork(): readonly NativeQuitWorkItem[] {
+    const projectId = currentProject.current;
+    const items = new Map<NativeQuitWorkKind, {count: number; unknown: boolean}>();
+    const add = (kind: NativeQuitWorkKind, count: number, unknown = false): void => {
+      if (!Number.isSafeInteger(count) || count < 1) return;
+      const previous = items.get(kind);
+      items.set(kind, {count: Math.min(999, (previous?.count ?? 0) + count), unknown: Boolean(previous?.unknown || unknown)});
+    };
+    const busy = busyRef.current;
+    const activeJobs = (dataRef.current.jobs ?? []).filter(job => ['queued', 'submitting', 'running', 'downloading', 'submission_unknown'].includes(job.status));
+    if (activeJobs.length) add('generation', activeJobs.length, activeJobs.some(job => job.status === 'submission_unknown'));
+    const exports = dataRef.current.exports ?? [];
+    for (const item of exports) {
+      if (!['queued', 'running', 'preparing', 'encoding', 'finalizing', 'submission_unknown', 'cancelling'].includes(item.status)) continue;
+      const purpose = typeof item.purpose === 'string' ? item.purpose : null;
+      add(purpose === 'preview' ? 'preview' : 'export', 1, item.status === 'submission_unknown');
+    }
+    try {
+      const state = tasksRef.current?.getState(projectId ?? '') as {items?: readonly {status?: unknown}[]} | null;
+      const active = (state?.items ?? []).filter(task => ['accepted', 'running', 'paused', 'awaiting_approval', 'awaiting_answer'].includes(String(task.status)));
+      if (active.length) add('mio', active.length);
+    } catch { /* A project without a loaded task snapshot has no listed Mio work. */ }
+    for (const key of busy) {
+      const suffix = key.slice(key.indexOf(':') + 1);
+      if (suffix === 'import') add('import', 1);
+      else if (suffix === 'timeline:render:export') add('export', 1);
+      else if (suffix === 'timeline:render:preview') add('preview', 1);
+      else if (suffix === 'format5-generate-placeholder') add('generation', 1);
+    }
+    try {
+      const snapshot = readEditorWindowInputs(false) as {unknown?: unknown; busy?: unknown};
+      if (snapshot.unknown === true) add('unknown', 1, true);
+      if (items.size === 0 && snapshot.busy === true) add('pending', 1);
+    } catch { /* The main process still uses its bounded unavailable dialog. */ }
+    if (items.size === 0) {
+      try {
+        const additional = nativeProjectEntry?.readCloseSnapshot() as {busy?: unknown; unknown?: unknown} | null | undefined;
+        if (additional?.unknown === true) add('unknown', 1, true);
+        else if (additional?.busy === true) add('pending', 1);
+      } catch { /* Optional native snapshot stays absent. */ }
+    }
+    return Object.freeze([...items].map(([kind, value]) => Object.freeze({kind, count: value.count, ...(value.unknown ? {unknown: true} : {})})));
+  }
   function editorWindowCanNavigate(): boolean {
     const snapshot = readEditorWindowInputs(true) as {busy?: unknown; unknown?: unknown};
     if (!snapshot.busy && !snapshot.unknown) return true;
@@ -1516,7 +1564,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   useEffect(() => installNativeCloseAdmission(window as unknown as Parameters<typeof installNativeCloseAdmission>[0], {
     registry: nativeCloseRegistry.current, settings: settingsNavigation.current,
-    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), onObservationPause: (value: boolean) => { projectMediaRef.current.controller.pauseObservation(value); nativeSettingsScope?.pauseObservation(value); } } : {}),
+    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), readQuitWork, onObservationPause: (value: boolean) => { projectMediaRef.current.controller.pauseObservation(value); nativeSettingsScope?.pauseObservation(value); } } : {}),
     readScope: () => JSON.stringify([importSession.current.active, currentProject.current, projectEpoch.current, navigationEpoch.current, editorSession.current]),
     readDocumentURL: () => window.location.href,
     readLegacySnapshot: () => readNativeLegacyClose({ inspectorDirty: dirtyRef.current,
@@ -2029,6 +2077,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const captured = context(), projectId = captured.projectId as string, state = dataRef.current;
     if (!projectId || isBusy('previs-create', projectId)) return;
     markBusy(projectId, 'previs-create', true);
+    // Navigation below is part of this create, not another pending operation.
+    // Release our own marker before selecting the new card; the finally block
+    // still clears it on every early return and failure path.
+    let createReleased = false;
+    const releaseCreate = () => { if (createReleased) return; createReleased = true; markBusy(projectId, 'previs-create', false); };
     try {
       const saved = viewRef.current!.canvas.viewport;
       // The format-5 board owns its viewport; place the new card by the live
@@ -2046,6 +2099,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (currentProject.current === projectId) await refresh(projectId);
       if (!isCurrent(captured)) return;
       if (outcome.status === 'created') {
+        releaseCreate();
         if (await inspect(outcome.node.id)) {
           if (state.projectFormatVersion === 5) setFormat5RevealNodeId(outcome.node.id);
           else revealCanvas(outcome.node.id);
@@ -2053,7 +2107,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       else if (outcome.status === 'unknown') notify(msg('previs.create.unknown'), 'warning');
       else notify(msg(outcome.code === 'PREVIS_CAPACITY' ? 'previs.create.limit' : 'previs.create.failed'), 'error');
-    } finally { markBusy(projectId, 'previs-create', false); }
+    } finally { releaseCreate(); }
   }
   function openPrevis(nodeId: string): void {
     const record = dataRef.current!.nodes.find(node => node.id === nodeId), projectId = dataRef.current!.project?.id;
@@ -2379,6 +2433,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const format5SessionRef = useRef<Format5EditSession | null>(null);
   const [format5History, setFormat5History] = useState<SequenceHistoryView | null>(null);
   const [format5Notice, setFormat5Notice] = useState<EditUiNotice | null>(null);
+  const [format5DeleteReview, setFormat5DeleteReview] = useState<{readonly nodeId: string; readonly count: number} | null>(null);
   const [format5CopyRequest, setFormat5CopyRequest] = useState<EditUiCopyMoveRequest | null>(null);
   // ED timeline clipboard: internal, format-5 only. It stores the source clip
   // identity; paste re-reads the clip server-side and allocates new identities.
@@ -2441,6 +2496,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }).catch(() => {});
     return () => {cancelled = true;};
   }, [format5, data.project?.id, timeline?.id, timeline?.revision, format5History?.position, format5History?.revision]);
+  function format5BoardFailureMessage(failure: {code?: string; reason?: string}): string {
+    // Keep specific bounded reasons visible instead of collapsing every format-5
+    // validation refusal into the generic "operation did not complete" notice.
+    if (failure.code === 'PROJECT_INVALID' && failure.reason === 'metadata') return t('boardUi.error.projectInvalid');
+    return t(format5BoardFailureMessageKey(failure.code, failure.reason) as never);
+  }
   async function format5BoardRun(intent: Parameters<BoardUiSession['run']>[0], noticeMessage: string): Promise<BoardOutcome> {
     if (!format5) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID'};
     setFormat5BoardBusy(true);
@@ -2453,7 +2514,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await format5RefreshHistory();
         await format5LoadBoard();
       } else if (!outcome.ok) {
-        notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+        notify(format5BoardFailureMessage(outcome), 'error');
       }
       return outcome;
     } finally {setFormat5BoardBusy(false);}
@@ -2502,7 +2563,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const view = await format5BoardSession().history();
     if (!view?.undo || view.undo.actionId !== actionId) {setFormat5Notice(null); return false;}
     const outcome = await format5BoardSession().undo(view);
-    if (!outcome.ok) {notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return false;}
+    if (!outcome.ok) {notify(format5BoardFailureMessage(outcome), 'error'); return false;}
     setFormat5Notice(null); setFormat5NoticeActionId(null);
     await refresh(currentProject.current); await format5RefreshHistory(); await format5LoadBoard();
     return true;
@@ -2519,7 +2580,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await refresh(currentProject.current);
         await format5RefreshHistory();
         await format5LoadBoard();
-      } else if (!outcome.ok) notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+      } else if (!outcome.ok) notify(format5BoardFailureMessage(outcome), 'error');
       return outcome;
     } finally {setFormat5BoardBusy(false);}
   }
@@ -2562,7 +2623,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         await format5RefreshHistory();
         await format5LoadBoard();
       } else if (!outcome.ok) {
-        notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error');
+        notify(format5BoardFailureMessage(outcome), 'error');
       }
       return outcome;
     } finally {setFormat5BoardBusy(false);}
@@ -2582,7 +2643,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return {shotId, ...format5GenerationInputService(provider, selection),
       ...(typeof parameters.generateAudio === 'boolean' ? {generateAudio: parameters.generateAudio} : {})};
   };
-  const format5InputShotId = format5 && workspaceMode === 'editing' && editingGenerateShotId ? editingGenerateShotId : selectedId;
+  // Q-13: the 21-09 panel follows the selected placeholder itself, not a one-shot
+  // state left by the placement action. Main-track placeholders use the shot node
+  // id from sequenceSource, other-track placeholders use clip.shotId.
+  function format5EditingPlaceholderShotId(): string | null {
+    if (!format5 || workspaceMode !== 'editing' || !selectedClipId) return null;
+    const clip = (timeline?.clips ?? []).find(item => item.id === selectedClipId) as never;
+    return editingPlaceholderPanelShotId(clip, shotId => data.shots.some(shot => shot.id === shotId));
+  }
+  const format5InputShotId = format5 && workspaceMode === 'editing'
+    ? format5EditingPlaceholderShotId() ?? selectedId : selectedId;
   const format5InputRequestKey = format5 && format5InputShotId && data.shots.some(shot => shot.id === format5InputShotId)
     ? JSON.stringify(format5InputRequest(format5InputShotId)) : '';
   useEffect(() => {
@@ -2625,8 +2695,24 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     await format5BoardRun(boardVersionIntent(nodeId, versionId), t('boardUi.notice.version', {name}));
   }
   async function format5BoardDeleteNode(nodeId: string): Promise<void> {
-    const name = format5BoardProjection?.nodes.find(node => node.id === nodeId)?.name ?? '';
-    await format5BoardRun(boardDeleteIntent(nodeId), t('boardUi.notice.deleted', {name}));
+    const state = dataRef.current;
+    const shot = state.shots.find(item => item.id === nodeId);
+    const timeline = state.timeline as unknown as {clips?: readonly {sequenceSource?: {nodeId?: string}}[]} | null;
+    const generated = Boolean(shot && state.versions.some(version => version.shotId === nodeId));
+    const usedOnMainTrack = Boolean(shot && timeline?.clips?.some(clip => clip.sequenceSource?.nodeId === nodeId));
+    if (!shot || !(generated || usedOnMainTrack)) {
+      await format5BoardRun(boardDeleteIntent(nodeId), t('boardUi.notice.deletedCount', {count: 1}));
+      return;
+    }
+    // Design 18-02 (format 5): a shot with generated video or a main-track
+    // segment needs one confirmation for the whole delete.
+    setFormat5DeleteReview({nodeId, count: 1});
+  }
+  async function format5BoardConfirmDelete(): Promise<void> {
+    const review = format5DeleteReview;
+    if (!review) return;
+    setFormat5DeleteReview(null);
+    await format5BoardRun(boardDeleteIntent(review.nodeId), t('boardUi.notice.deletedCount', {count: review.count}));
   }
   async function format5BoardRestore(archivedId: string, name: string): Promise<void> {
     const kind = format5BoardMount?.archived.find(item => item.id === archivedId)?.kind ?? 'node';
@@ -2670,19 +2756,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (provider.mock) void submitGeneration(args);
     else void reviewGeneration(args);
   }
-  /** GE-b: places one generation placeholder from the timeline blank menu.
-   * The service plans the new shot/node/edge + packed clip and submits the
-   * frozen generation call inside the same commit; the UI then selects the new
-   * clip and opens its generation panel. */
+  /** GE-b: places one generation placeholder from the timeline menu. This only
+   * adds the shot/node/edge + clip in one history step; it never submits a
+   * generation job, so it also works before a service is chosen. The panel's
+   * Generate button goes through the same reviewed path as the board property
+   * bar (WT-3 / Q-13). */
   async function format5PlaceGeneration(target: TimelineGenerateTarget): Promise<void> {
     if (!format5 || format5SessionBusy || !online || auth !== true) return;
-    const selection = generationSelection(providers, {}, {});
-    const provider = selection.provider;
-    const model = selection.model;
-    if (!provider || !model) {notify(t('boardUi.inputs.serviceMissing'), 'warning'); return;}
     const shotId = globalThis.crypto.randomUUID(), clipId = globalThis.crypto.randomUUID();
-    const settings = {requestId: globalThis.crypto.randomUUID(), providerId: provider.id, model,
-      region: String((provider as {region?: unknown}).region ?? 'local'), prompt: '',
+    const settings = {requestId: globalThis.crypto.randomUUID(), prompt: '',
       aspectRatio: (frame?.ratio ?? '9:16') as string, duration: 4, parameters: {}};
     const generateIntent: SequenceEditGenerateIntent = generatePlaceholderIntent({target, settings, shotId, clipId,
       title: t('timeline.generate.newShotTitle')});
@@ -2701,7 +2783,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           notify(t(format5CommandErrorMessageKey(outcome.code) as never), 'error'); return;
         }
       }
-      setEditingGenerateShotId(shotId);
       await changeMode('editing');
       setPropertiesPage('inspector'); setRightDockTab('properties');
       setSelectedClipId(clipId);
@@ -2734,7 +2815,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     await format5LoadBoard();
   }
   function format5RevealGenerationShot(shotId: string): void {
-    setEditingGenerateShotId(null);
     void changeMode('canvas');
     setSelectedId(shotId);
     setPropertiesPage('inspector'); setRightDockTab('properties'); setTab('settings');
@@ -3005,6 +3085,68 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onRestore: (draft: {raw: {deliveryName: string}}, captured: {scope: string; nameVersion: number}) => deliveryNameRef.current?.controller.choose(draft.raw.deliveryName, captured.scope, captured.nameVersion) === true,
     onAccepted: async ({ intent }: {intent: {input: {projectId: string}}}) => { if (currentProject.current === intent.input.projectId) await refresh(intent.input.projectId); } } as unknown as Parameters<typeof useLocalDelivery>[0]) as unknown as LocalDeliveryRuntime;
   localDeliveryRef.current = localDelivery;
+  async function runPendingExportCheck(intentId: string, force = false): Promise<void> {
+    if (!force && pendingExportCheckFlight.current === intentId) return;
+    pendingExportCheckFlight.current = intentId;
+    const projectId = currentProject.current;
+    if (!projectId) return;
+    try {
+      const result = await localDeliveryRef.current!.controller.checkIntent();
+      if (!result || result.intentId !== intentId || currentProject.current !== projectId) {
+        if (currentProject.current === projectId && localDeliveryRef.current?.state.intent?.intentId === intentId) setPendingExportCheck({kind: 'unavailable'});
+        return;
+      }
+      if (result.status === 'executing') {
+        // The current window is already running this export. Poll the read-only
+        // check rather than starting another execution.
+        setPendingExportCheck(null);
+        window.setTimeout(() => { if (currentProject.current === projectId && localDeliveryRef.current?.state.intent?.intentId === intentId) void runPendingExportCheck(intentId, true); }, 800);
+        return;
+      }
+      if (result.status === 'accepted') {
+        const token = localDeliveryRef.current!.controller.capture();
+        await localDeliveryRef.current!.controller.recover(token);
+        if (currentProject.current === projectId) {
+          await refresh(projectId);
+          setDeliveryAttempt({projectId, id: result.exportId});
+          setShowExports(false);
+          setPendingExportCheck(null);
+        }
+        return;
+      }
+      if (result.status === 'not_executed') {
+        const state = localDeliveryRef.current!.state, intent = state.intent;
+        const changed = !intent || dataRef.current.timeline?.revision !== intent.baseRevision;
+        setPendingExportCheck({kind: changed ? 'timeline_changed' : 'not_executed'});
+        return;
+      }
+      setPendingExportCheck({kind: 'unavailable'});
+    } finally {
+      if (pendingExportCheckFlight.current === intentId) pendingExportCheckFlight.current = null;
+    }
+  }
+  async function continuePendingExport(): Promise<void> {
+    const state = localDeliveryRef.current!.controller.getState(), intent = state.intent;
+    if (!intent || intent.outcome.status !== 'pending') return;
+    if (dataRef.current.timeline?.revision !== intent.baseRevision) { setPendingExportCheck({kind: 'timeline_changed'}); return; }
+    const projectId = currentProject.current; if (!projectId) return;
+    const token = localDeliveryRef.current!.controller.capture();
+    const result = await localDeliveryRef.current!.controller.recover(token) as {id?: string} | null;
+    const after = localDeliveryRef.current!.controller.getState();
+    if (currentProject.current !== projectId) return;
+    if (result && after.intent?.outcome.status === 'accepted') {
+      await refresh(projectId);
+      setDeliveryAttempt({projectId, id: after.intent.outcome.exportId});
+      setShowExports(false); setPendingExportCheck(null);
+      return;
+    }
+    if (after.intent?.outcome.status === 'not_applied') { setPendingExportCheck({kind: 'not_executed_reason', errorCode: after.intent.outcome.code}); return; }
+    setPendingExportCheck({kind: 'unavailable'});
+  }
+  async function discardPendingExport(): Promise<void> {
+    const ok = await localDeliveryRef.current!.controller.discardIntent();
+    if (ok) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); }
+  }
   function exportCheckContext(): Record<string, unknown> & {scope: string} {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current!.timeline?.id, revision: dataRef.current!.timeline?.revision, connected: workbenchReady && online && auth === true && !loading,
@@ -3019,6 +3161,51 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const canOpenExport = Boolean(data.project && timeline?.id && !loading);
   const canCheckExport = Boolean(canOpenExport && Number.isSafeInteger(timeline!.revision) && timeline!.revision > 0 && online && auth === true && !deliveryName.error && !exportRange.error && (!localDelivery.state.baselineConflict && !localDelivery.state.candidate));
   const pendingTimelineExport = activePending.some(entry => entry.key === 'timeline:render:export') || (localDelivery.state.pending);
+  // Opening export checks a retained intent exactly once. The read-only check
+  // never renders; only an accepted receipt is adopted through the original
+  // request replay, which cannot create a second export.
+  useEffect(() => {
+    const state = localDeliveryRef.current?.state, intent = state?.intent;
+    if (!showDelivery) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); return; }
+    if (showExports || !workbenchReady || !online || auth !== true || loading || state?.busy || state?.phase === 'loading' ||
+        (state?.projectId && currentProject.current && state.projectId !== currentProject.current)) return;
+    // An already accepted intent is history, not a fresh query result. Opening
+    // export starts at step 1 so "重新导出"/"再导出一份" can prepare a new
+    // intent; the previous result stays in export history. Only a pending intent
+    // resolved by this open's check adopts its result once.
+    if (intent?.outcome.status === 'accepted') return;
+    if (!intent || intent.outcome.status !== 'pending') {
+      if (!intent) { pendingExportCheckFlight.current = null; setPendingExportCheck(null); }
+      return;
+    }
+    if (pendingExportCheckFlight.current === intent.intentId) return;
+    void runPendingExportCheck(intent.intentId);
+  }, [showDelivery, showExports, workbenchReady, online, auth, loading,
+    localDelivery.state.busy, localDelivery.state.phase, localDelivery.state.intent?.intentId,
+    localDelivery.state.intent?.outcome.status]);
+  // Closing the export dialog does not cancel an accepted export. A queued or
+  // running attempt keeps its result view so reopening shows the live progress;
+  // only a terminal success/failure/cancellation starts the next visit at step 1.
+  const exportDialogWasOpen = useRef(showDelivery);
+  const resetExportAttemptView = () => {
+    setDeliveryAttempt(null);
+    exportPreflight.controller.resetReview();
+    sampleExportPreflight.controller.resetReview();
+    setDeliveryReviewVersion(value => value + 1);
+  };
+  useEffect(() => {
+    const wasOpen = exportDialogWasOpen.current;
+    exportDialogWasOpen.current = showDelivery;
+    const attempt = deliveryAttempt, projectId = data.project?.id;
+    const record = attempt && attempt.projectId === projectId ? data.exports.find(item => item.id === attempt.id) : null;
+    const running = Boolean(attempt && (!record || ['queued', 'running', 'pending', 'submitting'].includes(String(record.status))));
+    if (!showDelivery) {
+      if ((!wasOpen && !attempt) || running) return;
+      resetExportAttemptView();
+      return;
+    }
+    if (!wasOpen && attempt && !running) resetExportAttemptView();
+  }, [showDelivery, deliveryAttempt?.id, data.project?.id, data.exports]);
   const [exportPreviewAttempt, setExportPreviewAttempt] = useState<{scope: string; timelineId: string; contextKey: string | null; input: Record<string, unknown>; submitting: boolean; exportId: string | null; receipt: unknown} | null>(null);
   const [sampleRangeDraft, setSampleRangeDraft] = useState<DraftRangeInput | null>(null);
   const sampleRangeDraftRef = useRef(sampleRangeDraft);
@@ -4382,7 +4569,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const previsPanel = chosenPrevis && data.project ? <PrevisInspector key={`previs:${data.project.id}:${chosenPrevis.id}`} node={chosenPrevis} frame={previsFrameInfo} readOnly={false} busy={Boolean(busy[`save:${chosenPrevis.id}`])}
     protectEditing={content => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={data.project?.id} targets={[{kind:'node',id:chosenPrevis.id,revision:chosenPrevis.revision}]} canRelease={() => !isBusy(`save:${chosenPrevis.id}`)}>{content}</AgentEditingBoundary>}
     shots={data.shots} edges={data.edges} keyframeThumbnails={previsKeyframeThumbs}
-    onRename={label => saveNode(chosenPrevis.id, chosenPrevis.revision, { label })} onOpen={() => openPrevis(chosenPrevis.id)} /> : null;
+    onRename={label => format5
+      ? format5BoardUpdateNode(chosenPrevis.id, {name: label}, Number(chosenPrevis.revision) || 0)
+      : saveNode(chosenPrevis.id, chosenPrevis.revision, { label })} onOpen={() => openPrevis(chosenPrevis.id)} /> : null;
   const selectedCanvasAsset = chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0] || (!chosenNode && !chosenShot && canvasAssetSelectionRef.current?.projectId === currentProject.current && canvasAssetSelectionRef.current?.epoch === projectEpoch.current ? canvasAssetSelectionRef.current.id : null);
   const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === selectedCanvasAsset);
   const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => generationReferences(shot).references.map(reference => reference.assetId)), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));
@@ -4391,23 +4580,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const previewJob = timelineJobs.find(e => !e.snapshot?.exportRange && ['succeeded','completed','ready'].includes(e.status));
   const latestRender = timelineJobs[0];
   const jobs = useMemo(() => [...data.jobs].sort((a, b) => b.createdAt!.localeCompare(a.createdAt!)), [data.jobs]);
-  // GE-b: the editing generation panel is bound to the selected placeholder clip.
-  const editingGenerateShot = format5 && editingGenerateShotId
-    ? data.shots.find(shot => shot.id === editingGenerateShotId) ?? null : null;
-  const editingGenerateClip = editingGenerateShot
-    ? (timeline?.clips.find(item => item.id === selectedClipId) as {id: string;
-      sequenceSource?: {kind?: string; nodeId?: string}} | undefined)?.sequenceSource?.kind === 'shot'
-      && (timeline!.clips.find(item => item.id === selectedClipId) as {sequenceSource?: {nodeId?: string}}).sequenceSource?.nodeId === editingGenerateShot.id
-      ? timeline!.clips.find(item => item.id === selectedClipId) ?? null : null : null;
+  // GE-b/Q-13: the editing generation panel is bound to the selected placeholder
+  // clip and stays available when the user selects it again later.
+  const editingPlaceholderShotId = format5EditingPlaceholderShotId();
+  const editingGenerateShot = editingPlaceholderShotId
+    ? data.shots.find(shot => shot.id === editingPlaceholderShotId) ?? null : null;
+  const editingGenerateClip = editingGenerateShot && selectedClipId
+    ? timeline?.clips.find(item => item.id === selectedClipId) ?? null : null;
   const editingGenerateJob = editingGenerateShot
     ? [...jobs].filter(job => job.shotId === editingGenerateShot.id)
       .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')))[0] ?? null : null;
-  useEffect(() => {
-    if (!editingGenerateShotId || isBusy('format5-generate-placeholder')) return;
-    if (!editingGenerateClip && viewRef.current?.activeMode === 'editing' && selectedClipId) {
-      setEditingGenerateShotId(null);
-    }
-  }, [editingGenerateShotId, editingGenerateClip, selectedClipId]);
   const activeCount = jobs.filter(activeJob).length;
   const activeRenderCount = timelineJobs.filter(item => ['queued','running'].includes(item.status)).length;
   // «Save clip sound» tasks share the exports channel but never appear in the
@@ -5137,7 +5319,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} onDelete={nodeId => { void format5BoardDeleteNode(nodeId); }} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
           onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}
           onAddPrevis={() => { void addPrevis(); }} addingPrevis={Boolean(busy['previs-create'])} previsDisabled={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
@@ -5208,6 +5390,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onRestoreBinding={format5RestoreBinding} onDeleteSubjectCard={format5DeleteSubjectCard} onUpdateNode={format5BoardUpdateNode}
       onUpdateShot={format5BoardUpdateShot} onGenerateShot={format5GenerateShot}
       jobs={jobs}
+      previsInspector={previsPanel}
+      onOpenGenerationSettings={() => openGlobalSettings('models')}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status
@@ -5230,6 +5414,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       resizable={(editingGenerateClip as {sourceState?: string}).sourceState === 'placeholder'}
       onSavePrompt={prompt => format5BoardUpdateShot(editingGenerateShot.id, {prompt}, Number(editingGenerateShot.revision) || 1)}
       onResize={duration => format5ResizeGeneration(editingGenerateShot.id, duration)}
+      providers={providers as never}
+      generationOptions={(generationOptions[editingGenerateShot.id] ?? {}) as Record<string, unknown>}
+      onGenerationOptionsChange={options => updateGenerationOptions(editingGenerateShot.id, options as GenerationOptionState)}
+      onOpenGenerationSettings={() => openGlobalSettings('models')}
       onCancelJob={async job => {
         const live = dataRef.current!.jobs.find(item => item.id === job.id);
         if (!live || live.projectId !== currentProject.current || live.status !== job.status
@@ -5287,7 +5475,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       preflightState={sampleExportPreflight.state as never}
       onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
-    />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
+    />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
     <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
@@ -5307,6 +5495,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <TargetMarkLayer marks={changeMarks.marks} label={t('agent.mark.label')} ariaLabel={t('agent.mark.open')} onActivate={revealTaskChange} />
     <TargetMarkLayer marks={reviewMarks.marks} label={t('agent.review.mark')} icon="search" describe={owner => { const category = reviewMarks.category(owner); return category ? t('agent.review.markTitle', { category: t(`agent.review.category.${category}`) }) : undefined; }} onActivate={revealReviewIssueCard} />
     {data.project && <ProjectRulesController admission={rulesAdmission ?? undefined} interactionBlocked={!rulesAdmission?.isCurrent()} open={rulesOpen} projectId={data.project.id} projectFile={projectRegistration?.projectId === data.project.id ? projectRegistration.projectFile : undefined} onClose={() => {if (rulesAdmission?.isCurrent()) setRulesOpen(false);}} />}
+    {format5 && format5DeleteReview && <Format5DeleteDialog count={format5DeleteReview.count} busy={format5BoardBusy}
+      onCancel={() => setFormat5DeleteReview(null)} onConfirm={() => { void format5BoardConfirmDelete(); }} />}
     {historyLayer}
     {previsEditor}
     <ProjectMediaDialogs media={projectMedia} projectName={data.project?.name ?? ''} />

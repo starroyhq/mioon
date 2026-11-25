@@ -36,6 +36,29 @@ export function timelineGenerateTargetForBlank(context: TimelineBlankContext): T
   return mainClips.some(clip => occupiedAt(clip, frame))
     ? {trackId, main: false, startFrame: frame, beforeClipId: null} : null;
 }
+/** The shot a selected placeholder clip belongs to. Main-track placeholders
+ * carry their source on `sequenceSource.nodeId`; other-track placeholders carry
+ * `shotId`. Generated/ready clips are not placeholders and keep the normal clip
+ * inspector, so the 21-09 panel only appears while the clip is still waiting to
+ * be generated. */
+export function placeholderShotIdForClip(clip: {readonly sourceState?: string;
+  readonly sequenceSource?: {readonly kind?: string; readonly nodeId?: string} | null;
+  readonly shotId?: string} | null | undefined): string | null {
+  if (!clip || clip.sourceState !== 'placeholder') return null;
+  if (clip.sequenceSource?.kind === 'shot' && clip.sequenceSource.nodeId) return clip.sequenceSource.nodeId;
+  return typeof clip.shotId === 'string' && clip.shotId ? clip.shotId : null;
+}
+
+/** The shot whose 21-09 panel must open for a selected placeholder, including
+ * when the placeholder is selected again later or lives on an overlay track.
+ * Ready/generated clips and placeholders without a live shot keep the normal
+ * clip inspector. */
+export function editingPlaceholderPanelShotId(clip: Parameters<typeof placeholderShotIdForClip>[0],
+  shotExists: (shotId: string) => boolean): string | null {
+  const shotId = placeholderShotIdForClip(clip);
+  return shotId && shotExists(shotId) ? shotId : null;
+}
+
 /** The clip a successful (or recovered unconfirmed) generate commit actually
  * placed. The UI selects and seeks to this row from the refreshed timeline, so
  * it can never present an older selected clip as the new placeholder. */

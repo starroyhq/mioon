@@ -40,6 +40,24 @@ export const localDeliveryDraftDeleteSchema=z.object({
 export const localDeliveryExecuteSchema=z.object({
   ...authority,projectId:id,intentId:id,expectedIntentRevision:revision.min(1),
 }).strict();
+/** Read-only lookup for one retained export intent. It never renders, writes or
+ * changes the lock; the result is only an identity/status projection. */
+export const localDeliveryCheckSchema=z.object({
+  ...authority,projectId:id,intentId:id,
+}).strict();
+export const localDeliveryCheckResultSchema=z.discriminatedUnion('status',[
+  z.object({status:z.literal('accepted'),projectId:id,intentId:id,exportId:id,
+    exportStatus:z.enum(['queued','running','succeeded','failed','cancelled']),
+    errorCode:z.string().regex(/^[A-Z][A-Z0-9_]{0,99}$/).optional()}).strict(),
+  z.object({status:z.literal('executing'),projectId:id,intentId:id}).strict(),
+  z.object({status:z.literal('not_executed'),projectId:id,intentId:id}).strict(),
+  z.object({status:z.literal('unavailable'),projectId:id,intentId:id}).strict(),
+]);
+/** Clear one retained intent without touching its draft, receipts, exports or
+ * files. The CAS revision makes a stale explicit click inert. */
+export const localDeliveryDiscardIntentSchema=z.object({
+  ...authority,projectId:id,intentId:id,expectedIntentRevision:revision.min(1),
+}).strict();
 export const localDeliveryUnsupportedSchema=z.object({supported:z.literal(false),reason:z.literal('RESTORED_WORKSPACE_UNSUPPORTED')}).strict();
 export const localDeliveryOutcomeSchema=z.discriminatedUnion('status',[
   z.object({status:z.literal('pending')}).strict(),
@@ -62,6 +80,9 @@ export type LocalDeliveryDraftCapture=z.infer<typeof localDeliveryDraftCaptureSc
 export type LocalDeliveryDraftPut=z.infer<typeof localDeliveryDraftPutSchema>;
 export type LocalDeliveryDraftDelete=z.infer<typeof localDeliveryDraftDeleteSchema>;
 export type LocalDeliveryExecute=z.infer<typeof localDeliveryExecuteSchema>;
+export type LocalDeliveryCheck=z.infer<typeof localDeliveryCheckSchema>;
+export type LocalDeliveryCheckResult=z.infer<typeof localDeliveryCheckResultSchema>;
+export type LocalDeliveryDiscardIntent=z.infer<typeof localDeliveryDiscardIntentSchema>;
 export type LocalDeliveryOutcome=z.infer<typeof localDeliveryOutcomeSchema>;
 
 const requiredInput=['projectId','expectedRevision','requestId','purpose'] as const;
@@ -97,7 +118,7 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
     ...authority,projectId:id,expectedIntentRevision:revision,expectedIntentId:id.nullable(),intentId:id,
     timelineId:id,baseRevision:revision.min(1),draft:localDeliveryDraftCaptureSchema.nullable(),input,outputLocale:outputLocaleSchema.optional(),
   }).strict().superRefine((value,context)=>{
-    if((value.expectedIntentRevision===0)!==(value.expectedIntentId===null))issue(context,'Prior intent identity must match its CAS revision');
+    if(value.expectedIntentRevision===0&&value.expectedIntentId!==null)issue(context,'A zero intent revision has no prior identity');
     if(value.expectedIntentId===value.intentId)issue(context,'A new preparation must have a new intent identity');
     boundIdentity(value,context);
   });
@@ -106,7 +127,9 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
     intentRevision:revision,intent:intent.nullable(),
   }).strict().superRefine((value,context)=>{
     if(value.draft!==null&&value.draftRevision===0)issue(context,'A retained draft requires a positive revision');
-    if((value.intentRevision===0)!==(value.intent===null))issue(context,'Intent revisions never reset or discard their latest identity');
+    // A positive revision may retain a null intent after an explicit discard;
+    // zero always means the slot never had one.
+    if(value.intentRevision===0&&value.intent!==null)issue(context,'Zero intent revision cannot carry an intent');
     if(value.intent)boundIdentity({...value.intent,projectId:value.projectId},context);
     if(!bytesWithin(value,LOCAL_DELIVERY_LIMITS.rowBytes))issue(context,'Local delivery slot exceeds its byte limit');
   });
@@ -137,7 +160,8 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
     if(!bytesWithin(value,LOCAL_DELIVERY_LIMITS.executeResponseBytes))issue(context,'Execution response exceeds its byte limit');
   });
   return {project:localDeliveryProjectSchema,put:localDeliveryDraftPutSchema,discard:localDeliveryDraftDeleteSchema,
-    prepare,execute:localDeliveryExecuteSchema,slot,disk,envelope,execution};
+    prepare,execute:localDeliveryExecuteSchema,check:localDeliveryCheckSchema,checkResult:localDeliveryCheckResultSchema,
+    discardIntent:localDeliveryDiscardIntentSchema,slot,disk,envelope,execution};
 }
 export type LocalDeliverySchemas=ReturnType<typeof createLocalDeliverySchemas>;
 export type LocalDeliveryPrepare=z.infer<LocalDeliverySchemas['prepare']>;

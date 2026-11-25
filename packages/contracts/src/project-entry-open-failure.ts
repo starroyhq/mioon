@@ -9,6 +9,7 @@ export const projectEntryOpenFailureSchema = z.discriminatedUnion('code', [
   z.object({code: z.literal('PROJECT_LOCKED')}).strict(),
   z.object({code: z.literal('PROJECT_ACCESS_DENIED')}).strict(),
   z.object({code: z.literal('PROJECT_INVALID'), reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
+  z.object({code: z.literal('PROJECT_HISTORY_DIVERGED')}).strict(),
   z.object({
     code: z.literal('PROJECT_FORMAT_NEWER'), database: z.enum(['project', 'history', 'cache']),
     formatVersion: version, supportedFormatVersion: version,

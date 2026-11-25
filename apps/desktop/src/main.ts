@@ -13,7 +13,7 @@ import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project-file-ui.ts';
 import {desktopUpdateMessages} from '../../../packages/i18n/src/catalogs/desktop-update.ts';
-import { app, autoUpdater as squirrelUpdater, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen, clipboard } from 'electron';
+import { app, autoUpdater as squirrelUpdater, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen, clipboard, powerMonitor } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {promises as updateFileSystem} from 'original-fs';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
@@ -54,6 +54,7 @@ import { confirmOwnedWindowRestart } from './project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from './project-window-protocol.ts';
 import type {ProjectWindowSettingsSlot} from './project-window-protocol.ts';
 import { installNativeCloseAdmission } from './native-close.ts';
+import type {NativeQuitWorkItem} from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.ts';
 import { createRendererDiagnostics, installRendererHealthDiagnostics } from './renderer-diagnostics.ts';
 import type { RendererHealthContents } from './renderer-diagnostics.ts';
@@ -310,6 +311,91 @@ async function showOwnedDialog(window: BrowserWindow, context: DesktopWindowCont
   }
 }
 
+function revealQuitWindow(window: BrowserWindow): void {
+  try {
+    if (window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+    window.moveTop?.();
+    try { app.focus({steal: true}); } catch { /* Platform focus refusal must not block the dialog. */ }
+  } catch { /* A destroyed or platform-refused window is handled by the dialog call. */ }
+}
+
+/** Quit dialogs are owned by the project window, but unlike ordinary sheets
+ * they must be able to reveal a tray-hidden/background window first. */
+async function showQuitDialog(window: BrowserWindow, options: MessageBoxOptions): Promise<number> {
+  revealQuitWindow(window);
+  const host = windowHost, owner = host?.contextFor(window);
+  if (!host || !owner || !ownsWindow(window, windowContext) || !host.prepareNativeDialog(window)) {
+    try { return (await dialog.showMessageBox(window, options)).response; }
+    catch { return options.cancelId ?? 0; }
+  }
+  const token = {window}; nativeDialogs.add(token); trayIntent++; trayHost?.refresh(); refreshApplicationMenu();
+  try { return (await dialog.showMessageBox(window, options)).response; }
+  finally {
+    nativeDialogs.delete(token);
+    if (ownsWindow(window, windowContext)) finishNativePresentation(window, host, owner.contextId);
+    trayHost?.refresh(); refreshApplicationMenu();
+  }
+}
+
+function quitWorkLines(work: readonly NativeQuitWorkItem[]): string[] {
+  const line = (item: NativeQuitWorkItem): string => {
+    switch (item.kind) {
+      case 'export': return nt('native.quitWorkExport');
+      case 'preview': return nt('native.quitWorkPreview');
+      case 'generation': return nt(item.unknown ? 'native.quitWorkGenerationUnknown' : 'native.quitWorkGeneration', {count: item.count});
+      case 'mio': return nt('native.quitWorkMio');
+      case 'import': return nt('native.quitWorkImport');
+      case 'unknown': return nt('native.quitWorkUnknown');
+      case 'pending': return nt('native.quitWorkPending');
+    }
+  };
+  const lines = work.slice(0, 3).map(line);
+  if (work.length > 3) return [...lines.slice(0, 2), nt('native.quitWorkMore', {count: work.length - 2})];
+  return lines;
+}
+
+function quitDialogWindowName(window: BrowserWindow): string {
+  try {
+    const title = window.getTitle().replace(/\s+[·-]\s+Mioon(?:\s+Dev)?\s*$/u, '').trim();
+    if (title && title !== identity.productName && !title.startsWith(`${identity.productName} `)) return title;
+  } catch { /* Fall through to the product name. */ }
+  return identity.productName;
+}
+
+function quitDialogIcon(): ReturnType<typeof nativeImage.createFromPath> | undefined {
+  try {
+    const image = nativeImage.createFromPath(path.join(app.getAppPath(), 'icons/icon.png'));
+    return image.isEmpty() ? undefined : image;
+  } catch { return undefined; }
+}
+
+/** A quit retry is only scheduled after the user explicitly chose “wait”.
+ * It never creates a second parallel quit while one is pending. */
+const quitRetryTimers = new Map<BrowserWindow, {timer: ReturnType<typeof setTimeout>; listener: () => void}>();
+function clearQuitRetry(window: BrowserWindow): void {
+  const entry = quitRetryTimers.get(window);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  try { window.webContents.removeListener('responsive', entry.listener); } catch { /* Window already gone. */ }
+  quitRetryTimers.delete(window);
+}
+function scheduleQuitRetry(window: BrowserWindow): void {
+  if (quitRetryTimers.has(window)) return;
+  const retry = (): void => {
+    clearQuitRetry(window);
+    if (window.isDestroyed() || quitRouter.isPending || restarting || quitting) return;
+    if (!ownsWindow(window, windowContext)) return;
+    void requestApplicationQuit(window);
+  };
+  const listener = () => retry();
+  try { window.webContents.once('responsive', listener); } catch { return; }
+  const timer = setTimeout(retry, 10000);
+  quitRetryTimers.set(window, {timer, listener});
+}
+
 /** A backup picker belongs to the initiating frame even if focus changes while
  * its inspection or the OS sheet is pending. It never performs the restore. */
 async function chooseOwnedBackupFile(window: BrowserWindow, context: DesktopWindowContext, defaultPath: string, check: () => void, admitLocation: (facts: ProjectLocationFacts) => Promise<boolean>): Promise<string | null> {
@@ -376,7 +462,8 @@ const windowAdmissions = new WeakMap<BrowserWindow, NativeCloseAdmission>();
 const initialWindowLoads = new WeakMap<BrowserWindow, InitialWindowLoad>();
 const cancelledStartupErrors = new WeakSet<Error>();
 let quitFailureNotice: Promise<void> | null = null;
-let smokeDiscardDecision: boolean | undefined;
+let smokeDiscardDecision: boolean | undefined = process.env.MIOON_DESKTOP_SMOKE_DISCARD === 'quit' ? true : process.env.MIOON_DESKTOP_SMOKE_DISCARD === 'cancel' ? false : undefined;
+let systemShutdown = false;
 const windowsPackageSmoke = app.isPackaged && process.platform === 'win32' && identity.channel === 'development' && process.env.MIOON_DESKTOP_WINDOWS_SMOKE === '1';
 const smokeOutput: string | false | undefined = identity.channel === 'development' && (!app.isPackaged || windowsPackageSmoke) && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 // Fixed screenshot scenarios may request one of the supported device scale
@@ -828,9 +915,34 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     });
     const relink=ownedRelinkHost;
     context.startup.signal.addEventListener('abort',()=>{relink.dispose();if(assetRelinkHost===relink)assetRelinkHost=null;},{once:true});
+    const historyDivergedForFile=async(file:string):Promise<{projectId:string;name:string|null}|null>=>{
+      // Only a registered path can have a history decision. Keeping the catalog
+      // gate here means an arbitrary selected file takes the ordinary open path.
+      try{
+        const listed=await ownedBackend.projectEntries.listRecent();
+        if(!listed.registered.some(entry=>path.resolve(entry.project.projectFile)===path.resolve(file)))return null;
+      }catch{return null;}
+      // The status endpoint is the same read-only authority the 12-25 dialog uses.
+      let observed;
+      try{observed=await ownedBackend.projectEntries.observeSource({projectFile:file});}catch{return null;}
+      try{
+        const response=await fetch(new URL(`/api/projects/${observed.source.sourceProjectId}/history/status`,started.url),{
+          headers:{authorization:`Bearer ${token}`},signal:context.startup.signal,redirect:'error'});
+        if(!response.ok)return null;
+        const body=await response.json() as {ok?:unknown;data?:{state?:unknown}};
+        return body.ok===true&&body.data?.state==='diverged'?{projectId:observed.source.sourceProjectId,name:observed.name}:null;
+      }catch{return null;}
+    };
     const openSelected=async(file:string)=>{
       nativeBackendCurrent();
       if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+      const historyDiverged=await historyDivergedForFile(file); nativeBackendCurrent();
+      if(historyDiverged){
+        await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
+        const owner=parent?nativeOwner(parent):null;
+        if(owner){entries.rememberPendingOpen(owner,{status:'history-diverged',projectId:historyDiverged.projectId,projectFile:file,...(historyDiverged.name?{name:historyDiverged.name}:{})});return;}
+      }
       const facts=await probeDesktopProjectLocation({path:file,purpose:'open',isDirectory:false});
       let admission:ProjectEntryLocationAdmission<BrowserWindow>|undefined;
       nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
@@ -858,11 +970,21 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       }
       catch(error){
         const failure=codedFailure(error),readOnly=failure.code==='PROJECT_INVALID'&&failure.details?.reason==='read-only'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_INVALID'&&failure.details?.invalidReason==='read-only';
-        if(failure.code!=='PROJECT_FILE_COPY'&&failure.code!=='PROJECT_FORMAT_UPGRADE_REQUIRED'&&!readOnly)throw error;
+        const historyDiverged=failure.code==='PROJECT_HISTORY_DIVERGED'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_HISTORY_DIVERGED';
+        if(failure.code!=='PROJECT_FILE_COPY'&&failure.code!=='PROJECT_FORMAT_UPGRADE_REQUIRED'&&!readOnly&&!historyDiverged)throw error;
         await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
         const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
         const owner=parent?nativeOwner(parent):null;
         if(!owner)throw new Error('Copy confirmation owner unavailable');
+        if(historyDiverged){
+          // The divergence authority is the registered path's history state; do
+          // not ask an editor candidate to open merely to discover it again.
+          const detailProjectId=(failure.details as Record<string,unknown>|undefined)?.projectId;
+          const projectId=typeof detailProjectId==='string'?detailProjectId:
+            (await ownedBackend.projectEntries.observeSource({projectFile:file})).source.sourceProjectId;
+          entries.rememberPendingOpen(owner,{status:'history-diverged',projectId,projectFile:file});
+          return;
+        }
         const result=await entries.openPath(owner,file,admission);entries.rememberPendingOpen(owner,result);
       }
     };
@@ -889,6 +1011,15 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
         const owner = parent ? nativeOwner(parent, true) : null;
         if (!owner || !await admit(owner, facts)) throw new Error('Project location rejected');
         nativeBackendCurrent();
+        const historyDiverged = await historyDivergedForFile(project.projectFile);
+        if (historyDiverged) {
+          const parent = ownedWindowHost.ensureLauncher();
+          const owner = parent ? nativeOwner(parent, true) : null;
+          if (owner) {
+            entries.rememberPendingOpen(owner, {status: 'history-diverged', projectId: historyDiverged.projectId, projectFile: project.projectFile, ...(historyDiverged.name ? {name: historyDiverged.name} : {})});
+            continue;
+          }
+        }
         const restored = await ownedWindowHost.restoreProject(saved.projectId, project.projectFile);
         nativeBackendCurrent();
         if (!restored.ok) throw new Error('Project window restoration unavailable');
@@ -898,6 +1029,19 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
         const failure = codedFailure(error), underlying = failure.details?.reason;
         const code = failure.code === 'PROJECT_UNAVAILABLE' && typeof underlying === 'string' ? underlying :
           failure.code === 'EACCES' || failure.code === 'EPERM' ? 'PROJECT_ACCESS_DENIED' : failure.code ?? 'UNAVAILABLE';
+        if (code === 'PROJECT_HISTORY_DIVERGED') {
+          // Startup restoration and Finder share the launcher's existing recovery
+          // surface; no second native error sheet and no editor opening.
+          const parent = ownedWindowHost.ensureLauncher();
+          const owner = parent ? nativeOwner(parent, true) : null;
+          if (owner) {
+            try {
+              const registered = await prepareRegisteredProject(saved.projectId);
+              entries.rememberPendingOpen(owner, {status: 'history-diverged', projectId: saved.projectId, projectFile: registered.projectFile});
+              continue;
+            } catch { /* Fall through to the bounded native failure notice. */ }
+          }
+        }
         const readOnly = code === 'PROJECT_INVALID' && (underlying === 'read-only' || failure.details?.invalidReason === 'read-only');
         failures.push({name, code, ...(readOnly ? {reason: 'read-only'} : {})});
       }
@@ -1012,28 +1156,73 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       return document?.window === window && document.backendId === owner.backendId
         ? context.audioHost?.retireOwnerForReload({ ...document, projectId: document.projectId as string, contents }, signal) ?? false : false;
     },
+    isQuitRequest: () => quitRouter.isPending,
+    isSystemShutdown: () => systemShutdown,
+    onQuitWork: async (work, facts) => {
+      if (smokeOutput) {
+        const decision = process.env.MIOON_DESKTOP_SMOKE_QUIT_WORK;
+        if (decision === 'cancel') return false;
+        if (decision === 'quit') return true;
+      }
+      const title = nt('native.quitWorkTitle', {count: work.length});
+      const icon = quitDialogIcon();
+      const response = await showQuitDialog(window, {...(icon ? {icon} : {}), type: 'none',
+        title, message: title, detail: quitWorkLines(work).join('\n'),
+        buttons: [nt('native.cancel'), nt('native.quit')], defaultId: 1, cancelId: 0});
+      return response === 1;
+    },
+    onQuitUnresponsive: async () => {
+      if (smokeOutput) {
+        const decision = process.env.MIOON_DESKTOP_SMOKE_QUIT_UNRESPONSIVE;
+        if (decision === 'quit' || decision === 'wait') return decision;
+      }
+      const name = quitDialogWindowName(window);
+      const title = nt('native.quitUnresponsiveTitle', {name});
+      const icon = quitDialogIcon();
+      const response = await showQuitDialog(window, {...(icon ? {icon} : {}), type: 'none',
+        title, message: title, detail: nt('native.quitUnresponsiveMessage'),
+        buttons: [nt('native.quit'), nt('native.quitWait')], defaultId: 1, cancelId: 0});
+      if (response === 0) return 'quit';
+      scheduleQuitRetry(window);
+      return 'wait';
+    },
+    onCloseWork: async work => {
+      if (smokeOutput) {
+        const decision = process.env.MIOON_DESKTOP_SMOKE_CLOSE_WORK;
+        if (decision === 'cancel') return false;
+        if (decision === 'close') return true;
+      }
+      const title = nt('native.closeWorkTitle', {count: work.length});
+      const icon = quitDialogIcon();
+      const response = await showQuitDialog(window, {...(icon ? {icon} : {}), type: 'none',
+        title, message: title, detail: quitWorkLines(work).join('\n'),
+        buttons: [nt('native.cancel'), nt('native.closeWindow')], defaultId: 1, cancelId: 0});
+      return response === 1;
+    },
+    forceClose: () => { if (!window.isDestroyed()) window.destroy(); },
     confirmClose: action => !updateQuit?.closing && (Boolean(smokeOutput) || closeDialog({ type: 'warning', title: nt('native.draftTitle'),
       message: nt(action === 'reload' ? 'native.draftReloadMessage' : 'native.draftQuitMessage'),
       detail: nt(action === 'reload' ? 'native.draftReloadDetail' : 'native.draftQuitDetail'),
       buttons: [action === 'reload' ? nt('native.reloadAnyway') : nt('native.quitAnyway'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0)),
-    confirmUnknown: () => !updateQuit?.closing && closeDialog({ type: 'warning', title: nt('native.unknownTitle'),
-      message: nt('native.unknownMessage'),
-      detail: nt('native.unknownDetail'),
-      buttons: [nt('native.understandClose'), nt('native.keepWindow')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    confirmDiscard: action => updateQuit?.closing ? false : smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
-      message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'), detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
-      buttons: [nt('native.discard'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
+    confirmUnknown: () => !updateQuit?.closing && closeDialog({ type: 'warning', title: nt('native.unknownQuitTitle'),
+      message: nt('native.unknownQuitTitle'), detail: nt('native.unknownCloseDetail'),
+      buttons: [nt('native.cancel'), nt('native.unknownQuit')], defaultId: 0, cancelId: 0 }).then(response => response === 1),
+    confirmDiscard: action => updateQuit?.closing ? false : smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : action === 'close' && quitRouter.isPending
+      ? closeDialog({type: 'question', title: nt('native.unsavedQuitTitle'), message: nt('native.unsavedQuitTitle'),
+        detail: nt('native.unsavedQuitMessage'), buttons: [nt('native.discardQuit'), nt('native.keepEditing')], defaultId: 1, cancelId: 1}).then(response => response === 0)
+      : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
+        message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'),
+        detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
+        buttons: [nt('native.discard'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
     onBlocked: async reason => {
       if (smokeOutput || updateQuit?.closing) return;
-      // A ready report racing the P0 snapshot can request one fresh close
-      // after retention. Keep any notice attached to the original visible owner.
-      if (windowHost?.isCandidate(window)) {
-        await Promise.resolve();
-        if (!ownsWindow(window, context) || windowAdmissions.get(window)?.pending) return;
-      }
-      await closeDialog({ type: 'warning', title: nt('native.leaveBlockedTitle'),
+      // Never leave an exit with only “keep editing”. The second decision is a
+      // new explicit close of this window, not permission borrowed from quit.
+      if (!ownsWindow(window, context) || window.isDestroyed?.()) return;
+      const response = await closeDialog({ type: 'warning', title: nt('native.leaveBlockedTitle'),
         message: reason === 'blocked' ? nt('native.leaveBlocked') : reason === 'changed' ? nt('native.leaveChanged') : nt('native.leaveUnverified'),
-        buttons: [nt('native.keepEditing')], defaultId: 0, cancelId: 0 });
+        buttons: [nt('native.keepEditing'), nt('native.closeWindow')], defaultId: 0, cancelId: 0 });
+      if (response === 1 && ownsWindow(window, context) && window.isDestroyed?.() !== true) window.destroy();
     },
     onCancel: () => { if (ownsWindow(window, context)) {
       if (windowHost) finishNativePresentation(window, windowHost, owner.contextId);
@@ -1041,7 +1230,7 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
     } },
     requestQuit: () => ownsWindow(window, context) ? requestApplicationQuit(window) : false
   }));
-  window.on('closed', () => { if (win === window) win = null; });
+  window.on('closed', () => { clearQuitRetry(window); if (win === window) win = null; });
   window.on('closed', () => trayHost?.refresh());
   window.on('ready-to-show', () => trayHost?.refresh());
   const onRendererFailure = () => {
@@ -1550,6 +1739,7 @@ else {
   process.on('SIGTERM', () => app.quit());
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
+    try { powerMonitor.on('shutdown', () => { systemShutdown = true; }); } catch { /* VM/synthetic harness has no power host. */ }
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'icons/icon.png'));
     if (process.platform === 'darwin' && identity.channel === 'development') app.dock?.setBadge('DEV');
     workspaceToolsHost=createWorkspaceToolsHost<IpcMainInvokeEvent>({
@@ -1602,7 +1792,11 @@ else {
     trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
       const output = smokeOutput;
-      if (windowsPackageSmoke && process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT) {
+      if (process.env.MIOON_DESKTOP_QUIT_SMOKE === '1') {
+        // The external quit controller owns this development launch. It writes
+        // no product data; the fixed report proves only that staging started.
+        await writeFile(`${output}.ready`, JSON.stringify({mainPid: process.pid, ready: true})+ '\n').catch(() => {});
+      } else if (windowsPackageSmoke && process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT) {
         const { runWindowsTitleBarScreenshot } = await import('./windows-titlebar-screenshot.ts');
         await runWindowsTitleBarScreenshot({ app, getWindow: () => win, backendUrl: ready?.url ?? '', output,
           screenshot: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCREENSHOT,
@@ -1627,7 +1821,7 @@ else {
           finally { smokeDiscardDecision = undefined; }
         } });
       }
-      app.quit();
+      if (process.env.MIOON_DESKTOP_QUIT_SMOKE !== '1') app.quit();
     }
   }).catch(fatal);
 }

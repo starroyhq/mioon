@@ -5,6 +5,7 @@ import {schemas as operations,TIMELINE_RENDER_RESPONSE_BYTES,isTimelineMutationR
 import {
   LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas,localDeliveryDraftRawSchema,localDeliveryDraftPutSchema,
   localDeliveryDraftDeleteSchema,localDeliveryExecuteSchema,localDeliveryOutcomeSchema,
+  localDeliveryCheckSchema,localDeliveryCheckResultSchema,localDeliveryDiscardIntentSchema,
 } from '@mioon/contracts/local-delivery';
 
 interface DeliveryDraft {revision: number; [key: string]: unknown}
@@ -101,10 +102,11 @@ test('independent draft CAS retains newer title while older intent and exact cap
 
 test('latest intent identity and monotonic CAS cannot be erased, substituted or confused with draft revision',()=>{
   const f=fixture();assert.ok(schemas.prepare.safeParse({...f.prepare,expectedIntentRevision:2,expectedIntentId:randomUUID()}).success);
-  rejects(schemas.prepare,{...f.prepare,expectedIntentRevision:2});
+  assert.ok(schemas.prepare.safeParse({...f.prepare,expectedIntentRevision:2,expectedIntentId:null}).success);
   rejects(schemas.prepare,{...f.prepare,expectedIntentId:randomUUID()});
   rejects(schemas.prepare,{...f.prepare,expectedIntentRevision:2,expectedIntentId:f.intentId});
-  for(const value of [{...f.slot,intentRevision:0},{...f.slot,intent:null},{...f.slot,intentRevision:Number.MAX_SAFE_INTEGER+1},
+  assert.ok(schemas.slot.safeParse({...f.slot,intent:null}).success);
+  for(const value of [{...f.slot,intentRevision:0},{...f.slot,intentRevision:Number.MAX_SAFE_INTEGER+1},
     {...f.slot,intent:{...f.intent,input:{...f.input,projectId:randomUUID()}}}])rejects(schemas.slot,value);
   const execute={...f.authority,projectId:f.projectId,intentId:f.intentId,expectedIntentRevision:1};
   assert.deepEqual(localDeliveryExecuteSchema.parse(execute),execute);
@@ -166,4 +168,29 @@ test('unsupported restored workspace is explicit and contains no inferred author
   rejects(schemas.envelope,{...f.envelope,intentTargetStatus:'unset'});
   const empty={...f.envelope,draftRevision:0,draft:null,intentRevision:0,intent:null,draftTargetStatus:'unset',intentTargetStatus:'unset'};
   assert.deepEqual(schemas.envelope.parse(empty),empty);
+});
+
+
+test('pending export check and intent discard are closed bounded contracts',()=>{
+  const f=fixture(),check={...f.authority,projectId:f.projectId,intentId:f.intentId};
+  assert.deepEqual(localDeliveryCheckSchema.parse(check),check);
+  for(const patch of [{intentId:'bad'},{operation:'timeline.render'},{exportId:randomUUID()},{workspaceScope:'bad'}])rejects(localDeliveryCheckSchema,{...check,...patch});
+  const exportId=randomUUID();
+  for(const result of [
+    {status:'accepted',projectId:f.projectId,intentId:f.intentId,exportId,exportStatus:'running'},
+    {status:'accepted',projectId:f.projectId,intentId:f.intentId,exportId,exportStatus:'failed',errorCode:'EXPORT_FAILED'},
+    {status:'executing',projectId:f.projectId,intentId:f.intentId},
+    {status:'not_executed',projectId:f.projectId,intentId:f.intentId},
+    {status:'unavailable',projectId:f.projectId,intentId:f.intentId},
+  ])assert.deepEqual(localDeliveryCheckResultSchema.parse(result),result);
+  for(const bad of [{status:'accepted',projectId:f.projectId,intentId:f.intentId,exportId,exportStatus:'done'},
+    {status:'accepted',projectId:f.projectId,intentId:f.intentId,exportId,exportStatus:'queued',path:'/PRIVATE'},
+    {status:'running',projectId:f.projectId,intentId:f.intentId},
+    {status:'unavailable',projectId:f.projectId,intentId:f.intentId,reason:'PRIVATE'}])rejects(localDeliveryCheckResultSchema,bad);
+  const discard={...f.authority,projectId:f.projectId,intentId:f.intentId,expectedIntentRevision:1};
+  assert.deepEqual(localDeliveryDiscardIntentSchema.parse(discard),discard);
+  for(const bad of [{expectedIntentRevision:0},{expectedIntentRevision:1.5},{intentRevision:1},{path:'/PRIVATE'}])rejects(localDeliveryDiscardIntentSchema,{...discard,...bad});
+  const cleared={...f.envelope,intent:null,intentRevision:2,intentTargetStatus:'unset'};
+  assert.ok(schemas.envelope.safeParse(cleared).success);
+  assert.ok(createLocalDeliverySchemas(()=>true).discardIntent.safeParse(discard).success);
 });

@@ -362,3 +362,99 @@ test('a system dialog answer from an old document cannot probe, create, or open 
  const pending=host.dispatch(null,{action:'openSelectedFile'});current=false;complete('/synthetic/old.mioon');await assert.rejects(pending);
  assert.equal(calls,0);host.close();backend.close();
 });
+
+test('a selected legacy copy is identified as a copy before the upgrade prompt', async t => {
+  const f = await fixture(t, undefined, undefined, true);
+  const copy = path.join(f.root, 'Finder copy.mioon');
+  copyFileSync(f.file, copy);
+  const original = readFileSync(f.file);
+  f.setOpen(copy);
+  const result = await f.bridge.openSelectedFile();
+  assert.equal(result.status, 'copy');
+  if (result.status !== 'copy') return;
+  assert.equal(result.original?.name, 'Original');
+  assert.deepEqual(readFileSync(f.file), original);
+  assert.equal(f.adopted.length, 0, 'copy detection must not start an upgrade or editor');
+  const recent = await f.client.api.listRecent();
+  assert.equal(recent.registered.length, 1, 'copy detection must not register anything');
+  assert.equal(recent.registered[0]!.project.projectId, f.projectId);
+  assert.equal(recent.registered[0]!.project.projectFile, f.file);
+});
+
+test('adopting a legacy copy carries the new identity into the ordinary upgrade prompt', async t => {
+  const f = await fixture(t, undefined, undefined, true);
+  const copy = path.join(f.root, 'Finder copy.mioon');
+  copyFileSync(f.file, copy);
+  const original = readFileSync(f.file);
+  f.setOpen(copy);
+  const first = await f.bridge.openSelectedFile();
+  assert.equal(first.status, 'copy');
+  if (first.status !== 'copy') return;
+  const adopted = await f.bridge.adoptCopy({token: first.token});
+  assert.equal(adopted.status, 'upgrade-required');
+  if (adopted.status !== 'upgrade-required') return;
+  assert.equal(adopted.preview.projectVersion, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(adopted.preview.targetProjectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.notEqual(adopted.preview.projectId, f.projectId, 'the copy gets its own project identity');
+  assert.deepEqual(readFileSync(f.file), original, 'the original project file stays byte-identical');
+  assert.notDeepEqual(readFileSync(copy), original, 'the copy is promoted to its own new project identity');
+  assert.equal(f.adopted.length, 0);
+  const read = await f.bridge.resolveFormatUpgrade!({token: adopted.token, choice: 'read-only'});
+  assert.equal(read.status, 'read-only');
+  if (read.status !== 'read-only') return;
+  assert.equal(read.view.projectId, adopted.preview.projectId);
+  assert.deepEqual(readFileSync(f.file), original);
+});
+
+
+test('adopting a legacy copy then upgrading opens the new identity and leaves the original untouched', async t => {
+  const f = await fixture(t, undefined, undefined, true);
+  const copy = path.join(f.root, 'Finder copy.mioon');
+  copyFileSync(f.file, copy);
+  const original = readFileSync(f.file);
+  f.setOpen(copy);
+  const first = await f.bridge.openSelectedFile();
+  assert.equal(first.status, 'copy');
+  if (first.status !== 'copy') return;
+  const adopted = await f.bridge.adoptCopy({token: first.token});
+  assert.equal(adopted.status, 'upgrade-required');
+  if (adopted.status !== 'upgrade-required') return;
+  const upgraded = await f.bridge.resolveFormatUpgrade!({token: adopted.token, choice: 'upgrade'});
+  assert.equal(upgraded.status, 'opened');
+  if (upgraded.status !== 'opened') return;
+  assert.equal(upgraded.projectId, adopted.preview.projectId);
+  assert.notEqual(upgraded.projectId, f.projectId);
+  assert.deepEqual(readFileSync(f.file), original, 'the original project file is never upgraded');
+  const recent = await f.client.api.listRecent();
+  assert.equal(recent.registered.length, 2);
+  assert.equal(recent.registered.find(row => row.project.projectId === f.projectId)!.project.projectFile, f.file);
+  assert.equal(f.adopted.length, 1);
+});
+
+
+
+test('resolveFormatUpgrade turns a PROJECT_FILE_COPY refusal after approval into the ordinary copy decision', async t => {
+  const f = await fixture(t, port => ({...port, openPath: async input => {
+    if (input.formatUpgrade) throw Object.assign(Error('Project copy requires confirmation'), {code: 'PROJECT_FILE_COPY', status: 409});
+    return port.openPath(input);
+  }}), undefined, true);
+  const first = await f.bridge.openSelectedFile();
+  assert.equal(first.status, 'upgrade-required');
+  if (first.status !== 'upgrade-required') return;
+  const result = await f.bridge.resolveFormatUpgrade!({token: first.token, choice: 'upgrade'});
+  assert.equal(result.status, 'copy');
+  assert.equal(f.adopted.length, 0);
+});
+
+test('a selected project whose file and local records diverged returns the 12-25 recovery status before any window opens', async t => {
+  const f = await fixture(t, port => ({...port, openPath: async () => {
+    throw Object.assign(new Error('Project records diverged'), {code: 'PROJECT_HISTORY_DIVERGED', status: 409, details: {}});
+  }}));
+  const result = await f.bridge.openSelectedFile();
+  assert.equal(result.status, 'history-diverged');
+  if (result.status !== 'history-diverged') return;
+  assert.equal(result.projectId, f.projectId);
+  assert.equal(result.projectFile, f.file);
+  assert.equal(result.name, 'Original');
+  assert.equal(f.adopted.length, 0, 'divergence must not open an editor');
+});

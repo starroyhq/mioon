@@ -29,12 +29,12 @@ import {createLookPackInspectionServices,assertLookPackInspectInput} from './loo
 import {createLutResourceServices} from './lut-resources.ts';
 import {createTimelineColourSourceServices,createTimelineColourSourceProbe} from './timeline-colour-source.ts';
 import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts';
-import {readFormat5RenderProjection} from './format5-timeline-render.ts';
+import {readFormat5AudioProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
 import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
 import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-decoder.ts';
-import {createTimelineAudioPreviewCoordinator,createSavedTimelineAudioReader} from './timeline-audio-preview-coordinator.ts';
+import {createTimelineAudioPreviewCoordinator} from './timeline-audio-preview-coordinator.ts';
 import {validateTimeline} from './timeline-inputs.ts';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {randomUUID,createHash} from 'node:crypto';
@@ -657,8 +657,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  };
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
- const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths,
-  generationSubmit: (input) => createGenerationJobInside(input as unknown as GenerationSubmitInput)});
+ // The UI sequence service intentionally has no generation-submit port: the
+  // timeline placement only adds the placeholder and opens the panel; the panel's
+  // Generate button goes through the reviewed board generation path. Mio's
+  // approved action supplies the submit port at its own commit call.
+  const sequenceEdit=createFormat5SequenceEditService(store, {clipboardOwner: applicationPorts.outsidePaths});
  const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
@@ -682,7 +685,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const readSavedTimeline=(projectId: string)=>{
   // Format 5 stores native rows; the preflight reader is a Format-3/4 aggregate.
   if(isProjectStore(store)&&isFormat5Project(store)){
-   const projection=readFormat5RenderProjection(store);
+   const projection=readFormat5AudioProjection(store);
    if(!projection)return null;
    return {timeline:projection.legacy,assets:[...projection.assets.values()]};
   }
@@ -710,11 +713,19 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const loudnessApply=createTimelineLoudnessApplyServices({
   measurement:mixLoudness as unknown as Parameters<typeof createTimelineLoudnessApplyServices>[0]['measurement'],transactions:timeline.createLoudnessApplyTransactions(assertLoudnessApplyAvailable),assertAvailable:assertLoudnessApplyAvailable,
  });
- const readSavedAudioTimeline=createSavedTimelineAudioReader({db,
-  readTimeline:projectId=>readTimelinePreflightSnapshot(store,projectId,undefined).timeline,
-  readAssets:(projectId,timeline)=>readTimelineSourceGraph(db,projectId,timeline),
-  validate:(timeline,assets)=>validateTimeline(timeline,assets,{structureOnly:true}),
- });
+ const readSavedAudioTimeline=(projectId: string)=>{
+  // Audio readers must not use the render projection: a format-5 placeholder
+  // has no source, but it must not make every other clip unreadable.
+  if(isProjectStore(store)&&isFormat5Project(store)){
+   const projection=readFormat5AudioProjection(store);
+   return projection?{timeline:projection.legacy,assets:[...projection.assets.values()]}:null;
+  }
+  const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
+  try{const timeline=readTimelinePreflightSnapshot(store,projectId,undefined).timeline;if(!timeline)return null;
+   const assets=readTimelineSourceGraph(db,projectId,timeline);validateTimeline(timeline,assets,{structureOnly:true});
+   return {timeline,assets:[...assets.values()]};
+  }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
+ };
  const audioPreviewV1=createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:readSavedAudioTimeline,

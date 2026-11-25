@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
+import type {NativeQuitWorkItem} from '../apps/desktop/src/native-close.ts';
 import { createProjectRendererRecovery } from '../apps/desktop/src/project-window-recovery.ts';
 import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry, type NativeCloseAction } from '../apps/web/src/native-close-state.ts';
@@ -34,6 +35,8 @@ interface CloseFixtureOptions {
  beforeReload?(signal: AbortSignal): unknown; reloadPreparationTimeoutMs?: number; timeoutMs?: number;
  canAct?(action: NativeCloseAction): boolean;
  confirmDiscard?(action: NativeCloseAction): unknown; confirmClose?(action: NativeCloseAction): unknown; requestQuit?(coordinator: QuitCoordinator): unknown;
+ quit?: boolean; work?: readonly NativeQuitWorkItem[]; onQuitWork?(work: readonly NativeQuitWorkItem[]): unknown; onCloseWork?(work: readonly NativeQuitWorkItem[]): unknown;
+ onQuitUnresponsive?(): unknown; forceClose?(): void; shutdown?: boolean;
 }
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 const executable = (source: string) => stripTypeScriptTypes(source, { mode: 'strip' });
@@ -70,7 +73,8 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
   function inspect(action: NativeCloseAction = 'close', targetUrl: string | null = null) {
     const token = `doc${documentId}:${++sequence}`;
     captured = { token, revision, documentId, action, targetUrl }; armed = null;
-    return { version: 1, token, disposition: blocked ? 'blocked' : dirty ? 'dirty' : 'clean' };
+    return options.work ? {version: 2, token, disposition: blocked ? 'blocked' : dirty ? 'dirty' : 'clean', work: options.work}
+      : { version: 1, token, disposition: blocked ? 'blocked' : dirty ? 'dirty' : 'clean' };
   }
   const valid = (token: string) => captured?.token === token && captured.revision === revision && captured.documentId === documentId && !blocked;
   function commit(token: string, choice: CommitChoice) {
@@ -139,8 +143,15 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
   };
   const coordinator = new QuitCoordinator({ getWindow: () => win,
     stop: async () => { stopped++; events.push('stop'); await options.stop?.(); }, finish: () => { finished++; events.push('finish'); } });
+  let quitWorkCalls = 0, quitUnresponsiveCalls = 0, forceCloseCalls = 0, closeWorkCalls = 0; const quitWorkSeen: (readonly NativeQuitWorkItem[])[] = [], closeWorkSeen: (readonly NativeQuitWorkItem[])[] = [];
   const installed = installNativeCloseAdmission(win, {
     timeoutMs: options.timeoutMs ?? 200,
+    isQuitRequest: () => options.quit === true,
+    isSystemShutdown: () => options.shutdown === true,
+    ...(options.onQuitWork ? {onQuitWork: async (work: readonly NativeQuitWorkItem[]) => { quitWorkCalls++; events.push('quit-work'); quitWorkSeen.push(work); return await options.onQuitWork!(work) as boolean; }} : {}),
+    ...(options.onCloseWork ? {onCloseWork: async (work: readonly NativeQuitWorkItem[]) => { closeWorkCalls++; events.push('close-work'); closeWorkSeen.push(work); return await options.onCloseWork!(work) as boolean; }} : {}),
+    ...(options.onQuitUnresponsive ? {onQuitUnresponsive: async () => { quitUnresponsiveCalls++; events.push('quit-unresponsive'); return await options.onQuitUnresponsive!() as 'quit' | 'wait'; }} : {}),
+    forceClose: () => { forceCloseCalls++; events.push('force-close'); if (options.forceClose) options.forceClose(); else { win.destroyed = true; win.emit('closed'); } },
     isCurrent: () => owns && allowed,
     canAct: options.canAct,
     beforeReload: options.beforeReload as NativeOptions['beforeReload'],
@@ -163,7 +174,8 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
       documentId++; revision++; captured = null; armed = null;
     },
     get armed() { return armed; },
-    stats: () => ({ cancelCount, discardCount, drainDecisionCount, stopped, finished, vetoOverrides }),
+    quitWorkSeen, closeWorkSeen,
+    stats: () => ({ cancelCount, discardCount, drainDecisionCount, stopped, finished, vetoOverrides, quitWorkCalls, quitUnresponsiveCalls, forceCloseCalls, closeWorkCalls }),
   };
 }
 
@@ -192,7 +204,7 @@ test('clean close drains then arms and closes once before stopping backend', asy
   const f = fixture(t);
   assert.equal(await f.coordinator.request(), true);
   assert.deepEqual(f.events, ['inspect', 'flush', 'commit', 'closed', 'stop', 'finish']);
-  assert.deepEqual(f.stats(), { cancelCount: 0, discardCount: 0, drainDecisionCount: 0, stopped: 1, finished: 1, vetoOverrides: 0 });
+  assert.deepEqual(f.stats(), { cancelCount: 0, discardCount: 0, drainDecisionCount: 0, stopped: 1, finished: 1, vetoOverrides: 0, quitWorkCalls: 0, quitUnresponsiveCalls: 0, forceCloseCalls: 0, closeWorkCalls: 0 });
   assert.equal(f.commits[0].choice.discardDirty, false);
   assert.equal(f.commits[0].choice.allowDrainFailure, false);
   assert.ok(Number.isFinite(f.commits[0].choice.expiresAt));
@@ -206,7 +218,7 @@ for (const label of ['busy owner', 'unknown owner']) {
     assert.equal(f.win.destroyed, false);
     assert.deepEqual(f.notices, ['blocked']);
     assert.equal(f.events.includes('flush'), false);
-    assert.deepEqual(f.stats(), { cancelCount: 1, discardCount: 0, drainDecisionCount: 0, stopped: 0, finished: 0, vetoOverrides: 0 });
+    assert.deepEqual(f.stats(), { cancelCount: 1, discardCount: 0, drainDecisionCount: 0, stopped: 0, finished: 0, vetoOverrides: 0, quitWorkCalls: 0, quitUnresponsiveCalls: 0, forceCloseCalls: 0, closeWorkCalls: 0 });
   });
 }
 
@@ -1036,7 +1048,7 @@ async function actualMainAdmissionCallbacks(dialog: {showMessageBox?(parent: obj
   const context = vm.createContext({ nt: nativeText, window, context: { ready: { url: 'http://127.0.0.1:45000' } },
     owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}, isCandidate: () => false},
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window: object, value: NativeOptions) => { callbacks = value; return {}; },
-    ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined, updateQuit: undefined,
+    ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined, updateQuit: undefined, quitRouter: {isPending: false},
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
   installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
@@ -1083,8 +1095,8 @@ for (const kind of ['confirmClose', 'confirmDiscard', 'confirmUnknown', 'onBlock
     void choice.then(() => { settled = true; });
     await ping;
     assert.equal(heartbeat, 1); assert.equal(settled, false, 'A pending native dialog must not synchronously return or block utility processing');
-    assert.equal((presented)!.cancelId, kind === 'onBlocked' ? 0 : 1);
-    gate.resolve({ response: 0 });
+    assert.equal((presented)!.cancelId, kind === 'onBlocked' || kind === 'confirmUnknown' ? 0 : 1);
+    gate.resolve({ response: kind === 'confirmUnknown' ? 1 : 0 });
     const result = await choice;
     if (kind !== 'onBlocked') assert.equal(result, true);
   });
@@ -1292,4 +1304,153 @@ test('a failed native dependency check cannot grant parent close or consume a re
   f.win.webContents.emit('render-process-gone');
   assert.equal(await f.admission.captureRecoveryDecision().exit(), false);
   assert.deepEqual((f.scripts as unknown), []); assert.equal(f.stats().stopped, 0); assert.equal(f.win.destroyed, false);
+});
+
+
+test('quit with unfinished work always offers an exit and force-closes after acceptance', async t => {
+  const f = fixture(t, {quit: true, work: [{kind: 'export', count: 1}], onQuitWork: () => true});
+  const pending = f.coordinator.request();
+  await until(() => f.stats().quitWorkCalls === 1);
+  assert.deepEqual(f.quitWorkSeen, [[{kind: 'export', count: 1}]]);
+  assert.equal(await pending, true);
+  assert.equal(f.win.destroyed, true);
+  assert.equal(f.stats().forceCloseCalls, 1);
+  assert.equal(f.stats().stopped, 1); assert.equal(f.stats().finished, 1);
+  assert.deepEqual(f.notices, [], 'the old one-button blocked dialog is never used');
+});
+
+test('quit work cancel leaves the window open and never stops the backend', async t => {
+  const f = fixture(t, {quit: true, work: [{kind: 'generation', count: 2, unknown: true}], onQuitWork: () => false});
+  assert.equal(await f.coordinator.request(), false);
+  assert.equal(f.win.destroyed, false);
+  assert.equal(f.stats().forceCloseCalls, 0); assert.equal(f.stats().stopped, 0);
+  assert.equal(f.stats().cancelCount, 1);
+  assert.deepEqual(f.notices, []);
+});
+
+test('quit work is derived from a blocked renderer as an honest pending row', async t => {
+  const f = fixture(t, {quit: true, blocked: true, onQuitWork: () => false});
+  assert.equal(await f.coordinator.request(), false);
+  assert.deepEqual(f.quitWorkSeen, [[{kind: 'pending', count: 1}]]);
+  assert.deepEqual(f.notices, []);
+});
+
+test('an unresponsive page offers quit or wait, and wait cancels without a dead-end dialog', async t => {
+  const quitting = fixture(t, {quit: true, execute: (kind, execute) => kind === 'inspect' ? (() => {throw Error('renderer frozen');})() : execute(),
+    onQuitUnresponsive: () => 'quit'});
+  assert.equal(await quitting.coordinator.request(), true);
+  assert.equal(quitting.win.destroyed, true); assert.equal(quitting.stats().forceCloseCalls, 1);
+  assert.equal(quitting.stats().quitUnresponsiveCalls, 1); assert.deepEqual(quitting.notices, []);
+  const waiting = fixture(t, {quit: true, execute: (kind, execute) => kind === 'inspect' ? (() => {throw Error('renderer frozen');})() : execute(),
+    onQuitUnresponsive: () => 'wait'});
+  let retried = 0;
+  waiting.win.webContents.on('responsive', () => { retried++; });
+  assert.equal(await waiting.coordinator.request(), false);
+  assert.equal(waiting.win.destroyed, false); assert.equal(waiting.stats().forceCloseCalls, 0);
+  assert.equal(waiting.stats().cancelCount, 1); assert.deepEqual(waiting.notices, []);
+  waiting.win.webContents.emit('responsive'); assert.equal(retried, 1);
+});
+
+test('quit save runs before work, and a rejected unsaved decision keeps the work dialog from opening', async t => {
+  let flushed = 0;
+  const f = fixture(t, {quit: true, dirty: true, work: [{kind: 'mio', count: 1}], flush: () => {flushed++; return false;},
+    confirmDiscard: () => false, onQuitWork: () => true});
+  assert.equal(await f.coordinator.request(), false);
+  assert.equal(flushed, 1); assert.equal(f.stats().quitWorkCalls, 0); assert.equal(f.win.destroyed, false);
+});
+
+test('system shutdown autosaves without the 12-26 work prompt', async t => {
+  const f = fixture(t, {quit: true, shutdown: true, dirty: true, work: [{kind: 'export', count: 1}],
+    flush: () => false, confirmDiscard: () => false, onQuitWork: () => assert.fail('shutdown must not show 12-26')});
+  assert.equal(await f.coordinator.request(), false);
+  assert.equal(f.win.destroyed, false); assert.equal(f.stats().quitWorkCalls, 0);
+  const clean = fixture(t, {quit: true, shutdown: true, work: [{kind: 'export', count: 1}],
+    onQuitWork: () => assert.fail('shutdown must not show 12-26')});
+  assert.equal(await clean.coordinator.request(), true);
+  assert.equal(clean.win.destroyed, true);
+});
+
+test('a clean quit with no work exits without a dialog', async t => {
+  const f = fixture(t, {quit: true, onQuitWork: () => {assert.fail('No work dialog for a clean quit');}});
+  assert.equal(await f.coordinator.request(), true);
+  assert.equal(f.win.destroyed, true); assert.equal(f.stats().forceCloseCalls, 1); assert.equal(f.stats().quitWorkCalls, 0);
+});
+
+test('actual main 12-26 work dialog lists bounded consequences with an exit default', async () => {
+  let presented: DialogOptions | undefined;
+  const window = {isDestroyed: () => false};
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {presented = options; return Promise.resolve({response: 1});},
+    showMessageBoxSync() {assert.fail('Quit uses the asynchronous owned dialog');}}, window, () => true,
+    {quitRouter: {isPending: true}, restarting: false, quitting: false});
+  const accepted = await callbacks.onQuitWork?.([{kind: 'export', count: 1}, {kind: 'generation', count: 2, unknown: true}], {dirty: false, unknown: false});
+  assert.equal(accepted, true);
+  assert.ok(presented);
+  assert.match(String(presented.title), /2 .*工作/);
+  assert.equal(presented.message, presented.title, 'macOS shows the same sentence in message');
+  assert.match(String(presented.detail), /(匯出|导出).*中斷|(匯出|导出).*中断/);
+  assert.match(String(presented.detail), /(結果|结果).*未知/);
+  assert.deepEqual([...presented.buttons], [nativeText('native.cancel'), nativeText('native.quit')]);
+  assert.equal(presented.defaultId, 1); assert.equal(presented.cancelId, 0);
+});
+
+test('actual main 12-26 collapses more than three work rows into a bounded third line', async () => {
+  let presented: DialogOptions | undefined;
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {presented = options; return Promise.resolve({response: 0});},
+    showMessageBoxSync() {assert.fail('Quit uses the asynchronous owned dialog');}}, {isDestroyed: () => false}, () => true,
+    {quitRouter: {isPending: true}, restarting: false, quitting: false});
+  await callbacks.onQuitWork?.([{kind: 'export', count: 1}, {kind: 'preview', count: 1}, {kind: 'mio', count: 1}, {kind: 'import', count: 1}], {dirty: false, unknown: false});
+  const lines = String(presented!.detail).split('\n');
+  assert.equal(lines.length, 3); assert.match(lines[2], /還有 2 項工作|还有 2 项工作/);
+});
+
+
+test('ordinary close with work uses 12-26 and an explicit close-window decision', async t => {
+  const accepted = fixture(t, {blocked: true, work: [{kind: 'export', count: 1}], onCloseWork: () => true});
+  accepted.win.close();
+  await until(() => accepted.win.destroyed);
+  assert.deepEqual(accepted.closeWorkSeen, [[{kind: 'export', count: 1}]]);
+  assert.equal(accepted.stats().closeWorkCalls, 1); assert.equal(accepted.stats().forceCloseCalls, 1);
+  assert.deepEqual(accepted.notices, []);
+  const cancelled = fixture(t, {blocked: true, work: [{kind: 'mio', count: 1}], onCloseWork: () => false});
+  cancelled.win.close();
+  await until(() => cancelled.stats().closeWorkCalls === 1);
+  assert.equal(cancelled.win.destroyed, false); assert.equal(cancelled.stats().forceCloseCalls, 0);
+  assert.equal(cancelled.stats().cancelCount, 1); assert.deepEqual(cancelled.notices, []);
+});
+
+test('actual main 12-26b and close-work dialogs put the design sentence in message', async () => {
+  let work: DialogOptions | undefined, close: DialogOptions | undefined;
+  const window = {isDestroyed: () => false};
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {
+    if (String(options.title).includes('窗口没有回应')) work = options; else close = options;
+    return Promise.resolve({response: 0});
+  }, showMessageBoxSync() {assert.fail('Quit uses asynchronous owned dialogs');}}, window, () => true,
+  {quitRouter: {isPending: true}, restarting: false, quitting: false, identity: {productName: 'Mioon'}});
+  await callbacks.onQuitUnresponsive?.();
+  assert.ok(work); assert.equal(work.message, work.title); assert.match(String(work.detail), /还没保存/);
+  assert.deepEqual([...work.buttons], [nativeText('native.quit'), nativeText('native.quitWait')]);
+  const closeCallbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {close = options; return Promise.resolve({response: 0});},
+    showMessageBoxSync() {assert.fail('Close uses asynchronous owned dialog');}}, window, () => true,
+    {quitRouter: {isPending: false}, restarting: false, quitting: false});
+  await closeCallbacks.onCloseWork?.([{kind: 'export', count: 1}], {dirty: false, unknown: false});
+  assert.ok(close); assert.match(String(close.message), /1 .*关闭窗口/);
+  assert.equal(close.message, close.title);
+  assert.deepEqual([...close.buttons], [nativeText('native.cancel'), nativeText('native.closeWindow')]);
+});
+
+test('actual main unknown-close and quit-unsaved dialogs use message for the main question', async () => {
+  const unknown = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {
+    assert.equal(options.title, nativeText('native.unknownQuitTitle')); assert.equal(options.message, options.title);
+    assert.equal(options.detail, nativeText('native.unknownCloseDetail'));
+    assert.deepEqual([...options.buttons], [nativeText('native.cancel'), nativeText('native.unknownQuit')]);
+    assert.equal(options.defaultId, 0); assert.equal(options.cancelId, 0); return Promise.resolve({response: 1});
+  }, showMessageBoxSync() {assert.fail();}}, {isDestroyed: () => false}, () => true, {quitRouter: {isPending: false}, restarting: false, quitting: false});
+  await unknown.confirmUnknown?.();
+  let unsaved: DialogOptions | undefined;
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox(_parent, options) {unsaved = options; return Promise.resolve({response: 1});},
+    showMessageBoxSync() {assert.fail();}}, {isDestroyed: () => false}, () => true, {quitRouter: {isPending: true}, restarting: false, quitting: false});
+  await callbacks.confirmDiscard?.('close');
+  assert.ok(unsaved); assert.equal(unsaved.message, nativeText('native.unsavedQuitTitle'));
+  assert.equal(unsaved.title, nativeText('native.unsavedQuitTitle'));
+  assert.equal(unsaved.detail, nativeText('native.unsavedQuitMessage'));
 });

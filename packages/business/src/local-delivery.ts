@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
-import type {LocalDeliveryRenderInput,LocalDeliveryDraftValue,LocalDeliverySlot,LocalDeliveryDisk,LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryExecute} from '@mioon/contracts/local-delivery';
+import type {LocalDeliveryRenderInput,LocalDeliveryDraftValue,LocalDeliverySlot,LocalDeliveryDisk,LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryExecute,LocalDeliveryCheck,LocalDeliveryCheckResult,LocalDeliveryDiscardIntent} from '@mioon/contracts/local-delivery';
 import {outputLocaleSchema,type OutputLocale} from '../../contracts/src/output-locale.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {createLocalDraftRepository, LocalDraftRepositoryError} from './local-draft-repository.ts';
@@ -19,6 +19,7 @@ const messages={
   LOCAL_DELIVERY_STORAGE_UNAVAILABLE:[503,'无法安全读取或保存成片草稿，已有记录未被重置。'],
   LOCAL_DELIVERY_SAVE_UNCERTAIN:[503,'成片记录的持久化确认未完成。请重新读取并显式恢复。'],
 } as const;
+const DISCARDED_INTENT_CODE='EXPORT_DISCARDED' as const;
 type ErrorCode=keyof typeof messages;
 export class LocalDeliveryError extends Error{
   readonly code:ErrorCode;readonly status:number;
@@ -67,6 +68,9 @@ export interface LocalDeliveryGuards{
   isNotApplied(input:LocalDeliveryRenderInput,error:unknown):boolean;
   /** The backend binds only services.call('timeline.render', input). */
   render(input:LocalDeliveryRenderInput,outputLocale?:OutputLocale):Promise<unknown>;
+  /** Read the original receipt and its current export row. Null means no
+   * receipt; throws when the stored proof is unreadable or inconsistent. */
+  readExportReceipt?(input:LocalDeliveryRenderInput):{exportId:string;exportStatus:'queued'|'running'|'succeeded'|'failed'|'cancelled';errorCode?:string}|null;
 }
 export type LocalDeliveryFaultPoint='beforePersist'|'afterPersist'|'beforeCommit'|'afterCommit'|'beforeConfirm'|'afterConfirm'|'beforeDispatch'|'afterDispatch'|'beforeOutcomePersist';
 export interface LocalDeliveryOptions{
@@ -127,7 +131,7 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
     return value;
   }
   function evidence(row:LocalDeliverySlot):unknown|null{
-    if(!row.intent)return null;const saved=receipt(row.intent);
+    if(!row.intent||row.intent.outcome.status==='not_applied'&&row.intent.outcome.code===DISCARDED_INTENT_CODE)return null;const saved=receipt(row.intent);
     if(row.intent.outcome.status==='accepted'){
       if(!object(saved)||saved.id!==row.intent.outcome.exportId||sha(saved)!==row.intent.outcome.responseSha256)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
     }else if(row.intent.outcome.status==='not_applied'){
@@ -146,11 +150,11 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
     store.db.prepare(`DELETE FROM idempotency WHERE scope IN (${localeScopeParameters}) AND requestId=?`).run(...localeScopes,projectId);
   }
   function response(row:LocalDeliverySlot):LocalDeliveryEnvelope{
-    owned();const current=timeline(row.projectId);evidence(row);owned();
-    const shown=uncertain.get(row.projectId)===row.intent?.intentId&&row.intent?{...row,intent:{...row.intent,outcome:{status:'pending' as const}}}:row;
+    owned();const visible=row.intent?.outcome.status==='not_applied'&&row.intent.outcome.code===DISCARDED_INTENT_CODE?{...row,intent:null}:row;const current=timeline(row.projectId);evidence(visible);owned();
+    const shown=uncertain.get(row.projectId)===visible.intent?.intentId&&visible.intent?{...visible,intent:{...visible.intent,outcome:{status:'pending' as const}}}:visible;
     const outputLocale=shown.intent?preparedLocale(row.projectId,shown.intent):undefined;
     const intent=outputLocale&&shown.intent?{...shown.intent,outputLocale}:shown.intent;
-    return clone({supported:true,workspaceScope:identity(),instanceId,...shown,intent,draftTargetStatus:target(row.draft,current),intentTargetStatus:target(row.intent,current)});
+    return clone({supported:true,workspaceScope:identity(),instanceId,...shown,intent,draftTargetStatus:target(visible.draft,current),intentTargetStatus:target(visible.intent,current)});
   }
   function confirmSaved():void{
     owned();identity();try{
@@ -238,6 +242,48 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
       return {envelope:response(latest.row),response:null};
     }catch(error){if(error instanceof LocalDeliveryError)throw error;if(error instanceof LocalDraftRepositoryError)fail(`LOCAL_DELIVERY_${error.reason}`);fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}
   }
+  /** Strict read-only lookup for one retained intent. It does not render, write
+   * the companion, update the project database or change the workspace lock. */
+  function check(value:unknown):LocalDeliveryCheckResult{
+    const args=parse(schemas.check,value);writable(args);const disk=read(),row=slot(disk,args.projectId);
+    if(!row.intent||row.intent.intentId!==args.intentId||row.intent.outcome.status==='not_applied'&&row.intent.outcome.code===DISCARDED_INTENT_CODE)return {status:'unavailable',projectId:args.projectId,intentId:args.intentId};
+    if(flights.get(args.projectId)?.intentId===args.intentId)return {status:'executing',projectId:args.projectId,intentId:args.intentId};
+    if(!guards.readExportReceipt)return {status:'unavailable',projectId:args.projectId,intentId:args.intentId};
+    try{
+      const saved=guards.readExportReceipt(row.intent.input);
+      if(saved)return {status:'accepted',projectId:args.projectId,intentId:args.intentId,...saved};
+      // An accepted local outcome must have a receipt; otherwise the local row
+      // and project database disagree and the query cannot be trusted.
+      if(row.intent.outcome.status==='accepted')return {status:'unavailable',projectId:args.projectId,intentId:args.intentId};
+      return {status:'not_executed',projectId:args.projectId,intentId:args.intentId};
+    }catch{return {status:'unavailable',projectId:args.projectId,intentId:args.intentId};}
+  }
+  /** Clear one intent by CAS revision. This writes only the local delivery
+   * companion slot; it never touches the draft, receipts, exports or files. */
+  function discardIntent(value:unknown):LocalDeliveryEnvelope{
+    return guarded(()=>{
+      const args=parse(schemas.discardIntent,value);writable(args);const disk=read(),row=slot(disk,args.projectId);
+      if(flights.get(args.projectId)?.intentId===args.intentId)fail('LOCAL_DELIVERY_CONFLICT');
+      const prior=row.intent;
+      if(prior===null||prior.outcome.status==='not_applied'&&prior.outcome.code===DISCARDED_INTENT_CODE){
+        // A repeated explicit discard is idempotent; a stale revision beyond
+        // the current one is not a valid prior identity.
+        if(row.intentRevision>=args.expectedIntentRevision){uncertain.delete(args.projectId);return response(row);}
+        fail('LOCAL_DELIVERY_CONFLICT');
+      }
+      if(prior.intentId!==args.intentId||row.intentRevision!==args.expectedIntentRevision)fail('LOCAL_DELIVERY_CONFLICT');
+      // The local-draft table keeps one terminal intent row. The public
+      // projection hides this marker as a cleared intent, preserving the
+      // reviewed SQL shape without inventing a second storage contract.
+      const next:LocalDeliverySlot={...row,intentRevision:row.intentRevision+1,
+        intent:{...prior,outcome:{status:'not_applied',code:DISCARDED_INTENT_CODE,resolvedAt:new Date().toISOString()}}};
+      replace(disk,next);
+      // The repository's full-file digest CAS is the concurrency fence. The
+      // intent revision was compared under the same read above.
+      persist(disk);uncertain.delete(args.projectId);
+      return response({...next,intent:null});
+    });
+  }
   function execute(value:unknown):Promise<LocalDeliveryExecution>{
     return guarded(()=>{
       mutation();if(!active())return Promise.resolve({envelope:unsupported,response:null});
@@ -276,7 +322,8 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
       const intent={intentId:args.intentId,timelineId:args.timelineId,baseRevision:args.baseRevision,draft:args.draft,input:args.input};
       if(row.intentRevision===args.expectedIntentRevision+1&&row.intent&&same(intent,{intentId:row.intent.intentId,timelineId:row.intent.timelineId,baseRevision:row.intent.baseRevision,draft:row.intent.draft,input:row.intent.input})
         &&preparedLocale(projectId,row.intent)===outputLocale){confirmSaved();return response(row);}
-      if(row.intentRevision!==args.expectedIntentRevision||(row.intent?.intentId??null)!==args.expectedIntentId||row.intentRevision===Number.MAX_SAFE_INTEGER||row.intent&&!terminal(row.intent)||flights.has(args.projectId)||uncertain.has(args.projectId))fail('LOCAL_DELIVERY_CONFLICT');
+      const priorIntent=row.intent?.outcome.status==='not_applied'&&row.intent.outcome.code===DISCARDED_INTENT_CODE?null:row.intent;
+      if(row.intentRevision!==args.expectedIntentRevision||(priorIntent?.intentId??null)!==args.expectedIntentId||row.intentRevision===Number.MAX_SAFE_INTEGER||priorIntent&&!terminal(priorIntent)||flights.has(args.projectId)||uncertain.has(args.projectId))fail('LOCAL_DELIVERY_CONFLICT');
       if(disk.entries.some(item=>item.intent&&(item.intent.intentId===args.intentId||item.intent.input.requestId===args.input.requestId)))fail('LOCAL_DELIVERY_CONFLICT');
       if(target(intent,current)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');
       if(args.draft&&(!row.draft||row.draftRevision!==args.draft.revision||row.draft.draftId!==args.draft.draftId||row.draft.timelineId!==args.timelineId||row.draft.baseRevision!==args.baseRevision||!same(row.draft.raw,args.draft.raw)))fail('LOCAL_DELIVERY_CONFLICT');
@@ -293,7 +340,7 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
       if(preparedLocale(projectId,savedIntent)!==outputLocale)fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');
       return response(next);
     });},
-    execute,recover:execute,
+    execute,recover:execute,check,discardIntent,
     isBusy:():boolean=>flights.size>0,
     drain():Promise<void>{
       draining=true;

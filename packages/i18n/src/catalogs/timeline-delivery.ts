@@ -1,26 +1,26 @@
 import type { MessageCatalog } from '../types.ts';
 export const timelineDeliveryMessages = {
-  "export.sample.separateRange": {"zh-Hans": "此短范围仅用于试导出，不改变正式导出范围", "zh-Hant": "此短範圍僅用於試導出，不會變更正式導出範圍", "en": "This short range is only for the sample. The final export range is unchanged", "ja": "この短い範囲は試し書き出し専用です。本番の書き出し範囲は変更しません"},
+  "export.sample.separateRange": {"zh-Hans": "此短范围仅用于样片导出，不改变正式导出范围", "zh-Hant": "此短範圍僅用於樣片匯出，不會變更正式匯出範圍", "en": "This short range is only for the sample export. The final export range is unchanged", "ja": "この短い範囲はサンプルの書き出し専用です。本番の書き出し範囲は変更しません"},
   "export.sample.start": {"zh-Hans": "开始帧", "zh-Hant": "開始幀", "en": "Start frame", "ja": "開始フレーム"},
   "export.sample.end": {"zh-Hans": "结束帧（不含）", "zh-Hant": "結束幀（不含）", "en": "End frame (exclusive)", "ja": "終了フレーム（含まない）"},
-  "export.sample.check": {"zh-Hans": "检查试导出", "zh-Hant": "檢查試導出", "en": "Check sample export", "ja": "試し書き出しをチェック"},
-  "export.sample.checkState": {"zh-Hans": "试导出检查：{state}", "zh-Hant": "試導出檢查：{state}", "en": "Sample check: {state}", "ja": "試し書き出しチェック：{state}"},
+  "export.sample.check": {"zh-Hans": "检查样片导出", "zh-Hant": "檢查樣片匯出", "en": "Check sample export", "ja": "サンプル書き出しをチェック"},
+  "export.sample.checkState": {"zh-Hans": "样片导出检查：{state}", "zh-Hant": "樣片匯出檢查：{state}", "en": "Sample export check: {state}", "ja": "サンプル書き出しチェック：{state}"},
 
-  "export.sample.title": {"zh-Hans": "试导出预览", "zh-Hant": "試導出預覽", "en": "Sample export preview", "ja": "試し書き出しプレビュー"},
+  "export.sample.title": {"zh-Hans": "样片导出预览", "zh-Hant": "樣片匯出預覽", "en": "Sample export preview", "ja": "サンプル書き出しプレビュー"},
   "export.sample.select": {"zh-Hans": "选择播放头附近的短范围", "zh-Hant": "選擇播放頭附近的短範圍", "en": "Select a short range", "ja": "短い範囲を選択"},
-  "export.sample.generate": {"zh-Hans": "生成试导出预览", "zh-Hant": "產生試導出預覽", "en": "Generate sample export", "ja": "試し書き出しを生成"},
+  "export.sample.generate": {"zh-Hans": "生成样片导出预览", "zh-Hant": "產生樣片匯出預覽", "en": "Generate sample export preview", "ja": "サンプル書き出しプレビューを生成"},
   "export.sample.stale": {"zh-Hans": "设置、范围、已保存时间线或素材已变化。此结果已过期，请重新检查并生成", "zh-Hant": "設定、範圍、已儲存時間軸或素材已變更。此結果已過期，請重新檢查並產生", "en": "Settings, range, saved timeline or sources have changed. This result is stale; check and generate again", "ja": "設定、範囲、保存済みタイムライン、または素材が変更されました。この結果は古いため、再チェックして生成してください"},
-  "export.sample.receipt": {"zh-Hans": "本次导出：{id}", "zh-Hant": "本次導出：{id}", "en": "This export: {id}", "ja": "今回の書き出し：{id}"},
+  "export.sample.receipt": {"zh-Hans": "本次导出：{id}", "zh-Hant": "本次匯出：{id}", "en": "This export: {id}", "ja": "今回の書き出し：{id}"},
   "export.sample.close": {"zh-Hans": "关闭播放器", "zh-Hant": "關閉播放器", "en": "Close player", "ja": "プレーヤーを閉じる"},
   "export.sample.reopen": {"zh-Hans": "重新打开播放器", "zh-Hant": "重新開啟播放器", "en": "Reopen player", "ja": "プレーヤーを開く"},
   "export.sample.mediaError": {"zh-Hans": "无法播放样片", "zh-Hant": "無法播放樣片", "en": "The sample cannot play", "ja": "サンプルを再生できません"},
-  "export.sample.phase.submitting": {"zh-Hans": "正在提交试导出…", "zh-Hant": "正在提交試導出…", "en": "Submitting sample export…", "ja": "試し書き出しを送信中…"},
-  "export.sample.phase.queued": {"zh-Hans": "试导出正在排队…", "zh-Hant": "試導出正在排隊…", "en": "Sample export queued…", "ja": "試し書き出し待機中…"},
-  "export.sample.phase.running": {"zh-Hans": "正在生成试导出文件…", "zh-Hant": "正在產生試導出檔案…", "en": "Rendering sample export…", "ja": "試し書き出しを処理中…"},
-  "export.sample.phase.succeeded": {"zh-Hans": "试导出文件已完成", "zh-Hant": "試導出檔案已完成", "en": "Sample export file is ready", "ja": "試し書き出しファイルが完成しました"},
-  "export.sample.phase.failed": {"zh-Hans": "试导出失败。请到任务中心查看详情", "zh-Hant": "試導出失敗。請到任務中心查看詳情", "en": "Sample export failed. See the task center for details", "ja": "試し書き出しに失敗しました。タスクセンターで詳細を確認してください"},
+  "export.sample.phase.submitting": {"zh-Hans": "正在提交样片导出…", "zh-Hant": "正在提交樣片匯出…", "en": "Submitting sample export…", "ja": "サンプルの書き出しを送信中…"},
+  "export.sample.phase.queued": {"zh-Hans": "样片导出正在排队…", "zh-Hant": "樣片匯出正在排隊…", "en": "Sample export queued…", "ja": "サンプルの書き出し待機中…"},
+  "export.sample.phase.running": {"zh-Hans": "正在生成样片导出文件…", "zh-Hant": "正在產生樣片匯出檔案…", "en": "Rendering sample export…", "ja": "サンプルの書き出しを処理中…"},
+  "export.sample.phase.succeeded": {"zh-Hans": "样片导出完成", "zh-Hant": "樣片匯出完成", "en": "Sample export complete", "ja": "サンプルの書き出しが完了しました"},
+  "export.sample.phase.failed": {"zh-Hans": "样片导出失败。请到任务中心查看详情", "zh-Hant": "樣片匯出失敗。請到任務中心查看詳情", "en": "Sample export failed. See the task center for details", "ja": "サンプルの書き出しに失敗しました。タスクセンターで詳細を確認してください"},
   "export.sample.phase.unknown": {"zh-Hans": "尚未确认提交结果，请到任务中心核对原请求，不要重复提交", "zh-Hant": "尚未確認提交結果，請到任務中心核對原請求，不要重複提交", "en": "Submission is not confirmed. Reconcile the original request in the task center; do not submit it again", "ja": "送信結果が未確認です。重複送信せず、タスクセンターで元のリクエストを確認してください"},
-  "export.sample.phase.unavailable": {"zh-Hans": "当前无法核验或播放此结果，请检查连接或导出记录", "zh-Hant": "目前無法核驗或播放此結果，請檢查連線或導出記錄", "en": "This result cannot currently be verified or played. Check the connection or export history", "ja": "現在、この結果を検証または再生できません。接続または書き出し履歴を確認してください"},
+  "export.sample.phase.unavailable": {"zh-Hans": "当前无法核验或播放此结果，请检查连接或导出记录", "zh-Hant": "目前無法核驗或播放此結果，請檢查連線或匯出記錄", "en": "This result cannot currently be verified or played. Check the connection or export history", "ja": "現在、この結果を検証または再生できません。接続または書き出し履歴を確認してください"},
 
   "export.history.film": {
     "zh-Hans": "成片",
@@ -1408,12 +1408,6 @@ export const timelineDeliveryMessages = {
     "en": "No valid snapshot has been obtained; export is unavailable for now",
     "ja": "有効なスナップショットがないため、現在は書き出せません"
   },
-  "export.preflight.pending": {
-    "zh-Hans": "已有导出请求结果待确认。请使用原请求旁的恢复入口核对同一请求；重新检查不会重发导出",
-    "zh-Hant": "已有匯出請求結果待確認。請使用原請求旁的還原入口核對同一請求；重新檢查不會重送匯出",
-    "en": "An export request already awaits outcome confirmation. Use recovery beside the original request to check that same request. Rechecking will not resubmit the export",
-    "ja": "すでに書き出しリクエストの結果が確認待ちです。元のリクエスト横の復元操作で同じリクエストを確認してください。再検査では書き出しを再送信しません"
-  },
   "export.preflight.attempted": {
     "zh-Hans": "已发起一次导出提交。请在任务或导出记录查看结果；此报告不代表导出已完成",
     "zh-Hant": "已發起一次匯出提交。請在工作或匯出記錄查看結果；此報告不代表匯出已完成",
@@ -2555,6 +2549,12 @@ export const timelineDeliveryMessages = {
     "en": "The export range contains a placeholder segment.",
     "ja": "書き出し範囲に未生成のプレースホルダーがあります。"
   },
+  "export.preflight.issue.PLACEHOLDER_CLIP_NAMED": {
+    "zh-Hans": "镜头「{name}」还没生成，先补上素材再导出。",
+    "zh-Hant": "鏡頭「{name}」還沒生成，先補上素材再匯出。",
+    "en": "Shot “{name}” has not been generated yet. Add its media before exporting.",
+    "ja": "ショット「{name}」がまだ生成されていません。素材を追加してから書き出してください。"
+  },
   "export.preflight.issue.VERSION_TOO_SHORT": {
     "zh-Hans": "跟随的版本比这一段的长度短，先选可用版本或锁定。",
     "zh-Hant": "跟隨的版本比這一段的長度短，先選可用版本或鎖定。",
@@ -3166,5 +3166,65 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "時間軸預覽 · 修訂版 {revision}{snapshot}",
     "en": "Timeline preview · revision {revision}{snapshot}",
     "ja": "タイムラインプレビュー · リビジョン {revision}{snapshot}"
+  },
+  "export.pending.notStarted": {
+    "zh-Hans": "上次的导出没有开始",
+    "zh-Hant": "上次的匯出沒有開始",
+    "en": "The last export has not started",
+    "ja": "前回の書き出しは始まっていません"
+  },
+  "export.pending.notExecuted": {
+    "zh-Hans": "上次的导出没有执行：{reason}",
+    "zh-Hant": "上次的匯出沒有執行：{reason}",
+    "en": "The last export was not started: {reason}",
+    "ja": "前回の書き出しは実行されませんでした：{reason}"
+  },
+  "export.pending.continue": {
+    "zh-Hans": "继续上次的导出",
+    "zh-Hant": "繼續上次的匯出",
+    "en": "Continue the last export",
+    "ja": "前回の書き出しを続ける"
+  },
+  "export.pending.discard": {
+    "zh-Hans": "放弃",
+    "zh-Hant": "放棄",
+    "en": "Discard",
+    "ja": "破棄"
+  },
+  "export.pending.timelineChanged": {
+    "zh-Hans": "时间线已经改过，上次的导出不能继续",
+    "zh-Hant": "時間軸已經改過，上次的匯出不能繼續",
+    "en": "The timeline has changed, so the last export cannot continue",
+    "ja": "タイムラインが変更されたため、前回の書き出しは続行できません"
+  },
+  "export.pending.unavailable": {
+    "zh-Hans": "暂时查不到上次的导出",
+    "zh-Hant": "暫時查不到上次的匯出",
+    "en": "The last export cannot be checked right now",
+    "ja": "前回の書き出しを今は確認できません"
+  },
+  "export.pending.retry": {
+    "zh-Hans": "再试一次",
+    "zh-Hant": "再試一次",
+    "en": "Try again",
+    "ja": "もう一度試す"
+  },
+  "export.pending.reasonConflict": {
+    "zh-Hans": "时间线已经改过",
+    "zh-Hant": "時間軸已經改過",
+    "en": "the timeline has changed",
+    "ja": "タイムラインが変更されました"
+  },
+  "export.pending.reasonBlocked": {
+    "zh-Hans": "时间线还没有准备好导出",
+    "zh-Hant": "時間軸還沒有準備好匯出",
+    "en": "the timeline is not ready to export",
+    "ja": "タイムラインはまだ書き出せる状態ではありません"
+  },
+  "export.pending.reasonGeneric": {
+    "zh-Hans": "导出没有开始",
+    "zh-Hant": "匯出沒有開始",
+    "en": "the export did not start",
+    "ja": "書き出しは開始されませんでした"
   }
 } as const satisfies MessageCatalog;

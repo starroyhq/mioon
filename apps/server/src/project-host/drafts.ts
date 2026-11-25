@@ -83,6 +83,25 @@ export function createProjectDraftsFactory({store, channel, services, call, owns
         if (saved.requestHash !== hash({operation: 'timeline.render', input})) throw new AppError('IDEMPOTENCY_CONFLICT', '原导出请求身份与内容不一致。', 409);
         return publicValue(createTimelineRecoveryBoundary(store.db, input).replay('timeline.render', saved.response as string));
       },
+      readExportReceipt: input => {
+        const saved = readTimelineReceipt(store.db, input, 'timeline.render');
+        if (!saved) return null;
+        if (saved.requestHash !== hash({operation: 'timeline.render', input})) throw new AppError('IDEMPOTENCY_CONFLICT', '原导出请求身份与内容不一致。', 409);
+        const receipt = publicValue(createTimelineRecoveryBoundary(store.db, input).replay('timeline.render', saved.response as string)) as Record<string, unknown>;
+        const exportId = receipt?.id;
+        if (typeof exportId !== 'string') throw new AppError('INVALID_TIMELINE_SNAPSHOT', '导出回执不可用。', 409);
+        const row = store.get('exports', exportId) as Record<string, unknown> | undefined;
+        if (!row || row.projectId !== store.projectId || row.requestId !== input.requestId || row.mode !== 'timeline' || row.purpose !== 'export') {
+          throw new AppError('INVALID_TIMELINE_SNAPSHOT', '导出记录不可用。', 409);
+        }
+        const exportStatus = row.status;
+        if (!['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(String(exportStatus))) {
+          throw new AppError('INVALID_TIMELINE_SNAPSHOT', '导出状态不可用。', 409);
+        }
+        const error = row.error !== null && typeof row.error === 'object' ? row.error as Record<string, unknown> : null;
+        return {exportId, exportStatus: exportStatus as 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled',
+          ...(typeof error?.code === 'string' ? {errorCode: error.code} : {})};
+      },
       render: (input, outputLocale) => fixedBusinessCall(() => call('timeline.render', input, outputLocale ? {outputLocale} : undefined))}});
     const neverMutate = (): never => {throw new Error('Read-only shot receipt boundary');};
     const shotReplay = createLocalMutationServices(store, {canonical, readOnly: true, check: neverMutate, now: neverMutate, references: {guardManualUpdate: neverMutate}});
@@ -102,7 +121,8 @@ export function createProjectDraftsFactory({store, channel, services, call, owns
     const handlers = [
       createLocalDraftHttp({drafts: {...clip, put: mutate(clip.put), discard: mutate(clip.discard)}, signal}),
       createLocalDeliveryHttp({delivery: {...delivery, put: mutate(delivery.put), discard: mutate(delivery.discard),
-        prepare: mutate(delivery.prepare), execute: mutate(delivery.execute), recover: mutate(delivery.recover)}, signal}),
+        prepare: mutate(delivery.prepare), execute: mutate(delivery.execute), recover: mutate(delivery.recover),
+        check: delivery.check, discardIntent: mutate(delivery.discardIntent)}, signal}),
       createLocalShotTextHttp({shotText: {...shot, put: mutate(shot.put), discard: mutate(shot.discard),
         prepare: mutate(shot.prepare), execute: mutate(shot.execute), recover: mutate(shot.recover)}, signal}),
     ];

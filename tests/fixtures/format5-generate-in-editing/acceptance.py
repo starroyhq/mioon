@@ -12,6 +12,7 @@ import argparse
 import json
 import shutil
 import sys
+import time
 import traceback
 import urllib.request
 import uuid
@@ -231,6 +232,49 @@ def main() -> int:
             log('clip menu 在前面生成镜头 places before the shot and undoes in one step')
             clip_menu_generate('after')
             log('clip menu 在后面生成镜头 places after the shot and undoes in one step')
+            # Q-13: every entry only places; the panel's Generate starts the task.
+            dismiss_toast(page)
+            page.eval_on_selector('[data-testid="timeline-scroll"]',
+                'el => { el.scrollLeft = el.scrollWidth; el.dispatchEvent(new Event("scroll", {bubbles: true})); }')
+            page.wait_for_timeout(900)
+            state = rpc('project.get', {'projectId': project}, project)
+            main = state['timeline']['mainTrack']['trackId']
+            main_clips = sorted([clip for clip in state['timeline']['clips'] if clip['trackId'] == main],
+                key=lambda clip: clip['startFrame'])
+            last_box = page.get_by_test_id('timeline-clip-' + main_clips[-1]['id']).bounding_box()
+            assert last_box
+            page.mouse.click(min(1580, last_box['x'] + last_box['width'] + 30),
+                last_box['y'] + last_box['height'] / 2, button='right')
+            page.wait_for_timeout(700)
+            assert 'timeline-menu-generate' in menu_items(page)
+            page.get_by_test_id('timeline-menu-generate').click(force=True)
+            page.wait_for_timeout(2500)
+            state = rpc('project.get', {'projectId': project}, project)
+            placed_shot = next(shot for shot in state['shots'] if shot['title'] == '新镜头')
+            assert not [job for job in state.get('jobs', []) if job['shotId'] == placed_shot['id']], \
+                'placing the placeholder must not start generation'
+            expect(page.get_by_test_id('editing-generate-panel')).to_be_visible(timeout=20000)
+            page.get_by_test_id('editing-generate-prompt').fill('Q-13 面板里再生成')
+            page.get_by_test_id('editing-generate-save').click(force=True)
+            page.wait_for_timeout(1500)
+            if page.get_by_test_id('editing-generate-submit').is_disabled():
+                page.get_by_test_id('editing-generate-service').click(force=True)
+                page.wait_for_timeout(500)
+                item = page.locator('[data-testid^="editing-generate-service-"]').first
+                assert item.count(), 'the panel offers the board service picker'
+                item.click(force=True)
+                page.wait_for_timeout(1500)
+            page.get_by_test_id('editing-generate-submit').click(force=True)
+            deadline = time.time() + 60
+            job = None
+            while time.time() < deadline:
+                state = rpc('project.get', {'projectId': project}, project)
+                job = next((item for item in state.get('jobs', []) if item['shotId'] == placed_shot['id']), None)
+                if job:
+                    break
+                page.wait_for_timeout(500)
+            assert job, 'the panel Generate button must start the task'
+            log('Q-13 placement has no task; panel Generate starts it', jobStatus=job['status'])
             # WT-1-18: a long packed project must keep the main end entry on the
             # main track after an overlay right-click and horizontal scrolling.
             long_name = 'GE-b acceptance long ' + str(uuid.uuid4())[:8]

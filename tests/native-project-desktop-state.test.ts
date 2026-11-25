@@ -1,5 +1,6 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import {createNativeProjectDesktopController, projectLocationRisks} from '../apps/web/src/native-project-desktop-state.ts';
@@ -563,4 +564,107 @@ test('a confirmed native result opens from a hidden editor with one opaque permi
   const fresh = await entry.prepareNativeResultDeparture(); assert.ok(fresh); const held = Promise.withResolvers<unknown>(); f.holdDirectory(held.promise);
   const pending = entry.openNativeResult(createdId, fresh); await new Promise(setImmediate); f.controller.change({name: 'Input during fresh verification'});
   held.resolve(registered); assert.equal(await pending, false); assert.equal(consumed, 1); assert.equal(f.controller.getState().values.name, 'Input during fresh verification');
+});
+
+test('definite format-upgrade refusals release the unknown state, while copy results open the copy decision', async t => {
+  const offer = {status: 'upgrade-required', token, preview: {projectId, contentToken: 'a'.repeat(32), contentSequence: 4,
+    projectVersion: PROJECT_FILE_SCHEMA_VERSION, targetProjectVersion: FORMAT4_PROJECT_SCHEMA_VERSION,
+    historyVersion: HISTORY_SCHEMA_VERSION, targetHistoryVersion: FORMAT4_HISTORY_SCHEMA_VERSION}};
+  const refused = await fixture(t, {openSelectedFile: () => offer,
+    resolveFormatUpgrade: () => {throw Object.assign(Error('copy refusal'), {code: 'PROJECT_FILE_COPY', status: 409});}});
+  await refused.controller.openFile();
+  assert.equal(await refused.controller.chooseFormatUpgrade('upgrade'), false);
+  assert.equal(refused.controller.getState().action.kind, 'idle');
+  assert.equal(refused.controller.readCloseSnapshot().unknown, false);
+  assert.equal(refused.controller.getState().formatUpgrade?.token, token);
+  refused.controller.closeFormatUpgrade();
+  assert.equal(refused.controller.getState().formatUpgrade, undefined);
+
+  const copied = await fixture(t, {openSelectedFile: () => offer,
+    resolveFormatUpgrade: () => ({status: 'copy', token, name: 'Copy', original: {name: 'Original', displayPath: '/verified/original.mioon'}})});
+  await copied.controller.openFile();
+  assert.equal(await copied.controller.chooseFormatUpgrade('upgrade'), false);
+  assert.equal(copied.controller.getState().formatUpgrade, undefined);
+  assert.equal(copied.controller.getState().action.kind, 'idle');
+  assert.equal(copied.controller.readCloseSnapshot().unknown, false);
+  assert.equal(copied.controller.getState().failure?.issue.code, 'PROJECT_FILE_COPY');
+});
+
+
+test('an unclassified upgrade outcome keeps unknown state but the upgrade dialog can still be closed', async t => {
+  const offer = {status: 'upgrade-required', token, preview: {projectId, contentToken: 'a'.repeat(32), contentSequence: 4,
+    projectVersion: PROJECT_FILE_SCHEMA_VERSION, targetProjectVersion: FORMAT4_PROJECT_SCHEMA_VERSION,
+    historyVersion: HISTORY_SCHEMA_VERSION, targetHistoryVersion: FORMAT4_HISTORY_SCHEMA_VERSION}};
+  const f = await fixture(t, {openSelectedFile: () => offer, resolveFormatUpgrade: () => {throw Error('lost upgrade acknowledgement');}});
+  await f.controller.openFile();
+  assert.equal(await f.controller.chooseFormatUpgrade('upgrade'), false);
+  assert.equal(f.controller.getState().action.kind, 'unknown');
+  assert.equal(f.controller.readCloseSnapshot().unknown, true);
+  f.controller.closeFormatUpgrade();
+  assert.equal(f.controller.getState().formatUpgrade, undefined);
+  assert.equal(f.controller.getState().busy, false);
+});
+
+test('the upgrade dialog uses the generic retry label and exposes an exit in every state', async t => {
+  const source = readFileSync(new URL('../apps/web/src/project-file/ProjectFormatUpgradeDialog.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /projectFile\.create\.recheck/u);
+  assert.match(source, /projectFile\.common\.retry/u);
+  assert.match(source, /onOpenChange=\{next => \{if \(!next && !busy && !blocked\) onClose\(\);\}\}/u);
+});
+
+
+test('a definite PROJECT_FILE_MOVED upgrade refusal is shown as a changed target instead of an unknown write', async t => {
+  const offer = {status: 'upgrade-required', token, preview: {projectId, contentToken: 'a'.repeat(32), contentSequence: 4,
+    projectVersion: PROJECT_FILE_SCHEMA_VERSION, targetProjectVersion: FORMAT4_PROJECT_SCHEMA_VERSION,
+    historyVersion: HISTORY_SCHEMA_VERSION, targetHistoryVersion: FORMAT4_HISTORY_SCHEMA_VERSION}};
+  const f = await fixture(t, {openSelectedFile: () => offer,
+    resolveFormatUpgrade: () => {throw Object.assign(Error('moved'), {code: 'PROJECT_FILE_MOVED', status: 409});}});
+  await f.controller.openFile();
+  assert.equal(await f.controller.chooseFormatUpgrade('upgrade'), false);
+  assert.equal(f.controller.getState().action.kind, 'idle');
+  assert.equal(f.controller.getState().formatNotice, 'changed');
+  assert.equal(f.controller.readCloseSnapshot().unknown, false);
+});
+
+test('definite copy and moved refusals during adoptCopy never enter the unknown-write state', async t => {
+  for (const code of ['PROJECT_FILE_COPY', 'PROJECT_FILE_MOVED'] as const) {
+    const f = await fixture(t, {openSelectedFile: () => ({status: 'copy', token, name: 'Copy'}),
+      adoptCopy: () => {throw Object.assign(Error(code), {code});}});
+    await f.controller.openFile();
+    assert.equal(await f.controller.adoptCopy(), false);
+    assert.equal(f.controller.getState().action.kind, 'error');
+    assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  }
+});
+
+test('a home card open that returns a diverged failure surfaces the existing recovery issue', async t => {
+  let entry: ReturnType<typeof createProjectEntryController>;
+  const f = await fixture(t, {openRecent: request => {
+    entry.consume(String(request.entryToken), String(request.projectId));
+    return {status: 'failed', reason: 'unavailable', failure: {code: 'PROJECT_HISTORY_DIVERGED'}};
+  }});
+  const context: ProjectWindowContext = {version: 2, role: 'launcher', windowId: id(30), contextId: id(31), backendId: PROJECT_ENTRY_TEST_INSTANCE, initialProjectId: null, autoOpen: false, editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false};
+  entry = createProjectEntryController({context, bridge: {context: async () => context} as unknown as ProjectWindowBridge, desktopClient: f.client, identity: f.identity, manageIdentityLifecycle: false,
+    client: createLauncherClient(async () => assert.fail('No project RPC'), {parseCreateInput: value => value, readDirectory: () => readProjectEntryIdentity(f.identity)}),
+    onNativeOpenError: (error, projectId) => f.controller.observeError(error, 'open', projectId), confirm: async () => true, newToken: () => id(40)});
+  entry.activate(); t.after(() => entry.dispose()); await entry.boot(); entry.reportCreate({dirty: true, busy: false, version: 1});
+  assert.equal(await entry.open(projectId), false);
+  assert.equal(f.controller.getState().failure?.issue.code, 'PROJECT_HISTORY_DIVERGED');
+  assert.equal(entry.getState().openUnknown, false);
+});
+
+test('a generic native open failure is resolved to 12-25 by the read-only history probe', async t => {
+  let entry: ReturnType<typeof createProjectEntryController>;
+  const f = await fixture(t, {openRecent: request => {entry.consume(String(request.entryToken), String(request.projectId)); return {status: 'failed', reason: 'unavailable'};}});
+  const context: ProjectWindowContext = {version: 2, role: 'launcher', windowId: id(30), contextId: id(31), backendId: PROJECT_ENTRY_TEST_INSTANCE, initialProjectId: null, autoOpen: false, editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false};
+  let probes = 0;
+  entry = createProjectEntryController({context, bridge: {context: async () => context} as unknown as ProjectWindowBridge, desktopClient: f.client, identity: f.identity, manageIdentityLifecycle: false,
+    client: createLauncherClient(async () => assert.fail('No project RPC'), {parseCreateInput: value => value, readDirectory: () => readProjectEntryIdentity(f.identity)}),
+    probeHistory: async () => {probes++; return true;},
+    onNativeOpenError: (error, projectId) => f.controller.observeError(error, 'open', projectId), confirm: async () => true, newToken: () => id(40)});
+  entry.activate(); t.after(() => entry.dispose()); await entry.boot(); entry.reportCreate({dirty: true, busy: false, version: 1});
+  assert.equal(await entry.open(projectId), false);
+  assert.equal(probes, 1);
+  assert.equal(f.controller.getState().failure?.issue.code, 'PROJECT_HISTORY_DIVERGED');
+  assert.equal(entry.getState().openUnknown, false);
 });

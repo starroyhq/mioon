@@ -745,3 +745,21 @@ test('an archived previs node is ignored and an unverifiable previs output is no
     store.close();
   }
 });
+
+test('reference preview keeps a bounded PREVIS_OUTPUT_REQUIRED reason for the UI', () => {
+  const seeded = seed(fixture()), {store} = seeded;
+  try {
+    const nodeId = randomUUID(), edgeId = randomUUID();
+    store.put('nodes', {id: nodeId, projectId: store.projectId, type: 'previs', label: '机位预演', text: '',
+      scene: defaultPrevisScene(), sceneRevision: 1, position: {x: 10, y: 10}, createdAt: timestamp});
+    const preview = createFormat5SequenceEditService(store).preview({projectId: store.projectId,
+      requestId: 'ri-previs-no-output-preview', referenceIntent: {side: 'board', operation: {kind: 'reference',
+        edit: {kind: 'attach', edgeId, shotId: seeded.shotId, sourceNodeId: nodeId, role: 'first_frame'}}},
+      allocation: {edges: [{id: edgeId, fromId: nodeId, toId: seeded.shotId}]}}) as Record<string, unknown>;
+    assert.equal(preview.ok, false);
+    assert.equal(preview.code, 'SEQUENCE_EDIT_REFERENCE_INVALID');
+    assert.equal(preview.reason, 'PREVIS_OUTPUT_REQUIRED');
+  } finally {
+    store.close();
+  }
+});

@@ -25,7 +25,7 @@ test('actual App native admission reads media work and uncertain outcomes before
     };
   const clean = () => ({dirty: false, busy: false, unknown: false, identity: ['synthetic-editor']});
   let cleanup: (() => void) | undefined;
-  const env = {window: win, nativeWindow: {}, nativeSettingsScope: null, readEditorWindowInputs: clean,
+  const env = {window: win, nativeWindow: {}, nativeSettingsScope: null, readEditorWindowInputs: clean, readQuitWork: () => [],
     projectMediaRef: {current: {controller: {pauseObservation() {}}}},
     nativeProjectEntry: {readCloseSnapshot: clean}, readMediaClose, combineNativeEntryClose, installNativeCloseAdmission,
     nativeCloseRegistry: {current: createNativeCloseRegistry()}, settingsNavigation: {current: createSettingsNavigationRegistry()},
@@ -93,7 +93,7 @@ async function mediaAdmissionFixture() {
   let cleanup: (() => void) | undefined;
   const env = {window: win, nativeWindow: {}, nativeSettingsScope: null,
     projectMediaRef: {current: {controller}}, projectMedia: {controller}, identity, sameMediaOwner,
-    readProjectMediaOwner: () => currentOwner, readEditorWindowInputs: clean,
+    readProjectMediaOwner: () => currentOwner, readEditorWindowInputs: clean, readQuitWork: () => [],
     nativeProjectEntry: {readCloseSnapshot: clean}, readMediaClose, combineNativeEntryClose, installNativeCloseAdmission,
     nativeCloseRegistry: {current: createNativeCloseRegistry()}, settingsNavigation: {current: createSettingsNavigationRegistry()},
     readNativeLegacyClose, dirtyRef: {current: false}, shotTextRef: {current: null}, shotCloseRef: {current: null},

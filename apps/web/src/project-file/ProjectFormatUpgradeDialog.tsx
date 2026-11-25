@@ -20,7 +20,7 @@ export function ProjectFormatUpgradeDialog({busy, notice, recheck, blocked, onCh
 }) {
   const {t} = useI18n();
   const safeChoice = useRef<HTMLButtonElement>(null);
-  return <Dialog open onOpenChange={next => {if (!next && !busy && !recheck && !blocked) onClose();}}>
+  return <Dialog open onOpenChange={next => {if (!next && !busy && !blocked) onClose();}}>
     <WorkbenchDialogContent size="confirm" className="pf-dialog pf-format-upgrade" showCloseButton={false}
       initialFocus={safeChoice} data-testid="pf-format-upgrade"
       title={<><span className="pf-format-upgrade-icon"><Upload size={18} aria-hidden="true" /></span>{t('projectFile.upgrade.title')}</>}
@@ -32,14 +32,14 @@ export function ProjectFormatUpgradeDialog({busy, notice, recheck, blocked, onCh
           <WorkbenchButton variant="primary" disabled={Boolean(busy || recheck || blocked) || notice === 'changed'} loading={busy === 'upgrade'}
             data-testid="pf-format-approve" onClick={() => onChoose('upgrade')}>{t('projectFile.upgrade.open')}</WorkbenchButton>
         </div>
-        {notice === 'changed' && !recheck && <WorkbenchButton disabled={blocked} onClick={onClose}>{t('common.close')}</WorkbenchButton>}
+        {notice && !recheck && <WorkbenchButton disabled={blocked} onClick={onClose}>{t('common.close')}</WorkbenchButton>}
       </>}>
       <div className="pf-format-upgrade-backup">
         <Layers size={15} aria-hidden="true" />
         <strong>{t('projectFile.upgrade.backup')}</strong>
       </div>
       {notice && <WorkbenchAlert tone="danger" data-testid="pf-format-upgrade-error">{t(`projectFile.upgrade.${notice}`)}</WorkbenchAlert>}
-      {recheck && <WorkbenchAlert tone="warning" actions={<WorkbenchButton disabled={blocked} onClick={recheck}>{t('projectFile.create.recheck')}</WorkbenchButton>}>
+      {recheck && <WorkbenchAlert tone="warning" actions={<><WorkbenchButton disabled={blocked} onClick={onClose}>{t('common.close')}</WorkbenchButton><WorkbenchButton disabled={blocked} onClick={recheck}>{t('projectFile.common.retry')}</WorkbenchButton></>}>
         {t('projectFile.open.outcomeUnknown')}
       </WorkbenchAlert>}
     </WorkbenchDialogContent>

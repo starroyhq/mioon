@@ -439,7 +439,9 @@ function Harness(): React.ReactElement {
       <button type="button" data-testid="wire-tab-versions" onClick={() => setInspectorTab('versions')}>版本页</button></header>
     <main className="board-fixture-board" data-testid="board-fixture-board">
       <BoardUiLive board={projection} activeFilmId={activeFilmId} history={history} mount={mount}
-        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} run={run} runReference={runReference}
+        selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
+        onDelete={nodeId => {void run(boardDeleteIntent(nodeId), t('boardUi.notice.deletedCount', {count: 1})); setSelectedNodeId(null);}}
+        run={run} runReference={runReference}
         runSubject={runSubject} inputs={inputs}
         onUndoNotice={undoNotice} onDismissNotice={notice => setNotice(current => current?.id === notice.id ? null : current)}
         notice={notice} reduceMotion={reduced} busy={busy}
@@ -513,6 +515,7 @@ function Harness(): React.ReactElement {
             || (data?.versions ?? []).some((version: Row) => version.shotId === shot.id)}
           resizable onSavePrompt={prompt => updateShot(shot.id, {prompt}, Number(shot.revision) || 1)}
           onResize={duration => updateShot(shot.id, {duration}, Number(shot.revision) || 1)}
+          providers={[]} generationOptions={{}} onGenerationOptionsChange={() => {}}
           onGenerate={() => generateShot(shot.id)} onRevealOnBoard={() => {}} rpc={(operation, input) => rpc(operation, input)}
           onDialogueApplied={() => {void refresh();}}/>
       </div>;

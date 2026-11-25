@@ -1,5 +1,5 @@
 import { createLocalDeliverySchemas, LOCAL_DELIVERY_LIMITS } from '@mioon/contracts/local-delivery';
-import type { LocalDeliveryDraftPut, LocalDeliveryDraftDelete, LocalDeliveryPrepare, LocalDeliveryExecute, LocalDeliveryEnvelope, LocalDeliveryExecution } from '@mioon/contracts/local-delivery';
+import type { LocalDeliveryDraftPut, LocalDeliveryDraftDelete, LocalDeliveryPrepare, LocalDeliveryExecute, LocalDeliveryEnvelope, LocalDeliveryExecution, LocalDeliveryCheck, LocalDeliveryCheckResult, LocalDeliveryDiscardIntent } from '@mioon/contracts/local-delivery';
 import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 
 export type LocalDeliveryFailureKind = 'refused' | 'conflict' | 'unknown';
@@ -25,6 +25,8 @@ export interface LocalDeliveryClient {
   prepare(input: LocalDeliveryPrepare): Promise<LocalDeliveryEnvelope>;
   execute(input: LocalDeliveryExecute): Promise<LocalDeliveryExecution>;
   recover(input: LocalDeliveryExecute): Promise<LocalDeliveryExecution>;
+  check(input: LocalDeliveryCheck): Promise<LocalDeliveryCheckResult>;
+  discardIntent(input: LocalDeliveryDiscardIntent): Promise<LocalDeliveryEnvelope>;
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 async function boundedJSON(response: Response, signal: AbortSignal, limit: number, expiresAt: number): Promise<unknown> {
@@ -108,5 +110,10 @@ export function createLocalDeliveryClient({ isRenderInput, fetcher = (...args) =
     get: projectId => envelope('GET', `?${new URLSearchParams({ projectId })}`),
     put: input => envelope('PUT', '/draft', input), discard: input => envelope('DELETE', '/draft', input),
     prepare: input => envelope('POST', '/prepare', input), execute: input => execution('/execute', input), recover: input => execution('/recover', input),
+    check: async input => {
+      const parsed = schemas.checkResult.safeParse(await request('POST', '/check', input));
+      if (!parsed.success) throw localDeliveryProtocolError(); return parsed.data;
+    },
+    discardIntent: input => envelope('POST', '/discard-intent', input),
   };
 }

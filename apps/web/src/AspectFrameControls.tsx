@@ -78,10 +78,6 @@ export function AspectFrameMenu({ratio, shortEdge, disabled, onSelect}: AspectFr
           </DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
       </DropdownMenuGroup>
-      <p className="aspect-frame-menu-note">
-        <Info size={12} aria-hidden="true" />
-        <span>{t('timeline.aspectFrame.menuHint')}</span>
-      </p>
     </DropdownMenuContent>
   </DropdownMenu>;
 }
@@ -135,7 +131,6 @@ export function AspectFrameExportRatio({ratio}: {ratio: TimelineOutputRatio}) {
     <dd>
       <Ratio size={14} aria-hidden="true" />
       <span>{ratio}</span>
-      <small>{t('timeline.aspectFrame.exportHint')}</small>
     </dd>
   </dl>;
 }

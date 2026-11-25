@@ -110,6 +110,11 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
       body = <span className="pf-open-copy">{failure.originalProjectFile && <><span>{t('projectFile.open.copy.intro')}</span><span className="pf-open-path" data-testid="pf-open-original-path">{failure.originalProjectFile}</span></>}<span>{t('projectFile.open.copy.body')}</span></span>;
       buttons = <>{close(t('common.cancel'))}{run('openOriginal', t('projectFile.open.copy.openOriginal'), props.onOpenOriginal, !props.onAdoptCopy)}{run('adoptCopy', t('projectFile.open.copy.adopt'), props.onAdoptCopy, true)}</>;
       break;
+    case 'PROJECT_HISTORY_DIVERGED':
+      title = t('projectFile.historyRecovery.title', {name});
+      body = t('projectFile.historyRecovery.reason');
+      buttons = close(t('common.close'), true);
+      break;
     case 'PROJECT_FILE_MOVED': {
       title = t('projectFile.open.moved.title', {name});
       const reason = t(failure.reason === 'access-denied' ? 'projectFile.open.moved.access' : failure.reason === 'disk-disconnected' ? 'projectFile.open.moved.disk' : 'projectFile.open.moved.missing');
