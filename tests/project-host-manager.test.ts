@@ -442,10 +442,13 @@ test('a project moved while closed is found by file identity when it opens', asy
   lease.release();
 });
 
-test('prepareAcquire finds a moved file after its old directory disappears without opening any database', async t => {
+test('prepareAcquire refreshes the device at the registered path and later finds a move without opening any database', async t => {
   let recoveryCalls = 0;
   const {dataDir, manager, registry, opens, state} = await setup(t, {maintenance: {recoverProjectFile: () => {recoveryCalls++; return {state: 'clean'};}}});
   const film = await manager.create({name: 'Film'}), moved = path.join(dataDir, 'projects', 'Moved Film');
+  registry.upsert({...film, fileIdentity: {...film.fileIdentity, dev: String(BigInt(film.fileIdentity.dev) + 1n)}});
+  assert.deepEqual(await manager.prepareAcquire(film.projectId), film);
+  assert.deepEqual(registry.get(film.projectId), film);
   renameSync(path.dirname(film.projectFile), moved);
   assert.equal(existsSync(path.dirname(film.projectFile)), false);
   const prepared = await manager.prepareAcquire(film.projectId), projectFile = path.join(moved, 'Film.mioon');
@@ -456,6 +459,26 @@ test('prepareAcquire finds a moved file after its old directory disappears witho
   const lease = await manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile});
   assert.equal(lease.host.store.projectFile, projectFile);
   lease.release();
+});
+
+test('prepareAcquire keeps stale registration when the inode changed or the current identity is already registered', async t => {
+  const {manager, registry, opens} = await setup(t);
+  const film = await manager.create({name: 'Film'});
+  const oldDevice = String(BigInt(film.fileIdentity.dev) + 1n);
+  const missing = {code: 'PROJECT_UNAVAILABLE', details: {projectId: film.projectId, reason: 'PROJECT_MISSING'}};
+  const differentInode = {...film, fileIdentity: {dev: oldDevice, ino: String(BigInt(film.fileIdentity.ino) + 1n)}};
+  registry.upsert(differentInode);
+  await assert.rejects(manager.prepareAcquire(film.projectId), missing);
+  assert.deepEqual(registry.get(film.projectId), differentInode);
+
+  const oldIdentity = {...film, fileIdentity: {...film.fileIdentity, dev: oldDevice}};
+  registry.upsert(oldIdentity);
+  const claimed = {...film, projectId: randomUUID()};
+  registry.upsert(claimed);
+  await assert.rejects(manager.prepareAcquire(film.projectId), missing);
+  assert.deepEqual(registry.get(film.projectId), oldIdentity);
+  assert.deepEqual(registry.get(claimed.projectId), claimed);
+  assert.equal(opens.count, 0);
 });
 
 test('a path admitted before a registry move cannot open the new path', async t => {

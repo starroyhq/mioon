@@ -39,8 +39,6 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
   };
   const sdk=createRunwaySdkClient({api:API,send:(endpoint,options)=>createJsonRequest({
     api:API,headers:{Authorization:`Bearer ${secret}`,'X-Runway-Version':new Headers(options.headers).get('x-runway-version')??''},fetchImpl,ensureEnabled,name:'Runway',
-    // Preserve the legacy GET retryability and conservative POST classification.
-    isRetryableStatus:status=>status>=500||status===429||status===408,
   })(endpoint,options)});
   const cache = createPollCache({ now, interval: 5000, retrieve: async (id, context) => {
     assertTaskId(id);

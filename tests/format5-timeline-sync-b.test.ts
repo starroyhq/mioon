@@ -6,9 +6,11 @@ import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
 import {
-  moveSequenceSyncHistory, previewSequenceSync, readSequenceSyncProjection, runSequenceSync,
+  applySequenceEditTimelineDelta, moveSequenceSyncHistory, previewSequenceSync, readSequenceSyncProjection, runSequenceSync,
 } from '../packages/business/src/format5-sequence-sync.ts';
+import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
+import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import type {
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditHistoryCommand, SequenceEditTransactionFailure,
 } from '../packages/contracts/src/sequence-edit.ts';
@@ -173,6 +175,33 @@ test('an anchor overlap after compaction rejects the whole action with affected 
   assert.equal(preview.code, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
   assert.deepEqual([...preview.ids].sort(), [clipAudio, clipAudio2].sort());
   assert.deepEqual(state(store).clips, before.clips, 'nothing is written on an anchor conflict');
+});
+
+test('a cross-track drop preview reports all blockers at their compacted positions', t => {
+  const store = fixture(t);
+  const firstBlocker = id(36), secondBlocker = id(37), touchingClip = id(38);
+  store.tx(() => applySequenceEditTimelineDelta(store, {
+    clips: [
+      {id: firstBlocker, startFrame: 65, anchor: {clipId: clipB, offsetFrames: 5}},
+      {id: secondBlocker, startFrame: 95, anchor: {clipId: clipImage, offsetFrames: 5}},
+      {id: touchingClip, startFrame: 120, anchor: {clipId: clipImage, offsetFrames: 30}},
+    ].map(clip => ({...clip, trackId: videoTrack2, name: 'Overlay', durationFrames: 10, sourceInFrame: 0,
+      rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: imageAsset, sourceState: 'ready'})),
+    cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged'},
+  }));
+  const service = createFormat5SequenceEditService(store);
+  service.history({projectId: store.projectId});
+  const before = state(store);
+  const previewAt = (startFrame: number) => service.preview({projectId: store.projectId,
+    requestId: `overlap-drop-${startFrame}`, intents: [sequenceSyncIntent({
+      kind: 'clip-move-off-track', clipId: clipA, trackId: videoTrack2, startFrame,
+    })]});
+  // Removing clip A from the main track pulls the overlays 60 frames earlier.
+  // Both blockers enter the previously empty drop range [0, 60).
+  assert.deepEqual(previewAt(0), {ok: false, code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT',
+    ids: [firstBlocker, secondBlocker]});
+  assert.equal(typeof (previewAt(70) as Prepared).planDigest, 'string', 'a drop touching an overlay endpoint is allowed');
+  assert.deepEqual(state(store), before);
 });
 
 test('trimming shortens the owner, moves the suffix and detaches an out-of-range anchor in place', t => {

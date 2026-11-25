@@ -396,6 +396,7 @@ node tests/helpers/project-file-schema-derivation.ts --check
 - 项目文件不在私有存储里，不能用 `samePrivateStorageIdentity`。在 Windows 上，它只认原生组件在私有目录里绑定过的身份，普通 stat 会报 `FILE_IDENTITY_UNVERIFIED`。
 - 另写 `projectFileIdentity`：POSIX 上用 dev 和 ino；Windows 上先确认原生组件能否给任意路径出完整的文件 ID，不能的话用 Node 的 bigint stat。登记里存成十进制字符串（`projectFileIdentitySchema`）。
 - 它只用来找回被移动的项目和识别副本，不作为安全依据。由 B1 实现，并在 Windows 上验证。
+- 系统重启可能改变设备号。原登记路径仍是同一非零 inode、且当前身份未被其他项目登记时，打开流程会刷新登记的设备号。后续定位移动文件仍要求完整身份一致。若设备号已变且原路径在刷新前已经消失，可从新位置手动打开项目。
 
 ## 测试
 ### 辅助函数

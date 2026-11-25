@@ -1,5 +1,5 @@
 import {awaitProvider, checkpoint, operationCancelled} from '../operation-lifecycle.ts';
-import {downloadMp4, outputUrl, providerError, timeoutSignal} from '../providers/live-common.ts';
+import {downloadMp4, outputUrl, providerError, providerHttpError, timeoutSignal} from '../providers/live-common.ts';
 import type {OutputDownload, ProviderContext} from '../providers/live-common.ts';
 import type {ConfiguredVideoTask, VideoAdapterInput} from './adapters.ts';
 import {getOmniFailure, omniFailure, omniProviderError, rememberOmniTaskFailure, rememberOmniTaskLookupFailure} from './gemini-omni-errors.ts';
@@ -124,10 +124,9 @@ export function createGeminiOmniClient({api, model, root, acquireCredential, fet
     if (!response.ok) {
       let payload: unknown;
       try {payload = await readJson(response, 64 * 1024, signal);} catch { /* Preserve the HTTP classification. */ }
-      const uncertain = method === 'POST' && ![400, 401, 402, 403, 404, 405, 413, 415, 416, 422, 429].includes(response.status);
-      const error = omniProviderError(uncertain ? 'SUBMISSION_UNKNOWN' : 'PROVIDER_HTTP_' + response.status,
-        uncertain ? 'Gemini submission was not confirmed. Query the existing task before generating again.' : 'Gemini rejected the request.',
-        omniFailure(payload, response.status), {httpStatus: response.status, uncertain, retryable: method === 'GET' && [429, 500, 502, 503, 504].includes(response.status)});
+      const error = providerHttpError({status: response.status, method, message: 'Gemini rejected the request.',
+        uncertainMessage: 'Gemini submission was not confirmed. Query the existing task before generating again.',
+        detail: omniFailure(payload)});
       if (method === 'GET' && endpoint.startsWith('/interactions/')) rememberOmniTaskLookupFailure(error);
       throw error;
     }
@@ -228,8 +227,8 @@ export function createGeminiOmniClient({api, model, root, acquireCredential, fet
             if (!response.ok && ![301, 302, 303, 307, 308].includes(response.status)) {
               let payload: unknown;
               try {payload = await readJson(response, 64 * 1024, context.signal);} catch { /* Preserve the HTTP classification. */ }
-              credentialFailure = omniProviderError('PROVIDER_HTTP_' + response.status, 'Gemini rejected the download request.',
-                omniFailure(payload, response.status), {httpStatus: response.status, retryable: [429, 500, 502, 503, 504].includes(response.status)});
+              credentialFailure = providerHttpError({status: response.status, method: 'GET',
+                message: 'Gemini rejected the download request.', detail: omniFailure(payload)});
               throw credentialFailure;
             }
             return response;

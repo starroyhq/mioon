@@ -1599,6 +1599,8 @@ const MAIN_TRACK_ERROR_CODES = Object.freeze([
  * - `SEQUENCE_EDIT_ANCHOR_CONFLICT`: after a track edit the other-track clips or
  *   cues would overlap, leave the timeline, or lose their anchor target; the
  *   whole action is rejected with the affected ids and nothing is written (P5 D3).
+ *   If a cross-track drop overlaps existing clips, preview returns the ids of
+ *   those clips on the destination track after main-track compaction.
  * - `SEQUENCE_EDIT_SUBJECT_BINDING_INVALID`: a subject-binding intent names a
  *   missing/foreign shot or subject, a role that does not match the subject kind,
  *   a locked version that does not belong to the same subject, or an edge/row
