@@ -182,9 +182,21 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     return completed;
   }
   function closeFormatUpgrade() {
-    if (!startable() || state.busy || retry && state.action.kind !== 'unknown') return;
+    if (!startable() || state.busy || retry && (!state.formatUpgrade || state.action.kind !== 'unknown')) return;
     const upgrade = state.formatUpgrade;
-    emit({formatUpgrade: undefined, formatChoice: undefined, formatNotice: undefined, readOnlyProject: undefined});
+    const clearingUnknownUpgrade = Boolean(upgrade && state.action.kind === 'unknown');
+    if (clearingUnknownUpgrade) {
+      if (retryIntent) retryIntent.acknowledged = true;
+      retry = null;
+      retryIntent = null;
+    }
+    emit({
+      formatUpgrade: undefined,
+      formatChoice: undefined,
+      formatNotice: undefined,
+      readOnlyProject: undefined,
+      ...(clearingUnknownUpgrade ? {action: {kind: 'idle'}} : {}),
+    });
     if (upgrade) void client.discardFormatUpgrade?.({token: upgrade.token}).catch(() => {});
     void drainPendingOpen();
   }

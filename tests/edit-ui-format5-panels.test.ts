@@ -4,9 +4,10 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {
-  format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5MoveBeforeClipId,
-  format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit, splitFormat5ClipPatch,
+  format5AnchorConflictPresentation, format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds,
+  format5MoveBeforeClipId, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit, splitFormat5ClipPatch,
 } from '../apps/web/src/edit-ui/format5-panel-edits.ts';
+import {Format5EditSession} from '../apps/web/src/edit-ui/session.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {SubtitleIntent} from '../apps/web/src/subtitle-state.ts';
 
@@ -185,4 +186,85 @@ test('the production shell routes clip sound through the shared format-5 entry',
   for (const fragment of ['clipSoundEntriesVisible', 'data-testid="clip-mute-toggle"', 'data-testid="clip-audio-actions"',
     'onSeparateSound(clip.id)', 'onSaveClipAudio(clip.id)'])
     assert.ok(inspector.includes(fragment), fragment);
+});
+
+test('F6 anchor conflict names colliding clip or cue, highlights affected IDs, and falls back when unmatched', async () => {
+  const tl = {
+    clips: [
+      {id: 'clip-1', name: '开场镜头', assetId: 'asset-1'},
+      {id: 'clip-2', name: '', assetId: 'asset-2'},
+    ],
+    subtitles: {cues: [{id: 'cue-1', text: '雨夜脚步声'}]},
+  };
+  const assets = [{id: 'asset-1', name: 'opening.mp4'}, {id: 'asset-2', name: '背景音乐.mp3'}];
+  const tZh = (key: string, params?: Record<string, unknown>) => translate('zh-Hans', key as never, params as never);
+
+  const singleClip = format5AnchorConflictPresentation(['clip-1'], tl, assets, tZh);
+  assert.equal(singleClip.message, '会和「开场镜头」重叠，先挪开再试。');
+  assert.deepEqual(singleClip.highlightIds, ['clip-1']);
+
+  const multiple = format5AnchorConflictPresentation(['clip-1', 'clip-2', 'clip-1'], tl, assets, tZh);
+  assert.equal(multiple.message, '会和「开场镜头」等 2 段重叠，先挪开再试。');
+  assert.deepEqual(multiple.highlightIds, ['clip-1', 'clip-2']);
+
+  const singleCue = format5AnchorConflictPresentation(['cue-1'], tl, assets, tZh);
+  assert.equal(singleCue.message, '会和「雨夜脚步声」重叠，先挪开再试。');
+  assert.deepEqual(singleCue.highlightIds, ['cue-1']);
+
+  const unmatched = format5AnchorConflictPresentation(['track-v2'], tl, assets, tZh);
+  assert.equal(unmatched.message, translate('zh-Hans', 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT'));
+  assert.deepEqual(unmatched.highlightIds, []);
+
+  for (const locale of LOCALES) {
+    assert.ok(translate(locale, 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT_ONE', {name: 'Clip A'}).includes('Clip A'), locale);
+    assert.ok(translate(locale, 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT_MANY', {name: 'Clip A', count: 2}).includes('2'), locale);
+  }
+
+  // Preview preserves conflict ids on both structured refusal and thrown ApiError.
+  const session = new Format5EditSession(async () => {
+    throw Object.assign(new Error('conflict'), {code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT', details: {ids: ['clip-1', 'cue-1']}});
+  }, () => 'project-1');
+  const outcome = await session.preview({kind: 'clip-move', clipId: 'clip-0', beforeClipId: null});
+  assert.equal('ok' in outcome && outcome.ok === false, true);
+  if ('ok' in outcome && !outcome.ok) {
+    assert.equal(outcome.code, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
+    assert.deepEqual(outcome.ids, ['clip-1', 'cue-1']);
+  }
+});
+
+test('F3, F4, F7, and F8 shell behaviors and four-locale copy meet specification', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  // F3: submitting generation only auto-opens TaskCenter on submission_unknown, not normal submit.
+  const submitStart = app.indexOf('const submitGeneration = async');
+  const submitEnd = app.indexOf('\n  function generate(', submitStart);
+  const submitBody = app.slice(submitStart, submitEnd);
+  assert.match(submitBody, /if \(submitted\.status === 'submission_unknown'\) openTasks\(canRevealTasks\);/u);
+  assert.doesNotMatch(submitBody, /; openTasks\(canRevealTasks\);/u);
+
+  // F4: cost confirmation uses size="confirm" dialog with cancel + confirm buttons and no internal IDs or disclaimer paragraphs.
+  const confirmStart = app.indexOf('data-testid="generation-confirm-dialog"');
+  assert.ok(confirmStart > 0);
+  const confirmSlice = app.slice(confirmStart - 160, confirmStart + 4500);
+  assert.match(confirmSlice, /size="confirm"/u);
+  assert.match(confirmSlice, /data-testid="cancel-live-generation"/u);
+  assert.match(confirmSlice, /data-testid="confirm-live-generation"/u);
+  assert.equal(confirmSlice.includes("t('video.providers.connection')"), false);
+  assert.equal(confirmSlice.includes("t('video.providers.revision')"), false);
+  assert.equal(confirmSlice.includes("t('shell.generationBudgetScope')"), false);
+  assert.equal(confirmSlice.includes("t('shell.generationUnknownNoRetry')"), false);
+
+  // F7: previs inspector empty states contain only the empty-state phrase, no instructional follow-up.
+  assert.equal(translate('zh-Hans', 'previs.inspector.noKeyframes'), '还没有关键帧');
+  assert.equal(translate('zh-Hans', 'previs.inspector.notConnected'), '还没有连接镜头');
+  for (const locale of LOCALES) {
+    assert.equal(translate(locale, 'previs.inspector.noKeyframes').includes('K'), false, locale);
+    assert.equal(translate(locale, 'previs.inspector.notConnected').includes('。'), false, locale);
+    assert.equal(translate(locale, 'previs.inspector.notConnected').includes('.'), false, locale);
+  }
+
+  // F8: home window-close confirmation button says "Close anyway" (仍然关闭), not "Quit anyway".
+  assert.equal(translate('zh-Hans', 'native.unknownQuit'), '仍然关闭');
+  assert.equal(translate('zh-Hant', 'native.unknownQuit'), '仍然關閉');
+  assert.equal(translate('en', 'native.unknownQuit'), 'Close anyway');
+  assert.equal(translate('ja', 'native.unknownQuit'), 'それでも閉じる');
 });

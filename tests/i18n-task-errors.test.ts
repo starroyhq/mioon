@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { LOCALES, renderMessage, message } from '../packages/i18n/src/index.ts';
 import { agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
-import { generationFailureDescriptor } from '../apps/web/src/creation-i18n.ts';
+import { canRetryGenerationFailure, formatBoardGenerationFailure, generationFailureDescriptor, jobServiceDisplayName, providerHttpStatus, taskErrorDescriptor } from '../apps/web/src/creation-i18n.ts';
+import { translate } from '../packages/i18n/src/index.ts';
 import { agentChatError, safeAgentChatError } from '../packages/business/src/agent/chat-errors.ts';
 import type { DisplayMessage } from '../packages/i18n/src/index.ts';
 import type { EditTaskClient } from '../apps/web/src/edit-task-client.ts';
@@ -124,11 +125,51 @@ test('every retained local task diagnostic has an adjacent explicit display desc
 });
 
 
-test('generation failure lines translate known error codes and keep unknown codes visible', () => {
+test('generation failure lines translate structured HTTP statuses and never expose raw error codes or messages', () => {
+  const tZh = ((key: string, params?: Record<string, unknown>) => translate('zh-Hans', key as never, params as never)) as never;
   assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'PROVIDER_GENERATION_FAILED'})), '服务商没有返回视频');
   assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'MOCK_GENERATION_FAILED'})), '模拟生成失败');
   assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'DOWNLOAD_FAILED'})), '下载生成结果失败');
-  assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'SYNTHETIC_UNKNOWN'})), '生成失败（SYNTHETIC_UNKNOWN）');
+  assert.equal(renderMessage('zh-Hans', generationFailureDescriptor({code: 'SYNTHETIC_UNKNOWN'})), '生成失败');
+  assert.equal(formatBoardGenerationFailure({code: 'SYNTHETIC_UNKNOWN'}, 'MiniMax', tZh, msg => renderMessage('zh-Hans', msg)), '生成失败');
   assert.equal(renderMessage('zh-Hant', generationFailureDescriptor({code: 'PROVIDER_GENERATION_FAILED'})), '服務商沒有傳回影片');
   assert.equal(renderMessage('en', generationFailureDescriptor({code: 'PROVIDER_GENERATION_FAILED'})), 'The provider did not return a video');
+
+  const cases = [
+    {status: 401, retryable: false, zh: 'MiniMax 的密钥无效'},
+    {status: 402, retryable: false, zh: 'MiniMax 账户余额不足或没开通计费'},
+    {status: 403, retryable: false, zh: 'MiniMax 没有权限使用这个模型'},
+    {status: 404, retryable: false, zh: 'MiniMax 找不到这个模型'},
+    {status: 429, retryable: true, zh: 'MiniMax 请求太频繁，稍后再试'},
+    {status: 500, retryable: true, zh: 'MiniMax 暂时出了故障'},
+    {status: 503, retryable: true, zh: 'MiniMax 暂时出了故障'},
+    {status: 400, retryable: false, zh: 'MiniMax 拒绝了这次请求'},
+    {status: 422, retryable: false, zh: 'MiniMax 拒绝了这次请求'},
+  ] as const;
+  for (const item of cases) {
+    const error = {
+      code: `PROVIDER_HTTP_${item.status}`,
+      message: 'RAW_UPSTREAM_TEXT_MUST_NEVER_BE_SHOWN',
+      retryable: item.retryable,
+      providerFailure: {httpStatus: item.status, code: '1008', message: 'RAW_PROVIDER_BODY', providerType: 'minimax'},
+    };
+    assert.equal(providerHttpStatus(error), item.status);
+    assert.equal(canRetryGenerationFailure(error), item.retryable);
+    assert.equal(renderMessage('zh-Hans', generationFailureDescriptor(error, 'MiniMax')), item.zh);
+    assert.equal(renderMessage('zh-Hans', taskErrorDescriptor(error, 'MiniMax')), item.zh);
+    const boardLine = formatBoardGenerationFailure(error, 'MiniMax', tZh, msg => renderMessage('zh-Hans', msg));
+    assert.equal(boardLine, `生成失败：${item.zh}`);
+    assert.equal(boardLine.includes('PROVIDER_HTTP_'), false);
+    assert.equal(boardLine.includes('RAW_UPSTREAM'), false);
+    for (const locale of LOCALES) {
+      const rendered = renderMessage(locale, generationFailureDescriptor(error, 'MiniMax'));
+      assert.ok(rendered.includes('MiniMax'), `${item.status}/${locale}`);
+      assert.equal(rendered.includes('PROVIDER_HTTP_'), false, `${item.status}/${locale}`);
+      assert.equal(rendered.includes('RAW_'), false, `${item.status}/${locale}`);
+    }
+  }
+  assert.equal(jobServiceDisplayName({
+    providerId: 'minimax',
+    snapshot: {executionConnectionName: '工作室 MiniMax', executionBinding: {connectionId: 'conn-1', providerId: 'minimax'}},
+  }, tZh), '工作室 MiniMax');
 });

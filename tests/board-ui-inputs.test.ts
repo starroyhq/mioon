@@ -13,6 +13,8 @@ interface Render {
   loading(locale: Locale): string;
   running(locale: Locale): string;
   failed(locale: Locale): string;
+  failedHttp(locale: Locale, status: 402 | 429): string;
+  editingFailedHttp(locale: Locale, status: 402 | 429): string;
   unknown(locale: Locale): string;
   previs(locale: Locale): string;
 }
@@ -22,6 +24,7 @@ const entry = `import React from 'react';
   import {renderToStaticMarkup} from 'react-dom/server';
   import {I18nProvider,createLanguageStore} from './src/i18n/I18nProvider.tsx';
   import BoardInspector from './src/board-ui/BoardInspector.tsx';
+  import GenerateInEditingPanel from './src/edit-ui/GenerateInEditingPanel.tsx';
   import {projectLiveBoard} from './src/board-ui/live.ts';
   const shotId='60000000-0000-4000-8000-000000000010', rootId='60000000-0000-4000-8000-000000000001', previsId='60000000-0000-4000-8000-000000000050';
   const imageA='60000000-0000-4000-8000-000000000020', edgeA='60000000-0000-4000-8000-000000000030';
@@ -97,6 +100,27 @@ const entry = `import React from 'react';
       <BoardInspector {...base} inputs={full} jobs={[{id:'job-failed',shotId,status:'failed',providerId:'kling',
         error:{code:'PROVIDER_GENERATION_FAILED',message:'Synthetic provider failure.'},createdAt:'2026-11-22T00:00:00.000Z',snapshot:{}}]}/></I18nProvider>);
   }
+  function failedHttp(locale, status){
+    const job={id:'job-http-'+status,shotId,status:'failed',providerId:'minimax',
+      error:{code:'PROVIDER_HTTP_'+status,message:'RAW_ERROR_DO_NOT_SHOW',retryable:status===429,
+        providerFailure:{httpStatus:status,providerType:'minimax'}},
+      createdAt:'2026-11-22T00:00:00.000Z',
+      snapshot:{executionConnectionName:'MiniMax',executionBinding:{connectionId:'conn-mm',providerId:'minimax'}}};
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <BoardInspector {...base} inputs={full} jobs={[job]}/></I18nProvider>);
+  }
+  function editingFailedHttp(locale, status){
+    const job={id:'job-edit-http-'+status,shotId,status:'failed',providerId:'minimax',
+      error:{code:'PROVIDER_HTTP_'+status,message:'RAW_ERROR_DO_NOT_SHOW',retryable:status===429,
+        providerFailure:{httpStatus:status,providerType:'minimax'}},
+      createdAt:'2026-11-22T00:00:00.000Z',
+      snapshot:{executionConnectionName:'MiniMax',executionBinding:{connectionId:'conn-mm',providerId:'minimax'}}};
+    return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
+      <GenerateInEditingPanel shot={base.shots[0]} shotLabel="01" inputs={full} subjectNames={{}} cueCount={0}
+        job={job} jobs={[job]} versions={[]} busy={false} onSavePrompt={()=>{}} onRetryJob={()=>{}} onResize={()=>{}}
+        providers={[provider]} generationOptions={{}} onGenerationOptionsChange={()=>{}} onGenerate={()=>{}}
+        onRevealOnBoard={()=>{}} rpc={async()=>({})} onDialogueApplied={()=>{}}/></I18nProvider>);
+  }
   function unknown(locale){
     return renderToStaticMarkup(<I18nProvider store={createLanguageStore({systemLanguages:[locale]})}>
       <BoardInspector {...base} inputs={full} jobs={[{id:'job-unknown',shotId,status:'submission_unknown',providerId:'kling',
@@ -107,7 +131,7 @@ const entry = `import React from 'react';
       <BoardInspector {...base} selectedNodeId={previsId} previsInspector={<div data-testid="previs-inspector-marker">OPEN</div>}/>
     </I18nProvider>);
   }
-  export {inspector, textOnly, loading, running, failed, unknown, previs};`;
+  export {inspector, textOnly, loading, running, failed, failedHttp, editingFailedHttp, unknown, previs};`;
 
 function renderer(): Promise<Render> {
   return loaded ??= (async () => {
@@ -252,5 +276,31 @@ test('a selected format-5 previs card uses the supplied PrevisInspector', async 
     const html = render.previs(locale);
     assert.match(html, /data-testid="previs-inspector-marker"/u, locale);
     assert.equal(html.includes('board-inspector-node-edit'), false, locale);
+  }
+});
+
+test('board inspector and 21-09 panel translate HTTP failures and hide retry when retryable is false', async () => {
+  const render = await renderer();
+  for (const locale of LOCALES) {
+    const board402 = render.failedHttp(locale, 402);
+    assert.ok(board402.includes(translate(locale, 'tasks.error.providerHttp402', {service: 'MiniMax'})), locale);
+    assert.equal(board402.includes('retry-failed-version-job-http-402'), false, locale);
+    assert.equal(board402.includes('PROVIDER_HTTP_402'), false, locale);
+    assert.equal(board402.includes('RAW_ERROR_DO_NOT_SHOW'), false, locale);
+
+    const board429 = render.failedHttp(locale, 429);
+    assert.ok(board429.includes(translate(locale, 'tasks.error.providerHttp429', {service: 'MiniMax'})), locale);
+    assert.match(board429, /data-testid="retry-failed-version-job-http-429"/u, locale);
+    assert.equal(board429.includes('PROVIDER_HTTP_429'), false, locale);
+
+    const edit402 = render.editingFailedHttp(locale, 402);
+    assert.ok(edit402.includes(translate(locale, 'tasks.error.providerHttp402', {service: 'MiniMax'})), locale);
+    assert.equal(edit402.includes('data-testid="editing-generate-retry"'), false, locale);
+    assert.equal(edit402.includes('PROVIDER_HTTP_402'), false, locale);
+
+    const edit429 = render.editingFailedHttp(locale, 429);
+    assert.ok(edit429.includes(translate(locale, 'tasks.error.providerHttp429', {service: 'MiniMax'})), locale);
+    assert.match(edit429, /data-testid="editing-generate-retry"/u, locale);
+    assert.equal(edit429.includes('PROVIDER_HTTP_429'), false, locale);
   }
 });

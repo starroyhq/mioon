@@ -454,10 +454,10 @@ export const nativeMessages = {
     "ja": "終了後はこの操作を再確認できなくなる可能性があります。"
   },
   "native.unknownQuit": {
-    "zh-Hans": "仍然退出",
-    "zh-Hant": "仍然結束",
-    "en": "Quit anyway",
-    "ja": "それでも終了"
+    "zh-Hans": "仍然关闭",
+    "zh-Hant": "仍然關閉",
+    "en": "Close anyway",
+    "ja": "それでも閉じる"
   },
   "native.quitAnyway": {
     "zh-Hans": "仍然退出",
