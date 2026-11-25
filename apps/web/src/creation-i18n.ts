@@ -130,6 +130,8 @@ export function providerHttpStatus(error: unknown): number | null {
 
 /** Translates structured provider HTTP failures into plain language using the job's service name. */
 export function providerHttpErrorDescriptor(error: unknown, service?: string): DisplayMessage | null {
+  const code = safeTaskErrorCode(error);
+  if (code === 'SUBMISSION_UNKNOWN' || code === 'PROVIDER_SUBMISSION_UNKNOWN') return null;
   const status = providerHttpStatus(error);
   if (status === null) return null;
   const providerFailure = error !== null && typeof error === 'object' && 'providerFailure' in error
@@ -151,16 +153,10 @@ export function providerHttpErrorDescriptor(error: unknown, service?: string): D
   return message('tasks.error.providerHttpRejected', { service: resolvedService });
 }
 
-/** Retry button visibility follows structured retryable; non-retryable failures (such as 401/402) hide retry. */
+/** Provider HTTP failures require an explicit retryable flag. Other failures keep their existing actions. */
 export function canRetryGenerationFailure(error: unknown): boolean {
-  if (error !== null && typeof error === 'object' && 'retryable' in error) {
-    const retryable = (error as { retryable?: unknown }).retryable;
-    if (retryable === false) return false;
-    if (retryable === true) return true;
-  }
-  const status = providerHttpStatus(error);
-  if (status !== null) return status === 429 || status >= 500;
-  return true;
+  if (providerHttpStatus(error) === null) return true;
+  return error !== null && typeof error === 'object' && 'retryable' in error && error.retryable === true;
 }
 
 export function taskErrorDescriptor(error: unknown, service?: string): DisplayMessage {
@@ -193,7 +189,7 @@ export function generationFailureDescriptor(error: unknown, service?: string): D
     case 'DOWNLOAD_FAILED': return message('tasks.error.downloadFailed');
     case 'LOCAL_WAIT_STOPPED': case 'PROVIDER_CANCELLED': return message('tasks.error.generationCancelled');
     case 'GENERATION_STATE_CHANGED': return message('tasks.error.generationStateChanged');
-    case 'SUBMISSION_UNKNOWN': return message('tasks.error.submissionUnknown');
+    case 'SUBMISSION_UNKNOWN': case 'PROVIDER_SUBMISSION_UNKNOWN': return message('tasks.error.submissionUnknown');
     case 'PROVIDER_TIMEOUT': case 'TIMEOUT': case 'NETWORK': case 'NETWORK_ERROR': return message('tasks.error.network');
     case 'UNAUTHORIZED': case 'FORBIDDEN': case 'PROVIDER_AUTH_FAILED': return message('tasks.error.authorization');
     default: return message('tasks.error.generationFailed');
@@ -245,13 +241,14 @@ export function jobServiceDisplayName(
   const connectionId = typeof binding?.connectionId === 'string' && binding.connectionId ? binding.connectionId : undefined;
   const connectionName = typeof snapshot?.executionConnectionName === 'string' && snapshot.executionConnectionName.trim()
     ? snapshot.executionConnectionName.trim() : undefined;
+  if (connectionName) return connectionName;
   const providerId = typeof binding?.providerId === 'string' && binding.providerId
     ? binding.providerId
     : typeof job?.providerId === 'string' ? job.providerId : '';
   if (connectionId) {
     const live = providers?.find(provider => provider.connectionId === connectionId && (!providerId || provider.id === providerId));
-    return providerDisplayName(live ?? { id: providerId, connectionId, ...(connectionName ? { name: connectionName } : {}) }, t);
+    return providerDisplayName(live ?? { id: providerId, connectionId }, t);
   }
   const live = providers?.find(provider => !provider.connectionId && provider.id === providerId);
-  return providerDisplayName(live ?? { id: providerId, ...(connectionName ? { name: connectionName } : {}) }, t);
+  return providerDisplayName(live ?? { id: providerId }, t);
 }

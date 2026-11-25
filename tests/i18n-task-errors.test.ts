@@ -168,8 +168,31 @@ test('generation failure lines translate structured HTTP statuses and never expo
       assert.equal(rendered.includes('RAW_'), false, `${item.status}/${locale}`);
     }
   }
-  assert.equal(jobServiceDisplayName({
-    providerId: 'minimax',
-    snapshot: {executionConnectionName: '工作室 MiniMax', executionBinding: {connectionId: 'conn-1', providerId: 'minimax'}},
-  }, tZh), '工作室 MiniMax');
+});
+
+test('generation failures use the recorded connection name after a rename and for Veo', () => {
+  const t = ((key: string, params?: Record<string, unknown>) => translate('zh-Hans', key as never, params as never)) as never;
+  for (const [providerId, name] of [['minimax', '工作室 MiniMax'], ['veo', '工作室 Veo']]) {
+    const connectionId = 'conn-1';
+    const job = {providerId, snapshot: {executionConnectionName: name, executionBinding: {connectionId, providerId}}};
+    assert.equal(jobServiceDisplayName(job, t), name);
+    assert.equal(jobServiceDisplayName(job, t, [{id: providerId, connectionId, name: '新的连接名称'}]), name);
+  }
+});
+
+test('HTTP retry visibility requires explicit permission while other failures keep their existing actions', () => {
+  assert.equal(canRetryGenerationFailure({code: 'PROVIDER_HTTP_429'}), false);
+  assert.equal(canRetryGenerationFailure({code: 'PROVIDER_HTTP_503', retryable: 'true'}), false);
+  assert.equal(canRetryGenerationFailure({code: 'PROVIDER_HTTP_429', retryable: true}), true);
+  assert.equal(canRetryGenerationFailure({code: 'PROVIDER_GENERATION_FAILED', retryable: false}), true);
+});
+
+test('uncertain provider submission keeps its accounting guidance when it includes an HTTP status', () => {
+  for (const code of ['SUBMISSION_UNKNOWN', 'PROVIDER_SUBMISSION_UNKNOWN']) {
+    const error = {code, retryable: false, providerFailure: {httpStatus: 503}};
+    assert.equal(providerHttpStatus(error), 503);
+    assert.equal(taskErrorDescriptor(error, 'MiniMax').key, 'tasks.error.submissionUnknown');
+    assert.equal(generationFailureDescriptor(error, 'MiniMax').key, 'tasks.error.submissionUnknown');
+    assert.equal(canRetryGenerationFailure(error), false);
+  }
 });

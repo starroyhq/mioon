@@ -1781,19 +1781,22 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (durable && stored && rejected) { clearPending(projectId as string, key, stored!); if (currentProject.current === projectId) setPending(pendingForProject(projectId as string)); }
       if (currentProject.current === projectId) {
         if ((e as {code?: string}).code === 'UNAUTHORIZED') setAuth(false);
-        if (durable && stored && dispatched && !rejected) { notify(msg('shell.submissionUnknown'), 'error'); if (isCurrent(captured)) openTasks(canRevealTasks); }
+        if (durable && stored && dispatched && !rejected) {
+          notify(msg('shell.submissionUnknown'), 'error');
+          if (operation !== 'generation.submit' && isCurrent(captured)) openTasks(canRevealTasks);
+        }
         else if (isCurrent(captured)) {
           const aspectMessage = aspectRejected ? generationAspectError(e) : null;
           notify(aspectMessage ?? (operation === 'timeline.clip.replaceSource' ? clipReplacementErrorDescriptor(e) : errorMessage(e)), 'error');
         }
-        if ((e as {code?: string}).code === 'MUTATION_PENDING' && isCurrent(captured)) openTasks(canRevealTasks);
+        if (operation !== 'generation.submit' && (e as {code?: string}).code === 'MUTATION_PENDING' && isCurrent(captured)) openTasks(canRevealTasks);
         if (dispatched || !requestBound) await refresh(projectId);
       }
       return null;
     } finally { markBusy(projectId, key, false); if (mutation) markBusy(projectId, 'canvas:mutation', false); if (replay && operation === 'asset.annotation.set' && currentProject.current === projectId) setAnnotationRefresh(value => ({ ...value, [projectId as string]: (value[projectId as string] || 0) + 1 })); if (replay && operation === 'asset.disposition.set' && currentProject.current === projectId) setDispositionRefresh(value => ({ ...value, [projectId as string]: (value[projectId as string] || 0) + 1 })); }
   }
-  // Picking a shot, node or clip means "show me its properties". The Tasks and Delivery pages are reference views
-  // (Tasks even opens by itself after a generation), so they give way; Agent and Image keep following the selection.
+  // Picking a shot, node or clip shows its properties. Tasks and Delivery give
+  // way; Agent and Image keep following the selection.
   function leaveReferencePage() { setShowTasks(false); setShowDelivery(false); }
   async function inspect(id: string | null, nextTab = 'settings', versionId: string | null = null, { reveal = false }: {reveal?: boolean} = {}): Promise<boolean> {
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current!.timeline?.id, timelineRevision = dataRef.current!.timeline?.revision;
@@ -1831,7 +1834,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return true;
   }
   const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId, replacementJobId, subjectReference, expectedRetrySnapshot, connectionId, configurationRevision, modelEntryId, referenceRevisions, aspectSource, serverPlanned }: GenerationReviewArgs): Promise<unknown> => {
-    const canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false);
     const directory = replacementJobId ? providersRef.current : providers;
     let provider = generationProviderForModel(findGenerationProvider(directory, providerId, connectionId), model || '', modelEntryId);
     if (retryJobId && shot.executionBinding) { try { provider = videoBindingCapabilities(parseVideoBinding(shot.executionBinding)); } catch { notify(msg('shell.error.retrySnapshotChanged'), 'warning'); return; } }
@@ -1846,7 +1848,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // Concurrent confirmations of the same paused job use one server receipt.
     const id = replacementJobId ? `regenerate:${replacementJobId}` : requestId();
     const result = await run(`generate:${shot.id}`, 'generation.submit', { ...(referenceRevisions?{referenceRevisions}:{}),shotId: shot.id, expectedRevision: shot.revision, requestId: id, providerId, ...(aspectSource ? { aspectSource } : {}), ...(connectionId ? { connectionId, configurationRevision, modelEntryId, parameters: shot.parameters } : {}), ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}), ...(shot.videoInput ? { videoInput: shot.videoInput } : {}), ...(subjectReference ? { subjectVersionId: subjectReference.subjectVersionId } : {}) }, undefined, subjectReference ? { expectedSubjectReference: subjectReference } : {});
-    if (result) { const submitted = result as {status?: string}; notify(submitted.status === 'submission_unknown' ? msg('shell.generationUnconfirmed') : msg('shell.generationSubmitted'), submitted.status === 'submission_unknown' ? 'warning' : 'success'); if (submitted.status === 'submission_unknown') openTasks(canRevealTasks); }
+    if (result) {
+      const unconfirmed = (result as {status?: string}).status === 'submission_unknown';
+      notify(unconfirmed ? msg('shell.generationUnconfirmed') : msg('shell.generationSubmitted'), unconfirmed ? 'warning' : 'success');
+    }
   };
   function generate(shot: AppShot, options: GenerationOptionState = generationOptionsRef.current[shot.id] || {}, replacement?: { job: AppJob; stillCurrent: () => boolean }): void {
     const { provider, model, modelEntryId, scenario, inputMode } = generationSelection(providers, options, shot);

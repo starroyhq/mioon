@@ -234,12 +234,13 @@ test('F6 anchor conflict names colliding clip or cue, highlights affected IDs, a
 
 test('F3, F4, F7, and F8 shell behaviors and four-locale copy meet specification', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
-  // F3: submitting generation only auto-opens TaskCenter on submission_unknown, not normal submit.
+  // F3: a generation submission stays in the panel, including an unconfirmed submission.
   const submitStart = app.indexOf('const submitGeneration = async');
   const submitEnd = app.indexOf('\n  function generate(', submitStart);
   const submitBody = app.slice(submitStart, submitEnd);
-  assert.match(submitBody, /if \(submitted\.status === 'submission_unknown'\) openTasks\(canRevealTasks\);/u);
-  assert.doesNotMatch(submitBody, /; openTasks\(canRevealTasks\);/u);
+  assert.match(submitBody, /status === 'submission_unknown'/u);
+  assert.match(submitBody, /shell\.generationUnconfirmed/u);
+  assert.doesNotMatch(submitBody, /openTasks\(/u);
 
   // F4: cost confirmation uses size="confirm" dialog with cancel + confirm buttons and no internal IDs or disclaimer paragraphs.
   const confirmStart = app.indexOf('data-testid="generation-confirm-dialog"');

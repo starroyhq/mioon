@@ -82,6 +82,7 @@ test('a new frame confirmation cannot replay an uncertain generation; exact reco
   const original = { shotId: 'shot-a', requestId: 'confirmed-portrait', aspectSource: { kind: 'project', expectedTimelineRevision: 2, aspectRatio: '9:16' } };
   const current = { ...original, requestId: 'confirmed-landscape', aspectSource: { kind: 'project', expectedTimelineRevision: 3, aspectRatio: '16:9' } };
   await h.run(key, operation, original);
+  assert.equal(h.state.jobs, false, 'generation preserves the exact request for recovery without opening tasks');
   await h.run(key, operation, current);
   assert.deepEqual(h.state.calls, [{ operation, input: original }]);
   assert.equal(h.state.notices.at(-1)?.message, translate('zh-Hans', 'shell.error.generationRequestPending'));
