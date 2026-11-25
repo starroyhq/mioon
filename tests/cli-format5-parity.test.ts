@@ -5,8 +5,8 @@ import {operationDefinition} from '../packages/client/src/index.ts';
 import {isMcpOperationAllowed} from '../apps/mcp/src/tool-policy.ts';
 import {listAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 
-/** Every format-5 Mio tool and the CLI/MCP operation that exposes the same
- * action contract. New Mio tools must update this table and the public schema. */
+/** Each format-5 Mio tool and its CLI/MCP counterpart. Public history
+ * commands take their cursor from the caller. */
 const MIO_TO_PUBLIC: Readonly<Record<string,string>> = Object.freeze({
   'sequence.tool.edit':'sequence.action.edit',
   'sequence.tool.board':'sequence.board.edit',
@@ -15,7 +15,7 @@ const MIO_TO_PUBLIC: Readonly<Record<string,string>> = Object.freeze({
   'sequence.tool.previs':'sequence.previs.edit',
   'sequence.tool.timeline':'sequence.timeline.edit',
   'sequence.tool.clip':'sequence.clip.edit',
-  'sequence.tool.undo':'sequence.undo-action',
+  'sequence.tool.undo':'sequence.undo',
   'sequence.inspect':'sequence.inspect',
   'sequence.board.get':'sequence.board.get',
   'sequence.generation-inputs.get':'sequence.generation-inputs.get',
@@ -57,13 +57,8 @@ test('every Mio format-5 tool has one CLI/MCP operation, including new tools', (
 test('action wrappers reuse the exact Mio action branches; only host projectId/requestId differ', () => {
   for (const tool of listAgentTaskTools(false,true)) {
     const publicOperation = MIO_TO_PUBLIC[tool.operation];
-    if (!publicOperation || tool.operation==='clip.audio.export' || !tool.operation.startsWith('sequence.tool.')) continue;
+    if (!publicOperation || !tool.operation.startsWith('sequence.tool.') || tool.operation==='sequence.tool.undo') continue;
     const publicSchema = operationDefinition(publicOperation).inputSchema;
-    if (tool.operation==='sequence.tool.undo') {
-      assert.ok(properties(publicSchema).includes('actionId'));
-      assert.deepEqual(required(publicSchema), []);
-      continue;
-    }
     assert.deepEqual(actionKinds(tool.parameters), actionKinds(publicSchema), tool.operation);
     const mioBranches = branches(tool.parameters), publicBranches = branches(publicSchema);
     for (const branch of mioBranches) {
@@ -74,6 +69,28 @@ test('action wrappers reuse the exact Mio action branches; only host projectId/r
       assert.deepEqual(properties(match), properties(branch), `${tool.operation}:${String(kind)}`);
       assert.deepEqual(required(match), required(branch), `${tool.operation}:${String(kind)}`);
     }
+  }
+});
+
+test('public undo and redo require a named action and exact cursor; Mio supplies its own cursor', () => {
+  const mioUndo = listAgentTaskTools(false,true).find(tool => tool.operation==='sequence.tool.undo');
+  assert.ok(mioUndo);
+  assert.deepEqual(properties(mioUndo.parameters), ['actionId']);
+  assert.deepEqual(required(mioUndo.parameters), []);
+  assert.equal(Object.hasOwn(publicOperationSchemas, 'sequence.undo-action'), false);
+
+  const request = {projectId: '10000000-0000-4000-8000-000000000001',
+    actionId: '10000000-0000-4000-8000-000000000002', requestId: 'history-request-1',
+    expected: {position: 1, revision: 2}};
+  for (const operation of ['sequence.undo', 'sequence.redo'] as const) {
+    const schema = publicOperationSchemas[operation];
+    assert.equal(isMcpOperationAllowed(operation), true);
+    assert.equal(schema.safeParse(request).success, true);
+    for (const field of ['projectId', 'actionId', 'requestId', 'expected'] as const) {
+      assert.equal(schema.safeParse({...request, [field]: undefined}).success, false, `${operation} requires ${field}`);
+    }
+    assert.equal(schema.safeParse({...request, expected: {position: 1}}).success, false);
+    assert.equal(schema.safeParse({...request, expected: {revision: 2}}).success, false);
   }
 });
 

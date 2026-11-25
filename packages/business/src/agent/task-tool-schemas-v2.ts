@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="bb1874878e76c8480149037ccbd894966338ee32e60a05fdf38bfac92a10d37d";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="882ddab3b4b5b6420367f95840baeb8177ad9c204180e34aa7cf029d2524bfe1";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -9670,18 +9670,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "envelope",
    "expectedPlanDigest"
   ],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "sequence.undo-action": {
-  "type": "object",
-  "properties": {
-   "actionId": {
-    "type": "string",
-    "format": "uuid"
-   }
-  },
-  "required": [],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },

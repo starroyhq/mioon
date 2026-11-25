@@ -310,7 +310,7 @@ test('six optional mutation keys retain exact results through lost HTTP response
     const catalog = (await runCli(t,['schema'],backend.env)).data as TestCatalog;
     assert.deepEqual((await mcp.call('mioon_schema')).data, mcpOperationCatalog(catalog));
     const optionalKeyOperations = optionalRequestIdOperations(catalog);
-    assert.deepEqual(optionalKeyOperations, ['asset.import',...operations,'sequence.undo-action'].sort(), 'public S1 upload adds its optional key beside the approved six mutations');
+    assert.deepEqual(optionalKeyOperations, ['asset.import',...operations].sort(), 'public S1 upload adds its optional key beside the approved six mutations');
     assert.deepEqual(catalog.operations.find(item=>item.operation==='asset.import'),operationDefinition('asset.import'));
     assert.equal(Object.hasOwn(modelOperationDefinition('asset.import').inputSchema.properties??{},'requestId'),false,'the fixed model upload catalog retains its original unkeyed input');
     const tools = (await mcp.client.listTools()).tools;

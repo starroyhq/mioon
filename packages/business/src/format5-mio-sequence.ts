@@ -1,9 +1,10 @@
-/** Bounded Mio/MT write actions for format-5 sequences.
+/** Bounded Mio and external write actions for format-5 sequences.
  *
  * One model action is expanded and previewed server-side into the shared
  * envelope; the tool runtime obtains approval for the stable impact, then
  * commits exactly that envelope + plan digest. The model never supplies an
- * envelope, allocation, receipt or raw generated id.
+ * envelope, allocation, receipt or raw generated id. External actions share
+ * the preview and commit implementation with user-origin history.
  */
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -184,13 +185,14 @@ function summarize(action: MioSequenceAction, envelope: SequenceEditEnvelope, wa
  * separated-sound clip and a created audio track are named in the language the
  * user talks to Mio in. */
 export function previewMioSequenceAction(store: ProjectStore, projectId: string, requestId: string,
-  action: MioSequenceAction, options: {readonly locale?: AgentTaskLocale} = {}): MioSequencePlan {
+  action: MioSequenceAction, {origin = 'mio', locale}: {
+    readonly origin?: 'user' | 'mio'; readonly locale?: AgentTaskLocale;
+  } = {}): MioSequencePlan {
   requireF5(store);
   projectCheck(store, projectId);
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
-  const request: Row = {projectId, requestId, origin: 'mio',
-    ...(options.locale !== undefined ? {locale: options.locale} : {})};
+  const request: Row = {projectId, requestId, origin, ...(locale !== undefined ? {locale} : {})};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
   else if (action.kind === 'subject-card-create' || action.kind === 'subject-card-delete')
     request.subjectIntent = subjectCardIntent(store, action);
@@ -224,9 +226,9 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
     placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',
-    // Mio's approved paid action places and submits in one commit.
+    // The confirmed action places and submits in one commit using the frozen request id.
     submit: true,
-    settings: {requestId: `mio-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
+    settings: {requestId: `${origin === 'mio' ? 'mio' : 'cli'}-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
       region: action.region, prompt: action.prompt, aspectRatio: action.aspectRatio, duration: action.duration,
       ...(action.parameters ? {parameters: action.parameters} : {}),
       ...(action.connectionId ? {connectionId: action.connectionId} : {}),

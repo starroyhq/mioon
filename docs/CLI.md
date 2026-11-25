@@ -1172,6 +1172,11 @@ mioon sequence action commit --input '{"projectId":"PROJECT_UUID","envelope":{..
 | `sequence previs edit` | `mioon_sequence_previs_edit` | 预演节点与场景 |
 | `sequence timeline edit` | `mioon_sequence_timeline_edit` | 字幕、台词、画幅、场景切开、分离声音、轨道、素材入轨、剪辑里生成 |
 | `sequence clip edit` | `mioon_sequence_clip_edit` | 片段变换、转场、增益、淡入淡出、颜色、音频角色、音量包络、名称 |
-| `sequence undo-action` | `mioon_sequence_undo` | 撤销当前栈顶 Mio 动作 |
 
-统一历史也可直接使用 `sequence undo` / `sequence redo`；`sequence action commit` 的生成动作按 `generation.submit` 的稳定 requestId、付费和未知结果规则执行，客户端不自动重试。动作字段可用 `mioon schema sequence board edit` 查看；旧入口在格式 5 上报错时会写出应改用的新命令。
+外部 CLI 和 MCP 的动作以用户来源（`origin: 'user'`）提交，进入剪辑页的用户历史，可用 ⌘Z（Windows/Linux 上为 Ctrl+Z）撤销。
+
+外部撤销和重做使用 `sequence undo` 和 `sequence redo`。先调用 `sequence history get`，确认对应的 `undoAvailable` 或 `redoAvailable` 后，取当前的 `position`、`revision` 及 `undo.actionId` 或 `redo.actionId`。用 `expected: {position, revision}`、目标 `actionId`、`projectId` 和稳定的 `requestId` 提交，沿用默认用户来源。动作或游标不匹配时返回 `SEQUENCE_EDIT_HISTORY_CONFLICT`，重新读取历史后再决定是否执行。响应丢失时，重放同一命令及原始完整输入可取回已保存的回执，避免多撤或多重做一步。用同一个 `requestId` 发送不同输入会冲突。
+
+内置 Mio 的 `mioon_sequence_undo` 对应外部命令 `sequence undo`，只撤销当前栈顶的 Mio 动作，由 Mio 读取并绑定撤销游标。
+
+`sequence action commit` 的生成动作按 `generation.submit` 的稳定 requestId、付费和未知结果规则执行，客户端不自动重试。动作字段可用 `mioon schema sequence board edit` 查看。旧入口在格式 5 上报错时会写出应改用的新命令。

@@ -156,7 +156,7 @@ const forbiddenOperations=[
  'sequence.preview','sequence.commit','sequence.history.get','sequence.board.get','sequence.undo','sequence.redo',
  // External CLI/MCP action wrappers; Mio uses its own loaded format-5 action tools.
  'sequence.action.edit','sequence.board.edit','sequence.reference.edit','sequence.subject.edit','sequence.previs.edit',
- 'sequence.timeline.edit','sequence.clip.edit','sequence.action.commit','sequence.undo-action',
+ 'sequence.timeline.edit','sequence.clip.edit','sequence.action.commit',
  // Transforms are user-driven for now; Mio still reads them in the timeline.
  'timeline.clip.setTransform',
  // Transitions likewise: Mio reads them and cannot change them yet.
@@ -869,7 +869,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='subject-card-delete')add('node',action.nodeId);
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
    if(action.kind==='generate'&&action.placement.kind==='main'&&action.placement.beforeClipId)add('timeline_clip',action.placement.beforeClipId);
-   const plan=previewMioSequenceAction(store,projectId,randomUUID(),action,locale!==undefined?{locale}:undefined);
+   const plan=previewMioSequenceAction(store,projectId,randomUUID(),action,{origin:'mio',locale});
    // A generate action creates a shot and a placeholder clip inside this same
    // step. They have no pre-edit target row, so record their identities for the
    // runtime to resolve after the effect; the job target gate then sees them.

@@ -902,10 +902,16 @@ MCP的独立客户端目录提供 `asset_media_status_list`、`asset_media_prepa
 - `sequence_generation_inputs_get({projectId, shotId, ...})`
 - `sequence_history_get({projectId})`
 
-写动作预览工具与 Mio 的格式 5 工具一一对应：`sequence_action_edit`、`sequence_board_edit`、`sequence_reference_edit`、`sequence_subject_edit`、`sequence_previs_edit`、`sequence_timeline_edit`、`sequence_clip_edit`、`sequence_undo_action`。预览返回 `envelope`、`planDigest` 和 `summary`；调用：
+写动作预览工具包括 `sequence_action_edit`、`sequence_board_edit`、`sequence_reference_edit`、`sequence_subject_edit`、`sequence_previs_edit`、`sequence_timeline_edit`、`sequence_clip_edit`。动作字段与 Mio 的格式 5 工具一致。预览返回 `envelope`、`planDigest` 和 `summary`，用下面的调用确认提交。
 
 ```json
 sequence_action_commit({"projectId":"PROJECT_UUID","envelope":{...},"expectedPlanDigest":"..."})
 ```
 
-计划摘要不匹配时拒绝。`sequence_timeline_edit` 的生成动作会进入付费生成路径：使用动作中稳定的 generation requestId，按 `generation.submit` 的供应商、授权和未知结果核对规则处理，不自动重试。统一历史也提供 `sequence_undo` / `sequence_redo`；用户与外部调用共用同一撤销/重做历史。旧工具在格式 5 上的错误会指出应使用的 `sequence ...` 命令。
+计划摘要不匹配时拒绝。外部 MCP 和 CLI 的动作以用户来源（`origin: 'user'`）提交，用户可在剪辑页按 ⌘Z（Windows/Linux 上为 Ctrl+Z）撤销。
+
+外部撤销和重做使用 `sequence_undo` 和 `sequence_redo`。先调用 `sequence_history_get`，确认对应的 `undoAvailable` 或 `redoAvailable` 后，读取当前的 `position`、`revision` 及 `undo.actionId` 或 `redo.actionId`。调用时传入 `expected: {position, revision}`、目标 `actionId`、`projectId` 和稳定的 `requestId`，沿用默认用户来源。动作或游标不匹配时返回 `SEQUENCE_EDIT_HISTORY_CONFLICT`，重新读取历史后再决定是否执行。响应丢失时，重放同一工具及原始完整输入可取回已保存的回执，避免重复移动游标。同一 `requestId` 的不同输入会冲突。
+
+内置 Mio 的 `mioon_sequence_undo` 对应外部工具 `sequence_undo`，只撤销当前栈顶的 Mio 动作，由 Mio 读取并绑定撤销游标。
+
+`sequence_timeline_edit` 的生成动作会进入付费生成路径，使用动作中稳定的 generation requestId，按 `generation.submit` 的供应商、授权和未知结果核对规则处理，不自动重试。旧工具在格式 5 上的错误会指出应使用的 `sequence ...` 命令。

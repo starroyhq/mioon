@@ -933,12 +933,6 @@ export const operationMessages = {
     "en": "Commit one format-5 sequence action only with the previewed shared envelope and plan credential; mismatched plans are refused. Generation follows the paid stable-request rules and never retries an unknown result",
     "ja": "プレビューで返した共有 envelope と計画資格情報でのみフォーマット5シーケンス動作をコミットします。計画が一致しない場合は拒否します。生成は課金と安定リクエストの規則に従い、未知の結果を自動再試行しません"
   },
-  "operation.sequence.undo-action": {
-    "zh-Hans": "按格式5统一历史撤销一步Mio动作；省略 actionId 时撤销栈顶，只在该动作仍是栈顶时生效。稳定 requestId 可精确重放",
-    "zh-Hant": "依格式5統一歷史復原一步Mio動作；省略 actionId 時復原疊頂，僅在該動作仍是疊頂時生效。穩定 requestId 可精確重放",
-    "en": "Undo one Mio format-5 action under the unified history; omission targets the stack top and only applies while it is still the top. A stable requestId replays exactly",
-    "ja": "フォーマット5の統合履歴でMio動作を1つ元に戻します。actionId を省略するとスタック先頭を対象とし、先頭のままの場合のみ適用します。安定した requestId で正確に再生できます"
-  },
   "operation.timeline.get": {
     "zh-Hans": "读取持久化30fps多轨时间线；旧项目首次读取时仅创建空轨道",
     "zh-Hant": "讀取持久化30fps多軌時間軸；舊專案首次讀取時僅建立空軌道",

@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
+import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 
 const exec = promisify(execFile);
 const TOKEN = 'synthetic-cli-format5-e2e-token';
@@ -58,13 +59,21 @@ test('real CLI format-5 flow: generate in editing, references, reorder, split, s
       providerId: 'mock', model: 'mock-motion-v1', region: 'local', prompt: 'a test pattern', aspectRatio: '9:16',
       duration: 2, parameters: {scenario: 'success'}};
     const before = new Set(((await read()).jobs as Row[]).map(item => item.id));
-    const receipt = await commit(env, projectId, await plan(env, ['sequence', 'timeline', 'edit'], action));
+    const preview = await plan(env, ['sequence', 'timeline', 'edit'], action);
+    const requestId = preview.envelope.generateIntent.operation.settings.requestId;
+    assert.match(requestId, /^cli-/u);
+    const receipt = await commit(env, projectId, preview);
     assert.equal(receipt.status, 'applied');
+    assert.deepEqual(await commit(env, projectId, preview), receipt);
     for (let attempt = 0; attempt < 240; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 250));
       const state = await read();
       const job = (state.jobs as Row[]).find(item => !before.has(item.id));
-      if (job?.status === 'succeeded') return state;
+      if (job?.status === 'succeeded') {
+        assert.equal(job.requestId, requestId);
+        assert.equal((state.jobs as Row[]).filter(item => !before.has(item.id)).length, 1);
+        return state;
+      }
       if (job?.status === 'failed') assert.fail(JSON.stringify(job.error));
     }
     assert.fail('mock generation did not finish');
@@ -89,8 +98,12 @@ test('real CLI format-5 flow: generate in editing, references, reorder, split, s
   const subtitle = await commit(env, projectId, await plan(env, ['sequence', 'timeline', 'edit'],
     {projectId, kind: 'subtitles', edits: [{kind: 'add', cue: {text: 'CLI 字幕', startFrame: 0, durationFrames: 30}}]}));
   assert.equal(subtitle.status, 'applied');
-  const undone = await cli(env, 'sequence', 'undo-action', '--input', JSON.stringify({projectId,
-    requestId: `cli-e2e-undo-${randomUUID()}`, actionId: subtitle.actionId}));
+  const history = sequenceHistoryViewResponseSchema.parse(
+    await cli(env, 'sequence', 'history', 'get', '--input', JSON.stringify({projectId, origin: 'user'})));
+  assert.equal(history.undo?.actionId, subtitle.actionId);
+  const undone = await cli(env, 'sequence', 'undo', '--input', JSON.stringify({projectId, origin: 'user',
+    requestId: `cli-e2e-undo-${randomUUID()}`, actionId: subtitle.actionId,
+    expected: {position: history.position, revision: history.revision}}));
   assert.equal(undone.status, 'applied');
   const state = await read();
   assert.equal(state.timeline.subtitles?.cues?.length ?? 0, 0);
