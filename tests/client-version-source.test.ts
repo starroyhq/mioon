@@ -89,8 +89,8 @@ test('missing root manifest fails instead of falling back to cwd or client metad
 });
 
 test('source wiring keeps CLI, MCP, schema discovery and doctor on the shared VERSION export', async () => {
-  const cli = await readFile(new URL('apps/cli/src/index.ts', root), 'utf8');
-  const mcp = await readFile(new URL('apps/mcp/src/index.ts', root), 'utf8');
+  const cli = await readFile(new URL('apps/cli/src/run.ts', root), 'utf8');
+  const mcp = await readFile(new URL('apps/mcp/src/run.ts', root), 'utf8');
   for (const source of [cli, mcp]) {
     assert.ok(/import\s*\{[^}]*\bVERSION\b[^}]*\}\s*from\s*['"]@mioon\/client['"]/.test(source), 'consumer imports VERSION from the shared client');
   }

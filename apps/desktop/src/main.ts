@@ -32,10 +32,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
 import { createWindowsProjectVolumeReaderFromFile } from '../../../packages/node-host/src/windows-project-volume.ts';
-import type {DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
+import type {DesktopCliDiscovery, DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
 import desktopIdentity from '../identity.ts';
 import { BackendSupervisor } from './supervisor.ts';
 import type {BackendReady, BackendRuntime} from './supervisor.ts';
+import { startCliRuntimeHost } from './cli-runtime-host.ts';
 import { stopBackendForQuit } from './shutdown.ts';
 import { createDesktopStartup } from './startup.ts';
 import { createDesktopAgentSettings } from './secret-store.ts';
@@ -99,6 +100,11 @@ import {createDesktopUpdateReopen} from './desktop-update-reopen.ts';
 import {verifyOfficialMacDesktopProcess} from './production-channel-signing.ts';
 
 type DesktopStartup = ReturnType<typeof createDesktopStartup>;
+type CliRuntimeHost = Awaited<ReturnType<typeof startCliRuntimeHost>>;
+interface DesktopCliRuntime {
+  readonly pending: Promise<CliRuntimeHost | null>;
+  closing?: Promise<void>;
+}
 type ProjectWindowHost = ReturnType<typeof createProjectWindowHost<BrowserWindow>>;
 type DesktopAppearance = ReturnType<typeof createDesktopWindowAppearance<BrowserWindow>>;
 type NativeAudioHost = ReturnType<typeof createNativeAudioPreviewHost>;
@@ -220,6 +226,7 @@ let updateQuit: ReturnType<typeof createDesktopUpdateQuit<BrowserWindow>> | unde
 const projectActionReservations = new Map<string, object>();
 let agentSettings: DesktopAgentSettings | null = null;
 let startupOperation: DesktopStartup | null = null;
+let cliRuntime: DesktopCliRuntime | undefined;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
@@ -600,9 +607,21 @@ function isCancelledStartup(error: unknown): boolean {
   return error !== null && typeof error === 'object' && cancelledStartupErrors.has(error as Error);
 }
 
+function closeCliRuntime(owner = cliRuntime): Promise<void> {
+  if (!owner) return Promise.resolve();
+  return owner.closing ??= owner.pending.then(host => host?.close()).then(() => {
+    if (cliRuntime === owner) cliRuntime = undefined;
+  });
+}
+
+function warnCliRuntimeCleanupFailed(): void {
+  console.warn('CLI_RUNTIME_CLEANUP_FAILED: Unable to finish local command-line runtime cleanup.');
+}
+
 async function start(projectsToRestore?: readonly RestartProject[]): Promise<DesktopStartReport> {
   if (quitting) throw cancelledStartupError();
   const startup = startupOperation = createDesktopStartup();
+  let ownedCliRuntime: DesktopCliRuntime | undefined;
   let closingCancelledSettings = false;
   try {
     await ensureDataIdentity(paths, identity);
@@ -627,8 +646,10 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     const token = randomBytes(32).toString('hex');
     const backendId = randomUUID(), nativeAudioIdentity = createNativeAudioPreviewSigningIdentity(backendId);
     let ownedAudioHost: NativeAudioHost | undefined, backendExitObserved = false;
+    const runtimeDirectory = app.getAppPath();
+    const environment = utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined, identity.channel);
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
-      modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined, identity.channel), agentSettings,
+      modulePath: path.join(runtimeDirectory, 'backend.cjs'), environment, agentSettings,
       projectCatalog: {modulePath: path.join(app.getAppPath(), 'project-catalog.cjs'), createChannel: () => new MessageChannelMain()},
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }),
       videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }),
@@ -637,6 +658,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     const ownedBackend = backend, incident = createProjectBackendIncident();
     ownedBackend.on('exit', ({ expected }: {expected?: boolean}) => {
       backendExitObserved = true; ownedAudioHost?.notifyBackendExit();
+      if (ownedCliRuntime) void closeCliRuntime(ownedCliRuntime).catch(warnCliRuntimeCleanupFailed);
       if (!expected) incident.fail();
       if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
     });
@@ -653,7 +675,23 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     await activeSession.cookies.set(sessionCookie(started.url, token));
     startup.checkpoint();
     incident.assertAlive();
-    await writeConnection(paths, { url: started.url, token, pid: started.runtime.pid, identity });
+    let cliDiscovery: DesktopCliDiscovery | undefined;
+    if (process.platform === 'darwin') {
+      const userData = path.resolve(paths.userData), appVersion = app.getVersion();
+      const pending = startCliRuntimeHost({userData, appVersion, channel: identity.channel, runtimeDirectory,
+        connectionFile: path.join(userData, 'mcp-connection.json'), env: environment, fork: utilityProcess.fork}).catch(() => {
+        console.warn('CLI_RUNTIME_UNAVAILABLE: Unable to start the local command-line runtime.');
+        return null;
+      });
+      ownedCliRuntime = cliRuntime = {pending};
+      const host = await pending;
+      startup.checkpoint();
+      incident.assertAlive();
+      if (ownedCliRuntime.closing) throw cancelledStartupError();
+      if (host) cliDiscovery = {appVersion, cli: host.descriptor};
+    }
+    const discovery = {url: started.url, token, pid: started.runtime.pid, identity};
+    await writeConnection(paths, cliDiscovery ? {...discovery, ...cliDiscovery} : discovery);
     startup.checkpoint();
     incident.assertAlive();
     // A backend handshake alone is not permission to open a window. Publish its
@@ -1064,6 +1102,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     return { identity, runtime: started.runtime, tools: tools.versions };
   } catch (error) {
     if(windowContext?.startup===startup)windowContext.appearance?.dispose();
+    if (ownedCliRuntime) await closeCliRuntime(ownedCliRuntime).catch(warnCliRuntimeCleanupFailed);
     // stop()/quit abort this scope before draining, so an old result may arrive
     // even before its replacement starts. Never suppress a failed settings drain.
     if (startup.signal.aborted && !closingCancelledSettings) throw cancelledStartupError();
@@ -1250,13 +1289,14 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
 
 async function stop() {
   const context = windowContext, audioHost = context?.audioHost;
-  await audioHost?.shutdown();
+  await Promise.all([audioHost?.shutdown(), closeCliRuntime()]);
   if (context && windowContext !== context) throw Object.assign(new Error('Desktop ownership changed during shutdown'), { code: 'BACKEND_STOP_FAILED' });
   if (nativeAudioHost === audioHost) nativeAudioHost = null;
   context?.appearance?.dispose();
   windowHost?.dispose(); windowHost = null;
   windowContext = null;
-  await startupOperation?.abort();
+  const startupDrain = startupOperation?.abort();
+  await Promise.all([startupDrain, closeCliRuntime()]);
   await backend?.stop();
   await cleanupStoppedBackend();
 }
@@ -1598,6 +1638,10 @@ const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWind
     // Abort validation before observing backend state so late validation cannot
     // create a utility. The two owned drains proceed together inside the budget.
     const startupDrain = startupOperation?.abort({ onUnconfirmed });
+    // Startup cleanup may reject while the command-line sessions are draining.
+    // Its original result is still awaited before clearing discovery and settings.
+    void startupDrain?.catch(() => {});
+    await closeCliRuntime();
     await stopBackendForQuit({ backend,
       onUnconfirmed,
       cleanup: async () => {

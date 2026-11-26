@@ -103,7 +103,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   const app = new EventEmitter() as DesktopHarnessApp;
   Object.assign(app, {
     isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {},
-    getPath: () => '/synthetic', getAppPath: () => '/synthetic/app', requestSingleInstanceLock: () => true,
+    getPath: () => '/synthetic', getAppPath: () => '/synthetic/app', getVersion: () => '0.4.0', requestSingleInstanceLock: () => true,
     whenReady: () => ({ then(callback?: ((value: void) => void|PromiseLike<void>)|null|undefined) { return { catch(onError: (reason: unknown) => void | PromiseLike<void>) {
       initial = Promise.resolve().then(callback).catch(onError); return initial;
     } }; } }),
@@ -266,6 +266,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     validateTools: (_: unknown, { signal }: {signal: AbortSignal}) => { const index = r.validations.length; r.validations.push(signal); return options.validate?.(index) ?? tools; },
     createDesktopAgentSettings: async () => ({ async close() { r.settingsCloses++; } }),
     safeStorage: {}, createDesktopImageSecretCodec: () => ({}), createDesktopVideoSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
+    startCliRuntimeHost: async () => ({
+      descriptor: {protocol: 1, socket: '/synthetic/userData/cli.sock', tokenFile: '/synthetic/userData/cli-token'}, async close() {},
+    }),
     BackendSupervisor: class extends BackendSupervisor {
       constructor(config: BackendSupervisorOptions) {
         super({ ...config, projectCatalog: undefined, startupTimeout: 5000, stopTimeout: 5000, terminateTimeout: 100, exitTimeout: 100,

@@ -10,8 +10,9 @@ import {validateWorkspaceStorage} from '@mioon/business/application-storage';
 import { stat, access, realpath } from 'node:fs/promises';
 import { constants, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import type {CliRuntimeDescriptor} from './cli-runtime-host.ts';
 import { createPrivateTemporaryDirectory, ensurePrivateDirectory, validatePrivateDirectory, validateManagedDirectory,
-  validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile } from '@mioon/contracts/private-storage';
+  validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile, PrivateStorageError } from '@mioon/contracts/private-storage';
 const IDENTITY_MAX_BYTES = 4096;
 const CONFIG_MAX_BYTES = 64 * 1024;
 const CONNECTION_MAX_BYTES = 16 * 1024;
@@ -285,17 +286,25 @@ export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths, sto
   return result;
 }
 
-export async function writeConnection(paths: DesktopPaths, { url, token, pid, identity }: {
+export interface DesktopCliDiscovery {
+  readonly appVersion: string;
+  readonly cli: CliRuntimeDescriptor;
+}
+export async function writeConnection(paths: DesktopPaths, { url, token, pid, identity, appVersion, cli }: {
   url: string; token: string; pid: number; identity?: DesktopIdentity;
-}): Promise<string> {
+} & (DesktopCliDiscovery | {appVersion?: never; cli?: never})): Promise<string> {
   const tokenFile = path.join(paths.userData, 'mcp-token');
   const connectionFile = path.join(paths.userData, 'mcp-connection.json');
   const files: Array<[file: string, contents: string, maxBytes: number]> = [
     [tokenFile, token + '\n', TOKEN_MAX_BYTES],
-    [connectionFile, JSON.stringify({ version: 1, url, tokenFile, pid, ...(identity ? { appId: identity.appId, channel: identity.channel } : {}) }, null, 2) + '\n', CONNECTION_MAX_BYTES]
+    [connectionFile, JSON.stringify({ version: 1, url, tokenFile, pid, ...(identity ? { appId: identity.appId, channel: identity.channel } : {}),
+      ...(cli ? { appVersion, cli } : {}) }, null, 2) + '\n', CONNECTION_MAX_BYTES]
   ];
   // Preflight both existing entries before changing either discovery file.
-  for (const [file, , maxBytes] of files) validateManagedFile(file, { root: paths.userData, allowMissing: true, private: true, maxBytes });
+  for (const [file, contents, maxBytes] of files) {
+    if (Buffer.byteLength(contents) > maxBytes) throw new PrivateStorageError('SIZE_LIMIT', 'The private discovery file exceeds its safe size limit.');
+    validateManagedFile(file, { root: paths.userData, allowMissing: true, private: true, maxBytes });
+  }
   for (const [file, contents, maxBytes] of files) {
     writePrivateFileAtomic(file, contents, { root: paths.userData, maxBytes });
   }

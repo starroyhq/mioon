@@ -9,10 +9,10 @@ import path from 'node:path';
 const SYNTHETIC_SECRET = 'synthetic-private-storage-packaging-sentinel-only';
 const nonce = '0123456789abcdef0123456789abcdef';
 const runtimeNames = [
-  'access-token', 'desktop-token', 'mcp-token', 'server.lock', 'mcp-connection.json',
+  'access-token', 'desktop-token', 'mcp-token', 'cli-token', 'server.lock', 'mcp-connection.json',
   'desktop-config.json', 'desktop-identity.json', 'credentials.json', 'secrets.json',
-  'access-token.tmp', 'desktop-token.tmp', 'mcp-token.tmp', 'mcp-connection.json.tmp', 'desktop-config.json.tmp',
-  `.access-token.${nonce}.tmp`, `.desktop-token.${nonce}.tmp`, `.mcp-token.${nonce}.tmp`,
+  'access-token.tmp', 'desktop-token.tmp', 'mcp-token.tmp', 'cli-token.tmp', 'mcp-connection.json.tmp', 'desktop-config.json.tmp',
+  `.access-token.${nonce}.tmp`, `.desktop-token.${nonce}.tmp`, `.mcp-token.${nonce}.tmp`, `.cli-token.${nonce}.tmp`,
   `.mcp-connection.json.${nonce}.tmp`, `.desktop-config.json.${nonce}.tmp`, `.desktop-identity.json.${nonce}.tmp`,
   'agent-settings/settings.json', `agent-settings/.settings-${nonce}.tmp`, `agent-settings/.settings.json.${nonce}.tmp`,
 ];
@@ -41,7 +41,7 @@ test('git ignores exact runtime credential/discovery/settings fixtures at custom
   execFileSync('git', ['init', '--quiet', '--template='], options);
   const secretFiles = ['', 'local-profile/', 'apps/desktop/custom-user-data/'].flatMap(prefix => runtimeNames.map(name => prefix + name));
   const sourceFiles = [
-    '.env.example', 'apps/server/.env.example', 'docs/mcp-token.md', 'packages/client/src/connection.ts',
+    '.env.example', 'apps/server/.env.example', 'docs/mcp-token.md', 'docs/cli-token.md', 'packages/client/src/connection.ts',
     'tests/client-storage.test.mjs', 'tests/fixtures/mcp-connection.example.json', 'tests/fixtures/settings.json',
     'tests/fixtures/agent-settings/settings.example.json', 'tests/fixtures/source.tmp', 'apps/web/src/settings.js',
   ];
@@ -60,14 +60,14 @@ test('git ignores exact runtime credential/discovery/settings fixtures at custom
 test('desktop packaging allowlist excludes synthetic custom userData without scanning real secrets or building', async t => {
   const root = await temporaryDirectory(t, 'wb-secret-package-');
   const { builderConfig: buildConfig } = createRequire(import.meta.url)('../apps/desktop/builder-config.ts');
-  const packageFiles = ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'web/assets/app.js', 'icons/icon.png', 'licenses/NOTICE.md'];
+  const packageFiles = ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'cli-runtime.cjs', 'mcp-runtime.cjs', 'package.json', 'web/index.html', 'web/assets/app.js', 'icons/icon.png', 'licenses/NOTICE.md'];
   const secretFiles = runtimeNames.flatMap(name => [name, `custom-user-data/${name}`, `custom-user-data/workspace/${name}`]);
   const excludedFiles = [...secretFiles, '.env', 'custom-user-data/workspace/workbench.sqlite', 'node_modules/synthetic/index.js'];
   for (const file of packageFiles) await writeFixture(root, file, `synthetic package source: ${file}\n`);
   for (const file of excludedFiles) await writeFixture(root, file, SYNTHETIC_SECRET);
   for (const channel of ['development', 'production']) {
     const config = buildConfig(channel);
-    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
+    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'cli-runtime.cjs', 'mcp-runtime.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
     const includes = config.files.filter((pattern: string) => !pattern.startsWith('!'));
     const excludes = config.files.filter((pattern: string) => pattern.startsWith('!')).map((pattern: string) => pattern.slice(1));
     const selected = [...packageFiles, ...excludedFiles].filter(file => includes.some((pattern: string) => path.matchesGlob(file, pattern)) && !excludes.some((pattern: string) => path.matchesGlob(file, pattern)));

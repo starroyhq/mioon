@@ -68,6 +68,15 @@ for (const name of ['main', 'backend', 'project-catalog']) {
     }
   }
 }
+await measureBuildStage('desktop-cli-runtime-bundles', () => build({
+  entryPoints: ['cli-runtime', 'mcp-runtime'].map(name => path.join(desktop, `src/${name}.ts`)),
+  outdir: output, outExtension: {'.js': '.cjs'}, absWorkingDir: root,
+  bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron', 'original-fs'],
+  plugins: [localRequireBundlePlugin(root)],
+  define: {'import.meta.url': '__mioon_import_meta_url'},
+  banner: {js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;'},
+  sourcemap: false, legalComments: 'eof', logLevel: 'info',
+}));
 // A sandboxed preload has only Electron's fixed bridge API, never Node imports.
 await measureBuildStage('desktop-preload-bundle', () => build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path.join(output, 'preload.cjs'),
   bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
@@ -127,8 +136,14 @@ async function collectLicenses(packageFile: string): Promise<void> {
   }
   for (const name of Object.keys(metadata.dependencies || {})) {
     let dependency;
-    try { dependency = require.resolve(`${name}/package.json`); }
-    catch {
+    try {
+      const exported = require.resolve(`${name}/package.json`);
+      // The MCP SDK exports its CJS partition's package.json, containing
+      // only the module type. Licenses belong to the actual package root.
+      const declared = JSON.parse(await readFile(exported, 'utf8'));
+      if (typeof declared.name === 'string' && typeof declared.version === 'string') dependency = exported;
+    } catch {}
+    if (!dependency) {
       for (const directory of require.resolve.paths(name) || []) {
         const candidate = path.join(directory, name, 'package.json');
         try { const data = JSON.parse(await readFile(candidate, 'utf8'));
@@ -142,6 +157,8 @@ async function collectLicenses(packageFile: string): Promise<void> {
 }
 await collectLicenses(path.join(root, 'apps/web/package.json'));
 await collectLicenses(path.join(root, 'apps/server/package.json'));
+await collectLicenses(path.join(root, 'apps/cli/package.json'));
+await collectLicenses(path.join(root, 'apps/mcp/package.json'));
 await collectLicenses(path.join(desktop, 'package.json'));
 for (const manifest of desktopModuleManifests) await collectLicenses(manifest);
 await cp(path.join(root, 'packages/ui/src/LICENSE.shadcn.md'), path.join(output, 'licenses/shadcn-ui-LICENSE.md'));
@@ -150,4 +167,4 @@ notices.push('- shadcn/ui checked-in components: MIT (shadcn-ui-LICENSE.md)');
 await writeFile(path.join(output, 'licenses/THIRD-PARTY-NOTICES.md'), notices.join('\n') + '\n');
 });
 console.log(`Desktop identity: ${identity.appId} (${identity.channel})`);
-console.log('Desktop staging contains bundled shared backend and the same built web UI; no node_modules or data directories.');
+console.log('Desktop staging contains the shared backend, CLI and MCP runtimes, and the built web UI.');

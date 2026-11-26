@@ -58,5 +58,5 @@ test('production route is placed behind existing Host/Origin and authentication 
   const handler=runtime.indexOf('await drafts.handle({req, res, url: local, route, signal})');assert.ok(handler>0);assert.ok(runtime.indexOf('const address = {projectId}')<handler);
   const factory=readFileSync(new URL('../apps/server/src/project-host/drafts.ts',import.meta.url),'utf8');assert.match(factory,/await handle\(request\.req, request\.res, local, \{projectId: context\.projectId\}\)/u);assert.match(factory,/request\.route\.projectId !== context\.projectId/u);
   const contracts=readFileSync(new URL('../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(contracts.includes("'local-delivery'"),false);
-  const mcp=readFileSync(new URL('../apps/mcp/src/index.ts',import.meta.url),'utf8');assert.equal(mcp.includes('local-delivery'),false);
+  const mcp=readFileSync(new URL('../apps/mcp/src/run.ts',import.meta.url),'utf8');assert.equal(mcp.includes('local-delivery'),false);
 });
