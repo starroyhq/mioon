@@ -160,7 +160,7 @@ test('selected speed export preserves mapped frames and exact PTS with one and f
   assert.equal((await readdir(root)).some(name => name.startsWith('.timeline-render-')), false);
 });
 
-test('speed export keeps exact PTS across more than fifty one-frame segment boundaries', {timeout: 120_000}, async t => {
+test('speed export keeps exact PTS and continuous PCM across sixty-four one-frame segments', {timeout: 120_000}, async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-speed-render-clock-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const asset = await sourceAsset(root), assets = new Map([[asset.id, asset]]);
@@ -176,7 +176,7 @@ test('speed export keeps exact PTS across more than fifty one-frame segment boun
     trackId: hiddenTrackId, assetId: asset.id, ...geometry, startFrame, sourceInFrame: 0, durationFrames: 1}));
   const timeline: TimelineRecord = {id: randomUUID(), projectId: randomUUID(), revision: 1, fps: 30,
     width: 720, height: 720, durationFrames: plan.durationFrames, clips: [projected, ...boundaryClips],
-    tracks: [{id: trackId, kind: 'video', orderIndex: 0, hidden: false, muted: true},
+    tracks: [{id: trackId, kind: 'video', orderIndex: 0, hidden: false, muted: false},
       {id: hiddenTrackId, kind: 'video', orderIndex: 1, hidden: true, muted: true}], createdAt: at, updatedAt: at};
   const snapshot = {...freezeTimelineSnapshot(timeline, assets, undefined), ...timelineSpeedExportSnapshotFields(timeline)};
   const output = path.join(root, 'long-boundaries.mp4'), plannedFrames = [...unwrap(timeMapPlanFrames(plan))];
@@ -187,6 +187,13 @@ test('speed export keeps exact PTS across more than fifty one-frame segment boun
   const observed = await readMedia(output, plannedFrames.length);
   assert.deepEqual(observed.pts, plannedFrames.map((_, index) => index * 1000));
   assertMarkers(observed.luma, plannedFrames);
+  const referenceTimeline = {...timeline, clips: [projected], tracks: timeline.tracks.slice(0, 1)};
+  const reference = path.join(root, 'single-segment.mp4');
+  await renderTimeline({...freezeTimelineSnapshot(referenceTimeline, assets, undefined),
+    ...timelineSpeedExportSnapshotFields(referenceTimeline)}, assets, reference);
+  const referencePcm = (await readMedia(reference, plannedFrames.length)).pcm;
+  assert.ok(rms(referencePcm, 1600, 3200) > 0.03, 'the continuous PCM is audible');
+  assert.deepEqual(observed.pcm, referencePcm);
 });
 
 test('a selected dissolve renders the correct motion handles on each side of the cut', {timeout: 30_000}, async t => {

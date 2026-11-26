@@ -209,7 +209,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    assertTimelineImageCompositorInputCount(clips.filter(clip=>colourClips.get(clip.id)?.kind==='image'&&!tracks.get(clip.trackId)!.hidden).length);
    const args: string[]=['-hide_banner','-loglevel','error',owned?'-y':'-n','-filter_complex_threads','1'];
    const inputs: {clip: TimelineClipRecord;asset: RenderAsset;input: number;show: boolean;audioInput: number|null;
-    picture?: PreparedSpeedPicture;pcmOffset?: number}[]=[];
+    picture?: PreparedSpeedPicture}[]=[];
    let nextInput=0;
    for(const clip of clips){
     const asset=assets.get(clip.assetId)!,track=tracks.get(clip.trackId)!,show=track.kind==='video'&&!track.hidden,
@@ -221,14 +221,16 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
      const picture=show?prepared?.video.find(value=>value.beginFrame<=begin&&value.endFrame>=end):undefined;
      if(show&&!picture)throw speedExportMappingError(clip.id,'PICTURE_WINDOW_MISSING');
      if(picture){args.push('-threads','1',...picture.inputArgs,'-i',picture.file);nextInput++;}
-     let audioInput: number|null=null,pcmOffset: number|undefined;
+     let audioInput: number|null=null;
      if(audio&&clip.timing.profile!=='timeline-freeze-v1'){
       if(prepared?.audio?.samples!==clip.durationFrames*SAMPLES_PER_FRAME)throw speedExportMappingError(clip.id,'PCM_WINDOW_MISSING');
-      pcmOffset=(begin-clip.startFrame)*SAMPLES_PER_FRAME;
+      // Each PCM sample frame holds two float32 values. Skip whole sample
+      // frames in the private raw stream before using the shared mix graph.
+      const offsetBytes=(begin-clip.startFrame)*SAMPLES_PER_FRAME*2*Float32Array.BYTES_PER_ELEMENT;
       audioInput=nextInput++;
-      args.push('-threads','1','-f','f32le','-ar','48000','-ac','2','-i',prepared.audio.path);
+      args.push('-threads','1','-f','f32le','-ar','48000','-ac','2','-skip_initial_bytes',String(offsetBytes),'-i',prepared.audio.path);
      }
-     if(picture||audioInput!==null)inputs.push({clip,asset,input,show,audioInput,picture,pcmOffset});
+     if(picture||audioInput!==null)inputs.push({clip,asset,input,show,audioInput,picture});
      continue;
     }
     nextInput++;
@@ -245,7 +247,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    }
    const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=${colour?'rgba':'yuv420p'}[base]`,timelineAudioSilenceFilter(samples)];
    let visual='base';const sounds=['silence'];const pairing=new Map<string, TransitionLayer>();
-   for(const {clip,asset,input,show,audioInput,picture,pcmOffset} of inputs){
+   for(const {clip,asset,input,show,audioInput,picture} of inputs){
     if(show){
      const {x,y,width,height,rect,transform:plan,relative}=clipPlacements.get(clip.id)!,label=`v${input}`,next=`layer${input}`;
      // rgba padding preserves the lower layers in the letterbox/pillarbox area.
@@ -277,8 +279,8 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
     }
     if(audioInput!==null){
      const label=`a${audioInput}`;
-     filters.push(timelineClipAudioFilter(clip as never,begin,samples,audioInput,
-       pcmOffset===undefined?asset.audioStreamIndex as never:undefined,pcmOffset));sounds.push(label);
+     if(speed&&clip.timing){filters.push(timelineClipAudioFilter(clip as never,begin,samples,audioInput));sounds.push(label);}
+     else{filters.push(timelineClipAudioFilter(clip as never,begin,samples,input,asset.audioStreamIndex as never));sounds.push(label);}
     }
    }
    filters.push(timelineMixedAudioFilter(sounds,samples,selected.audioOutputTrim as never));
