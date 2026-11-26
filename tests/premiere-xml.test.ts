@@ -130,6 +130,18 @@ test('shares copied paths without conflating video and still source definitions'
   assert.equal(xml.match(/<pathurl>file:[^<]*001_A%20%26%20B\.mp4<\/pathurl>/gu)?.length, 2);
 });
 
+test('preserves the cut instead of reading beyond the end of a transition source', () => {
+  const input = fixture();
+  input.assets.set(picture.id, {...picture, durationFrames: 49});
+  const alternateId = id(205);
+  input.assets.set(alternateId, {...picture, id: alternateId, fileUrl: mediaRoot + 'alternate.mp4'});
+  input.timeline.clips = input.timeline.clips.map(clip => clip.id === id(40) ? {...clip, assetId: alternateId} : clip);
+  const xml = serializePremiereXml(input);
+  assert.equal(xml.match(/<transitionitem>/gu)?.length, 5);
+  assert.match(clipXml(xml, 10, 'video'), /<start>0<\/start><end>30<\/end><in>19<\/in><out>49<\/out>/u);
+  assert.match(clipXml(xml, 11, 'video'), /<start>30<\/start><end>-1<\/end><in>12<\/in><out>46<\/out>/u);
+});
+
 test('encodes motion, crop and hidden layers while keeping linked sound and channel metadata', () => {
   const xml = serializePremiereXml(fixture());
   const transformed = clipXml(xml, 30, 'video');
@@ -167,6 +179,7 @@ test('extends a still for a transition and keeps long clips without optional eff
   const held = clip(61, main, 18001, 21, {assetId: still.id, sourceInFrame: 0, transitionIn});
   input.timeline.clips = [first, held];
   input.timeline.durationFrames = 18022;
+  input.assets.set(picture.id, {...picture, durationFrames: 18017});
   delete input.timeline.subtitles;
   assert.equal(getFormat5TimelineIssue(input.timeline), null);
   const xml = serializePremiereXml(input);

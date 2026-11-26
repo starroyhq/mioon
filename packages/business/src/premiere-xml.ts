@@ -204,15 +204,17 @@ export function serializePremiereXml({timeline, projectName, assets}: {
   for (const {track, items} of trackClips) {
     if (track.kind !== 'video') continue;
     for (const [index, item] of items.entries()) {
-      const previous = items[index - 1]?.clip;
+      const previous = items[index - 1];
       const transition = item.clip.transitionIn;
-      if (!previous || endFrame(previous) !== item.clip.startFrame || !transition || !isClipTransition(transition)) continue;
+      if (!previous || endFrame(previous.clip) !== item.clip.startFrame || !transition || !isClipTransition(transition)) continue;
       const cut = {kind: transition.kind, ...clipTransitionSides(transition.durationFrames)};
-      const previousIntro = cuts.get(previous.id)?.after ?? 0;
-      if (previousIntro + cut.before > previous.durationFrames || cut.after > item.clip.durationFrames ||
-          (!item.file.asset.isStill && cut.before > item.clip.sourceInFrame)) continue;
+      const previousIntro = cuts.get(previous.clip.id)?.after ?? 0;
+      const outgoingSourceEnd = previous.clip.sourceInFrame + previous.clip.durationFrames + cut.after;
+      if (previousIntro + cut.before > previous.clip.durationFrames || cut.after > item.clip.durationFrames ||
+          (!item.file.asset.isStill && cut.before > item.clip.sourceInFrame) ||
+          (!previous.file.asset.isStill && outgoingSourceEnd > previous.file.duration)) continue;
       cuts.set(item.clip.id, cut);
-      exits.set(previous.id, cut);
+      exits.set(previous.clip.id, cut);
     }
   }
   function sourceStart(item: TrackClip): number {
