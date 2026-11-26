@@ -57,12 +57,14 @@ test('frozen profile permits no optional metadata on old snapshots and never exp
  assert.throws(()=>validateSubtitleSnapshotProfile({timeline:{},subtitleProfile:profile}),{code:'INVALID_TIMELINE_SNAPSHOT'});
 });
 
-test('both desktop channels whitelist fixed external subtitle and example resources and retain ASAR boundaries',()=>{
+test('both desktop channels whitelist external subtitle, example and Agent skill resources and retain ASAR boundaries',()=>{
  for(const channel of ['production','development']){
   const config=require('../apps/desktop/builder-config.ts').builderConfig(channel);
   assert.equal(config.asar,true);assert.deepEqual(config.extraResources,[{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]},
-   {from:'build/examples',to:'examples',filter:['**/*']}]);
+   {from:'build/examples',to:'examples',filter:['**/*']},
+   {from:'build/skills/mioon',to:'skills/mioon',filter:['**/*']}]);
   assert.equal(config.files.some((file: string)=>file.includes('subtitles')),false);assert.equal(config.files.includes('licenses/**/*'),true);
+  assert.equal(config.files.some((file: string)=>file.includes('skills')),false);
  }
  assert.equal(packagedSubtitleDirectory({appOutDir:'/tmp/app',electronPlatformName:'linux'}),'/tmp/app/resources/subtitles');
  assert.equal(packagedSubtitleDirectory({appOutDir:'/tmp/app',electronPlatformName:'darwin',packager:{appInfo:{productFilename:'Mioon'}}}),'/tmp/app/Mioon.app/Contents/Resources/subtitles');
