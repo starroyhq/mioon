@@ -5,12 +5,12 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {buildDatabase, schemaStatements, PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, CACHE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
+import {buildDatabase, schemaStatements, PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, CACHE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import type {ManifestEntry} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import {contentTablesForVersion, CACHE_TABLES, historyTablesForVersion} from '../../packages/business/src/project-file/schema/tables.ts';
-import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT5_CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT5_CROSS_FILE_RELATIONS, FORMAT6_CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
 import type {CrossFileRelation} from '../../packages/business/src/project-file/cross-file/relations.ts';
 import {CONVERTED_TEMP_TRIGGERS} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
 import type {ConvertedTempTrigger} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
@@ -52,15 +52,16 @@ export interface SchemaDeclarations {
   readonly relations: readonly CrossFileRelation[];
   readonly tempTriggers: readonly ConvertedTempTrigger[];
 }
-export function declaredSchema(profile: boolean | 3 | 4 | 5 = false): SchemaDeclarations {
+export function declaredSchema(profile: boolean | 3 | 4 | 5 | 6 = false): SchemaDeclarations {
+  const format6 = profile === FORMAT6_PROJECT_SCHEMA_VERSION;
   const format5 = profile === FORMAT5_PROJECT_SCHEMA_VERSION;
   const format4 = profile === true || profile === FORMAT4_PROJECT_SCHEMA_VERSION;
-  const project = format5 ? FORMAT5_PROJECT_SCHEMA_VERSION : format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
-  const history = format5 ? FORMAT5_HISTORY_SCHEMA_VERSION : format4 ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
+  const project = format6 ? FORMAT6_PROJECT_SCHEMA_VERSION : format5 ? FORMAT5_PROJECT_SCHEMA_VERSION : format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
+  const history = format6 ? FORMAT6_HISTORY_SCHEMA_VERSION : format5 ? FORMAT5_HISTORY_SCHEMA_VERSION : format4 ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
   return {
     statements: {project: schemaStatements('project', undefined, project), history: schemaStatements('history', undefined, history), cache: schemaStatements('cache')},
     tables: {project: contentTablesForVersion(project), history: historyTablesForVersion(history), cache: CACHE_TABLES},
-    relations: format5 ? FORMAT5_CROSS_FILE_RELATIONS : format4 ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS,
+    relations: format6 ? FORMAT6_CROSS_FILE_RELATIONS : format5 ? FORMAT5_CROSS_FILE_RELATIONS : format4 ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS,
     tempTriggers: CONVERTED_TEMP_TRIGGERS,
   };
 }
@@ -244,7 +245,17 @@ export function renderDerivedFiles(input: SchemaDeclarations = declaredSchema())
     const changed = after.filter(entry => JSON.stringify(before.get(entry.name)) !== JSON.stringify(entry));
     lines.push(`  ${kind}: {version: ${version}, entries: Object.freeze([`, ...changed.map(render), '  ])},');
   }
-  lines.push('});', '');
+  const format6 = declaredSchema(FORMAT6_PROJECT_SCHEMA_VERSION);
+  validateDeclaredSchema(format6);
+  const before = new Map(buildManifest('history', format5.statements.history).map(entry => [entry.name, entry]));
+  const after = buildManifest('history', format6.statements.history);
+  const actual = new Map(after.map(entry => [entry.name, entry]));
+  if ([...before].some(([name, entry]) => JSON.stringify(entry) !== JSON.stringify(actual.get(name)))) {
+    throw new Error('Format 6 history must preserve all format 5 schema objects');
+  }
+  lines.push('});', '', 'export const FORMAT6_HISTORY_MANIFEST_ADDITIONS: SchemaManifest = Object.freeze({',
+    `  version: ${FORMAT6_HISTORY_SCHEMA_VERSION}, entries: Object.freeze([`,
+    ...after.filter(entry => !before.has(entry.name)).map(render), '  ]),', '});', '');
   return new Map([[MANIFEST, lines.join('\n')]]);
 }
 export function staleDerivedFiles(files: ReadonlyMap<string, string>): string[] {

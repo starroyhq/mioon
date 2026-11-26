@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="4cdbbe040fc746918fded291b55ec350a4371a21b6a4606b279161fd9357f8c7";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="8fc0a6ebb97d055cc9b9f6fbd87d59d18b720d080af8d51eb161fe7266ee9b9e";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -10621,6 +10621,88 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "required": [
    "exportId"
   ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.list": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.inspect": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "taskId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.wait": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "timeoutMs": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 60000
+   }
+  },
+  "required": [
+   "taskId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.retry": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "taskId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.cancel": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "taskId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.cache.get": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.processing.cache.clear": {
+  "type": "object",
+  "properties": {},
+  "required": [],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
