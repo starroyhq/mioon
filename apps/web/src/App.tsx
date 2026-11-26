@@ -1214,13 +1214,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const next = nextRaw as AppData | null;
       if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== projectId || epoch !== projectEpoch.current || call !== requestCounter.current || capturedSession !== editorSession.current) return null;
       if (!projectResponseMatches(next as never, projectId)) throw Object.assign(localizedError(msg('shell.error.projectIdentity')), { code: 'BACKEND_PROTOCOL_ERROR' });
-      const [, nextFormat5History] = await Promise.all([
-        refreshAgentEditingTargets(projectId),
-        next?.projectFormatVersion === 5 ? format5Session().history() : Promise.resolve(null),
-      ]);
+      await refreshAgentEditingTargets(projectId);
       if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== projectId || epoch !== projectEpoch.current || call !== requestCounter.current || capturedSession !== editorSession.current) return null;
       reconcilePending(projectId, next as unknown as PendingData);
-      dataRef.current = { ...emptyData, ...(next as AppData) }; setData(dataRef.current); updateFormat5History(next?.projectFormatVersion === 5 ? nextFormat5History : null); providersRef.current = directory.providers; setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId as string));
+      dataRef.current = { ...emptyData, ...(next as AppData) }; setData(dataRef.current); providersRef.current = directory.providers; setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId as string));
       const retainClipSelection = clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved();
       const reconciled = retainClipSelection ? viewRef.current : reconcileWorkspaceState(viewRef.current, next);
       if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled as ViewState; setView(reconciled as ViewState); preferencesRef.current!.update(projectId!, reconciled as ViewState, { immediate: true }); }
@@ -1309,7 +1306,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (currentProject.current) void preferencesRef.current!.flush({ projectId: currentProject.current, keepalive: true } as unknown as {keepalive?: boolean});
     currentProject.current = id;
     format5LostRef.current!.clear();
-    updateFormat5History(null);
     setPropertiesPage('inspector');
     setTaskState(tasksRef.current!.getState(id) as never);
     viewReady.current = false;
@@ -3462,7 +3458,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!projectId) return;
     const view = await format5Session().history();
     if (currentProject.current === projectId && projectEpoch.current === epoch && dataRef.current.projectFormatVersion === 5) {
-      updateFormat5History(view);
+      updateFormat5History(view ? {...view, projectId} : null);
     }
   }
   useEffect(() => {
@@ -3472,11 +3468,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     void (async () => {
       const view = await format5Session().history();
       if (!cancelled && currentProject.current === projectId && projectEpoch.current === epoch && dataRef.current.projectFormatVersion === 5) {
-        updateFormat5History(view);
+        updateFormat5History(view ? {...view, projectId} : null);
       }
     })();
     return () => { cancelled = true; };
-  }, [format5, data.project?.id, timeline?.id, timeline?.revision]);
+  }, [format5, data.project?.id, timeline?.id, timeline?.revision, lastSync]);
   function format5ClipName(clipId: string): string {
     const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
     const asset = dataRef.current.assets.find(item => item.id === clip?.assetId);

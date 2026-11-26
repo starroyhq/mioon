@@ -410,6 +410,13 @@ test('App.tsx refresh keeps format5History synced on periodic 2.5s polls', () =>
   const refreshEnd = appSource.indexOf('  async function revealImageAsset(', refreshStart);
   assert.ok(refreshStart > 0 && refreshEnd > refreshStart);
   const refreshBody = appSource.slice(refreshStart, refreshEnd);
-  assert.match(refreshBody, /next\?\.projectFormatVersion === 5 \? format5Session\(\)\.history\(\) : Promise\.resolve\(null\)/u);
-  assert.match(refreshBody, /updateFormat5History\(next\?\.projectFormatVersion === 5 \? nextFormat5History : null\)/u);
+  assert.match(refreshBody, /setLastSync\(new Date\(\)\)/u);
+
+  const effectStart = appSource.indexOf('  async function format5RefreshHistory(');
+  const effectEnd = appSource.indexOf('  function format5ClipName(', effectStart);
+  assert.ok(effectStart > 0 && effectEnd > effectStart);
+  const effectBody = appSource.slice(effectStart, effectEnd);
+  assert.match(effectBody, /format5Session\(\)\.history\(\)/u);
+  assert.match(effectBody, /updateFormat5History\(/u);
+  assert.match(effectBody, /\[format5,\s*data\.project\?\.id,\s*timeline\?\.id,\s*timeline\?\.revision,\s*lastSync\]/u);
 });
