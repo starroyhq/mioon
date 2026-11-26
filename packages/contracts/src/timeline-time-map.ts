@@ -996,40 +996,35 @@ function invertCurve(state: RootState, targetIntegral: number, targetError: numb
   if (targetIntegral >= endAbsolute - targetError) {
     return done({value: endNumber, errorBound: Math.max(0, targetIntegral - endAbsolute) / Math.min(1, curveRate(curve, endNumber))});
   }
-  let seg = 0, low = 0, high = curve.xs.length - 2;
+  let low = 0, high = curve.xs.length - 2;
   while (low < high) {
     const middle = (low + high + 1) >> 1;
     if (curve.prefix[middle]! <= targetIntegral) low = middle; else high = middle - 1;
   }
-  seg = low;
+  const seg = low;
   const segmentStart = curve.xs[seg]!, segmentEnd = curve.xs[seg + 1]!;
   const spanIntegral = curve.prefix[seg + 1]! - curve.prefix[seg]!;
   let u = spanIntegral > 0 ? segmentStart + (targetIntegral - curve.prefix[seg]!) * (segmentEnd - segmentStart) / spanIntegral : segmentStart;
   u = clampNumber(u, segmentStart, segmentEnd);
-  let lastError = Number.POSITIVE_INFINITY;
-  for (let iteration = 0; iteration < 32; iteration++) {
-    const clamped = clampNumber(u, segmentStart, segmentEnd);
-    const estimate = integrateCurve(curve, segmentStart, clamped, tolerance, LOCAL_CELL_BUDGET);
+  let lowerSource = segmentStart, upperSource = segmentEnd;
+  for (let iteration = 0; iteration < 64; iteration++) {
+    const estimate = integrateCurve(curve, segmentStart, u, tolerance, LOCAL_CELL_BUDGET);
     if (!estimate) return fail('NUMERIC_BUDGET_EXCEEDED', 'curve inverse exceeded the local integration budget');
     const integral = curve.prefix[seg]! + estimate.value;
     const residual = integral - targetIntegral;
-    lastError = curve.prefixError[seg]! + estimate.errorBound + targetError + 8 * EPSILON * (Math.abs(integral) + 1);
-    if (Math.abs(residual) <= lastError) return done({value: clamped, errorBound: (lastError + Math.abs(residual)) / Math.max(0.1, curveIntegrand(curve, clamped)) + 8 * EPSILON * (Math.abs(clamped) + 1)});
-    const slope = curveIntegrand(curve, clamped);
+    const error = curve.prefixError[seg]! + estimate.errorBound + targetError + 8 * EPSILON * (Math.abs(integral) + 1);
+    const slope = curveIntegrand(curve, u);
+    if (Math.abs(residual) <= error) return done({value: u, errorBound: (error + Math.abs(residual)) / Math.max(0.1, slope) + 8 * EPSILON * (Math.abs(u) + 1)});
     if (!(slope > 0) || !Number.isFinite(slope)) break;
-    const step = residual / slope;
-    u = clamped - step;
-    if (u < segmentStart) {
-      if (seg === 0) return done({value: startNumber, errorBound: lastError / Math.max(0.1, slope) + 8 * EPSILON * (Math.abs(startNumber) + 1)});
-      seg--; u = curve.xs[seg + 1]!;
-    } else if (u > segmentEnd) {
-      if (seg >= curve.xs.length - 2) return done({value: endNumber, errorBound: lastError / Math.max(0.1, slope) + 8 * EPSILON * (Math.abs(endNumber) + 1)});
-      seg++; u = curve.xs[seg]!;
-    }
-    if (Math.abs(step) < 1e-15 * Math.max(1, Math.abs(clamped))) break;
+    if (residual > 0) upperSource = u; else lowerSource = u;
+    // A steep first or last segment can send an unconstrained Newton step
+    // past the domain even when the target is well inside that segment.
+    const newton = u - residual / slope;
+    const next = newton > lowerSource && newton < upperSource ? newton : lowerSource + (upperSource - lowerSource) / 2;
+    if (next === u) break;
+    u = next;
   }
-  const fallback = clampNumber(u, startNumber, endNumber);
-  return done({value: fallback, errorBound: (lastError + 1e-12) / Math.max(0.1, curveIntegrand(curve, fallback)) + 8 * EPSILON * (Math.abs(fallback) + 1)});
+  return fail('UNRESOLVED_BOUNDARY', 'curve inverse did not converge within its source bracket');
 }
 /** Decides the source frame for a continuous position with the direction rule. */
 function decideFramePosition(state: RootState, u: number, error: number, direction: 'forward' | 'reverse',

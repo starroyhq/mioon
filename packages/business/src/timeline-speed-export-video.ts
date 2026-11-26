@@ -35,6 +35,7 @@ interface VideoIndex {
   readonly pixelFormat: string;
   readonly rotation: number;
 }
+type VideoProbeOptions = Pick<SpeedExportVideoOptions, 'signal' | 'beforeEffect'> & {readonly maxPixels?: number};
 
 export interface SpeedExportVideoStage {
   readonly file: string;
@@ -108,11 +109,12 @@ function streamSelector(value: number | string | null | undefined): string {
 /** Capture the physical frame's clock, not the container's average frame rate.
  * A bounded complete index also lets us reject video geometry/raster changes
  * instead of letting FFmpeg renegotiate to some other pixel format. */
-async function probeVideo(file: string, selector: string, {signal, beforeEffect}: Pick<SpeedExportVideoOptions, 'signal' | 'beforeEffect'>): Promise<VideoIndex> {
+async function probeVideo(file: string, selector: string, {signal, beforeEffect, maxPixels}: VideoProbeOptions): Promise<VideoIndex> {
   let stdout: string;
   try {
     const chunks: Buffer[] = [];
     await withProbePermit(signal, () => runStreaming('ffprobe', ['-v','error','-protocol_whitelist','file,pipe',
+      ...(maxPixels === undefined ? [] : ['-threads','1','-max_pixels',String(maxPixels)]),
       '-format_whitelist','mov,matroska','-select_streams',selector,'-show_streams','-show_frames',
       '-show_entries',[
         'stream=index,pix_fmt,width,height,time_base,start_pts,duration_ts,r_frame_rate,sample_aspect_ratio,' + Object.keys(colourFlags).join(','),
@@ -240,6 +242,17 @@ function videoFrameTable(index: VideoIndex, plan: CompiledTimeMap): Int32Array {
     // Curve numeric uncertainty is retained through the actual PTS comparison.
     return nativeOrdinal(index, {source: result.position, frame}, reverse);
   });
+}
+
+/** A picture consumer uses the same physical presentation ordinals as export,
+ * including VFR uncertainty and the direction rule at exact time boundaries. */
+export async function readTimelineVideoSamples(source: SpeedExportVideoOptions['source'], plan: CompiledTimeMap,
+  options: VideoProbeOptions) {
+  if (plan.root.sourceFps.fpsNumerator !== fps || plan.root.sourceFps.fpsDenominator !== 1 ||
+      plan.root.outputFps.fpsNumerator !== fps || plan.root.outputFps.fpsDenominator !== 1) mappingError();
+  const stream = streamSelector(source.videoStreamIndex);
+  const index = await probeVideo(source.path, stream, options);
+  return {stream, index, ordinals: videoFrameTable(index, plan)};
 }
 
 function reverseOrdinals(index: VideoIndex, table: Int32Array, reverse: SpeedExportReverseVideo): Int32Array {
@@ -404,13 +417,11 @@ export async function assertSpeedExportVideoCapability({signal,beforeEffect}: Pi
 
 export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions): Promise<SpeedExportVideoStage> {
   const {source,reverse,timing,plan,file,scriptFile,reserve,writeOwnedFile,signal,beforeEffect,beforeStart,maxBytes=defaultProxyBytes} = options;
-  if ((plan.direction==='reverse')!==Boolean(reverse) || plan.root.sourceFps.fpsNumerator!==fps || plan.root.sourceFps.fpsDenominator!==1 ||
-      plan.root.outputFps.fpsNumerator!==fps || plan.root.outputFps.fpsDenominator!==1) mappingError();
+  if ((plan.direction==='reverse')!==Boolean(reverse)) mappingError();
   if (!Number.isSafeInteger(maxBytes) || maxBytes<1) budgetError();
   checkMediaEffect(beforeEffect,signal);
-  const selector = streamSelector(source.videoStreamIndex);
-  const index = await probeVideo(source.path,selector,{signal,beforeEffect});
-  let table = videoFrameTable(index,plan);
+  const {stream: selector, index, ordinals} = await readTimelineVideoSamples(source,plan,{signal,beforeEffect});
+  let table = ordinals;
   const frameBytes = floatFrameBytes(index);
   let media = source.path, mediaSelector = selector;
   let mediaArgs = ['-format_whitelist','mov,matroska','-noautorotate'];

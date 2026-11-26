@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {speedProcessingItemSchema, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '../../../contracts/src/timeline-processing.ts';
-import type {SpeedProcessingItem, SpeedProcessingReason} from '../../../contracts/src/timeline-speed.ts';
+import type {SpeedProcessingItem} from '../../../contracts/src/timeline-speed.ts';
 import {processingInputWithClipSchema as inputWithClipSchema, processingReasonSchema as reasons,
   processingRowSchema as rowSchema, processingResultSchema as resultSchema} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingInput, ProcessingInputWithClip, ProcessingTaskRow, ProcessingTaskState as TaskState,
@@ -28,6 +28,7 @@ const taskKind = 'timeline-processing' as const;
 type Task = Omit<ProcessingTaskRow, 'input' | 'result'> & {
   readonly input: ProcessingInputWithClip; readonly result: TaskResult | null;
 };
+type StoredReason = NonNullable<ProcessingTaskRow['errorCode']>;
 const activeState = (state: TaskState) => state === 'queued' || state === 'running';
 const maxOutstanding = 64;
 const noEffect = () => {};
@@ -38,7 +39,7 @@ const terminationUnconfirmed = (error: unknown) => Boolean(error && typeof error
   'terminationUnconfirmed' in error && error.terminationUnconfirmed);
 const errorCode = (error: unknown) => error && typeof error === 'object' && 'code' in error ? error.code : undefined;
 const sourceStatHash = (info: ManagedFileIdentity) => processingHash([info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs]);
-function reasonFor(error: unknown): SpeedProcessingReason {
+function reasonFor(error: unknown): StoredReason {
   const code = errorCode(error), direct = reasons.safeParse(code);
   if (direct.success) return direct.data;
   if (code === 'ENOSPC' || code === 'EDQUOT') return 'DISK_FULL';
@@ -106,7 +107,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       ...(status === 'failed' ? {reason: task.errorCode ?? 'PROCESSING_FAILED'} : {})});
   }
   function emit(): void {for (const listener of [...listeners]) listener();}
-  function update(task: Task, state: TaskState, patch: {progress?: number | null; error?: SpeedProcessingReason | null; result?: TaskResult | null;
+  function update(task: Task, state: TaskState, patch: {progress?: number | null; error?: StoredReason | null; result?: TaskResult | null;
     attempt?: {requestId: string; input: Task['input']}} = {}): Task {
     const {attempt, progress = null, error = null, result = task.result} = patch;
     const updatedAt = now();

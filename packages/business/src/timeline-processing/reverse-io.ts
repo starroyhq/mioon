@@ -151,7 +151,8 @@ export interface ReverseProxyFile {
   readonly sha256: string;
 }
 
-const fileNames = ['proxy.mkv', 'video.raw', 'audio.f32le', 'clock.json', 'frames.jsonl', 'video-block.raw', 'audio-source.f32le'] as const;
+const fileNames = ['proxy.mkv', 'video.raw', 'audio.f32le', 'clock.json', 'frames.jsonl', 'video-block.raw', 'audio-source.f32le',
+  'preview.mp4', 'preview-frames.raw'] as const;
 type FileName = typeof fileNames[number];
 interface OwnedFile {readonly fileName: FileName; readonly path: string; readonly handle: FileHandle; readonly identity: Stats}
 

@@ -1,14 +1,13 @@
 import {z} from 'zod';
-import type {SpeedProcessingItem, SpeedProcessingReason} from './timeline-speed.ts';
+import {speedProcessingReasonSchema} from './timeline-speed.ts';
+import type {SpeedProcessingItem} from './timeline-speed.ts';
+import {timelinePreviewMediaInputSchema, timelinePreviewMediaResponseSchema} from './timeline-preview-media.ts';
 
 const uuid = z.string().uuid();
 const project = {projectId: uuid};
 const task = {...project, taskId: uuid};
 const bytes = z.number().int().safe().nonnegative();
 const status = z.enum(['queued', 'running', 'failed', 'ready']);
-const reason = z.enum([
-  'SOURCE_UNAVAILABLE', 'DISK_FULL', 'CACHE_LIMIT', 'UNSUPPORTED_FORMAT', 'PROCESSING_FAILED',
-] satisfies [SpeedProcessingReason, ...SpeedProcessingReason[]]);
 
 export const TIMELINE_PROCESSING_WAIT_DEFAULT_MS = 30_000;
 export const TIMELINE_PROCESSING_WAIT_MAX_MS = 60_000;
@@ -16,13 +15,14 @@ export const TIMELINE_PROCESSING_WAIT_MAX_MS = 60_000;
 export const speedProcessingItemSchema = z.object({
   taskId: uuid,
   clipId: uuid,
-  kind: z.enum(['reverse', 'optical']),
+  kind: z.enum(['reverse', 'optical', 'preview']),
   status,
   progress: z.number().finite().min(0).max(100).optional(),
-  reason: reason.optional(),
+  reason: speedProcessingReasonSchema.optional(),
 }).strict() satisfies z.ZodType<SpeedProcessingItem>;
 
 export const timelineProcessingSchemas = Object.freeze({
+  'timeline.preview.media': timelinePreviewMediaInputSchema,
   'timeline.processing.list': z.object(project).strict(),
   'timeline.processing.inspect': z.object(task).strict(),
   'timeline.processing.wait': z.object({
@@ -39,6 +39,7 @@ export const isTimelineProcessingOperation = (operation: string): operation is T
   Object.hasOwn(timelineProcessingSchemas, operation);
 
 export const timelineProcessingResponseSchemas = Object.freeze({
+  'timeline.preview.media': timelinePreviewMediaResponseSchema,
   'timeline.processing.list': z.object({items: z.array(speedProcessingItemSchema)}).strict(),
   'timeline.processing.inspect': z.object({item: speedProcessingItemSchema}).strict(),
   'timeline.processing.wait': z.object({item: speedProcessingItemSchema, timedOut: z.boolean()}).strict(),
@@ -49,6 +50,7 @@ export const timelineProcessingResponseSchemas = Object.freeze({
 } satisfies Record<TimelineProcessingOperation, z.ZodTypeAny>);
 
 export const timelineProcessingDescriptions = Object.freeze({
+  'timeline.preview.media': '读取当前项目片段的预览速率或已有预览代理状态。',
   'timeline.processing.list': '查询当前项目的变速处理任务摘要。',
   'timeline.processing.inspect': '读取当前项目中指定变速任务的状态和原因。',
   'timeline.processing.wait': '等待当前项目中指定变速任务结束或到达时限。中止等待不会取消任务。',

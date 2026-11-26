@@ -190,10 +190,11 @@ test('format 6 reports reverse processing and interpolation refusals before any 
     await assert.rejects(async () => services.call('timeline.render', {
       projectId, purpose: 'preview', expectedRevision, requestId: randomUUID(),
     }), failure);
+    // PCM admits retimed clips, but this fixture has no verified managed media.
     for (const operation of ['timeline.audioPreview.plan', 'timeline.audioPreview.continuousPlan']) {
       await assert.rejects(async () => services.call(operation, {
         projectId, timelineId, expectedRevision, startFrame: 0,
-      }), failure);
+      }), {code: 'AUDIO_PREVIEW_UNAVAILABLE'});
     }
     await assert.rejects(async () => services.call('clip.audio.export', {projectId, clipId: clipA, requestId: randomUUID()}), failure);
     assert.deepEqual(store.list('exports'), before);

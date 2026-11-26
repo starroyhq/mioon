@@ -6,16 +6,15 @@ import {canonicalJson} from '../project-versions/document.ts';
 import {readOwnedTimelineAsset} from '../timeline-sources.ts';
 import {compileClipTimeMap} from '../../../contracts/src/timeline-clip-timing.ts';
 import {timeMapPlanInfo} from '../../../contracts/src/timeline-time-map.ts';
-import type {SpeedProcessingReason} from '../../../contracts/src/timeline-speed.ts';
 import {processingDigestSchema as digest} from '../../../contracts/src/timeline-processing-storage.ts';
-import type {ProcessingInput} from '../../../contracts/src/timeline-processing-storage.ts';
+import type {ProcessingInput, ProcessingTaskRow} from '../../../contracts/src/timeline-processing-storage.ts';
 import {REVERSE_PROXY_PROFILE} from './reverse.ts';
 
 export interface ProcessingDemand {
   readonly demandKey: string;
   readonly clipId: string;
   readonly input: ProcessingInput;
-  readonly unavailable: SpeedProcessingReason | null;
+  readonly unavailable: ProcessingTaskRow['errorCode'];
 }
 type Asset = NonNullable<ReturnType<typeof readOwnedTimelineAsset>>;
 export function processingHash(value: unknown): string {

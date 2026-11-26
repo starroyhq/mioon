@@ -5,6 +5,8 @@ import type {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {AppError,parse,WAVEFORM_ALGORITHM,WAVEFORM_BINS_PER_SECOND,sourceFrameCount} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
+import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
+import {projectTimelineWaveformPeaks, timelineWaveformPointCount, type TimelineWaveformWindow} from './timeline-preview-waveform.ts';
 
 export const WAVEFORM_CACHE_LIMITS=Object.freeze({entries:64,bytes:16*1024*1024,recordBytes:384*1024,
  active:1,queued:4,sourceBytes:512*1024*1024,attemptMs:180000,bins:60000,sampleFrames:600*48000});
@@ -98,6 +100,14 @@ export interface WaveformResponse {
  sourceEndFrame?: number;
  [key: string]: unknown;
 }
+export interface TimelineClipWaveform extends TimelineWaveformWindow {
+ readonly clipId: string;
+ readonly assetId: string;
+ readonly points: number;
+ readonly status: WaveformStatus;
+ readonly reason?: WaveformReason;
+ readonly peaks?: readonly (number|null)[];
+}
 export interface WaveformFault extends Error {
  waveformCode: WaveformMessageCode;
  waveformStatus: 'error'|'interrupted'|'unsupported'|string;
@@ -114,6 +124,8 @@ export interface WaveformHistoryReaders {
  valid(row: WaveformCacheRow, asset: WaveformAsset): WaveformStoredData | null;
  response(input: WaveformGetInput, status: WaveformStatus, data?: WaveformStoredData, attemptId?: string): WaveformResponse;
  state(input: WaveformGetInput, asset: WaveformAsset, row: WaveformCacheRow | null): WaveformResponse;
+ getTimelineClipWaveform(timeline: Pick<Format5Timeline, 'projectId'|'fps'>, clip: Format5Clip,
+  window: TimelineWaveformWindow): TimelineClipWaveform;
 }
 
 export const waveformReason=(code: WaveformMessageCode): WaveformReason=>({code,message:messages[code]});
@@ -227,6 +239,22 @@ export function createWaveformHistoryReaders({db}: {db: DatabaseSync}): Waveform
   }
   return {...out,sourceStartFrame:start,sourceEndFrame:end,peaks};
  }
+ /** The caller binds the current saved clip to its timeline. This read keeps
+  * cache ownership identical to asset.waveform.get and never queues a decode. */
+ function getTimelineClipWaveform(timeline: Pick<Format5Timeline, 'projectId'|'fps'>, clip: Format5Clip,
+  window: TimelineWaveformWindow): TimelineClipWaveform {
+  const assetId=clip.assetId;
+  if(!assetId||clip.sourceState!=='ready')return missing();
+  const input={projectId:timeline.projectId,assetId},asset=owned(input);
+  const points=timelineWaveformPointCount(clip,window);
+  const identity={clipId:clip.id,assetId,outputStartFrame:window.outputStartFrame,outputEndFrame:window.outputEndFrame,points};
+  if(clip.timing?.profile==='timeline-freeze-v1')return {...identity,status:'ready',peaks:Array<number>(points).fill(0)};
+  const cacheKey=sourceKey(asset),row=cacheKey?load(cacheKey):null,out=state(input,asset,row);
+  if(out.status!=='ready')return {...identity,status:out.status,...(out.reason?{reason:out.reason}:{})};
+  const source=valid(row as WaveformCacheRow,asset) as WaveformReadyData|null;
+  if(!source)return {...identity,status:'error',reason:reason('CACHE_CORRUPT')};
+  return {...identity,status:'ready',peaks:projectTimelineWaveformPeaks(clip,timeline.fps,window,source)};
+ }
  const handlers=Object.freeze({'asset.waveform.get':(input: unknown)=>get(parse('asset.waveform.get',input) as WaveformGetInput)});
- return Object.freeze({handlers,sourceColumn,fingerprint,cacheBounded,owned,sourceKey,load,valid,response,state});
+ return Object.freeze({handlers,sourceColumn,fingerprint,cacheBounded,owned,sourceKey,load,valid,response,state,getTimelineClipWaveform});
 }

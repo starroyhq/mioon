@@ -11,8 +11,10 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
 import {effectAnnotations} from '../packages/contracts/src/operation-effects.ts';
-import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {projectRpcPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {timelineProcessingResponseSchemas, timelineProcessingSchemas} from '../packages/contracts/src/timeline-processing.ts';
+import type {PreviewMedia} from '../packages/contracts/src/timeline-preview-media.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 
@@ -65,6 +67,49 @@ test('the shared client preserves the wait deadline and admits only the requeste
     details: {operation: 'timeline.processing.retry', requestId, submissionMayHaveSucceeded: true,
       recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'},
   });
+});
+
+test('preview response accepts task identities and only authentic project media URLs', async () => {
+  const projectId = randomUUID(), clipId = randomUUID(), assetId = randomUUID(), taskId = randomUUID();
+  let output: unknown;
+  const client = createClient({
+    env: {MIOON_BASE_URL: 'http://127.0.0.1:18000', MIOON_TOKEN: token},
+    fetchImpl: (async () => Response.json({ok: true, data: output})) as typeof fetch,
+  });
+  const read = () => client.rpc('timeline.preview.media', {projectId, clipId});
+  output = {mode: 'proxy', status: 'running', taskId, progress: 42};
+  assert.deepEqual(await read(), output);
+  output = {mode: 'proxy', status: 'failed', taskId, reason: 'INTERPOLATION_UNAVAILABLE'};
+  assert.deepEqual(await read(), output);
+  output = {mode: 'proxy', status: 'ready', url: projectMediaPath(projectId, assetId), durationFrames: 60};
+  assert.deepEqual(await read(), output);
+  for (const url of [projectMediaPath(randomUUID(), assetId), '/private/tmp/synthetic.mp4', 'C:\\tmp\\synthetic.mp4',
+    'https://example.invalid/media', projectMediaPath(projectId, assetId) + '?path=%2Fprivate%2Ftmp']) {
+    output = {mode: 'proxy', status: 'ready', url, durationFrames: 60};
+    await assert.rejects(read, {code: 'BACKEND_PROTOCOL_ERROR'});
+  }
+});
+
+test('a development host with the format-6 switch off keeps format-5 reads and has no preview media capability', async t => {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-preview-off-'));
+  const previousGate = process.env.MIOON_FORMAT6_DEV;
+  delete process.env.MIOON_FORMAT6_DEV;
+  let server: Awaited<ReturnType<typeof startServer>> | undefined;
+  t.after(async () => {
+    try {await server?.close();} finally {
+      if (previousGate !== undefined) process.env.MIOON_FORMAT6_DEV = previousGate;
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+  server = await startServer({dataDir: path.join(root, 'app'), port: 0, token,
+    localDraftChannel: 'development', projectFormatForTest: undefined});
+  const client = createClient({env: {MIOON_BASE_URL: server.url, MIOON_TOKEN: token}});
+  const {id: projectId} = await client.rpc<{id: string}>('project.create', {name: 'Ordinary project'});
+  const project = await client.rpc<{projectFormatVersion: number; timeline: {capabilities: {speed: boolean}}}>('project.get', {projectId});
+  assert.equal(project.projectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(project.timeline.capabilities.speed, false);
+  await assert.rejects(client.rpc('timeline.preview.media', {projectId, clipId: randomUUID()}),
+    {code: 'UNKNOWN_OPERATION'});
 });
 
 test('CLI and MCP share processing discovery, task ownership and exact retry replay', {timeout: 90_000}, async t => {
@@ -144,10 +189,19 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   assert.equal(timeline.capabilities.speed, true);
   const clipId = timeline.clips.find(clip => clip.assetId === assetId)?.id;
   assert.ok(clipId);
+  const previewInput = {projectId, clipId};
+  const native = {mode: 'native', rate: {numerator: 1, denominator: 1}};
+  assert.deepEqual(data(await rpc<PreviewMedia>('timeline.preview.media', previewInput)), native);
+  assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, projectId: otherProjectId})), 'PROJECT_ID_MISMATCH');
+  assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, clipId: randomUUID()})), 'NOT_FOUND');
+  assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, requestId: randomUUID()})), 'VALIDATION_ERROR');
   const setInterpolation = (interpolation: 'optical' | 'blend') => edit('sequence.timeline.edit',
     {kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator: 1, denominator: 2}},
       direction: 'forward', pitchShift: false, interpolation}});
   await setInterpolation('optical');
+  const halfSpeed = {mode: 'native', rate: {numerator: 1, denominator: 2}};
+  assert.deepEqual(data(await cli<PreviewMedia>('timeline.preview.media', previewInput)), halfSpeed);
+  assert.deepEqual(data(await mcpCall<PreviewMedia>('timeline.preview.media', previewInput)), halfSpeed);
 
   let taskId: string | undefined;
   const deadline = Date.now() + 10_000;
@@ -177,4 +231,13 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   const cache = timelineProcessingResponseSchemas['timeline.processing.cache.get'].parse(data(await cli('timeline.processing.cache.get', {projectId})));
   assert.equal(cache.usedBytes, 0);
   assert.equal(cache.limitBytes, 10 * 1024 ** 3);
+
+  await edit('sequence.timeline.edit', {kind: 'clip-speed', clipId, setting: {
+    speed: {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom', points: [
+      {sourceFrame: 0, rate: {numerator: 1, denominator: 1}},
+      {sourceFrame: 60, rate: {numerator: 2, denominator: 1}},
+    ]},
+    direction: 'forward', pitchShift: false, interpolation: 'off',
+  }});
+  assert.equal(errorCode(await rpc('timeline.preview.media', previewInput)), 'SPEED_PROCESSING_UNAVAILABLE');
 });
