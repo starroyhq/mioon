@@ -59,7 +59,6 @@ test('the settings host installs, repairs and removes a CLI and both skills in a
   for (const request of [
     {kind: 'install-skill', agent: 'claude-code'},
     {kind: 'update-skill', agent: 'claude-code', overwriteModified: false},
-    {kind: 'uninstall-skill', agent: 'codex'},
   ]) assert.deepEqual(await dispatch(owner, request), failure('CLI_REQUIRED', 409));
 
   const installed = data(await dispatch(owner, {kind: 'install-cli', location: 'default'}));
@@ -84,6 +83,29 @@ test('the settings host installs, repairs and removes a CLI and both skills in a
   assert.equal(data(await dispatch(owner, {kind: 'uninstall-cli'})).cli.state, 'not-installed');
   assert.equal(await readFile(path.join(f.bin, 'another-program'), 'utf8'), 'keep');
   await assert.rejects(access(f.command), {code: 'ENOENT'});
+});
+
+test('uninstalls only managed skill files after the CLI is missing or uninstalled', {skip: !supportedFixture}, async t => {
+  const f = await fixture(t);
+  const {dispatch} = f.host();
+  data(await dispatch(owner, {kind: 'install-cli', location: 'default'}));
+  data(await dispatch(owner, {kind: 'install-skill', agent: 'claude-code'}));
+  data(await dispatch(owner, {kind: 'install-skill', agent: 'codex'}));
+
+  async function uninstall(agent: 'claude-code' | 'codex', directory: string, cliState: 'needs-repair' | 'not-installed') {
+    const personal = path.join(directory, 'personal.md');
+    await writeFile(personal, 'keep');
+    const view = data(await dispatch(owner, {kind: 'uninstall-skill', agent}));
+    assert.equal(view.cli.state, cliState);
+    assert.equal(view.skills.find(skill => skill.agent === agent)?.state, 'not-installed');
+    await assert.rejects(access(path.join(directory, 'SKILL.md')), {code: 'ENOENT'});
+    assert.equal(await readFile(personal, 'utf8'), 'keep');
+  }
+
+  await unlink(f.command);
+  await uninstall('claude-code', f.claudeSkill, 'needs-repair');
+  data(await dispatch(owner, {kind: 'uninstall-cli'}));
+  await uninstall('codex', f.codexSkill, 'not-installed');
 });
 
 test('the host owns the directory chooser, preserves failed states and refuses stale or busy requests', {skip: !supportedFixture}, async t => {

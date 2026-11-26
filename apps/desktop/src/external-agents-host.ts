@@ -78,13 +78,17 @@ export function createExternalAgentsHost({cli, skills, repairOnStartup}: Externa
         case 'uninstall-cli':
           status = await cli.uninstall();
           break;
-        default: {
+        case 'uninstall-skill':
+          await skills.uninstall(request.agent);
+          status = await cli.status();
+          break;
+        case 'install-skill':
+        case 'update-skill': {
           status = await cli.status();
           if (!canContinue()) return refuse('EXTERNAL_AGENTS_UNAVAILABLE', 503);
           const command = installedCommand(status);
           if (!command) return refuse('CLI_REQUIRED', 409);
           if (request.kind === 'install-skill') await skills.install(request.agent, command);
-          else if (request.kind === 'uninstall-skill') await skills.uninstall(request.agent);
           else if (await skills.update(request.agent, command, request.overwriteModified) === 'modified') {
             return refuse('SKILL_MODIFIED', 409);
           }
