@@ -218,7 +218,7 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5AnchorConflictPresentation, format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5EditUiTimeline, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5EditUiTimeline, format5HistoryScope, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TimelineHistoryState, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
 import BoardUiLive from './board-ui/BoardUiLive.tsx';
 import BoardInspector from './board-ui/BoardInspector.tsx';
@@ -1214,10 +1214,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const next = nextRaw as AppData | null;
       if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== projectId || epoch !== projectEpoch.current || call !== requestCounter.current || capturedSession !== editorSession.current) return null;
       if (!projectResponseMatches(next as never, projectId)) throw Object.assign(localizedError(msg('shell.error.projectIdentity')), { code: 'BACKEND_PROTOCOL_ERROR' });
-      await refreshAgentEditingTargets(projectId);
+      const [, nextFormat5History] = await Promise.all([
+        refreshAgentEditingTargets(projectId),
+        next?.projectFormatVersion === 5 ? format5Session().history() : Promise.resolve(null),
+      ]);
       if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== projectId || epoch !== projectEpoch.current || call !== requestCounter.current || capturedSession !== editorSession.current) return null;
       reconcilePending(projectId, next as unknown as PendingData);
-      dataRef.current = { ...emptyData, ...(next as AppData) }; setData(dataRef.current); providersRef.current = directory.providers; setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId as string));
+      dataRef.current = { ...emptyData, ...(next as AppData) }; setData(dataRef.current); updateFormat5History(next?.projectFormatVersion === 5 ? nextFormat5History : null); providersRef.current = directory.providers; setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId as string));
       const retainClipSelection = clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved();
       const reconciled = retainClipSelection ? viewRef.current : reconcileWorkspaceState(viewRef.current, next);
       if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled as ViewState; setView(reconciled as ViewState); preferencesRef.current!.update(projectId!, reconciled as ViewState, { immediate: true }); }
@@ -1306,6 +1309,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (currentProject.current) void preferencesRef.current!.flush({ projectId: currentProject.current, keepalive: true } as unknown as {keepalive?: boolean});
     currentProject.current = id;
     format5LostRef.current!.clear();
+    updateFormat5History(null);
     setPropertiesPage('inspector');
     setTaskState(tasksRef.current!.getState(id) as never);
     viewReady.current = false;
@@ -2439,7 +2443,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const timeline = data.timeline;
   const format5 = data.projectFormatVersion === 5;
   const format5SessionRef = useRef<Format5EditSession | null>(null);
+  const format5HistoryRef = useRef<SequenceHistoryView | null>(null);
   const [format5History, setFormat5History] = useState<SequenceHistoryView | null>(null);
+  function updateFormat5History(view: SequenceHistoryView | null): void {
+    format5HistoryRef.current = view;
+    setFormat5History(view);
+  }
   const [format5Notice, setFormat5Notice] = useState<EditUiNotice | null>(null);
   const [format5DeleteReview, setFormat5DeleteReview] = useState<{readonly nodeId: string; readonly count: number} | null>(null);
   const [format5CopyRequest, setFormat5CopyRequest] = useState<EditUiCopyMoveRequest | null>(null);
@@ -3400,16 +3409,22 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // Opening is passive. Only the explicit Check action runs capability/media work.
   }
   const historyState = timelineHistoryState({ projectId: data.project?.id, timeline, history: data.timelineHistory, busy: Boolean(busy['timeline:mutation']), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
+  const format5HistoryState = format5 ? format5TimelineHistoryState({
+    projectId: data.project?.id,
+    history: format5History,
+    busy: format5SessionBusy || format5BoardBusy,
+    dirty: workspaceMode === 'canvas' ? inspectorDirty : (clipDirty || subtitleDirty),
+    online: online && auth === true && !loading,
+  }) : historyState;
   const format5HistorySource = format5 && format5History && timeline ? {
     projectId: data.project?.id, timelineId: timeline.id, revision: timeline.revision,
-    cursor: format5History.position, length: format5History.position + (format5History.redo ? 1 : 0),
-    canUndo: Boolean(format5History.undo) && format5History.undoConflict !== true && format5History.atEarliest !== true,
-    canRedo: Boolean(format5History.redo) && format5History.redoConflict !== true,
-    undoEntry: format5History.undo ? {id: format5History.undo.actionId, operation: format5History.undo.operation} : null,
-    redoEntry: format5History.redo ? {id: format5History.redo.actionId, operation: format5History.redo.operation} : null,
+    cursor: format5HistoryState.canUndo ? Math.max(1, format5History.position) : 0,
+    length: (format5HistoryState.canUndo ? Math.max(1, format5History.position) : 0) + (format5HistoryState.canRedo ? 1 : 0),
+    canUndo: format5HistoryState.canUndo,
+    canRedo: format5HistoryState.canRedo,
+    undoEntry: format5HistoryState.canUndo ? {id: format5History.undo?.actionId ?? 'format5-undo', operation: format5History.undo?.operation ?? ''} : null,
+    redoEntry: format5HistoryState.canRedo ? {id: format5History.redo?.actionId ?? 'format5-redo', operation: format5History.redo?.operation ?? ''} : null,
   } : null;
-  const format5HistoryState = format5 ? timelineHistoryState({ projectId: data.project?.id, timeline, history: format5HistorySource,
-    busy: format5SessionBusy, pending: false, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading }) : historyState;
   const getFormat5SplitStateAt = (frame: number) => timelineSplitState({ projectId: data.project?.id, timeline,
     history: format5HistorySource, busy: format5SessionBusy, pending: false, dirty: clipDirty || subtitleDirty,
     online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : selectedClipId,
@@ -3443,19 +3458,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return format5SessionRef.current;
   }
   async function format5RefreshHistory(): Promise<void> {
-    if (!currentProject.current) return;
+    const projectId = currentProject.current, epoch = projectEpoch.current;
+    if (!projectId) return;
     const view = await format5Session().history();
-    if (currentProject.current && dataRef.current.projectFormatVersion === 5) setFormat5History(view);
+    if (currentProject.current === projectId && projectEpoch.current === epoch && dataRef.current.projectFormatVersion === 5) {
+      updateFormat5History(view);
+    }
   }
   useEffect(() => {
-    if (!format5 || !timeline) { setFormat5History(null); return; }
+    if (!format5 || !data.project?.id) { updateFormat5History(null); return; }
     let cancelled = false;
+    const projectId = data.project.id, epoch = projectEpoch.current;
     void (async () => {
       const view = await format5Session().history();
-      if (!cancelled && currentProject.current) setFormat5History(view);
+      if (!cancelled && currentProject.current === projectId && projectEpoch.current === epoch && dataRef.current.projectFormatVersion === 5) {
+        updateFormat5History(view);
+      }
     })();
     return () => { cancelled = true; };
-  }, [format5, timeline?.id, timeline?.revision]);
+  }, [format5, data.project?.id, timeline?.id, timeline?.revision]);
   function format5ClipName(clipId: string): string {
     const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
     const asset = dataRef.current.assets.find(item => item.id === clip?.assetId);
@@ -3637,22 +3658,28 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function format5CancelCopy(): void {format5Session().cancelCopy(); setFormat5CopyRequest(null);}
   async function format5ChangeHistory(direction: 'undo' | 'redo'): Promise<unknown> {
-    if (!format5) return null;
-    const view = await format5Session().history();
-    if (!view) return null;
-    // D5 minimal guard: a Mio action is not part of the user undo stack. Keep
-    // it intact and tell the user to undo it from Mio until MT-4 adds the
-    // separate cursor/conflict rules. Redo has no such constraint.
-    if (direction === 'undo' && format5UserUndoBlocked(view)) {
-      notify(t('editUi.error.mioUndoBlocked'), 'warning');
-      return null;
+    if (!format5 || format5SessionBusy) return null;
+    setFormat5SessionBusy(true);
+    try {
+      const view = await format5Session().history();
+      if (!view) return null;
+      updateFormat5History(view);
+      // D5 minimal guard: a Mio action is not part of the user undo stack. Keep
+      // it intact and tell the user to undo it from Mio until MT-4 adds the
+      // separate cursor/conflict rules. Redo has no such constraint.
+      if (direction === 'undo' && format5UserUndoBlocked(view)) {
+        notify(t('editUi.error.mioUndoBlocked'), 'warning');
+        return null;
+      }
+      const result = direction === 'undo' ? await format5Session().undo(view) : await format5Session().redo(view);
+      if (!result.ok) {notifyFormat5CommandFailure(result); return null;}
+      clearFormat5ConflictToast();
+      setFormat5Notice(null); setFormat5NoticeActionId(null);
+      await Promise.all([refresh(currentProject.current), format5RefreshHistory(), format5LoadBoard()]);
+      return result;
+    } finally {
+      setFormat5SessionBusy(false);
     }
-    const result = direction === 'undo' ? await format5Session().undo(view) : await format5Session().redo(view);
-    if (!result.ok) {notifyFormat5CommandFailure(result); return null;}
-    clearFormat5ConflictToast();
-    setFormat5Notice(null); setFormat5NoticeActionId(null);
-    await refresh(currentProject.current); await format5RefreshHistory();
-    return result;
   }
   async function format5TrackAdd(kind: 'video' | 'audio'): Promise<unknown> {
     if (!format5 || format5SessionBusy) return null;
@@ -3858,10 +3885,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       const direction = timelineHistoryActionForKey(event, guards);
       if (!direction) return;
-      const available = boardHistory
-        ? direction === 'undo' ? Boolean(format5History?.undo) && format5History?.undoConflict !== true && format5History?.atEarliest !== true
-          : Boolean(format5History?.redo) && format5History?.redoConflict !== true
-        : direction === 'undo' ? historyState.canUndo : historyState.canRedo;
+      const activeHistory = dataRef.current?.projectFormatVersion === 5 ? format5HistoryState : historyState;
+      const available = direction === 'undo' ? activeHistory.canUndo : activeHistory.canRedo;
       if (!available) return;
       event.preventDefault();
       changeTimelineHistory(direction);
@@ -5198,13 +5223,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       assetsVisible: !assetsCollapsed, inspectorVisible: !inspectorCollapsed, timelineVisible: !viewRef.current!.editing.timelineCollapsed,
       canImport: !isBusy('import') && online && auth === true,
       canExport: canOpenExport, canChangeMode: true,
-      canUndoCanvas: mode === 'canvas' && canvasEditingEnabled ? canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canUndo : Boolean(canvasToast && canvasToast.projectId === currentProject.current && canvasScene?.projectId === currentProject.current &&
+      canUndoCanvas: mode === 'canvas' && format5 ? format5HistoryState.canUndo : mode === 'canvas' && canvasEditingEnabled ? canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canUndo : Boolean(canvasToast && canvasToast.projectId === currentProject.current && canvasScene?.projectId === currentProject.current &&
         canvasScene?.phase === 'idle' && !canvasScene.readOnly && !canvasScene.pending && canvasTask?.state === 'succeeded' && canvasTask.shots?.length &&
         canvasScene.undo[canvasToast.taskId]?.undo?.available !== false && !toastBlocked && online && auth === true),
-      canRedoCanvas: mode === 'canvas' && canvasEditingEnabled && canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canRedo,
+      canRedoCanvas: mode === 'canvas' && format5 ? format5HistoryState.canRedo : mode === 'canvas' && canvasEditingEnabled && canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canRedo,
       canDuplicateCanvas: !canvasCopyBlocked && canvasClipboardGesture() && !document.getSelection()?.toString(),
-      canUndo: (format5 ? Boolean(format5HistorySource?.canUndo) : historyState.canUndo) && locks.size === 0,
-      canRedo: (format5 ? Boolean(format5HistorySource?.canRedo) : historyState.canRedo) && locks.size === 0,
+      canUndo: (format5 ? format5HistoryState.canUndo : historyState.canUndo) && locks.size === 0,
+      canRedo: (format5 ? format5HistoryState.canRedo : historyState.canRedo) && locks.size === 0,
       canSplit: getSplitStateAt(playbackClock.getSnapshot() ?? effectivePlayhead).canSplit && Boolean(selected && !locks.has(selected.trackId)),
       canRemove: Boolean(menuRemoval.current?.available('remove')), canRippleRemove: Boolean(menuRemoval.current?.available('ripple')),
       canPlay: Boolean(menuPlayback.current?.available()),
@@ -5215,6 +5240,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const common = [currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, state.activeMode];
     if (command === 'canvas-duplicate') return JSON.stringify([...common, canvasEditingScope, renderedCanvasSelection,
       canvasTargets, canvasEditing.historyScope, canvasPasteViewport()]);
+    if (dataRef.current?.projectFormatVersion === 5 && (command === 'edit-undo' || command === 'edit-redo')) {
+      return JSON.stringify([...common, 'format5-history', format5HistoryScope(format5HistoryRef.current)]);
+    }
     if (state.activeMode === 'canvas' && (command === 'edit-undo' || command === 'edit-redo') && canvasEditingEnabled) {
       return JSON.stringify([...common, canvasEditing.historyScope]);
     }
@@ -5247,6 +5275,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (command === 'show-tasks') return openTasks();
     if (command === 'show-help') return setShowGuide(true);
     if (command === 'canvas-duplicate') return duplicateCanvas();
+    if ((command === 'edit-undo' || command === 'edit-redo') && dataRef.current?.projectFormatVersion === 5) {
+      return changeTimelineHistory(command === 'edit-undo' ? 'undo' : 'redo');
+    }
     if ((command === 'edit-undo' || command === 'edit-redo') && viewRef.current!.activeMode === 'canvas' && canvasEditingEnabled) {
       return command === 'edit-undo' ? canvasEditing.undo() : canvasEditing.redo();
     }
