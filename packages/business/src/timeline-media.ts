@@ -120,7 +120,6 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
  segmentConcurrency: requestedSegmentConcurrency,encoderPool,
 }: RenderTimelineOptions={}): Promise<unknown>{
- assertTimelineSpeedRenderable(snapshot.timeline);
  // Every project window shares one backend process and this application-wide
  // pool: two exports never start more segment encoders than the machine-wide
  // cap, and each export still uses its full segment count when uncontended.
@@ -132,7 +131,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  // Nothing binds an opacity render: a snapshot with an opacity field is refused before any media work.
  getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  checkMediaEffect(beforeEffect,signal);
- const timeline=snapshot.timeline,tracks=validateTimeline(timeline,assets);
+ const timeline=snapshot.timeline;
+ assertTimelineSpeedRenderable(timeline);
+ const tracks=validateTimeline(timeline,assets);
  // Transitions add segment edges and reach into neighbouring clips' ranges.
  const transitions=timelineTransitionRegions(timeline as never,assets as never);
  validateSubtitleSnapshotProfile(snapshot);

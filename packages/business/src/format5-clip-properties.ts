@@ -14,7 +14,7 @@ import {canonicalClipTransition, clipTransitionFits, clipTransitionPredecessor, 
 import type {ClipTransition, TransitionClip, TransitionSource, TransitionSources} from '../../contracts/src/timeline-clip-transition.ts';
 import {isTimelineClipColour} from '../../contracts/src/timeline-colour.ts';
 import {isClipAudioRole, getTimelineAudioRoleIssue} from '../../contracts/src/timeline-audio-role.ts';
-import {isVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import {isEditingVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope-editing.ts';
 import {getTimelineFadeIssue} from '../../contracts/src/timeline-fades.ts';
 import {FORMAT5_LIMITS, type Format5Clip, type Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {
@@ -198,7 +198,7 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
     (next as Row).audioRole = patch.audioRole;
   }
   if (patch.volumeEnvelope !== undefined) {
-    if (!isVolumeEnvelope(patch.volumeEnvelope, clip.durationFrames, maxFrames)) invalid('音量包络无效', {clipId: clip.id});
+    if (!isEditingVolumeEnvelope(patch.volumeEnvelope, clip.durationFrames, maxFrames)) invalid('音量包络无效', {clipId: clip.id});
     const source = clipSource(asset, clip);
     if (patch.volumeEnvelope !== null && !source.mimeType.startsWith('audio/') && source.hasAudio !== true) {
       invalid('只有有声片段可以设置音量包络', {clipId: clip.id});

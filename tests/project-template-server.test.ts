@@ -19,6 +19,7 @@ import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contra
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {projectFormatUpgradeFromError} from '../packages/contracts/src/project-format-upgrade.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {readProjectState, changeMarks} from './helpers/project-state.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
@@ -142,6 +143,15 @@ test('only the development channel plus explicit environment opt-in admits forma
   setFormat6Environment(t, '1');
   let server = await start('web');
   t.after(async () => {await server.close(); rmSync(root, {recursive: true, force: true});});
+  const readSpeedCapability = async (projectId: string) => {
+    const response = await fetch(server.url + projectRpcPath(projectId), {method: 'POST',
+      headers: {'content-type': 'application/json', authorization: `Bearer ${token}`},
+      body: JSON.stringify({operation: 'project.get', input: {projectId}})});
+    const body = await response.json() as Wire<{timeline: {capabilities: {speed: boolean}}}>;
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.ok, true);
+    return body.data!.timeline.capabilities.speed;
+  };
   const previous = await server.projectEntries.create({name: 'Previous format'});
   assert.equal((await server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
   assert.equal(inspectProjectFormatReadOnly(previous.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
@@ -151,6 +161,7 @@ test('only the development channel plus explicit environment opt-in admits forma
   const previousWindow = randomUUID();
   await server.projectEntries.acquire({projectId: previous.projectId, windowId: previousWindow});
   assert.equal((await server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(await readSpeedCapability(previous.projectId), false);
   server.projectEntries.release({windowId: previousWindow});
   await server.close();
   assert.equal(inspectProjectFormatReadOnly(previous.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
@@ -168,6 +179,7 @@ test('only the development channel plus explicit environment opt-in admits forma
   assert.equal((await server.projectEntries.readOnlyFormat!(observed)).projectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
   await server.projectEntries.acquire({projectId: previous.projectId, expectedProjectFile: previous.projectFile,
     windowId: upgradeWindow, formatUpgrade: observed});
+  assert.equal(await readSpeedCapability(previous.projectId), true);
   server.projectEntries.release({windowId: upgradeWindow});
   await server.close();
   assert.equal(inspectProjectFormatReadOnly(previous.projectFile, {allowFormat6: true}).formatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);

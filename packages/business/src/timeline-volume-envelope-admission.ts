@@ -2,7 +2,7 @@ import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts
 import type {DatabaseSync} from 'node:sqlite';
 import {isProxy} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.ts';
+import {validateEditingVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope-editing.ts';
 
 export const TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES=Object.freeze([
  'TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED',
@@ -28,7 +28,7 @@ export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unkn
 }
 export function validateTimelineVolumeEnvelopeClip(clip:{durationFrames:number;volumeEnvelope?:unknown},source:{mimeType?:string;hasAudio?:boolean},maxFrames?: number):void{
  if(!Object.hasOwn(clip,'volumeEnvelope'))return;
- try{validateVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames,maxFrames);}
+ try{validateEditingVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames,maxFrames);}
  catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
  if(clip.volumeEnvelope!==null&&(source.mimeType?.startsWith('image/')||source.hasAudio!==true))
   throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');

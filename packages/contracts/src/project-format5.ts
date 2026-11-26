@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
+import {isEditingVolumeEnvelope} from './timeline-volume-envelope-editing.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipTransform} from './timeline-clip-transform.ts';
@@ -194,7 +194,7 @@ function clipEffectsValid(clip:RecordValue,frame:unknown,kind:unknown):boolean {
   if(!isClipLayoutRect(clip,frame)||typeof clip.gain!=='number'||!Number.isFinite(clip.gain)||clip.gain<0||clip.gain>2)return false;
   const effectFrameLimit=Object.hasOwn(clip,'timing')?FORMAT5_LIMITS.durationFrames:undefined;
   if(Object.hasOwn(clip,'audioRole')&&!isClipAudioRole(clip.audioRole)||
-      Object.hasOwn(clip,'volumeEnvelope')&&!isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames as number,effectFrameLimit)||
+      Object.hasOwn(clip,'volumeEnvelope')&&!isEditingVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames as number,effectFrameLimit)||
       Object.hasOwn(clip,'transform')&&(clip.transform===null||!isClipTransform(clip.transform,clip.durationFrames as number,effectFrameLimit)||kind!=='video')||
       Object.hasOwn(clip,'transitionIn')&&(clip.transitionIn===null||!isClipTransition(clip.transitionIn)||kind!=='video')||
       Object.hasOwn(clip,'colour')&&(!isTimelineClipColour(clip.colour)||clip.colour!==null&&kind!=='video')||
