@@ -122,10 +122,14 @@ test('native development launcher talks the documented socket protocol', {skip: 
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'launcher-v1-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const launcher = path.join(root, 'mioon-dev');
+  const toolchainEnv = {
+    HOME: root, TMPDIR: root, PATH: '/usr/bin:/bin', DEVELOPER_DIR: process.env.DEVELOPER_DIR,
+  };
   await exec('/usr/bin/xcrun', ['clang', '-fobjc-arc', '-framework', 'Foundation', '-Wall', '-Wextra', '-Werror',
     `-DMIOON_LAUNCHER_VERSION="${version}"`, '-DMIOON_LAUNCHER_CHANNEL="development"',
     `-DMIOON_LAUNCHER_APP_ID="${appId}"`, '-DMIOON_LAUNCHER_COMMAND="mioon-dev"',
-    'apps/desktop/native/cli-launcher/main.m', '-o', launcher], {cwd: path.resolve(import.meta.dirname, '..'), timeout: 20_000});
+    'apps/desktop/native/cli-launcher/main.m', '-o', launcher],
+    {cwd: path.resolve(import.meta.dirname, '..'), env: toolchainEnv, timeout: 20_000});
 
   await t.test('local version, CLI unavailable and quiet MCP unavailable', async st => {
     const f = await fixture(st, root, launcher);

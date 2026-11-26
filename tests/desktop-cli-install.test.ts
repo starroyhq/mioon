@@ -261,9 +261,10 @@ test('macOS copy preserves a bundle quarantine mark when the nested helper has n
   const destination = path.join(f.root, 'standalone');
   const attribute = 'com.apple.quarantine';
   const quarantine = '0081;654FD780;MioonTest;';
-  execFileSync('/usr/bin/xattr', ['-w', attribute, quarantine, f.appPath]);
+  const env = {HOME: f.homeDir, TMPDIR: f.root, PATH: '/usr/bin:/bin'};
+  execFileSync('/usr/bin/xattr', ['-w', attribute, quarantine, f.appPath], {env});
   await createMacCliInstallPlatform('development').copyLauncher(f.helper, destination, f.appPath);
-  const copied = execFileSync('/usr/bin/xattr', ['-p', attribute, destination], {encoding: 'utf8'}).trim();
+  const copied = execFileSync('/usr/bin/xattr', ['-p', attribute, destination], {env, encoding: 'utf8'}).trim();
   assert.equal(copied, quarantine);
   assert.equal(await readFile(destination, 'utf8'), packageBytes);
 });
