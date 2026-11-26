@@ -12,6 +12,9 @@ import type {TimelineClipRecord, TimelineRecord, TimelineTrackRecord} from './ti
 import type {BoardSequenceErrorCode} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
 import {PREVIS_LIMITS} from './previs.ts';
+import {clipTimingSchema} from './timeline-speed.ts';
+import {compileClipTimeMap} from './timeline-clip-timing.ts';
+import {projectTimeMapToCurrentClipFields} from './timeline-time-map.ts';
 
 /** One shot's generation-input capacity: material reference lines, subject
  * bindings and previs scene subjects. The read-only projection bound is their
@@ -101,6 +104,8 @@ export interface Format5Clip extends Omit<TimelineClipRecord,'assetId'|'versionI
   rect:TimelineClipRecord['rect'];gain:number;
   assetId:string|null;versionId?:string|null;jobId?:string|null;shotId?:string;
   sourceState:'ready'|'placeholder';sequenceSource?:Format5SequenceSource;anchor?:Format5Anchor;
+  timing?:TimelineClipRecord['timing'];sourceSpanFrames?:number;
+  fadeInFrames?:number;fadeOutFrames?:number;transitionIn?:unknown;
   /** Per-clip mute of the clip's own sound. Only stored as `true`; absence means
    * audible. Format 3/4 rows never carry it. */
   muted?:boolean;
@@ -178,7 +183,7 @@ const headerFields=fields(['id','projectId','revision','fps','width','height','t
 const mainTrackFields=fields(['trackId','sequenceNodeId']);
 const trackFields=fields(['id','name','kind','orderIndex','hidden','muted']);
 const clipFields=fields(['id','trackId','assetId','name','startFrame','durationFrames','sourceInFrame','rect','gain','sourceState'],
-  ['versionId','shotId','jobId','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope','transform','transitionIn','layout','sequenceSource','anchor','muted','soundOnly']);
+  ['versionId','shotId','jobId','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope','transform','transitionIn','layout','sequenceSource','anchor','muted','soundOnly','timing','sourceSpanFrames']);
 const fixedSubtitleFields=fields(['profileId','cues']);
 const relativeSubtitleFields=fields(['profileId','basisPresetId','cues']);
 const headerFixedSubtitleFields=fields(['profileId']);
@@ -215,6 +220,7 @@ export interface Format5ClipIssueContext {
   readonly fps:number;
   readonly trackKind:'video'|'audio'|undefined;
   readonly main:boolean;
+  readonly formatVersion?:number | undefined;
 }
 export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext):Format5Issue|null {
   if(!clipFields(clip)||!uuid(clip.id)||!uuid(clip.trackId)||!text(clip.name,200)||
@@ -243,6 +249,24 @@ export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext
       ['versionId','shotId','jobId'].some(key=>Object.hasOwn(clip,key)&&!uuid(clip[key]))||
       main&&object(clip.sequenceSource)&&clip.sequenceSource.kind==='shot'&&!uuid(clip.versionId))
     return issue('FORMAT5_SOURCE_INVALID','Invalid ready clip source',[clip.id]);
+  if(Object.hasOwn(clip,'timing')||Object.hasOwn(clip,'sourceSpanFrames')){
+    const parsed=clipTimingSchema.safeParse(clip.timing);
+    if((context.formatVersion!==undefined&&context.formatVersion!==6)||!parsed.success||clip.sourceState!=='ready'||
+        !integer(clip.sourceSpanFrames,1,3_000_000))
+      return issue('FORMAT5_CLIP_INVALID','Invalid clip timing fields',[clip.id]);
+    const timed={...clip,id:clip.id,startFrame:clip.startFrame,durationFrames:clip.durationFrames,
+      sourceInFrame:clip.sourceInFrame,timing:parsed.data};
+    const plan=compileClipTimeMap(timed,{fps:context.fps});
+    const projected=plan.ok?projectTimeMapToCurrentClipFields(timed,plan.value):plan;
+    if(!projected.ok||projected.value.sourceInFrame!==clip.sourceInFrame||
+        projected.value.durationFrames!==clip.durationFrames||projected.value.sourceSpanFrames!==clip.sourceSpanFrames)
+      return issue('FORMAT5_CLIP_INVALID','Clip timing projection does not match its frame fields',[clip.id]);
+    if(parsed.data.profile==='timeline-freeze-v1'&&(context.trackKind!=='video'||clip.muted!==true||
+        parsed.data.sourceVersionId!==(clip.versionId??null)||
+        (main&&(clip.sequenceSource as Format5SequenceSource).kind==='shot'&&
+          (clip.sequenceSource as {versionMode?:string}).versionMode!=='locked')))
+      return issue('FORMAT5_SOURCE_INVALID','Freeze frame requires its locked, muted source',[clip.id]);
+  }
   return null;
 }
 
@@ -303,7 +327,7 @@ export function getFormat5TimelineHeaderIssue(value:unknown,{projectId}:{project
 }
 
 /** Validate persisted editing structure, without resolving any filesystem source. */
-export function getFormat5TimelineIssue(value:unknown,{projectId}:{projectId?:string}={}):Format5Issue|null {
+export function getFormat5TimelineIssue(value:unknown,{projectId,formatVersion}:{projectId?:string;formatVersion?:number|undefined}={}):Format5Issue|null {
   if(!timelineFields(value)||!uuid(value.id)||!uuid(value.projectId)||
       projectId!==undefined&&value.projectId!==projectId||!integer(value.revision,1,Number.MAX_SAFE_INTEGER)||
       !timelineOutputPreset(value)||!integer(value.durationFrames,0,FORMAT5_LIMITS.durationFrames)||
@@ -323,7 +347,7 @@ export function getFormat5TimelineIssue(value:unknown,{projectId}:{projectId?:st
     if(clipIds.has(String((clip as RecordValue)?.id))||!uuid((clip as RecordValue)?.trackId)||!tracks.has(String((clip as RecordValue)?.trackId)))
       return issue('FORMAT5_CLIP_INVALID','Invalid format-5 clip');
     const main=(clip as RecordValue).trackId===value.mainTrack.trackId;
-    const problem=getFormat5ClipIssue(clip,{width:value.width as number,height:value.height as number,fps:value.fps as number,trackKind:tracks.get(String((clip as RecordValue).trackId))?.kind as 'video'|'audio'|undefined,main});
+    const problem=getFormat5ClipIssue(clip,{width:value.width as number,height:value.height as number,fps:value.fps as number,trackKind:tracks.get(String((clip as RecordValue).trackId))?.kind as 'video'|'audio'|undefined,main,formatVersion});
     if(problem)return problem;
     if(main)mainCount++;
     clipIds.add(String((clip as RecordValue).id));

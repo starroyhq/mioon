@@ -60,6 +60,22 @@ test('source in, trim, scroll, fractional edges and zoom map to exact 30fps sour
   assert.equal(waveform.waveformWindow(clip({ durationFrames: 18000 }), 220 / 30, 0, 18000)!.points, 2048);
 });
 
+test('a timed waveform refuses even when the same source has cached 1× peaks', async () => {
+  const h = scheduler();
+  h.view();
+  h.controller.setEnabled(true);
+  await flush();
+  await h.answer('ready');
+  const timed = range({timing: {profile: 'timeline-freeze-v1', sourceFrame: 0, sourceVersionId: null, sourceSha256: 'a'.repeat(64)}});
+  assert.notEqual(timed.key, range().key);
+  h.view([timed]);
+  h.controller.retryVisible();
+  assert.equal(h.calls.length, 1);
+  const entry = h.controller.snapshot().entries.get(timed.key);
+  assert.equal(entry?.reason?.code, 'SPEED_RENDER_NOT_READY');
+  assert.equal(entry?.peaks, undefined);
+});
+
 test('visible candidates require a confirmed audio stream and visible intersecting timeline clips', () => {
   const assets = [asset(), asset({ id: idFor(2), hasAudio: false }), asset({ id: idFor(3), hasAudio: undefined }), asset({ id: idFor(4), mimeType: 'image/png' }), asset({ id: idFor(5), projectId: otherProject }), asset({ id: idFor(6), duration: 601 }), asset({ id: idFor(7) })];
   const clips = assets.map((source, i) => clip({ id: `clip-${i}`, assetId: source.id }));

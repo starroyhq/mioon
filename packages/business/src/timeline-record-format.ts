@@ -8,7 +8,7 @@
  * silently accepting format-5-only fields on format 3/4 records.
  */
 import type {DatabaseSync} from 'node:sqlite';
-import {FORMAT5_TIMELINE_FORMAT, isTimelineRecord, isTimelineReplacementResponse,
+import {isSequenceTimelineFormat, isTimelineRecord, isTimelineReplacementResponse,
   type TimelineRecordOptions} from '../../contracts/src/timeline-replacement.ts';
 import {isTimelineMutationResponse, isTimelineRenderRecord} from '../../contracts/src/timeline-acknowledgement.ts';
 import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
@@ -25,7 +25,7 @@ export function timelineRecordFormatOf(db: PreparedDatabase): number {
   const database = db as unknown as DatabaseSync;
   const schema = timelineStorageSchema(database);
   const stored = Number(timelineStorageFormat(database, schema));
-  const format = stored === FORMAT5_TIMELINE_FORMAT ? FORMAT5_TIMELINE_FORMAT : 4;
+  const format = isSequenceTimelineFormat(stored) ? stored : 4;
   formatCache.set(db as object, format);
   return format;
 }

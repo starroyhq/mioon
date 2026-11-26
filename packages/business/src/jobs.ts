@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts';
 import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
@@ -565,6 +566,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   try {
    beforeEffect?.();
    const outputGeometry=e.mode==='timeline'?property(e.snapshot,'timeline'):storyboardOutputGeometry(e);
+   if(e.mode==='timeline')assertTimelineSpeedRenderable(outputGeometry);
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}

@@ -28,6 +28,7 @@ import {translate} from '../../i18n/src/index.ts';
 import {isLocale} from '../../i18n/src/locale.ts';
 import type {Locale} from '../../i18n/src/types.ts';
 import type {ProjectStore} from './project-file/store.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {applySequenceEditTimelineDelta} from './format5-sequence-sync.ts';
@@ -42,7 +43,7 @@ type Operation = SequenceEditSeparateSoundOperation;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
 const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
 const isFormat5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === 5;
+  isSequenceProjectFormat(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
 function invalid(message: string, details: Row = {}): never {
   throw new AppError('SEQUENCE_EDIT_SOUND_INVALID', message, 409, details);
 }
@@ -117,6 +118,7 @@ export function resolveSeparateSound(store: ProjectStore, operation: Operation, 
   if (!source) invalid('片段不属于这个时间线', {clipId: operation.clipId});
   const sourceTrack = timeline.tracks.find(track => track.id === source.trackId);
   if (!sourceTrack || sourceTrack.kind !== 'video') invalid('只有画面轨片段可以分离声音', {clipId: source.id});
+  if (source.timing?.profile === 'timeline-freeze-v1') invalid('定格片段没有可分离的声音', {clipId: source.id});
   if (source.sourceState !== 'ready') invalid('占位片段没有可分离的声音', {clipId: source.id});
   const assetId = source.assetId;
   if (typeof assetId !== 'string') invalid('片段没有可用的素材', {clipId: source.id});
@@ -212,6 +214,7 @@ export function planSeparateSound(store: ProjectStore, operation: Operation): Se
   if (!source) invalid('片段不属于这个时间线', {clipId: operation.clipId});
   const sourceTrack = timeline.tracks.find(track => track.id === source.trackId);
   if (!sourceTrack || sourceTrack.kind !== 'video') invalid('只有画面轨片段可以分离声音', {clipId: source.id});
+  if (source.timing?.profile === 'timeline-freeze-v1') invalid('定格片段没有可分离的声音', {clipId: source.id});
   const createdTrackId = operation.createdTrackId ?? null;
   const destination = timeline.tracks.find(track => track.id === operation.audioTrackId);
   if (createdTrackId !== null) {
@@ -232,6 +235,7 @@ export function planSeparateSound(store: ProjectStore, operation: Operation): Se
     id: operation.audioClipId, trackId: operation.audioTrackId, assetId: source.assetId,
     name, startFrame: source.startFrame, durationFrames: source.durationFrames, sourceInFrame: source.sourceInFrame,
     rect: clone(source.rect), sourceState: 'ready', soundOnly: true, anchor: anchorFor(timeline, source),
+    ...(source.timing ? {timing: clone(source.timing), sourceSpanFrames: source.sourceSpanFrames} : {}),
     ...inherit,
   } as Format5Clip;
   const mutedSource: Format5Clip = source.muted === true ? source : {...source, muted: true};

@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {getTimelineOpacityRenderBinding} from './timeline-opacity-render-binding.ts';
 import {prepareTimelineImageLayers} from './timeline-image-staging.ts';
 import {validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
@@ -119,6 +120,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
  segmentConcurrency: requestedSegmentConcurrency,encoderPool,
 }: RenderTimelineOptions={}): Promise<unknown>{
+ assertTimelineSpeedRenderable(snapshot.timeline);
  // Every project window shares one backend process and this application-wide
  // pool: two exports never start more segment encoders than the machine-wide
  // cap, and each export still uses its full segment count when uncontended.

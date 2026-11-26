@@ -6,6 +6,15 @@ import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {validateSpeedTransitions} from '../packages/business/src/format6-transition-fit.ts';
+import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
+import {timelineCrossfadeEnvelopes} from '../packages/contracts/src/timeline-crossfade.ts';
+import {canRenderTimelineClipAtIdentity} from '../packages/contracts/src/timeline-speed-render.ts';
+import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {
   assertFormat5ExportAdmissible, createFormat5ExportTicket, recheckFormat5ExportTicket,
 } from '../packages/business/src/format5-timeline-export.ts';
@@ -18,9 +27,10 @@ const clipA = id(30), clipB = id(31), groupA = id(40), groupB = id(41);
 const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
 
-function fixture(t: test.TestContext): ProjectStore {
+function fixture(t: test.TestContext, timing?: ClipTiming): ProjectStore {
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-tsb-export-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: 5,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: timing ? FORMAT6_PROJECT_SCHEMA_VERSION : 5,
+    ...(timing ? {allowFormat6: true as const} : {}),
     locate: () => ({localDir: path.join(directory, 'records'), cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'temp')})});
   t.after(() => {store.close(); rmSync(directory, {recursive: true, force: true});});
   const projectId = store.projectId;
@@ -30,7 +40,8 @@ function fixture(t: test.TestContext): ProjectStore {
     clips: [
       {id: clipA, trackId: track, name: 'Shot A', startFrame: 0, durationFrames: 60, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: assetA, versionId: versionA, shotId: shotA,
-        sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: 'follow'}},
+        sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: 'follow'},
+        ...(timing ? {sourceSpanFrames: 60, timing} : {})},
       {id: clipB, trackId: track, name: 'Shot B', startFrame: 60, durationFrames: 30, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: null, versionId: null, jobId: null,
         sourceState: 'placeholder', sequenceSource: {kind: 'shot', nodeId: shotB, segmentGroupId: groupB, versionMode: 'follow'}},
@@ -56,6 +67,100 @@ function fixture(t: test.TestContext): ProjectStore {
   });
   return store;
 }
+
+const unitTiming: Extract<ClipTiming, {profile: 'timeline-speed-v1'}> = {
+  profile: 'timeline-speed-v1',
+  basis: {profile: 'timeline-speed-v1', sourceFps: {fpsNumerator: 30, fpsDenominator: 1},
+    outputFps: {fpsNumerator: 30, fpsDenominator: 1},
+    sourceRange: {start: {kind: 'rational', numerator: '0', denominator: '1'}, end: {kind: 'rational', numerator: '60', denominator: '1'}},
+    speed: {kind: 'constant', rate: {numerator: 1, denominator: 1}}},
+  view: {loTime: {anchor: 'start', offsetOutputFrames: 0}, hiTime: {anchor: 'end', offsetOutputFrames: 0}, direction: 'forward'},
+  outputWindow: {fromFrame: 0, toFrame: 60}, pitchShift: false, interpolation: 'off',
+};
+
+test('the legacy projection admits exactly aligned 1× timing and refuses phase, reverse, freeze or rate changes', () => {
+  const clip = {id: clipA, startFrame: 0, durationFrames: 60, sourceInFrame: 0};
+  assert.equal(canRenderTimelineClipAtIdentity(clip, 30), true);
+  assert.equal(canRenderTimelineClipAtIdentity({...clip, timing: unitTiming}, 30), true);
+  const window = {...unitTiming, outputWindow: {fromFrame: 2, toFrame: 8}};
+  assert.equal(canRenderTimelineClipAtIdentity({...clip, durationFrames: 6, sourceInFrame: 2, timing: window}, 30), true);
+  assert.equal(canRenderTimelineClipAtIdentity({...clip, durationFrames: 6, sourceInFrame: 1, timing: window}, 30), false);
+  assert.equal(canRenderTimelineClipAtIdentity({...clip, timing: {...unitTiming, view: {...unitTiming.view, direction: 'reverse'}}}, 30), false);
+  const freeze = {profile: 'timeline-freeze-v1', sourceFrame: 0, sourceVersionId: versionA, sourceSha256: sha('a')};
+  assert.equal(canRenderTimelineClipAtIdentity({...clip, timing: freeze}, 30), false);
+  const speed = {kind: 'constant', rate: {numerator: 2, denominator: 1}};
+  assert.equal(canRenderTimelineClipAtIdentity({...clip, timing: {...unitTiming, basis: {...unitTiming.basis, speed}}}, 30), false);
+});
+
+test('a timed transition validates the real source handles in its traversal direction', () => {
+  const incoming: Format5Clip = {id: clipB, trackId: track, name: 'Incoming', startFrame: 20, durationFrames: 20,
+    sourceInFrame: 10, sourceState: 'ready', assetId: assetShort, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1};
+  const outgoing: Format5Clip = {...incoming, id: clipA, name: 'Outgoing', startFrame: 0, assetId: assetA};
+  const before = {fps: 30, clips: [outgoing, incoming]} as Format5Timeline;
+  const timing: ClipTiming = {...unitTiming, basis: {...unitTiming.basis, sourceRange: {
+    start: {kind: 'rational', numerator: '10', denominator: '1'},
+    end: {kind: 'rational', numerator: '50', denominator: '1'},
+  }, speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}}}, outputWindow: {fromFrame: 0, toFrame: 20}};
+  const cut = {...incoming, transitionIn: {profileId: CLIP_TRANSITION_PROFILE, kind: 'dissolve', durationFrames: 8}};
+  // The outgoing forward tail needs eight frames past source frame 50; its
+  // reverse tail only goes down to 2. The source contains exactly 50 frames.
+  const readAsset = () => ({mimeType: 'video/mp4', duration: 50 / 30});
+  const edited = {...before, clips: [{...outgoing, sourceSpanFrames: 40, timing}, cut]};
+  assert.throws(() => validateSpeedTransitions(edited, before, readAsset), {code: 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'});
+  const reverse = {...edited, clips: [{...edited.clips[0], timing: {...timing, view: {...timing.view, direction: 'reverse' as const}}}, cut]};
+  assert.doesNotThrow(() => validateSpeedTransitions(reverse, before, readAsset));
+});
+
+test('changing a previously matching crossfade overlap rejects output-domain envelopes that no longer match', () => {
+  const outgoing: Format5Clip = {id: clipA, trackId: track, name: 'Outgoing', startFrame: 0, durationFrames: 20,
+    sourceInFrame: 10, sourceState: 'ready', assetId: assetA, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1};
+  const incoming: Format5Clip = {...outgoing, id: clipB, trackId: id(61), startFrame: 14};
+  const curves = timelineCrossfadeEnvelopes(outgoing, incoming)!;
+  const out = {...outgoing, volumeEnvelope: curves.outgoing};
+  const before = {fps: 30, clips: [out, {...incoming, volumeEnvelope: curves.incoming}]} as Format5Timeline;
+  const after = {...before, clips: [{...out, durationFrames: 24}, before.clips[1]]};
+  assert.throws(() => validateSpeedTransitions(after, before, () => undefined), {code: 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'});
+});
+
+test('a format 6 reverse mapping refuses preview, export, audio and preflight before any media work', async t => {
+  const {createServices} = await import('../packages/business/src/services.ts');
+  const store = fixture(t, {...unitTiming, view: {...unitTiming.view, direction: 'reverse'}});
+  const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
+  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}), exportOptions: {
+    inspect: async () => assert.fail('encoder capability check entered'),
+  }});
+  try {
+    const {projectId} = store;
+    const expectedRevision = 1;
+    const settings = {profileId: 'mp4_h264_v1', resolution: 'native', rateControl: {mode: 'crf', quality: 'standard'}};
+    const failure = {code: 'SPEED_RENDER_NOT_READY'};
+    const exportInput = {projectId, expectedRevision, exportSettings: settings};
+    const before = store.list('exports');
+    await assert.rejects(async () => services.call('timeline.export.capabilities', exportInput), failure);
+    const preflight = await services.call('timeline.export.preflight', exportInput) as {
+      status: string; issues: {code: string; clipId?: string}[]; checks: {bytesHashed: number};
+    };
+    assert.equal(preflight.status, 'blocked');
+    assert.equal(preflight.issues[0]?.code, failure.code);
+    assert.equal(preflight.issues[0]?.clipId, clipA);
+    assert.equal(preflight.checks.bytesHashed, 0);
+    for (const purpose of ['preview', 'export']) {
+      await assert.rejects(async () => services.call('timeline.render', {
+        projectId, purpose, expectedRevision, requestId: randomUUID(),
+      }), failure);
+    }
+    for (const operation of ['timeline.audioPreview.plan', 'timeline.audioPreview.continuousPlan']) {
+      await assert.rejects(async () => services.call(operation, {
+        projectId, timelineId, expectedRevision, startFrame: 0,
+      }), failure);
+    }
+    await assert.rejects(async () => services.call('clip.audio.export', {projectId, clipId: clipA, requestId: randomUUID()}), failure);
+    assert.deepEqual(store.list('exports'), before);
+  } finally {
+    await services.drain();
+    library.close();
+  }
+});
 
 test('a placeholder in the selected range blocks the frozen export ticket', t => {
   const store = fixture(t);

@@ -1,5 +1,6 @@
 import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { MessageDescriptor, MessageKey } from '../../../packages/i18n/src/index.ts';
+import {canRenderTimelineClipAtIdentity, SPEED_RENDER_NOT_READY, SPEED_RENDER_NOT_READY_MESSAGE} from '../../../packages/contracts/src/timeline-speed-render.ts';
 import { isWaveformResponse } from '@mioon/contracts';
 
 // Waveforms are a read-only, opt-in view of the first source audio stream.
@@ -28,9 +29,11 @@ export interface WaveformClip {
   readonly startFrame: number;
   readonly durationFrames: number;
   readonly sourceInFrame?: number;
+  readonly timing?: unknown;
 }
 export interface WaveformTimeline {
   readonly projectId?: string;
+  readonly fps?: number;
   readonly clips?: readonly WaveformClip[];
 }
 export interface WaveformWindow {
@@ -43,6 +46,7 @@ export interface WaveformWindow {
   width: number;
   key: string;
   unsupported?: boolean;
+  blockedReason?: typeof SPEED_RENDER_NOT_READY;
 }
 export interface WaveformReason { code: string; message: string }
 export interface WaveformEntry {
@@ -93,16 +97,20 @@ export interface WaveformView {
 export const supportsWaveform = (asset: WaveformAsset | null | undefined): asset is WaveformAsset => asset?.hasAudio === true && /^(audio|video)\//.test(asset?.mimeType || '');
 export const waveformKey = (item: Pick<WaveformWindow, 'assetId' | 'sourceStartFrame' | 'sourceEndFrame' | 'points'>): string => `${item.assetId}:${item.sourceStartFrame}:${item.sourceEndFrame}:${item.points}`;
 
-export function waveformWindow(clip: WaveformClip, pixelsPerFrame: number, leftFrame: number, rightFrame: number): WaveformWindow | null {
+export function waveformWindow(clip: WaveformClip, pixelsPerFrame: number, leftFrame: number, rightFrame: number, fps = 30): WaveformWindow | null {
   if (!(pixelsPerFrame > 0) || !(rightFrame > leftFrame) || !(clip.durationFrames > 0)) return null;
   const begin = Math.max(clip.startFrame, leftFrame), end = Math.min(clip.startFrame + clip.durationFrames, rightFrame);
   if (!(end > begin)) return null;
   // Include partial edge frames, then place the SVG at those exact frame bounds.
   const offset = Math.max(0, Math.floor(begin - clip.startFrame + 1e-7));
   const endOffset = Math.min(clip.durationFrames, Math.ceil(end - clip.startFrame - 1e-7));
+  const width = (endOffset - offset) * pixelsPerFrame;
+  if (!canRenderTimelineClipAtIdentity(clip, fps)) {
+    return {clipId: clip.id, assetId: clip.assetId, sourceStartFrame: 0, sourceEndFrame: 0, points: 0,
+      left: offset * pixelsPerFrame, width, key: `speed:${clip.id}:${clip.assetId}`, blockedReason: SPEED_RENDER_NOT_READY};
+  }
   const sourceStartFrame = (clip.sourceInFrame || 0) + offset;
   const sourceEndFrame = (clip.sourceInFrame || 0) + endOffset;
-  const width = (endOffset - offset) * pixelsPerFrame;
   const item = { clipId: clip.id, assetId: clip.assetId, sourceStartFrame, sourceEndFrame, points: Math.max(1, Math.min(WAVEFORM_LIMITS.points, Math.ceil(width))), left: offset * pixelsPerFrame, width };
   return { ...item, key: waveformKey(item) };
 }
@@ -119,7 +127,7 @@ export function visibleWaveformWindows({ timeline, assets, pixelsPerFrame, leftF
   return (timeline?.clips || []).flatMap(clip => {
     const asset = sources.get(clip.assetId);
     if (!visibleTrackIds.has(clip.trackId) || !supportsWaveform(asset) || (asset.projectId && asset.projectId !== timeline?.projectId)) return [];
-    const item = waveformWindow(clip, pixelsPerFrame, leftFrame, rightFrame);
+    const item = waveformWindow(clip, pixelsPerFrame, leftFrame, rightFrame, timeline?.fps);
     return item ? [{ ...item, unsupported: Number(asset.duration) > WAVEFORM_LIMITS.seconds }] : [];
   });
 }
@@ -128,6 +136,7 @@ const heldKeys: Partial<Record<WaveformEntryStatus, MessageKey>> = { missing: 'a
 const statusKeys: Partial<Record<WaveformEntryStatus, MessageKey>> = { missing: 'audio.waveform.missing', loading: 'audio.waveform.loading', queued: 'audio.waveform.queued', running: 'audio.waveform.running', ready: 'audio.waveform.ready', interrupted: 'audio.waveform.interrupted', error: 'audio.waveform.error', unsupported: 'audio.waveform.unsupported' };
 export function waveformStatusMessage(entry: Pick<WaveformEntry, 'held' | 'status' | 'reason'> | null | undefined): MessageDescriptor {
   if (!entry) return message('audio.waveform.waiting');
+  if (entry.reason?.code === SPEED_RENDER_NOT_READY) return message('timeline.speed.renderNotReady');
   if (entry.held) return message(heldKeys[entry.status] || 'audio.waveform.held.unavailable');
   if (entry.status === 'unsupported' && ['DURATION_LIMIT', 'WAVEFORM_DURATION_UNSUPPORTED'].includes(entry.reason?.code ?? '')) return message('audio.waveform.durationLimit');
   return message(statusKeys[entry.status] || 'audio.waveform.unavailable');
@@ -154,7 +163,7 @@ const retriable = (entry: WaveformEntry | undefined): boolean => ['error', 'inte
 const protocolError = (): Error => Object.assign(new Error('波形状态返回无效，请重试。'), { code: 'WAVEFORM_PROTOCOL' });
 const sameWindow = (left: WaveformWindow, right: WaveformWindow): boolean => left.key === right.key && left.clipId === right.clipId && left.assetId === right.assetId
   && left.sourceStartFrame === right.sourceStartFrame && left.sourceEndFrame === right.sourceEndFrame && left.points === right.points
-  && left.left === right.left && left.width === right.width && Boolean(left.unsupported) === Boolean(right.unsupported);
+  && left.left === right.left && left.width === right.width && Boolean(left.unsupported) === Boolean(right.unsupported) && left.blockedReason === right.blockedReason;
 
 interface WaveformReply {
   readonly status: WaveformStatus;
@@ -191,7 +200,9 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
   function put(item: WaveformWindow): WaveformEntry {
     let entry = entries.get(item.key);
     if (!entry) {
-      entry = { ...item, status: item.unsupported ? 'unsupported' : 'loading', reason: item.unsupported ? { code: 'DURATION_LIMIT', message: '超过10分钟暂不支持波形' } : undefined, phase: item.unsupported ? 'idle' : 'discover', nextAt: 0, retry: false };
+      const reason = item.blockedReason ? {code: item.blockedReason, message: SPEED_RENDER_NOT_READY_MESSAGE}
+        : item.unsupported ? {code: 'DURATION_LIMIT', message: '超过10分钟暂不支持波形'} : undefined;
+      entry = { ...item, status: reason ? 'unsupported' : 'loading', reason, phase: reason ? 'idle' : 'discover', nextAt: 0, retry: false };
       entries.set(item.key, entry);
     }
     // Touch LRU; never keep peak arrays for the entire library.

@@ -23,23 +23,25 @@ import type {
 } from '../../contracts/src/sequence-edit.ts';
 import {SEQUENCE_EDIT_CONTRACT_VERSION, sequenceEditEnvelopeOperationName} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {applySequenceEditStateDelta, applySequenceEditTimelineDelta, planFixedMediaClipSources} from './format5-sequence-sync.ts';
 import {prepareSequenceEditHistory, findSequenceEditReceipt, sequenceEditInputDigest, writeSequenceEditAction,
   writeSequenceEditFailure} from './format5-editor-history.ts';
 import type {SequenceEditReceiptDraft} from './format5-editor-history.ts';
+import {clipSourceEndFrame} from '../../contracts/src/timeline-clip-timing.ts';
 import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {replaceClipSource, sameClipSourceCategory} from './timeline-replacement.ts';
 import {validateTimelineVolumeEnvelopeClip} from './timeline-volume-envelope-admission.ts';
+import {validateSpeedTransitions} from './format6-transition-fit.ts';
 
 type Row = Record<string, unknown>;
 const now = (): string => new Date().toISOString();
 const isFormat5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  isSequenceProjectFormat(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
 function invalid(message: string, details: Row = {}): never {
   throw new AppError('SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', message, 409, details);
 }
@@ -88,6 +90,7 @@ const audioTrackMimes = new Set(['audio/wav', 'audio/mpeg', 'audio/mp4']);
 function planReplacement(store: ProjectStore, asset: (id: string) => ClipAsset | null, clip: Format5Clip,
   track: Format5Timeline['tracks'][number], replacement: NonNullable<SequenceEditClipPropertiesPatch['sourceReplacement']>): Format5Clip {
   const details = {clipId: clip.id, assetId: replacement.assetId};
+  if (clip.timing?.profile === 'timeline-freeze-v1') invalid('定格片段的来源已锁定', details);
   if (clip.sourceState !== 'ready' || clip.sequenceSource?.kind === 'shot') {
     invalid('只能直接替换已有的普通素材；主轨镜头片段须切换镜头版本', details);
   }
@@ -101,7 +104,7 @@ function planReplacement(store: ProjectStore, asset: (id: string) => ClipAsset |
     : clip.soundOnly ? source.mimeType.startsWith('video/') && source.hasAudio : audioTrackMimes.has(source.mimeType);
   if (!compatible) invalid('替换素材不适用于该轨道', details);
   if (source.mimeType.startsWith('image/') ? clip.sourceInFrame !== 0
-    : clip.sourceInFrame + clip.durationFrames > source.frames) {
+    : clipSourceEndFrame(clip) > source.frames) {
     invalid('替换素材无法保留原片段的素材入点和时长', details);
   }
   const fadeIssue = getTimelineFadeIssue(clip, source);
@@ -207,6 +210,7 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
   }
   if (patch.muted !== undefined) {
     if (typeof patch.muted !== 'boolean') invalid('片段静音值无效', {clipId: clip.id});
+    if (!patch.muted && clip.timing?.profile === 'timeline-freeze-v1') invalid('定格片段保持静音', {clipId: clip.id});
     // Only the `true` form is persisted; unmuting removes the field so a clip
     // row round-trips to exactly the bytes it had before it was muted.
     if (patch.muted) (next as Row).muted = true; else delete (next as Row).muted;
@@ -251,14 +255,18 @@ export function planClipProperties(store: ProjectStore, intent: SequenceEditClip
     return value ? {image: value.mimeType.startsWith('image/'), frames: value.frames} : null;
   };
   const changedIds = new Set(after.map(clip => clip.id));
-  for (const next of replacedIds.size ? draft : after) {
-    const transition = next.transitionIn;
-    if (transition === undefined || transition === null) continue;
-    const predecessor = clipTransitionPredecessor<TransitionClip>(draft as never, next as never);
-    if (!changedIds.has(next.id) && !(predecessor && replacedIds.has(predecessor.id))) continue;
-    if (!predecessor) invalid('同一轨道上没有在此片段开始处结束的片段，不能设置转场', {clipId: next.id});
-    if (!clipTransitionFits(draft as never, next as never, (transition as ClipTransition).durationFrames, sources)) {
-      invalid('两段素材余量或片段长度不够这个转场', {clipId: next.id});
+  if (store.db.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT6_PROJECT_SCHEMA_VERSION) {
+    validateSpeedTransitions({...record, clips: draft}, record, id => asset(id) ?? undefined);
+  } else {
+    for (const next of replacedIds.size ? draft : after) {
+      const transition = next.transitionIn;
+      if (transition === undefined || transition === null) continue;
+      const predecessor = clipTransitionPredecessor<TransitionClip>(draft as never, next as never);
+      if (!changedIds.has(next.id) && !(predecessor && replacedIds.has(predecessor.id))) continue;
+      if (!predecessor) invalid('同一轨道上没有在此片段开始处结束的片段，不能设置转场', {clipId: next.id});
+      if (!clipTransitionFits(draft as never, next as never, (transition as ClipTransition).durationFrames, sources)) {
+        invalid('两段素材余量或片段长度不够这个转场', {clipId: next.id});
+      }
     }
   }
   const coupled = mainReplacements.length ? planFixedMediaClipSources(store, record, mainReplacements) : undefined;

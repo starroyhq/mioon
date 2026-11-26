@@ -8,6 +8,7 @@ import {z} from 'zod';
 import {sequenceClipPropertyEditsSchema, sequenceEditFormatIntentSchema} from './sequence-edit.ts';
 import {FORMAT5_REFERENCE_ROLES} from './project-format5.ts';
 import {PREVIS_LIMITS, previsSceneSchema} from './previs.ts';
+import {clipSpeedOperationSchema, freezeFrameOperationSchema} from './timeline-speed.ts';
 
 const uuid = z.string().uuid();
 const offset = z.number().int().min(0).max(9007199254740991);
@@ -104,6 +105,8 @@ const mioSequenceActionBranches = z.discriminatedUnion('kind', [
   // FR-G: mute goes through `clip-properties`, separate sound is a timeline
   // structure action (source clip muted + a new anchored sound-only clip).
   z.object({kind: z.literal('separate-sound'), clipId: uuid}).strict(),
+  clipSpeedOperationSchema,
+  freezeFrameOperationSchema,
   z.object({kind: z.literal('generate'),
     placement: z.discriminatedUnion('kind', [
       z.object({kind: z.literal('main'), beforeClipId: uuid.nullable()}).strict(),
@@ -162,7 +165,7 @@ const MIO_SEQUENCE_ACTION_GROUPS = Object.freeze({
   // Dialogue lines are one shot's spoken text edits and sit next to subtitles in
   // the same timeline/audio domain; they share the loadable timeline group.
   timeline: ['subtitles', 'dialogue', 'format-set', 'split-at-scenes', 'separate-sound', 'track-add', 'track-update', 'generate',
-    'insert-asset'],
+    'insert-asset', 'clip-speed', 'freeze-frame'],
   clip: ['clip-properties', 'replace-source'],
 } as const);
 export type MioSequenceActionGroup = keyof typeof MIO_SEQUENCE_ACTION_GROUPS;

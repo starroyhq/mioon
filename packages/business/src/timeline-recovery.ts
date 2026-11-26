@@ -18,7 +18,7 @@ import {validateSavedTimeline} from './timeline-inputs.ts';
 import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 
@@ -214,7 +214,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return assets;
  }
  function validate(timeline: TimelineRecord): TimelineRecord{
-  if(timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT5_PROJECT_SCHEMA_VERSION&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
+  if(isSequenceProjectFormat(timelineStorageFormat(db,timelineStorageSchema(db)))&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
    const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});if(issue)invalidTimeline();return timeline;
   }
   assertTimelineAudioRoleWorkspace(db,timeline);
@@ -230,7 +230,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return timeline;
  }
  function validateReadonly(timeline: TimelineRecord): TimelineRecord{
-  if(timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT5_PROJECT_SCHEMA_VERSION&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
+  if(isSequenceProjectFormat(timelineStorageFormat(db,timelineStorageSchema(db)))&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
    const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});if(issue)invalidTimeline();return timeline;
   }
   assertTimelineAudioRoleWorkspace(db,timeline);
@@ -244,7 +244,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(legacyMissingProject&&!db.prepare('SELECT 1 FROM projects WHERE id=?').get(input.projectId))
    throw new AppError('NOT_FOUND','找不到记录',404,{id:input.projectId});
   graph(); // Validate the current project before any aggregate/CAS disclosure.
-  if(timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+  if(isSequenceProjectFormat(timelineStorageFormat(db,timelineStorageSchema(db)))){
    const timeline=readFormat5TimelineRecord(db,'project');
    if(!timeline)return null;
    if(timeline.projectId!==input.projectId)unavailable();
