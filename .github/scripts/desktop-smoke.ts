@@ -16,11 +16,13 @@ import {classifyRendererEvent,RENDERER_DIAGNOSTIC_LIMITS} from '../../apps/deskt
 import type {RendererDiagnosticRecord} from '../../apps/desktop/src/renderer-diagnostics.ts';
 import {attachMacDmg, detachMacDmg, macBundleExecutable, macDmgEvidence, uniqueMacApp} from './mac-dmg.ts';
 import type {MacDmgEvidence} from './mac-dmg.ts';
+import {createReleaseCliSmoke, installReleaseApp, launcherSmokeEnvironment} from './release-cli-smoke.ts';
+import type {ReleaseCliSmokeEvidence} from './release-cli-smoke.ts';
 
 interface Discovery {appId: string; channel: string; url: string; pid: number; tokenFile: string}
 interface Job {id: string; status: string; url?: string; assetId?: string}
 interface Outcome {code: number | null; signal: NodeJS.Signals | null}
-interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; package?: MacDmgEvidence; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
+interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; package?: MacDmgEvidence; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics; cliLauncher?: ReleaseCliSmokeEvidence}
 export const smokeTimeouts = Object.freeze({startup: 90000, render: 120000, exit: 30000});
 export function smokeEnvironment(source: NodeJS.ProcessEnv, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
   return {...cleanEnvironment(source), MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
@@ -274,13 +276,13 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
   let ownsExtractRoot = false;
   try {
     if (process.platform !== platform || process.arch !== arch) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
-    let binary: string;
+    let binary: string | undefined, sourceApp: string | undefined;
     if (platform === 'darwin') {
       if (!('dmg' in input)) fail('FINAL_DMG_REQUIRED');
       result.phase = 'dmg';
       result.package = await macDmgEvidence(input.dmg);
       mountPoint = await attachMacDmg(input.dmg);
-      binary = await macBundleExecutable(await uniqueMacApp(mountPoint));
+      sourceApp = await uniqueMacApp(mountPoint);
       check('read-only-final-dmg-mounted');
     } else {
       if (!('executable' in input) || !path.isAbsolute(input.executable)) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
@@ -291,8 +293,28 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     }
     const ffmpeg = await executable('ffmpeg', process.env.MIOON_FFMPEG_PATH), ffprobe = await executable('ffprobe', process.env.MIOON_FFPROBE_PATH);
     ownedRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-ci-native-')); await chmod(ownedRoot, 0o700);
-    const userData = path.join(ownedRoot, 'user-data'); await mkdir(userData, {mode: 0o700});
-    const env = smokeEnvironment(process.env, userData, ffmpeg, ffprobe), video = path.join(ownedRoot, 'synthetic.mp4'), audio = path.join(ownedRoot, 'synthetic.wav');
+    const userData = path.join(ownedRoot, 'user-data'), home = path.join(ownedRoot, 'home'), tmp = path.join(ownedRoot, 'tmp');
+    await Promise.all([userData, home, tmp].map(directory => mkdir(directory, {mode: 0o700})));
+    const env = {...smokeEnvironment(process.env, userData, ffmpeg, ffprobe), HOME: home, CFFIXED_USER_HOME: home,
+      TMPDIR: tmp, TMP: tmp, TEMP: tmp}, video = path.join(ownedRoot, 'synthetic.mp4'), audio = path.join(ownedRoot, 'synthetic.wav');
+    let cliSmoke: ReturnType<typeof createReleaseCliSmoke> | undefined;
+    if (sourceApp && result.package) {
+      result.phase = 'dmg-install';
+      const version = process.env.MIOON_RELEASE_VERSION ?? result.package.name.slice('mioon-'.length, -'-mac.dmg'.length);
+      if (!/^[0-9][0-9A-Za-z.+-]*$/.test(version) || result.package.name !== `mioon-${version}-mac.dmg`) fail('CLI_SMOKE_RELEASE_VERSION_MISMATCH');
+      const app = await installReleaseApp(sourceApp, ownedRoot);
+      binary = await macBundleExecutable(app);
+      check('final-dmg-app-copied-to-disposable-applications');
+      const emptyPath = path.join(ownedRoot, 'no-host-tools');
+      await mkdir(emptyPath, {mode: 0o700});
+      cliSmoke = createReleaseCliSmoke({sourceApp, installedApp: app, root: ownedRoot, version,
+        env: launcherSmokeEnvironment(home, tmp, emptyPath, userData)});
+      result.cliLauncher = cliSmoke.evidence;
+      result.phase = 'cli-app-stopped-before-start';
+      await cliSmoke.beforeAppStarts();
+      check('packaged-cli-first-and-warm-stopped-diagnostics');
+    }
+    if (!binary) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
     result.phase = 'fixture';
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=2', '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=2', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-n', video], 'SYNTHETIC_VIDEO_FAILED', {env});
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2', '-c:a', 'pcm_s16le', '-n', audio], 'SYNTHETIC_AUDIO_FAILED', {env});
@@ -319,6 +341,11 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     if (!app.pid) fail('APP_PID_MISSING');
     await boundedPoll(remaining => windowVisible(platform, app.pid!, remaining), Math.max(1, deadline - Date.now()), 'NATIVE_WINDOW_TIMEOUT', () => ended);
     check('actual-final-package-native-window-and-backend-ready');
+    if (cliSmoke) {
+      result.phase = 'cli-app-running';
+      await cliSmoke.duringApp();
+      check('packaged-cli-version-doctor-project-list-and-mcp-initialize-tools-list');
+    }
     result.render = await exerciseComposition({origin, token, video, audio, ffprobe, directory: ownedRoot, env, onPhase: phase => { result.phase = phase; }, onCheck: check, exited: () => ended});
     result.phase = 'shutdown'; result.sigtermSent = app.kill('SIGTERM');
     let timer: NodeJS.Timeout | undefined;
@@ -327,6 +354,12 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     if (result.exit.code !== 0 || result.exit.signal !== null) fail('UNCLEAN_NATIVE_EXIT');
     for (const relative of ['mcp-connection.json', 'mcp-token', 'workspace/server.lock']) if (!await absent(path.join(userData, relative))) fail('TRANSIENT_STORAGE_NOT_CLEANED');
     check('sigterm-normal-exit-removes-discovery-token-and-workspace-lock');
+    if (cliSmoke) {
+      result.phase = 'cli-app-stopped-after-quit';
+      if (!await absent(path.join(userData, 'cli-token'))) fail('TRANSIENT_STORAGE_NOT_CLEANED');
+      await cliSmoke.afterAppStops();
+      check('packaged-cli-stopped-diagnostic-after-quit');
+    }
     if ('dmg' in input) {
       result.phase = 'dmg-sha256';
       if ((await macDmgEvidence(input.dmg)).sha256 !== result.package?.sha256) fail('DMG_CHANGED_DURING_VERIFICATION');

@@ -14,7 +14,7 @@ on:
         required: false
         type: string
       version_override:
-        description: Candidate-only package version (major.minor.patch)
+        description: Artifact-only package version (stable, or the reviewed K2-C candidate)
         required: false
         type: string
       force_checks:
@@ -330,6 +330,12 @@ jobs:
           app_out="$GITHUB_WORKSPACE/release/desktop/production/mac-universal"
           node .github/scripts/apple-notarization.ts --operation=notarize-cli-launcher --artifact="$app_out"
 
+      - name: Smoke test the final DMG on Apple silicon
+        id: smoke
+        run: |
+          node .github/scripts/desktop-smoke.ts --platform=darwin --arch=arm64 \
+            --dmg="release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output="$MIOON_DESKTOP_SMOKE_REPORT"
+
       - name: Inspect final package, signatures and resources
         id: inspect
         env:
@@ -347,12 +353,6 @@ jobs:
           mount_point=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8")); if(!report.mountPoint)process.exit(1); process.stdout.write(report.mountPoint);')
           hdiutil detach "$mount_point"
           if [[ -d "$mount_point" ]]; then rmdir "$mount_point"; fi
-
-      - name: Smoke test the final DMG on Apple silicon
-        id: smoke
-        run: |
-          node .github/scripts/desktop-smoke.ts --platform=darwin --arch=arm64 \
-            --dmg="release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output="$MIOON_DESKTOP_SMOKE_REPORT"
 
       - name: Collect signed packages and Apple silicon evidence
         id: stage

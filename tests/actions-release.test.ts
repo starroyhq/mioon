@@ -5,9 +5,9 @@ import {createHash} from 'node:crypto';
 import {mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {APPLE_SECRET_FLAGS, isFrozenBranchCandidate, pushedTagForEvent, requireAppleSecrets, resolvePreflight} from '../.github/scripts/release-preflight.ts';
+import {APPLE_SECRET_FLAGS, frozenBranchCandidate, pushedTagForEvent, requireAppleSecrets, resolvePreflight} from '../.github/scripts/release-preflight.ts';
 import {collectMacosEvidence, decideChecks, findDesktopGroupEvidence, findSuccessfulMainCI, findSuccessfulMacosNightly, renderMacosEvidence} from '../.github/scripts/release-ci-evidence.ts';
-import {stageRelease, validatePackageReport} from '../.github/scripts/stage-release.ts';
+import {stageRelease, validateCliSmokeReport, validatePackageReport} from '../.github/scripts/stage-release.ts';
 import {collectReleaseBundle, ownershipMarker, publishRelease, validateDraft} from '../.github/scripts/publish-release.ts';
 import type {DraftRelease, PublishTransport, ReleaseBundle, RemoteAsset, UploadFile} from '../.github/scripts/publish-release.ts';
 import type {ReleaseArch, ReleasePlatform} from '../.github/scripts/release-common.ts';
@@ -17,8 +17,17 @@ const sha = '1'.repeat(40), changedSha = '2'.repeat(40), version = '0.4.1', tag 
 const hash = (data: string | Uint8Array): string => createHash('sha256').update(data).digest('hex');
 const names = macArtifactNames(version);
 const dmgContents = 'synthetic universal DMG', zipContents = 'synthetic universal ZIP';
+const stopped = {durationMs: 15, exitCode: 4, errorCode: 'CLI_RUNTIME_UNAVAILABLE'};
+const cliSmoke = {
+  schemaVersion: 1, channel: 'production', version, installLayout: 'copied-from-final-dmg', latencyBudgetMs: 1000,
+  quarantine: {sourceApp: true, installedApp: true, launcher: false},
+  firstStopped: {...stopped, withinBudget: true}, warmStoppedMs: [10, 12, 14],
+  running: {versionMs: 18, doctorMs: 19, projectListMs: 20, mcpInitializeMs: 21, mcpToolsListMs: 22, mcpToolCount: 1},
+  stoppedAfterQuit: stopped,
+};
 const report = (arch: ReleaseArch | 'arm64' | 'x64') => ({
   ok: true, platform: 'darwin', arch, package: {name: names.dmg, sha256: hash(dmgContents)},
+  ...(arch === 'universal' ? {} : {cliLauncher: cliSmoke}),
 });
 const preflight = {rootVersion: version, desktopVersion: version, checkoutSha: sha, resolveTag: () => sha, isOnMain: () => true};
 
@@ -138,17 +147,30 @@ test('frozen candidate branch permits artifact verification before merge and val
     GITHUB_REF_NAME: 'howard/mac-universal-update-feed',
     GITHUB_SHA: sha,
   };
-  assert.equal(isFrozenBranchCandidate(environment, sha), true);
-  assert.equal(isFrozenBranchCandidate(environment, changedSha), false);
-  assert.equal(isFrozenBranchCandidate({...environment, GITHUB_REF_NAME: 'other-branch'}, sha), false);
-  assert.equal(isFrozenBranchCandidate({...environment, GITHUB_REF_TYPE: 'tag'}, sha), false);
-  assert.equal(isFrozenBranchCandidate({...environment, GITHUB_EVENT_NAME: 'push'}, sha), false);
-  const input = {...preflight, isOnMain: () => false, candidateBranch: true};
+  assert.equal(frozenBranchCandidate(environment, sha), 'howard/mac-universal-update-feed');
+  assert.equal(frozenBranchCandidate(environment, changedSha), undefined);
+  assert.equal(frozenBranchCandidate({...environment, GITHUB_REF_NAME: 'other-branch'}, sha), undefined);
+  assert.equal(frozenBranchCandidate({...environment, GITHUB_REF_TYPE: 'tag'}, sha), undefined);
+  assert.equal(frozenBranchCandidate({...environment, GITHUB_EVENT_NAME: 'push'}, sha), undefined);
+  const input = {...preflight, isOnMain: () => false, candidateBranch: frozenBranchCandidate(environment, sha)};
   assert.deepEqual(resolvePreflight({...input, updateFeedUrl: 'http://127.0.0.1:8080/updates', versionOverride: '0.4.2'}),
     {release_sha: sha, version: '0.4.2', release_tag: '', should_publish: false, prerelease: false});
   assert.throws(() => resolvePreflight({...input, updateFeedUrl: 'http://example.test/updates'}), /Candidate update feed/);
   assert.throws(() => resolvePreflight({...input, versionOverride: '0.4.2-rc.1'}), /stable version/);
   assert.throws(() => resolvePreflight({...input, pushedTag: tag}), /origin\/main/);
+});
+test('the exact K2-C prerelease is allowed only on its frozen artifact-only branch', () => {
+  const environment = {GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_TYPE: 'branch',
+    GITHUB_REF_NAME: 'howard/k2c-packaging', GITHUB_SHA: sha};
+  const candidateBranch = frozenBranchCandidate(environment, sha);
+  assert.equal(candidateBranch, 'howard/k2c-packaging');
+  const candidate = {...preflight, candidateBranch, isOnMain: () => false, versionOverride: '0.4.0-k2c.1'};
+  assert.deepEqual(resolvePreflight(candidate),
+    {release_sha: sha, version: '0.4.0-k2c.1', release_tag: '', should_publish: false, prerelease: true});
+  assert.throws(() => resolvePreflight({...candidate, manualTag: tag}), /origin\/main/);
+  assert.throws(() => resolvePreflight({...candidate, versionOverride: '0.4.0-k2c.2'}), /stable version/);
+  assert.throws(() => resolvePreflight({...preflight, versionOverride: candidate.versionOverride}), /stable version/);
+  assert.equal(frozenBranchCandidate(environment, changedSha), undefined);
 });
 test('tag builds ignore candidate feed and version inputs, keeping the exact tagged package version', () => {
   const inputs = {...preflight, updateFeedUrl: 'invalid candidate URL', versionOverride: 'invalid candidate version'};
@@ -242,10 +264,21 @@ test('staging needs passing universal inspection and both native smoke reports f
   await assert.rejects(stageRelease({...input, intelSmokeReport: report('arm64')}), /exact target: darwin-x64/);
   const intelOnOtherDmg = {...report('x64'), package: {name: names.dmg, sha256: hash('foreign DMG')}};
   await assert.rejects(stageRelease({...input, intelSmokeReport: intelOnOtherDmg}), /exact DMG/);
+  await assert.rejects(stageRelease({...input, intelSmokeReport: {...report('x64'), cliLauncher: undefined}}), /CLI launcher smoke evidence is required: darwin-x64/);
   const assets = await stageRelease(input);
   const required = [names.dmg, names.zip, names.zipBlockmap, names.update];
   assert.deepEqual(assets.map(asset => asset.name), required);
   assert.deepEqual((await readdir(input.output)).sort(), [...required, ...required.map(manifestName)].sort());
+});
+test('staging requires matching CLI timing and failure evidence but preserves measured slow candidates', () => {
+  const firstStopped = {...stopped, durationMs: 1300, withinBudget: false};
+  assert.throws(() => validateCliSmokeReport({cliLauncher: {...cliSmoke, firstStopped}}, version, 'arm64'), /Invalid CLI launcher smoke evidence/);
+  const slow = {...cliSmoke, firstStopped, slowFirstLaunch: {systemLog: 'no-launch-specific-events'}};
+  validateCliSmokeReport({cliLauncher: slow}, version, 'arm64');
+  for (const override of [
+    {version: '0.4.0'}, {firstStopped: {...firstStopped, withinBudget: true}}, {warmStoppedMs: [10]},
+    {running: {...cliSmoke.running, mcpToolCount: 0}}, {stoppedAfterQuit: {...stopped, exitCode: 0}},
+  ]) assert.throws(() => validateCliSmokeReport({cliLauncher: {...slow, ...override}}, version, 'arm64'), /Invalid CLI launcher smoke evidence/);
 });
 test('staging rejects symlink packages and nonempty staging outputs', async t => {
   const f = await fixture(t), input = packageInput(f), dmg = path.join(f.packageDirectory, names.dmg);

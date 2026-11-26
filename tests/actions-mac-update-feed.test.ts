@@ -5,12 +5,20 @@ import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {candidateUpdateFeedUrl, validateMacAppUpdateProvider, validateMacUpdateFeed} from '../.github/scripts/mac-update-feed.ts';
-import {isFrozenBranchCandidate, resolvePreflight} from '../.github/scripts/release-preflight.ts';
+import {frozenBranchCandidate, resolvePreflight} from '../.github/scripts/release-preflight.ts';
 
 test('the signed release step passes the final DMG as an absolute path to the stapler', async () => {
   const workflow = await readFile(new URL('../.github/workflows/release-desktop.yml', import.meta.url), 'utf8');
   assert.match(workflow, /dmg="\$GITHUB_WORKSPACE\/release\/desktop\/production\/mioon-\$\{MIOON_RELEASE_VERSION\}-mac\.dmg"/);
   assert.match(workflow, /apple-notarization\.ts --operation=staple --artifact="\$dmg"/);
+});
+
+test('the arm64 release smoke measures first use after CLI notarization and before Gatekeeper inspection', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release-desktop.yml', import.meta.url), 'utf8');
+  const notarization = workflow.indexOf('name: Notarize the signed CLI launcher separately');
+  const smoke = workflow.indexOf('name: Smoke test the final DMG on Apple silicon');
+  const inspection = workflow.indexOf('name: Inspect final package, signatures and resources');
+  assert.ok(notarization >= 0 && notarization < smoke && smoke < inspection);
 });
 
 test('candidate URLs use a safe directory base and allow local loopback HTTP', () => {
@@ -29,11 +37,11 @@ test('candidate inputs cannot affect a tagged build or let an off-main tag publi
   const preflight = {rootVersion: version, desktopVersion: version, checkoutSha: sha, resolveTag: () => sha};
   const event = {GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_TYPE: 'branch',
     GITHUB_REF_NAME: 'howard/mac-universal-update-feed', GITHUB_SHA: sha};
-  const candidateBranch = isFrozenBranchCandidate(event, sha);
-  assert.equal(candidateBranch, true);
-  assert.equal(isFrozenBranchCandidate({...event, GITHUB_REF_NAME: 'some-other-branch'}, sha), false);
-  assert.equal(isFrozenBranchCandidate({...event, GITHUB_REF_TYPE: 'tag'}, sha), false);
-  assert.equal(isFrozenBranchCandidate(event, 'b'.repeat(40)), false);
+  const candidateBranch = frozenBranchCandidate(event, sha);
+  assert.equal(candidateBranch, 'howard/mac-universal-update-feed');
+  assert.equal(frozenBranchCandidate({...event, GITHUB_REF_NAME: 'some-other-branch'}, sha), undefined);
+  assert.equal(frozenBranchCandidate({...event, GITHUB_REF_TYPE: 'tag'}, sha), undefined);
+  assert.equal(frozenBranchCandidate(event, 'b'.repeat(40)), undefined);
   const candidate = resolvePreflight({...preflight, isOnMain: () => false, candidateBranch,
     updateFeedUrl: 'http://127.0.0.1:8420/feed', versionOverride: '0.3.0'});
   assert.equal(candidate.version, '0.3.0');
