@@ -4,13 +4,14 @@ import {chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile} from 
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {captureSmokeShutdownDiagnostics} from '../.github/scripts/desktop-smoke.ts';
+import {launcherSmokeEnvironment, summarizeLaunchPolicyLog} from '../.github/scripts/release-cli-smoke.ts';
 import {EXIT_DIAGNOSTIC_LIMITS} from '../apps/desktop/src/exit-diagnostics.ts';
 
 const secret='synthetic-private-token-url-path-message-must-not-appear';
 async function fixture(t: test.TestContext) {
   const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-ci-native-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
-  const userData=path.join(root,'user-data'),workspace=path.join(userData,'workspace'),directory=path.join(workspace,'diagnostics');
+  const userData=path.join(root,'user-data'),workspace=path.join(userData,'data'),directory=path.join(workspace,'diagnostics');
   await mkdir(directory,{recursive:true,mode:0o700});
   for (const folder of [root,userData,workspace,directory]) await chmod(folder,0o700);
   const backend=path.join(directory,'backend-exit.jsonl'),renderer=path.join(directory,'renderer-health.jsonl');
@@ -72,4 +73,33 @@ test('file and directory symlinks or paths outside this synthetic root are rejec
   snapshot=await captureSmokeShutdownDiagnostics(path.join(f.root,'nested','mioon-ci-native-ABC123'));assert.equal(snapshot.scope,'unsafe');
   snapshot=await captureSmokeShutdownDiagnostics('relative');assert.equal(snapshot.scope,'unsafe');
   assert.equal(await readFile(target,'utf8'),secret);
+});
+
+test('release CLI smoke uses only the owned profile, empty PATH and explicit stopped-message locale', () => {
+  const root = '/private/tmp/mioon-cli-test';
+  assert.deepEqual(launcherSmokeEnvironment(`${root}/home`, `${root}/tmp`, `${root}/empty`, `${root}/profile`), {
+    HOME: `${root}/home`, CFFIXED_USER_HOME: `${root}/home`,
+    TMPDIR: `${root}/tmp`, TMP: `${root}/tmp`, TEMP: `${root}/tmp`, PATH: `${root}/empty`,
+    LC_ALL: 'zh_CN.UTF-8', MIOON_CLI_USER_DATA: `${root}/profile`,
+  });
+});
+
+test('slow launch diagnostics count bounded launcher-specific policy events without exposing paths or messages', () => {
+  const launcher = '/private/tmp/mioon-cli-test/Mioon.app/Contents/Helpers/mioon';
+  const begin = Date.parse('2026-01-02T03:04:05.100Z'), end = begin + 2000;
+  const row = (timestamp: string, processImagePath: string, eventMessage: string) => ({timestamp, processImagePath, eventMessage});
+  const entries = [
+    row('2026-01-02 03:04:05.100120+0000', '/usr/libexec/syspolicyd', `${launcher} notarization ticket ${secret}`),
+    row('2026-01-02 03:04:06.543210+0000', '/usr/libexec/amfid', `app.starroy.mioon.cli-launcher cache ${secret}`),
+    row('2026-01-02 03:04:05.099123+0000', '/usr/libexec/syspolicyd', `${launcher} unrelated preflight`),
+    row('2026-01-02 03:04:07.101000+0000', '/usr/libexec/syspolicyd', `${launcher} unrelated later event`),
+    row('2026-01-02 03:04:05.200000+0000', '/usr/libexec/syspolicyd', `other executable ticket ${secret}`),
+    row('2026-01-02 03:04:05.200000+0000', '/unrelated-process', launcher),
+  ];
+  const summary = summarizeLaunchPolicyLog(JSON.stringify(entries), begin, end, launcher);
+  assert.deepEqual(summary, {systemLog: 'matched', policyEvents: {syspolicyd: 1, amfid: 1},
+    ticketOrNotarizationEvents: 1, cacheEvents: 1});
+  assert.ok(!JSON.stringify(summary).includes(launcher)); assert.ok(!JSON.stringify(summary).includes(secret));
+  assert.equal(summarizeLaunchPolicyLog('[]', begin, end, launcher).systemLog, 'no-launch-specific-events');
+  assert.equal(summarizeLaunchPolicyLog('log unavailable', begin, end, launcher).systemLog, 'unavailable');
 });

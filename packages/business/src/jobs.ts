@@ -643,7 +643,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(!artifact){artifact=writeOutputArtifact(writerOwner,{owner:outputOwner,kind:'export',sourceIdentity:outputOwner.inputHash,stageFile:part,info,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now())}:{})},beforeEffect);artifactComplete=true;}
     if(floatExport?!artifact.audioCheck:artifact.audioCheck!==undefined)throw Object.assign(Error('Output artifact has an invalid audio observation'),{code:'INVALID_OUTPUT_ARTIFACT'});
     const audioCheck=floatExport?restoredArtifactAudioCheck(artifact,e):undefined;
-    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes},{signal,beforeEffect});checkpoint(signal);beforeEffect();
+    const displayName=e.mode==='timeline'&&e.purpose!=='export'?undefined
+     :stringValue(property(e.snapshot,'deliveryName'))??stringValue(property(get('projects',e.projectId),'name'))??'';
+    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},{signal,beforeEffect});checkpoint(signal);beforeEffect();
     const {relativePath:_publishedPath,...locator}=published;
     await registerVerifiedProjectOutputs(writerOwner, {signal, beforeEffect}, () => {
      tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');

@@ -14,7 +14,7 @@ on:
         required: false
         type: string
       version_override:
-        description: Candidate-only package version (major.minor.patch)
+        description: Artifact-only package version (stable, or the reviewed K2-C candidate)
         required: false
         type: string
       force_checks:
@@ -131,6 +131,8 @@ jobs:
     needs: preflight
     runs-on: macos-15
     timeout-minutes: 90
+    outputs:
+      signed_package_available: ${{ steps.transfer.outcome == 'success' }}
     defaults:
       run:
         shell: bash
@@ -330,6 +332,14 @@ jobs:
           app_out="$GITHUB_WORKSPACE/release/desktop/production/mac-universal"
           node .github/scripts/apple-notarization.ts --operation=notarize-cli-launcher --artifact="$app_out"
 
+      - name: Smoke test the final DMG on Apple silicon
+        id: smoke
+        # A smoke failure still allows signature inspection and testing the same DMG on Intel.
+        continue-on-error: true
+        run: |
+          node .github/scripts/desktop-smoke.ts --platform=darwin --arch=arm64 \
+            --dmg="release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output="$MIOON_DESKTOP_SMOKE_REPORT"
+
       - name: Inspect final package, signatures and resources
         id: inspect
         env:
@@ -348,12 +358,6 @@ jobs:
           hdiutil detach "$mount_point"
           if [[ -d "$mount_point" ]]; then rmdir "$mount_point"; fi
 
-      - name: Smoke test the final DMG on Apple silicon
-        id: smoke
-        run: |
-          node .github/scripts/desktop-smoke.ts --platform=darwin --arch=arm64 \
-            --dmg="release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output="$MIOON_DESKTOP_SMOKE_REPORT"
-
       - name: Collect signed packages and Apple silicon evidence
         id: stage
         run: |
@@ -365,6 +369,7 @@ jobs:
           cp "artifacts/desktop-$MIOON_TARGET/"{inspection,smoke,app-notarization,cli-launcher-notarization,dmg-stapling}.json artifacts/macos-verified/evidence/
 
       - name: Transfer the signed universal package and arm64 evidence
+        id: transfer
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: universal-package-for-native-smoke
@@ -372,6 +377,10 @@ jobs:
           retention-days: 14
           compression-level: 0
           if-no-files-found: error
+
+      - name: Require Apple silicon smoke to pass before release staging
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1
 
       - name: Write safe package diagnostics
         if: always()
@@ -431,6 +440,7 @@ jobs:
   intel-smoke:
     name: Smoke test the same universal DMG on Intel
     needs: [preflight, desktop]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.desktop.outputs.signed_package_available == 'true' }}
     runs-on: macos-15-intel
     timeout-minutes: 45
     env:

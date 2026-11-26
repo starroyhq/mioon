@@ -16,6 +16,39 @@ export function validatePackageReport(value: unknown, expected: {arch: ReleaseAr
     throw new Error(`Package inspection and smoke reports must verify this exact DMG: darwin-${expected.arch}`);
   }
 }
+
+function duration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+function stoppedWithUnavailableRuntime(value: Record<string, unknown>): value is Record<string, unknown> & {durationMs: number} {
+  return value.exitCode === 4 && value.errorCode === 'CLI_RUNTIME_UNAVAILABLE' && duration(value.durationMs);
+}
+export function validateCliSmokeReport(value: unknown, version: string, arch: 'arm64' | 'x64'): void {
+  const report = object(value);
+  if (!report.cliLauncher) throw new Error(`CLI launcher smoke evidence is required: darwin-${arch}`);
+  const launcher = object(report.cliLauncher);
+  const firstStopped = object(launcher.firstStopped);
+  const running = object(launcher.running);
+  const quarantine = object(launcher.quarantine);
+  const budget = 1000;
+  if (launcher.schemaVersion !== 1 || launcher.channel !== 'production' || launcher.version !== version ||
+      launcher.installLayout !== 'copied-from-final-dmg' || launcher.latencyBudgetMs !== budget ||
+      ![quarantine.sourceApp, quarantine.installedApp, quarantine.launcher].every(value => typeof value === 'boolean') ||
+      !stoppedWithUnavailableRuntime(firstStopped) ||
+      firstStopped.withinBudget !== (firstStopped.durationMs <= budget) ||
+      (!firstStopped.withinBudget && !launcher.slowFirstLaunch) ||
+      !Array.isArray(launcher.warmStoppedMs) || launcher.warmStoppedMs.length < 3 || !launcher.warmStoppedMs.every(duration) ||
+      ![running.versionMs, running.doctorMs, running.projectListMs, running.mcpInitializeMs, running.mcpToolsListMs].every(duration) ||
+      typeof running.mcpToolCount !== 'number' || !Number.isInteger(running.mcpToolCount) || running.mcpToolCount < 1 ||
+      !stoppedWithUnavailableRuntime(object(launcher.stoppedAfterQuit))) {
+    throw new Error(`Invalid CLI launcher smoke evidence: darwin-${arch}`);
+  }
+  if (firstStopped.withinBudget === false &&
+      !['matched', 'no-launch-specific-events', 'unavailable'].some(result => object(launcher.slowFirstLaunch).systemLog === result)) {
+    throw new Error(`Invalid slow CLI launcher diagnostics: darwin-${arch}`);
+  }
+}
+
 export async function stageRelease(input: {
   platform: ReleasePlatform;
   arch: ReleaseArch;
@@ -44,6 +77,8 @@ export async function stageRelease(input: {
   validatePackageReport(input.inspectionReport, {arch: 'universal', package: artifact});
   validatePackageReport(input.smokeReport, {arch: 'arm64', package: artifact});
   validatePackageReport(input.intelSmokeReport, {arch: 'x64', package: artifact});
+  validateCliSmokeReport(input.smokeReport, version, 'arm64');
+  validateCliSmokeReport(input.intelSmokeReport, version, 'x64');
 
   await mkdir(input.output, {recursive: true});
   const outputInfo = await lstat(input.output);

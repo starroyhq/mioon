@@ -20,9 +20,21 @@ export function pushedTagForEvent(environment: NodeJS.ProcessEnv): string {
 function isBranchDispatch(environment: NodeJS.ProcessEnv): boolean {
   return environment.GITHUB_EVENT_NAME === 'workflow_dispatch' && environment.GITHUB_REF_TYPE === 'branch';
 }
-export function isFrozenBranchCandidate(environment: NodeJS.ProcessEnv, checkoutSha: string): boolean {
-  return isBranchDispatch(environment) && environment.GITHUB_REF_NAME === 'howard/mac-universal-update-feed' &&
-    environment.GITHUB_SHA === checkoutSha;
+const UPDATE_FEED_CANDIDATE_BRANCH = 'howard/mac-universal-update-feed';
+const CLI_PACKAGING_CANDIDATE_BRANCH = 'howard/k2c-packaging';
+const CLI_PACKAGING_CANDIDATE_VERSIONS = ['0.4.0-k2c.1', '0.4.0-k2c.2'];
+type CandidateBranch = typeof UPDATE_FEED_CANDIDATE_BRANCH | typeof CLI_PACKAGING_CANDIDATE_BRANCH;
+
+export function frozenBranchCandidate(environment: NodeJS.ProcessEnv, checkoutSha: string): CandidateBranch | undefined {
+  const ref = environment.GITHUB_REF_NAME;
+  if (!isBranchDispatch(environment) || environment.GITHUB_SHA !== checkoutSha) return undefined;
+  return ref === UPDATE_FEED_CANDIDATE_BRANCH || ref === CLI_PACKAGING_CANDIDATE_BRANCH ? ref : undefined;
+}
+function candidateVersionOverride(value: unknown, branch?: CandidateBranch): string {
+  const version = releaseVersion(value);
+  if (branch === CLI_PACKAGING_CANDIDATE_BRANCH && CLI_PACKAGING_CANDIDATE_VERSIONS.includes(version)) return version;
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Candidate override must be a stable version or the reviewed K2-C version');
+  return version;
 }
 export interface ReleasePreflightInput {
   rootVersion: unknown;
@@ -30,7 +42,7 @@ export interface ReleasePreflightInput {
   checkoutSha: unknown;
   manualTag?: string;
   pushedTag?: string;
-  candidateBranch?: boolean;
+  candidateBranch?: CandidateBranch;
   updateFeedUrl?: string;
   versionOverride?: string;
   resolveTag: (tag: string) => string;
@@ -52,8 +64,7 @@ export function resolvePreflight(input: ReleasePreflightInput): ReleasePreflight
   if (tag && tag !== `v${sourceVersion}`) throw new Error('Release tag must equal v followed by the package version');
   if (tag && sourceSha(input.resolveTag(tag)) !== sha) throw new Error('Release tag does not point to the checked-out source SHA');
   if ((tag || !input.candidateBranch) && !input.isOnMain(sha)) throw new Error('Release source is not contained in origin/main');
-  const version = !tag && input.versionOverride ? releaseVersion(input.versionOverride) : sourceVersion;
-  if (!tag && input.versionOverride && !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Candidate override must be a stable version');
+  const version = !tag && input.versionOverride ? candidateVersionOverride(input.versionOverride, input.candidateBranch) : sourceVersion;
   if (!tag && input.updateFeedUrl) candidateUpdateFeedUrl(input.updateFeedUrl);
   if (tag && sourceVersion.split('+')[0]!.includes('-')) throw new Error('Prerelease desktop releases are not supported');
   return {release_sha: sha, version, release_tag: tag, should_publish: Boolean(tag), prerelease: version.split('+')[0]!.includes('-')};
@@ -79,8 +90,8 @@ export async function main(environment: NodeJS.ProcessEnv = process.env): Promis
   }
   if (process.argv.includes('--apply-candidate-version')) {
     if (!isBranchDispatch(environment) || environment.MIOON_RELEASE_TAG) throw new Error('Version override requires a candidate branch dispatch');
-    const version = releaseVersion(environment.MIOON_RELEASE_VERSION);
-    if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Candidate override must be a stable version');
+    const checkoutSha = gitText(['rev-parse', 'HEAD']);
+    const version = candidateVersionOverride(environment.MIOON_RELEASE_VERSION, frozenBranchCandidate(environment, checkoutSha));
     for (const file of ['package.json', 'apps/desktop/package.json']) {
       const manifest = object(await jsonFile(file));
       await writeFile(file, `${JSON.stringify({...manifest, version}, null, 2)}\n`);
@@ -97,7 +108,7 @@ export async function main(environment: NodeJS.ProcessEnv = process.env): Promis
   const result = resolvePreflight({
     rootVersion: root.version, desktopVersion: desktop.version, checkoutSha,
     manualTag: environment.MIOON_RELEASE_TAG, pushedTag: pushedTagForEvent(environment),
-    candidateBranch: isFrozenBranchCandidate(environment, checkoutSha),
+    candidateBranch: frozenBranchCandidate(environment, checkoutSha),
     ...await candidateInputs(environment),
     resolveTag: tag => gitText(['rev-parse', '--verify', `refs/tags/${tag}^{commit}`]),
     isOnMain: sha => {
