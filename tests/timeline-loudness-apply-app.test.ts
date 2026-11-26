@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -73,6 +74,7 @@ async function harness(wire: Wire, onBusy: (busy: boolean) => void = () => {}): 
   assert.ok(await identity.discover());
   let options: Parameters<ReturnType<typeof createTimelineLoudnessApplyController>['review']> & {submit?: ApplyHarness['submit']} | undefined, keys = 0, epoch = 0;
   const env: Record<string, unknown> = {
+    isSequenceTimelineFormat,
     projectEntryIdentityRef: {current: identity}, application: null, clipDraftRef: { current: null }, trackLocksRef: { current: {} }, touchesLockedTrack, setSubjectRefresh: () => undefined, msg: messageKey,
     localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     readTimelineLoudnessRecoveryScope: () => 'test-workspace-identity', nativeCloseRegistry: { current: undefined }, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,

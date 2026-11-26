@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
 import {findGenerationProvider, generationProviderForModel, generationProviderIdentity, generationParameters,checkGenerationMediaReferences,generationMediaReferences} from '../apps/web/src/generation-settings.ts';
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import {parseVideoBinding, videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '@mioon/contracts';
 import {parseAgentTaskRecoveryLocation,resolveAgentTaskRecoveryLocation} from '../apps/web/src/agent-task-recovery-location.ts';
@@ -210,7 +211,7 @@ test('paid retry keeps its Tasks review and rejects a revoked pane before submis
  const code=section('  function retryGeneration(', '  async function createProject('),snapshot={title:'Fixed original',duration:4,aspectRatio:'16:9',referenceAssetIds:[]};
  const job={id:jobId,shotId,projectId,providerId:'synthetic-paid-adapter',model:'fixed-test-model',snapshot};
  const state={reviews:[] as unknown[],submitted:[] as {retryJobId: string}[],notices:[] as unknown[]},realConfirmRef={current:null as GenerationApproval | null};let viewCurrent=true;
- const deps={message,msg:message,...createI18nTestContext(),findGenerationProvider,generationProviderForModel,generationProviderIdentity,generationParameters,parseVideoBinding,videoBindingCapabilities,providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
+ const deps={message,msg:message,isSequenceTimelineFormat,...createI18nTestContext(),findGenerationProvider,generationProviderForModel,generationProviderIdentity,generationParameters,parseVideoBinding,videoBindingCapabilities,providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
   dataRef:{current:{shots:[{id:shotId,projectId}],jobs:[job],assets:[]}},generationReviewScope:{current:{key:'tasks'}},realConfirmRef,
   setRealConfirm:(value: unknown)=>state.reviews.push(value),context:()=>({projectId,epoch:1}),isCurrent:()=>true,
   currentProject:{current:projectId},checkGenerationMediaReferences,generationMediaReferences,readableError:(error:unknown)=>String(error),rpc:()=>assert.fail('A retry without references needs no media status request'),generationReferenceIdentity:()=> 'fixed-source',generationReferences:()=>({references:[]}),generationOptionsRef:{current:{}},generationSelection:()=>({}),

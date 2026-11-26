@@ -8,16 +8,17 @@ import type {ProjectCopyActionInput, ProjectCopyActionOperation, ProjectAdoptCop
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {copyProjectToNewFile} from '../../../../packages/business/src/project-file/copy.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
-import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import type {ProjectFileFormat, SequenceProjectFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
-import {inspectProjectFormatHeader} from '../../../../packages/business/src/project-file/connection.ts';
+import {inspectProjectFormatHeader, projectReadFormatOptions} from '../../../../packages/business/src/project-file/connection.ts';
 import {withLockedProjectCopy} from '../../../../packages/business/src/project-file/adopt-copy.ts';
 import {createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, inspectCopiedProjectFile, openProjectBackup,
   publishProjectCopyDirectory, publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {initializeProjectCopyHistory, readProjectCopyHistory} from '../../../../packages/business/src/project-file/copy-history.ts';
-import {applyFormat5ConversionInside, prepareFormat5Conversion} from '../../../../packages/business/src/project-file/format5-conversion-store.ts';
+import {applyFormat5ConversionInside} from '../../../../packages/business/src/project-file/format5-conversion-store.ts';
 import {prepareTrustedFormat5Conversion} from '../../../../packages/business/src/project-file/format5-upgrade.ts';
+import {upgradeProject5To6Inside} from '../../../../packages/business/src/project-file/schema/format6-upgrade.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../../../../packages/business/src/project-file/store.ts';
 import {copyProjectVersionsToNewProjectInside} from '../../../../packages/business/src/project-versions/copy-to-project.ts';
@@ -55,6 +56,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
 }) {
   const assertAllowed = createProjectServiceApplication(library, signal).assertMutationAllowed!;
   const format4 = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+  const readFormat = projectReadFormatOptions(targetFormat, format4);
   const records = createCopyActionRecords(directories.dataDir, assertAllowed), catalog = createProjectTemplateCatalog(projectTemplates);
   const running = new Map<string, {digest: string; promise: Promise<ProjectCopyResponse>}>(), targets = new Set<string>();
   const digestFor = (operation: ProjectCopyActionOperation, input: ProjectCopyActionInput) => createHash('sha256').update(canonicalJson({operation, input})).digest('hex');
@@ -142,20 +144,20 @@ export function createProjectCopyActions({manager, library, directories, assertP
     if (!published) validateProjectCopyStagingDirectory(intent.stageDirectory);
     if (!published) {
       if (!matches(stageFile(intent), intent.stageIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目文件已被替换。');
-      inspectProjectFormatHeader(stageFile(intent), format4);
+      inspectProjectFormatHeader(stageFile(intent), readFormat);
       const prepared = inspectCopiedProjectFile(stageFile(intent));
       if (prepared.projectId !== intent.projectId || prepared.contentSequence !== response.contentSequence || prepared.contentToken !== response.contentToken) {
         throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目内容已改变，未发布。');
       }
       if (intent.operation === 'project.template.instantiate') catalog.verifyPreparedAssets(intent.input.templateId, intent.input.templateVersion, intent.stageDirectory!);
-    } else if (!manager.status(intent.projectId)) inspectProjectFormatHeader(target, format4);
+    } else if (!manager.status(intent.projectId)) inspectProjectFormatHeader(target, readFormat);
     if (intent.operation === 'project.adopt-copy' && !published && !replace) {
       checkAdopt(intent);
       const recheck = path.join(ensureWork(intent), 'recheck');
       if (lstatSync(recheck, {throwIfNoEntry: false})) {validatePrivateDirectory(recheck); rmSync(recheck, {recursive: true});}
       return withLockedProjectCopy({projectFile: intent.sourceFile, expectedIdentity: intent.sourceIdentity,
         expectedSource: {projectId: intent.sourceProjectId, ...intent.sourceStamp!}, snapshotDirectory: recheck,
-        assertMutationAllowed: assertAllowed, format4}, locked => finish(intent, locked.replace));
+        assertMutationAllowed: assertAllowed, format4: readFormat}, locked => finish(intent, locked.replace));
     }
     const local = projectLocation(directories, intent.projectId).localDir;
     ensurePrivateDirectory(path.dirname(local), {create: true});
@@ -198,7 +200,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
       const identity = inspectCopiedProjectFile(target);
       if (identity.projectId !== intent.projectId || identity.contentSequence !== response.contentSequence || identity.contentToken !== response.contentToken) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标内容身份已改变。');
       const store = openProjectStore({projectFile: target, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy,
-        ...(identity.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
+        allowFormat6: readFormat?.allowFormat6, ...(identity.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
       try {if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '新项目记录身份不匹配。');} finally {store.close();}
     }
     const confirmations = intent.operation === 'project.copy-to' ? copiedProjectConfirmationDirectories(library.outsidePaths, intent.sourceProjectId, path.dirname(intent.sourceFile)) : [];
@@ -220,7 +222,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
    * an old packaged source to the current format: promote an isolated copy of
    * the source pair first, then run the ordinary same-format copy into the new
    * identity (which keeps this action's content token and name binding). */
-  function promoteTemplateSourceToFormat5(sourceFile: string, intent: ActionIntent): ProjectStore {
+  function promoteTemplateSource(sourceFile: string, intent: ActionIntent, target: SequenceProjectFormat): ProjectStore {
     const projectFile = path.join(work(intent), 'promoted-source', 'project.mioon');
     ensurePrivateDirectory(path.dirname(projectFile), {create: true});
     copyFileSync(sourceFile, projectFile);
@@ -232,8 +234,11 @@ export function createProjectCopyActions({manager, library, directories, assertP
       cacheDir: path.join(work(intent), 'promoted-source', 'cache'), tempDir: path.join(work(intent), 'promoted-source', 'tmp')});
     const store = openProjectStore({projectFile, locate, ...(stamp.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4: {}} : {})});
     try {
-      const prepared = prepareTrustedFormat5Conversion(store);
-      store.tx(() => { applyFormat5ConversionInside(store, prepared); });
+      const prepared = isSequenceProjectFormat(stamp.formatVersion) ? undefined : prepareTrustedFormat5Conversion(store);
+      store.tx(() => {
+        if (prepared) applyFormat5ConversionInside(store, prepared);
+        if (target === FORMAT6_PROJECT_SCHEMA_VERSION) upgradeProject5To6Inside(store.db, 'project');
+      });
       return store;
     } catch (error) {store.close(); throw error;}
   }
@@ -246,8 +251,8 @@ export function createProjectCopyActions({manager, library, directories, assertP
     const template = intent.operation === 'project.template.instantiate' ? catalog.prepareAssets(intent.input.templateId, intent.input.templateVersion,
       {directory: stageDirectory, targetDirectory: intent.targetDirectory!, locale: intent.input.locale, assertMutationAllowed: assertAllowed}) : null;
     const captured = openProjectBackup(sourceFile);
-    const promote = intent.operation === 'project.template.instantiate' && targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION
-      && captured.identity.formatVersion !== FORMAT5_PROJECT_SCHEMA_VERSION;
+    const promote = intent.operation === 'project.template.instantiate' && isSequenceProjectFormat(targetFormat) &&
+      captured.identity.formatVersion < targetFormat;
     let copySource: ReturnType<typeof openProjectBackup> | ProjectStore = captured;
     let promoted: ProjectStore | null = null;
     let capturedClosed = false;
@@ -255,13 +260,13 @@ export function createProjectCopyActions({manager, library, directories, assertP
     try {
       if (promote) {
         // The captured source is a backup-format snapshot; first rebuild it as a
-        // project-format file, then promote that isolated pair to format 5.
+        // project-format file, then promote that isolated pair.
         const bridge = path.join(work(intent), 'promote-input.mioon');
         await copyProjectToNewFile(captured, {projectFile: bridge, sourceProjectDir: path.dirname(intent.sourceFile),
           targetProjectDir: path.dirname(intent.targetFile), projectId: randomUUID(), contentToken: randomBytes(16).toString('hex'),
           targetFormat: captured.identity.formatVersion, publish: (from, to) => publishProjectCopyFile(from, to)});
         captured.close(); capturedClosed = true;
-        promoted = promoteTemplateSourceToFormat5(bridge, intent);
+        promoted = promoteTemplateSource(bridge, intent, targetFormat);
         copySource = promoted;
       }
       const copiedResult = await copyProjectToNewFile(copySource, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
@@ -279,7 +284,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
     assertAllowed();
     ensurePrivateDirectory(localStage(intent), {create: true}); initializeProjectCopyHistory(historyStage(intent), intent.projectId, copied);
     const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir: localStage(intent), cacheDir: path.join(work(intent), 'cache'), tempDir: path.join(work(intent), 'tmp')}),
-      ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
+      allowFormat6: readFormat?.allowFormat6, ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
     let versions = 0;
     try {
       if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制初始记录身份不匹配。');
@@ -325,12 +330,12 @@ export function createProjectCopyActions({manager, library, directories, assertP
     await boundary('prepared', intent);
     const directory = path.join(ensureWork(intent), 'source');
     if (operation === 'project.adopt-copy') return withLockedProjectCopy({projectFile: sourceFile, expectedIdentity: sourceIdentity,
-      expectedSource: {projectId: sourceProjectId, ...intent.sourceStamp!}, snapshotDirectory: directory, assertMutationAllowed: assertAllowed, format4}, async locked => {
+      expectedSource: {projectId: sourceProjectId, ...intent.sourceStamp!}, snapshotDirectory: directory, assertMutationAllowed: assertAllowed, format4: readFormat}, async locked => {
         intent = save({...intent, phase: 'captured'}); await boundary('captured', intent); return build(intent, locked.projectFile, null, locked.replace);
       });
     if (!matches(sourceFile, intent.sourceIdentity)) throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选源文件已被替换。');
     if (operation === 'project.copy-to' && manager.status(sourceProjectId)) throw copyFailure('PROJECT_HOST_BUSY', '源项目尚未关闭。');
-    const captured = await captureClosedProjectSnapshot({projectFile: sourceFile, directory, assertMutationAllowed: assertAllowed, format4,
+    const captured = await captureClosedProjectSnapshot({projectFile: sourceFile, directory, assertMutationAllowed: assertAllowed, format4: readFormat,
       ...(template ? {expectedProjectGeneration: template.sourceGeneration} : {}),
       historyFile: id => operation === 'project.copy-to' ? path.join(projectLocation(directories, id).localDir, 'history.db') : path.join(work(intent), 'no-template-history')});
     if (!matches(sourceFile, intent.sourceIdentity)) throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选源文件已被替换。');

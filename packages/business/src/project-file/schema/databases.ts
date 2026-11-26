@@ -10,7 +10,7 @@ import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
 import {DRAFT_SCHEMA} from './domains/drafts.ts';
 import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, FORMAT4_HISTORY_SCHEMA_VERSION, canvasArchiveColumnDefinitions, canvasArchiveRevisionStatements} from './domains/canvas.ts';
-import {EDITOR_HISTORY_SCHEMA, initializeEditorStorageCounters, FORMAT5_SEQUENCED_TABLES_ADDED, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, format5ContentStatements} from './domains/sequence.ts';
+import {EDITOR_HISTORY_SCHEMA, initializeEditorStorageCounters, FORMAT5_SEQUENCED_TABLES_ADDED, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, format5ContentStatements, isSequenceProjectFormat} from './domains/sequence.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -25,8 +25,9 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
 export const PROJECT_FILE_SCHEMA_VERSION = 3;
 /** The 0.2.0 profile is only used by explicitly admitted kernel callers. */
 export const FORMAT4_PROJECT_SCHEMA_VERSION = 4;
-export {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION} from './domains/sequence.ts';
-export type ProjectFileFormat = typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION | typeof FORMAT5_PROJECT_SCHEMA_VERSION;
+export {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './domains/sequence.ts';
+export type SequenceProjectFormat = typeof FORMAT5_PROJECT_SCHEMA_VERSION | typeof FORMAT6_PROJECT_SCHEMA_VERSION;
+export type ProjectFileFormat = typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION | SequenceProjectFormat;
 /** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds proven previs image-edit origins; 8 adds content tokens and recovery confirmation; 9 adds host-local drafts; 10 adds UUID-bound custom image reviews. */
 export const HISTORY_SCHEMA_VERSION = 10;
 export {FORMAT4_HISTORY_SCHEMA_VERSION} from './domains/canvas.ts';
@@ -114,13 +115,13 @@ const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
 export function schemaStatements(kind: DatabaseKind, domainStatements?: readonly string[], version = SCHEMA_VERSIONS[kind]): readonly string[] {
   if (version !== SCHEMA_VERSIONS[kind] && !(kind === 'project' && version === FORMAT4_PROJECT_SCHEMA_VERSION) &&
       !(kind === 'history' && version === FORMAT4_HISTORY_SCHEMA_VERSION) &&
-      !(kind === 'project' && version === FORMAT5_PROJECT_SCHEMA_VERSION) && !(kind === 'history' && version === FORMAT5_HISTORY_SCHEMA_VERSION)) throw new TypeError(`Unsupported ${kind} schema version`);
-  domainStatements ??= kind === 'project' && version === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_CONTENT_SCHEMA
+      !(kind === 'project' && isSequenceProjectFormat(version)) && !(kind === 'history' && version === FORMAT5_HISTORY_SCHEMA_VERSION)) throw new TypeError(`Unsupported ${kind} schema version`);
+  domainStatements ??= kind === 'project' && isSequenceProjectFormat(version) ? FORMAT5_CONTENT_SCHEMA
     : kind === 'history' && version === FORMAT5_HISTORY_SCHEMA_VERSION ? [...DOMAIN_STATEMENTS.history, ...CANVAS_HISTORY_SCHEMA, ...EDITOR_HISTORY_SCHEMA]
     : kind === 'project' && version === FORMAT4_PROJECT_SCHEMA_VERSION ? FORMAT4_CONTENT_SCHEMA
     : kind === 'history' && version === FORMAT4_HISTORY_SCHEMA_VERSION ? [...DOMAIN_STATEMENTS.history, ...CANVAS_HISTORY_SCHEMA]
       : DOMAIN_STATEMENTS[kind];
-  if (kind === 'project') return [SCHEMA_VERSION_TABLE_SQL, ...PROJECT_FILE_METADATA, ...domainStatements, ...SINGLE_PROJECT_TRIGGERS, ...CONTENT_SEQUENCE_TRIGGERS, ...(version === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_CONTENT_SEQUENCE_TRIGGERS : [])];
+  if (kind === 'project') return [SCHEMA_VERSION_TABLE_SQL, ...PROJECT_FILE_METADATA, ...domainStatements, ...SINGLE_PROJECT_TRIGGERS, ...CONTENT_SEQUENCE_TRIGGERS, ...(isSequenceProjectFormat(version) ? FORMAT5_CONTENT_SEQUENCE_TRIGGERS : [])];
   if (kind === 'history') return [SCHEMA_VERSION_TABLE_SQL, ...HISTORY_STATE_METADATA, HISTORY_RESOLUTION_SCHEMA, ...domainStatements];
   return [SCHEMA_VERSION_TABLE_SQL, ...domainStatements];
 }

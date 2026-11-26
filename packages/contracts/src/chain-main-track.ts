@@ -1,5 +1,6 @@
 import { compareChainIds } from './board-sequence.ts';
 import type { ChainNode } from './board-sequence.ts';
+import {clipSourceEndFrame} from './timeline-clip-timing.ts';
 
 export interface ChainSyncVersion {
   readonly id: string;
@@ -20,6 +21,7 @@ export interface ChainSyncClip {
   readonly startFrame: number;
   readonly durationFrames: number;
   readonly sourceInFrame: number;
+  readonly sourceSpanFrames?: number;
   /** Adjacent clips must share this identity to count as one split node. */
   readonly splitGroupId?: string;
 }
@@ -59,7 +61,8 @@ export function validChainMedia(media: ChainSyncMedia, kind: ChainNode['kind']):
 
 export function validChainClipFrames(clip: ChainSyncClip): boolean {
   return frame(clip.startFrame) && length(clip.durationFrames) && frame(clip.sourceInFrame)
-    && frame(clip.startFrame + clip.durationFrames) && frame(clip.sourceInFrame + clip.durationFrames);
+    && (clip.sourceSpanFrames === undefined || length(clip.sourceSpanFrames))
+    && frame(clip.startFrame + clip.durationFrames) && frame(clipSourceEndFrame(clip));
 }
 
 /** Sort by timeline position. Measured overlap and split identity are independent
@@ -115,7 +118,7 @@ export function packChainSyncTrack(clips: readonly ChainSyncClip[]): MainTrackPl
 function followChainSyncVersion(
   clip: ChainSyncClip, version: ChainSyncVersion, warnings: ChainSyncWarning[], locked: boolean,
 ): ChainSyncClip {
-  const needed = clip.sourceInFrame + clip.durationFrames;
+  const needed = clipSourceEndFrame(clip);
   if (clip.versionId !== version.id && version.sourceFrames !== null && version.sourceFrames < needed) {
     warnings.push({code: 'SOURCE_TOO_SHORT', clipId: clip.id, nodeId: clip.nodeId, versionId: version.id, shortByFrames: needed - version.sourceFrames});
     return clip;

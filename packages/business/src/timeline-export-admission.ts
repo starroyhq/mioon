@@ -4,7 +4,7 @@ import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
 import {createFormat5ExportTicket,format5ExportBlockersFromTimeline,recheckFormat5ExportTicket} from './format5-timeline-export.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
 import {checkpoint,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {isProjectStore} from './project-file/store.ts';
@@ -103,7 +103,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   checkpoint(options.signal);checkpoint(ownerSignal);
   const report: TimelineExportCapabilityReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision as number,exportSettings:input.exportSettings,
    delivery:null,checkedAt:new Date().toISOString(),status:'blocked',issues:[]};
-  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION)
+  if(isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db))))
    return format5Capabilities(input,options,report);
   let initial;
   try{initial=read(input);}catch(error){
@@ -115,7 +115,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   if(!initial){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.delivery=initial.delivery;
   if(initial.timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('EXPORT_CAPABILITY_STALE')];return report;}
-  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+  if(isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
    const exportedRange=input.exportRange!==null&&typeof input.exportRange==='object'&&!Array.isArray(input.exportRange)
     ?{startFrame:Number((input.exportRange as Record<string,unknown>).startFrame),endFrame:Number((input.exportRange as Record<string,unknown>).endFrame)}:null;
    const blocker=format5ExportBlockersFromTimeline(store.db,initial.timeline as never,exportedRange)[0];
@@ -133,7 +133,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   // prepare replays immutable historical ACKs before current revision, any
   // local compute, or capability availability can affect their result.
   const before=prepare();if(before.replayed)return before.response;
-  const format5Ticket=timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION
+  const format5Ticket=isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))
     ?createFormat5ExportTicket(store as never):null;
   const result=await inspectOwned(before.snapshot!.delivery,options) as InspectResult;
   checkpoint(options?.signal);checkpoint(ownerSignal);

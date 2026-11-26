@@ -72,7 +72,8 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
     {option('storyboard',<><strong>{t('export.content.storyboard')}<span className="export-content-tag">{t('export.content.storyboardTag')}</span></strong>{storyboard&&contentChoice.storyboardDisabledReason&&<small className="is-blocked">{contentChoice.storyboardDisabledReason}</small>}</>)}
   </div>;
   const pendingReason = (code?: string): string => code === 'REVISION_CONFLICT' || code === 'PREFLIGHT_STALE' ? t('export.pending.reasonConflict')
-    : code === 'EXPORT_BLOCKED' || code === 'PLACEHOLDER_CLIP' || code === 'EXPORT_RANGE_BOUNDS' ? t('export.pending.reasonBlocked')
+    : code === 'SPEED_RENDER_NOT_READY' ? t('timeline.speed.renderNotReady')
+      : code === 'EXPORT_BLOCKED' || code === 'PLACEHOLDER_CLIP' || code === 'EXPORT_RANGE_BOUNDS' ? t('export.pending.reasonBlocked')
       : t('export.pending.reasonGeneric');
   const pendingBanner = pendingExportCheck ? (() => {
     const kind = pendingExportCheck.kind;
