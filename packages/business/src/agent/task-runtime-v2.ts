@@ -11,6 +11,7 @@ import {mioTable} from './mio-table-layout.ts';
 import {readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {isFormat5Project} from '../sequence-edit.ts';
+import {MioSequencePreviewRejection} from '../format5-sequence-preview-errors.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioProjectRules} from './mio-rules.ts';
@@ -651,7 +652,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
       }
-      return journal.updateStep(runId,step.id,{status:'failed',result:{error:{code:failure,message:'工具未完成，请检查参数或可用性。'}},error:{code:failure,message:'工具未完成，请检查参数或可用性。'}});
+      const message=current.status==='intent'&&error instanceof MioSequencePreviewRejection
+        ?error.message:'工具未完成，请检查参数或可用性。';
+      const toolError={code:failure,message};
+      return journal.updateStep(runId,step.id,{status:'failed',result:{error:toolError},error:toolError});
     }
   }
   async function checkExecutionWitness(runId:string,signal:AbortSignal):Promise<void>{

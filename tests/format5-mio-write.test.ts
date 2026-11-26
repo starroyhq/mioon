@@ -5,15 +5,27 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createSequenceInspectionService} from '../packages/business/src/format5-sequence-inspection.ts';
 import {agentTaskToolCatalogProfile, FORMAT5_UNAVAILABLE_OPERATIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskTools, listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/business/src/agent/task-tools-v2.ts';
+import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
+import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
+import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import type {AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
+import {authorizeTestScope, createTestAuthorizations} from './helpers/agent-authorizations.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
+import {putTestAgentConfiguration, testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {mioTestPolicy} from './helpers/mio-runtime-fixture.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createHash, randomUUID} from 'node:crypto';
 import {format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
 
@@ -25,10 +37,13 @@ const groupA = id(40), groupB = id(41), groupImage = id(42), timelineId = id(50)
 const image2 = id(6), subjectId = id(90), subjectVersion = id(91);
 const sha = (letter: string): string => letter.repeat(64);
 
-export function fixture(t: test.TestContext): ProjectStore {
+export function fixture(t: test.TestContext, {withMioRuntime = false} = {}): ProjectStore {
   const rootDir = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mt-read-'));
-  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), targetFormat: 5,
-    locate: () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')})});
+  const projectFile = path.join(rootDir, 'project.mioon');
+  const locate = () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')});
+  if (withMioRuntime) createProjectFile(projectFile, {projectId, targetFormat: 5});
+  const store = withMioRuntime ? openServerTestStore({projectFile, locate}, path.join(rootDir, 'app'))
+    : createProjectStore({projectId, projectFile, targetFormat: 5, locate});
   t.after(() => {store.close(); rmSync(rootDir, {recursive: true, force: true});});
   const mediaBytes = Buffer.from('format5-mio-fixture-media');
   const mediaSha = createHash('sha256').update(mediaBytes).digest('hex');
@@ -114,6 +129,73 @@ const previsNode = (store: ProjectStore) => store.db.prepare(`SELECT id,data FRO
   .all(projectId).flatMap((row: any) => { try { return [{id: String(row.id), value: JSON.parse(String(row.data))}]; } catch { return []; } });
 
 const req=(n:number)=>`mt-write-request-${String(n).padStart(4,'0')}`;
+
+test('Mio reports a foreign unadopted source version without editing the project', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const foreignAsset = id(12), foreignVersion = id(21), foreignJob = id(72);
+  store.tx(() => {
+    store.put('assets', {id: foreignAsset, projectId, name: 'b.mp4', mimeType: 'video/mp4', duration: 4,
+      sha256: sha('b'), sizeBytes: 10});
+    store.put('jobs', {id: foreignJob, projectId, status: 'succeeded', phase: 'done',
+      providerId: 'mock', model: 'mock', shotId: shotB, versionId: foreignVersion, createdAt: at, updatedAt: at});
+    store.put('versions', {id: foreignVersion, projectId, jobId: foreignJob, shotId: shotB,
+      number: 1, assetId: foreignAsset, sha256: sha('b'), createdAt: at});
+  });
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy);
+  const tools = createAgentTaskTools({store, services, journal});
+  const authorizations = createTestAuthorizations(store, settings);
+  const toolName = 'mioon_sequence_clip_edit';
+  const replacement: AgentTaskToolCall = {id: 'switch_source', name: toolName,
+    arguments: {kind: 'replace-source', clipId: clipA, assetId: foreignAsset, versionId: foreignVersion}};
+  const rounds: AgentTaskToolCall[][] = [
+    [{id: 'load_clip_tool', name: 'mioon_tools_load', arguments: {names: [toolName]}}],
+    [replacement],
+  ];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.();
+    const toolCalls = rounds.shift() ?? [];
+    const text = toolCalls.length ? '' : '请选择该镜头可用的版本。';
+    const providerOutput = {role: 'assistant', content: text || null, ...(toolCalls.length ? {
+      tool_calls: toolCalls.map(call => ({id: call.id, type: 'function',
+        function: {name: call.name, arguments: JSON.stringify(call.arguments)}})),
+    } : {})};
+    yield {type: 'done', output: {text, toolCalls, providerOutput}};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, tools, agentSettings: settings,
+    authorizations, gateway, selfPort: () => 4318});
+  try {
+    await putTestAgentConfiguration(settings, {expectedRevision: 0,
+      configuration: defaultTestAgentConfiguration('chat_completions'),
+      secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_REPLACE_SOURCE'}});
+    await authorizeTestScope(authorizations, 'project_agent');
+    const timeline = store.get('timelines', timelineId);
+    const history = readSequenceEditHistory(store, 'mio');
+    const started = await runtime.send(projectId, {requestId: req(101), text: '检查镜头的素材替换',
+      locale: 'zh-Hans', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+    await runtime.drain();
+    const snapshot = runtime.get(projectId, started.run.id);
+    assert.equal(snapshot.run.status, 'failed', JSON.stringify({
+      reason: snapshot.run.pauseReason, steps: snapshot.steps.map(({kind, status, error}) => ({kind, status, error})),
+    }));
+    const step = snapshot.steps.find(candidate => candidate.toolCall?.id === replacement.id);
+    assert.ok(step);
+    const error = {code: 'INVALID_MEDIA', message: '这个版本不属于该镜头，也没有被采纳。'};
+    assert.deepEqual(step.error, error);
+    assert.deepEqual(step.result, {error});
+    assert.equal(step.status, 'failed');
+    assert.deepEqual(snapshot.changes, []);
+    assert.deepEqual(store.get('timelines', timelineId), timeline);
+    assert.deepEqual(readSequenceEditHistory(store, 'mio'), history);
+  } finally {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  }
+});
 
 test('Mio write actions preview and commit the server-built envelope with origin mio', t => {
   const store=fixture(t);

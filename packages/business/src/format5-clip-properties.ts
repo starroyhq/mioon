@@ -7,6 +7,7 @@
  * the same history-13 entry and the same entity delta as TSb.
  */
 import {AppError} from '../../contracts/src/app-error.ts';
+import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {isClipTransform, validateClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import type {ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import {canonicalClipTransition, clipTransitionFits, clipTransitionPredecessor, validateClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
@@ -315,7 +316,7 @@ export interface ClipPropertiesPreview {
 }
 export function previewClipProperties(store: ProjectStore, input: {
   readonly requestId: string; readonly actionId?: string; readonly origin?: 'user' | 'mio'; readonly propertiesIntent: SequenceEditClipPropertiesIntent;
-}): ClipPropertiesPreview | {ok: false; code: string; ids: readonly string[]; message?: string} {
+}): ClipPropertiesPreview | SequenceEditPreviewFailure {
   if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   try {
     const state = prepareSequenceEditHistory(store).state;
@@ -325,13 +326,8 @@ export function previewClipProperties(store: ProjectStore, input: {
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
-    if (error.code === 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'
-      && input.propertiesIntent.operation.edits.some(edit => edit.patch.sourceReplacement !== undefined)) {
-      const details = error.details as {clipId?: string} | undefined;
-      const ids = typeof details?.clipId === 'string' ? [details.clipId] : [];
-      return {ok: false, code: error.code, ids, message: error.message};
-    }
-    return failure(error.code);
+    const details = error.details as {clipId?: string} | undefined;
+    return sequenceEditPreviewFailure(error, typeof details?.clipId === 'string' ? [details.clipId] : undefined);
   }
 }
 

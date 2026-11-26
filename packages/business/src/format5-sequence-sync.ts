@@ -285,7 +285,10 @@ function resolveVersion(context: SyncContext, nodeId: string, versionId: string)
   const version = context.versions.get(versionId);
   const shot = context.shots.get(nodeId);
   if (!version || !shot) return failure('MISSING_MEDIA', [nodeId]);
-  if (version.shotId !== nodeId && !context.adoptions.has(`${nodeId}/${versionId}`)) return failure('INVALID_MEDIA', [nodeId]);
+  if (version.shotId !== nodeId && !context.adoptions.has(`${nodeId}/${versionId}`)) {
+    return {ok: false, code: 'INVALID_MEDIA', ids: [nodeId], reason: 'VERSION_NOT_OWNED_OR_ADOPTED',
+      message: '这个版本不属于该镜头，也没有被采纳。'};
+  }
   const asset = typeof version.assetId === 'string' ? context.assets.get(version.assetId) : undefined;
   if (!asset || asset.sha256 !== version.sha256) return failure('INVALID_MEDIA', [nodeId]);
   return {id: version.id, sourceFrames: sourceFrameCount(asset.duration)};

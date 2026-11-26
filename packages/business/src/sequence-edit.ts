@@ -32,6 +32,7 @@ import {
 } from './format5-sequence-sync.ts';
 import {copyFormat5ShotDialogue} from './format5-dialogue-projection.ts';
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
+import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
   readSequenceEditHistoryEntry, sequenceEditHistoryFloor, sequenceEditInputDigest, writeSequenceEditAction,
@@ -683,12 +684,12 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
     readonly impact: {readonly nodeIds: readonly string[]; readonly edgeIds: readonly string[];
       readonly mainTrackClipIds: readonly string[]; readonly otherTrackItemIds: readonly string[];
       readonly subtitleCueIds: readonly string[]}; readonly warnings: readonly ChainSyncWarning[]}
-  | {readonly ok: false; readonly code: string; readonly ids: readonly string[]} {
+  | SequenceEditPreviewFailure {
   const context = readSequenceEditContext(store);
   let preparation: BoardActionPreparation;
   try {preparation = boardIntentPreparation(context, store, intents, allocationInput, clipboardOwner);}
   catch (error) {
-    if (error instanceof AppError) return {ok: false, code: error.code, ids: ((error.details as Row | undefined)?.ids as string[] | undefined) ?? []};
+    if (error instanceof AppError) return sequenceEditPreviewFailure(error);
     throw error;
   }
   const initialBoard: ChainBoard = {nodes: [...context.board.nodes, ...preparation.created.chainNodes].sort((left, right) =>
@@ -701,7 +702,7 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
   for (const intent of preparation.planIntents) {
     if (isBoardIntentOperation(intent.operation)) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: []};
     const planned = planSequenceEditIntents(state, [intent], preparation.allocation);
-    if (!planned.ok) return {ok: false, code: planned.code, ids: planned.ids};
+    if (!planned.ok) return planned;
     state = planned.state;
     plan = planned.plan;
     warnings.push(...plan.warnings);
@@ -720,7 +721,7 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
   let projectedCueIds: string[] = [];
   if (plan) {
     const projection = previewMainTrackProjection(store, plan, projectedShotRows);
-    if (projection.ok === false) return {ok: false, code: projection.code, ids: projection.ids};
+    if (projection.ok === false) return projection;
     projectedCueIds = [...new Set([...projection.projection.changedCueIds, ...projection.projection.removedCueIds])].sort();
   }  const nodeIds = new Set<string>();
   for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind !== 'edge') nodeIds.add(entity.id);

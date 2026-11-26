@@ -115,11 +115,11 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
   const before = Number(sql(world, 'SELECT COUNT(*) AS n FROM project.shots')!.n);
   const duplicatePreview = service.preview({projectId: world.projectId, requestId: 'fr-c-duplicate-1',
     intents: [{side: 'board', operation: {kind: 'board.duplicate', items: [{kind: 'shot', id: shotA}],
-      viewport: {x: 200, y: 200, width: 400, height: 300}}}]}) as
-      {envelope: {allocation: {nodes: {fromNodeId: string; nodeId: string}[]}}; planDigest: string};
+      viewport: {x: 200, y: 200, width: 400, height: 300}}}]});
+  assert.ok('envelope' in duplicatePreview, 'the board duplicate preview succeeds');
   const pair = duplicatePreview.envelope.allocation.nodes.find(item => item.fromNodeId === shotA);
   assert.ok(pair, 'duplicate allocates its new id in the preview envelope');
-  service.commit({projectId: world.projectId, envelope: duplicatePreview.envelope as never,
+  service.commit({projectId: world.projectId, envelope: duplicatePreview.envelope,
     expectedPlanDigest: duplicatePreview.planDigest});
   assert.equal(Number(sql(world, 'SELECT COUNT(*) AS n FROM project.shots')!.n), before + 1);
   assert.ok(sql(world, 'SELECT data FROM project.shots WHERE id=?', pair!.nodeId), 'commit writes the previewed id');
@@ -132,11 +132,11 @@ test('archive/restore and duplicate/paste create detached board rows with the sh
   assert.ok(snapshot.snapshotId);
   const pastePreview = service.preview({projectId: world.projectId, requestId: 'fr-c-paste-1',
     intents: [{side: 'board', operation: {kind: 'board.paste', documentId, snapshotId: snapshot.snapshotId,
-      viewport: {x: 400, y: 400, width: 400, height: 300}}}]}) as
-      {envelope: {allocation: {nodes: {fromNodeId: string; nodeId: string}[]}}; planDigest: string};
+      viewport: {x: 400, y: 400, width: 400, height: 300}}}]});
+  assert.ok('envelope' in pastePreview, 'the board paste preview succeeds');
   const pastePair = pastePreview.envelope.allocation.nodes[0];
   assert.ok(pastePair, 'paste allocates its new id in the preview envelope');
-  service.commit({projectId: world.projectId, envelope: pastePreview.envelope as never,
+  service.commit({projectId: world.projectId, envelope: pastePreview.envelope,
     expectedPlanDigest: pastePreview.planDigest});
   assert.ok(sql(world, 'SELECT data FROM project.shots WHERE id=?', pastePair!.nodeId), 'paste writes the previewed id');
   const detached = world.store.db.prepare(`SELECT data FROM project.shots WHERE archivedAt IS NULL

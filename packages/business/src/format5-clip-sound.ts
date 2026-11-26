@@ -14,6 +14,7 @@
  * track and restores the source clip in one step.
  */
 import {randomUUID} from 'node:crypto';
+import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {FORMAT5_LIMITS, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
@@ -313,7 +314,7 @@ export function previewSeparateSound(store: ProjectStore, input: {
       historyPosition: state.position, historyRevision: state.revision, ...(input.origin ? {origin: input.origin} : {})});
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
-    if (error instanceof AppError) return failure(error.code, ((error.details as Row | undefined)?.ids as string[]) ?? []);
+    if (error instanceof AppError) return sequenceEditPreviewFailure(error);
     throw error;
   }
 }

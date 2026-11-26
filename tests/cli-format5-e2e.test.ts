@@ -6,6 +6,8 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {Client} from '@modelcontextprotocol/sdk/client/index.js';
+import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
@@ -88,6 +90,39 @@ test('real CLI format-5 flow: generate in editing, references, reorder, split, s
   const second = await generate();
   const clips = second.timeline.clips.filter((item: Row) => item.sourceState === 'ready') as Row[];
   assert.equal(clips.length >= 2, true);
+  const otherClip = clips.find(clip => clip.id !== firstClip.id);
+  assert.ok(otherClip?.versionId && otherClip.assetId && otherClip.assetId !== firstClip.assetId);
+  const replace = {projectId, kind: 'replace-source', clipId: firstClip.id,
+    assetId: otherClip.assetId, versionId: otherClip.versionId};
+  const historyBeforeRejects = await request('sequence.history.get', {projectId, origin: 'user'});
+  const ownershipError = {code: 'INVALID_MEDIA', message: '这个版本不属于该镜头，也没有被采纳。',
+    reason: 'VERSION_NOT_OWNED_OR_ADOPTED'};
+  const assertCliRejection = async (words: string[], input: Row, expected: {code: string; message: string; reason?: string}) => {
+    await assert.rejects(plan(env, words, input), (error: unknown) => {
+      assert.ok(error instanceof Error && 'stdout' in error && typeof error.stdout === 'string' && 'code' in error);
+      assert.equal(error.code, 3);
+      const {ok, error: rejection} = JSON.parse(error.stdout);
+      assert.equal(ok, false);
+      assert.equal(rejection.code, expected.code);
+      assert.equal(rejection.message, expected.message);
+      assert.equal(rejection.details?.reason, expected.reason);
+      return true;
+    });
+  };
+  await assertCliRejection(['sequence', 'clip', 'edit'], replace, ownershipError);
+  const mcp = new Client({name: 'format5-replace-source-test', version: '1.0.0'});
+  t.after(() => mcp.close());
+  await mcp.connect(new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'],
+    cwd: path.resolve(import.meta.dirname, '..'), env, stderr: 'ignore'}));
+  const mcpResult = await mcp.callTool({name: 'sequence_clip_edit', arguments: replace}, undefined, {timeout: 15_000});
+  assert.equal(mcpResult.isError, true);
+  const mcpBody = mcpResult.structuredContent as {ok: boolean; error: {code: string; message: string; details: {reason: string}}};
+  assert.equal(mcpBody.ok, false);
+  assert.deepEqual({code: mcpBody.error.code, message: mcpBody.error.message, reason: mcpBody.error.details.reason}, ownershipError);
+  await assertCliRejection(['sequence', 'action', 'edit'], {projectId, kind: 'split', clipId: firstClip.id,
+    offsetFrames: firstClip.durationFrames}, {code: 'INVALID_SPLIT', message: '格式 5 序列动作无法预览，请重新读取后再试。'});
+  assert.deepEqual((await read()).timeline, second.timeline);
+  assert.deepEqual(await request('sequence.history.get', {projectId, origin: 'user'}), historyBeforeRejects);
   const reorder = await commit(env, projectId, await plan(env, ['sequence', 'action', 'edit'],
     {projectId, kind: 'reorder', clipId: clips[1]!.id, beforeClipId: clips[0]!.id}));
   assert.equal(reorder.status, 'applied');

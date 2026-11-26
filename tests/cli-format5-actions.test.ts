@@ -254,7 +254,12 @@ test('replace-source pins a main-track shot to a matching version of that shot',
     {projectId, kind: 'replace-source', clipId: BOARD_IDS.clipA, assetId, versionId}) as Promise<Row>;
   const before = await read();
   await assert.rejects(plan(BOARD_IDS.assetV2, BOARD_IDS.versionA), {code: 'INVALID_MEDIA'});
-  await assert.rejects(plan(BOARD_IDS.assetB, BOARD_IDS.versionB), {code: 'INVALID_MEDIA'});
+  await assert.rejects(plan(BOARD_IDS.assetB, BOARD_IDS.versionB), {
+    code: 'INVALID_MEDIA', message: '这个版本不属于该镜头，也没有被采纳。',
+    details: {ids: [BOARD_IDS.shotA], reason: 'VERSION_NOT_OWNED_OR_ADOPTED'},
+  });
+  await assert.rejects(f.services.call('sequence.timeline.edit', {projectId, kind: 'format-set', presetId: 'portrait_720'}),
+    {code: 'SEQUENCE_EDIT_NOOP', message: '时间线已使用此输出规格。'});
   const versionAsset = f.store.get('assets', BOARD_IDS.assetV2);
   assert.ok(versionAsset);
   f.store.put('assets', {...versionAsset, duration: 1});

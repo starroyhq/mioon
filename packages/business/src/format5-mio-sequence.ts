@@ -9,6 +9,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
+import {MioSequencePreviewRejection} from './format5-sequence-preview-errors.ts';
 import {createSequenceEditing, readSequenceEditHistory} from './sequence-edit.ts';
 import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
@@ -212,15 +213,15 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     operation: {kind: 'clip-properties', edits: action.edits}};
   else if (action.kind === 'replace-source') {
     const clip = timeline.clips.find(item => item.id === action.clipId);
-    if (!clip) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '片段不属于当前格式 5 时间线。', 404, {clipId: action.clipId});
-    if (clip.sourceState !== 'ready') throw new AppError('INVALID_MEDIA', '仅可替换已就绪片段的来源。', 409, {clipId: clip.id});
-    if (clip.assetId === action.assetId) throw new AppError('SEQUENCE_EDIT_NOOP', '片段已经使用此素材。', 409, {clipId: clip.id});
+    if (!clip) throw new MioSequencePreviewRejection('SEQUENCE_EDIT_TARGET_NOT_FOUND', '片段不属于当前格式 5 时间线。', 404, {clipId: action.clipId});
+    if (clip.sourceState !== 'ready') throw new MioSequencePreviewRejection('INVALID_MEDIA', '仅可替换已就绪片段的来源。', 409, {clipId: clip.id});
+    if (clip.assetId === action.assetId) throw new MioSequencePreviewRejection('SEQUENCE_EDIT_NOOP', '片段已经使用此素材。', 409, {clipId: clip.id});
     if (clip.sequenceSource?.kind === 'shot') {
       const versionId = action.versionId;
       if (!versionId || !store.db.prepare(
         "SELECT 1 FROM project.versions WHERE id=? AND projectId=? AND json_extract(data,'$.assetId')=?",
       ).get(versionId, projectId, action.assetId)) {
-        throw new AppError('INVALID_MEDIA', '主轨镜头必须指定对应素材的镜头版本。', 409, {clipId: clip.id});
+        throw new MioSequencePreviewRejection('INVALID_MEDIA', '主轨镜头必须指定对应素材的镜头版本。', 409, {clipId: clip.id});
       }
       request.intents = [sequenceSyncIntent({kind: 'clip-version', clipId: clip.id, versionId, mode: 'locked'})];
     } else {
@@ -253,19 +254,16 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
       ...(action.connectionId ? {connectionId: action.connectionId} : {}),
       ...(action.configurationRevision !== undefined ? {configurationRevision: action.configurationRevision} : {}),
       ...(action.modelEntryId ? {modelEntryId: action.modelEntryId} : {})}}};
-  const result = createFormat5SequenceEditService(store).preview(request) as Row;
-  if (!result || result.ok === false) {
-    const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');
-    const message = action.kind === 'replace-source' && typeof result?.message === 'string'
-      ? result.message : '格式 5 序列动作无法预览，请重新读取后再试。';
-    throw new AppError(code, message, 409, {ids: result?.ids ?? []});
+  const result = createFormat5SequenceEditService(store).preview(request);
+  if ('ok' in result) {
+    throw new MioSequencePreviewRejection(result.code, result.message ?? '格式 5 序列动作无法预览，请重新读取后再试。', 409,
+      {ids: result.ids, ...(result.reason ? {reason: result.reason} : {})});
   }
-  const warnings = (result.warnings ?? []) as readonly {code: string; clipId?: string}[];
+  const {warnings} = result;
   if (action.kind === 'replace-source' && warnings.some(warning => warning.code === 'SOURCE_TOO_SHORT' && warning.clipId === action.clipId)) {
-    throw new AppError('SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', '新来源不够长，无法保留片段的入点和长度。', 409, {clipId: action.clipId});
+    throw new MioSequencePreviewRejection('SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', '新来源不够长，无法保留片段的入点和长度。', 409, {clipId: action.clipId});
   }
-  return {envelope: result.envelope as SequenceEditEnvelope, planDigest: String(result.planDigest),
-    summary: summarize(action, result.envelope as SequenceEditEnvelope, warnings)};
+  return {envelope: result.envelope, planDigest: result.planDigest, summary: summarize(action, result.envelope, warnings)};
 }
 /** Commit exactly the previewed envelope; repeated commits replay the receipt. */
 export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan,
