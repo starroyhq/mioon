@@ -1,136 +1,55 @@
 # 让 Claude Code、Codex 操作 Mioon
 
-仓库里的 [`skills/mioon`](../skills/mioon/SKILL.md) 是给外部 Agent 用的技能。装好技能、连上正在运行的 Mioon 以后，Claude Code、Codex 等 Agent 可以和你在界面里操作同一个项目：导入素材、管理镜头和版本、提交生成并取回结果、修改时间线上的具体片段、导出 MP4。修改直接写进项目，界面里能看到。
+本指南适用于提供「外部 Agent」设置页的 macOS 桌面版。Claude Code 和 Codex 可以读取和修改你在 Mioon 打开的项目，包括格式 5 项目的画板和时间线，也可以导入素材、提交生成和导出 MP4。命令行和 MCP 随 Mioon 提供，无需下载源码或另装 Node.js、pnpm。
 
-外部 Agent 和界面里的 Mio 是两回事。它不经过 Mio 的放行档位，而是通过命令行或 MCP 直接调用和界面相同的操作；每次调用前是否先问你，由 Agent 客户端自己的权限设置决定。Mio 的用法见 [Mio 使用说明](MIO-GUIDE.zh-CN.md)。
+## 安装命令行工具和技能
 
-外部 Agent 可以修改格式 5 项目的画板和时间线。用 `sequence …` 命令或对应的 MCP 工具读取项目、预览修改并提交，也可撤销和重做。格式 5 项目请以这里的序列操作为准。[格式 5 命令与用法](CLI.md#格式-5统一序列动作外部-agent)
+1. 打开 Mioon，进入「设置 → 外部 Agent」，在「命令行工具」点「安装」。正式渠道默认装到 `~/.local/bin/mioon`，开发渠道使用 `mioon-dev`。安装后可以复制命令的绝对路径。
+2. 在「Agent 技能」找到你使用的客户端，点对应的「安装」。正式渠道会装到 `~/.claude/skills/mioon` 或 `~/.codex/skills/mioon`。开发渠道的技能目录名也是 `mioon-dev`。
+3. 重新打开 Agent 会话。操作项目时保持 Mioon 运行。
 
-**关于费用：**
+技能会使用安装时写入的绝对命令路径。若想在终端里直接输入 `mioon`，可以点开「不在 PATH 里」，按页面提示把那一行加到对应的 shell 配置文件，再开一个终端。
 
-- 技能要求 Agent 在提交在线视频生成前，先向你确认服务商和模型、提示词和参考素材、生成次数和费用上限。这是写给 Agent 的规则：视频服务启用并配好密钥后，Mioon 不会对外部 Agent 的提交再弹出确认。
-- 在线图片生成必须由你在 Mioon 界面里确认，外部 Agent 只能准备待确认的请求。
-- Mioon 不设生成次数或金额上限，请在服务商那边设好用量上限或提醒。
+## 注册 MCP
 
-## 1. 准备
-
-- **Mioon 正在运行**：桌面版，或按[源码试用指南](CORE-TRIAL.zh-CN.md)启动的本机服务。Agent 连接的是这个正在运行的 Mioon，不要为它再启动一份。
-- **一份 Mioon 源码**：命令行工具和 MCP 服务从源码运行。需要 Node.js 24 或更新版本，以及 pnpm 11.25.0。以 0.3.1 桌面版为例，取对应版本的源码：
-
-  ```sh
-  git clone --branch v0.3.1 https://github.com/starroyhq/mioon.git
-  cd mioon
-  pnpm install --frozen-lockfile
-  ```
-
-  源码最好和正在运行的 Mioon 是同一个版本，版本不一致时有些操作可能用不了。从源码启动服务时，直接用同一份源码。
-
-下文用 `MIOON_REPO` 表示源码目录，先在终端里设好，例如：
+已安装命令行工具时，可以在「MCP」区复制 Claude Code 或 Codex 对应的命令，并在终端执行。页面上的命令已填好你所安装的启动器路径。下面是正式渠道的命令格式。
 
 ```sh
-MIOON_REPO="$HOME/mioon"
+claude mcp add -s user mioon -- "/path/to/mioon" mcp
+codex mcp add mioon -- "/path/to/mioon" mcp
 ```
 
-## 2. 安装技能
+开发渠道的注册名和启动器都是 `mioon-dev`。执行对应命令后，重新打开 Agent 会话。注册由你在终端完成。用 MCP 时，Agent 可以直接查看工具及参数，也可以使用技能调用命令行。
 
-两种方式选一种。
+## 在测试项目试一次
 
-### 方式一：链接到源码（推荐）
+保持 Mioon 运行并打开一个格式 5 测试项目，再把下面这条指令发给 Agent。
 
-技能跟着源码一起更新，和命令行工具始终是同一个版本。
+> 用 Mioon 技能读这个测试项目的时间线。找一个普通片段，告诉我它现在的名称。等我确认后给它改名，核对结果，然后撤销这一步。
 
-```sh
-# Claude Code
-mkdir -p ~/.claude/skills
-ln -s "$MIOON_REPO/skills/mioon" ~/.claude/skills/mioon
+Agent 可以用 `doctor` 或 `mioon_doctor` 检查连接。格式 5 的常用操作如下。 [序列编辑参考](../skills/mioon/references/sequence.md)
 
-# Codex
-mkdir -p ~/.agents/skills
-ln -s "$MIOON_REPO/skills/mioon" ~/.agents/skills/mioon
-```
+| 操作 | 命令行 | MCP |
+| --- | --- | --- |
+| 查看时间线或画板 | `sequence inspect`、`sequence board get` | `sequence_inspect`、`sequence_board_get` |
+| 预览片段修改 | `sequence clip edit` | `sequence_clip_edit` |
+| 提交预览中的修改 | `sequence action commit` | `sequence_action_commit` |
+| 查看编辑历史 | `sequence history get` | `sequence_history_get` |
+| 撤销或重做 | `sequence undo`、`sequence redo` | `sequence_undo`、`sequence_redo` |
 
-Claude Code 从 `~/.claude/skills/` 读取个人技能，Codex 从 `~/.agents/skills/` 读取用户技能，两者都支持链接过去的技能目录，见 [Claude Code 技能说明](https://code.claude.com/docs/en/skills)和 [Codex 技能说明](https://developers.openai.com/codex/skills)。
+预览返回动作摘要、`envelope` 和 `planDigest`。确认后提交时，原样传入 `envelope`，并把 `planDigest` 作为 `expectedPlanDigest`。提交后的序列编辑进入用户历史，也可在 Mioon 剪辑页撤销或重做。
 
-### 方式二：用 `npx skills` 安装
+## 恢复连接、更新或卸载
 
-[skills](https://github.com/vercel-labs/skills) 是 Vercel Labs 的开源技能安装工具，需要 Node.js 22.20 或更新版本。从上面准备的源码目录安装：
+- Mioon 未运行时，先打开 Mioon。应用退出或重启后，重新打开 Agent 会话以恢复 MCP 连接。
+- 命令报 `CLI_VERSION_MISMATCH` 或设置显示「需要修复」时，在「命令行工具」点「修复」。安装失败时，可按页面上的原因选择「重试」或「换个位置…」。
+- 如果换了命令安装位置，移除 Agent 客户端里的旧 MCP 注册，再执行设置页复制的新命令。
+- Mioon 更新时会同步更新未修改过的技能。如果页面显示技能「有更新」，点对应的「更新」。有本地修改时，先确认是否覆盖。
+- 用「外部 Agent」页的「卸载」移除命令行工具或对应技能。MCP 注册在 Agent 客户端里移除。
 
-```sh
-npx skills add "$MIOON_REPO" --skill mioon -g -a claude-code -a codex
-```
+## 权限和生成费用
 
-- 技能装在 `~/.agents/skills/mioon`，`~/.claude/skills/mioon` 是指向它的链接。去掉 `-g` 时只装到当前目录下的 `.agents/skills/` 和 `.claude/skills/`。
-- 更新 Mioon 后，从相同版本的源码目录再次运行安装命令。
-- 这个工具默认收集匿名使用数据，设置环境变量 `DISABLE_TELEMETRY=1` 可以关闭，见它的[说明](https://github.com/vercel-labs/skills#telemetry)。
+外部 Agent 通过命令行或 MCP 调用项目操作。操作前的权限提示由 Agent 客户端决定，内置 Mio 有自己的审批规则。 [Mio 使用说明](MIO-GUIDE.zh-CN.md)
 
-装好后重新打开 Agent。Claude Code 和 Codex 里都可以输入 `/skills` 查看已装的技能。
-
-## 3. 连接 Mioon
-
-推荐用 MCP：Agent 客户端直接列出 Mioon 的工具和参数。也可以只用命令行。
-
-### 找到连接文件
-
-桌面版运行时，会在应用数据目录里写一个连接文件 `mcp-connection.json`，正常退出时删除。正式版在 macOS 上的位置是：
-
-```text
-~/Library/Application Support/app.starroy.mioon/mcp-connection.json
-```
-
-- 开发版（包括从源码构建的桌面版）把 `app.starroy.mioon` 换成 `app.starroy.mioon.dev`。
-- Linux 上在 `~/.config/` 下的同名目录。
-- 这个文件和旁边的 `mcp-token` 用来连接你的 Mioon，不要发给别人，也不要贴进对话。
-
-### Claude Code
-
-```sh
-claude mcp add -s user mioon \
-  -e MIOON_CONNECTION_FILE="$HOME/Library/Application Support/app.starroy.mioon/mcp-connection.json" \
-  -- node "$MIOON_REPO/apps/mcp/src/index.ts"
-```
-
-`-s user` 让所有项目都能用；不加时只在当前目录可用。`claude mcp list` 可以查看连接状态。项目级的 `.mcp.json` 写法见 [MCP 说明](MCP.md#standalone-claude-code-configuration)。
-
-### Codex
-
-```sh
-codex mcp add mioon \
-  --env MIOON_CONNECTION_FILE="$HOME/Library/Application Support/app.starroy.mioon/mcp-connection.json" \
-  -- node "$MIOON_REPO/apps/mcp/src/index.ts"
-```
-
-配置写进 `~/.codex/config.toml`。只在某个项目里用的写法见 [MCP 说明](MCP.md#standalone-codex-configuration)。
-
-两条命令里的 `node` 都要是 24 或更新版本。用 nvm 等工具切换过 Node 版本时，可以把 `node` 换成 `"$(command -v node)"`，写入当前 Node 的完整路径。
-
-### 只用命令行
-
-Agent 能运行终端命令时，也可以不配 MCP。在启动 Agent 的终端里先设好连接文件，再让 Agent 在源码目录里运行命令行，例如：
-
-```sh
-export MIOON_CONNECTION_FILE="$HOME/Library/Application Support/app.starroy.mioon/mcp-connection.json"
-cd "$MIOON_REPO"
-node apps/cli/src/index.ts doctor
-```
-
-技能里写明了 Agent 该怎么用命令行，见[连接说明](../skills/mioon/references/connection.md)。如果 Agent 的沙箱不允许命令访问本机网络，命令行会连不上，请改用 MCP。
-
-### 连接从源码启动的服务
-
-不用桌面版时，把 `MIOON_CONNECTION_FILE` 换成两个变量：`MIOON_BASE_URL`（服务地址，例如 `http://127.0.0.1:4318`）和 `MIOON_TOKEN_FILE`（服务数据目录里的 `access-token`）。详见 [MCP 说明](MCP.md#connection-modes)。
-
-## 4. 试一下
-
-确认 Mioon 正在运行，重新打开 Agent，然后说：
-
-> 用 mioon 技能检查和 Mioon 的连接，读取我指定的项目的画板和时间线。
-
-Agent 应该先运行 `doctor`（MCP 工具名 `mioon_doctor`），再读取指定的项目。可以把项目 ID 一并给它。Mioon 没有运行或连接文件不对时，`doctor` 会说明原因。
-
-想先不花钱走一遍完整流程，可以让 Agent 用模拟服务（Mock）生成并导出，见[模拟流程](../skills/mioon/references/mock-workflow.md)。模拟服务生成的是带标记的测试画面，不是按提示词生成的内容；它需要 FFmpeg 带 `drawtext` 滤镜，见[安装与首次运行](INSTALL.zh-CN.md)。
-
-## 5. 注意
-
-- **同一个项目，一份服务**：外部 Agent、Mio 和你改的是同一份项目，一个数据目录只能有一个 Mioon 在运行。Agent 修改时会带上版本号；项目在别处被改过时，这次修改会被拒绝，Agent 需要重新读取再改。
-- **授权**：把技能装进 Agent、配好 MCP，都不等于同意 Agent 花钱或改动所有内容。需要它做什么，在对话里说清楚范围。
-- **卸载**：删除 `~/.claude/skills/mioon` 和 `~/.agents/skills/mioon`（用 `npx skills` 安装的可以运行 `npx skills remove mioon -g`），再用 `claude mcp remove mioon -s user` 或 `codex mcp remove mioon` 删除 MCP 配置。
+- **付费视频生成。** Agent 提交前应向你确认服务商、模型、提示词和参考素材、生成次数及费用上限。Mioon 会把外部 Agent 的提交直接交给已启用的服务，你可以在服务商侧设置用量上限或提醒。提交结果未知时，先查询原请求。
+- **在线图片生成。** Agent 可以准备请求，由你在 Mioon 界面确认生成。
