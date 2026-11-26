@@ -3848,6 +3848,7 @@ const timelineCoreMessages = {
     "en": "The last completed snapshot is still shown below",
     "ja": "以下には前回完了したスナップショットを表示しています"
   },
+  "timeline.speed.renderNotReady": {"zh-Hans": "暂时无法渲染变速片段", "zh-Hant": "暫時無法算繪變速片段", "en": "Retimed clips cannot be rendered yet", "ja": "変速クリップはまだレンダリングできません"},
   "timeline.preview.failed": {"zh-Hans": "预览渲染失败", "zh-Hant": "預覽算繪失敗", "en": "Preview rendering failed", "ja": "プレビューのレンダリングに失敗しました"},
   "timeline.preview.rerender": {
     "zh-Hans": "重新渲染",

@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { isSequenceTimelineFormat } from '../packages/contracts/src/timeline-replacement.ts';
 import { stripSourceTypes } from './helpers/eval-source.ts';
 
 // Execute the actual App bridge body with a held real-result boundary. Browser
@@ -29,6 +30,7 @@ function fixture() {
   const timeline = { revision: 5, tracks: [{ id: 'video-one', kind: 'video' }], clips: [] };
   const env = { msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as never)), { displayMessage: value }),
     application: null,
+    isSequenceTimelineFormat,
     panelIntent: { current: 0 }, currentProject: { current: 'project-one' },
     guardNavigation: async () => true,
     dataRef: { current: { assets: [asset], timeline } },

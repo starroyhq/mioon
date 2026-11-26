@@ -16,7 +16,7 @@ import {copyFormat4File, FORMAT4_RESTORE_ACTIVE, FORMAT_UPGRADE_BACKUP_DIRECTORY
 import type {Format4BackupManifest} from './format4-backup.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {isHotJournal} from './journals.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {DatabaseKind} from './schema/databases.ts';
 
 export type Format4RestoreBoundary = 'ready' | 'history-published' | 'project-published';
@@ -27,6 +27,7 @@ export interface RestoreFormat4BackupOptions {
   readonly backupId: string;
   /** Content identity the trusted caller confirmed at the current path. */
   readonly expected: ContentStamp;
+  readonly allowFormat6?: true;
   readonly onBoundary?: (phase: Format4RestoreBoundary) => void;
 }
 
@@ -46,7 +47,7 @@ interface Intent {
 interface Result {
   readonly projectId: string;
   readonly backupId: string;
-  readonly projectVersion: typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION;
+  readonly projectVersion: typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION | typeof FORMAT5_PROJECT_SCHEMA_VERSION;
   readonly historyVersion: number | null;
 }
 
@@ -67,7 +68,7 @@ function parseIntent(value: unknown): Intent {
     previousProject: value.previousProject, previousHistory: value.previousHistory};
 }
 const isSourceProjectVersion = (value: unknown): value is Result['projectVersion'] =>
-  value === PROJECT_FILE_SCHEMA_VERSION || value === FORMAT4_PROJECT_SCHEMA_VERSION;
+  value === PROJECT_FILE_SCHEMA_VERSION || value === FORMAT4_PROJECT_SCHEMA_VERSION || value === FORMAT5_PROJECT_SCHEMA_VERSION;
 function parseReceipt(value: unknown): Result {
   if (!object(value) || Object.keys(value).length !== 4 || !isProjectId(value.projectId) || !isProjectId(value.backupId) ||
     !isSourceProjectVersion(value.projectVersion) ||
@@ -154,7 +155,7 @@ export function restoreFormat4Backup(options: RestoreFormat4BackupOptions): Resu
   // The publication protocol requires rename while holding native SQLite
   // handles. Windows does not admit a moved open project file.
   if (process.platform === 'win32') throw new AppError('PROJECT_FORMAT_RESTORE_UNSUPPORTED', '此平台暂不支持旧格式配对恢复。', 409);
-  const {projectFile, location, projectId, backupId, expected, onBoundary} = options;
+  const {projectFile, location, projectId, backupId, expected, allowFormat6, onBoundary} = options;
   if (!path.isAbsolute(projectFile) || path.resolve(projectFile) !== projectFile || !isProjectId(projectId) || !isProjectId(backupId) ||
     !Number.isSafeInteger(expected.contentSequence) || expected.contentSequence < 0 || !isContentToken(expected.contentToken)) {
     throw new TypeError('Restore requires a trusted path, IDs and confirmed content identity');
@@ -260,7 +261,7 @@ export function restoreFormat4Backup(options: RestoreFormat4BackupOptions): Resu
 
   return withFormat4RestoreLocks(inputs, files => {
     if (readState(marker, parseIntent) || completed()) throw failure();
-    const current = inspectLockedFormat4RestoreSource(files.get(projectFile)!.db, 'project', projectId)!;
+    const current = inspectLockedFormat4RestoreSource(files.get(projectFile)!.db, 'project', projectId, allowFormat6)!;
     if (!sameContentStamp(current, expected)) throw failure();
     if (historyInfo) inspectLockedFormat4RestoreSource(files.get(history)!.db, 'history', projectId);
     // A legacy-source project must still carry the confirmed stamp. A project

@@ -20,7 +20,7 @@ import type {
 } from '@mioon/contracts/sequence-edit';
 import {SEQUENCE_EDIT_CONTRACT_VERSION} from '@mioon/contracts/sequence-edit';
 import type {ProjectStore} from './project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineState} from './project-file/format5-timeline.ts';
 import {isSubjectVersionHidden} from './subject-variant-visibility.ts';
@@ -35,7 +35,7 @@ function conflict(): never {throw new AppError('SEQUENCE_EDIT_REVISION_CONFLICT'
 export type SubjectBindingMode = 'follow' | 'locked' | 'detached';
 
 export function format5SubjectBindings(store: ProjectStore): boolean {
-  return store.db.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION;
+  return isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 }
 
 function row(store: ProjectStore, sql: string, ...args: (string | number)[]): Row | undefined {

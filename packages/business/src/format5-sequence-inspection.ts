@@ -7,7 +7,7 @@
  */
 import {createHash, createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -16,7 +16,7 @@ import {readShotReferenceEdges} from './format5-reference-inputs.ts';
 
 type Row = Record<string, any>;
 const format5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 const hash = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const badCursor = (): never => {throw new AppError('INVALID_CURSOR', '游标无效或快照已变化。', 400);};
 const invalid = (): never => {throw new AppError('VALIDATION_ERROR', '检查参数无效。', 400);};
