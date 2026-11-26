@@ -13,7 +13,7 @@ import {timelineAudioMediaReadable} from './project-media-readability.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import type {CanvasClipboardBridge} from '../../desktop/src/canvas-clipboard.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
-import {WorkbenchIcon} from '@mioon/ui/components/workbench-icons';
+import {ChevronDown, Clock, Film, WorkbenchIcon} from '@mioon/ui/components/workbench-icons';
 import {touchesLockedTrack} from './timeline-track-locks.ts';
 import { timelineCrossfadeCandidates } from './timeline-crossfade-state.ts';
 import {useExportActivity} from './use-export-activity.ts';
@@ -212,6 +212,13 @@ import EditUiNoticeBar, {EditUiUnknownBar} from './edit-ui/EditUiNotice.tsx';
 import TimelineClipContextMenu from './TimelineClipContextMenu.tsx';
 import ClipAudioTaskToast from './ClipAudioTaskToast.tsx';
 import type {ClipAudioToastTarget} from './ClipAudioTaskToast.tsx';
+import {readFcpExportBridge, isFcpExportChosenDestination} from './fcp-export-bridge.ts';
+import {applyFcpTaskUpdate} from './fcp-export-state.ts';
+import type {FcpExportTaskRecord} from './fcp-export-state.ts';
+import FcpExportDialog, {FcpExportToast, fcpExportTaskCenterEntries, fcpExportTaskOverviewItems} from './FcpExportDialog.tsx';
+import type {FcpExportDialogPhase} from './FcpExportDialog.tsx';
+import {FCP_EXPORT_TASK_KIND, fcpExportCancelOutputSchema, fcpExportErrorSchema, fcpExportGetOutputSchema, fcpExportPreviewOutputSchema, fcpExportStartOutputSchema} from '../../../packages/contracts/src/fcp-export.ts';
+import type {FcpExportDestination, FcpExportError, FcpExportPreviewOutput} from '../../../packages/contracts/src/fcp-export.ts';
 import {clipContextMenuPlan} from './clip-sound-state.ts';
 import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
 import ShotDialogue from './ShotDialogue.tsx';
@@ -4548,6 +4555,378 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   useEffect(() => { if (storyboardBatch && (selectedId || previewAsset || storyboardBatch.projectId !== data.project?.id || storyboardTask && storyboardTask.state !== 'succeeded')) setStoryboardBatch(null); }, [storyboardBatch, selectedId, previewAsset, data.project?.id, storyboardTask?.state]);
   useEffect(() => { if (storyboardToast && storyboardToast.projectId !== data.project?.id) setStoryboardToast(null); }, [storyboardToast, data.project?.id]);
   useEffect(() => { if (clipAudioToast && clipAudioToast.projectId !== data.project?.id) setClipAudioToast(null); }, [clipAudioToast, data.project?.id]);
+  const fcpExportBridge = readFcpExportBridge();
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [fcpOpen, setFcpOpen] = useState(false);
+  const [fcpPhase, setFcpPhase] = useState<FcpExportDialogPhase>('setup');
+  const [fcpPreview, setFcpPreview] = useState<FcpExportPreviewOutput | null>(null);
+  const [fcpPreviewLoading, setFcpPreviewLoading] = useState(false);
+  const [fcpPreviewError, setFcpPreviewError] = useState(false);
+  const [fcpName, setFcpName] = useState('');
+  const [fcpCopyMedia, setFcpCopyMedia] = useState(true);
+  const [fcpDestination, setFcpDestination] = useState<FcpExportDestination>({kind: 'project'});
+  const [fcpDisplayPath, setFcpDisplayPath] = useState('');
+  const [fcpStarting, setFcpStarting] = useState(false);
+  const [fcpCancelling, setFcpCancelling] = useState(false);
+  const [fcpActiveExportId, setFcpActiveExportId] = useState<string | null>(null);
+  const [fcpFinalCutInstalled, setFcpFinalCutInstalled] = useState(false);
+  const [fcpTasks, setFcpTasks] = useState<FcpExportTaskRecord[]>([]);
+  const [fcpDoneToast, setFcpDoneToast] = useState<FcpExportTaskRecord | null>(null);
+  const fcpPreviewSeqRef = useRef(0);
+  const fcpOpenRef = useRef(false);
+  const fcpActiveExportIdRef = useRef<string | null>(null);
+  const fcpTasksRef = useRef<FcpExportTaskRecord[]>([]);
+  fcpOpenRef.current = fcpOpen;
+  fcpActiveExportIdRef.current = fcpActiveExportId;
+  fcpTasksRef.current = fcpTasks;
+  const projectFcpTasks = useMemo(
+    () => fcpTasks.filter(item => item.projectId === data.project?.id),
+    [fcpTasks, data.project?.id],
+  );
+  const activeFcpExportCount = projectFcpTasks.filter(item => item.status === 'running').length;
+  const fcpActiveTask = fcpActiveExportId
+    ? projectFcpTasks.find(item => item.exportId === fcpActiveExportId) ?? null
+    : null;
+  const canOpenFcpExport = Boolean(fcpExportBridge && data.project?.id && online && auth === true && !loading);
+  useEffect(() => {
+    fcpPreviewSeqRef.current += 1;
+    setShowExportMenu(false);
+    setFcpOpen(false);
+    setFcpPreview(null);
+    setFcpPreviewLoading(false);
+    setFcpPreviewError(false);
+    setFcpActiveExportId(null);
+    setFcpDoneToast(null);
+  }, [data.project?.id]);
+  function refreshFcpFinalCutInstalled(): void {
+    const bridge = readFcpExportBridge();
+    if (!bridge) { setFcpFinalCutInstalled(false); return; }
+    void bridge.finalCutInstalled().then(installed => {
+      setFcpFinalCutInstalled(Boolean(installed));
+    }).catch(() => {
+      setFcpFinalCutInstalled(false);
+    });
+  }
+  async function loadFcpPreview(projectId: string, copyMedia: boolean, options: {resetFields: boolean}): Promise<void> {
+    const seq = ++fcpPreviewSeqRef.current;
+    setFcpPreviewLoading(true);
+    setFcpPreviewError(false);
+    try {
+      const raw = await rpc('export.fcpxml.preview', {projectId, copyMedia});
+      if (seq !== fcpPreviewSeqRef.current || currentProject.current !== projectId) return;
+      const parsed = fcpExportPreviewOutputSchema.safeParse(raw);
+      if (!parsed.success) {
+        setFcpPreviewError(true);
+        return;
+      }
+      setFcpPreview(parsed.data);
+      if (options.resetFields) {
+        setFcpName(parsed.data.defaultName);
+        setFcpDestination({kind: 'project'});
+        setFcpDisplayPath(parsed.data.projectDestination.displayPath);
+      } else {
+        setFcpDisplayPath(prev => prev || parsed.data.projectDestination.displayPath);
+      }
+    } catch {
+      if (seq !== fcpPreviewSeqRef.current || currentProject.current !== projectId) return;
+      setFcpPreviewError(true);
+    } finally {
+      if (seq === fcpPreviewSeqRef.current) setFcpPreviewLoading(false);
+    }
+  }
+  function openFcpExport(): void {
+    const projectId = currentProject.current;
+    if (!readFcpExportBridge() || !projectId || !online || auth !== true || loading) return;
+    if (clipDraftRef.current?.hasPendingComposition()) return;
+    markPanelIntent();
+    setShowTasks(false);
+    setShowImage(false);
+    setShowDelivery(false);
+    const running = fcpTasksRef.current.find(item => item.projectId === projectId && item.status === 'running');
+    if (running) {
+      setFcpActiveExportId(running.exportId);
+      setFcpName(running.name);
+      setFcpCopyMedia(running.copyMedia);
+      setFcpDestination(running.destination);
+      setFcpDisplayPath(running.displayPath);
+      setFcpPhase('running');
+      setFcpOpen(true);
+      refreshFcpFinalCutInstalled();
+      return;
+    }
+    setFcpActiveExportId(null);
+    setFcpPreview(null);
+    setFcpPreviewError(false);
+    setFcpName('');
+    setFcpCopyMedia(true);
+    setFcpDestination({kind: 'project'});
+    setFcpDisplayPath('');
+    setFcpPhase('setup');
+    setFcpOpen(true);
+    refreshFcpFinalCutInstalled();
+    void loadFcpPreview(projectId, true, {resetFields: true});
+  }
+  function handleFcpCopyMediaChange(next: boolean): void {
+    const projectId = currentProject.current;
+    setFcpCopyMedia(next);
+    if (!projectId) return;
+    void loadFcpPreview(projectId, next, {resetFields: false});
+  }
+  async function handleFcpChooseDestination(fromFailed = false): Promise<void> {
+    const bridge = readFcpExportBridge();
+    if (!bridge) return;
+    try {
+      const chosen = await bridge.chooseDestination();
+      if (!isFcpExportChosenDestination(chosen)) return;
+      setFcpDestination({kind: 'chosen', token: chosen.token});
+      setFcpDisplayPath(chosen.displayPath);
+      if (fromFailed) {
+        const projectId = currentProject.current;
+        setFcpActiveExportId(null);
+        setFcpPhase('setup');
+        if (projectId && !fcpPreview) {
+          void loadFcpPreview(projectId, fcpCopyMedia, {resetFields: false});
+        }
+      }
+    } catch {
+      // Native picker cancellation or rejection keeps the current location.
+    }
+  }
+  function parseFcpThrownError(error: unknown): FcpExportError {
+    if (error && typeof error === 'object') {
+      const record = error as {
+        code?: unknown;
+        shortBytes?: unknown;
+        file?: unknown;
+        values?: {shortBytes?: unknown; file?: unknown};
+        details?: {shortBytes?: unknown; file?: unknown};
+      };
+      const shortBytes = typeof record.values?.shortBytes === 'number'
+        ? record.values.shortBytes
+        : typeof record.shortBytes === 'number'
+          ? record.shortBytes
+          : typeof record.details?.shortBytes === 'number' ? record.details.shortBytes : undefined;
+      const file = typeof record.values?.file === 'string'
+        ? record.values.file
+        : typeof record.file === 'string'
+          ? record.file
+          : typeof record.details?.file === 'string' ? record.details.file : undefined;
+      const values = shortBytes !== undefined || file !== undefined
+        ? {...(shortBytes !== undefined ? {shortBytes} : {}), ...(file !== undefined ? {file} : {})}
+        : undefined;
+      const parsed = fcpExportErrorSchema.safeParse({
+        code: record.code,
+        ...(values ? {values} : {}),
+      });
+      if (parsed.success) return parsed.data;
+    }
+    return {code: 'EXPORT_FAILED'};
+  }
+  async function startFcpExport(params: {
+    projectId: string;
+    name: string;
+    copyMedia: boolean;
+    destination: FcpExportDestination;
+    displayPath: string;
+    missing: FcpExportTaskRecord['missing'];
+    approximations: FcpExportTaskRecord['approximations'];
+  }): Promise<void> {
+    const trimmed = params.name.trim();
+    if (!trimmed || fcpStarting) return;
+    setFcpStarting(true);
+    setFcpDoneToast(current => (current?.projectId === params.projectId ? null : current));
+    const reqId = requestId();
+    try {
+      const raw = await rpc('export.fcpxml.start', {
+        projectId: params.projectId,
+        requestId: reqId,
+        name: trimmed,
+        copyMedia: params.copyMedia,
+        destination: params.destination,
+      });
+      const parsed = fcpExportStartOutputSchema.safeParse(raw);
+      if (!parsed.success) throw {code: 'EXPORT_FAILED'};
+      const record: FcpExportTaskRecord = {
+        exportId: parsed.data.exportId,
+        projectId: params.projectId,
+        kind: FCP_EXPORT_TASK_KIND,
+        name: trimmed,
+        copyMedia: params.copyMedia,
+        destination: params.destination,
+        displayPath: params.displayPath,
+        status: 'running',
+        progress: {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0},
+        missing: params.missing,
+        approximations: params.approximations,
+        createdAt: new Date().toISOString(),
+      };
+      setFcpTasks(prev => [record, ...prev.filter(item => item.exportId !== record.exportId)]);
+      setFcpActiveExportId(record.exportId);
+      setFcpName(trimmed);
+      setFcpCopyMedia(params.copyMedia);
+      setFcpDestination(params.destination);
+      setFcpDisplayPath(params.displayPath);
+      setFcpPhase('running');
+      setFcpOpen(true);
+    } catch (error) {
+      const failedRecord: FcpExportTaskRecord = {
+        exportId: `failed:${reqId}`,
+        projectId: params.projectId,
+        kind: FCP_EXPORT_TASK_KIND,
+        name: trimmed,
+        copyMedia: params.copyMedia,
+        destination: params.destination,
+        displayPath: params.displayPath,
+        status: 'failed',
+        progress: {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0},
+        error: parseFcpThrownError(error),
+        missing: params.missing,
+        approximations: params.approximations,
+        createdAt: new Date().toISOString(),
+      };
+      setFcpTasks(prev => [failedRecord, ...prev]);
+      setFcpActiveExportId(failedRecord.exportId);
+      setFcpName(trimmed);
+      setFcpCopyMedia(params.copyMedia);
+      setFcpDestination(params.destination);
+      setFcpDisplayPath(params.displayPath);
+      setFcpPhase('failed');
+      setFcpOpen(true);
+    } finally {
+      setFcpStarting(false);
+    }
+  }
+  function handleFcpStart(): void {
+    const projectId = currentProject.current;
+    if (!projectId || !fcpPreview) return;
+    void startFcpExport({
+      projectId,
+      name: fcpName,
+      copyMedia: fcpCopyMedia,
+      destination: fcpDestination,
+      displayPath: fcpDisplayPath || fcpPreview.projectDestination.displayPath,
+      missing: fcpPreview.missing,
+      approximations: fcpPreview.approximations,
+    });
+  }
+  function handleFcpRetryTask(task: FcpExportTaskRecord): void {
+    void startFcpExport({
+      projectId: task.projectId,
+      name: task.name,
+      copyMedia: task.copyMedia,
+      destination: task.destination,
+      displayPath: task.displayPath,
+      missing: task.missing,
+      approximations: task.approximations,
+    });
+  }
+  async function syncFcpTaskStatus(task: FcpExportTaskRecord): Promise<void> {
+    try {
+      const raw = await rpc('export.fcpxml.get', {projectId: task.projectId, exportId: task.exportId});
+      const parsed = fcpExportGetOutputSchema.safeParse(raw);
+      if (!parsed.success) return;
+      const latest = fcpTasksRef.current.find(item => item.exportId === task.exportId);
+      if (!latest) return;
+      const wasRunning = latest.status === 'running';
+      const updated = applyFcpTaskUpdate(latest, parsed.data);
+      setFcpTasks(prev => prev.map(item => (item.exportId === updated.exportId ? updated : item)));
+      if (!wasRunning || updated.status === 'running') return;
+      const viewingInDialog = fcpOpenRef.current
+        && fcpActiveExportIdRef.current === updated.exportId
+        && currentProject.current === updated.projectId;
+      if (updated.status === 'done') {
+        if (viewingInDialog) {
+          refreshFcpFinalCutInstalled();
+          setFcpPhase('done');
+        } else if (currentProject.current === updated.projectId) {
+          setFcpDoneToast(updated);
+        }
+      } else if (updated.status === 'failed') {
+        if (viewingInDialog) {
+          setFcpPhase('failed');
+        }
+      } else if (updated.status === 'cancelled') {
+        if (viewingInDialog) {
+          setFcpOpen(false);
+        }
+      }
+    } catch {
+      // Transient polling errors retry on the next 1s tick.
+    }
+  }
+  async function handleFcpCancelTask(task: FcpExportTaskRecord): Promise<void> {
+    if (fcpCancelling) return;
+    setFcpCancelling(true);
+    try {
+      const raw = await rpc('export.fcpxml.cancel', {projectId: task.projectId, exportId: task.exportId});
+      const parsed = fcpExportCancelOutputSchema.safeParse(raw);
+      if (!parsed.success) return;
+      if (parsed.data.status === 'cancelled') {
+        setFcpTasks(prev => prev.map(item => (item.exportId === task.exportId ? {...item, status: 'cancelled'} : item)));
+        if (fcpOpenRef.current && fcpActiveExportIdRef.current === task.exportId) {
+          setFcpOpen(false);
+        }
+      } else {
+        await syncFcpTaskStatus(task);
+      }
+    } catch {
+      // Keep current running view if cancel request fails.
+    } finally {
+      setFcpCancelling(false);
+    }
+  }
+  function handleFcpRevealTask(task: FcpExportTaskRecord): void {
+    const bridge = readFcpExportBridge();
+    if (!bridge) return;
+    void bridge.reveal({projectId: task.projectId, exportId: task.exportId}).catch(() => false);
+  }
+  function handleFcpOpenInFinalCutTask(task: FcpExportTaskRecord): void {
+    const bridge = readFcpExportBridge();
+    if (!bridge) return;
+    void bridge.openInFinalCut({projectId: task.projectId, exportId: task.exportId}).catch(() => false);
+  }
+  function handleFcpOpenTask(task: FcpExportTaskRecord): void {
+    setShowTasks(false);
+    setFcpActiveExportId(task.exportId);
+    setFcpName(task.name);
+    setFcpCopyMedia(task.copyMedia);
+    setFcpDestination(task.destination);
+    setFcpDisplayPath(task.displayPath);
+    if (task.status === 'done') {
+      refreshFcpFinalCutInstalled();
+      setFcpPhase('done');
+    } else if (task.status === 'failed') {
+      setFcpPhase('failed');
+    } else if (task.status === 'running') {
+      setFcpPhase('running');
+    } else {
+      setFcpPhase('setup');
+      void loadFcpPreview(task.projectId, task.copyMedia, {resetFields: false});
+    }
+    setFcpOpen(true);
+  }
+  const fcpTaskHandlers = {
+    t,
+    renderMessage,
+    onOpen: handleFcpOpenTask,
+    onCancel: (task: FcpExportTaskRecord) => { void handleFcpCancelTask(task); },
+    onReveal: handleFcpRevealTask,
+    onRetry: handleFcpRetryTask,
+  };
+  const hasRunningFcpTasks = fcpTasks.some(item => item.status === 'running');
+  useEffect(() => {
+    if (!hasRunningFcpTasks) return;
+    const inFlight = new Set<string>();
+    const pollAll = () => {
+      for (const task of fcpTasksRef.current) {
+        if (task.status !== 'running' || inFlight.has(task.exportId)) continue;
+        inFlight.add(task.exportId);
+        void syncFcpTaskStatus(task).finally(() => { inFlight.delete(task.exportId); });
+      }
+    };
+    const timer = window.setInterval(pollAll, 1000);
+    return () => window.clearInterval(timer);
+  }, [hasRunningFcpTasks]);
   // A shot of the batch that was edited, generated or connected can block its undo; read it again then.
   const storyboardSignature = storyboardSummary ? JSON.stringify([storyboardSummary.shotIds.map(id => { const shot = data.shots.find(item => item.id === id); return [id, shot?.revision, shot?.selectedVersionId]; }), data.edges.length, data.jobs.length]) : '';
   useEffect(() => { if (storyboardSignature && storyboardTask) void scenes.controller.checkUndo(storyboardTask.id); }, [storyboardSignature]);
@@ -4673,7 +5052,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // while they are queued/running.
   const clipAudioExports = data.exports.filter(item => item.mode === 'clip-audio');
   const activeClipAudioCount = clipAudioExports.filter(item => ['queued', 'running'].includes(item.status)).length;
-  const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
+  const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activeFcpExportCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
   const orderedExports = [...data.exports].filter(item => item.mode !== 'clip-audio').sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
   const saveIsDirty=Boolean(inspectorDirty||formatDirty||annotations.state?.dirtyCount);
@@ -5365,18 +5744,36 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       <DropdownMenuCheckboxItem checked={!inspectorCollapsed} data-testid="menu-panel-inspector" onCheckedChange={open => setPanelOpen('inspector', open)}>{t('shell.properties')}</DropdownMenuCheckboxItem>
       {workspaceMode === 'editing' ? <DropdownMenuCheckboxItem checked={!timelineCollapsed} data-testid="menu-panel-timeline" onCheckedChange={open => setPanelOpen('timeline', open)}>{t('shell.panel.multitrack')}</DropdownMenuCheckboxItem> : <DropdownMenuCheckboxItem checked={sequenceOpen} data-testid="menu-panel-storyboard" onCheckedChange={open => setPanelOpen('storyboard', open)}>{t('storyboard.order')}</DropdownMenuCheckboxItem>}
       </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem data-testid="reset-panel-layout" onClick={resetPanelLayout}><Icon name="refresh" size={14} />{t('shell.panel.reset')}</DropdownMenuItem></DropdownMenuSubContent></DropdownMenuSub>
-      <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem>{data.projectFormatVersion !== 4 && <DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem>}<DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online ? 'neutral' : saveIsDirty ? 'orange' : videoDirectoryUnavailable || saveFailed ? 'red' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : saveIsDirty ? 'redesign.shell.draft' : videoDirectoryUnavailable ? 'video.providers.directoryUnavailable' : saveFailed ? 'redesign.shell.saveFailed' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content" data-text-selectable><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current!.flush({ projectId: currentProject.current } as unknown as {keepalive?: boolean})} onReload={reloadPreferences} /><UiPreferencesNotice />{videoDirectoryNotice}<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} /></div></details>} actions={<>
-      <TaskPopover scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}`} visible={!showTasks && !showDelivery && !showImage && !webSettingsOpen && !comparisonId && !sceneTarget} count={taskCount} uncertain={taskState.phase !== 'ready' || activePending.length > 0 || activeTasks.some(task => !['applied','not_applied'].includes(task.status))} items={[
+      <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem>{fcpExportBridge && <DropdownMenuItem data-testid="project-menu-fcp-export" disabled={!canOpenFcpExport} onClick={() => { setShowProjects(false); openFcpExport(); }}><Icon name="fcpExport" size={15} />{t('fcpExport.menu.exportFcp')}</DropdownMenuItem>}{data.projectFormatVersion !== 4 && <DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem>}<DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online ? 'neutral' : saveIsDirty ? 'orange' : videoDirectoryUnavailable || saveFailed ? 'red' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : saveIsDirty ? 'redesign.shell.draft' : videoDirectoryUnavailable ? 'video.providers.directoryUnavailable' : saveFailed ? 'redesign.shell.saveFailed' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content" data-text-selectable><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current!.flush({ projectId: currentProject.current } as unknown as {keepalive?: boolean})} onReload={reloadPreferences} /><UiPreferencesNotice />{videoDirectoryNotice}<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} /></div></details>} actions={<>
+      <TaskPopover scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}`} visible={!showTasks && !showDelivery && !showImage && !webSettingsOpen && !comparisonId && !sceneTarget && !fcpOpen} count={taskCount} uncertain={taskState.phase !== 'ready' || activePending.length > 0 || activeTasks.some(task => !['applied','not_applied'].includes(task.status))} items={[
         ...jobs.filter(job=>activeJob(job)||job.status==='submission_unknown'||job.phase==='output_review_required').map(job=>({id:job.id,label:data.shots.find(shot=>shot.id===job.shotId)?.title||t('tasks.center.shotTask'),status:renderMessage(jobStatusDescriptor(job)),phase:job.status==='submission_unknown'||job.phase==='output_review_required'?'attention':'active',progress:activeJob(job)?job.progress:undefined,tone:job.status==='submission_unknown'?'warning':'neutral'})),
         ...orderedExports.filter(item=>item.mode==='timeline'&&['queued','running'].includes(item.status)).map(item=>({id:`render:${item.id}`,label:typeof item.snapshot?.deliveryName==='string'?item.snapshot.deliveryName:t('redesign.tasks.rendering'),status:renderMessage(statusDescriptor(item.status)),phase:'active',progress:item.progress,tone:'neutral'})),
         ...clipAudioExports.filter(item=>['queued','running'].includes(item.status)).map(item=>({id:`clip-audio:${item.id}`,label:t('clipSound.saveAsAudio'),status:renderMessage(statusDescriptor(item.status)),phase:'active',progress:typeof (item as {progress?:unknown}).progress==='number'?(item as {progress:number}).progress:undefined,tone:'neutral'})),
         ...activeTasks.filter(item=>!item.acknowledged).map(item=>({id:`local:${item.id}`,label:t('shell.tasks'),status:renderMessage(statusDescriptor(item.status)),phase:'attention',tone:'warning'})),
         ...activePending.map(item=>({id:`pending:${item.origin||'legacy'}:${item.key}`,label:t('shell.tasks'),status:t('redesign.tasks.unknownHint'),phase:'attention',tone:'warning'})),
         ...sceneOverviewItems(sceneTasks, sceneTaskContext),
+        ...fcpExportTaskOverviewItems(projectFcpTasks, {
+          t,
+          renderMessage,
+          onOpen: handleFcpOpenTask,
+          onCancel: task => { void handleFcpCancelTask(task); },
+          onRetry: handleFcpRetryTask,
+        }),
       ] as never} onOpenTasks={id => { openTasks(undefined, id); }} />
       <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" onClick={event => openGlobalSettings('agent', event?.nativeEvent)}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={event => openGlobalSettings('general', event?.nativeEvent)}><WorkbenchIcon name="settings" size={16} /></Button>
-      {workspaceMode === 'editing' && <WorkbenchButton variant="primary" id="right-dock-delivery-tab" data-testid="export-timeline" disabled={!canOpenExport} onClick={openTimelineExport}><span data-testid="right-dock-tab-delivery">{t('redesign.shell.export')}</span></WorkbenchButton>}
+      {workspaceMode === 'editing' && <div className="topbar-export-split" data-testid="export-split-button">
+        <WorkbenchButton variant="primary" className="topbar-export-main" id="right-dock-delivery-tab" data-testid="export-timeline" disabled={!canOpenExport} onClick={openTimelineExport}><Icon name="upload" size={14} /><span data-testid="right-dock-tab-delivery">{t('redesign.shell.export')}</span></WorkbenchButton>
+        <DropdownMenu open={showExportMenu} onOpenChange={setShowExportMenu}>
+          <DropdownMenuTrigger render={<WorkbenchButton type="button" variant="primary" className="topbar-export-menu-trigger" data-testid="export-menu-trigger" disabled={!data.project || loading} aria-label={t('fcpExport.menu.more')} />}><ChevronDown size={13} aria-hidden="true" /></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="topbar-export-menu" data-testid="export-dropdown-menu">
+            <DropdownMenuItem data-testid="export-menu-video" disabled={!canOpenExport} onClick={() => { setShowExportMenu(false); openTimelineExport(); }}><Film size={15} aria-hidden="true" /><span>{t('fcpExport.menu.exportVideo')}</span><span className="topbar-export-shortcut">{t('fcpExport.menu.exportVideoShortcut')}</span></DropdownMenuItem>
+            {fcpExportBridge && <DropdownMenuItem data-testid="export-menu-fcp" disabled={!canOpenFcpExport} onClick={() => { setShowExportMenu(false); openFcpExport(); }}><Icon name="fcpExport" size={15} /><span>{t('fcpExport.menu.exportFcp')}</span></DropdownMenuItem>}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem data-testid="export-menu-history" disabled={!data.project || loading} onClick={() => { setShowExportMenu(false); openExportHistory(); }}><Clock size={15} aria-hidden="true" /><span>{t('fcpExport.menu.exportHistory')}</span></DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>}
     </>} />
     {showGuide && <section className="region-guide" role="region" aria-label={t('shell.regionGuide')} data-testid="region-guide"><header><strong>{t('shell.guideTitle')}</strong><Button variant="ghost" className="icon-button" aria-label={t('shell.closeGuide')} onClick={() => setShowGuide(false)}><Icon name="close" size={16} /></Button></header><div><p><b>{t('shell.canvas')}</b>{t('shell.guideCanvas')}</p><p><b>{t('shell.editing')}</b>{t('shell.guideEditing')}</p><p><b>{t('shell.sharedAssets')}</b>{t('shell.guideAssets')}</p><p><b>{t('shell.guideTransitionTitle')}</b>{t('shell.guideTransition')}</p></div><footer>{t('shell.guideVersions')}</footer></section>}
     <div className="workspace-surface" ref={panelSurface} data-testid="workspace-surface">
@@ -5559,7 +5956,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
     />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
-    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
+    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} fcpExports={fcpExportTaskCenterEntries(projectFcpTasks, fcpTaskHandlers)} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + activeFcpExportCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {!nativeWindow && showCreate && <CreateProject newProjectFormatVersion={projectEntryIdentityRef.current!.getState().snapshot?.newProjectFormatVersion} onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}
@@ -5582,6 +5979,35 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onCancel={() => setFormat5DeleteReview(null)} onConfirm={() => { void format5BoardConfirmDelete(); }} />}
     {historyLayer}
     {previsEditor}
+    <FcpExportDialog
+      open={fcpOpen}
+      phase={fcpPhase}
+      preview={fcpPreview}
+      previewLoading={fcpPreviewLoading}
+      previewError={fcpPreviewError}
+      name={fcpName}
+      copyMedia={fcpCopyMedia}
+      displayPath={fcpDisplayPath}
+      starting={fcpStarting}
+      cancelling={fcpCancelling}
+      task={fcpActiveTask}
+      finalCutInstalled={fcpFinalCutInstalled}
+      onOpenChange={open => { if (!open) setFcpOpen(false); }}
+      onNameChange={setFcpName}
+      onCopyMediaChange={handleFcpCopyMediaChange}
+      onChooseDestination={() => { void handleFcpChooseDestination(false); }}
+      onStart={handleFcpStart}
+      onCancelExport={() => { if (fcpActiveTask) void handleFcpCancelTask(fcpActiveTask); }}
+      onReveal={() => { if (fcpActiveTask) handleFcpRevealTask(fcpActiveTask); }}
+      onOpenInFinalCut={() => { if (fcpActiveTask) handleFcpOpenInFinalCutTask(fcpActiveTask); }}
+      onRetry={() => { if (fcpActiveTask) handleFcpRetryTask(fcpActiveTask); }}
+      onChangeLocation={() => { void handleFcpChooseDestination(true); }}
+    />
+    <FcpExportToast
+      task={fcpDoneToast && fcpDoneToast.projectId === data.project?.id ? fcpDoneToast : null}
+      onReveal={task => { handleFcpRevealTask(task); setFcpDoneToast(null); }}
+      onDismiss={() => setFcpDoneToast(null)}
+    />
     <ProjectMediaDialogs media={projectMedia} projectName={data.project?.name ?? ''} />
   </main></ProjectMediaProvider>;
 }
