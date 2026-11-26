@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, isSequenceProjectFormat, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../packages/business/src/project-file/schema/databases.ts';
 import {compareManifest, readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {historyManifestForVersion, projectManifestForVersion} from '../packages/business/src/project-file/schema/format-manifests.ts';
@@ -24,7 +24,7 @@ function connection(projectVersion: ProjectFileFormat = FORMAT5_PROJECT_SCHEMA_V
   db.prepare('INSERT INTO project.project_file VALUES(1,?,0,?)').run(id(1), 'a'.repeat(32));
   db.prepare('INSERT INTO main.history_state VALUES(1,?,0,?)').run(id(1), 'a'.repeat(32));
   db.exec('COMMIT');
-  installCrossFileTriggers(db, projectVersion);
+  installCrossFileTriggers(db, isSequenceProjectFormat(projectVersion) ? FORMAT5_PROJECT_SCHEMA_VERSION : projectVersion);
   db.prepare('INSERT INTO project.projects VALUES(?,?)').run(id(1), '{}');
   return db;
 }

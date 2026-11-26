@@ -15,10 +15,11 @@ function record<K extends string>(value: unknown, keys: K[]): value is Record<K,
   const descriptors=Object.getOwnPropertyDescriptors(value);
   return Reflect.ownKeys(descriptors).length===keys.length && keys.every(key=>own(descriptors,key)&&descriptors[key].enumerable&&own(descriptors[key],'value'));
 }
-function duration(value: unknown) {if(!integer(value,1,18000))fail('Invalid clip duration.');}
+function duration(value: unknown,maxFrames: number) {if(!integer(value,1,maxFrames))fail('Invalid clip duration.');}
 /** Returns the original value, never normalizes, sorts, defaults or mutates it. */
-export function validateVolumeEnvelope(value: unknown,durationFrames: number): VolumeEnvelope|null {
-  duration(durationFrames);
+export function validateVolumeEnvelope(value: unknown,durationFrames: number,
+  maxFrames: number = VOLUME_ENVELOPE_LIMITS.frames): VolumeEnvelope|null {
+  duration(durationFrames,maxFrames);
   if(value===null)return value;
   if(!record(value,['profileId','points']) || value.profileId!==VOLUME_ENVELOPE_PROFILE || !Array.isArray(value.points) || Object.getPrototypeOf(value.points)!==Array.prototype ||
      value.points.length<1 || value.points.length>16)fail('Invalid envelope shape or point count.');
@@ -37,11 +38,11 @@ export function validateVolumeEnvelope(value: unknown,durationFrames: number): V
   return value as VolumeEnvelope;
 }
 const copy = (value: VolumeEnvelope|null): VolumeEnvelope|null => value===null ? null : {profileId:value.profileId,points:value.points.map(point=>({...point}))};
-function field(clip: VolumeEnvelopeClip): EnvelopeDescriptor|undefined {
+function field(clip: VolumeEnvelopeClip,maxFrames: number = VOLUME_ENVELOPE_LIMITS.frames): EnvelopeDescriptor|undefined {
   if(!clip || typeof clip!=='object')fail('Invalid clip.');
   const d=Object.getOwnPropertyDescriptor(clip,'volumeEnvelope');
   if(d && (!d.enumerable || !own(d,'value')))fail('Invalid envelope field.');
-  if(d)validateVolumeEnvelope(d.value,clip.durationFrames);else duration(clip.durationFrames);
+  if(d)validateVolumeEnvelope(d.value,clip.durationFrames,maxFrames);else duration(clip.durationFrames,maxFrames);
   return d as EnvelopeDescriptor|undefined;
 }
 function multiplier(points: VolumeEnvelope['points'],sample: number): number {
@@ -84,8 +85,9 @@ export function volumeEnvelopeFieldsAfterEdit(clip: VolumeEnvelopeClip,patch: Pa
 /** Split the envelope only; existing caller-owned fade split restrictions stay.
  * At a cut between points, replace the removed side with its interpolated
  * boundary. Constant-held regions need no redundant point, keeping <=16. */
-export function splitVolumeEnvelopeFields(clip: VolumeEnvelopeClip,cutFrame: number): [VolumeEnvelopeFields,VolumeEnvelopeFields] {
-  const d=field(clip);
+export function splitVolumeEnvelopeFields(clip: VolumeEnvelopeClip,cutFrame: number,
+  maxFrames: number = VOLUME_ENVELOPE_LIMITS.frames): [VolumeEnvelopeFields,VolumeEnvelopeFields] {
+  const d=field(clip,maxFrames);
   if(!integer(cutFrame,1,clip.durationFrames-1))fail('Split must be inside clip.');
   if(!d)return [{},{}];
   if(d.value===null)return [{volumeEnvelope:null},{volumeEnvelope:null}];
@@ -96,5 +98,5 @@ export function splitVolumeEnvelopeFields(clip: VolumeEnvelopeClip,cutFrame: num
   else if(left.at(-1)!.frame<cutFrame && points.at(-1)!.frame>cutFrame)left.push({frame:cutFrame,multiplier:value});
   if(!right.length)right.push({frame:0,multiplier:value});
   else if(right[0].frame>0 && points[0].frame<cutFrame)right.unshift({frame:0,multiplier:value});
-  return [left,right].map((p,i)=>({volumeEnvelope:validateVolumeEnvelope({profileId:VOLUME_ENVELOPE_PROFILE,points:p},i?clip.durationFrames-cutFrame:cutFrame)})) as [VolumeEnvelopeFields,VolumeEnvelopeFields];
+  return [left,right].map((p,i)=>({volumeEnvelope:validateVolumeEnvelope({profileId:VOLUME_ENVELOPE_PROFILE,points:p},i?clip.durationFrames-cutFrame:cutFrame,maxFrames)})) as [VolumeEnvelopeFields,VolumeEnvelopeFields];
 }

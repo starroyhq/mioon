@@ -9,7 +9,7 @@ import {ownsStoreLock} from './store-runtime.ts';
 import {timelineStorageFormat,timelineStorageSchema,readTimelineStorage} from './project-file/timeline-storage.ts';
 import {isTimelineMutationResponseFor} from './timeline-record-format.ts';
 import {bumpFormat5ContentStampInside,deleteFormat5TimelineInside} from './project-file/format5-timeline.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace,usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
@@ -148,7 +148,7 @@ export function restoreTimelineFrameSubtitles(timeline: TimelineRecord,profile: 
  * LUT, subtitle, geometry, byte-budget and history boundaries as normal edits. */
 export function restoreProjectTimelineInside(store: ProjectStore, desired: TimelineRecord | null, {requestId,now}: {requestId:string;now:string}): void {
  if(!isProjectStore(store)||!store.db.isTransaction)throw new TypeError('Timeline restoration requires the real project transaction');
- const format5=timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION;
+ const format5=isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)));
  const row=format5?undefined:store.db.prepare('SELECT id,data FROM project.timelines WHERE projectId=?').get(store.projectId);
  const stored=format5?readTimelineStorage(store.db,store.projectId):null;
  const current=format5?stored?.timeline as TimelineRecord|null??null:row?JSON.parse(String(row.data)) as TimelineRecord:null;
@@ -211,7 +211,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  // The trusted host opens the actual project format. No RPC input can opt a
  // format-3 project into writing the new geometry.
  const format4=()=>usesTimelineFrameTransaction(db);
- const format5Store=()=>isProjectStore(store)&&timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION;
+ const format5Store=()=>isProjectStore(store)&&isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)));
  function find(projectId: string): TimelineRecord|null{
   const snapshot=readTimelineStorage(db,projectId);
   if(!snapshot)return null;
@@ -223,6 +223,11 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   if(existing)return existing;
   assertProjectStore(store);
   return put('timelines',newTimeline(projectId)) as TimelineRecord;
+ }
+ function read(projectId: string): TimelineRecord & {capabilities:{speed:boolean}} {
+  const timeline=ensure(projectId);
+  return {...timeline,capabilities:{speed:isProjectStore(store)&&
+    timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION}};
  }
  function newTimeline(projectId: string,preset: TimelinePreset=timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET) as TimelinePreset): TimelineRecord{
   return newTimelineRecord(projectId,preset,now);
@@ -396,7 +401,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   // Format 5 stores native clip/cue rows; project them into the renderer's frozen
   // legacy snapshot through the TSb export ticket rules instead of the legacy
   // aggregate reader.
-  if(isProjectStore(store)&&timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+  if(isProjectStore(store)&&isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
    const frozen=freezeFormat5RenderSnapshot(store,input);
    if(expectedTimelineId!==undefined&&(frozen as {timeline:{id:string}}).timeline.id!==expectedTimelineId)
     throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
@@ -509,7 +514,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    if(frameTransaction)recordEdit('timeline.format.set',timeline,before);
    return saveResponse('timeline.format.set',input,requestHash,timeline,boundary);
   }),
-  'timeline.get':(input: TimelineMutationInput)=>ensure(input.projectId),
+  'timeline.get':(input: TimelineMutationInput)=>read(input.projectId),
   'timeline.history.get':(input: TimelineMutationInput)=>history(input.projectId),
   'timeline.undo':(input: TimelineMutationInput)=>travel('timeline.undo',input,-1),
   'timeline.redo':(input: TimelineMutationInput)=>travel('timeline.redo',input,1),
@@ -684,5 +689,5 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   put('timelines',timeline);
   recordEdit('agent.task.undo',timeline,before);return timeline;
  };
- return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions,initializeProjectFormat,compensateAgentTargetsInside};
+ return {ensure,read,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions,initializeProjectFormat,compensateAgentTargetsInside};
 }

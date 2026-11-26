@@ -9,15 +9,16 @@ import {startServer, type InspectApplication, type InspectProject, type ServerOp
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import type {ProjectTemplateCatalogEntry} from '../apps/server/src/project-host/templates.ts';
-import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {createProjectFile, inspectProjectFormatReadOnly} from '../packages/business/src/project-file/connection.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
-import {FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contracts/src/project-copies.ts';
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
+import {projectFormatUpgradeFromError} from '../packages/contracts/src/project-format-upgrade.ts';
 import {readProjectState, changeMarks} from './helpers/project-state.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
@@ -25,7 +26,7 @@ const token = 'synthetic-template-server-authentication';
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 interface Wire<T> {ok: boolean; data?: T; error?: {code: string; details?: unknown}}
 const snapshot = (db: DatabaseSync) => ({...readProjectState(db), marks: changeMarks(db)});
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, format6 = false) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-template-server-')), directory = path.join(root, 'template'), target = path.join(root, 'targets'), dataDir = path.join(root, 'app');
   mkdirSync(directory); mkdirSync(target); mkdirSync(path.join(directory, 'media'));
   const projectFile = path.join(directory, 'template.mioon'), projectId = createProjectFile(projectFile), assetId = randomUUID();
@@ -43,7 +44,10 @@ async function fixture(t: TestContext) {
   const openSource = () => openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'private-history'), cacheDir: path.join(root, 'private-cache'), tempDir: path.join(root, 'private-tmp')})});
   let application!: InspectApplication, inspect!: InspectProject, boundary: ServerOptions['projectCopyActionBoundaryForTest'];
   let server: Awaited<ReturnType<typeof startServer>>;
-  const start = async () => startServer({dataDir, projectsDir: path.join(root, 'projects'), port: 0, token, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION, projectTemplates: [entry],
+  if (format6) setFormat6Environment(t, '1');
+  const start = async () => startServer({dataDir, projectsDir: path.join(root, 'projects'), port: 0, token,
+    ...(format6 ? {localDraftChannel: 'development' as const, projectFormatForTest: undefined} : {projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION}),
+    projectTemplates: [entry],
     inspectApplication: value => {application = value;}, inspectProject: value => {inspect = value;}, projectCopyActionBoundaryForTest: (phase, input) => boundary?.(phase, input)});
   server = await start();
   t.after(async () => {await server.close(); rmSync(root, {recursive: true, force: true});});
@@ -60,13 +64,24 @@ async function fixture(t: TestContext) {
     get native() {return server.projectEntries;},
     setBoundary(value: typeof boundary) {boundary = value;},
     async restart() {await server.close(); boundary = undefined; server = await start();},
-    targetStore(copy: ProjectCopyResponse) {assert.equal(isProjectFileHeld(copy.project.fileIdentity), false); return openProjectStore({projectFile: copy.project.projectFile,
+    targetStore(copy: ProjectCopyResponse) {assert.equal(isProjectFileHeld(copy.project.fileIdentity), false); return openProjectStore({
+      projectFile: copy.project.projectFile, ...(format6 ? {allowFormat6: true as const} : {}),
       locate: id => projectLocation(serverAppDirectories(dataDir, {projectsDir: path.join(root, 'projects')}), id)});},
   };
 }
 const success = (result: {status: number; body: Wire<ProjectCopyResponse>}): ProjectCopyResponse => {
   assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.ok, true); return projectCopyResponseSchema.parse(result.body.data);
 };
+
+function setFormat6Environment(t: TestContext, value: string | undefined): void {
+  const original = process.env.MIOON_FORMAT6_DEV;
+  t.after(() => {
+    if (original === undefined) delete process.env.MIOON_FORMAT6_DEV;
+    else process.env.MIOON_FORMAT6_DEV = original;
+  });
+  if (value === undefined) delete process.env.MIOON_FORMAT6_DEV;
+  else process.env.MIOON_FORMAT6_DEV = value;
+}
 const denied = (result: {status: number; body: Wire<unknown>}, status: number, code: string): void => {
   assert.equal(result.status, status, JSON.stringify(result.body)); assert.equal(result.body.ok, false); assert.equal(result.body.error?.code, code);
 };
@@ -97,6 +112,70 @@ test('HTTP and trusted template entries create independent media and identities 
   assert.deepEqual(readFileSync(media[1]), f.bytes); assert.deepEqual(f.tree(), original);
   assert.equal((await f.native.listRecent()).registered.length, 2);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE operation=?').get('project.template.instantiate')!.n), 2);
+});
+
+test('a development-channel template publishes format 6 atomically and replays under one target identity', async t => {
+  const f = await fixture(t, true);
+  const original = f.tree();
+  const input = f.input('Format 6 example');
+  f.setBoundary(phase => {if (phase === 'project-published') throw new Error('Synthetic interruption');});
+  const interrupted = await f.rpc(input);
+  assert.equal(interrupted.status, 500);
+  await f.restart();
+  const copied = success(await f.rpc(input));
+  const again = success(await f.rpc(input));
+  assert.deepEqual(again, copied);
+  const target = f.targetStore(copied);
+  try {
+    assert.equal(target.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT6_PROJECT_SCHEMA_VERSION);
+    assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT5_HISTORY_SCHEMA_VERSION);
+    assert.equal(target.historyState, 'current');
+  } finally {target.close();}
+  assert.deepEqual(f.tree(), original);
+  assert.deepEqual(readFileSync(path.join(path.dirname(copied.project.projectFile), 'media', 'scene.png')), f.bytes);
+});
+
+test('only the development channel plus explicit environment opt-in admits format 6', async t => {
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-format6-gate-'));
+  const start = (localDraftChannel: NonNullable<ServerOptions['localDraftChannel']>) =>
+    startServer({dataDir: path.join(root, 'app'), port: 0, token, localDraftChannel, projectFormatForTest: undefined});
+  setFormat6Environment(t, '1');
+  let server = await start('web');
+  t.after(async () => {await server.close(); rmSync(root, {recursive: true, force: true});});
+  const previous = await server.projectEntries.create({name: 'Previous format'});
+  assert.equal((await server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(inspectProjectFormatReadOnly(previous.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  await server.close();
+  delete process.env.MIOON_FORMAT6_DEV;
+  server = await start('development');
+  const previousWindow = randomUUID();
+  await server.projectEntries.acquire({projectId: previous.projectId, windowId: previousWindow});
+  assert.equal((await server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  server.projectEntries.release({windowId: previousWindow});
+  await server.close();
+  assert.equal(inspectProjectFormatReadOnly(previous.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  process.env.MIOON_FORMAT6_DEV = '1';
+  server = await start('development');
+  assert.equal((await server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+  const fresh = await server.projectEntries.create({name: 'Opted-in format'});
+  assert.equal(inspectProjectFormatReadOnly(fresh.projectFile, {allowFormat6: true}).formatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+  const upgradeWindow = randomUUID();
+  let preview: NonNullable<ReturnType<typeof projectFormatUpgradeFromError>> | null = null;
+  await assert.rejects(() => server.projectEntries.acquire({projectId: previous.projectId, windowId: upgradeWindow}),
+    error => Boolean(preview = projectFormatUpgradeFromError(error)));
+  assert.ok(preview);
+  const observed = await server.projectEntries.observeFormat!({projectFile: previous.projectFile, preview});
+  assert.equal((await server.projectEntries.readOnlyFormat!(observed)).projectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  await server.projectEntries.acquire({projectId: previous.projectId, expectedProjectFile: previous.projectFile,
+    windowId: upgradeWindow, formatUpgrade: observed});
+  server.projectEntries.release({windowId: upgradeWindow});
+  await server.close();
+  assert.equal(inspectProjectFormatReadOnly(previous.projectFile, {allowFormat6: true}).formatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+  delete process.env.MIOON_FORMAT6_DEV;
+  server = await start('development');
+  await assert.rejects(() => server.projectEntries.acquire({projectId: fresh.projectId, windowId: randomUUID()}),
+    error => (error as {code?: string}).code === 'PROJECT_FORMAT_NEWER' ||
+      (error as {details?: {reason?: string}}).details?.reason === 'PROJECT_FORMAT_NEWER');
 });
 
 test('an existing target folder is never merged, even empty, and no registration is added', async t => {

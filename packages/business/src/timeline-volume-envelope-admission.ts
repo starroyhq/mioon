@@ -26,9 +26,9 @@ export function hasTimelineVolumeEnvelope(value:unknown):boolean{
 export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unknown):void{
  if(hasTimelineVolumeEnvelope(value)&&!isProjectLayout(db))throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');
 }
-export function validateTimelineVolumeEnvelopeClip(clip:{durationFrames:number;volumeEnvelope?:unknown},source:{mimeType?:string;hasAudio?:boolean}):void{
+export function validateTimelineVolumeEnvelopeClip(clip:{durationFrames:number;volumeEnvelope?:unknown},source:{mimeType?:string;hasAudio?:boolean},maxFrames?: number):void{
  if(!Object.hasOwn(clip,'volumeEnvelope'))return;
- try{validateVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames);}
+ try{validateVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames,maxFrames);}
  catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
  if(clip.volumeEnvelope!==null&&(source.mimeType?.startsWith('image/')||source.hasAudio!==true))
   throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
