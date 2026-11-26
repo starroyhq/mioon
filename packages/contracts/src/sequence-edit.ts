@@ -1355,6 +1355,7 @@ export interface SequenceEditTransactionFailure {
   readonly ids: readonly string[];
   /** Bounded validation reason for a user-facing explanation; no raw data. */
   readonly reason?: string;
+  readonly message?: string;
 }
 
 /** Input both transaction-internal entries receive. The coordinator reads the

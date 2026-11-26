@@ -6,6 +6,7 @@
  * The whole change (header + layout rows) travels in one history-13 patch.
  */
 import {AppError} from '../../contracts/src/app-error.ts';
+import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {CLIP_LAYOUT_PROFILE} from '../../contracts/src/timeline-clip-layout.ts';
 import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitle-profile.ts';
@@ -131,7 +132,7 @@ export function previewTimelineFormat(store: ProjectStore, input: {requestId: st
       historyPosition: state.position, historyRevision: state.revision});
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
-    if (error instanceof AppError) return failure(error.code as SequenceEditErrorCode);
+    if (error instanceof AppError) return sequenceEditPreviewFailure(error);
     throw error;
   }
 }

@@ -14,6 +14,7 @@
  * subtitle) and only its text is editable through this entry.
  */
 import {AppError} from '../../contracts/src/app-error.ts';
+import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {getFormat5CueIssue, format5AnchorSchema, format5DialogueSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Anchor, Format5Cue, Format5Dialogue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getTimelineSubtitleTextIssue, TIMELINE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitles.ts';
@@ -297,8 +298,7 @@ export function previewSubtitleEdits(store: ProjectStore, input: {
       historyPosition: state.position, historyRevision: state.revision});
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
-    if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_NOOP') return failure('SEQUENCE_EDIT_NOOP');
-    if (error instanceof AppError) return failure(error.code);
+    if (error instanceof AppError) return sequenceEditPreviewFailure(error);
     throw error;
   }
 }

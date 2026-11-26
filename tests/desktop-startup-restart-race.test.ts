@@ -64,12 +64,21 @@ const deferred = () => {
   const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 };
+const realSetTimeout = setTimeout; // Harness polling is independent of supervisor mock timers.
 async function until(predicate: () => unknown) {
   for (let i = 0; i < 1000; i++) {
     if (predicate()) return;
-    await new Promise(resolve => setTimeout(resolve, 1));
+    await new Promise(resolve => realSetTimeout(resolve, 1));
   }
   assert.fail('Synthetic lifecycle did not reach the expected checkpoint');
+}
+function observeStopRequest(t: test.TestContext, child: DesktopHarnessChild) {
+  const requested = deferred(), postMessage = child.postMessage.bind(child);
+  t.mock.method(child, 'postMessage', (message: Parameters<DesktopHarnessChild['postMessage']>[0]) => {
+    postMessage(message);
+    if (message.type === 'stop') requested.resolve();
+  });
+  return requested.promise;
 }
 const failure = (code: string = 'SYNTHETIC_FAILURE') => Object.assign(new Error(`Synthetic ${code}`), { code });
 type CliRuntimeStart = Parameters<typeof import('../apps/desktop/src/cli-runtime-host.ts').startCliRuntimeHost>[0];
@@ -383,12 +392,14 @@ for (const action of ['restart', 'quit']) for (const code of ['SETTINGS_CLOSE_FA
   });
 }
 
-test('restart waits for the owned child exit even though old backend.start already rejected', async t => {
+test('restart waits for the owned child exit even though old backend.start already rejected', {timeout: 5000}, async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
   const runtime = await harness(t, { child: (index: number) => index === 0 ? { ready: false, exit: false } : {} });
   const r = runtime.records;
   await until(() => r.children.length === 1);
+  const stopRequested = observeStopRequest(t, r.children[0]);
   const restarting = runtime.restart();
-  await until(() => r.children[0].messages.some((item: { type: string; }) => item.type === 'stop'));
+  await stopRequested;
   await runtime.initial();
   assert.equal(runtime.fatals().length, 0);
   assert.equal(r.backends.length, 1);
@@ -396,7 +407,9 @@ test('restart waits for the owned child exit even though old backend.start alrea
   r.children[0].ready(); // A cancelled original start must not publish this ready.
   assert.equal(r.sessions.length, 0);
   r.children[0].emit('exit', 0);
-  await restarting; await runtime.success(1);
+  await restarting;
+  t.mock.timers.reset();
+  await runtime.success(1);
   assert.equal(r.backends.length, 2);
   assert.equal(r.windows.length, 1);
 });
@@ -527,26 +540,48 @@ test('quit during restart drain shares quit work and prevents replacement startu
 });
 
 for (const mode of ['unconfirmed', 'media', 'failed']) {
-  test(`backend stop ${mode} remains a replacement barrier with cancelled old start`, async t => {
+  test(`backend stop ${mode} remains a replacement barrier with cancelled old start`, {timeout: 5000}, async t => {
+    if (mode === 'unconfirmed') t.mock.timers.enable({apis: ['setTimeout']});
     const runtime = await harness(t, { child: () => ({ ready: false, ...(mode === 'unconfirmed' ? { exit: false } : mode === 'media' ? { media: true } : { exitCode: 1 }) }) });
     const r = runtime.records;
     await until(() => r.children.length === 1);
-    await runtime.restart(); await runtime.initial();
+    const child = r.children[0], backend = r.backends[0];
+    if (mode === 'unconfirmed') {
+      const stopRequested = observeStopRequest(t, child);
+      // A delayed event-loop turn can reach the absolute stop deadline before
+      // the nested hard-stop timer. Drive each phase after stop is requested.
+      const restarting = runtime.restart();
+      await stopRequested;
+      t.mock.timers.tick(backend.stopTimeout);
+      assert.equal(child.kills, 1);
+      assert.equal(child.hardKills, 0);
+      t.mock.timers.tick(backend.terminateTimeout);
+      assert.equal(child.hardKills, 1);
+      t.mock.timers.tick(backend.exitTimeout);
+      await restarting;
+      t.mock.timers.reset();
+    } else await runtime.restart();
+    await runtime.initial();
     assert.equal(r.backends.length, 1);
     assert.equal(runtime.fatals().length, 1);
     assert.equal(r.windows.length, 0); assert.equal(r.connections.length, 0);
+    assert.equal(child.messages.filter(item => item.type === 'stop').length, 1);
     if (mode === 'unconfirmed') {
-      assert.equal(r.backends[0].child, r.children[0]);
-      assert.equal(r.children[0].messages.filter((item: { type: string; }) => item.type === 'stop').length, 1);
-      assert.equal(r.children[0].kills, 1); assert.equal(r.children[0].hardKills, 1);
+      assert.equal(backend.child, child);
+      assert.equal(backend.state, 'stop-unconfirmed');
+      assert.equal(child.kills, 1); assert.equal(child.hardKills, 1);
       assert.equal(r.finished, 0);
-      r.children[0].emit('exit', 0);
+      child.emit('exit', 0);
       await until(() => r.finished === 1);
     } else if (mode === 'media') {
       await until(() => r.exits.length === 1);
-      assert.equal(r.backends[0].hasUnconfirmedMedia, true);
+      assert.equal(backend.hasUnconfirmedMedia, true);
       assert.equal(r.finished, 0);
+    } else {
+      await until(() => r.finished === 1);
+      assert.equal(backend.stopOutcome?.code, 1);
     }
+    if (mode !== 'unconfirmed') assert.deepEqual([child.kills, child.hardKills], [0, 0]);
   });
 }
 

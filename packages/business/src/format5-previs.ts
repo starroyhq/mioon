@@ -14,6 +14,7 @@
  * one history-13 entry + receipt; this file never opens a transaction.
  */
 import {AppError} from '../../contracts/src/app-error.ts';
+import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {
   PREVIS_LIMITS, defaultPrevisScene, isPrevisNodeRecord, previsSceneSubjectReferences,
 } from '../../contracts/src/previs.ts';
@@ -247,11 +248,8 @@ export function previewPrevisAction(store: ProjectStore, input: {
     planPrevisAction(store, envelope);
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
-    if (error instanceof AppError && error.code.startsWith('SEQUENCE_EDIT_')) {
-      return {ok: false, code: error.code, ids: ((error.details as Row | undefined)?.ids as string[] | undefined) ?? []};
-    }
-    if (error instanceof AppError && error.code === 'FORMAT5_CAPACITY') {
-      return {ok: false, code: error.code, ids: []};
+    if (error instanceof AppError && (error.code.startsWith('SEQUENCE_EDIT_') || error.code === 'FORMAT5_CAPACITY')) {
+      return sequenceEditPreviewFailure(error);
     }
     throw error;
   }

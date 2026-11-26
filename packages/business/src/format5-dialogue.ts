@@ -24,6 +24,7 @@
  * - ordinary cues are never renamed, moved or guessed into dialogue.
  */
 import {AppError} from '@mioon/contracts';
+import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {format5DialogueSchema, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getTimelineSubtitleTextIssue} from '../../contracts/src/timeline-subtitles.ts';
@@ -331,7 +332,7 @@ export function previewDialogueAction(store: ProjectStore, input: {
   } catch (error) {
     if (error instanceof AppError && (error.code === 'SEQUENCE_EDIT_NOOP' || error.code === 'SEQUENCE_EDIT_DIALOGUE_INVALID'
       || error.code === 'SEQUENCE_EDIT_DIALOGUE_CONFLICT')) {
-      return failure(error.code, ((error.details as Row | undefined)?.ids as string[] | undefined) ?? []);
+      return sequenceEditPreviewFailure(error);
     }
     throw error;
   }

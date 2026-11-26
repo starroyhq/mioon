@@ -14,6 +14,7 @@
  */
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
+import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {FORMAT5_LIMITS, getFormat5TrackIssue} from '../../contracts/src/project-format5.ts';
 import type {Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {
@@ -157,7 +158,7 @@ export function previewTrack(store: ProjectStore, input: {readonly requestId: st
     if (!plan.changedTrackIds.length) return failure('SEQUENCE_EDIT_NOOP');
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
-    if (error instanceof AppError) return failure(error.code);
+    if (error instanceof AppError) return sequenceEditPreviewFailure(error);
     throw error;
   }
 }
