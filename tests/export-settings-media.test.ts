@@ -242,7 +242,8 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
  const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
  try{
-  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await foreignProject(t);
+  const projectName='Synthetic frozen-source race';
+  const project=await services.call<ProjectShape>('project.create',{name:projectName}),other=await foreignProject(t);
   const state=():Record<string,Record<string,unknown>[]>=>Object.fromEntries([[store.db as unknown as DatabaseSync,''],[other.store.db,'foreign:']].flatMap(([database,prefix])=>{const db=database as DatabaseSync;return schemaObjects(db).filter(({type,name})=>type==='table'&&(prefix!==''||name!=='exports')).sort(byName).map(({name})=>[`${prefix}${name}`,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all().map(row=>({...row}))]);}));
   const imported=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
   const asset: AssetShape & Record<string, unknown> = {...store.get('assets',imported.id),provenance:'generated'} as unknown as AssetShape & Record<string, unknown>;store.put('assets',asset);
@@ -296,7 +297,7 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   const publicationPhase=['publication-tx','publication-replacement','publication-read-unknown'].includes(phase);
   if(publicationPhase)store.tx=body=>{if(publicationArmed){
    publicationArmed=false;
-   const linked=readdirSync(outputDirectory).find(name=>name.startsWith(`export-${accepted.id}-`)&&name.endsWith('.mp4')&&!name.endsWith('.part.mp4'));
+   const linked=readdirSync(outputDirectory).find(name=>name===`${projectName}.mp4`);
    linkedBeforeTx=Boolean(linked);
    if(linked)publishedFile=path.join(outputDirectory,linked);
    if(linked&&phase==='publication-replacement'){

@@ -89,14 +89,18 @@ test('export registers the verified artifact after a ctime-only change before re
   const completed = row(store.get('exports', String(accepted.id)));
   assert.equal(completed.status, 'succeeded', JSON.stringify(completed.error));
   assert.equal(completed.assetId, proof.assetId);
-  assert.equal(row(store.get('assets', proof.assetId)).name, '多轨时间线-导出-9x16.mp4');
+  const asset = row(store.get('assets', proof.assetId));
+  assert.equal(asset.name, '多轨时间线-导出-9x16.mp4');
+  assert.equal(proof.relativePath, '导出/Export registration.mp4');
+  assert.equal(row(asset.reference).path, proof.relativePath);
   const output = row(await services.call('export.output.get', {projectId, exportId: accepted.id}));
   assert.equal(output.assetId, proof.assetId);
-  assert.ok(isPublishedProjectOutput(store.get('assets', proof.assetId), proof));
+  assert.equal(output.fileLocation, path.join(root, proof.relativePath));
+  assert.ok(isPublishedProjectOutput(asset, proof));
   assert.deepEqual(await readdir(path.join(root, '导出')), [path.basename(proof.relativePath)]);
 });
 
-test('ultrawide output uses the frozen 21:9 asset name and preserves a literal delivery name', async t => {
+test('ultrawide sample output uses the frozen delivery name on disk and retains the 21:9 asset title', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-wide-output-'));
   const store = openStore(root), providers = new Map<string, Provider>();
   const services = createServices(store, providers);
@@ -108,7 +112,7 @@ test('ultrawide output uses the frozen 21:9 asset name and preserves a literal d
   // The public format setter is still closed to new frame presets in G.
   store.put('timelines', {...timeline,width:2520,height:1080});
   const edited = row(await services.call('timeline.clip.add', {projectId,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:track.id,startFrame:0,durationFrames:6}));
-  const deliveryName = 'Wide cut', input = {projectId,expectedRevision:edited.revision,requestId:randomUUID(),purpose:'export',deliveryName};
+  const deliveryName = 'Wide cut.mp4', input = {projectId,expectedRevision:edited.revision,requestId:randomUUID(),purpose:'export',deliveryName,exportRange:{startFrame:1,endFrame:5}};
   const accepted = row(await services.call('timeline.render', input, {outputLocale:'en'})), exportId = String(accepted.id);
   worker = startWorker(store, services, providers);
   await worker.tick();
@@ -118,10 +122,15 @@ test('ultrawide output uses the frozen 21:9 asset name and preserves a literal d
   assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));
   const assetId = String(completed.assetId), output = row(store.get('assets',assetId));
   assert.deepEqual([output.width,output.height,output.name],[2520,1080,'Timeline export · 21x9.mp4']);
+  assert.equal(row(output.reference).path, '导出/Wide cut.mp4');
+  assert.equal(row(output.publication).relativePath, '导出/Wide cut.mp4');
+  assert.deepEqual(await readdir(path.join(root,'导出')), ['Wide cut.mp4']);
   assert.deepEqual(await services.call('timeline.render', input),accepted);
   const url = new URL(`http://127.0.0.1/media/${assetId}?download=1&exportId=${exportId}`);
   const download = readTimelineDeliveryDownload(store.db,url,{isTimelineRenderRecord,readOwnedAsset:(project,asset)=>readOwnedTimelineAsset(store.db,project,asset)});
-  assert.equal(download?.contentDisposition,timelineDeliveryContentDisposition(deliveryName,exportId)+`; mioon-export-id="${exportId}"; mioon-asset-id="${assetId}"`);
+  assert.ok(download);
+  assert.equal(download.reference?.path,'导出/Wide cut.mp4');
+  assert.equal(download.contentDisposition,timelineDeliveryContentDisposition(deliveryName,exportId)+`; mioon-export-id="${exportId}"; mioon-asset-id="${assetId}"`);
 });
 
 test('video generation registers the verified artifact after a ctime-only change before registration', async t => {
@@ -229,12 +238,18 @@ for(const float of [false,true])test(`completed ${float?'float-checked':'ordinar
  const completed=row(store.get('exports',exportId));assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));assert.equal(completed.assetId,artifact.assetId);assert.equal(children,0);assert.deepEqual(await readdir(path.join(root,'导出')),files);assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),originalReceipt);
  if(float)assert.ok(isTimelineExportAudioOutcome(completed,{assetSha256:artifact.info.sha256}));
  const output=row(await services.call('export.output.get',{projectId,exportId}));assert.equal(output.assetId,artifact.assetId);
+ const firstFile=path.join(root,'导出','Export artifact.mp4');
+ assert.equal(output.fileLocation,firstFile);
  assert.equal(row(store.get('assets',artifact.assetId)).name,float?'タイムライン書き出し · 9x16.mp4':'多軌時間軸-匯出-9x16.mp4');
  if(!float){
+  const firstBytes=await readFile(firstFile);
   const next=row(await services.call('timeline.render',{...input,requestId:randomUUID()},{outputLocale:'zh-Hant'}));
   worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;
   const second=row(store.get('exports',String(next.id)));
   assert.equal(second.status,'succeeded');
+  assert.equal(row(await services.call('export.output.get',{projectId,exportId:next.id})).fileLocation,path.join(root,'导出','Export artifact 2.mp4'));
+  assert.deepEqual(await readFile(firstFile),firstBytes);
+  assert.deepEqual((await readdir(path.join(root,'导出'))).sort(),['Export artifact 2.mp4','Export artifact.mp4']);
   assert.equal(row(store.get('assets',String(second.assetId))).name,'多軌時間軸-匯出-9x16 (2).mp4');
   assert.equal(row(store.get('assets',artifact.assetId)).name,'多軌時間軸-匯出-9x16.mp4');
  }

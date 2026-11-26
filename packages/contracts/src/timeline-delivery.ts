@@ -69,12 +69,20 @@ function boundedText(value: string, maxUnits: number, maxBytes: number): string 
   return result;
 }
 
-function filenameStem(name: string): string {
+function filenameStem(name: string, extension = /(?:\.[A-Za-z0-9]{1,16})+$/u): string {
   const safe = name.replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/gu, '_')
     .replace(/^[. ]+|[. ]+$/gu, '');
   // The extension is exclusively ours, even if the display title resembles one.
-  const stem = safe.replace(/(?:\.[A-Za-z0-9]{1,16})+$/u, '').replace(/[. ]+$/u, '') || 'export';
+  const stem = safe.replace(extension, '').replace(/[. ]+$/u, '') || 'export';
   return /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\.|$)/iu.test(stem) ? `_${stem}` : stem;
+}
+
+/** Ordinary project exports keep a readable name within the same portable filename budget. */
+export function projectVideoExportBasename(title: string, sequence: number): string {
+  const suffix = sequence === 1 ? '.mp4' : ` ${sequence}.mp4`;
+  const stem = boundedText(filenameStem(title.trim().replace(/[\uD800-\uDFFF]/gu, '_'), /\.mp4$/iu), 160 - suffix.length,
+    180 - encoder.encode(suffix).length).replace(/[. ]+$/u, '') || 'export';
+  return stem + suffix;
 }
 
 export function timelineDeliveryBasename(deliveryName: string, exportId: string): string {
