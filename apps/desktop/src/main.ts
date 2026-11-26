@@ -28,6 +28,7 @@ import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagn
 import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
 import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
@@ -1422,7 +1423,9 @@ function focusedUpdateDocument(): UpdateDocument | null {
 function initializeExternalAgents(): void {
   // Desktop lifecycle fixtures execute main without its imports.
   if (typeof createExternalAgentsHost !== 'function') return;
-  const homeDir = app.getPath('home');
+  // The OS may spell HOME through an alias (for example macOS /tmp).
+  // The installer validates physical paths and still rejects aliases in chosen directories.
+  const homeDir = realpathSync(app.getPath('home'));
   const resourceRoot = app.isPackaged ? process.resourcesPath : app.getAppPath();
   const packagedMac = app.isPackaged && process.platform === 'darwin';
   const cli = createCliInstaller({
