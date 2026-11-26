@@ -149,9 +149,11 @@ const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRo
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 import {sequenceEditRpcSchemas} from './sequence-edit-rpc.ts';
+import {sequenceActionSchemas,sequenceActionDescriptions} from './mio-sequence-public.ts';
 import {sequenceGenerationInputSchemas, sequenceInspectionSchemas} from './sequence-inspection.ts';
 export const schemas={
 ...sequenceEditRpcSchemas,
+...sequenceActionSchemas,
 ...sequenceInspectionSchemas,
 ...sequenceGenerationInputSchemas,
 ...exportControlSchemas,
@@ -352,6 +354,7 @@ Object.assign(descriptions,{
  'sequence.generation-inputs.get':'只读计算一个镜头的实际生成输入投影：模式、各引用线的角色/来源/顺序、服务不支持的原因、主图和实际用到几项；不写项目、任务或回执',
  'sequence.undo':'按格式5统一历史游标撤销一个已保存动作；仅当动作、位置和修订仍匹配时写回原逆补丁并推进业务修订',
  'sequence.redo':'按格式5统一历史游标重做一个已撤销动作，复用原正向补丁和身份；不重新规划或分配ID',
+ ...sequenceActionDescriptions,
  'timeline.history.get':'只读查询时间线编辑历史与撤销/重做位置；不创建时间线，不包含媒体或生成任务',
  'timeline.undo':'按时间线版本撤销一次轨道或片段编辑；保留稳定ID并递增版本，不撤销生成、花费或导出',
  'timeline.redo':'按时间线版本重做一次已撤销的轨道或片段编辑；使用稳定requestId恢复原请求结果',

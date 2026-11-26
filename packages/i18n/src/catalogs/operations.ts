@@ -885,6 +885,54 @@ export const operationMessages = {
     "en": "Redo one undone format-5 unified-history action with its original forward patch and identity; never re-plans or allocates ids",
     "ja": "フォーマット5の統合履歴カーソルに従って取り消したアクションをやり直し、元の順方向パッチと同一性を再利用します。再計画やID割り当ては行いません"
   },
+  "operation.sequence.action.edit": {
+    "zh-Hans": "预览格式5基础序列动作：连接、断开、插入、删除节点、成片内重排、移除、切开、跟随锁定和复制挪动；返回计划摘要、共享 envelope 和计划凭据，不改画板、时间线、回执或历史。确认请用 sequence.action.commit",
+    "zh-Hant": "預覽格式5基礎序列動作：連接、斷開、插入、刪除節點、成片內重排、移除、切開、跟隨鎖定和複製移動；回傳計畫摘要、共用 envelope 和計畫憑證，不改畫板、時間軸、回執或歷史。確認請用 sequence.action.commit",
+    "en": "Preview one basic format-5 sequence action: connect, disconnect, insert, delete a node, reorder, remove, split, follow/lock or copy-move; returns the plan summary, shared envelope and plan credential without changing the board, timeline, receipt or history. Confirm with sequence.action.commit",
+    "ja": "フォーマット5の基本シーケンス動作（接続、切断、挿入、ノード削除、並べ替え、削除、分割、追従/固定、コピー移動）をプレビューし、計画概要、共有 envelope、計画資格情報を返します。ボード、タイムライン、回執、履歴は変更しません。確定は sequence.action.commit を使用します"
+  },
+  "operation.sequence.board.edit": {
+    "zh-Hans": "预览格式5画板动作：画板根、镜头、节点的创建和更新、布局移动、归档恢复和复制；返回计划摘要和共享 envelope，不改画板、时间线、回执或历史",
+    "zh-Hant": "預覽格式5畫板動作：畫板根、鏡頭、節點的建立和更新、配置移動、封存恢復和複製；回傳計畫摘要和共用 envelope，不改畫板、時間軸、回執或歷史",
+    "en": "Preview one format-5 board action: create/update the root, shots and nodes, move layout, restore archives or duplicate; returns the plan summary and shared envelope without changing the board, timeline, receipt or history",
+    "ja": "フォーマット5のボード動作（ルート、ショット、ノードの作成・更新、配置移動、アーカイブ復元、複製）をプレビューし、計画概要と共有 envelope を返します。ボード、タイムライン、回執、履歴は変更しません"
+  },
+  "operation.sequence.reference.edit": {
+    "zh-Hans": "预览格式5素材引用线动作：连接、修改角色、断开和整组排序；返回计划摘要和共享 envelope，不改画板、时间线、回执或历史",
+    "zh-Hant": "預覽格式5素材引用線動作：連接、修改角色、斷開和整組排序；回傳計畫摘要和共用 envelope，不改畫板、時間軸、回執或歷史",
+    "en": "Preview one format-5 material reference-line action: attach, change role, detach or reorder the group; returns the plan summary and shared envelope without changing the board, timeline, receipt or history",
+    "ja": "フォーマット5の素材参照線動作（接続、役割変更、切断、グループ並べ替え）をプレビューし、計画概要と共有 envelope を返します。ボード、タイムライン、回執、履歴は変更しません"
+  },
+  "operation.sequence.subject.edit": {
+    "zh-Hans": "预览格式5主体绑定和主体卡动作；返回计划摘要和共享 envelope，不改画板、时间线、回执或历史",
+    "zh-Hant": "預覽格式5主體綁定和主體卡動作；回傳計畫摘要和共用 envelope，不改畫板、時間軸、回執或歷史",
+    "en": "Preview one format-5 subject binding or subject-card action; returns the plan summary and shared envelope without changing the board, timeline, receipt or history",
+    "ja": "フォーマット5の被写体バインドまたは被写体カード動作をプレビューし、計画概要と共有 envelope を返します。ボード、タイムライン、回執、履歴は変更しません"
+  },
+  "operation.sequence.previs.edit": {
+    "zh-Hans": "预览格式5预演创建和场景保存动作；返回计划摘要和共享 envelope，不改画板、时间线、回执或历史",
+    "zh-Hant": "預覽格式5預演建立和場景儲存動作；回傳計畫摘要和共用 envelope，不改畫板、時間軸、回執或歷史",
+    "en": "Preview one format-5 previs creation or scene-save action; returns the plan summary and shared envelope without changing the board, timeline, receipt or history",
+    "ja": "フォーマット5のプリビズ作成またはシーン保存動作をプレビューし、計画概要と共有 envelope を返します。ボード、タイムライン、回執、履歴は変更しません"
+  },
+  "operation.sequence.timeline.edit": {
+    "zh-Hans": "预览格式5时间线动作：字幕、台词、画幅、场景切开、分离声音、轨道、素材入轨和剪辑里生成；返回计划摘要和共享 envelope。生成动作会产生费用，使用稳定的 generation requestId，不自动重试未知结果",
+    "zh-Hant": "預覽格式5時間軸動作：字幕、台詞、畫幅、場景切開、分離聲音、軌道、素材入軌和剪輯裡生成；回傳計畫摘要和共用 envelope。生成動作會產生費用，使用穩定的 generation requestId，不自動重試未知結果",
+    "en": "Preview one format-5 timeline action: subtitles, dialogue, format, scene split, separate sound, tracks, insert asset or generate in editing; returns the plan summary and shared envelope. Generation may incur a fee, uses a stable generation requestId and never retries an unknown result",
+    "ja": "フォーマット5のタイムライン動作（字幕、台詞、画面比、シーン分割、音声分離、トラック、素材配置、編集中生成）をプレビューし、計画概要と共有 envelope を返します。生成は費用が発生し、安定した generation requestId を使用し、未知の結果を自動再試行しません"
+  },
+  "operation.sequence.clip.edit": {
+    "zh-Hans": "预览格式5片段属性编辑或兼容素材替换，返回计划摘要和共享 envelope",
+    "zh-Hant": "預覽格式5片段屬性編輯或相容素材替換，回傳計畫摘要和共用 envelope",
+    "en": "Preview a format-5 clip property edit or compatible source replacement and return the plan summary and shared envelope",
+    "ja": "フォーマット5のクリップ属性編集や互換素材への差し替えをプレビューし、計画概要と共有 envelope を返します"
+  },
+  "operation.sequence.action.commit": {
+    "zh-Hans": "凭预览返回的共享 envelope 和计划凭据提交格式5序列动作；计划不匹配时拒绝。生成动作按付费和稳定请求规则执行，未知结果不自动重试",
+    "zh-Hant": "憑預覽回傳的共用 envelope 和計畫憑證提交格式5序列動作；計畫不符合時拒絕。生成動作按付費和穩定請求規則執行，未知結果不自動重試",
+    "en": "Commit one format-5 sequence action only with the previewed shared envelope and plan credential; mismatched plans are refused. Generation follows the paid stable-request rules and never retries an unknown result",
+    "ja": "プレビューで返した共有 envelope と計画資格情報でのみフォーマット5シーケンス動作をコミットします。計画が一致しない場合は拒否します。生成は課金と安定リクエストの規則に従い、未知の結果を自動再試行しません"
+  },
   "operation.timeline.get": {
     "zh-Hans": "读取持久化30fps多轨时间线；旧项目首次读取时仅创建空轨道",
     "zh-Hant": "讀取持久化30fps多軌時間軸；舊專案首次讀取時僅建立空軌道",

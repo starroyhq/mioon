@@ -1,9 +1,10 @@
-/** Bounded Mio/MT write actions for format-5 sequences.
+/** Bounded Mio and external write actions for format-5 sequences.
  *
  * One model action is expanded and previewed server-side into the shared
  * envelope; the tool runtime obtains approval for the stable impact, then
  * commits exactly that envelope + plan digest. The model never supplies an
- * envelope, allocation, receipt or raw generated id.
+ * envelope, allocation, receipt or raw generated id. External actions share
+ * the preview and commit implementation with user-origin history.
  */
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -184,13 +185,14 @@ function summarize(action: MioSequenceAction, envelope: SequenceEditEnvelope, wa
  * separated-sound clip and a created audio track are named in the language the
  * user talks to Mio in. */
 export function previewMioSequenceAction(store: ProjectStore, projectId: string, requestId: string,
-  action: MioSequenceAction, options: {readonly locale?: AgentTaskLocale} = {}): MioSequencePlan {
+  action: MioSequenceAction, {origin = 'mio', locale}: {
+    readonly origin?: 'user' | 'mio'; readonly locale?: AgentTaskLocale;
+  } = {}): MioSequencePlan {
   requireF5(store);
   projectCheck(store, projectId);
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
-  const request: Row = {projectId, requestId, origin: 'mio',
-    ...(options.locale !== undefined ? {locale: options.locale} : {})};
+  const request: Row = {projectId, requestId, origin, ...(locale !== undefined ? {locale} : {})};
   if (action.kind === 'subject-binding') request.subjectIntent = subjectIntent(action);
   else if (action.kind === 'subject-card-create' || action.kind === 'subject-card-delete')
     request.subjectIntent = subjectCardIntent(store, action);
@@ -208,6 +210,25 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (action.kind === 'dialogue') request.dialogueIntent = dialogueIntent(action);
   else if (action.kind === 'clip-properties') request.propertiesIntent = {side: 'timeline',
     operation: {kind: 'clip-properties', edits: action.edits}};
+  else if (action.kind === 'replace-source') {
+    const clip = timeline.clips.find(item => item.id === action.clipId);
+    if (!clip) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '片段不属于当前格式 5 时间线。', 404, {clipId: action.clipId});
+    if (clip.sourceState !== 'ready') throw new AppError('INVALID_MEDIA', '仅可替换已就绪片段的来源。', 409, {clipId: clip.id});
+    if (clip.assetId === action.assetId) throw new AppError('SEQUENCE_EDIT_NOOP', '片段已经使用此素材。', 409, {clipId: clip.id});
+    if (clip.sequenceSource?.kind === 'shot') {
+      const versionId = action.versionId;
+      if (!versionId || !store.db.prepare(
+        "SELECT 1 FROM project.versions WHERE id=? AND projectId=? AND json_extract(data,'$.assetId')=?",
+      ).get(versionId, projectId, action.assetId)) {
+        throw new AppError('INVALID_MEDIA', '主轨镜头必须指定对应素材的镜头版本。', 409, {clipId: clip.id});
+      }
+      request.intents = [sequenceSyncIntent({kind: 'clip-version', clipId: clip.id, versionId, mode: 'locked'})];
+    } else {
+      const sourceReplacement = {assetId: action.assetId, ...(action.versionId === undefined ? {} : {versionId: action.versionId})};
+      request.propertiesIntent = {side: 'timeline',
+        operation: {kind: 'clip-properties', edits: [{clipId: clip.id, patch: {sourceReplacement}}]}};
+    }
+  }
   else if (action.kind === 'separate-sound') request.soundIntent = {side: 'timeline',
     operation: {kind: 'separate-sound', clipId: action.clipId}};
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
@@ -224,9 +245,9 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
     placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',
-    // Mio's approved paid action places and submits in one commit.
+    // The confirmed action places and submits in one commit using the frozen request id.
     submit: true,
-    settings: {requestId: `mio-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
+    settings: {requestId: `${origin === 'mio' ? 'mio' : 'cli'}-${requestId}`.slice(0, 200), providerId: action.providerId, model: action.model,
       region: action.region, prompt: action.prompt, aspectRatio: action.aspectRatio, duration: action.duration,
       ...(action.parameters ? {parameters: action.parameters} : {}),
       ...(action.connectionId ? {connectionId: action.connectionId} : {}),
@@ -235,10 +256,16 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   const result = createFormat5SequenceEditService(store).preview(request) as Row;
   if (!result || result.ok === false) {
     const code = String(result?.code ?? 'SEQUENCE_EDIT_CONTRACT_INVALID');
-    throw new AppError(code, '格式 5 序列动作无法预览，请重新读取后再试。', 409, {ids: result?.ids ?? []});
+    const message = action.kind === 'replace-source' && typeof result?.message === 'string'
+      ? result.message : '格式 5 序列动作无法预览，请重新读取后再试。';
+    throw new AppError(code, message, 409, {ids: result?.ids ?? []});
+  }
+  const warnings = (result.warnings ?? []) as readonly {code: string; clipId?: string}[];
+  if (action.kind === 'replace-source' && warnings.some(warning => warning.code === 'SOURCE_TOO_SHORT' && warning.clipId === action.clipId)) {
+    throw new AppError('SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', '新来源不够长，无法保留片段的入点和长度。', 409, {clipId: action.clipId});
   }
   return {envelope: result.envelope as SequenceEditEnvelope, planDigest: String(result.planDigest),
-    summary: summarize(action, result.envelope as SequenceEditEnvelope, result.warnings as readonly unknown[] ?? [])};
+    summary: summarize(action, result.envelope as SequenceEditEnvelope, warnings)};
 }
 /** Commit exactly the previewed envelope; repeated commits replay the receipt. */
 export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan,

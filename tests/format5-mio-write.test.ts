@@ -14,7 +14,8 @@ import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
+import {format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (n: number): string => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -192,22 +193,34 @@ test('FR-A clip properties are opened as a Mio action through the same envelope'
   assert.equal((store.get('timelines',timelineId) as any).clips.find((clip: any)=>clip.id===clipA).name,'A');
 });
 
-test('D5: user undo sees the Mio stack as blocked and Mio undo cannot cross a user action', t => {
+test('D5: user undo sees the Mio stack as blocked and Mio undo cannot cross a user action', async t => {
   const store=fixture(t);
   const service=createFormat5SequenceEditService(store);
   const userFirst=service.preview({projectId,requestId:req(20),origin:'user',
     propertiesIntent:{side:'timeline',operation:{kind:'clip-properties',edits:[{clipId:clipA,patch:{name:'User below'}}]}}}) as any;
   const userFirstReceipt=service.commit({projectId,envelope:userFirst.envelope,expectedPlanDigest:userFirst.planDigest}) as any;
-  const mioPlan=previewMioSequenceAction(store,projectId,req(21),{kind:'set-mode',clipId:clipA,mode:'locked',versionId:versionA});
-  const mioReceipt=commitMioSequenceAction(store,mioPlan);
+  const tools=createAgentTaskTools({store,services:{generationAvailability:{mockAllowed:true}} as never});
+  t.after(()=>tools.dispose());
+  const mioAction=tools.prepare({projectId,operation:'mioon_sequence_edit',
+    input:{kind:'set-mode',clipId:clipA,mode:'locked',versionId:versionA}});
+  const stepId=randomUUID();
+  let recorded=0;
+  const outcome=await tools.execute(mioAction,{
+    runId:randomUUID(),stepId,requestId:stepId,beforeEffect(){},recordInside(){recorded++;},
+  });
+  assert.equal((outcome.result as {status?:string}).status,'applied');
+  assert.equal(recorded,1);
   const userView=readSequenceEditHistory(store,'user');
   assert.equal(userView.undo?.actionId,userFirstReceipt.actionId);
   assert.equal(userView.undoBlockedBy,'mio');
+  assert.equal(format5UserUndoBlocked(userView),true);
   assert.throws(()=>service.undo({projectId,requestId:req(22),actionId:userFirstReceipt.actionId,
     expected:{position:userView.position,revision:userView.revision},origin:'user'}),
   {code:'SEQUENCE_EDIT_HISTORY_CONFLICT'});
   const mioView=readSequenceEditHistory(store,'mio');
-  assert.equal(mioView.undo?.actionId,mioReceipt.actionId);
+  const mioActionId=mioView.undo?.actionId;
+  assert.ok(mioActionId);
+  assert.equal(mioView.undo?.origin,'mio');
   assert.equal(mioView.undoBlockedBy,null);
   // A real user action above the Mio action makes the user stack top again,
   // while the Mio stack is now blocked by a later user action.
@@ -216,7 +229,7 @@ test('D5: user undo sees the Mio stack as blocked and Mio undo cannot cross a us
   service.commit({projectId,envelope:userTopPreview.envelope,expectedPlanDigest:userTopPreview.planDigest});
   const blockedMio=readSequenceEditHistory(store,'mio');
   assert.equal(blockedMio.undoBlockedBy,'user');
-  assert.throws(()=>prepareMioSequenceUndo(store,projectId,req(24),mioReceipt.actionId),{code:'SEQUENCE_EDIT_HISTORY_CONFLICT'});
+  assert.throws(()=>prepareMioSequenceUndo(store,projectId,req(24),mioActionId),{code:'SEQUENCE_EDIT_HISTORY_CONFLICT'});
   const userTop=readSequenceEditHistory(store,'user');
   assert.equal(userTop.undoBlockedBy,null);
   assert.equal(userTop.undo?.origin,undefined);

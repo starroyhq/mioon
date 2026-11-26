@@ -244,6 +244,7 @@ test('GE-a Mio action previews and commits the same placeholder envelope', async
   const clip = timeline.clips.find((item: any) => item.id === allocation.clipId);
   assert.equal(clip.sourceState, 'placeholder');
   assert.equal(submitted.shotId, allocation.nodeId);
+  assert.equal(submitted.requestId, 'mio-mio-generate-preview');
   f.store.close();
 });
 

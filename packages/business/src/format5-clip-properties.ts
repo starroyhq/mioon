@@ -1,7 +1,7 @@
 /** FR-A: format-5 clip properties as one shared `sequence-edit` action.
  *
  * The user edits one or more clips (transform, transition, gain, fades, colour,
- * audio role, volume envelope, name). Nothing here changes timeline structure:
+ * audio role, volume envelope, name, source). These edits keep timeline structure:
  * frames, tracks, anchors and chain order stay as they are. The resulting
  * before/after clip rows travel in the ordinary timeline patch, so undo/redo use
  * the same history-13 entry and the same entity delta as TSb.
@@ -10,7 +10,7 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import {isClipTransform, validateClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import type {ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import {canonicalClipTransition, clipTransitionFits, clipTransitionPredecessor, validateClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
-import type {ClipTransition, TransitionSource, TransitionSources} from '../../contracts/src/timeline-clip-transition.ts';
+import type {ClipTransition, TransitionClip, TransitionSource, TransitionSources} from '../../contracts/src/timeline-clip-transition.ts';
 import {isTimelineClipColour} from '../../contracts/src/timeline-colour.ts';
 import {isClipAudioRole, getTimelineAudioRoleIssue} from '../../contracts/src/timeline-audio-role.ts';
 import {isVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope-processing.ts';
@@ -25,12 +25,15 @@ import type {ProjectStore} from './project-file/store.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
-import {applySequenceEditTimelineDelta} from './format5-sequence-sync.ts';
+import {applySequenceEditStateDelta, applySequenceEditTimelineDelta, planFixedMediaClipSources} from './format5-sequence-sync.ts';
 import {prepareSequenceEditHistory, findSequenceEditReceipt, sequenceEditInputDigest, writeSequenceEditAction,
   writeSequenceEditFailure} from './format5-editor-history.ts';
 import type {SequenceEditReceiptDraft} from './format5-editor-history.ts';
 import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {createOwnedMediaGraphReader} from './inspection.ts';
+import {replaceClipSource, sameClipSourceCategory} from './timeline-replacement.ts';
+import {validateTimelineVolumeEnvelopeClip} from './timeline-volume-envelope-admission.ts';
 
 type Row = Record<string, unknown>;
 const now = (): string => new Date().toISOString();
@@ -44,8 +47,8 @@ const failure = (code: string): {ok: false; code: string; ids: readonly string[]
 const UNCHANGED_TIMELINE: Omit<SequenceEditTimelineDelta, 'clips'> = Object.freeze({
   cues: [], removedClipIds: [], removedCueIds: [], baseline: Object.freeze({kind: 'unchanged' as const}),
 });
-const stateDelta = (clips: readonly Format5Clip[]): SequenceEditStateDelta =>
-  ({board: {writes: [], removals: []}, timeline: {...UNCHANGED_TIMELINE, clips}});
+const stateDelta = (clips: readonly Format5Clip[], coupled?: SequenceEditStateDelta): SequenceEditStateDelta =>
+  ({board: coupled?.board ?? {writes: [], removals: []}, timeline: {...(coupled?.timeline ?? UNCHANGED_TIMELINE), clips}});
 
 export interface ClipPropertiesPlan {
   readonly before: SequenceEditStateDelta;
@@ -54,14 +57,16 @@ export interface ClipPropertiesPlan {
 }
 
 interface ClipAsset {readonly mimeType: string; readonly duration: number | null; readonly hasAudio: boolean; readonly frames: number}
-function assetReader(db: DatabaseSync): (assetId: string) => ClipAsset | null {
+function assetReader(db: DatabaseSync, projectId: string): (assetId: string) => ClipAsset | null {
   const cache = new Map<string, ClipAsset | null>();
+  const select = db.prepare('SELECT data FROM project.assets WHERE id=? AND projectId=?');
   return assetId => {
     if (!cache.has(assetId)) {
-      const row = db.prepare('SELECT id,data FROM project.assets WHERE id=?').get(assetId) as {id: string; data: string} | undefined;
+      const row = select.get(assetId, projectId) as {data: string} | undefined;
       if (!row) {cache.set(assetId, null);} else {
         try {
           const data = JSON.parse(row.data) as Row;
+          if (data.id !== assetId || data.projectId !== projectId) {cache.set(assetId, null); return null;}
           const duration = typeof data.duration === 'number' && Number.isFinite(data.duration) ? data.duration : null;
           cache.set(assetId, {mimeType: String(data.mimeType ?? ''), duration,
             hasAudio: data.hasAudio === true, frames: sourceFrameCount(duration) ?? 0});
@@ -76,10 +81,62 @@ function clipSource(asset: (id: string) => ClipAsset | null, clip: Format5Clip):
   return asset(clip.assetId)!;
 }
 
-function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectStore, clip: Format5Clip, patch: SequenceEditClipPropertiesPatch): Format5Clip {
+const videoTrackMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm']);
+const audioTrackMimes = new Set(['audio/wav', 'audio/mpeg', 'audio/mp4']);
+
+function planReplacement(store: ProjectStore, asset: (id: string) => ClipAsset | null, clip: Format5Clip,
+  track: Format5Timeline['tracks'][number], replacement: NonNullable<SequenceEditClipPropertiesPatch['sourceReplacement']>): Format5Clip {
+  const details = {clipId: clip.id, assetId: replacement.assetId};
+  if (clip.sourceState !== 'ready' || clip.sequenceSource?.kind === 'shot') {
+    invalid('只能直接替换已有的普通素材；主轨镜头片段须切换镜头版本', details);
+  }
+  if (clip.assetId === replacement.assetId) invalid('片段已使用此素材，无需替换', details);
+  const previous = clipSource(asset, clip);
+  const source = asset(replacement.assetId);
+  if (!source || !sameClipSourceCategory(previous.mimeType, source.mimeType)) {
+    invalid('替换素材必须属于此项目，且与原素材同为视频、音频或图片', details);
+  }
+  const compatible = track.kind === 'video' ? videoTrackMimes.has(source.mimeType)
+    : clip.soundOnly ? source.mimeType.startsWith('video/') && source.hasAudio : audioTrackMimes.has(source.mimeType);
+  if (!compatible) invalid('替换素材不适用于该轨道', details);
+  if (source.mimeType.startsWith('image/') ? clip.sourceInFrame !== 0
+    : clip.sourceInFrame + clip.durationFrames > source.frames) {
+    invalid('替换素材无法保留原片段的素材入点和时长', details);
+  }
+  const fadeIssue = getTimelineFadeIssue(clip, source);
+  if (fadeIssue) invalid(fadeIssue.message, details);
+  const roleIssue = getTimelineAudioRoleIssue(clip, source);
+  if (roleIssue) invalid(roleIssue.message, details);
+  try {validateTimelineVolumeEnvelopeClip(clip, source);}
+  catch (error) {
+    if (error instanceof AppError) invalid(error.message, details);
+    throw error;
+  }
+  let version: {id: string; shotId: string} | null = null;
+  if (replacement.versionId !== undefined) {
+    if (clip.sequenceSource?.kind === 'media') invalid('主轨固定素材只支持直接指定素材', details);
+    try {
+      const value = createOwnedMediaGraphReader(store.db, store.projectId).version(replacement.versionId, undefined, replacement.assetId);
+      if (typeof value.id !== 'string' || typeof value.shotId !== 'string') invalid('版本必须属于替换素材', details);
+      version = {id: value.id, shotId: value.shotId};
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'INSPECTION_UNAVAILABLE') invalid('版本必须属于替换素材', details);
+      throw error;
+    }
+  }
+  const next = {...clip};
+  replaceClipSource(next, replacement.assetId, version);
+  return next;
+}
+
+function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectStore, clip: Format5Clip,
+  track: Format5Timeline['tracks'][number], patch: SequenceEditClipPropertiesPatch): Format5Clip {
   const keys = Object.keys(patch);
   if (keys.length === 0) invalid('片段属性补丁不能为空', {clipId: clip.id});
-  const track = trackOf(store, clip.trackId);
+  if (patch.sourceReplacement !== undefined) {
+    if (keys.length !== 1) invalid('替换来源需要单独确认', {clipId: clip.id});
+    return planReplacement(store, asset, clip, track, patch.sourceReplacement);
+  }
   const next: Format5Clip = {...clip};
   if (patch.transform !== undefined) {
     if (track.kind !== 'video') invalid('只有视频轨片段可以设置变换', {clipId: clip.id});
@@ -156,28 +213,30 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
   return next;
 }
 
-function trackOf(store: ProjectStore, trackId: string): {kind: 'video' | 'audio'} {
-  const record = readFormat5TimelineRecord(store.db, 'project');
-  const track = record?.tracks.find(item => item.id === trackId);
-  if (!track) invalid('片段轨道不存在', {trackId});
-  return {kind: track.kind};
-}
-
 /** Pure planning read: returns the before/after clip rows for one property action. */
 export function planClipProperties(store: ProjectStore, intent: SequenceEditClipPropertiesIntent): ClipPropertiesPlan {
   if (!isFormat5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
   const record = readFormat5TimelineRecord(store.db, 'project');
   if (!record) invalid('项目没有格式 5 时间线');
-  const asset = assetReader(store.db);
+  const asset = assetReader(store.db, store.projectId);
   const clips = new Map(record.clips.map(clip => [clip.id, clip]));
+  const tracks = new Map(record.tracks.map(track => [track.id, track]));
   const seen = new Set<string>();
+  const replacedIds = new Set<string>();
+  const mainReplacements: Format5Clip[] = [];
   const before: Format5Clip[] = [], after: Format5Clip[] = [], nextById = new Map<string, Format5Clip>();
   for (const edit of intent.operation.edits) {
     if (seen.has(edit.clipId)) invalid('同一个片段不能在一次动作里出现两次', {clipId: edit.clipId});
     seen.add(edit.clipId);
     const clip = clips.get(edit.clipId);
     if (!clip) invalid('片段不属于这个时间线', {clipId: edit.clipId});
-    const next = validatePatch(asset, store, clip, edit.patch);
+    const track = tracks.get(clip.trackId);
+    if (!track) invalid('片段轨道不存在', {trackId: clip.trackId});
+    const next = validatePatch(asset, store, clip, track, edit.patch);
+    if (edit.patch.sourceReplacement !== undefined) {
+      replacedIds.add(clip.id);
+      if (clip.trackId === record.mainTrack.trackId) mainReplacements.push(next);
+    }
     nextById.set(clip.id, next);
     if (JSON.stringify(clip) === JSON.stringify(next)) continue;
     before.push(clip);
@@ -190,21 +249,24 @@ export function planClipProperties(store: ProjectStore, intent: SequenceEditClip
     const value = asset(assetId);
     return value ? {image: value.mimeType.startsWith('image/'), frames: value.frames} : null;
   };
-  for (const next of after) {
-    const transition = (next as Row).transitionIn;
+  const changedIds = new Set(after.map(clip => clip.id));
+  for (const next of replacedIds.size ? draft : after) {
+    const transition = next.transitionIn;
     if (transition === undefined || transition === null) continue;
-    const draftClip = draft.find(clip => clip.id === next.id) ?? next;
-    if (!clipTransitionPredecessor(draft as never, draftClip as never)) invalid('同一轨道上没有在此片段开始处结束的片段，不能设置转场', {clipId: next.id});
-    if (!clipTransitionFits(draft as never, draftClip as never, (transition as ClipTransition).durationFrames, sources)) {
+    const predecessor = clipTransitionPredecessor<TransitionClip>(draft as never, next as never);
+    if (!changedIds.has(next.id) && !(predecessor && replacedIds.has(predecessor.id))) continue;
+    if (!predecessor) invalid('同一轨道上没有在此片段开始处结束的片段，不能设置转场', {clipId: next.id});
+    if (!clipTransitionFits(draft as never, next as never, (transition as ClipTransition).durationFrames, sources)) {
       invalid('两段素材余量或片段长度不够这个转场', {clipId: next.id});
     }
   }
-  return {before: stateDelta(before), after: stateDelta(after), changedClipIds: after.map(clip => clip.id)};
+  const coupled = mainReplacements.length ? planFixedMediaClipSources(store, record, mainReplacements) : undefined;
+  return {before: stateDelta(before, coupled?.before), after: stateDelta(after, coupled?.after), changedClipIds: [...changedIds]};
 }
 
-function clipTargetRevision(store: ProjectStore, clipId: string): number {
+function targetRevision(store: ProjectStore, kind: 'clip' | 'node', id: string): number {
   const row = store.db.prepare(`SELECT revision FROM project.agent_task_target_revisions_v2
-    WHERE projectId=? AND kind='timeline_clip' AND targetId=?`).get(store.projectId, clipId) as Row | undefined;
+    WHERE projectId=? AND kind=? AND targetId=?`).get(store.projectId, kind === 'clip' ? 'timeline_clip' : 'node', id) as Row | undefined;
   return row && Number.isSafeInteger(row.revision) ? Math.max(1, Number(row.revision)) : 1;
 }
 
@@ -222,9 +284,13 @@ export function buildClipPropertiesEnvelope(store: ProjectStore, intent: Sequenc
   const clipIds = plan.changedClipIds;
   const mainIds = clipIds.filter(id => record.clips.some(clip => clip.id === id && clip.trackId === mainTrackId));
   const otherIds = clipIds.filter(id => !mainIds.includes(id));
-  const impact: SequenceEditImpact = {nodeIds: [], edgeIds: [], mainTrackClipIds: mainIds,
+  const nodeIds = plan.after.board.writes.map(write => write.id);
+  const impact: SequenceEditImpact = {nodeIds, edgeIds: [], mainTrackClipIds: mainIds,
     otherTrackItemIds: otherIds, subtitleCueIds: []};
-  const targets: SequenceEditExpectedTarget[] = clipIds.map(id => ({kind: 'clip', id, revision: clipTargetRevision(store, id)}));
+  const targets: SequenceEditExpectedTarget[] = [
+    ...clipIds.map(id => ({kind: 'clip' as const, id, revision: targetRevision(store, 'clip', id)})),
+    ...nodeIds.map(id => ({kind: 'node' as const, id, revision: targetRevision(store, 'node', id)})),
+  ];
   const content = readProjectContentStamp(store.db).contentSequence;
   const sync = store.db.prepare('SELECT revision FROM project.sequence_sync_state').get() as Row | undefined;
   return {
@@ -238,7 +304,8 @@ export function buildClipPropertiesEnvelope(store: ProjectStore, intent: Sequenc
 }
 
 function sameTargets(store: ProjectStore, targets: readonly SequenceEditExpectedTarget[]): boolean {
-  return targets.every(target => target.kind === 'clip' && target.revision === clipTargetRevision(store, target.id));
+  return targets.every(target => (target.kind === 'clip' || target.kind === 'node')
+    && target.revision === targetRevision(store, target.kind, target.id));
 }
 
 export interface ClipPropertiesPreview {
@@ -248,7 +315,7 @@ export interface ClipPropertiesPreview {
 }
 export function previewClipProperties(store: ProjectStore, input: {
   readonly requestId: string; readonly actionId?: string; readonly origin?: 'user' | 'mio'; readonly propertiesIntent: SequenceEditClipPropertiesIntent;
-}): ClipPropertiesPreview | {ok: false; code: string; ids: readonly string[]} {
+}): ClipPropertiesPreview | {ok: false; code: string; ids: readonly string[]; message?: string} {
   if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   try {
     const state = prepareSequenceEditHistory(store).state;
@@ -257,13 +324,18 @@ export function previewClipProperties(store: ProjectStore, input: {
       historyPosition: state.position, historyRevision: state.revision});
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
-    if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_NOOP') return failure('SEQUENCE_EDIT_NOOP');
-    if (error instanceof AppError) return failure(error.code);
-    throw error;
+    if (!(error instanceof AppError)) throw error;
+    if (error.code === 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'
+      && input.propertiesIntent.operation.edits.some(edit => edit.patch.sourceReplacement !== undefined)) {
+      const details = error.details as {clipId?: string} | undefined;
+      const ids = typeof details?.clipId === 'string' ? [details.clipId] : [];
+      return {ok: false, code: error.code, ids, message: error.message};
+    }
+    return failure(error.code);
   }
 }
 
-/** One transaction: replay, CAS, property validation, timeline delta, one history entry. */
+/** One transaction: replay, CAS, property validation, entity deltas and one history entry. */
 export function runClipPropertiesSync(store: ProjectStore, envelope: SequenceEditEnvelope): {
   readonly ok: true; readonly actionId: string; readonly operation: string; readonly patch: unknown;
   readonly receipt: unknown;
@@ -301,10 +373,13 @@ export function runClipPropertiesSync(store: ProjectStore, envelope: SequenceEdi
       writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
       return failure('SEQUENCE_EDIT_NOOP');
     }
-    const applied = applySequenceEditTimelineDelta(store, plan.after.timeline);
+    const nodeCount = plan.after.board.writes.length;
+    const applied = nodeCount
+      ? applySequenceEditStateDelta(store, plan.after)
+      : {...applySequenceEditTimelineDelta(store, plan.after.timeline), syncRevision: Number(sync?.revision ?? 1)};
     const contentRevision = readProjectContentStamp(store.db).contentSequence;
     const affected = {
-      nodes: 0, edges: 0,
+      nodes: nodeCount, edges: 0,
       mainTrackClips: plan.changedClipIds.filter(id => record.clips.some(clip => clip.id === id && clip.trackId === record.mainTrack.trackId)).length,
       otherTrackItems: plan.changedClipIds.filter(id => !record.clips.some(clip => clip.id === id && clip.trackId === record.mainTrack.trackId)).length,
       subtitleCues: 0,
@@ -313,7 +388,7 @@ export function runClipPropertiesSync(store: ProjectStore, envelope: SequenceEdi
       version: SEQUENCE_EDIT_CONTRACT_VERSION, requestId: envelope.requestId, inputDigest,
       projectId: store.projectId, actionId: envelope.actionId,
       operation: sequenceEditEnvelopeOperationName(envelope), originSide: envelope.originSide, status: 'applied',
-      affected, contentRevision, timelineRevision: applied.timelineRevision, syncRevision: Number(sync?.revision ?? 1),
+      affected, contentRevision, timelineRevision: applied.timelineRevision, syncRevision: applied.syncRevision,
     };
     const patch = {version: SEQUENCE_EDIT_CONTRACT_VERSION, before: plan.before, after: plan.after};
     const stored = writeSequenceEditAction(store, {envelope, patch, receipt});

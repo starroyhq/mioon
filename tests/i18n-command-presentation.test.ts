@@ -85,7 +85,9 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   assert.equal(typeof retiredOrigin, 'string');
   expectedOperations.unshift('project.rename', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
   expectedOperations.unshift(...round2Operations);
-  expectedOperations.unshift('sequence.preview', 'sequence.commit', 'sequence.history.get', 'sequence.undo', 'sequence.redo', 'sequence.board.get', 'sequence.inspect');
+  expectedOperations.unshift('sequence.preview', 'sequence.commit', 'sequence.history.get', 'sequence.undo', 'sequence.redo', 'sequence.board.get',
+    'sequence.action.edit', 'sequence.board.edit', 'sequence.reference.edit', 'sequence.subject.edit', 'sequence.previs.edit',
+    'sequence.timeline.edit', 'sequence.clip.edit', 'sequence.action.commit', 'sequence.inspect');
   expectedOperations.splice(expectedOperations.indexOf('sequence.inspect') + 1, 0, 'sequence.generation-inputs.get');
   expectedOperations.splice(expectedOperations.indexOf('export.output.get') + 1, 0, 'clip.audio.export', 'clip.audio.export.get');
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
