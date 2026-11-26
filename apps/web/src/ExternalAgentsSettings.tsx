@@ -31,6 +31,7 @@ import {
   externalAgentSkillBadge,
   externalAgentsErrorMessage,
   externalAgentsReasonMessage,
+  hasExternalAgentsBridge,
   orderedExternalAgentSkills,
   readExternalAgentsBridge,
   readExternalAgentsErrorCode,
@@ -84,7 +85,29 @@ function CopyIconButton({
   </span>;
 }
 
+function copyDesktopText(text: string): boolean {
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function') return false;
+  let copied = false;
+  function onCopy(event: ClipboardEvent) {
+    if (!event.isTrusted || !event.clipboardData) return;
+    event.clipboardData.setData('text/plain', text);
+    event.preventDefault();
+    copied = true;
+  }
+  document.addEventListener('copy', onCopy, true);
+  try {
+    // The desktop session denies the asynchronous clipboard API. Copy while
+    // the button's user gesture is still active, without changing the selection.
+    return document.execCommand('copy') && copied;
+  } catch {
+    return false;
+  } finally {
+    document.removeEventListener('copy', onCopy, true);
+  }
+}
+
 const defaultCopyText = async (text: string): Promise<void> => {
+  if (hasExternalAgentsBridge() && copyDesktopText(text)) return;
   if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
     throw new Error('Clipboard unavailable');
   }

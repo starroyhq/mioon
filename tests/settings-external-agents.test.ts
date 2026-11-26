@@ -571,6 +571,76 @@ test('F4 and F5 show PATH popover only when onPath is no, copy absolute path and
   h.unmount();
 });
 
+test('F5 uses the desktop button gesture to copy plain text and preserves the browser clipboard path', async t => {
+  const host = globalThis as Record<string, unknown>;
+  const properties = ['__mioonExternalAgents', 'document', 'navigator'] as const;
+  const original = properties.map(key => Object.getOwnPropertyDescriptor(host, key));
+  t.after(() => properties.forEach((key, index) => {
+    const descriptor = original[index];
+    if (descriptor) Object.defineProperty(host, key, descriptor);
+    else delete host[key];
+  }));
+
+  const view = installedView();
+  const fake = createFakeBridge(view);
+  host.__mioonExternalAgents = fake.bridge;
+  const desktopCopies: Array<{ type: string; text: string }> = [];
+  const browserCopies: string[] = [];
+  type CopyListener = (event: {
+    isTrusted: boolean;
+    clipboardData: { setData(type: string, text: string): void };
+    preventDefault(): void;
+  }) => void;
+  let onCopy: CopyListener | undefined;
+  Object.defineProperty(host, 'document', { configurable: true, value: {
+    addEventListener(event: string, listener: CopyListener, capture: boolean) {
+      assert.equal(event, 'copy');
+      assert.equal(capture, true);
+      onCopy = listener;
+    },
+    removeEventListener(event: string, listener: CopyListener, capture: boolean) {
+      assert.equal(event, 'copy');
+      assert.equal(listener, onCopy);
+      assert.equal(capture, true);
+      onCopy = undefined;
+    },
+    execCommand(command: string) {
+      assert.equal(command, 'copy');
+      let defaultPrevented = false;
+      onCopy!({
+        isTrusted: true,
+        clipboardData: { setData: (type, text) => { desktopCopies.push({ type, text }); } },
+        preventDefault: () => { defaultPrevented = true; },
+      });
+      return defaultPrevented;
+    },
+  } });
+  Object.defineProperty(host, 'navigator', { configurable: true, value: {
+    clipboard: { writeText: async (text: string) => { browserCopies.push(text); } },
+  } });
+
+  const h = mountExternalAgents({ bridge: fake.bridge });
+  t.after(h.unmount);
+  h.render();
+  await flush();
+  h.render();
+  h.find('external-agents-copy-cli-path')!.props.onClick!();
+  assert.deepEqual(desktopCopies, [{ type: 'text/plain', text: view.cli.commandPath }]);
+  assert.equal(onCopy, undefined);
+  assert.deepEqual(browserCopies, []);
+  await flush();
+  h.render();
+  assert.equal(h.find('external-agents-copy-cli-path')?.props['data-copied'], 'true');
+
+  delete host.__mioonExternalAgents;
+  h.find('external-agents-copy-mcp-codex')!.props.onClick!();
+  await flush();
+  h.render();
+  assert.deepEqual(browserCopies, [view.mcpCommands.codex]);
+  assert.equal(desktopCopies.length, 1);
+  assert.equal(h.find('external-agents-copy-mcp-codex')?.props['data-copied'], 'true');
+});
+
 test('F2 and F3 render needs-repair and install-failed states and trigger repair, choose-location, and retry actions', async () => {
   const fake = createFakeBridge(sampleView({
     appVersion: '0.4.1',
