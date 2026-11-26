@@ -141,10 +141,11 @@ async function inspectAsar(resources: string, run: MacCheckRunner = async (_name
   await run('asar-content', async () => {
     const files = asar.listPackage(archive);
     if (files.length < 10) fail('ASAR_CONTENT_MISSING');
-    const allowed = new Set(['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web', 'licenses', 'icons']);
+    const allowed = new Set(['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'cli-runtime.cjs', 'mcp-runtime.cjs',
+      'package.json', 'web', 'licenses', 'icons']);
     for (const raw of files) {
       const entry = raw.replace(/^\//, '');
-      if (!allowed.has(entry.split('/')[0]) || entry.split('/').some(part => part === '..' || part === '.') || /(?:^|\/)(?:data|workspace|media|\.env|access-token|mcp-token|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(entry)) fail('ASAR_UNEXPECTED_CONTENT');
+      if (!allowed.has(entry.split('/')[0]) || entry.split('/').some(part => part === '..' || part === '.') || /(?:^|\/)(?:data|workspace|media|\.env|access-token|mcp-token|cli-token(?:\.tmp)?|\.cli-token\.[a-f0-9]+\.tmp|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(entry)) fail('ASAR_UNEXPECTED_CONTENT');
       const stat = asar.statFile(archive, entry, false);
       if (stat.link) fail('ASAR_SYMLINK_REJECTED');
       if (!stat.files) assert.deepEqual(asar.extractFile(archive, entry), await readFile(path.join(root, 'apps/desktop/build', entry)), 'ASAR_STAGING_MISMATCH');
@@ -157,7 +158,8 @@ async function inspectAsar(resources: string, run: MacCheckRunner = async (_name
     assert.deepEqual(metadata.dependencies, {}); assert.deepEqual(metadata.mioonDesktop, desktopIdentity.identityForChannel('production'));
   });
   await run('asar-required-files', async () => {
-    for (const name of ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) asar.extractFile(archive, name);
+    for (const name of ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'cli-runtime.cjs', 'mcp-runtime.cjs',
+      'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) asar.extractFile(archive, name);
     await verifyPackagedProjectNotices(archive, asar);
   });
   await run('tray-resources', () => verifyPackagedTrayResources(archive, asar, path.join(root, 'apps/desktop/build')));

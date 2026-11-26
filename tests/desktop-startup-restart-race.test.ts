@@ -55,6 +55,7 @@ import { createDesktopWindowAppearance, desktopWindowBackground } from '../apps/
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 import {createNativeCloseAdmission, createNativeCloseRegistry} from '../apps/web/src/native-close-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
+import type {DesktopCliDiscovery} from '../apps/desktop/src/config.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -71,12 +72,24 @@ async function until(predicate: () => unknown) {
   assert.fail('Synthetic lifecycle did not reach the expected checkpoint');
 }
 const failure = (code: string = 'SYNTHETIC_FAILURE') => Object.assign(new Error(`Synthetic ${code}`), { code });
+type CliRuntimeStart = Parameters<typeof import('../apps/desktop/src/cli-runtime-host.ts').startCliRuntimeHost>[0];
+interface CliRuntimeFixture {
+  openCliRuntime?(index: number): unknown | Promise<unknown>;
+  closeCliRuntime?(index: number): unknown | Promise<unknown>;
+}
 
 // Run the actual whenReady chain, menu callback and lifecycle/supervisor code.
 // Only OS boundaries are fake: no Electron, utility, native vault or media runs.
-async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> & {realRendererClose?: boolean} = {}) {
+async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> & CliRuntimeFixture & {realRendererClose?: boolean} = {}) {
   const rendererControls = new Map<DesktopHarnessWindow, {admission: ReturnType<typeof createNativeCloseAdmission>; setDirty(value: boolean): void}>();
-  const records: Omit<DesktopHarnessRecords<Window>, 'connectionWrites' | 'dialogParents' | 'syncDialogs' | 'nativeChecks' | 'settingsCloses' | 'lutStoreCalls' | 'starts'> & {starts: {report?: unknown; error?: {code?: string}}[]} = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [] };
+  type DiscoveryWrite = DesktopHarnessConnection & Partial<DesktopCliDiscovery>;
+  const records: Omit<DesktopHarnessRecords<Window>, 'connections' | 'connectionWrites' | 'dialogParents' | 'syncDialogs' | 'nativeChecks' | 'settingsCloses' | 'lutStoreCalls' | 'starts'> & {
+    starts: {report?: unknown; error?: {code?: string}}[];
+    connections: DiscoveryWrite[];
+    cliStarts: CliRuntimeStart[];
+    cliCloses: number[];
+    warnings: string[];
+  } = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [], cliStarts: [], cliCloses: [], warnings: [] };
   const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL];
   const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
   const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
@@ -94,7 +107,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   const app = new EventEmitter() as DesktopHarnessApp;
   Object.assign(app, {
     isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {},
-    getPath: () => '/synthetic', getAppPath: () => '/synthetic/app', requestSingleInstanceLock: () => true,
+    getPath: () => '/synthetic', getAppPath: () => '/synthetic/app', getVersion: () => '0.4.0', requestSingleInstanceLock: () => true,
     whenReady: () => ({ then(callback?: ((value: void) => void|PromiseLike<void>)|null|undefined) { return { catch(onError: (reason: unknown) => void | PromiseLike<void>) { initial = Promise.resolve().then(callback).catch(onError); return initial; } }; } }),
     quit() {
       records.quits++;
@@ -213,6 +226,14 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     validateTools: (_: unknown, { signal }: {signal: AbortSignal}) => { const index = records.validations.length; records.validations.push(signal); return options.validate?.(index) ?? Promise.resolve(tools); },
     createDesktopAgentSettings: async () => { const value = settings(); return options.settings ? options.settings(records.settings.length - 1, value) : value; },
     safeStorage: {}, createDesktopImageSecretCodec: () => ({}), createDesktopVideoSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
+    console: { ...console, warn: (message: string) => records.warnings.push(message) },
+    startCliRuntimeHost: async (input: CliRuntimeStart) => {
+      const index = records.cliStarts.length;
+      records.cliStarts.push(input);
+      await options.openCliRuntime?.(index);
+      return {descriptor: {protocol: 1 as const, socket: path.join(input.userData, `cli-${index}.sock`), tokenFile: path.join(input.userData, 'cli-token')},
+        async close() { records.cliCloses.push(index); await options.closeCliRuntime?.(index); }};
+    },
     BackendSupervisor: class extends BackendSupervisor {
       constructor(config: BackendSupervisorOptions) {
         super({ ...config, projectCatalog: undefined, startupTimeout: 3000, stopTimeout: 10, terminateTimeout: 10, exitTimeout: 10, forceKill: child => { (child as unknown as DesktopHarnessChild).hardKills++; } });
@@ -240,7 +261,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     } },
     sessionCookie: (url: string, token: string) => ({ url, value: token }), secureWebPreferences: (value: DesktopHarnessSession) => ({ session: value }), windowChromeOptions: () => ({}), installWindowChrome: () => {},
     installSessionPolicy() {}, installWindowPolicy() {}, isAllowedNavigation: () => true,
-    writeConnection: async (_: unknown, value: DesktopHarnessConnection) => { records.connections.push(value); },
+    writeConnection: async (_: unknown, value: DiscoveryWrite) => { await options.connection?.(records.connections.length); records.connections.push(value); },
     removeConnectionOnShutdown: async () => { records.removals++; await options.remove?.(records.removals); },
     createProjectWindowHost, MultiWindowQuitCoordinator, MultiWindowRestartCoordinator,
     createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, isProjectWindowRequest, NATIVE_AUDIO_CHANNEL,
@@ -397,6 +418,81 @@ for (const stage of ['cookie', 'load']) {
     assert.equal((r.starts.at(-1))!.error?.code, 'DESKTOP_START_CANCELLED');
   });
 }
+
+test('a command-line host that finishes during restart is drained before publication or replacement', async t => {
+  const opening = deferred(), closing = deferred();
+  const runtime = await harness(t, {openCliRuntime: index => index === 0 ? opening.promise : undefined,
+    closeCliRuntime: index => index === 0 ? closing.promise : undefined});
+  const r = runtime.records;
+  await until(() => r.cliStarts.length === 1);
+  const restarting = runtime.restart();
+  await until(() => runtime.get('cliRuntime?.closing'));
+  assert.equal(r.connections.length, 0);
+  opening.resolve();
+  await until(() => r.cliCloses.length === 1);
+  assert.equal(r.backends.length, 1);
+  assert.equal(r.connections.length, 0);
+  closing.resolve();
+  await Promise.all([runtime.initial(), restarting]); await runtime.success(1);
+  assert.equal(r.connections.length, 1);
+  assert.deepEqual(r.cliCloses, [0]);
+  assert.equal(r.cliStarts[1].runtimeDirectory, '/synthetic/app');
+  assert.equal(r.cliStarts[1].connectionFile, '/synthetic/userData/mcp-connection.json');
+  assert.equal(r.cliStarts[1].channel, 'development');
+  assert.equal(r.connections[0].appVersion, '0.4.0');
+  assert.deepEqual(r.connections[0].cli, {protocol: 1, socket: '/synthetic/userData/cli-1.sock', tokenFile: '/synthetic/userData/cli-token'});
+  assert.equal(runtime.fatals().length, 0);
+});
+
+test('command-line setup failure logs fixed text and still publishes the HTTP connection', async t => {
+  const runtime = await harness(t, {openCliRuntime: () => { throw failure('CLI_SYNTHETIC_PRIVATE_DETAIL'); }});
+  await runtime.initial(); await runtime.success();
+  const r = runtime.records;
+  assert.equal(r.connections.length, 1);
+  assert.equal(Object.hasOwn(r.connections[0], 'cli'), false);
+  assert.equal(Object.hasOwn(r.connections[0], 'appVersion'), false);
+  assert.deepEqual(r.warnings, ['CLI_RUNTIME_UNAVAILABLE: Unable to start the local command-line runtime.']);
+});
+
+test('command-line cleanup failure preserves the original startup error', async t => {
+  const original = failure('DISCOVERY_WRITE_FAILED');
+  const runtime = await harness(t, {
+    connection: () => { throw original; },
+    closeCliRuntime: () => { throw failure('CLI_SYNTHETIC_PRIVATE_CLEANUP_DETAIL'); },
+  });
+  await runtime.initial();
+  assert.equal(runtime.records.starts[0].error, original);
+  assert.equal(runtime.records.warnings[0], 'CLI_RUNTIME_CLEANUP_FAILED: Unable to finish local command-line runtime cleanup.');
+});
+
+test('approved quit waits for command-line sessions before stopping the HTTP utility', async t => {
+  const closing = deferred();
+  const runtime = await harness(t, {closeCliRuntime: () => closing.promise});
+  await runtime.initial(); await runtime.success();
+  const r = runtime.records;
+  runtime.app.quit();
+  await until(() => r.cliCloses.length === 1);
+  assert.equal(r.finished, 0);
+  assert.equal(r.removals, 0);
+  assert.equal(r.children[0].messages.some(item => item.type === 'stop'), false);
+  closing.resolve();
+  await until(() => r.finished === 1);
+  assert.deepEqual(r.cliCloses, [0]);
+  assert.equal(r.removals, 1);
+});
+
+test('unexpected HTTP utility exit closes command-line sessions before recovery is chosen', async t => {
+  const decision = deferred();
+  const runtime = await harness(t, {closeCliRuntime: () => {}, dialog: async () => Number(await decision.promise)});
+  await runtime.initial(); await runtime.success();
+  const r = runtime.records;
+  r.children[0].emit('exit', 1);
+  await until(() => r.cliCloses.length === 1);
+  assert.equal(r.backends.length, 1);
+  decision.resolve(1);
+  await until(() => r.finished === 1);
+  assert.deepEqual(r.cliCloses, [0]);
+});
 
 test('duplicate restart shares the drain and creates only one replacement', async t => {
   const old = deferred(), drain = deferred();

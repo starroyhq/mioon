@@ -30,7 +30,7 @@ const pause = (ms: number|undefined) => new Promise(resolve => setTimeout(resolv
 const toolName = (operation: string) => operation.replaceAll('.', '_');
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceFiles = [
-  'apps/server/src/index.ts', 'apps/cli/src/index.ts', 'apps/mcp/src/index.ts',
+  'apps/server/src/index.ts', 'apps/cli/src/index.ts', 'apps/cli/src/run.ts', 'apps/mcp/src/index.ts', 'apps/mcp/src/run.ts',
   'packages/business/src/store-runtime.ts', 'packages/business/src/services.ts', 'packages/business/src/inspection.ts',
   'packages/business/src/inspection-query.ts', 'packages/contracts/src/index.ts',
   'packages/contracts/src/inspection.ts', 'packages/contracts/src/operation-effects.ts', 'packages/client/src/index.ts',

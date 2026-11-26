@@ -10,6 +10,7 @@ import { createDesktopProjectCatalogClient } from '../apps/desktop/src/project-c
 import { QuitCoordinator, installUnsavedGuard } from '../apps/desktop/src/lifecycle.ts';
 import { dataPaths, utilityEnvironment, readToolConfig, saveToolConfig, validateTool,
   writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
+import { resolveConnection } from '../packages/client/src/connection.ts';
 
 test('desktop data location is stable and independent of working directory', () => {
   assert.deepEqual(dataPaths('/home/u/.config'), { userData: '/home/u/.config/app.starroy.mioon.dev',
@@ -55,8 +56,17 @@ test('MCP discovery uses private rotating files and cleanup', async () => {
     assert.equal((await stat(connection.tokenFile)).mode & 0o777, 0o600);
     assert.equal(connection.version, 1); assert.equal(connection.pid, process.pid);
     assert.equal(await readFile(connection.tokenFile, 'utf8'), 'one\n');
-    await writeConnection(paths, { url: 'http://127.0.0.1:22222', token: 'two', pid: process.pid });
-    assert.equal(await readFile(connection.tokenFile, 'utf8'), 'two\n');
+    const token = '2'.repeat(64), url = 'http://127.0.0.1:22222';
+    const cli = {protocol: 1 as const, socket: path.join(directory, 'cli.sock'), tokenFile: path.join(directory, 'cli-token')};
+    const appVersion = '0.4.0';
+    await writeConnection(paths, {url, token, pid: process.pid, appVersion, cli});
+    const extended = await readFile(descriptor, 'utf8');
+    assert.deepEqual(JSON.parse(extended), {...connection, url, appVersion, cli});
+    assert.deepEqual(await resolveConnection({MIOON_CONNECTION_FILE: descriptor}), {base: url, token});
+    await assert.rejects(writeConnection(paths, {url, token: '3'.repeat(64), pid: process.pid, appVersion,
+      cli: {...cli, socket: '/' + 'x'.repeat(16 * 1024)}}), {code: 'STORAGE_PRIVATE_REQUIRED', reason: 'SIZE_LIMIT'});
+    assert.equal(await readFile(descriptor, 'utf8'), extended);
+    assert.equal(await readFile(connection.tokenFile, 'utf8'), token + '\n');
     await removeConnection(paths);
     await assert.rejects(readFile(descriptor), { code: 'ENOENT' });
     await assert.rejects(readFile(connection.tokenFile), { code: 'ENOENT' });

@@ -27,6 +27,7 @@ coverage/
 access-token
 desktop-token
 mcp-token
+cli-token
 server.lock
 mcp-connection.json
 desktop-config.json
@@ -36,10 +37,12 @@ desktop-identity.json
 access-token.tmp
 desktop-token.tmp
 mcp-token.tmp
+cli-token.tmp
 mcp-connection.json.tmp
 .access-token.*.tmp
 .desktop-token.*.tmp
 .mcp-token.*.tmp
+.cli-token.*.tmp
 .mcp-connection.json.*.tmp
 desktop-config.json.tmp
 .desktop-config.json.*.tmp

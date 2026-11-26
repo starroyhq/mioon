@@ -340,14 +340,14 @@ test('non-Mac runtime notices remain a no-op; external fonts verify with unchang
       await config.afterExtract(context);
       await config.afterPack(context);
     }
-    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
+    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'cli-runtime.cjs', 'mcp-runtime.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
     assert.equal(config.asar, true);
     assert.equal(config.npmRebuild, false);
     assert.equal(config.publish, null);
     assert.equal(config.mac.identity, null);
     assert.equal(config.electronFuses.onlyLoadAppFromAsar, true);
     assert.equal(config.electronFuses.runAsNode, false);
-    for (const excluded of ['node_modules/electron/LICENSE', 'workspace/workbench.sqlite', '.env', 'mcp-token']) {
+    for (const excluded of ['node_modules/electron/LICENSE', 'workspace/workbench.sqlite', '.env', 'mcp-token', 'cli-token']) {
       assert.equal(config.files.filter((pattern: string) => !pattern.startsWith('!')).some((pattern: string) => path.matchesGlob(excluded, pattern)), false);
     }
   }

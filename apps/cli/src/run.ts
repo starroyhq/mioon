@@ -1,0 +1,192 @@
+import {assertLocalAssetImportOrigin} from './asset-import-path.ts';
+import {open} from 'node:fs/promises';
+import type {FileHandle} from 'node:fs/promises';
+import path from 'node:path';
+import {createClient, discoverSchema, schemas, splitProjectAddress, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
+import {downloadAsset} from '@mioon/client/download';
+import {exportProjectPackage,importProjectPackage,duplicateProject} from '@mioon/client/project-package';
+import {importLutFile, LutImportFileError} from './lut-import-file.ts';
+
+import {translate, message} from '@mioon/i18n';
+import type {Locale, MessageDescriptor, MessageKey, MessageParameters} from '@mioon/i18n';
+import {localizeHelp} from '@mioon/i18n/presentation';
+
+import {argumentsFor} from './arguments.ts';
+import {help} from './help.ts';
+import {isAgentCommand,validateAgentOptions,agentCommandHelp,runAgentCommand} from './agent.ts';
+
+type OptionValue = string | true;
+interface CliArguments {words: string[]; options: Record<string, OptionValue>}
+type CliInput = Record<string, unknown>;
+const displayErrors = new WeakMap<object, MessageDescriptor>();
+const MAX_INPUT = 42 * 1024 * 1024, MAX_ASSET = 30 * 1024 * 1024;
+const fail = (text: string, key?: MessageKey, params?: MessageParameters): never => { const error = new ClientError('VALIDATION_ERROR', text); if (key) displayErrors.set(error, message(key, params as never)); throw error; };
+// Option values were already validated by the parser: value options always
+// arrive as strings, never as the boolean used for switch options.
+const optionText = (value: OptionValue | undefined): string | undefined => typeof value === 'string' ? value : undefined;
+async function inputFor(options: Record<string, OptionValue>): Promise<CliInput> {
+  if (options.input !== undefined && options['input-file'] !== undefined) fail('Use one input source: --input or --input-file.');
+  let text = optionText(options.input);
+  const inputFile = optionText(options['input-file']);
+  if (inputFile !== undefined) {
+    let handle: FileHandle | undefined;
+    try {
+      handle = await open(inputFile, 'r'); const metadata = await handle.stat();
+      if (!metadata.isFile() || metadata.size > MAX_INPUT) throw new ClientError('FILE_TOO_LARGE', 'Input must be a regular JSON file no larger than 42 MiB.');
+      text = await handle.readFile('utf8');
+    } catch (error) { if (error instanceof ClientError) throw error; throw new ClientError('FILE_READ_ERROR', 'Cannot read the explicitly requested JSON input file.'); }
+    finally { await handle?.close(); }
+  } else if (text === '-') {
+    const chunks: Buffer[] = []; let length = 0;
+    for await (const chunk of process.stdin) { length += chunk.length; if (length > MAX_INPUT) throw new ClientError('FILE_TOO_LARGE', 'JSON input exceeds 42 MiB.'); chunks.push(chunk); }
+    text = Buffer.concat(chunks).toString('utf8');
+  }
+  if (text !== undefined && Buffer.byteLength(text) > MAX_INPUT) throw new ClientError('FILE_TOO_LARGE', 'JSON input exceeds 42 MiB.');
+  let input: CliInput = {};
+  if (text !== undefined) { try { input = JSON.parse(text) as CliInput; } catch { throw new ClientError('INVALID_JSON', 'Input must contain valid JSON.'); } }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('Input must be a JSON object.');
+  const requestId = optionText(options['request-id']);
+  if (requestId !== undefined) {
+    if (input.requestId !== undefined && input.requestId !== requestId) fail('--request-id must match the requestId already present in JSON.');
+    input.requestId = requestId;
+  }
+  return input;
+}
+function numberOption(options: Record<string, OptionValue>, key: string, fallback: number): number {
+  const value = optionText(options[key]);
+  if (value === undefined) return fallback;
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) fail(`--${key} must be a positive integer.`);
+  return Number(value);
+}
+async function uploadFile(input: CliInput, file: string): Promise<CliInput> {
+  if (input.dataBase64 !== undefined) fail('Use --file or dataBase64, not both.');
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(file, 'r'); const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new ClientError('FILE_READ_ERROR', 'Import source must be a regular local file.');
+    if (metadata.size > MAX_ASSET) throw new ClientError('FILE_TOO_LARGE', 'Import source exceeds 30 MiB.');
+    const bytes = await handle.readFile();
+    if (bytes.length > MAX_ASSET) throw new ClientError('FILE_TOO_LARGE', 'Import source exceeds 30 MiB.');
+    const extension = path.extname(file).toLowerCase();
+    const mimeTypes: Readonly<Record<string, string>> = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.webm': 'video/webm', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4'};
+    const mime = mimeTypes[extension];
+    return {...input, name: input.name || path.basename(file), mimeType: input.mimeType || mime, dataBase64: bytes.toString('base64')};
+  } catch (error) { if (error instanceof ClientError) throw error; throw new ClientError('FILE_READ_ERROR', 'Cannot read the explicitly requested local import file.'); }
+  finally { await handle?.close(); }
+}
+export async function runCli(): Promise<void> {
+  let locale: Locale | undefined;
+  const sensitive:string[]=[];
+  function redact(value:unknown):unknown {if(typeof value==='string'){let result=value;for(const secret of sensitive)if(secret)result=result.split(secret).join('[redacted]');return result;}if(Array.isArray(value))return value.map(redact);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[String(redact(key)),redact(item)]));return value;}
+  const abort = new AbortController();
+  const onInterrupt = () => abort.abort();
+  process.on('SIGINT', onInterrupt);
+  process.on('SIGTERM', onInterrupt);
+  try {
+    const {words, options} = argumentsFor(process.argv.slice(2), fail, value => { locale = value; });
+    const operation = words[0] === 'rpc' ? words.slice(1).join('.') : words.join('.');
+    const agent=isAgentCommand(words),agentSchema=words[0]==='schema'&&(words[1]==='agent'&&words[2]!=='authorization'||words[1]?.startsWith('agent.')&&!words[1].startsWith('agent.authorization.'));
+    if(agent)validateAgentOptions(operation,options);
+    else if(['key-stdin','key-file','storage','live'].some(name=>Object.hasOwn(options,name)))fail('This option is only supported by Agent management commands.');
+    let data: unknown;
+    if (options.version) data = {name: 'mioon', version: VERSION};
+    else if (options.help || words.length === 0) data = agent?agentCommandHelp(operation):localizeHelp(help(Object.hasOwn(schemas, operation) ? operation : undefined, {VERSION, EXIT_CODES, discoverSchema, schemas}), locale);
+    else {
+      // S5's application copy API is not a CLI capability until S4/0.1.x.
+      // Refuse before reading input, initializing storage or resolving a backend.
+      if (operation === 'project.duplicate') throw new ClientError('PROJECT_COPY_UNAVAILABLE', 'Project copy commands are not available in this client yet.', {status: 409});
+      if (operation === 'project.delete') throw new ClientError('PROJECT_TRASH_UNAVAILABLE', 'Project trash commands are not available in this client yet.', {status: 409});
+      // Reject unknown/retired operations before reading input or initializing storage.
+      if (!agent && !agentSchema && words[0] !== 'schema' && !Object.hasOwn(schemas, operation) &&
+        !['doctor', 'capabilities', 'job.watch', 'export.watch', 'asset.download', 'export.download', 'project.export', 'project.import', 'project.duplicate'].includes(operation))
+        throw new ClientError('UNKNOWN_OPERATION', 'Unknown command. Run --help or schema for available operations.');
+      if(words[0]!=='schema'){const {initializeNodePrivateStorage}=await import('@mioon/node-host/private-storage-bootstrap');await initializeNodePrivateStorage();}
+      let input = await inputFor(options);
+      if(agent)data=await runAgentCommand(operation,input,options,{signal:abort.signal,redact:value=>{if(value)sensitive.push(value);}});
+      else if(agentSchema){if(Object.keys(input).length)fail('schema does not accept input.');data=agentCommandHelp(words.slice(1).join('.'));}
+      else {
+      const client = createClient();
+      const watch = ['job.watch', 'export.watch'].includes(operation), download = ['asset.download', 'export.download'].includes(operation);
+      // Project files use dedicated management routes, not the RPC/MCP catalog.
+      const projectPackage = ['project.export', 'project.import', 'project.duplicate'].includes(operation);
+      const file = optionText(options.file), output = optionText(options.output);
+      if ((options['confirm-outside'] || options.upload) && (operation !== 'asset.import' || file === undefined)) fail('--confirm-outside and --upload are only valid with asset import --file.');
+      if (options['confirm-outside'] && options.upload) fail('--confirm-outside cannot be combined with --upload.');
+      if (file !== undefined && !['asset.import', 'lut.import', 'project.import'].includes(operation)) fail('--file is only valid for asset, LUT or project import.');
+      if (output !== undefined && !download && operation !== 'project.export') fail('--output is only valid for downloads and project export.');
+      if (options['max-bytes'] !== undefined && !download) fail('--max-bytes is only valid for download.');
+      if (options['interval-ms'] !== undefined && !watch) fail('--interval-ms is only valid for watch.');
+      if (options['timeout-ms'] !== undefined && !watch && !download) fail('--timeout-ms is only valid for watch or download.');
+      if (words[0] === 'schema') {
+        if (Object.keys(input).length) fail('schema takes an optional operation argument, not JSON input.');
+        const selected = words.slice(1).join('.'); data = discoverSchema(selected ? {operation: selected} : {});
+      } else if (operation === 'doctor' || operation === 'capabilities') {
+        if (Object.keys(input).length) fail(`${operation} does not accept input fields.`);
+        data = await client[operation]({signal: abort.signal});
+      } else if (watch) {
+        let previous: string | undefined;
+        const kind = operation.split('.')[0] as 'job' | 'export', watched = splitProjectAddress(`${kind}.get`, input);
+        data = await client.watch(kind, watched.input as CliInput, {...(watched.projectId === undefined ? {} : {projectId: watched.projectId}), timeoutMs: numberOption(options, 'timeout-ms', 60_000), intervalMs: numberOption(options, 'interval-ms', 500), signal: abort.signal, onProgress: (progress: unknown) => {
+          const current = JSON.stringify(progress);
+          if (previous !== current) { process.stderr.write(current + '\n'); previous = current; }
+        }});
+      } else if (projectPackage) {
+        const progress = (value: unknown) => { process.stderr.write(JSON.stringify(value) + '\n'); };
+        if (operation === 'project.export') data = await exportProjectPackage(input, output, {signal: abort.signal, onProgress: progress});
+        else if (operation === 'project.import') data = await importProjectPackage(input, file, {signal: abort.signal, onProgress: progress});
+        else data = await duplicateProject(input, {signal: abort.signal});
+      } else if (download) {
+        let assetId = input.assetId;
+        // Media is addressed by its project, like the entity-addressed reads.
+        const projectId = input.projectId;
+        if (operation === 'export.download') {
+          const exported = splitProjectAddress('export.get', input);
+          const record = await client.rpc('export.get', exported.input, {signal: abort.signal, ...(exported.projectId === undefined ? {} : {projectId: exported.projectId})}) as {id?: unknown; status?: unknown; assetId?: unknown};
+          if (record.status !== 'succeeded' || !record.assetId) throw new ClientError('EXPORT_NOT_READY', 'Export is not ready. Use export watch before downloading.', {details: {exportId: record.id, status: record.status}});
+          assetId = record.assetId;
+        } else if (Object.keys(input).some(key => key !== 'assetId' && key !== 'projectId')) fail('asset download only accepts projectId and assetId.');
+        data = await downloadAsset({projectId, assetId}, output as string, {signal: abort.signal, timeoutMs: numberOption(options, 'timeout-ms', 60_000), maxBytes: numberOption(options, 'max-bytes', 512 * 1024 * 1024)});
+      } else {
+        if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown command. Run --help or schema for available operations.');
+        if (file !== undefined) {
+          if (operation === 'lut.import') {
+            try { input = importLutFile(input, file); }
+            catch (error) {
+              if (error instanceof LutImportFileError) throw new ClientError(error.code, error.message);
+              throw error;
+            }
+          } else if (operation === 'asset.import' && !options.upload) {
+            if (['dataBase64','mimeType','sourcePath'].some(key=>Object.hasOwn(input,key))) fail('--file path import cannot contain dataBase64, mimeType or sourcePath.');
+            input={...input,sourcePath:path.resolve(file)};
+          } else input = await uploadFile(input, file);
+        }
+        if(operation==='asset.import' && typeof input.sourcePath==='string')assertLocalAssetImportOrigin(process.env.MIOON_BASE_URL);
+        if(operation==='asset.import' && file!==undefined && options['confirm-outside']) {
+          const result=await client.trustedAssetMedia<{asset:unknown;confirmedDirectories:string[]}>('asset.import.path',input,{signal:abort.signal});
+          if(!result || !Array.isArray(result.confirmedDirectories) || result.confirmedDirectories.some(value=>typeof value!=='string')) throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid directory confirmation acknowledgement.');
+          for(const directory of result.confirmedDirectories) process.stderr.write(JSON.stringify({confirmedDirectory:directory})+'\n');
+          data=result.asset;
+        } else {
+        const addressed = splitProjectAddress(operation, input);
+        data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
+        }
+      }
+      }
+    }
+    process.stdout.write(JSON.stringify(redact(successEnvelope(data))) + '\n');
+  } catch (error) {
+    // errorEnvelope always emits a string message for known and unknown errors;
+    // the client package currently widens it while its own strict pass completes.
+    const result = redact(errorEnvelope(error)) as {ok: false; error: {code: string; message: string}};
+    process.stdout.write(JSON.stringify(result) + '\n');
+    const diagnostic = result.error.message.replace(/[\r\n\x00-\x1f]/g, ' ');
+    const display = error !== null && typeof error === 'object' ? displayErrors.get(error) : undefined;
+    const human = locale === undefined ? diagnostic : display
+      ? translate(locale, display.key, display.params as never)
+      : `${translate(locale, result.error.code === 'CONNECTION_CONFIG_ERROR' ? 'cli.error.connection' : 'cli.error.summary')} ${translate(locale, 'cli.error.original', {diagnostic})}`;
+    process.stderr.write(`${result.error.code}: ${human}\n`);
+    process.exitCode = errorExitCode(error);
+  } finally {
+    process.off('SIGINT', onInterrupt); process.off('SIGTERM', onInterrupt);
+  }
+}

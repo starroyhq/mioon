@@ -96,6 +96,7 @@ test('actual main stop retains the old audition host until exact drain, and neve
     const gate = defer(), calls: unknown[]=[]; const audio={shutdown: () => {calls.push('drain'); return gate.promise;}};
     const owner={audioHost:audio}, next={audioHost:{shutdown:async()=>assert.fail('Replacement never stopped')}};
     const context=vm.createContext({windowContext:owner,nativeAudioHost:audio,windowHost:{dispose:()=>calls.push('dispose')},
+      closeCliRuntime:async()=>{},
       startupOperation:{abort:async()=>calls.push('abort')},backend:{stop:async()=>calls.push('stop')},cleanupStoppedBackend:async()=>calls.push('cleanup')});
     vm.runInContext(source,context); const work=vm.runInContext('stop()',context);
     assert.deepEqual(calls,['drain']); assert.equal(context.windowContext,owner); assert.equal(context.nativeAudioHost,audio);

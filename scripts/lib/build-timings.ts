@@ -11,6 +11,7 @@ export const BUILD_TIMING_STAGES = Object.freeze([
   ...BUILD_COMMAND_TIMING_STAGES, ...DESKTOP_TYPECHECK_TIMING_STAGES,
   'desktop-builder-config', 'desktop-web-validation', 'desktop-staging-reset',
   'desktop-main-bundle', 'desktop-backend-bundle', 'desktop-project-catalog-bundle',
+  'desktop-cli-runtime-bundles',
   'desktop-preload-bundle', 'desktop-resource-staging', 'desktop-native-staging', 'desktop-license-staging',
 ] as const);
 export type BuildTimingStage = typeof BUILD_TIMING_STAGES[number];
