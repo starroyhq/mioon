@@ -376,11 +376,11 @@ jobs:
             printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Measure speed interpolation phase prototype on macOS arm64
+      - name: Measure speed interpolation on macOS arm64
         id: interp
         if: github.event_name == 'pull_request'
-        # The prototype downloads the application-same media-tools release and
-        # verifies its pinned hashes; it never decodes project/user media.
+        # Both measurements verify the pinned media-tools release and decode
+        # only synthetic video. The product run owns the three-mode timing.
         timeout-minutes: 25
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -389,16 +389,19 @@ jobs:
           if test -z "$changed"; then exit 0; fi
           test "$(uname -m)" = arm64
           results="$RUNNER_TEMP/mioon-sp-i0"
-          node --experimental-strip-types --no-warnings scripts/speed-interp-phase/run-prototype.mjs --output "$results"
-          cat "$results/summary.json"
+          node --experimental-strip-types --no-warnings scripts/speed-interp-phase/run-prototype.mjs --skip-bench --quick --output "$results"
+          node --experimental-strip-types --no-warnings scripts/speed-interp-phase/run-product.mjs --output "$results/product"
           {
             printf '\n### Speed interpolation phase prototype (macOS arm64)\n\n```json\n'
             cat "$results/summary.json"
             printf '```\n'
+            printf '\n### Speed interpolation product measurements (macOS arm64)\n\n```json\n'
+            cat "$results/product/summary.json"
+            printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload speed interpolation prototype evidence
-        if: github.event_name == 'pull_request' && steps.interp.outcome != 'skipped'
+      - name: Upload speed interpolation evidence
+        if: always() && github.event_name == 'pull_request' && steps.interp.outcome != 'skipped'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: checks-sp-i0
