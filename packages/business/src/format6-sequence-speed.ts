@@ -16,7 +16,7 @@ import {
   timeMapSourceAtOutputFrame, timeMapSourceRangeForEdit, trimTimeMap, type CompiledTimeMap, type TimeMapResult,
 } from '../../contracts/src/timeline-time-map.ts';
 import {
-  splitVolumeEnvelopeFields, volumeEnvelopeFieldsAfterEdit, type VolumeEnvelopeClip,
+  splitVolumeEnvelopeFields, type VolumeEnvelopeClip,
 } from '../../contracts/src/timeline-volume-envelope.ts';
 
 type SpeedTiming = Extract<ClipTiming, {profile: 'timeline-speed-v1'}>;
@@ -46,8 +46,13 @@ function timingFields(clip: Format5Clip, plan: CompiledTimeMap,
 function resizeEffects(clip: Format5Clip, durationFrames: number): Format5Clip {
   if (durationFrames === clip.durationFrames) return clip;
   const next = {...clip, durationFrames};
-  if (clip.transform !== undefined) Object.assign(next, clipTransformFieldsAfterEdit(clip as ClipTransformClip, {durationFrames}));
-  if (clip.volumeEnvelope !== undefined) Object.assign(next, volumeEnvelopeFieldsAfterEdit(clip as VolumeEnvelopeClip, {durationFrames}));
+  if (clip.transform !== undefined) {
+    Object.assign(next, clipTransformFieldsAfterEdit(clip as ClipTransformClip, {durationFrames}, FORMAT5_LIMITS.durationFrames));
+  }
+  if (clip.volumeEnvelope !== undefined && durationFrames < clip.durationFrames) {
+    const [left] = splitVolumeEnvelopeFields(clip as VolumeEnvelopeClip, durationFrames, FORMAT5_LIMITS.durationFrames);
+    Object.assign(next, left);
+  }
   if (clip.fadeInFrames !== undefined) next.fadeInFrames = Math.min(clip.fadeInFrames, durationFrames);
   if (clip.fadeOutFrames !== undefined) next.fadeOutFrames = Math.min(clip.fadeOutFrames, durationFrames - (next.fadeInFrames ?? 0));
   return next;
@@ -64,9 +69,9 @@ export function trimTimedSequenceClip(clip: Format5Clip, timeline: Format5Timeli
 export function splitSequenceClip(clip: Format5Clip, timeline: Format5Timeline,
   offset: number, rightId: string, rightSourceInFrame = clip.sourceInFrame + offset): [Format5Clip, Format5Clip] {
   const [leftTransform, rightTransform] = clip.transform === undefined ? [{}, {}]
-    : splitClipTransformFields(clip as ClipTransformClip, offset);
+    : splitClipTransformFields(clip as ClipTransformClip, offset, FORMAT5_LIMITS.durationFrames);
   const [leftVolume, rightVolume] = clip.volumeEnvelope === undefined ? [{}, {}]
-    : splitVolumeEnvelopeFields(clip as VolumeEnvelopeClip, offset);
+    : splitVolumeEnvelopeFields(clip as VolumeEnvelopeClip, offset, FORMAT5_LIMITS.durationFrames);
   const {transitionIn: _incoming, ...rightFields} = clip;
   let left = {...clip, durationFrames: offset, ...leftTransform, ...leftVolume};
   let right = {...rightFields, id: rightId, startFrame: clip.startFrame + offset,
@@ -143,7 +148,8 @@ function freezeClip(clip: Format5Clip, timeline: Format5Timeline,
   if (freeze.sequenceSource?.kind === 'shot') freeze.sequenceSource = {...freeze.sequenceSource, versionMode: 'locked'};
   if (clip.transform) {
     const transform = clip.transform as ClipTransform;
-    freeze.transform = {...transform, keyframes: [{frame: 0, ...clipTransformAt(clip as ClipTransformClip, offset)}]};
+    freeze.transform = {...transform, keyframes: [{frame: 0,
+      ...clipTransformAt(clip as ClipTransformClip, offset, FORMAT5_LIMITS.durationFrames)}]};
   }
   if (offset === 0) {
     const {transitionIn: _incoming, ...right} = clip;

@@ -10,8 +10,8 @@ export function volumeEnvelopeField(clip: unknown): {volumeEnvelope?: VolumeEnve
   if (!object(clip)) throw new Error('Invalid envelope clip.');
   return volumeEnvelopeFieldsAfterEdit(clip as unknown as VolumeEnvelopeClip, {});
 }
-export function isVolumeEnvelope(value: unknown, durationFrames: number): value is VolumeEnvelope|null {
-  try {validateVolumeEnvelope(value, durationFrames); return true;} catch {return false;}
+export function isVolumeEnvelope(value: unknown, durationFrames: number, maxFrames?: number): value is VolumeEnvelope|null {
+  try {validateVolumeEnvelope(value, durationFrames, maxFrames); return true;} catch {return false;}
 }
 export function volumeEnvelopeProcessingProfile(clips: readonly unknown[]): typeof VOLUME_ENVELOPE_PROFILE|undefined {
   let active = false;

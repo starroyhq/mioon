@@ -13,7 +13,7 @@ import type {BoardSequenceErrorCode} from './board-sequence.ts';
 import type {MainTrackErrorCode} from './chain-main-track.ts';
 import {PREVIS_LIMITS} from './previs.ts';
 import {clipTimingSchema} from './timeline-speed.ts';
-import {compileClipTimeMap} from './timeline-clip-timing.ts';
+import {compileClipTimeMap, MAX_CLIP_SOURCE_SPAN_FRAMES} from './timeline-clip-timing.ts';
 import {projectTimeMapToCurrentClipFields} from './timeline-time-map.ts';
 
 /** One shot's generation-input capacity: material reference lines, subject
@@ -192,9 +192,10 @@ const cueFields=fields(['id','text','startFrame','durationFrames','anchor'],['di
 
 function clipEffectsValid(clip:RecordValue,frame:unknown,kind:unknown):boolean {
   if(!isClipLayoutRect(clip,frame)||typeof clip.gain!=='number'||!Number.isFinite(clip.gain)||clip.gain<0||clip.gain>2)return false;
+  const effectFrameLimit=Object.hasOwn(clip,'timing')?FORMAT5_LIMITS.durationFrames:undefined;
   if(Object.hasOwn(clip,'audioRole')&&!isClipAudioRole(clip.audioRole)||
-      Object.hasOwn(clip,'volumeEnvelope')&&!isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames as number)||
-      Object.hasOwn(clip,'transform')&&(clip.transform===null||!isClipTransform(clip.transform,clip.durationFrames as number)||kind!=='video')||
+      Object.hasOwn(clip,'volumeEnvelope')&&!isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames as number,effectFrameLimit)||
+      Object.hasOwn(clip,'transform')&&(clip.transform===null||!isClipTransform(clip.transform,clip.durationFrames as number,effectFrameLimit)||kind!=='video')||
       Object.hasOwn(clip,'transitionIn')&&(clip.transitionIn===null||!isClipTransition(clip.transitionIn)||kind!=='video')||
       Object.hasOwn(clip,'colour')&&(!isTimelineClipColour(clip.colour)||clip.colour!==null&&kind!=='video')||
       Object.hasOwn(clip,'muted')&&clip.muted!==true||
@@ -252,7 +253,7 @@ export function getFormat5ClipIssue(clip:unknown,context:Format5ClipIssueContext
   if(Object.hasOwn(clip,'timing')||Object.hasOwn(clip,'sourceSpanFrames')){
     const parsed=clipTimingSchema.safeParse(clip.timing);
     if((context.formatVersion!==undefined&&context.formatVersion!==6)||!parsed.success||clip.sourceState!=='ready'||
-        !integer(clip.sourceSpanFrames,1,3_000_000))
+        !integer(clip.sourceSpanFrames,1,MAX_CLIP_SOURCE_SPAN_FRAMES))
       return issue('FORMAT5_CLIP_INVALID','Invalid clip timing fields',[clip.id]);
     const timed={...clip,id:clip.id,startFrame:clip.startFrame,durationFrames:clip.durationFrames,
       sourceInFrame:clip.sourceInFrame,timing:parsed.data};

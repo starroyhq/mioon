@@ -205,7 +205,8 @@ const stateDelta = (delta: SequenceEditTimelineDelta): SequenceEditStateDelta =>
 /** Pure planning read: the exact before/after rows for one separate-sound
  * action. Nothing is written and no server id is reallocated. */
 export function planSeparateSound(store: ProjectStore, operation: Operation): SeparateSoundPlan {
-  if (!isFormat5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
+  const formatVersion = store.db.prepare('PRAGMA project.user_version').get()?.user_version;
+  if (!isSequenceProjectFormat(formatVersion)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
   if (!isUuid(operation.audioClipId) || !isUuid(operation.audioTrackId)) {
     throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '分离声音还没有分配片段和轨道。', 409, {});
   }
@@ -243,7 +244,7 @@ export function planSeparateSound(store: ProjectStore, operation: Operation): Se
   // The separated sound only ever sits inside the source clip's own range, so
   // the timeline duration cannot move.
   const next: Format5Timeline = {...timeline, clips, tracks: [...tracks]};
-  const issue = getFormat5TimelineIssue(next, {projectId: store.projectId});
+  const issue = getFormat5TimelineIssue(next, {projectId: store.projectId, formatVersion});
   if (issue) invalid(issue.message ?? '分离声音后的时间线无效', {ids: issue.ids ?? []});
   const trackChanged = createdTrackId !== null;
   const before = stateDelta(soundTimelineDelta([source], [soundClip.id], trackChanged ? timeline.tracks : undefined));

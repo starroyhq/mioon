@@ -7,7 +7,7 @@ import {isClipTransform} from './timeline-clip-transform.ts';
 import {isClipLayoutRect, type ClipLayout} from './timeline-clip-layout.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
 import {clipTimingSchema, type ClipTiming} from './timeline-speed.ts';
-import {compileClipTimeMap} from './timeline-clip-timing.ts';
+import {compileClipTimeMap, MAX_CLIP_SOURCE_SPAN_FRAMES} from './timeline-clip-timing.ts';
 import {projectTimeMapToCurrentClipFields} from './timeline-time-map.ts';
 // Saved timeline acknowledgements are complete records, never patches. These
 // guards do not normalize records or claim a historical response is current.
@@ -97,7 +97,7 @@ export function isTimelineRecord(value: unknown, {projectId, ...options}: Timeli
     if (!isClipLayoutRect(clip, value)) return false;
     if (Object.hasOwn(clip, 'timing') || Object.hasOwn(clip, 'sourceSpanFrames')) {
       const timing = clipTimingSchema.safeParse(clip.timing);
-      if (!timing.success || !integer(clip.sourceSpanFrames, 1, 3_000_000)) return false;
+      if (!timing.success || !integer(clip.sourceSpanFrames, 1, MAX_CLIP_SOURCE_SPAN_FRAMES)) return false;
       const timed = {...clip, id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames,
         sourceInFrame: clip.sourceInFrame, timing: timing.data};
       const plan = compileClipTimeMap(timed, {fps: Number(value.fps)});

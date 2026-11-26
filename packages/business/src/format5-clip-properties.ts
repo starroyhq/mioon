@@ -8,7 +8,7 @@
  */
 import {AppError} from '../../contracts/src/app-error.ts';
 import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
-import {isClipTransform, validateClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
+import {validateClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import type {ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import {canonicalClipTransition, clipTransitionFits, clipTransitionPredecessor, validateClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import type {ClipTransition, TransitionClip, TransitionSource, TransitionSources} from '../../contracts/src/timeline-clip-transition.ts';
@@ -16,7 +16,7 @@ import {isTimelineClipColour} from '../../contracts/src/timeline-colour.ts';
 import {isClipAudioRole, getTimelineAudioRoleIssue} from '../../contracts/src/timeline-audio-role.ts';
 import {isVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {getTimelineFadeIssue} from '../../contracts/src/timeline-fades.ts';
-import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
+import {FORMAT5_LIMITS, type Format5Clip, type Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {
   SequenceEditClipPropertiesIntent, SequenceEditClipPropertiesPatch, SequenceEditEnvelope, SequenceEditExpectedTarget,
   SequenceEditImpact, SequenceEditStateDelta, SequenceEditTimelineDelta,
@@ -88,7 +88,8 @@ const videoTrackMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'video
 const audioTrackMimes = new Set(['audio/wav', 'audio/mpeg', 'audio/mp4']);
 
 function planReplacement(store: ProjectStore, asset: (id: string) => ClipAsset | null, clip: Format5Clip,
-  track: Format5Timeline['tracks'][number], replacement: NonNullable<SequenceEditClipPropertiesPatch['sourceReplacement']>): Format5Clip {
+  track: Format5Timeline['tracks'][number], replacement: NonNullable<SequenceEditClipPropertiesPatch['sourceReplacement']>,
+  maxFrames?: number): Format5Clip {
   const details = {clipId: clip.id, assetId: replacement.assetId};
   if (clip.timing?.profile === 'timeline-freeze-v1') invalid('定格片段的来源已锁定', details);
   if (clip.sourceState !== 'ready' || clip.sequenceSource?.kind === 'shot') {
@@ -111,7 +112,7 @@ function planReplacement(store: ProjectStore, asset: (id: string) => ClipAsset |
   if (fadeIssue) invalid(fadeIssue.message, details);
   const roleIssue = getTimelineAudioRoleIssue(clip, source);
   if (roleIssue) invalid(roleIssue.message, details);
-  try {validateTimelineVolumeEnvelopeClip(clip, source);}
+  try {validateTimelineVolumeEnvelopeClip(clip, source, maxFrames);}
   catch (error) {
     if (error instanceof AppError) invalid(error.message, details);
     throw error;
@@ -134,12 +135,12 @@ function planReplacement(store: ProjectStore, asset: (id: string) => ClipAsset |
 }
 
 function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectStore, clip: Format5Clip,
-  track: Format5Timeline['tracks'][number], patch: SequenceEditClipPropertiesPatch): Format5Clip {
+  track: Format5Timeline['tracks'][number], patch: SequenceEditClipPropertiesPatch, maxFrames?: number): Format5Clip {
   const keys = Object.keys(patch);
   if (keys.length === 0) invalid('片段属性补丁不能为空', {clipId: clip.id});
   if (patch.sourceReplacement !== undefined) {
     if (keys.length !== 1) invalid('替换来源需要单独确认', {clipId: clip.id});
-    return planReplacement(store, asset, clip, track, patch.sourceReplacement);
+    return planReplacement(store, asset, clip, track, patch.sourceReplacement, maxFrames);
   }
   const next: Format5Clip = {...clip};
   if (patch.transform !== undefined) {
@@ -148,7 +149,7 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
     else {
       const source = clipSource(asset, clip);
       if (!source.mimeType.match(/^(image|video)\//u)) invalid('图片或视频片段才能设置变换', {clipId: clip.id});
-      try {validateClipTransform(patch.transform, clip.durationFrames);} catch {invalid('变换关键帧无效', {clipId: clip.id});}
+      try {validateClipTransform(patch.transform, clip.durationFrames, maxFrames);} catch {invalid('变换关键帧无效', {clipId: clip.id});}
       (next as Row).transform = patch.transform;
     }
   }
@@ -197,7 +198,7 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
     (next as Row).audioRole = patch.audioRole;
   }
   if (patch.volumeEnvelope !== undefined) {
-    if (!isVolumeEnvelope(patch.volumeEnvelope, clip.durationFrames)) invalid('音量包络无效', {clipId: clip.id});
+    if (!isVolumeEnvelope(patch.volumeEnvelope, clip.durationFrames, maxFrames)) invalid('音量包络无效', {clipId: clip.id});
     const source = clipSource(asset, clip);
     if (patch.volumeEnvelope !== null && !source.mimeType.startsWith('audio/') && source.hasAudio !== true) {
       invalid('只有有声片段可以设置音量包络', {clipId: clip.id});
@@ -220,7 +221,8 @@ function validatePatch(asset: (id: string) => ClipAsset | null, store: ProjectSt
 
 /** Pure planning read: returns the before/after clip rows for one property action. */
 export function planClipProperties(store: ProjectStore, intent: SequenceEditClipPropertiesIntent): ClipPropertiesPlan {
-  if (!isFormat5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
+  const formatVersion = store.db.prepare('PRAGMA project.user_version').get()?.user_version;
+  if (!isSequenceProjectFormat(formatVersion)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
   const record = readFormat5TimelineRecord(store.db, 'project');
   if (!record) invalid('项目没有格式 5 时间线');
   const asset = assetReader(store.db, store.projectId);
@@ -237,7 +239,8 @@ export function planClipProperties(store: ProjectStore, intent: SequenceEditClip
     if (!clip) invalid('片段不属于这个时间线', {clipId: edit.clipId});
     const track = tracks.get(clip.trackId);
     if (!track) invalid('片段轨道不存在', {trackId: clip.trackId});
-    const next = validatePatch(asset, store, clip, track, edit.patch);
+    const maxFrames = formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION && clip.timing ? FORMAT5_LIMITS.durationFrames : undefined;
+    const next = validatePatch(asset, store, clip, track, edit.patch, maxFrames);
     if (edit.patch.sourceReplacement !== undefined) {
       replacedIds.add(clip.id);
       if (clip.trackId === record.mainTrack.trackId) mainReplacements.push(next);
@@ -255,7 +258,7 @@ export function planClipProperties(store: ProjectStore, intent: SequenceEditClip
     return value ? {image: value.mimeType.startsWith('image/'), frames: value.frames} : null;
   };
   const changedIds = new Set(after.map(clip => clip.id));
-  if (store.db.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT6_PROJECT_SCHEMA_VERSION) {
+  if (formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION) {
     validateSpeedTransitions({...record, clips: draft}, record, id => asset(id) ?? undefined);
   } else {
     for (const next of replacedIds.size ? draft : after) {

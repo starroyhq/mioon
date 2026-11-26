@@ -9,11 +9,14 @@ import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-f
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
+import {VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import {instantiateSpeedPreset, timeMapPlanFrames, TIMELINE_SPEED_PRESETS} from '../packages/contracts/src/timeline-time-map.ts';
+import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
 import type {TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
 import type {SequenceEditSpeedIntent, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
-import type {SequenceEditHistoryView, SequenceEditReceipt} from '../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditClipPropertiesPatch, SequenceEditHistoryView, SequenceEditReceipt} from '../packages/contracts/src/sequence-edit.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (number: number): string => `50000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -104,12 +107,21 @@ function editor(store: ProjectStore) {
     assert.equal(receipt.status, 'applied');
     return {receipt, replay: () => service.commit(input) as SequenceEditReceipt};
   }
+  function properties(clipId: string, patch: SequenceEditClipPropertiesPatch) {
+    const reviewed = service.preview({projectId, requestId: randomUUID(),
+      propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties', edits: [{clipId, patch}]}}});
+    assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
+    const receipt = service.commit({projectId, envelope: reviewed.envelope,
+      expectedPlanDigest: reviewed.planDigest}) as SequenceEditReceipt;
+    assert.equal(receipt.status, 'applied');
+    return receipt;
+  }
   function history(direction: 'undo' | 'redo', actionId: string) {
     const {position, revision} = service.history({projectId}) as SequenceEditHistoryView;
     const receipt = service[direction]({projectId, actionId, requestId: randomUUID(), expected: {position, revision}}) as SequenceEditReceipt;
     assert.equal(receipt.status, 'applied');
   }
-  return {preview, apply, history, service};
+  return {preview, apply, properties, history, service};
 }
 
 function saved(store: ProjectStore) {
@@ -356,4 +368,63 @@ test('following versions are checked against the visible source window, includin
   const result = saved(store).clips.find(clip => clip.id === clipA)!;
   assert.equal(result.versionId, fittingVersion);
   assert.deepEqual(result.timing, trimmed.timing);
+});
+
+test('shortening a speed clip clips its volume envelope and interpolates the new endpoint', t => {
+  const store = fixture(t), api = editor(store);
+  const volumeEnvelope = {profileId: VOLUME_ENVELOPE_PROFILE,
+    points: [{frame: 0, multiplier: 1}, {frame: 20, multiplier: 0.5}, {frame: 60, multiplier: 0}]};
+  api.properties(clipA, {volumeEnvelope});
+  const shortened = api.apply(set(constant(2)));
+  const clip = saved(store).clips.find(item => item.id === clipA)!;
+  assert.equal(clip.durationFrames, 30);
+  assert.deepEqual(clip.volumeEnvelope, {...volumeEnvelope,
+    points: [{frame: 0, multiplier: 1}, {frame: 20, multiplier: 0.5}, {frame: 30, multiplier: 0.375}]});
+  api.history('undo', shortened.receipt.actionId);
+  assert.deepEqual(saved(store).clips.find(item => item.id === clipA)?.volumeEnvelope, volumeEnvelope);
+});
+
+test('a long retimed clip keeps effects when edited, replaced and separated', t => {
+  const store = fixture(t), api = editor(store);
+  const longClip = id(91), longAsset = id(18), replacementAsset = id(19);
+  const timeline = saved(store);
+  const source: Format5Clip = {id: longClip, trackId: videoTrack2, name: 'Long video', assetId: longAsset,
+    sourceState: 'ready', sourceInFrame: 0, startFrame: 0, durationFrames: 2_000, gain: 1, anchor: null,
+    rect: {x: 0, y: 0, width: timeline.width, height: timeline.height}};
+  store.tx(() => {
+    for (const [assetId, letter] of [[longAsset, 'f'], [replacementAsset, '9']]) {
+      store.put('assets', {id: assetId, projectId: store.projectId, mimeType: 'video/mp4', duration: 70, hasAudio: true, sha256: sha(letter)});
+    }
+    store.put('timelines', {...timeline, durationFrames: source.durationFrames, clips: [...timeline.clips, source]});
+  });
+  const transform = {profileId: CLIP_TRANSFORM_PROFILE, keyframes: [{frame: 0, x: 0, y: 0, scale: 1}],
+    rotation: 0, crop: {left: 0, top: 0, right: 0, bottom: 0}};
+  const volumeEnvelope = {profileId: VOLUME_ENVELOPE_PROFILE, points: [{frame: 0, multiplier: 1}, {frame: 2_000, multiplier: 0}]};
+  api.properties(longClip, {transform, volumeEnvelope});
+
+  api.apply(set(constant(1, 10), {}, longClip));
+  const slowed = saved(store).clips.find(clip => clip.id === longClip)!;
+  assert.equal(slowed.durationFrames, 20_000);
+  assert.ok(slowed.durationFrames > VOLUME_ENVELOPE_LIMITS.frames);
+  assert.deepEqual(slowed.volumeEnvelope, volumeEnvelope);
+  assert.deepEqual(slowed.transform, transform);
+  const editedTransform = {...transform, keyframes: [...transform.keyframes, {frame: 19_000, x: 10, y: 0, scale: 1}]};
+  const editedEnvelope = {...volumeEnvelope, points: [...volumeEnvelope.points, {frame: 19_000, multiplier: 0.5}]};
+  api.properties(longClip, {transform: editedTransform, volumeEnvelope: editedEnvelope});
+  api.properties(longClip, {sourceReplacement: {assetId: replacementAsset}});
+
+  const replaced = saved(store).clips.find(clip => clip.id === longClip)!;
+  assert.equal(replaced.assetId, replacementAsset);
+  assert.deepEqual(replaced.timing, slowed.timing);
+  assert.deepEqual(replaced.transform, editedTransform);
+  assert.deepEqual(replaced.volumeEnvelope, editedEnvelope);
+  const reviewed = api.service.preview({projectId: store.projectId, requestId: randomUUID(),
+    soundIntent: {side: 'timeline', operation: {kind: 'separate-sound', clipId: longClip}}});
+  assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
+  api.service.commit({projectId: store.projectId, envelope: reviewed.envelope, expectedPlanDigest: reviewed.planDigest});
+  const separated = saved(store).clips.find(clip => clip.soundOnly && clip.assetId === replacementAsset);
+  assert.ok(separated);
+  assert.equal(separated.durationFrames, 20_000);
+  assert.deepEqual(separated.timing, replaced.timing);
+  assert.deepEqual(separated.volumeEnvelope, editedEnvelope);
 });
