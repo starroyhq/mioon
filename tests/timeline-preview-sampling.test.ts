@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {timelineClipSourceAtFrame} from '../packages/contracts/src/timeline-clip-timing.ts';
+import {timelineClipSourceAtFrame} from '@mioon/contracts/timeline-clip-timing';
 import {
   compileTimeMap, initialTimeMap, timeMapPlanFrames, timeMapPlanInfo, timeMapTailInverse, trimTimeMap,
   type CompiledTimeMap, type TimeMapBasis, type TimeMapResult, type TimeMapSpeed,
 } from '../packages/contracts/src/timeline-time-map.ts';
-import {projectTimelineWaveformPeaks} from '../packages/business/src/timeline-preview-waveform.ts';
+import {projectTimelineWaveformPeaks} from '@mioon/contracts/timeline-preview-waveform';
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
+import {WAVEFORM_ALGORITHM, WAVEFORM_BINS_PER_SECOND, type WaveformResponse} from '../packages/contracts/src/waveforms.ts';
 
 const fps = 30, timeline = {fps};
 const clip = {id: 'clip', startFrame: 90, durationFrames: 30, sourceInFrame: 3};
@@ -35,8 +36,14 @@ function timed({plan, basis}: ReturnType<typeof compiled>) {
     pitchShift: false, interpolation: 'off'};
   return {...clip, durationFrames: plan.durationFrames, timing};
 }
-const sourceFixture = {sampleFrames: 288_000, peaks: Array.from({length: 600}, (_, index) => index * 100)};
 const normalized = (index: number) => index * 100 / 65535;
+const sourceFixture: WaveformResponse = {
+  projectId: 'ac81b9ce-fd64-4d3e-aefe-988c60c5d3c1', assetId: 'b9990d8a-614b-41e7-98a5-934f5246a822',
+  attemptId: 'de2580b6-bc73-4797-9cb9-e24f30e083aa', algorithm: WAVEFORM_ALGORITHM, status: 'ready',
+  binsPerSecond: WAVEFORM_BINS_PER_SECOND, duration: 6, sourceFrames: 180, decodedSampleFrames: 288_000,
+  sourceStartFrame: 0, sourceEndFrame: 180, clipped: false,
+  peaks: Array.from({length: 600}, (_, index) => normalized(index)),
+};
 
 test('thumbnail sampling uses the shared frame table for both directions and clipped curve phase', () => {
   for (const direction of ['forward', 'reverse'] as const) {
@@ -91,10 +98,12 @@ test('a curve waveform mirrors its source intervals when traversed in reverse', 
   const mapping = compiled(variable, 153);
   const window = {outputStartFrame: 90, outputEndFrame: 90 + mapping.plan.durationFrames, points: 7};
   const forward = projectTimelineWaveformPeaks(timed(mapping), fps, window, sourceFixture);
+  assert.ok(forward);
   // Speed changes the size of the source-clock group for each output group.
   assert.ok(forward.slice(1).every((peak, index) => peak! > forward[index]!), JSON.stringify(forward));
   assert.notEqual(forward[1]! - forward[0]!, forward[2]! - forward[1]!);
   const reverse = projectTimelineWaveformPeaks(timed(compiled(variable, 153, 'reverse')), fps, window, sourceFixture);
+  assert.ok(reverse);
   // The fractional last output frame holds video and is silent in audio. A
   // full-window bin can straddle that tail, so the two loudest extrema agree.
   assert.equal(forward.at(-1), normalized(509));
@@ -107,9 +116,20 @@ test('freeze is silent and exact, and a fractional motion tail differs from miss
     sourceSha256: 'a'.repeat(64)} satisfies ClipTiming};
   assert.equal(unwrap(timelineClipSourceAtFrame(freeze, timeline, 117)).sourceFrame, 7);
   const frozen = {outputStartFrame: 90, outputEndFrame: 120, points: 4};
-  assert.deepEqual(projectTimelineWaveformPeaks(freeze, fps, frozen, {sampleFrames: 0, peaks: []}), [0, 0, 0, 0]);
+  assert.deepEqual(projectTimelineWaveformPeaks(freeze, fps, frozen), [0, 0, 0, 0]);
   const tail = timed(compiled(constant(10), 14));
   const lastFrame = {outputStartFrame: 91, outputEndFrame: 92, points: 4};
   assert.deepEqual(projectTimelineWaveformPeaks(tail, fps, lastFrame, sourceFixture), [normalized(46), 0, 0, 0]);
-  assert.deepEqual(projectTimelineWaveformPeaks(tail, fps, lastFrame, {sampleFrames: 20_000, peaks: sourceFixture.peaks}), [null, 0, 0, 0]);
+  const shortSource = {...sourceFixture, sourceEndFrame: 14, sourceFrames: 14, duration: 14 / 30, decodedSampleFrames: 20_000,
+    peaks: [...sourceFixture.peaks!.slice(0, 42), null, null, null, null, null]};
+  assert.deepEqual(projectTimelineWaveformPeaks(tail, fps, lastFrame, shortSource), [null, 0, 0, 0]);
+});
+
+test('waveform projection respects a fetched source slice and its normalized peak grouping', () => {
+  const retimed = timed(compiled(constant(2), 33));
+  const full = {outputStartFrame: 90, outputEndFrame: 105, points: 5};
+  const slice = {...sourceFixture, sourceStartFrame: 9, sourceEndFrame: 21, peaks: [0.25, 0.75]};
+  assert.deepEqual(projectTimelineWaveformPeaks(retimed, fps, full, slice), [null, 0.25, 0.75, null, null]);
+  assert.equal(projectTimelineWaveformPeaks(retimed, fps, full), null);
+  assert.throws(() => projectTimelineWaveformPeaks(retimed, fps, full, {...slice, peaks: [2]}), {code: 'WAVEFORM_PROTOCOL'});
 });

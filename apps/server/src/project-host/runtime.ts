@@ -1,5 +1,6 @@
 import {handleMioRulesHttp} from '../mio-rules-http.ts';
 import {AppError} from '@mioon/contracts';
+import {TIMELINE_PREVIEW_MEDIA_QUERY} from '@mioon/contracts/timeline-preview-media';
 import {isTimelineRenderRecordFor} from '@mioon/business/timeline-record-format';
 import path from 'node:path';
 import {admitProjectAssetSource, registeredProjectAssetReferences, validatedProjectAssetSource, resolveProjectMediaFile} from '@mioon/business/project-media-storage';
@@ -193,6 +194,11 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       return true;
     }
     if (route.kind === 'media' && ['GET', 'HEAD'].includes(req.method ?? '')) {
+      // A proxy URL must resolve to its exact cache lease. Until the preview
+      // producer is attached, it must not fall through to the original asset.
+      if (local.searchParams.has(TIMELINE_PREVIEW_MEDIA_QUERY)) {
+        throw new AppError('NOT_FOUND', '找不到该变速预览。', 404);
+      }
       const preview = local.searchParams.has('preview'), named = local.searchParams.has('exportId');
       const guards = {isTimelineRenderRecord: (value: unknown, input: Readonly<Record<string, unknown>>) =>
         isTimelineRenderRecordFor(store.db, value, input), readOwnedAsset: (id: string, assetId: string) => readOwnedTimelineAsset(store.db, id, assetId)};
