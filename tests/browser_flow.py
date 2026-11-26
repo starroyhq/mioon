@@ -41,7 +41,7 @@ def poll(fn,predicate,seconds=60):
 def login(page,base,project=None):
     page.goto(base+('/?project='+project if project else '/'))
     page.get_by_label('访问令牌',exact=True).fill(TOKEN)
-    page.get_by_role('button',name='进入工作台',exact=True).click()
+    page.get_by_role('button',name='进入 Mioon',exact=True).click()
     expect(page.get_by_test_id('workbench' if project else 'project-home')).to_be_visible(timeout=15000)
 def screenshot(page,name):page.screenshot(path=str(OUT/name),full_page=True)
 def select_shot(page,shot):

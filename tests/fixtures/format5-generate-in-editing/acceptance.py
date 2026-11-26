@@ -106,7 +106,7 @@ def main() -> int:
             assert len(seeded['shots']) == 3, len(seeded['shots'])
             page.goto(base + '/')
             page.locator('input[type="password"]').fill(token)
-            page.get_by_role('button', name='进入工作台', exact=True).click()
+            page.get_by_role('button', name='进入 Mioon', exact=True).click()
             page.wait_for_timeout(1500)
             if page.get_by_test_id('project-home').count() == 0:
                 page.get_by_test_id('project-home-page-projects').click(force=True)

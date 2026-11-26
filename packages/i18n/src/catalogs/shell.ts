@@ -730,10 +730,10 @@ const shellCoreMessages = {
     "ja": "操作の結果を確認できませんでした。接続と現在の状態を確認してください。未確認のリクエストがある場合は、再送信する前にタスクで元のリクエストを確認してください"
   },
   "shell.login.invalidToken": {
-    "zh-Hans": "访问令牌无效，请使用服务器配置的工作台令牌",
-    "zh-Hant": "存取權杖無效，請使用伺服器設定的工作台權杖",
-    "en": "The access token is invalid. Use the workbench token configured on the server",
-    "ja": "アクセストークンが無効です。サーバーに設定したワークベンチのトークンを使用してください"
+    "zh-Hans": "访问令牌无效，请使用服务器配置的访问令牌",
+    "zh-Hant": "存取權杖無效，請使用伺服器設定的存取權杖",
+    "en": "The access token is invalid. Use the access token configured on the server",
+    "ja": "アクセストークンが無効です。サーバーに設定したアクセストークンを使用してください"
   },
   "shell.login.headline": {
     "zh-Hans": "让每一个想法，都有自己的镜头",
@@ -753,18 +753,6 @@ const shellCoreMessages = {
     "en": "Private workspace · Local media · Traceable versions",
     "ja": "プライベートなワークスペース・ローカルメディア管理・バージョン履歴"
   },
-  "shell.login.title": {
-    "zh-Hans": "进入你的影像工作台",
-    "zh-Hant": "進入你的影像工作台",
-    "en": "Enter your video workbench",
-    "ja": "映像ワークベンチに入る"
-  },
-  "shell.login.hint": {
-    "zh-Hans": "使用工作台访问令牌登录。令牌仅用于建立安全会话",
-    "zh-Hant": "使用工作台存取權杖登入。權杖僅用於建立安全的工作階段",
-    "en": "Sign in with your workbench access token. It is used only to establish a secure session",
-    "ja": "ワークベンチのアクセストークンでログインします。トークンは安全なセッションの確立にのみ使用します"
-  },
   "shell.login.token": {
     "zh-Hans": "访问令牌",
     "zh-Hant": "存取權杖",
@@ -772,16 +760,16 @@ const shellCoreMessages = {
     "ja": "アクセストークン"
   },
   "shell.login.placeholder": {
-    "zh-Hans": "输入工作台令牌",
-    "zh-Hant": "輸入工作台權杖",
-    "en": "Enter workbench token",
-    "ja": "ワークベンチのトークンを入力"
+    "zh-Hans": "输入访问令牌",
+    "zh-Hant": "輸入存取權杖",
+    "en": "Enter access token",
+    "ja": "アクセストークンを入力"
   },
   "shell.login.enter": {
-    "zh-Hans": "进入工作台",
-    "zh-Hant": "進入工作台",
-    "en": "Enter workbench",
-    "ja": "ワークベンチに入る"
+    "zh-Hans": "进入 Mioon",
+    "zh-Hant": "進入 Mioon",
+    "en": "Enter Mioon",
+    "ja": "Mioon に入る"
   },
   "shell.login.secrets": {
     "zh-Hans": "服务商 API 密钥始终留在服务器",
@@ -1487,10 +1475,10 @@ const shellCoreMessages = {
     "ja": "ワークスペースに接続中…"
   },
   "shell.connectFailed": {
-    "zh-Hans": "暂时无法连接工作台",
-    "zh-Hant": "暫時無法連線至工作台",
-    "en": "Cannot connect to the workbench right now",
-    "ja": "現在ワークベンチに接続できません"
+    "zh-Hans": "暂时无法连接 Mioon",
+    "zh-Hant": "暫時無法連線至 Mioon",
+    "en": "Cannot connect to Mioon right now",
+    "ja": "現在 Mioon に接続できません"
   },
   "shell.checkServer": {
     "zh-Hans": "请确认服务器已启动",
@@ -1535,10 +1523,10 @@ const shellCoreMessages = {
     "ja": "ローカル素材を読み込む"
   },
   "shell.title": {
-    "zh-Hans": "Mioon 影像工作台",
-    "zh-Hant": "Mioon 影像工作台",
-    "en": "Mioon video workbench",
-    "ja": "Mioon 映像ワークベンチ"
+    "zh-Hans": "Mioon",
+    "zh-Hant": "Mioon",
+    "en": "Mioon",
+    "ja": "Mioon"
   },
   "projects.choose": {
     "zh-Hans": "选择一个项目",
@@ -2268,20 +2256,20 @@ const shellCoreMessages = {
   },
   "shell.generationDataScope": {
     "zh-Hans": {
-      "one": "将发送此镜头的提示词、参数与 {count} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消",
-      "other": "将发送此镜头的提示词、参数与 {count} 张参考图。费用由服务商按你的账户计费；工作台不保证远端任务可以取消"
+      "one": "将发送此镜头的提示词、参数与 {count} 张参考图。费用由服务商按你的账户计费，服务商那边的任务不一定能取消。",
+      "other": "将发送此镜头的提示词、参数与 {count} 张参考图。费用由服务商按你的账户计费，服务商那边的任务不一定能取消。"
     },
     "zh-Hant": {
-      "one": "將傳送此鏡頭的提示詞、參數與 {count} 張參考圖。費用由服務商依你的帳戶計費；工作台不保證可取消遠端工作",
-      "other": "將傳送此鏡頭的提示詞、參數與 {count} 張參考圖。費用由服務商依你的帳戶計費；工作台不保證可取消遠端工作"
+      "one": "將傳送此鏡頭的提示詞、參數與 {count} 張參考圖。費用由服務商依你的帳戶計費，服務商那邊的任務不一定能取消。",
+      "other": "將傳送此鏡頭的提示詞、參數與 {count} 張參考圖。費用由服務商依你的帳戶計費，服務商那邊的任務不一定能取消。"
     },
     "en": {
-      "one": "This shot’s prompt, parameters, and {count} reference image will be sent. The provider bills your account. The workbench does not guarantee that the remote task can be cancelled",
-      "other": "This shot’s prompt, parameters, and {count} reference images will be sent. The provider bills your account. The workbench does not guarantee that the remote task can be cancelled"
+      "one": "This shot’s prompt, parameters, and {count} reference image will be sent. The provider bills your account, and tasks on the provider’s side may not be cancellable.",
+      "other": "This shot’s prompt, parameters, and {count} reference images will be sent. The provider bills your account, and tasks on the provider’s side may not be cancellable."
     },
     "ja": {
-      "one": "このショットのプロンプト、パラメーター、{count} 枚の参照画像を送信します。料金はサービス提供元からアカウントに請求されます。ワークベンチはリモートタスクのキャンセルを保証しません",
-      "other": "このショットのプロンプト、パラメーター、{count} 枚の参照画像を送信します。料金はサービス提供元からアカウントに請求されます。ワークベンチはリモートタスクのキャンセルを保証しません"
+      "one": "このショットのプロンプト、パラメーター、{count} 枚の参照画像を送信します。料金はサービス提供元からアカウントに請求され、サービス提供元側のタスクはキャンセルできない場合があります。",
+      "other": "このショットのプロンプト、パラメーター、{count} 枚の参照画像を送信します。料金はサービス提供元からアカウントに請求され、サービス提供元側のタスクはキャンセルできない場合があります。"
     }
   },
   "projects.bootMissingRemembered": {

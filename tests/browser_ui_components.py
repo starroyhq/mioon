@@ -80,7 +80,7 @@ def start(data):
 def login(page, base):
     page.goto(base + '/?project=' + PID)
     page.get_by_label('访问令牌', exact=True).fill(TOKEN)
-    page.get_by_role('button', name='进入工作台', exact=True).click()
+    page.get_by_role('button', name='进入 Mioon', exact=True).click()
     expect(page.get_by_test_id('workbench')).to_be_visible(timeout=15000)
     expect(page.get_by_test_id('workspace-canvas')).to_have_attribute('aria-selected', 'true')
     expect(page.get_by_test_id('timeline-panel')).to_have_count(0)
