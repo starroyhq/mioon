@@ -1,13 +1,14 @@
 import {message, translate} from '../../../packages/i18n/src/index.ts';
 import type {DisplayMessage, Locale} from '../../../packages/i18n/src/index.ts';
 import {FCP_EXPORT_TASK_KIND} from '../../../packages/contracts/src/fcp-export.ts';
+import {fcpxmlExportTaskSchema} from '../../../packages/contracts/src/project-registry.ts';
 import type {
-  FcpExportDestination,
   FcpExportError,
   FcpExportGetOutput,
   FcpExportPreviewOutput,
   FcpExportProgress,
   FcpExportResult,
+  FcpExportStartInput,
   FcpExportStatus,
   FcpItem,
 } from '../../../packages/contracts/src/fcp-export.ts';
@@ -19,9 +20,11 @@ export interface FcpExportTaskRecord {
   readonly exportId: string;
   readonly projectId: string;
   readonly name: string;
-  readonly copyMedia: boolean;
-  readonly destination: FcpExportDestination;
-  readonly displayPath: string;
+  readonly requestId?: string;
+  readonly startInput?: FcpExportStartInput;
+  readonly startUncertain?: boolean;
+  readonly displayPath?: string;
+  readonly awaitingCompletion?: boolean;
   readonly status: FcpExportStatus;
   readonly progress: FcpExportProgress;
   readonly result?: FcpExportResult | undefined;
@@ -29,6 +32,71 @@ export interface FcpExportTaskRecord {
   readonly missing: FcpExportPreviewOutput['missing'];
   readonly approximations: FcpExportPreviewOutput['approximations'];
   readonly createdAt: string;
+}
+
+export function isFcpExportHistoryRow(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as {mode?: unknown; kind?: unknown};
+  return row.mode === FCP_EXPORT_TASK_KIND || row.kind === FCP_EXPORT_TASK_KIND;
+}
+
+/** Adopt only the public records from this project's durable task history.
+ * Original start settings and the preview checklist exist only in the window
+ * that submitted the request. A polling result can be newer than this snapshot.
+ */
+export function mergeFcpExportHistory(
+  previous: readonly FcpExportTaskRecord[], projectId: string, rows: readonly unknown[],
+): FcpExportTaskRecord[] {
+  const tasks = new Map(previous.map(task => [task.exportId, task]));
+  const pending = new Map(previous.filter(task => task.projectId === projectId && task.startUncertain)
+    .map(task => [task.requestId, task]));
+  for (const value of rows) {
+    if (!isFcpExportHistoryRow(value)) continue;
+    const parsed = fcpxmlExportTaskSchema.safeParse(value);
+    if (!parsed.success || parsed.data.projectId !== projectId) continue;
+    const row = parsed.data;
+    const attempt = pending.get(row.requestId);
+    const local = attempt ?? tasks.get(row.id);
+    if (attempt) tasks.delete(attempt.exportId);
+    tasks.set(row.id, local ? applyFcpTaskUpdate({
+      ...local, exportId: row.id, name: row.title, requestId: row.requestId,
+      ...(attempt && {status: 'running', startUncertain: false, awaitingCompletion: true, error: undefined}),
+    }, row) : {
+      kind: FCP_EXPORT_TASK_KIND, exportId: row.id, projectId, name: row.title, requestId: row.requestId,
+      status: row.status, progress: row.progress, awaitingCompletion: row.status === 'running',
+      missing: [], approximations: [], createdAt: row.createdAt,
+    });
+  }
+  return [...tasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function needsFcpTaskStatus(task: FcpExportTaskRecord): boolean {
+  return task.status === 'running' || (task.status === 'done' && !task.result) || (task.status === 'failed' && !task.error);
+}
+
+export function mergeFcpStartReceipt(previous: readonly FcpExportTaskRecord[], receipt: FcpExportTaskRecord): FcpExportTaskRecord[] {
+  const saved = previous.find(task => task.exportId === receipt.exportId && task.projectId === receipt.projectId);
+  const task = saved ? {...receipt, ...saved, awaitingCompletion: true, startInput: receipt.startInput,
+    displayPath: receipt.displayPath, missing: receipt.missing, approximations: receipt.approximations} : receipt;
+  return [task, ...previous.filter(item => item.projectId !== receipt.projectId || (
+    item.exportId !== receipt.exportId && !(item.startUncertain && item.requestId === receipt.requestId)
+  ))];
+}
+
+export function fcpRetryInput(task: FcpExportTaskRecord, newRequestId: () => string): FcpExportStartInput | undefined {
+  if (!task.startInput || task.startUncertain) return task.startInput;
+  return {...task.startInput, requestId: newRequestId()};
+}
+
+interface FcpDialogOwner {
+  readonly projectId: string | null;
+  readonly projectEpoch: number;
+  readonly dialogEpoch: number;
+}
+
+export function ownsFcpStartPresentation(expected: FcpDialogOwner, current: FcpDialogOwner, open: boolean): boolean {
+  return open && expected.projectId === current.projectId && expected.projectEpoch === current.projectEpoch
+    && expected.dialogEpoch === current.dialogEpoch;
 }
 
 export function formatFcpBytes(bytes: number): string {
@@ -170,10 +238,15 @@ export function applyFcpTaskUpdate(
   task: FcpExportTaskRecord,
   update: FcpExportGetOutput,
 ): FcpExportTaskRecord {
+  if (task.status !== 'running' && task.status !== update.status) return task;
+  const previous = task.progress, next = update.progress;
   return {
     ...task,
     status: update.status,
-    progress: update.progress,
+    progress: {
+      files: Math.max(previous.files, next.files), totalFiles: Math.max(previous.totalFiles, next.totalFiles),
+      bytes: Math.max(previous.bytes, next.bytes), totalBytes: Math.max(previous.totalBytes, next.totalBytes),
+    },
     ...(update.result !== undefined ? {result: update.result} : {}),
     ...(update.error !== undefined ? {error: update.error} : {}),
   };

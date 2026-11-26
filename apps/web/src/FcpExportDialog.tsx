@@ -310,7 +310,7 @@ export default function FcpExportDialog({
           </p>}
         </div>
       </div>
-      {missingCount > 0 && <>
+      {missingCount > 0 && (doneMissingItems.length ? <>
         <button
           type="button"
           className="fcp-export-missing-link"
@@ -327,7 +327,7 @@ export default function FcpExportDialog({
         {doneMissingOpen && doneMissingItems.length > 0 && (
           <FcpItemList items={doneMissingItems} tone="warning" testId="fcp-export-done-missing-list" />
         )}
-      </>}
+      </> : <span className="fcp-export-status-meta">{t('fcpExport.done.missingCount', {count: missingCount})}</span>)}
     </div>;
     footer = finalCutInstalled ? <>
       <WorkbenchButton
@@ -367,7 +367,7 @@ export default function FcpExportDialog({
       </div>
     </div>;
     footer = <>
-      <WorkbenchButton
+      {task?.startInput && !task.startUncertain && <WorkbenchButton
         type="button"
         variant="secondary"
         data-testid="fcp-export-change-location"
@@ -375,8 +375,8 @@ export default function FcpExportDialog({
         onClick={onChangeLocation}
       >
         {t('fcpExport.action.changeLocation')}
-      </WorkbenchButton>
-      <WorkbenchButton
+      </WorkbenchButton>}
+      {task?.startInput && <WorkbenchButton
         type="button"
         variant="primary"
         data-testid="fcp-export-retry"
@@ -385,7 +385,7 @@ export default function FcpExportDialog({
         onClick={onRetry}
       >
         {t('fcpExport.action.retry')}
-      </WorkbenchButton>
+      </WorkbenchButton>}
     </>;
   }
 
@@ -485,8 +485,9 @@ export function fcpExportTaskOverviewItems(
           cancelLabel: handlers.t('fcpExport.action.cancelExport'),
         } : {
           detail: handlers.renderMessage(fcpErrorMessage(task.error)),
-          onRetry: () => handlers.onRetry(task),
-          retryLabel: handlers.t('fcpExport.action.retry'),
+          ...(task.startInput && {
+            onRetry: () => handlers.onRetry(task), retryLabel: handlers.t('fcpExport.action.retry'),
+          }),
         }),
         onOpen: () => handlers.onOpen(task),
       };
@@ -552,7 +553,7 @@ export function fcpExportTaskCenterEntries(
           {done && <WorkbenchButton type="button" variant="secondary" size="compact" onClick={() => handlers.onReveal(task)}>
             {handlers.t('fcpExport.action.revealInFinder')}
           </WorkbenchButton>}
-          {failed && <WorkbenchButton type="button" variant="secondary" size="compact" onClick={() => handlers.onRetry(task)}>
+          {failed && task.startInput && <WorkbenchButton type="button" variant="secondary" size="compact" onClick={() => handlers.onRetry(task)}>
             {handlers.t('fcpExport.action.retry')}
           </WorkbenchButton>}
           <WorkbenchButton type="button" variant="ghost" size="compact" onClick={() => handlers.onOpen(task)}>

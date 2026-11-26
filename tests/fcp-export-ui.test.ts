@@ -41,10 +41,16 @@ import {
   fcpItemLabelMessage,
   fcpItemTooltipText,
   fcpProgressPercent,
+  fcpRetryInput,
   fcpTaskStatusMessage,
   formatFcpBytes,
   formatFcpDuration,
   formatFcpFps,
+  isFcpExportHistoryRow,
+  mergeFcpExportHistory,
+  mergeFcpStartReceipt,
+  needsFcpTaskStatus,
+  ownsFcpStartPresentation,
 } from '../apps/web/src/fcp-export-state.ts';
 import type {FcpExportTaskRecord} from '../apps/web/src/fcp-export-state.ts';
 
@@ -243,8 +249,9 @@ function sampleTask(overrides: Partial<FcpExportTaskRecord> = {}): FcpExportTask
     projectId: 'proj_0123456789abcdef',
     kind: FCP_EXPORT_TASK_KIND,
     name: '城市夜景短片',
-    copyMedia: true,
-    destination: {kind: 'project'},
+    requestId: 'request-1',
+    startInput: {projectId: 'proj_0123456789abcdef', requestId: 'request-1',
+      name: '城市夜景短片', copyMedia: true, destination: {kind: 'project'}},
     displayPath: '~/影片/城市夜景短片/导出',
     status: 'running',
     progress: {
@@ -576,12 +583,110 @@ test('background completion toast and Task Center / TaskPopover entries render f
   assert.equal(overview[0]?.progress, 34);
 });
 
+test('durable FCP history restores task identities and preserves local start settings and fresher terminal data', () => {
+  const projectId = '11111111-1111-4111-8111-111111111111', id = '22222222-2222-4222-8222-222222222222';
+  const row = {
+    kind: FCP_EXPORT_TASK_KIND, mode: FCP_EXPORT_TASK_KIND, projectId, id, requestId: 'durable-request',
+    title: 'Saved title', status: 'running', revision: 1,
+    createdAt: '2026-11-26T12:00:00.000Z', updatedAt: '2026-11-26T12:00:01.000Z',
+    progress: {files: 1, totalFiles: 2, bytes: 10, totalBytes: 20},
+  };
+  const normal = {mode: 'timeline'};
+  const foreign = {...row, id: '33333333-3333-4333-8333-333333333333', projectId: '44444444-4444-4444-8444-444444444444'};
+  const [restored] = mergeFcpExportHistory([], projectId, [normal, foreign, row]);
+  assert.equal(isFcpExportHistoryRow(row), true);
+  assert.equal(isFcpExportHistoryRow(normal), false);
+  assert.ok(restored);
+  assert.equal(restored.exportId, id);
+  assert.equal(restored.awaitingCompletion, true);
+  assert.equal(restored.startInput, undefined);
+  assert.equal(needsFcpTaskStatus(restored), true);
+  assert.equal(mergeFcpExportHistory([], projectId, [normal, foreign]).length, 0);
+  const local = sampleTask({projectId, exportId: 'failed:' + row.requestId, requestId: row.requestId,
+    startInput: {projectId, requestId: row.requestId, name: 'Original name', copyMedia: false, destination: {kind: 'chosen', token: 'original-token'}},
+    startUncertain: true, status: 'failed', error: {code: 'EXPORT_FAILED'}});
+  const {result} = sampleTask({result: {bundleName: 'Saved.fcpxmld', displayPath: '~/Movies', bytes: 20, missingCount: 2}});
+  const [admitted] = mergeFcpExportHistory([local], projectId, [{...row, status: 'done'}]);
+  assert.ok(admitted);
+  assert.equal(admitted.exportId, id);
+  assert.equal(admitted.startInput, local.startInput);
+  assert.equal(admitted.missing, local.missing);
+  assert.equal(admitted.startUncertain, false);
+  assert.equal(admitted.error, undefined);
+  assert.equal(needsFcpTaskStatus(admitted), true, 'A durable terminal row does not contain the get result');
+  const completed = applyFcpTaskUpdate(admitted, {status: 'done', progress: row.progress, result: result!});
+  const [refreshed] = mergeFcpExportHistory([completed], projectId, [row]);
+  assert.equal(refreshed?.status, 'done');
+  assert.equal(refreshed?.result, result);
+  assert.equal(needsFcpTaskStatus(refreshed!), false);
+  assert.equal(fcpRetryInput(restored, () => assert.fail('No retry for an unknown configuration')), undefined);
+  assert.equal(fcpRetryInput(local, () => assert.fail('Uncertain submissions retain their key')), local.startInput);
+  assert.deepEqual(fcpRetryInput({...local, startUncertain: false}, () => 'new-intent'),
+    {...local.startInput, requestId: 'new-intent'});
+});
+
+test('a late start may update the current dialog only while its original presentation owns it', () => {
+  const original = {projectId: 'project-a', projectEpoch: 4, dialogEpoch: 7};
+  assert.equal(ownsFcpStartPresentation(original, original, true), true);
+  assert.equal(ownsFcpStartPresentation(original, original, false), false);
+  assert.equal(ownsFcpStartPresentation(original, {...original, dialogEpoch: 9}, true), false);
+  assert.equal(ownsFcpStartPresentation(original, {...original, projectId: 'project-b'}, true), false);
+  assert.equal(ownsFcpStartPresentation(original, {...original, projectEpoch: 5}, true), false);
+});
+
+test('a late start receipt registers completion even when history saw the terminal status first', async () => {
+  const receipt = sampleTask({awaitingCompletion: true});
+  const result = {bundleName: 'Saved.fcpxmld', displayPath: '~/Movies', bytes: 20, missingCount: 2};
+  const fromHistory = sampleTask({
+    status: 'done',
+    awaitingCompletion: false,
+    startInput: undefined,
+    missing: [],
+    approximations: [],
+  });
+  const [stillLoading] = mergeFcpStartReceipt([fromHistory], receipt);
+  assert.ok(stillLoading);
+  assert.equal(stillLoading.status, 'done');
+  assert.equal(stillLoading.awaitingCompletion, true);
+  assert.equal(needsFcpTaskStatus(stillLoading), true);
+  const hydrated = applyFcpTaskUpdate(fromHistory, {status: 'done', progress: fromHistory.progress, result});
+  const [alreadyLoaded] = mergeFcpStartReceipt([hydrated], receipt);
+  assert.ok(alreadyLoaded);
+  assert.equal(alreadyLoaded.status, 'done');
+  assert.equal(alreadyLoaded.awaitingCompletion, true);
+  assert.equal(alreadyLoaded.result, result);
+  assert.equal(alreadyLoaded.startInput, receipt.startInput);
+  assert.equal(alreadyLoaded.missing, receipt.missing);
+  assert.equal(needsFcpTaskStatus(alreadyLoaded), false);
+  const rendered = await ui();
+  assert.match(rendered.renderToast({task: alreadyLoaded}), /data-testid="fcp-export-done-toast"/);
+});
+
+test('a recovered export displays its failure or missing count without inventing retry settings or checklist rows', async () => {
+  const rendered = await ui();
+  const failed = sampleTask({status: 'failed', startInput: undefined, error: {code: 'NOT_WRITABLE'}});
+  const html = rendered.renderDialog({phase: 'failed', task: failed});
+  assert.match(html, /这个位置没有写入权限。/);
+  assert.doesNotMatch(html, /data-testid="fcp-export-(retry|change-location)"/);
+  assert.doesNotMatch(rendered.renderTaskCenterEntry(failed).html, /重试/);
+  const uncertain = sampleTask({status: 'failed', startUncertain: true, error: {code: 'EXPORT_FAILED'}});
+  const uncertainHtml = rendered.renderDialog({phase: 'failed', task: uncertain});
+  assert.match(uncertainHtml, /data-testid="fcp-export-retry"/);
+  assert.doesNotMatch(uncertainHtml, /data-testid="fcp-export-change-location"/);
+  const done = sampleTask({status: 'done', startInput: undefined, missing: [], result: {
+    bundleName: 'Saved.fcpxmld', displayPath: '~/Movies', bytes: 20, missingCount: 2,
+  }});
+  const doneHtml = rendered.renderDialog({phase: 'done', task: done});
+  assert.match(doneHtml, /2 项没带过去/);
+  assert.doesNotMatch(doneHtml, /fcp-export-done-missing-toggle/);
+});
+
 test('App.tsx wires editing split export button, project menu bridge gating, background polling, and TaskCenter', () => {
   const app = read('apps/web/src/App.tsx');
   assert.match(app, /data-testid="export-split-button"/);
   assert.match(app, /data-testid="export-menu-trigger"/);
   assert.match(app, /data-testid="export-menu-video"/);
-  assert.match(app, /\{fcpExportBridge && <DropdownMenuItem data-testid="export-menu-fcp"/);
+  assert.match(app, /\{fcpExportAvailable && <DropdownMenuItem data-testid="export-menu-fcp"/);
   assert.match(app, /data-testid="export-menu-history"/);
 
   const menuStart = app.indexOf('<DropdownMenuContent align="start" className="workbench-project-menu">');
@@ -589,10 +694,13 @@ test('App.tsx wires editing split export button, project menu bridge gating, bac
   assert.ok(menu.indexOf('export-button') > 0);
   assert.ok(menu.indexOf('project-menu-fcp-export') > menu.indexOf('export-button'));
   assert.ok(menu.indexOf('project-menu-fcp-export') < menu.indexOf('new-project-menu'));
-  assert.match(menu, /\{fcpExportBridge && <DropdownMenuItem data-testid="project-menu-fcp-export"/);
+  assert.match(menu, /\{fcpExportAvailable && <DropdownMenuItem data-testid="project-menu-fcp-export"/);
+  assert.match(app, /fcpExportBridge && data\.projectFormatVersion === 5/);
 
   // Closing the dialog only hides it; cancelling requires the explicit cancel button.
-  assert.match(app, /onOpenChange=\{open => \{ if \(!open\) setFcpOpen\(false\); \}\}/);
+  assert.match(app, /onOpenChange=\{open => \{ if \(!open\) closeFcpExport\(\); \}\}/);
+  assert.match(app, /mergeFcpExportHistory\(previous, projectId, data\.exports\)/);
+  assert.match(app, /!isFcpExportHistoryRow\(item\)/);
   assert.match(app, /rpc\('export\.fcpxml\.preview'/);
   assert.match(app, /rpc\('export\.fcpxml\.start'/);
   assert.match(app, /rpc\('export\.fcpxml\.get'/);

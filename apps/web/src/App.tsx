@@ -213,12 +213,12 @@ import TimelineClipContextMenu from './TimelineClipContextMenu.tsx';
 import ClipAudioTaskToast from './ClipAudioTaskToast.tsx';
 import type {ClipAudioToastTarget} from './ClipAudioTaskToast.tsx';
 import {readFcpExportBridge, isFcpExportChosenDestination} from './fcp-export-bridge.ts';
-import {applyFcpTaskUpdate} from './fcp-export-state.ts';
+import {applyFcpTaskUpdate, fcpRetryInput, isFcpExportHistoryRow, mergeFcpExportHistory, mergeFcpStartReceipt, needsFcpTaskStatus, ownsFcpStartPresentation} from './fcp-export-state.ts';
 import type {FcpExportTaskRecord} from './fcp-export-state.ts';
 import FcpExportDialog, {FcpExportToast, fcpExportTaskCenterEntries, fcpExportTaskOverviewItems} from './FcpExportDialog.tsx';
 import type {FcpExportDialogPhase} from './FcpExportDialog.tsx';
 import {FCP_EXPORT_TASK_KIND, fcpExportCancelOutputSchema, fcpExportErrorSchema, fcpExportGetOutputSchema, fcpExportPreviewOutputSchema, fcpExportStartOutputSchema} from '../../../packages/contracts/src/fcp-export.ts';
-import type {FcpExportDestination, FcpExportError, FcpExportPreviewOutput} from '../../../packages/contracts/src/fcp-export.ts';
+import type {FcpExportDestination, FcpExportError, FcpExportPreviewOutput, FcpExportStartInput} from '../../../packages/contracts/src/fcp-export.ts';
 import {clipContextMenuPlan} from './clip-sound-state.ts';
 import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
 import ShotDialogue from './ShotDialogue.tsx';
@@ -286,7 +286,7 @@ import { createPrevisEditorRpc } from './previs/previs-format5-rpc.ts';
 import { previsSubjectChoices } from './previs/previs-subject.ts';
 import { publishPrevisOutput } from './previs/previs-publication.ts';
 import { previsFrame } from './previs/previs-camera.ts';
-import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
+import { ApiError, rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.ts';
 import { generationSelection, generationParameters, generationVideoInput, shotWithGenerationParameters, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences, providerStatus, videoGenerationServiceAvailable } from './generation-settings.ts';
 import { generationAspectError, generationFrameMatches, prepareGenerationAspect } from './generation-settings.ts';
@@ -4566,13 +4566,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [fcpCopyMedia, setFcpCopyMedia] = useState(true);
   const [fcpDestination, setFcpDestination] = useState<FcpExportDestination>({kind: 'project'});
   const [fcpDisplayPath, setFcpDisplayPath] = useState('');
-  const [fcpStarting, setFcpStarting] = useState(false);
+  const [fcpStartingProjects, setFcpStartingProjects] = useState<ReadonlySet<string>>(new Set());
   const [fcpCancelling, setFcpCancelling] = useState(false);
   const [fcpActiveExportId, setFcpActiveExportId] = useState<string | null>(null);
   const [fcpFinalCutInstalled, setFcpFinalCutInstalled] = useState(false);
   const [fcpTasks, setFcpTasks] = useState<FcpExportTaskRecord[]>([]);
   const [fcpDoneToast, setFcpDoneToast] = useState<FcpExportTaskRecord | null>(null);
   const fcpPreviewSeqRef = useRef(0);
+  const fcpDialogEpoch = useRef(0);
+  const fcpStartInFlight = useRef(new Map<string, string>());
+  const fcpCompletionPresented = useRef(new Set<string>());
   const fcpOpenRef = useRef(false);
   const fcpActiveExportIdRef = useRef<string | null>(null);
   const fcpTasksRef = useRef<FcpExportTaskRecord[]>([]);
@@ -4583,13 +4586,23 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     () => fcpTasks.filter(item => item.projectId === data.project?.id),
     [fcpTasks, data.project?.id],
   );
+  const fcpStarting = Boolean(data.project?.id && fcpStartingProjects.has(data.project.id));
   const activeFcpExportCount = projectFcpTasks.filter(item => item.status === 'running').length;
   const fcpActiveTask = fcpActiveExportId
     ? projectFcpTasks.find(item => item.exportId === fcpActiveExportId) ?? null
     : null;
-  const canOpenFcpExport = Boolean(fcpExportBridge && data.project?.id && online && auth === true && !loading);
+  const fcpExportAvailable = Boolean(fcpExportBridge && data.projectFormatVersion === 5);
+  const canOpenFcpExport = Boolean(fcpExportAvailable && data.project?.id && online && auth === true && !loading);
+  useEffect(() => {
+    const projectId = data.project?.id;
+    if (!fcpExportAvailable || !projectId) return;
+    setFcpTasks(previous => mergeFcpExportHistory(previous, projectId, data.exports));
+  }, [fcpExportAvailable, data.project?.id, data.exports]);
   useEffect(() => {
     fcpPreviewSeqRef.current += 1;
+    fcpDialogEpoch.current += 1;
+    fcpOpenRef.current = false;
+    fcpActiveExportIdRef.current = null;
     setShowExportMenu(false);
     setFcpOpen(false);
     setFcpPreview(null);
@@ -4598,6 +4611,37 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setFcpActiveExportId(null);
     setFcpDoneToast(null);
   }, [data.project?.id]);
+  useEffect(() => {
+    if (!fcpOpenRef.current || !fcpActiveExportId?.startsWith('failed:')) return;
+    const accepted = projectFcpTasks.find(task => !task.exportId.startsWith('failed:') && 'failed:' + task.requestId === fcpActiveExportId);
+    if (!accepted) return;
+    fcpActiveExportIdRef.current = accepted.exportId;
+    setFcpActiveExportId(accepted.exportId);
+    if (accepted.status === 'cancelled') closeFcpExport();
+    else setFcpPhase(accepted.status);
+  }, [fcpActiveExportId, projectFcpTasks]);
+  useEffect(() => {
+    if (fcpOpenRef.current && fcpPhase === 'running' && fcpActiveTask?.status === 'cancelled') closeFcpExport();
+  }, [fcpActiveTask?.status, fcpPhase]);
+  useEffect(() => {
+    const projectId = data.project?.id;
+    if (!fcpExportAvailable || !projectId || projectId !== currentProject.current) return;
+    const pendingRequestId = fcpStartInFlight.current.get(projectId);
+    const completed = projectFcpTasks.filter(task => task.status === 'done' && task.result
+      && task.awaitingCompletion && task.requestId !== pendingRequestId);
+    if (completed.length === 0) return;
+    for (const task of completed) {
+      if (fcpCompletionPresented.current.has(task.exportId)) continue;
+      fcpCompletionPresented.current.add(task.exportId);
+      if (fcpOpenRef.current && fcpActiveExportIdRef.current === task.exportId) {
+        refreshFcpFinalCutInstalled();
+        setFcpPhase('done');
+      } else setFcpDoneToast(task);
+    }
+    const delivered = new Set(completed.map(task => task.exportId));
+    setFcpTasks(prev => prev.map(task => task.projectId === projectId && delivered.has(task.exportId)
+      ? {...task, awaitingCompletion: false} : task));
+  }, [fcpExportAvailable, data.project?.id, projectFcpTasks]);
   function refreshFcpFinalCutInstalled(): void {
     const bridge = readFcpExportBridge();
     if (!bridge) { setFcpFinalCutInstalled(false); return; }
@@ -4636,24 +4680,20 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function openFcpExport(): void {
     const projectId = currentProject.current;
-    if (!readFcpExportBridge() || !projectId || !online || auth !== true || loading) return;
+    if (!canOpenFcpExport || !projectId) return;
     if (clipDraftRef.current?.hasPendingComposition()) return;
     markPanelIntent();
     setShowTasks(false);
     setShowImage(false);
     setShowDelivery(false);
-    const running = fcpTasksRef.current.find(item => item.projectId === projectId && item.status === 'running');
-    if (running) {
-      setFcpActiveExportId(running.exportId);
-      setFcpName(running.name);
-      setFcpCopyMedia(running.copyMedia);
-      setFcpDestination(running.destination);
-      setFcpDisplayPath(running.displayPath);
-      setFcpPhase('running');
-      setFcpOpen(true);
-      refreshFcpFinalCutInstalled();
+    const current = fcpTasksRef.current.find(item => item.projectId === projectId && (item.status === 'running' || item.startUncertain));
+    if (current) {
+      handleFcpOpenTask(current);
       return;
     }
+    fcpDialogEpoch.current += 1;
+    fcpOpenRef.current = true;
+    fcpActiveExportIdRef.current = null;
     setFcpActiveExportId(null);
     setFcpPreview(null);
     setFcpPreviewError(false);
@@ -4675,13 +4715,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   async function handleFcpChooseDestination(fromFailed = false): Promise<void> {
     const bridge = readFcpExportBridge();
     if (!bridge) return;
+    const projectId = currentProject.current, dialogEpoch = fcpDialogEpoch.current;
     try {
       const chosen = await bridge.chooseDestination();
+      if (currentProject.current !== projectId || dialogEpoch !== fcpDialogEpoch.current || !fcpOpenRef.current) return;
       if (!isFcpExportChosenDestination(chosen)) return;
       setFcpDestination({kind: 'chosen', token: chosen.token});
       setFcpDisplayPath(chosen.displayPath);
       if (fromFailed) {
-        const projectId = currentProject.current;
         setFcpActiveExportId(null);
         setFcpPhase('setup');
         if (projectId && !fcpPreview) {
@@ -4723,101 +4764,92 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return {code: 'EXPORT_FAILED'};
   }
   async function startFcpExport(params: {
-    projectId: string;
-    name: string;
-    copyMedia: boolean;
-    destination: FcpExportDestination;
+    input: FcpExportStartInput;
     displayPath: string;
     missing: FcpExportTaskRecord['missing'];
     approximations: FcpExportTaskRecord['approximations'];
+    alreadyUncertain?: boolean;
   }): Promise<void> {
-    const trimmed = params.name.trim();
-    if (!trimmed || fcpStarting) return;
-    setFcpStarting(true);
-    setFcpDoneToast(current => (current?.projectId === params.projectId ? null : current));
-    const reqId = requestId();
+    const {input, displayPath, missing, approximations} = params;
+    if (!input.name || currentProject.current !== input.projectId || fcpStartInFlight.current.has(input.projectId)) return;
+    fcpStartInFlight.current.set(input.projectId, input.requestId);
+    const owner = {projectId: input.projectId, projectEpoch: projectEpoch.current, dialogEpoch: fcpDialogEpoch.current};
+    const viewing = () => ownsFcpStartPresentation(owner, {
+      projectId: currentProject.current, projectEpoch: projectEpoch.current, dialogEpoch: fcpDialogEpoch.current,
+    }, fcpOpenRef.current);
+    setFcpStartingProjects(new Set(fcpStartInFlight.current.keys()));
+    setFcpDoneToast(current => current?.projectId === input.projectId ? null : current);
+    const base = {
+      projectId: input.projectId, kind: FCP_EXPORT_TASK_KIND, name: input.name,
+      requestId: input.requestId, startInput: input, displayPath, missing, approximations,
+      progress: {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0},
+      createdAt: new Date().toISOString(),
+    };
     try {
-      const raw = await rpc('export.fcpxml.start', {
-        projectId: params.projectId,
-        requestId: reqId,
-        name: trimmed,
-        copyMedia: params.copyMedia,
-        destination: params.destination,
-      });
+      const raw = await rpc('export.fcpxml.start', input);
       const parsed = fcpExportStartOutputSchema.safeParse(raw);
       if (!parsed.success) throw {code: 'EXPORT_FAILED'};
       const record: FcpExportTaskRecord = {
-        exportId: parsed.data.exportId,
-        projectId: params.projectId,
-        kind: FCP_EXPORT_TASK_KIND,
-        name: trimmed,
-        copyMedia: params.copyMedia,
-        destination: params.destination,
-        displayPath: params.displayPath,
-        status: 'running',
-        progress: {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0},
-        missing: params.missing,
-        approximations: params.approximations,
-        createdAt: new Date().toISOString(),
+        ...base, exportId: parsed.data.exportId, status: 'running', awaitingCompletion: true,
       };
-      setFcpTasks(prev => [record, ...prev.filter(item => item.exportId !== record.exportId)]);
-      setFcpActiveExportId(record.exportId);
-      setFcpName(trimmed);
-      setFcpCopyMedia(params.copyMedia);
-      setFcpDestination(params.destination);
-      setFcpDisplayPath(params.displayPath);
-      setFcpPhase('running');
-      setFcpOpen(true);
+      const existing = fcpTasksRef.current.find(item => item.projectId === input.projectId && item.exportId === record.exportId);
+      setFcpTasks(prev => mergeFcpStartReceipt(prev, record));
+      if (viewing()) {
+        if (existing?.status === 'cancelled') closeFcpExport();
+        else {
+          fcpActiveExportIdRef.current = record.exportId;
+          setFcpActiveExportId(record.exportId);
+          setFcpPhase(existing?.status ?? 'running');
+        }
+      }
     } catch (error) {
       const failedRecord: FcpExportTaskRecord = {
-        exportId: `failed:${reqId}`,
-        projectId: params.projectId,
-        kind: FCP_EXPORT_TASK_KIND,
-        name: trimmed,
-        copyMedia: params.copyMedia,
-        destination: params.destination,
-        displayPath: params.displayPath,
-        status: 'failed',
-        progress: {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0},
-        error: parseFcpThrownError(error),
-        missing: params.missing,
-        approximations: params.approximations,
-        createdAt: new Date().toISOString(),
+        ...base, exportId: `failed:${input.requestId}`, status: 'failed', error: parseFcpThrownError(error),
+        startUncertain: params.alreadyUncertain || !(error instanceof ApiError && error.definitive),
       };
-      setFcpTasks(prev => [failedRecord, ...prev]);
-      setFcpActiveExportId(failedRecord.exportId);
-      setFcpName(trimmed);
-      setFcpCopyMedia(params.copyMedia);
-      setFcpDestination(params.destination);
-      setFcpDisplayPath(params.displayPath);
-      setFcpPhase('failed');
-      setFcpOpen(true);
+      const accepted = fcpTasksRef.current.find(task => task.projectId === input.projectId
+        && task.requestId === input.requestId && task.exportId !== failedRecord.exportId);
+      setFcpTasks(prev => {
+        const saved = prev.find(item => item.projectId === input.projectId
+          && item.requestId === input.requestId && item.exportId !== failedRecord.exportId);
+        return saved
+          ? mergeFcpStartReceipt(prev, {...base, exportId: saved.exportId, status: 'running', awaitingCompletion: true})
+          : [failedRecord, ...prev.filter(item => item.exportId !== failedRecord.exportId)];
+      });
+      if (viewing()) {
+        if (accepted?.status === 'cancelled') closeFcpExport();
+        else {
+          fcpActiveExportIdRef.current = accepted?.exportId ?? failedRecord.exportId;
+          setFcpActiveExportId(fcpActiveExportIdRef.current);
+          setFcpPhase(accepted?.status ?? 'failed');
+        }
+      }
     } finally {
-      setFcpStarting(false);
+      fcpStartInFlight.current.delete(input.projectId);
+      setFcpStartingProjects(new Set(fcpStartInFlight.current.keys()));
     }
   }
   function handleFcpStart(): void {
     const projectId = currentProject.current;
     if (!projectId || !fcpPreview) return;
     void startFcpExport({
-      projectId,
-      name: fcpName,
-      copyMedia: fcpCopyMedia,
-      destination: fcpDestination,
+      input: {projectId, requestId: requestId(), name: fcpName.trim(), copyMedia: fcpCopyMedia, destination: fcpDestination},
       displayPath: fcpDisplayPath || fcpPreview.projectDestination.displayPath,
       missing: fcpPreview.missing,
       approximations: fcpPreview.approximations,
     });
   }
   function handleFcpRetryTask(task: FcpExportTaskRecord): void {
+    if (currentProject.current !== task.projectId || fcpStartInFlight.current.has(task.projectId)) return;
+    const input = fcpRetryInput(task, requestId);
+    if (!input) return;
+    handleFcpOpenTask(task);
     void startFcpExport({
-      projectId: task.projectId,
-      name: task.name,
-      copyMedia: task.copyMedia,
-      destination: task.destination,
-      displayPath: task.displayPath,
+      input,
+      displayPath: task.displayPath ?? '',
       missing: task.missing,
       approximations: task.approximations,
+      alreadyUncertain: task.startUncertain,
     });
   }
   async function syncFcpTaskStatus(task: FcpExportTaskRecord): Promise<void> {
@@ -4826,28 +4858,23 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const parsed = fcpExportGetOutputSchema.safeParse(raw);
       if (!parsed.success) return;
       const latest = fcpTasksRef.current.find(item => item.exportId === task.exportId);
-      if (!latest) return;
-      const wasRunning = latest.status === 'running';
+      if (!latest || latest.projectId !== task.projectId) return;
       const updated = applyFcpTaskUpdate(latest, parsed.data);
-      setFcpTasks(prev => prev.map(item => (item.exportId === updated.exportId ? updated : item)));
-      if (!wasRunning || updated.status === 'running') return;
+      if (updated === latest) return;
+      const complete = !needsFcpTaskStatus(updated);
+      setFcpTasks(prev => prev.map(item => item.exportId === updated.exportId
+        ? applyFcpTaskUpdate(item, parsed.data) : item));
+      if (!complete || updated.status === 'done') return;
       const viewingInDialog = fcpOpenRef.current
         && fcpActiveExportIdRef.current === updated.exportId
         && currentProject.current === updated.projectId;
-      if (updated.status === 'done') {
-        if (viewingInDialog) {
-          refreshFcpFinalCutInstalled();
-          setFcpPhase('done');
-        } else if (currentProject.current === updated.projectId) {
-          setFcpDoneToast(updated);
-        }
-      } else if (updated.status === 'failed') {
+      if (updated.status === 'failed') {
         if (viewingInDialog) {
           setFcpPhase('failed');
         }
       } else if (updated.status === 'cancelled') {
         if (viewingInDialog) {
-          setFcpOpen(false);
+          closeFcpExport();
         }
       }
     } catch {
@@ -4864,7 +4891,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (parsed.data.status === 'cancelled') {
         setFcpTasks(prev => prev.map(item => (item.exportId === task.exportId ? {...item, status: 'cancelled'} : item)));
         if (fcpOpenRef.current && fcpActiveExportIdRef.current === task.exportId) {
-          setFcpOpen(false);
+          closeFcpExport();
         }
       } else {
         await syncFcpTaskStatus(task);
@@ -4886,12 +4913,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     void bridge.openInFinalCut({projectId: task.projectId, exportId: task.exportId}).catch(() => false);
   }
   function handleFcpOpenTask(task: FcpExportTaskRecord): void {
+    if (currentProject.current !== task.projectId || !fcpExportAvailable) return;
+    fcpDialogEpoch.current += 1;
+    fcpOpenRef.current = true;
+    fcpActiveExportIdRef.current = task.exportId;
     setShowTasks(false);
     setFcpActiveExportId(task.exportId);
     setFcpName(task.name);
-    setFcpCopyMedia(task.copyMedia);
-    setFcpDestination(task.destination);
-    setFcpDisplayPath(task.displayPath);
+    setFcpPreview(null);
+    setFcpDisplayPath(task.displayPath ?? '');
+    if (task.startInput) {
+      setFcpCopyMedia(task.startInput.copyMedia);
+      setFcpDestination(task.startInput.destination);
+    }
     if (task.status === 'done') {
       refreshFcpFinalCutInstalled();
       setFcpPhase('done');
@@ -4901,9 +4935,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       setFcpPhase('running');
     } else {
       setFcpPhase('setup');
-      void loadFcpPreview(task.projectId, task.copyMedia, {resetFields: false});
+      const copyMedia = task.startInput?.copyMedia ?? true;
+      setFcpCopyMedia(copyMedia);
+      void loadFcpPreview(task.projectId, copyMedia, {resetFields: !task.startInput});
     }
     setFcpOpen(true);
+  }
+  function closeFcpExport(): void {
+    fcpOpenRef.current = false;
+    fcpDialogEpoch.current += 1;
+    fcpPreviewSeqRef.current += 1;
+    setFcpOpen(false);
   }
   const fcpTaskHandlers = {
     t,
@@ -4913,20 +4955,22 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onReveal: handleFcpRevealTask,
     onRetry: handleFcpRetryTask,
   };
-  const hasRunningFcpTasks = fcpTasks.some(item => item.status === 'running');
+  const hasFcpTasksToRead = fcpExportAvailable && projectFcpTasks.some(needsFcpTaskStatus);
   useEffect(() => {
-    if (!hasRunningFcpTasks) return;
+    if (!hasFcpTasksToRead) return;
     const inFlight = new Set<string>();
     const pollAll = () => {
       for (const task of fcpTasksRef.current) {
-        if (task.status !== 'running' || inFlight.has(task.exportId)) continue;
+        if (inFlight.size >= 4) break;
+        if (task.projectId !== currentProject.current || !needsFcpTaskStatus(task) || inFlight.has(task.exportId)) continue;
         inFlight.add(task.exportId);
         void syncFcpTaskStatus(task).finally(() => { inFlight.delete(task.exportId); });
       }
     };
+    pollAll();
     const timer = window.setInterval(pollAll, 1000);
     return () => window.clearInterval(timer);
-  }, [hasRunningFcpTasks]);
+  }, [hasFcpTasksToRead, data.project?.id]);
   // A shot of the batch that was edited, generated or connected can block its undo; read it again then.
   const storyboardSignature = storyboardSummary ? JSON.stringify([storyboardSummary.shotIds.map(id => { const shot = data.shots.find(item => item.id === id); return [id, shot?.revision, shot?.selectedVersionId]; }), data.edges.length, data.jobs.length]) : '';
   useEffect(() => { if (storyboardSignature && storyboardTask) void scenes.controller.checkUndo(storyboardTask.id); }, [storyboardSignature]);
@@ -5054,7 +5098,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const activeClipAudioCount = clipAudioExports.filter(item => ['queued', 'running'].includes(item.status)).length;
   const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activeFcpExportCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
-  const orderedExports = [...data.exports].filter(item => item.mode !== 'clip-audio').sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
+  const orderedExports = data.exports.filter(item => item.mode !== 'clip-audio' && !isFcpExportHistoryRow(item)).sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
   const saveIsDirty=Boolean(inspectorDirty||formatDirty||annotations.state?.dirtyCount);
   const historyHasPendingEdits = saveIsDirty || preferenceStatus.pending;
   const saveFailed=['error','conflict'].includes(preferenceStatus.phase);
@@ -5744,7 +5788,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       <DropdownMenuCheckboxItem checked={!inspectorCollapsed} data-testid="menu-panel-inspector" onCheckedChange={open => setPanelOpen('inspector', open)}>{t('shell.properties')}</DropdownMenuCheckboxItem>
       {workspaceMode === 'editing' ? <DropdownMenuCheckboxItem checked={!timelineCollapsed} data-testid="menu-panel-timeline" onCheckedChange={open => setPanelOpen('timeline', open)}>{t('shell.panel.multitrack')}</DropdownMenuCheckboxItem> : <DropdownMenuCheckboxItem checked={sequenceOpen} data-testid="menu-panel-storyboard" onCheckedChange={open => setPanelOpen('storyboard', open)}>{t('storyboard.order')}</DropdownMenuCheckboxItem>}
       </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem data-testid="reset-panel-layout" onClick={resetPanelLayout}><Icon name="refresh" size={14} />{t('shell.panel.reset')}</DropdownMenuItem></DropdownMenuSubContent></DropdownMenuSub>
-      <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem>{fcpExportBridge && <DropdownMenuItem data-testid="project-menu-fcp-export" disabled={!canOpenFcpExport} onClick={() => { setShowProjects(false); openFcpExport(); }}><Icon name="fcpExport" size={15} />{t('fcpExport.menu.exportFcp')}</DropdownMenuItem>}{data.projectFormatVersion !== 4 && <DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem>}<DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online ? 'neutral' : saveIsDirty ? 'orange' : videoDirectoryUnavailable || saveFailed ? 'red' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : saveIsDirty ? 'redesign.shell.draft' : videoDirectoryUnavailable ? 'video.providers.directoryUnavailable' : saveFailed ? 'redesign.shell.saveFailed' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content" data-text-selectable><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current!.flush({ projectId: currentProject.current } as unknown as {keepalive?: boolean})} onReload={reloadPreferences} /><UiPreferencesNotice />{videoDirectoryNotice}<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} /></div></details>} actions={<>
+      <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem>{fcpExportAvailable && <DropdownMenuItem data-testid="project-menu-fcp-export" disabled={!canOpenFcpExport} onClick={() => { setShowProjects(false); openFcpExport(); }}><Icon name="fcpExport" size={15} />{t('fcpExport.menu.exportFcp')}</DropdownMenuItem>}{data.projectFormatVersion !== 4 && <DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem>}<DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online ? 'neutral' : saveIsDirty ? 'orange' : videoDirectoryUnavailable || saveFailed ? 'red' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : saveIsDirty ? 'redesign.shell.draft' : videoDirectoryUnavailable ? 'video.providers.directoryUnavailable' : saveFailed ? 'redesign.shell.saveFailed' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content" data-text-selectable><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current!.flush({ projectId: currentProject.current } as unknown as {keepalive?: boolean})} onReload={reloadPreferences} /><UiPreferencesNotice />{videoDirectoryNotice}<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} /></div></details>} actions={<>
       <TaskPopover scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}`} visible={!showTasks && !showDelivery && !showImage && !webSettingsOpen && !comparisonId && !sceneTarget && !fcpOpen} count={taskCount} uncertain={taskState.phase !== 'ready' || activePending.length > 0 || activeTasks.some(task => !['applied','not_applied'].includes(task.status))} items={[
         ...jobs.filter(job=>activeJob(job)||job.status==='submission_unknown'||job.phase==='output_review_required').map(job=>({id:job.id,label:data.shots.find(shot=>shot.id===job.shotId)?.title||t('tasks.center.shotTask'),status:renderMessage(jobStatusDescriptor(job)),phase:job.status==='submission_unknown'||job.phase==='output_review_required'?'attention':'active',progress:activeJob(job)?job.progress:undefined,tone:job.status==='submission_unknown'?'warning':'neutral'})),
         ...orderedExports.filter(item=>item.mode==='timeline'&&['queued','running'].includes(item.status)).map(item=>({id:`render:${item.id}`,label:typeof item.snapshot?.deliveryName==='string'?item.snapshot.deliveryName:t('redesign.tasks.rendering'),status:renderMessage(statusDescriptor(item.status)),phase:'active',progress:item.progress,tone:'neutral'})),
@@ -5768,7 +5812,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           <DropdownMenuTrigger render={<WorkbenchButton type="button" variant="primary" className="topbar-export-menu-trigger" data-testid="export-menu-trigger" disabled={!data.project || loading} aria-label={t('fcpExport.menu.more')} />}><ChevronDown size={13} aria-hidden="true" /></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="topbar-export-menu" data-testid="export-dropdown-menu">
             <DropdownMenuItem data-testid="export-menu-video" disabled={!canOpenExport} onClick={() => { setShowExportMenu(false); openTimelineExport(); }}><Film size={15} aria-hidden="true" /><span>{t('fcpExport.menu.exportVideo')}</span><span className="topbar-export-shortcut">{t('fcpExport.menu.exportVideoShortcut')}</span></DropdownMenuItem>
-            {fcpExportBridge && <DropdownMenuItem data-testid="export-menu-fcp" disabled={!canOpenFcpExport} onClick={() => { setShowExportMenu(false); openFcpExport(); }}><Icon name="fcpExport" size={15} /><span>{t('fcpExport.menu.exportFcp')}</span></DropdownMenuItem>}
+            {fcpExportAvailable && <DropdownMenuItem data-testid="export-menu-fcp" disabled={!canOpenFcpExport} onClick={() => { setShowExportMenu(false); openFcpExport(); }}><Icon name="fcpExport" size={15} /><span>{t('fcpExport.menu.exportFcp')}</span></DropdownMenuItem>}
             <DropdownMenuSeparator />
             <DropdownMenuItem data-testid="export-menu-history" disabled={!data.project || loading} onClick={() => { setShowExportMenu(false); openExportHistory(); }}><Clock size={15} aria-hidden="true" /><span>{t('fcpExport.menu.exportHistory')}</span></DropdownMenuItem>
           </DropdownMenuContent>
@@ -5992,7 +6036,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       cancelling={fcpCancelling}
       task={fcpActiveTask}
       finalCutInstalled={fcpFinalCutInstalled}
-      onOpenChange={open => { if (!open) setFcpOpen(false); }}
+      onOpenChange={open => { if (!open) closeFcpExport(); }}
       onNameChange={setFcpName}
       onCopyMediaChange={handleFcpCopyMediaChange}
       onChooseDestination={() => { void handleFcpChooseDestination(false); }}
