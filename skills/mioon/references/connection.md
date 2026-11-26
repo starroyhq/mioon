@@ -1,40 +1,18 @@
-# Connect to the user's application
+# Connect to the desktop app
 
-Use the authorized repository path as your working directory. Requirements are Node.js 24+, pnpm 11.25.0 and FFmpeg/ffprobe. An already-running Electron app owns its backend; do not run `pnpm start` against its workspace.
+Keep the intended Mioon desktop app running. The CLI and configured MCP server use that app and its open projects. The installed skill works as a standalone copy with the command's absolute path substituted by Mioon. The command is `mioon` in the release channel and `mioon-dev` in development.
 
-Mock video generation and burned-in subtitles require FFmpeg's `drawtext` filter. A build without it can import media and pass connection discovery but cannot complete those renders. Select a compatible pair through the application's media-tool settings, or explicit `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` when starting an isolated backend.
+1. Prefer the already-connected Mioon MCP server. Use `mioon_doctor` to check readiness and `mioon_schema` to discover the available tools and exact inputs. Use the registration for the intended channel if both are available.
+2. With the CLI, run `"{{MIOON_COMMAND}}" doctor`. For syntax, use `"{{MIOON_COMMAND}}" --help` or `"{{MIOON_COMMAND}}" schema`. For example, `"{{MIOON_COMMAND}}" schema sequence clip edit` lists the action branches for clip editing.
+3. Use the installed absolute path as the executable. Keep it quoted so directories with spaces work. For paths containing shell syntax, pass the executable as a separate argument or quote the actual path as a shell literal. Use `--input-file` for JSON that contains user text or a long envelope.
 
-If the user requests starting an isolated local Web service, prepare dependencies and renderer as needed:
+## Recover the connection
 
-```sh
-pnpm install --frozen-lockfile
-pnpm build
-MIOON_DATA_DIR=/absolute/new/local/data PORT=4318 pnpm start
-```
+| Symptom | Action |
+| --- | --- |
+| The executable is missing or the command marker is still present | Ask the user to open Settings → External Agents, install or repair the command-line tool, then install or update the skill. |
+| Mioon is closed or reports `CLI_RUNTIME_UNAVAILABLE` | Tell the user to open Mioon and wait for readiness before checking again. |
+| `CLI_VERSION_MISMATCH` | Tell the user to repair the command-line tool in Mioon Settings. Use the matching app channel. |
+| MCP disconnected after Mioon closed or restarted | Keep Mioon running, then reopen the Agent session to reconnect. After moving the installed command, the user can copy the updated MCP registration command from Settings → External Agents. |
 
-Choose an unused port and a fresh or explicitly selected data directory. Keep the process running. The service only listens on loopback and creates `access-token` with owner-only permissions. In another shell, connect without putting the secret in a command argument:
-
-```sh
-export MIOON_BASE_URL=http://127.0.0.1:4318
-export MIOON_TOKEN_FILE=/absolute/new/local/data/access-token
-node apps/cli/src/index.ts doctor
-```
-
-For built-in assistant tasks, run `agent doctor` and follow [agent-tasks.md](agent-tasks.md). A headless server can retain its own Agent Key across restarts using the OS credential store and encrypted private settings; it does not copy a desktop key. CLI connection files contain only the separate local API token and never the model Key. Configure new model credentials through the human-operated hidden CLI input, never by extracting another process's secret.
-
-For an existing Electron desktop, use its actual `mcp-connection.json` (V4.1 production userData folder `app.starroy.mioon`, development `app.starroy.mioon.dev`; custom locations are possible):
-
-```sh
-export MIOON_CONNECTION_FILE=/absolute/to/userData/mcp-connection.json
-node apps/cli/src/index.ts doctor
-```
-
-On Linux these folders are normally under `$HOME/.config/`; on macOS under `$HOME/Library/Application Support/`. Source builds default to development; packaged development retains `.dev`. Configure the exact expanded absolute path for the intended channel. Legacy `video-workbench` data stays untouched and must be explicitly copied using the documented migration helper; never silently redirect or start a second writer.
-
-Do not combine descriptor discovery with another service's base URL or token. The client re-reads private discovery and token files on every request, following desktop port/token rotation. Do not share the descriptor or token, copy them into prompts, or loosen their permissions. A stopped desktop must be reopened; stale discovery is not permission to start a replacement writer.
-
-## MCP configuration
-
-Use the host client's normal MCP configuration location only if the user requests configuring that client. Installation of the skill alone does not authorize changing global settings. Both Codex and Claude Code can launch the real stdio server with command `node`, argument `/absolute/path/mioon/apps/mcp/src/index.ts`, and environment `MIOON_CONNECTION_FILE=/absolute/to/userData/mcp-connection.json`.
-
-For direct Web service use `MIOON_BASE_URL` and `MIOON_TOKEN_FILE` instead. No secret belongs in the configuration. The source bridge needs installed workspace dependencies and Node 24+; it is not bundled in the historical Linux desktop archive. `docs/MCP.md` in the application repository has host-specific configuration examples. `docs/EXTERNAL-AGENTS.zh-CN.md` is the user-facing guide for installing this skill and adding the server with `claude mcp add` or `codex mcp add`.
+The app owns its integration credentials. Use the existing connection and keep credential files and values out of requests and replies.
