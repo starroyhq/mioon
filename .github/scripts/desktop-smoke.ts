@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argumentsFor, CheckFailure, cleanEnvironment, command, executable, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {Check, TargetArch, TargetPlatform} from './media-environment.ts';
+import {dataPaths} from '../../apps/desktop/src/config.ts';
 import {EXIT_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/exit-diagnostics.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../../packages/contracts/src/project-file.ts';
@@ -110,14 +111,14 @@ export async function captureSmokeShutdownDiagnostics(ownedRoot: string): Promis
     const userData = path.join(ownedRoot,'user-data'); await ownedDiagnosticDirectory(userData); result.scope='ok';
     result.transientFiles.connectionPresent=await transientPresence(path.join(userData,'mcp-connection.json'));
     result.transientFiles.tokenPresent=await transientPresence(path.join(userData,'mcp-token'));
-    const workspace = path.join(userData,'workspace');
-    try {await ownedDiagnosticDirectory(workspace);}
+    const {dataDir} = dataPaths(ownedRoot, userData);
+    try {await ownedDiagnosticDirectory(dataDir);}
     catch (error) {
       const status=diagnosticStatus(error); result.transientFiles.workspaceLockPresent=status==='missing'?false:null;
       result.backend={status,records:[]}; result.renderer={status,records:[]}; return result;
     }
-    result.transientFiles.workspaceLockPresent=await transientPresence(path.join(workspace,'server.lock'));
-    const directory = path.join(workspace,'diagnostics');
+    result.transientFiles.workspaceLockPresent=await transientPresence(path.join(dataDir,'server.lock'));
+    const directory = path.join(dataDir,'diagnostics');
     try {await ownedDiagnosticDirectory(directory);}
     catch (error) {const status=diagnosticStatus(error); result.backend={status,records:[]};result.renderer={status,records:[]};return result;}
     result.backend=await readDiagnosticFile(path.join(directory,'backend-exit.jsonl'),EXIT_DIAGNOSTIC_LIMITS.maxBytes,safeBackendDiagnostic);
@@ -352,7 +353,10 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     try { result.exit = await Promise.race([outcome, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new CheckFailure('EXIT_TIMEOUT')), smokeTimeouts.exit); })]); }
     finally { clearTimeout(timer); }
     if (result.exit.code !== 0 || result.exit.signal !== null) fail('UNCLEAN_NATIVE_EXIT');
-    for (const relative of ['mcp-connection.json', 'mcp-token', 'workspace/server.lock']) if (!await absent(path.join(userData, relative))) fail('TRANSIENT_STORAGE_NOT_CLEANED');
+    const {dataDir} = dataPaths(ownedRoot, userData);
+    for (const file of [path.join(userData, 'mcp-connection.json'), path.join(userData, 'mcp-token'), path.join(dataDir, 'server.lock')]) {
+      if (!await absent(file)) fail('TRANSIENT_STORAGE_NOT_CLEANED');
+    }
     check('sigterm-normal-exit-removes-discovery-token-and-workspace-lock');
     if (cliSmoke) {
       result.phase = 'cli-app-stopped-after-quit';

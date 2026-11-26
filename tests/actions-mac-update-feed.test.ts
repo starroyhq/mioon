@@ -21,6 +21,17 @@ test('the arm64 release smoke measures first use after CLI notarization and befo
   assert.ok(notarization >= 0 && notarization < smoke && smoke < inspection);
 });
 
+test('Intel can verify the signed DMG after an arm64 smoke failure, which still prevents release staging', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release-desktop.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /id: smoke\n[^\n]*\n\s*continue-on-error: true/);
+  assert.match(workflow, /signed_package_available: \$\{\{ steps\.transfer\.outcome == 'success' \}\}/);
+  const transfer = workflow.indexOf('id: transfer');
+  const smokeGate = workflow.indexOf("if: steps.smoke.outcome == 'failure'");
+  assert.ok(transfer >= 0 && transfer < smokeGate);
+  assert.match(workflow, /needs\.desktop\.outputs\.signed_package_available == 'true'/);
+  assert.match(workflow, /needs\.desktop\.result == 'success' && needs\.intel-smoke\.result == 'success'/);
+});
+
 test('candidate URLs use a safe directory base and allow local loopback HTTP', () => {
   assert.equal(candidateUpdateFeedUrl('https://example.test/updates'), 'https://example.test/updates/');
   assert.equal(candidateUpdateFeedUrl('http://127.0.0.1:8420/feed'), 'http://127.0.0.1:8420/feed/');

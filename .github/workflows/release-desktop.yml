@@ -131,6 +131,8 @@ jobs:
     needs: preflight
     runs-on: macos-15
     timeout-minutes: 90
+    outputs:
+      signed_package_available: ${{ steps.transfer.outcome == 'success' }}
     defaults:
       run:
         shell: bash
@@ -332,6 +334,8 @@ jobs:
 
       - name: Smoke test the final DMG on Apple silicon
         id: smoke
+        # A smoke failure still allows signature inspection and testing the same DMG on Intel.
+        continue-on-error: true
         run: |
           node .github/scripts/desktop-smoke.ts --platform=darwin --arch=arm64 \
             --dmg="release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output="$MIOON_DESKTOP_SMOKE_REPORT"
@@ -365,6 +369,7 @@ jobs:
           cp "artifacts/desktop-$MIOON_TARGET/"{inspection,smoke,app-notarization,cli-launcher-notarization,dmg-stapling}.json artifacts/macos-verified/evidence/
 
       - name: Transfer the signed universal package and arm64 evidence
+        id: transfer
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: universal-package-for-native-smoke
@@ -372,6 +377,10 @@ jobs:
           retention-days: 14
           compression-level: 0
           if-no-files-found: error
+
+      - name: Require Apple silicon smoke to pass before release staging
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1
 
       - name: Write safe package diagnostics
         if: always()
@@ -431,6 +440,7 @@ jobs:
   intel-smoke:
     name: Smoke test the same universal DMG on Intel
     needs: [preflight, desktop]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.desktop.outputs.signed_package_available == 'true' }}
     runs-on: macos-15-intel
     timeout-minutes: 45
     env:

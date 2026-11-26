@@ -11,7 +11,7 @@ const secret='synthetic-private-token-url-path-message-must-not-appear';
 async function fixture(t: test.TestContext) {
   const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-ci-native-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
-  const userData=path.join(root,'user-data'),workspace=path.join(userData,'workspace'),directory=path.join(workspace,'diagnostics');
+  const userData=path.join(root,'user-data'),workspace=path.join(userData,'data'),directory=path.join(workspace,'diagnostics');
   await mkdir(directory,{recursive:true,mode:0o700});
   for (const folder of [root,userData,workspace,directory]) await chmod(folder,0o700);
   const backend=path.join(directory,'backend-exit.jsonl'),renderer=path.join(directory,'renderer-health.jsonl');
