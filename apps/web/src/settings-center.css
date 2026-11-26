@@ -73,6 +73,7 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-content { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 16px 24px 0; scrollbar-gutter: stable; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading { margin: 0 28px 24px 0; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading h1 { margin-bottom: 4px; font-size: var(--wb-text-section); font-weight: 600; }
+.settings-center-subtitle { margin: 4px 0 0; color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.5; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-preference { min-height: 60px; padding: 0; border: 0; border-radius: 0; background: none; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-preference h2 { font-size: var(--wb-text-body); margin-bottom: 4px; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-preference h3 { font-size: var(--wb-text-body); font-weight: 500; margin-bottom: var(--wb-space-1); }

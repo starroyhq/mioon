@@ -1,49 +1,23 @@
-# Recovery without duplicate charges
+# Recover the original action
 
-- `submission_unknown`: acceptance may have occurred. Keep the original job and request. Call `job reconcile`; if the provider cannot find the request, investigate the provider account and bind the verified existing task ID only to its matching local job. Never use `job retry` or a new generation request to guess whether it worked.
-- Known provider task, transient poll/download failure: keep polling/reconciling that task. Do not create a replacement generation. Download URLs can expire; the backend refreshes them from the same task.
-- Definite `failed`: `job retry` submits a new paid request from the original snapshot, requiring a new request ID and applicable authorization. It is not a free download retry. To change prompt or media, edit/create a shot and make an explicitly authorized new generation.
-- `REVISION_CONFLICT`: read the current record, compare it with the user's requested change and merge only that change. Retain unrelated edits. A new intended edit needs its current revision and a new request ID. Do not repeatedly overwrite using stale revisions.
-- `IDEMPOTENCY_CONFLICT`: that ID already identifies different input. Recover the original request/outcome first. Do not change the ID until certain you are performing a distinct intended operation.
-- Uncertain `reference attach/detach`: replay the exact operation/input with its original request ID and endpoint revisions. Do not infer success from an unrelated generation/export using the same ID. The saved response may be historical after later edits; refresh `project get` before doing anything new.
-- `REFERENCE_SELECTION_EXISTS` / `REFERENCE_CONNECTED`: a manual image or typed first-frame connection already owns the target shot's input. Preserve it unless changing it is explicitly intended. Clear/save a manual choice or use revision-safe `reference detach` as appropriate; generic `edge delete` cannot remove typed connections. `REFERENCE_STATE_CONFLICT` indicates inconsistent stored input and fails closed; do not repair it by editing database rows.
-- CLI watch timeout / interruption: the job continues. Reconnect and watch the same ID. `job cancel` stops backend local waiting but does not guarantee provider cancellation or refund. Provider work may continue; reconciliation can resume the same task.
-- `output_review_required` / `OUTPUT_ASPECT_RATIO_MISMATCH`: the provider completed, but decoded output differs from the requested ratio. Local publication is paused and no version is exposed; the existing task and file are retained. Inspect/reconcile that same task. Its compatibility status is `cancelled`, which does not mean remote cancellation. Do not propose a fresh paid generation as recovery.
-- `PROVIDER_DISABLED` / `LIVE_BUDGET_REQUIRED`: check safe capabilities and backend setup. Do not change enable flags or increase caps merely to bypass a block; obtain missing authorization first.
-- A provider may have been retired, preview access may be unavailable, quotas may be exhausted, and offline tests do not establish account entitlement. Report the actual blocker; never claim live generation on the basis of mock success.
+Before any keyed mutation, retain its exact operation, project, complete input and caller-owned request ID. Include the original revisions, and keep any commit envelope and plan digest. Save files containing prompts and other private request data locally. A timeout, disconnect, Ctrl+C, malformed result or failed lookup leaves an earlier write uncertain.
 
-Stop a bounded watch with a clear pending status and ID when its window ends; continue only within the user's requested monitoring scope. Do not remove service locks, delete job rows, open the SQLite database as another writer, or edit immutable media to recover a generation.
+- If you have an owned job, task or export ID, read its current state first. A saved acknowledgement may describe the original queued action. Read again before making a separate change.
+- For an uncertain keyed write, use the documented exact-replay or receipt path. Replay the original operation with the same project, request ID, input and original revisions. Use the same envelope and digest for a sequence commit. Never replace a key, change inputs or submit duplicates to see what happened. Do not retry automatically. A matching authenticated receipt or explicit matching nonacceptance proof can settle the previous attempt. A missing receipt by itself leaves it uncertain.
+- On `REVISION_CONFLICT` or `SEQUENCE_EDIT_HISTORY_CONFLICT`, reread the current record and compare it with the user's intent. For a new, confirmed edit, use a fresh preview or current revision and a new key where required. Preserve unrelated work. On `IDEMPOTENCY_CONFLICT`, recover the original request and outcome before using the key again.
+- On `CLI_RUNTIME_UNAVAILABLE`, ask the user to open Mioon or reconnect to the running app. After `CLI_VERSION_MISMATCH`, ask them to repair the command-line tool in Mioon Settings. Resume by looking up the original IDs or using its exact replay. Keep existing files, database rows and service locks intact.
 
-## Local ComfyUI image recovery
+## Video and exports
 
-For `comfy-local` use the image operations, not video `job reconcile/retry`.
-The connector has fixture-only validation; consult its linked guide for the
-current full regression gate. No real runtime or GPU compatibility is verified.
+- A video job in the submission_unknown state may already have incurred a charge. Read `"{{MIOON_COMMAND}}" job get` or `job_get` with the original project and job. Use `"{{MIOON_COMMAND}}" job reconcile` or `job_reconcile` to query or resume that same task. Supply a `providerJobId` only after confirming it really belongs to that local job in the provider account. Reconciliation may contact the provider, refresh a download and publish a result. It never submits a new generation.
+- For a known task with a transient download or poll failure, continue observing or reconcile that task within the user's scope. On `OUTPUT_ASPECT_RATIO_MISMATCH`, Mioon retains the task and output privately for review and publishes no version. The job may report cancelled while local publication is paused. Preserve the existing job and report the mismatch.
+- `"{{MIOON_COMMAND}}" job retry` and `job_retry` are for a definitively failed job. They submit a new attempt using the original snapshot and a new `requestId`. Obtain fresh approval for provider, model, count, total cost limit and scope before any paid retry. An edited prompt or reference needs a separately reviewed generation.
+- A bounded watch or Ctrl+C stops only the local wait. Report pending state and the job or export ID when its window expires. `"{{MIOON_COMMAND}}" job cancel` and `job_cancel` stop local waiting when requested. Remote work or charges can continue.
+- For an uncertain export, recover the original export ID or replay the exact saved export submission. Check with `"{{MIOON_COMMAND}}" export get` or `export_get`. A failed preflight or render is evidence to inspect. Use a new export request only for a newly authorized attempt after addressing the blocker. If `EXPORT_AUDIO_OVER_RANGE` blocked delivery, retain the report and review any gain edit separately before rendering again.
 
-- Retain the original generation review/task/key after an ambiguous POST.
-  Never reapprove, resubmit or invent a replacement generation key. ComfyUI's
-  prompt UUID is correlation, not deduplication.
-- `image task remote get` reads existing local evidence without runtime I/O.
-  To explicitly query/retrieve the existing execution, use `observeRemote` with
-  its current `remote.revision` and a distinct stable observation key.
-- After a lost observation ACK, replay the identical request/key/original revision.
-  It returns the saved queued ACK without another GET. Read the current local
-  remote/task records. `finished` does not imply successful generation; preserve
-  errors and `contentVerified`. A later deliberate query needs a new observation
-  key/current remote revision after the prior query is no longer active.
-- Restart never repeats POST or GET. A missing remote job, timeout or interrupted
-  observation cannot establish that generation did not run. Do not clear history
-  or reclaim keys. Capacity/ownership failures must be reported, not repaired by
-  modifying database rows.
-- Terminal success needs the frozen full graph, client UUID, nonce and actual
-  execution status. Descriptor/hash/byte count are immutable before local staging.
-  After a crash at that boundary, a new explicit observation can only retrieve
-  the same verified output; different bytes cannot replace it.
-- If an eligible task-bound local receipt/staged PNG already exists,
-  `image task recoverResult` uses the original local-only recovery path. It does
-  not fetch missing bytes. Neither recovery path authorizes new generation.
-- `cancelQueued` only cancels undispatched tasks. Closing the app/panel/client or
-  stopping local observation does not cancel ComfyUI GPU work; remote cancellation
-  is not implemented.
+## Images and locally extracted frames
 
-See [the fixed connector's recovery contract](../../../docs/COMFY-CONNECTOR.md#terminal-evidence-publication-and-restart).
+- For a lost image review response, replay the original `"{{MIOON_COMMAND}}" image review prepare` or `image_review_prepare` request with its nested `input.requestId` and original `settingsRevision`. This recovers the same intent. Online dispatch still requires the user's approval in Mioon. For an already approved generation, `"{{MIOON_COMMAND}}" image request get` or `image_request_get` can recover a retained task receipt. Do not reapprove if dispatch is uncertain.
+- For ComfyUI, `"{{MIOON_COMMAND}}" image task remote get` and `image_task_remote_get` read retained evidence locally. `"{{MIOON_COMMAND}}" image task observeRemote` and `image_task_observeRemote` use the current `remote.revision` and a distinct stable observation key to ask about the existing execution. Only the same verified output can be fetched. A lost observation response can be replayed with its exact original key and revision to recover the queued acknowledgement without another GET. Read the task for current state before considering a new deliberate observation. A prompt UUID correlates evidence and cannot deduplicate generation. An absent remote task or a timeout leaves the original execution uncertain. Neither restarting Mioon nor closing the client cancels remote work.
+- `"{{MIOON_COMMAND}}" image task recoverResult` and `image_task_recoverResult` recover an eligible, complete, task-bound staged result locally. `"{{MIOON_COMMAND}}" image task cancelQueued` and `image_task_cancelQueued` cancel only an undispatched image task. Use the current task revision and a separate key for a new control.
+- `"{{MIOON_COMMAND}}" frame request get` and `frame_request_get` look up the original capture request. `"{{MIOON_COMMAND}}" frame task recoverResult` and `frame_task_recoverResult` can publish an existing verified PNG for the same task. `"{{MIOON_COMMAND}}" frame task cancelQueued` and `frame_task_cancelQueued` apply to provably unstarted work. Controls use the current task revision and their own request ID. Restart or a missing staged file does not authorize another capture. Preserve the original intent and avoid automatic retries.

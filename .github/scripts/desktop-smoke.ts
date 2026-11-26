@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argumentsFor, CheckFailure, cleanEnvironment, command, executable, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {Check, TargetArch, TargetPlatform} from './media-environment.ts';
+import {dataPaths} from '../../apps/desktop/src/config.ts';
 import {EXIT_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/exit-diagnostics.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../../packages/contracts/src/project-file.ts';
@@ -16,11 +17,13 @@ import {classifyRendererEvent,RENDERER_DIAGNOSTIC_LIMITS} from '../../apps/deskt
 import type {RendererDiagnosticRecord} from '../../apps/desktop/src/renderer-diagnostics.ts';
 import {attachMacDmg, detachMacDmg, macBundleExecutable, macDmgEvidence, uniqueMacApp} from './mac-dmg.ts';
 import type {MacDmgEvidence} from './mac-dmg.ts';
+import {createReleaseCliSmoke, installReleaseApp, launcherSmokeEnvironment} from './release-cli-smoke.ts';
+import type {ReleaseCliSmokeEvidence} from './release-cli-smoke.ts';
 
 interface Discovery {appId: string; channel: string; url: string; pid: number; tokenFile: string}
 interface Job {id: string; status: string; url?: string; assetId?: string}
 interface Outcome {code: number | null; signal: NodeJS.Signals | null}
-interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; package?: MacDmgEvidence; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
+interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; package?: MacDmgEvidence; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics; cliLauncher?: ReleaseCliSmokeEvidence}
 export const smokeTimeouts = Object.freeze({startup: 90000, render: 120000, exit: 30000});
 export function smokeEnvironment(source: NodeJS.ProcessEnv, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
   return {...cleanEnvironment(source), MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
@@ -108,14 +111,14 @@ export async function captureSmokeShutdownDiagnostics(ownedRoot: string): Promis
     const userData = path.join(ownedRoot,'user-data'); await ownedDiagnosticDirectory(userData); result.scope='ok';
     result.transientFiles.connectionPresent=await transientPresence(path.join(userData,'mcp-connection.json'));
     result.transientFiles.tokenPresent=await transientPresence(path.join(userData,'mcp-token'));
-    const workspace = path.join(userData,'workspace');
-    try {await ownedDiagnosticDirectory(workspace);}
+    const {dataDir} = dataPaths(ownedRoot, userData);
+    try {await ownedDiagnosticDirectory(dataDir);}
     catch (error) {
       const status=diagnosticStatus(error); result.transientFiles.workspaceLockPresent=status==='missing'?false:null;
       result.backend={status,records:[]}; result.renderer={status,records:[]}; return result;
     }
-    result.transientFiles.workspaceLockPresent=await transientPresence(path.join(workspace,'server.lock'));
-    const directory = path.join(workspace,'diagnostics');
+    result.transientFiles.workspaceLockPresent=await transientPresence(path.join(dataDir,'server.lock'));
+    const directory = path.join(dataDir,'diagnostics');
     try {await ownedDiagnosticDirectory(directory);}
     catch (error) {const status=diagnosticStatus(error); result.backend={status,records:[]};result.renderer={status,records:[]};return result;}
     result.backend=await readDiagnosticFile(path.join(directory,'backend-exit.jsonl'),EXIT_DIAGNOSTIC_LIMITS.maxBytes,safeBackendDiagnostic);
@@ -274,13 +277,13 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
   let ownsExtractRoot = false;
   try {
     if (process.platform !== platform || process.arch !== arch) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
-    let binary: string;
+    let binary: string | undefined, sourceApp: string | undefined;
     if (platform === 'darwin') {
       if (!('dmg' in input)) fail('FINAL_DMG_REQUIRED');
       result.phase = 'dmg';
       result.package = await macDmgEvidence(input.dmg);
       mountPoint = await attachMacDmg(input.dmg);
-      binary = await macBundleExecutable(await uniqueMacApp(mountPoint));
+      sourceApp = await uniqueMacApp(mountPoint);
       check('read-only-final-dmg-mounted');
     } else {
       if (!('executable' in input) || !path.isAbsolute(input.executable)) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
@@ -291,14 +294,37 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     }
     const ffmpeg = await executable('ffmpeg', process.env.MIOON_FFMPEG_PATH), ffprobe = await executable('ffprobe', process.env.MIOON_FFPROBE_PATH);
     ownedRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-ci-native-')); await chmod(ownedRoot, 0o700);
-    const userData = path.join(ownedRoot, 'user-data'); await mkdir(userData, {mode: 0o700});
-    const env = smokeEnvironment(process.env, userData, ffmpeg, ffprobe), video = path.join(ownedRoot, 'synthetic.mp4'), audio = path.join(ownedRoot, 'synthetic.wav');
+    const userData = path.join(ownedRoot, 'user-data'), home = path.join(ownedRoot, 'home'), tmp = path.join(ownedRoot, 'tmp');
+    await Promise.all([userData, home, tmp].map(directory => mkdir(directory, {mode: 0o700})));
+    const env = {...smokeEnvironment(process.env, userData, ffmpeg, ffprobe), HOME: home, CFFIXED_USER_HOME: home,
+      TMPDIR: tmp, TMP: tmp, TEMP: tmp}, video = path.join(ownedRoot, 'synthetic.mp4'), audio = path.join(ownedRoot, 'synthetic.wav');
+    let cliSmoke: ReturnType<typeof createReleaseCliSmoke> | undefined;
+    if (sourceApp && result.package) {
+      result.phase = 'dmg-install';
+      const version = process.env.MIOON_RELEASE_VERSION ?? result.package.name.slice('mioon-'.length, -'-mac.dmg'.length);
+      if (!/^[0-9][0-9A-Za-z.+-]*$/.test(version) || result.package.name !== `mioon-${version}-mac.dmg`) fail('CLI_SMOKE_RELEASE_VERSION_MISMATCH');
+      const app = await installReleaseApp(sourceApp, ownedRoot);
+      binary = await macBundleExecutable(app);
+      check('final-dmg-app-copied-to-disposable-applications');
+      const emptyPath = path.join(ownedRoot, 'no-host-tools');
+      await mkdir(emptyPath, {mode: 0o700});
+      cliSmoke = createReleaseCliSmoke({sourceApp, installedApp: app, root: ownedRoot, version,
+        env: launcherSmokeEnvironment(home, tmp, emptyPath, userData)});
+      result.cliLauncher = cliSmoke.evidence;
+      result.phase = 'cli-app-stopped-before-start';
+      await cliSmoke.beforeAppStarts();
+      check('packaged-cli-first-and-warm-stopped-diagnostics');
+    }
+    if (!binary) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
     result.phase = 'fixture';
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=2', '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=2', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-n', video], 'SYNTHETIC_VIDEO_FAILED', {env});
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2', '-c:a', 'pcm_s16le', '-n', audio], 'SYNTHETIC_AUDIO_FAILED', {env});
     check('self-contained-color-sine-mp4-and-wav-fixture');
     result.phase = 'startup';
-    child = spawn(binary, [], {env, detached: true, stdio: ['ignore', 'ignore', 'ignore']});
+    // Chromium waits for login-keychain authorization during shutdown in the isolated macOS profile.
+    // Use its test keychain only for this process and its disposable data.
+    const appArgs = platform === 'darwin' ? ['--use-mock-keychain'] : [];
+    child = spawn(binary, appArgs, {env, detached: true, stdio: ['ignore', 'ignore', 'ignore']});
     const app = child;
     outcome = new Promise<Outcome>((resolve, reject) => {
       app.once('error', () => { ended = true; reject(new CheckFailure('APP_SPAWN_FAILED')); });
@@ -319,14 +345,28 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     if (!app.pid) fail('APP_PID_MISSING');
     await boundedPoll(remaining => windowVisible(platform, app.pid!, remaining), Math.max(1, deadline - Date.now()), 'NATIVE_WINDOW_TIMEOUT', () => ended);
     check('actual-final-package-native-window-and-backend-ready');
+    if (cliSmoke) {
+      result.phase = 'cli-app-running';
+      await cliSmoke.duringApp();
+      check('packaged-cli-version-doctor-project-list-and-mcp-initialize-tools-list');
+    }
     result.render = await exerciseComposition({origin, token, video, audio, ffprobe, directory: ownedRoot, env, onPhase: phase => { result.phase = phase; }, onCheck: check, exited: () => ended});
     result.phase = 'shutdown'; result.sigtermSent = app.kill('SIGTERM');
     let timer: NodeJS.Timeout | undefined;
     try { result.exit = await Promise.race([outcome, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new CheckFailure('EXIT_TIMEOUT')), smokeTimeouts.exit); })]); }
     finally { clearTimeout(timer); }
     if (result.exit.code !== 0 || result.exit.signal !== null) fail('UNCLEAN_NATIVE_EXIT');
-    for (const relative of ['mcp-connection.json', 'mcp-token', 'workspace/server.lock']) if (!await absent(path.join(userData, relative))) fail('TRANSIENT_STORAGE_NOT_CLEANED');
+    const {dataDir} = dataPaths(ownedRoot, userData);
+    for (const file of [path.join(userData, 'mcp-connection.json'), path.join(userData, 'mcp-token'), path.join(dataDir, 'server.lock')]) {
+      if (!await absent(file)) fail('TRANSIENT_STORAGE_NOT_CLEANED');
+    }
     check('sigterm-normal-exit-removes-discovery-token-and-workspace-lock');
+    if (cliSmoke) {
+      result.phase = 'cli-app-stopped-after-quit';
+      if (!await absent(path.join(userData, 'cli-token'))) fail('TRANSIENT_STORAGE_NOT_CLEANED');
+      await cliSmoke.afterAppStops();
+      check('packaged-cli-stopped-diagnostic-after-quit');
+    }
     if ('dmg' in input) {
       result.phase = 'dmg-sha256';
       if ((await macDmgEvidence(input.dmg)).sha256 !== result.package?.sha256) fail('DMG_CHANGED_DURING_VERIFICATION');

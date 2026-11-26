@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import desktopBuildMetadata from '../apps/desktop/build-metadata.ts';
 import desktopIdentity from '../apps/desktop/identity.ts';
+import type {BuilderConfig} from '../apps/desktop/builder-config.ts';
 import {NOTICE_FILES} from '../apps/desktop/runtime-notices.ts';
 import {PROJECT_EXAMPLE_METADATA_FILES, stageProjectExampleResources, verifyProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 
@@ -168,10 +169,12 @@ test('staging rejects missing or changed packaging envelope fields and nonempty 
 
 test('builder config takes its Electron version from root metadata and validates before loading a stage', async t => {
   const { directory, builderConfig } = await builderFixture(t);
-  const config = builderConfig('production');
+  const config: BuilderConfig = builderConfig('production');
   assert.equal(config.electronVersion, '55.6.7');
   assert.equal(config.publish, null);
   assert.equal(config.asar, true);
+  assert.deepEqual(config.extraResources.find(resource => resource.to === 'skills/mioon'),
+    {from: 'build/skills/mioon', to: 'skills/mioon', filter: ['**/*']});
   assert.equal(config.electronFuses.runAsNode, false);
   assert.equal(config.electronFuses.onlyLoadAppFromAsar, true);
   await writeFile(path.join(directory, 'apps/desktop/package.json'), JSON.stringify(desktopPackage('2.3.3')));

@@ -4,7 +4,7 @@ import type { ProjectWindowBridge } from './desktop-window-client.ts';
 import { installSettingsBootClose } from './settings-boot-close.ts';
 import { settingsBootMessages } from '../../../packages/i18n/src/catalogs/settings-boot.ts';
 import { settingsRedesignMessages } from '../../../packages/i18n/src/catalogs/settings-redesign.ts';
-import { settingsCategories, settingsCategoryFor } from './settings-categories.ts';
+import { settingsCategoryFor, visibleSettingsCategories } from './settings-categories.ts';
 import type { SettingsCategory } from './settings-categories.ts';
 import type { ProjectWindowContext } from './desktop-window-client.ts';
 
@@ -18,6 +18,7 @@ const bootWindow = window as Window & {
   __mioonProjectWindow?: ProjectWindowBridge;
   __mioonSettingsDiagnostics?: SettingsDiagnosticsBridge;
   __mioonSettingsBootAppearance?: {locale: unknown; theme: unknown};
+  __mioonExternalAgents?: unknown;
 };
 const appearance = bootWindow.__mioonSettingsBootAppearance;
 const locale = isLocale(appearance?.locale) ? appearance.locale : resolveLocale('system', navigator.languages);
@@ -42,7 +43,7 @@ const retryButton = document.getElementById('settings-boot-retry')!;
 const bridge = bootWindow.__mioonProjectWindow;
 const diagnostics = bootWindow.__mioonSettingsDiagnostics;
 const label = (category: SettingsCategory) => category === 'general' ? settingsBootMessages['settings.general'][locale] : settingsRedesignMessages[`redesign.settings.${category}`][locale];
-const items = settingsCategories.map(category => {
+const items = visibleSettingsCategories(Boolean(bootWindow.__mioonExternalAgents && typeof bootWindow.__mioonExternalAgents === 'object')).map(category => {
   const item = document.createElement('span');
   item.textContent = label(category);
   nav.append(item);

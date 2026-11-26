@@ -254,7 +254,8 @@ test('actual parent composition supplies one generation registry owner and keeps
   const React = {createElement: (type: string, props: Record<string, unknown> | null, ...children: unknown[]) => ({type, props: {...props, children}}), Fragment: 'Fragment'};
   const dependencies = {React, useI18n: () => createI18nTestContext('en'), ProjectHomeConnections: 'ProjectHomeConnections',
     SettingsWorkspace: 'SettingsWorkspace', SettingsNavigationSlot: 'SettingsNavigationSlot', SettingsVideoTools: 'SettingsVideoTools',
-    GenerationServicesSettings: 'GenerationServicesSettings', SettingsAppearance: 'SettingsAppearance', AgentDockPane: 'AgentDockPane', AgentSettings: 'AgentSettings'};
+    GenerationServicesSettings: 'GenerationServicesSettings', SettingsAppearance: 'SettingsAppearance', AgentDockPane: 'AgentDockPane', AgentSettings: 'AgentSettings',
+    ExternalAgentsSettings: 'ExternalAgentsSettings', hasExternalAgentsBridge: () => false};
   const module: {exports: {SettingsConnectionForms?: (props: Record<string, unknown>) => RootNode}} = {exports: {}};
   Function('module', 'exports', ...Object.keys(dependencies), transformSync(app.slice(start), {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, ...Object.values(dependencies));
   const registry = createSettingsNavigationRegistry(), report = () => {}, forms = module.exports.SettingsConnectionForms;

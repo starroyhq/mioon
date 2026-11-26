@@ -51,5 +51,7 @@ const paths: Record<string, ReactNode> = {
   box: <><path d="M21 8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7Z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></>,
   fcpExport: <><path d="M14 2H8a2 2 0 0 0-2 2v5" /><path d="M6 17v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-6-6Z" /><path d="M14 2v6h6" /><path d="M12 13H4m3-3-3 3 3 3" /></>,
   circleX: <><circle cx="12" cy="12" r="9" /><path d="m15 9-6 6m0-6 6 6" /></>,
+  terminal: <><path d="m4 17 6-6-6-6" /><path d="M12 19h8" /></>,
+  wrench: <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />,
 };
 export default function Icon({ name, size = 18, ...props }: IconProps) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.film}</svg>; }

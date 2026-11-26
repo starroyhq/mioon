@@ -109,10 +109,10 @@ export const foundationMessages = {
     "ja": "送信結果をまだ確認できません。重複送信せず、先に元のリクエストを確認してください"
   },
   "app.title": {
-    "zh-Hans": "Mioon · 影像工作台",
-    "zh-Hant": "Mioon · 影像工作台",
-    "en": "Mioon · Video workspace",
-    "ja": "Mioon · 動画ワークスペース"
+    "zh-Hans": "Mioon",
+    "zh-Hant": "Mioon",
+    "en": "Mioon",
+    "ja": "Mioon"
   },
   "app.description": {
     "zh-Hans": "在画布中构思、生成、比较和编排你的影像",

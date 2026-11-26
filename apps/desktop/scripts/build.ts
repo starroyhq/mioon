@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { rm, mkdir, cp, readFile, writeFile, readdir, realpath, access } from 'node:fs/promises';
+import { rm, mkdir, cp, readFile, writeFile, readdir, realpath, access, lstat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,6 +86,16 @@ await measureBuildStage('desktop-resource-staging', async () => {
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true,
   filter: source => source !== examples });
 await stageProjectExampleResources(examples, path.join(output, 'examples'));
+await cp(path.join(root, 'skills', 'mioon'), path.join(output, 'skills', 'mioon'), {
+  recursive: true,
+  async filter(source) {
+    const name = path.basename(source);
+    if (name === '.DS_Store' || name === '__pycache__' || name.endsWith('.pyc')) return false;
+    const entry = await lstat(source);
+    if (!entry.isFile() && !entry.isDirectory()) throw new Error('Unexpected file type in bundled Agent skill.');
+    return true;
+  },
+});
 await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
 await stageTrayResources(path.join(desktop, 'resources/tray'), path.join(output, 'icons/tray'));

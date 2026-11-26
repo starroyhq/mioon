@@ -37,7 +37,7 @@ test('web surfaces display Mioon and native windows use the channel product name
   assert.match(login, /<h1 id="login-title">Mioon<\/h1>/);
   assert.match(app, /aria-label=\{t\('shell.title'\)\}/);
   for (const locale of LOCALES) { assert.match(translate(locale, 'shell.title'), /Mioon/); assert.match(translate(locale, 'app.title'), /Mioon/); }
-  assert.equal(translate('zh-Hans', 'shell.title'), 'Mioon 影像工作台');
+  assert.equal(translate('zh-Hans', 'shell.title'), 'Mioon');
   assert.doesNotMatch(app, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.doesNotMatch(login, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.match(html, /<title>Mioon<\/title>/);
