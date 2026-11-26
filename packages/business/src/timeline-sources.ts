@@ -1,3 +1,4 @@
+import type {TimelineSpeedExportSnapshot} from '../../contracts/src/timeline-speed-export.ts';
 import {mediaLocatorFields, sameMediaLocator} from './asset-reference-record.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
@@ -23,7 +24,7 @@ export interface TimelinePreflightSnapshotAsset {id: string;sha256: string;mimeT
 export interface TimelinePreflightSnapshot {
  timeline: TimelineRecord;assets: TimelinePreflightSnapshotAsset[];
  subtitleProfile?: {profileId: string;fontSha256?: string};
- delivery?: unknown;deliveryName?: string;exportRange?: unknown;colourPlan?: unknown;
+ delivery?: unknown;deliveryName?: string;exportRange?: unknown;colourPlan?: unknown;speedExport?: TimelineSpeedExportSnapshot;
 }
 interface TimelineColourPlanRecord {profileId?: string;clips: {clipId: string;assetId: string;kind: string;assetSha256?: string;evidence?: {width: number;height: number;profileId?: string};sourceProfileId?: string;look?: unknown;range?: unknown}[]}
 interface TimelineSnapshotLike {
@@ -32,12 +33,13 @@ interface TimelineSnapshotLike {
  colourPlan?: TimelineColourPlanRecord;
  subtitleProfile?: unknown;
  delivery?: unknown;
+ speedExport?: TimelineSpeedExportSnapshot;
 }
 interface PreparedSource {
  id: string;sha256: string;mimeType: string;reference?: MediaReference;referenceRevision?: number;relativePath?: string;path: string;
  sizeBytes: number;width: number;height: number;duration: number|null;
  hasVideo: boolean;hasAudio: boolean;videoStreamIndex: number|string|null;audioStreamIndex: number|string|null;
- colourSourceIdentity?: unknown;opacitySourceIdentity?: unknown;colourProbe?: unknown;colourImageEvidence?: unknown;
+ speedSourceIdentity?: unknown;colourSourceIdentity?: unknown;opacitySourceIdentity?: unknown;colourProbe?: unknown;colourImageEvidence?: unknown;
 }
 interface TimelineProbeResult {
  probe: unknown;width: number;height: number;duration: number|null;
@@ -88,10 +90,8 @@ export function validateFrozenTimelineSourceGraph(db: DatabaseSync,projectId: st
 // the same bounded owned graph and immutable source identity before consuming
 // cached paths and again at publication. Metadata discovered by ffprobe (size,
 // duration, dimensions and audio flags) is deliberately not an identity fence.
-// Legacy/custom delivery retains its original DB-only behavior. Managed colour
-// additionally pins the SHA-verified file identity (including size/mtime/ctime)
-// across capability/encode/publication awaits. This is not an OS parser sandbox
-// or a guarantee against a privileged same-user/root pathname race.
+// Colour and speed rendering pin the SHA-verified file identity (including
+// size/mtime/ctime) across capability, encoding and publication awaits.
 export function validatePreparedTimelineSources(db: DatabaseSync,projectId: string,snapshot: TimelineSnapshotLike,prepared: Map<string, PreparedSource>,{root}: {root?: string}={}): void{
  try{
   if(snapshot?.timeline?.projectId!==projectId||!Array.isArray(snapshot.timeline.clips)||snapshot.timeline.clips.length>100||!Array.isArray(snapshot.assets)||snapshot.assets.length>100||!(prepared instanceof Map)||typeof root!=='string')throw invalid();
@@ -102,7 +102,8 @@ export function validatePreparedTimelineSources(db: DatabaseSync,projectId: stri
    if(!current||!verified||current.id!==frozen.id||(current as {projectId?: string}).projectId!==projectId||verified.id!==frozen.id||
     ['sha256','mimeType'].some(key=>typeof (frozen as unknown as Record<string, unknown>)[key]!=='string'||(current as unknown as Record<string, unknown>)[key]!==(frozen as unknown as Record<string, unknown>)[key]||(verified as unknown as Record<string, unknown>)[key]!==(frozen as unknown as Record<string, unknown>)[key])||
     !sameMediaLocator(current,frozen)||!sameMediaLocator(verified,frozen)||verified.path!==validateManagedSource(root,current).file)throw invalid();
-   if(snapshot.colourPlan&&(!verified.colourSourceIdentity||!sameManagedFile(verified.colourSourceIdentity as never,validateManagedSource(root,current).info as never)))throw invalid();
+   const identity=snapshot.speedExport?verified.speedSourceIdentity:snapshot.colourPlan?verified.colourSourceIdentity:null;
+   if((snapshot.colourPlan||snapshot.speedExport)&&(!identity||!sameManagedFile(identity as never,validateManagedSource(root,current).info as never)))throw invalid();
   }
   if(snapshot.colourPlan){
    if(!isTimelineColourSnapshot(snapshot))throw invalid();
@@ -217,16 +218,16 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
    else validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:media.probe,assetSha256:hashed.sha256,streamIndex:media.videoStreamIndex} as never);
   }
   assets.set(a.id,{...frozen,sizeBytes:hashed.sizeBytes,sha256:hashed.sha256,width:media.width,height:media.height,duration:media.duration as number|null,
-   hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(retainOpacitySourceIdentity?{opacitySourceIdentity:hashed.info}:{}),...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})} as PreparedSource);
+   hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(snapshot.speedExport?{speedSourceIdentity:hashed.info}:{}),...(retainOpacitySourceIdentity?{opacitySourceIdentity:hashed.info}:{}),...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})} as PreparedSource);
   onChecked?.(a.id);
   }catch(error){throw timelineInputSourceError(error,a.id);}
  }
  checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets);
- if(snapshot.colourPlan||retainOpacitySourceIdentity){
+ if(snapshot.colourPlan||snapshot.speedExport||retainOpacitySourceIdentity){
   for(const verified of assets.values()){
    try{
     checkMediaEffect(beforeEffect,signal);const current=readAsset(verified.id);
-    if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||!sameMediaLocator(current,verified)||!sameManagedFile((retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity) as never,validateManagedSource(root,current).info as never))throw fault('MANAGED_SOURCE_CHANGED',retainOpacitySourceIdentity?'A verified source changed during preparation.':'A colour-managed source changed during preparation.');
+    if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||!sameMediaLocator(current,verified)||!sameManagedFile((snapshot.speedExport?verified.speedSourceIdentity:retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity) as never,validateManagedSource(root,current).info as never))throw fault('MANAGED_SOURCE_CHANGED','A verified source changed during preparation.');
    }catch(error){throw timelineInputSourceError(error,verified.id);}
   }
   if(snapshot.colourPlan)verifyTimelineColourLuts(snapshot.colourPlan as never,readLut as never,true);

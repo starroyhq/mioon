@@ -25,7 +25,7 @@ import type {
 } from '../../contracts/src/sequence-edit.ts';
 import {SEQUENCE_EDIT_CONTRACT_VERSION, isSequenceEditEnvelope} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineState} from './project-file/format5-timeline.ts';
 import {prepareSequenceEditHistory, sequenceEditInputDigest} from './format5-editor-history.ts';
@@ -40,7 +40,7 @@ const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{1
 const isUuid = (value: unknown): value is string => typeof value === 'string' && uuidPattern.test(value);
 const now = (): string => new Date().toISOString();
 const isFormat5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 function invalid(message: string, details: Row = {}): never {
   throw new AppError('SEQUENCE_EDIT_PREVIS_INVALID', message, 409, details);
 }

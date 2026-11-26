@@ -1,3 +1,5 @@
+import {SPEED_PROCESSING_NOT_READY} from '../../contracts/src/timeline-speed-export.ts';
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts';
 import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
@@ -49,7 +51,7 @@ import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
 
-type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'|'resolveGenerationResultProvider'>;
+type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'|'resolveGenerationResultProvider'|'reverseProxy'>;
 
 async function paidReferenceHash<T>(operation: Promise<T>): Promise<T> {
  try{return await operation;}catch(error){
@@ -220,7 +222,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   };
   if(table==='exports')tx(apply);else apply();
  };
- const safeError=(e: unknown,fallback='PROVIDER_ERROR'): {code: string; message: string; retryable: boolean;providerFailure?:VideoProviderFailure}=>{
+ const safeError=(e: unknown,fallback='PROVIDER_ERROR'): {code: string; message: string; retryable: boolean;taskId?: string;providerFailure?:VideoProviderFailure}=>{
   const httpFailure=getProviderHttpFailure(e);
   const code=httpFailure?.code??(stringValue(property(e,'code'))||fallback);
   // Only Node filesystem errors carry this errno/syscall/path combination;
@@ -228,7 +230,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const filesystem=property(e,'name')!=='AbortError'&&(/^(?:E[A-Z0-9]+|UNKNOWN)$/u.test(code)||code.startsWith('ERR_FS_'))&&typeof property(e,'syscall')==='string'&&(typeof property(e,'path')==='string'||typeof property(e,'dest')==='string');
   const message=property(e,'uncertain')?'供应商可能已受理。正在对账，不会自动重新提交。':filesystem?'本地产物文件不可用，已保留任务记录':String(property(e,'message')||'任务操作失败');
   const providerFailure=httpFailure?.providerFailure??getOmniFailure(e);
-  return {code,message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:httpFailure?.retryable??true,...(providerFailure?{providerFailure}:{})};
+  const taskId=code===SPEED_PROCESSING_NOT_READY?property(property(e,'details'),'taskId'):undefined;
+  return {code,...(typeof taskId==='string'&&exportUuid(taskId)?{taskId}:{}),message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:httpFailure?.retryable??true,...(providerFailure?{providerFailure}:{})};
  };
  let invalidQueuedReported=false;
  for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='job')){
@@ -555,7 +558,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const colourExport=Boolean(e.snapshot&&isRecord(e.snapshot)&&Object.hasOwn(e.snapshot,'colourPlan'));
   const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
   const agentBound=!!agentTaskJobBinding(store.db,'export',e.id);
-  const fencedAttempt=floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=timelineExportRangeEffectError;
+  const speedExport=Boolean(isRecord(e.snapshot)&&Object.hasOwn(e.snapshot,'speedExport'));
+  const fencedAttempt=floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport||speedExport,effectError=timelineExportRangeEffectError;
   let preparedAssets: Map<string, unknown>|undefined,linkedOutput=false,publicationAccepted=false,
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
    floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false,renderStarted=false,blockedGate=false;
@@ -565,6 +569,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   try {
    beforeEffect?.();
    const outputGeometry=e.mode==='timeline'?property(e.snapshot,'timeline'):storyboardOutputGeometry(e);
+   if(e.mode==='timeline'&&!speedExport)assertTimelineSpeedRenderable(outputGeometry);
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}
@@ -579,7 +584,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
     exportStage(store,e.id,'encoding');
     const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{
-     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
+     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,reverseProxy:services.reverseProxy,
      onSegmentProgress:(completed,total)=>exportEncodingProgress(store,e.id,completed,total),
      ...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{}),
     });checkpoint(signal);

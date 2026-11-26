@@ -1,5 +1,5 @@
 import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {FORMAT5_TIMELINE_FORMAT} from '../../contracts/src/timeline-replacement.ts';
 import {projectRetainedTimelineReceipt} from './timeline-retained-receipts.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -25,7 +25,7 @@ const families = [
   ['timeline_requests', ['response']], ['edit_tasks', ['input']], ['exports', ['data']],
 ] as const;
 const forbiddenKeys = new Set(['opacityEnvelopeProfile', 'opacityEnvelopeProcessingProfile', 'opacityEnvelopeSha256']);
-const FORMAT5_ONLY_CLIP_KEYS = new Set(['sourceState', 'anchor', 'sequenceSource', 'segmentGroupId', 'dialogueRef', 'versionMode']);
+const FORMAT5_ONLY_CLIP_KEYS = new Set(['sourceState', 'anchor', 'sequenceSource', 'segmentGroupId', 'dialogueRef', 'versionMode', 'timing', 'sourceSpanFrames']);
 function invalid(): never {throw Object.assign(new Error('Workspace opacity evidence is invalid.'), {code: 'WORKSPACE_OPACITY_INVALID'});}
 function containsOpacity(value: unknown): boolean {
   const pending = [{value, depth: 0}]; let nodes = 0, found = false;
@@ -53,7 +53,7 @@ function projectRecord(record: Value): Value {
 
 export function validateTimelineOpacityRows(db: DatabaseSync): void {
   const storageSchema = timelineStorageSchema(db);
-  const format5 = timelineStorageFormat(db, storageSchema) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  const format5 = isSequenceProjectFormat(timelineStorageFormat(db, storageSchema));
   const projections = new Map<string, string>();
   const names = new Set<unknown>();
   const relevant = new Set<string>(['projects', 'assets', ...families.map(([table]) => table)]);

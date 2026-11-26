@@ -1,5 +1,5 @@
 import {sourceFrameCount} from '@mioon/contracts';
-import {clipTransitionRegions,type ClipTransitionRegion} from '../../contracts/src/timeline-clip-transition.ts';
+import {clipTransitionRegions,type ClipTransitionRegion,type TransitionHandleCheck} from '../../contracts/src/timeline-clip-transition.ts';
 import {assertTimelineImageCompositorInputCount} from '../../contracts/src/timeline-colour.ts';
 
 // Graph pieces for two-clip transitions, used by timeline-media.ts for preview
@@ -13,14 +13,14 @@ export interface TransitionLayer {readonly label: string;readonly position: (shi
 
 /** The saved transitions of a validated render timeline. Saved timelines keep
  * only transitions that fit, so one that does not is an invalid snapshot. */
-export function timelineTransitionRegions(timeline: RenderTimeline,assets: ReadonlyMap<string,{readonly mimeType: string;readonly duration?: unknown}>): ClipTransitionRegion[]{
+export function timelineTransitionRegions(timeline: RenderTimeline,assets: ReadonlyMap<string,{readonly mimeType: string;readonly duration?: unknown}>,handle?: TransitionHandleCheck): ClipTransitionRegion[]{
  if(!timeline.clips.some(clip=>Object.hasOwn(clip,'transitionIn')))return [];
  try{
   return clipTransitionRegions(timeline,assetId=>{
    const asset=assets.get(assetId);if(!asset)return null;
    const image=asset.mimeType.startsWith('image/');return {image,frames:image?0:sourceFrameCount(asset.duration)??0};
-  });
- }catch{throw Object.assign(Error('A saved transition does not fit its cut.'),{code:'INVALID_TIMELINE_SNAPSHOT'});}
+  },handle);
+ }catch(error){if((error as {code?:unknown})?.code==='SPEED_MAPPING_INVALID')throw error;throw Object.assign(Error('A saved transition does not fit its cut.'),{code:'INVALID_TIMELINE_SNAPSHOT'});}
 }
 /** The segment planner's input: transition edges cut segments like clip edges,
  * so every segment lies wholly inside or outside each transition. */

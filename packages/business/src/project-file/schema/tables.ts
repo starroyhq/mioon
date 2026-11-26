@@ -5,7 +5,7 @@
  * never builds; removed tables are not built anywhere. Historical names remain
  * for supported history upgrades and the legacy workspace until S7-B2.
  * `schema_version` exists in all three databases and is defined in databases.ts. */
-import {FORMAT5_CONTENT_TABLES_ADDED, FORMAT5_EDITOR_HISTORY_TABLES, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './domains/sequence.ts';
+import {FORMAT5_CONTENT_TABLES_ADDED, FORMAT5_EDITOR_HISTORY_TABLES, FORMAT5_HISTORY_SCHEMA_VERSION, isSequenceProjectFormat} from './domains/sequence.ts';
 import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION} from './domains/canvas.ts';
 
 export type TablePlacement = 'project' | 'history' | 'cache' | 'app' | 'removed';
@@ -18,7 +18,7 @@ export const CONTENT_TABLES: readonly string[] = Object.freeze([
 ]);
 
 export const FORMAT5_CONTENT_TABLES: readonly string[] = Object.freeze([...CONTENT_TABLES, ...FORMAT5_CONTENT_TABLES_ADDED]);
-export const contentTablesForVersion = (version: number): readonly string[] => version === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_CONTENT_TABLES : CONTENT_TABLES;
+export const contentTablesForVersion = (version: number): readonly string[] => isSequenceProjectFormat(version) ? FORMAT5_CONTENT_TABLES : CONTENT_TABLES;
 
 export const LEGACY_MIO_TABLES: readonly string[] = Object.freeze([
     'agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_events_v2', 'agent_task_changes_v2', 'agent_task_controls_v2',

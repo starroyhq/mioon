@@ -22,7 +22,7 @@ export function timelineExportRangeBoundsIssue(input: unknown, durationFrames: u
  * adding a capability probe to the legacy encoder path. */
 export function requiresPreparedTimelineExportIdentity(record: unknown): boolean {
   return object(record) && object(record.snapshot) &&
-    (Object.hasOwn(record.snapshot, 'delivery') || Object.hasOwn(record.snapshot, 'exportRange'));
+    (Object.hasOwn(record.snapshot, 'delivery') || Object.hasOwn(record.snapshot, 'exportRange') || Object.hasOwn(record.snapshot, 'speedExport'));
 }
 
 export function timelineExportRangeEffectError(): Error & {code: 'INVALID_TIMELINE_SNAPSHOT'} {

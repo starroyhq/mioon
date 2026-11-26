@@ -14,7 +14,7 @@ import {
 } from './backup.ts';
 import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {upgradeProject3To4Inside} from './schema/format4-upgrade.ts';
@@ -50,7 +50,7 @@ export interface ProjectCopyResult extends ProjectBackupIdentity {readonly proje
 type Row = Record<string, SQLInputValue>;
 const failed = (reason: string): AppError => new AppError('PROJECT_BACKUP_COPY_FAILED', '无法安全地复制项目内容', 409, {reason});
 const writableFormat = (value: unknown): value is ProjectFileFormat =>
-  value === PROJECT_FILE_SCHEMA_VERSION || value === FORMAT4_PROJECT_SCHEMA_VERSION || value === FORMAT5_PROJECT_SCHEMA_VERSION;
+  value === PROJECT_FILE_SCHEMA_VERSION || value === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(value);
 
 /** Creates the immutable owner-change copy in isolation. Existing target
  * content is never rewritten and source triggers/metadata are never changed.
@@ -74,14 +74,13 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   // Copies of an old writable project keep the original format (K5b: no
   // cross-format copies); a current-format template is upgraded in place by
   // the template instantiation seam before publication.
-  const targetFormat: ProjectFileFormat = requestedFormat === FORMAT5_PROJECT_SCHEMA_VERSION && sourceFormat !== FORMAT5_PROJECT_SCHEMA_VERSION
-    ? sourceFormat as ProjectFileFormat : requestedFormat;
-  if (!writableFormat(targetFormat) || !writableFormat(sourceFormat)
-    || (sourceFormat === FORMAT5_PROJECT_SCHEMA_VERSION) !== (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION)) throw failed('format');
+  if (!writableFormat(requestedFormat) || !writableFormat(sourceFormat)) throw failed('format');
+  const targetFormat = isSequenceProjectFormat(requestedFormat) && sourceFormat < requestedFormat ? sourceFormat : requestedFormat;
   if (targetFormat < sourceFormat) {
     throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer',
       formatVersion: sourceFormat, supportedFormatVersion: targetFormat});
   }
+  if (isSequenceProjectFormat(sourceFormat) !== isSequenceProjectFormat(targetFormat)) throw failed('format');
   // This validates ordinary portable project-folder ancestors (0755 is fine)
   // before creating our own private staging directory below the target.
   const temporaryDir = (options.publish ? createProjectCopyStagingDirectory : createPrivateTemporaryDirectory)(parent, 'project-copy-'), temporary = path.join(temporaryDir, 'project.mioon');

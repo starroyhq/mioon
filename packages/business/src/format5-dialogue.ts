@@ -35,7 +35,7 @@ import type {
 } from '../../contracts/src/sequence-edit.ts';
 import {SEQUENCE_EDIT_CONTRACT_VERSION, sequenceEditEnvelopeOperationName} from '../../contracts/src/sequence-edit.ts';
 import type {ProjectStore} from './project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {applySequenceEditTimelineDelta} from './format5-sequence-sync.ts';
@@ -52,7 +52,7 @@ import type {Format5DialogueProjectedShot} from './format5-dialogue-projection.t
 type Row = Record<string, unknown>;
 const now = (): string => new Date().toISOString();
 const isFormat5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 function invalid(message: string, details: Row = {}): never {
   throw new AppError('SEQUENCE_EDIT_DIALOGUE_INVALID', message, 409, details);
 }

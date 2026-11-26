@@ -4,6 +4,8 @@ import {indexChainSyncTrack} from '../../../contracts/src/chain-main-track.ts';
 import type {ChainSyncClip} from '../../../contracts/src/chain-main-track.ts';
 import type {ChainSyncBaseline} from '../../../contracts/src/chain-sync-analysis.ts';
 import {sourceFrameCount} from '../../../contracts/src/source-range.ts';
+import {clipSourceEndFrame} from '../../../contracts/src/timeline-clip-timing.ts';
+import {freezeSourceSha256} from '../format6-source-proof.ts';
 import {readPrevisOutputSource} from '../previs-output-ownership.ts';
 import {
   assertFormat5Timeline,format5EdgeSchema,format5SequenceRootSchema,format5SubjectCardSchema,
@@ -36,6 +38,7 @@ export function format5MainTrackClips(timeline:Format5Timeline):ChainSyncClip[] 
       versionId:source.kind==='media'?clip.assetId:clip.versionId??null,
       versionLocked:source.kind==='media'||source.versionMode==='locked',
       startFrame:clip.startFrame,durationFrames:clip.durationFrames,sourceInFrame:clip.sourceInFrame,
+      ...(clip.sourceSpanFrames===undefined?{}:{sourceSpanFrames:clip.sourceSpanFrames}),
       splitGroupId:source.segmentGroupId};
   });
 }
@@ -255,16 +258,19 @@ function validateSourcesAndDialogue(
       let facts=sourceFacts.get(clip.assetId!);
       if(!facts){facts={mime:asset.mimeType,hasAudio:asset.hasAudio===true};sourceFacts.set(clip.assetId!,facts);}
       const kind=trackKinds.get(clip.trackId),mime=facts.mime;
+      if(clip.timing?.profile==='timeline-freeze-v1'&&
+        (kind!=='video'||clip.timing.sourceSha256!==freezeSourceSha256(asset)||clip.timing.sourceVersionId!==(clip.versionId??null)))
+        fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
       if(kind==='audio'&&clip.soundOnly===true){
         // «Separate sound» is the only legal way for an audio track to reference
         // a video asset: it must really be a video source that carries audio.
         if(typeof mime!=='string'||!mime.startsWith('video/')||facts.hasAudio!==true)fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
-        if(clip.sourceInFrame+clip.durationFrames>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+        if(clipSourceEndFrame(clip)>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
       }else{
         const supported=kind==='video'?videoSourceMimes:audioSourceMimes;
         if(typeof mime!=='string'||!supported.has(mime))fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
-        if(mime.startsWith('image/')?clip.sourceInFrame!==0:
-            clip.sourceInFrame+clip.durationFrames>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+        if(mime.startsWith('image/')?clip.sourceInFrame!==0||clip.timing!==undefined:
+            clipSourceEndFrame(clip)>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
       }
     }
     if(clip.versionId!==undefined&&input.versions!==undefined){

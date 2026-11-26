@@ -6,6 +6,9 @@ import {timelineOutputPreset} from './timeline-format.ts';
 import {isClipTransform} from './timeline-clip-transform.ts';
 import {isClipLayoutRect, type ClipLayout} from './timeline-clip-layout.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
+import {clipTimingSchema, type ClipTiming} from './timeline-speed.ts';
+import {compileClipTimeMap, MAX_CLIP_SOURCE_SPAN_FRAMES} from './timeline-clip-timing.ts';
+import {projectTimeMapToCurrentClipFields} from './timeline-time-map.ts';
 // Saved timeline acknowledgements are complete records, never patches. These
 // guards do not normalize records or claim a historical response is current.
 // Project-owned media/version lineage remains the backend's responsibility.
@@ -19,6 +22,7 @@ export interface TimelineClipRecord {
   versionId?: string; shotId?: string; jobId?: string;
   /** Format-5 only; absent means audible/normal clip. */
   muted?: boolean; soundOnly?: boolean;
+  timing?: ClipTiming; sourceSpanFrames?: number;
   [key: string]: unknown;
 }
 export interface TimelineRecord {
@@ -31,8 +35,11 @@ export interface TimelineRecord {
  * callers state the storage format they are validating. Formats 3 and 4 keep
  * rejecting `muted` / `soundOnly` exactly like before the format-5 card. */
 export const FORMAT5_TIMELINE_FORMAT = 5;
+export const FORMAT6_TIMELINE_FORMAT = 6;
+export const isSequenceTimelineFormat = (format: unknown): format is typeof FORMAT5_TIMELINE_FORMAT | typeof FORMAT6_TIMELINE_FORMAT =>
+  format === FORMAT5_TIMELINE_FORMAT || format === FORMAT6_TIMELINE_FORMAT;
 export interface TimelineRecordOptions {projectId?: unknown; format?: unknown}
-const acceptsFormat5ClipFlags = (options: TimelineRecordOptions): boolean => options.format === FORMAT5_TIMELINE_FORMAT;
+const acceptsFormat5ClipFlags = (options: TimelineRecordOptions): boolean => isSequenceTimelineFormat(options.format);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const integer = (value: unknown, min: number, max: number): value is number => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
@@ -57,6 +64,7 @@ const format5ClipFlags = ['muted', 'soundOnly'];
 
 export function isTimelineRecord(value: unknown, {projectId, ...options}: TimelineRecordOptions = {}): value is TimelineRecord {
   const clipFlags = acceptsFormat5ClipFlags(options) ? format5ClipFlags : [];
+  const timingFields = options.format === FORMAT6_TIMELINE_FORMAT ? ['timing', 'sourceSpanFrames'] : [];
   if (!fields(value, timelineFields, ['subtitles']) || !uuid(value.id) || !uuid(value.projectId) ||
       (projectId !== undefined && value.projectId !== projectId) || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER) ||
       !timelineOutputPreset(value) ||
@@ -72,7 +80,7 @@ export function isTimelineRecord(value: unknown, {projectId, ...options}: Timeli
   }
   let duration = 0;
   for (const clip of value.clips as unknown[]) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout', ...clipFlags]) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout', ...clipFlags, ...timingFields]) ||
         !uuid(clip.id) || ids.has(clip.id) || !uuid(clip.trackId) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
@@ -87,6 +95,16 @@ export function isTimelineRecord(value: unknown, {projectId, ...options}: Timeli
         Object.hasOwn(clip, 'muted') && (!acceptsFormat5ClipFlags(options) || clip.muted !== true) ||
         Object.hasOwn(clip, 'soundOnly') && (!acceptsFormat5ClipFlags(options) || clip.soundOnly !== true || trackKinds.get(clip.trackId) !== 'audio')) return false;
     if (!isClipLayoutRect(clip, value)) return false;
+    if (Object.hasOwn(clip, 'timing') || Object.hasOwn(clip, 'sourceSpanFrames')) {
+      const timing = clipTimingSchema.safeParse(clip.timing);
+      if (!timing.success || !integer(clip.sourceSpanFrames, 1, MAX_CLIP_SOURCE_SPAN_FRAMES)) return false;
+      const timed = {...clip, id: clip.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames,
+        sourceInFrame: clip.sourceInFrame, timing: timing.data};
+      const plan = compileClipTimeMap(timed, {fps: Number(value.fps)});
+      const frame = plan.ok ? projectTimeMapToCurrentClipFields(timed, plan.value) : plan;
+      if (!frame.ok || frame.value.sourceInFrame !== clip.sourceInFrame || frame.value.durationFrames !== clip.durationFrames ||
+          frame.value.sourceSpanFrames !== clip.sourceSpanFrames) return false;
+    }
     for (const field of ['fadeInFrames', 'fadeOutFrames']) if (Object.hasOwn(clip, field) && !integer(clip[field], 0, clip.durationFrames)) return false;
     if ((clip.fadeInFrames as number | undefined ?? 0) + (clip.fadeOutFrames as number | undefined ?? 0) > clip.durationFrames) return false;
     ids.add(clip.id); tracks.get(clip.trackId)!.push(clip as TimelineClipRecord);
