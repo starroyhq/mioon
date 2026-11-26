@@ -260,11 +260,12 @@ export function createCliInstaller({
         cli.pathHint = {line, rcFile};
       }
     }
+    const mcpCommand = commandPath(entry?.directory ?? defaultDirectory);
     return {
       commandName, appVersion, cli, managed: Boolean(entry && linkOwned(entry)),
       ...(entry ? {installationKind: entry.copy ? 'versioned-copy' : 'bundle-link'} : {}),
-      mcpCommands: {claudeCode: `claude mcp add -s user ${commandName} -- ${mcpQuote(command)} mcp`,
-        codex: `codex mcp add ${commandName} -- ${mcpQuote(command)} mcp`},
+      mcpCommands: {claudeCode: `claude mcp add -s user ${commandName} -- ${mcpQuote(mcpCommand)} mcp`,
+        codex: `codex mcp add ${commandName} -- ${mcpQuote(mcpCommand)} mcp`},
     };
   }
 
@@ -389,6 +390,13 @@ export function createCliInstaller({
     });
   }
 
+  function installSelectedDirectory(directory: string): Promise<CliInstallStatus> {
+    try {return install(issueDirectoryTicket(directory));}
+    catch (error) {
+      return serialize(() => failed(pathIsAbsolute(directory) ? directory : defaultDirectory, error));
+    }
+  }
+
   function repair(automatic: boolean): Promise<CliInstallStatus> {
     return serialize(async () => {
       let directory = defaultDirectory;
@@ -419,5 +427,6 @@ export function createCliInstaller({
     });
   }
 
-  return Object.freeze({status, issueDirectoryTicket, install, uninstall, repair: () => repair(false), autoRepair: () => repair(true)});
+  return Object.freeze({status, issueDirectoryTicket, install, installSelectedDirectory, uninstall,
+    repair: () => repair(false), autoRepair: () => repair(true)});
 }

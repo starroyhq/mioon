@@ -123,7 +123,8 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
     // SQLite templates and external FFmpeg resources must be ordinary files
     // outside ASAR. Both resource trees are verified before and after packing.
     extraResources: [{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]},
-      {from:'build/examples',to:'examples',filter:['**/*']}],
+      {from:'build/examples',to:'examples',filter:['**/*']},
+      {from:'build/skills/mioon',to:'skills/mioon',filter:['**/*']}],
     npmRebuild: false,
     publish: null,
     // The DMG is stapled after electron-builder exits. Keep the updater

@@ -90,6 +90,10 @@ import {createAssetRelinkHost} from './asset-relink-host.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 import {DESKTOP_UPDATE_CHANNEL, DESKTOP_UPDATE_EVENT} from '../../../packages/contracts/src/desktop-update.ts';
+import {EXTERNAL_AGENTS_CHANNEL} from '../../../packages/contracts/src/external-agents.ts';
+import {createCliInstaller} from './cli-install.ts';
+import {createExternalAgentSkills} from './external-agent-skills.ts';
+import {createExternalAgentsHost} from './external-agents-host.ts';
 import {createDesktopUpdate, isDesktopUpdateExternalUrl} from './desktop-update.ts';
 import {createMacDesktopUpdater, createMacDesktopUpdateVerifier} from './desktop-update-mac-verify.ts';
 import {installDesktopUpdateNetworkPolicy} from './desktop-update-network.ts';
@@ -221,6 +225,7 @@ type RestartProject = {projectId: string; name: string};
 let restartProjects: readonly RestartProject[] | undefined;
 let desktopUpdate: ReturnType<typeof createDesktopUpdate> | undefined;
 let updateHost: ReturnType<typeof createDesktopUpdateHost> | undefined;
+let externalAgentsHost: ReturnType<typeof createExternalAgentsHost> | undefined;
 let updateQuit: ReturnType<typeof createDesktopUpdateQuit<BrowserWindow>> | undefined;
 // Native trash can outlive its utility; retain its project fence across hosts.
 const projectActionReservations = new Map<string, object>();
@@ -305,6 +310,15 @@ function finishNativePresentation(window: BrowserWindow, host: ProjectWindowHost
   if (windowHost === host && !windowAdmissions.get(window)?.pending &&
       ![...nativeDialogs].some(token => token.window === window)) host.finishNativeDialog(window, contextId);
 }
+async function ownedPanel<T>(owner: {window: BrowserWindow; contextId: string; isCurrent(): boolean}, show: () => Promise<T>): Promise<T> {
+  const host = windowHost;
+  if (!owner.isCurrent() || !host?.prepareNativeDialog(owner.window)) throw new Error('Native selection owner unavailable.');
+  const token = {window: owner.window};
+  nativeDialogs.add(token); trayIntent++; refreshApplicationMenu();
+  try {return await show();}
+  finally {nativeDialogs.delete(token); finishNativePresentation(owner.window, host, owner.contextId); refreshApplicationMenu();}
+}
+
 async function showOwnedDialog(window: BrowserWindow, context: DesktopWindowContext | null | undefined, options: MessageBoxOptions): Promise<number> {
   const host = windowHost, owner = host?.contextFor(window);
   const cancel = options.cancelId ?? 0;
@@ -906,13 +920,6 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       if(!owner||owner.role==='settings'||!owner.isCurrent()||!ownsWindow(window,context))return null;
       return {window,windowId:owner.windowId,backendId:owner.backendId,contextId:owner.contextId,...(owner.projectId?{projectId:owner.projectId}:{}),isCurrent:()=>{try{nativeBackendCurrent();return (!restarting||allowRestart&&restartCoordinator.state==='starting')&&owner.isCurrent()&&ownsWindow(window,context)&&!windowAdmissions.get(window)?.pending&&!windowHost?.settingsForParent(window);}catch{return false;}}};
     };
-    const ownedPanel=async<T>(owner:ProjectEntryDesktopOwner<BrowserWindow>,show:()=>Promise<T>):Promise<T>=>{
-      const host=windowHost;
-      if(!owner.isCurrent()||!host?.prepareNativeDialog(owner.window))throw new Error('Project selection owner unavailable.');
-      const token={window:owner.window};nativeDialogs.add(token);trayIntent++;refreshApplicationMenu();
-      try{return await show();}
-      finally{nativeDialogs.delete(token);finishNativePresentation(owner.window,host,owner.contextId);refreshApplicationMenu();}
-    };
     const admit=async(owner:ProjectEntryDesktopOwner<BrowserWindow>,facts:ProjectLocationFacts):Promise<boolean>=>{
       if(!owner.isCurrent())return false;
       const decision=projectLocationDecision(facts);
@@ -1412,6 +1419,44 @@ function focusedUpdateDocument(): UpdateDocument | null {
   return preferred && visible(preferred) ? updateDocument(preferred) : null;
 }
 
+function initializeExternalAgents(): void {
+  // Desktop lifecycle fixtures execute main without its imports.
+  if (typeof createExternalAgentsHost !== 'function') return;
+  const homeDir = app.getPath('home');
+  const resourceRoot = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  const packagedMac = app.isPackaged && process.platform === 'darwin';
+  const cli = createCliInstaller({
+    homeDir, userData: paths.userData, appVersion: app.getVersion(), channel: identity.channel,
+    appPath: packagedMac ? path.resolve(resourceRoot, '../..') : app.getAppPath(),
+  });
+  const skills = createExternalAgentSkills({
+    homeDirectory: homeDir, appDataDirectory: paths.userData,
+    bundledSkillDirectory: path.join(resourceRoot, 'skills', 'mioon'),
+    commandName: identity.channel === 'development' ? 'mioon-dev' : 'mioon',
+  });
+  // Source launches have no shippable launcher. Do not try to repair an
+  // installation made by a packaged build that shares this profile.
+  externalAgentsHost = createExternalAgentsHost({cli, skills, repairOnStartup: packagedMac && !smokeOutput});
+}
+
+function externalAgentsDocument(event: IpcMainInvokeEvent) {
+  const host = windowHost, context = windowContext;
+  const owner = host?.ownerForContents(event.sender);
+  if (!owner || owner.role !== 'settings' || event.senderFrame !== owner.frame) return null;
+  const {window, contextId} = owner;
+  const isCurrent = () => host === windowHost && ownsWindow(window, context) && owner.isCurrent()
+    && quitRouter.allowsWindows && !restarting && !windowAdmissions.get(window)?.pending;
+  const canMutate = () => window.isVisible() && !window.isMinimized();
+  return {
+    isCurrent,
+    canMutate,
+    chooseDirectory: () => ownedPanel({window, contextId, isCurrent}, async () => {
+      const result = await dialog.showOpenDialog(window, {properties: ['openDirectory', 'createDirectory']});
+      return result.canceled ? null : result.filePaths[0] ?? null;
+    }),
+  };
+}
+
 function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
   const enabled = app.isPackaged && identity.channel === 'production' && process.platform === 'darwin' && !smokeOutput;
   // Source-only VM lifecycle tests do not have the packaged updater imports.
@@ -1717,6 +1762,10 @@ if (typeof DESKTOP_UPDATE_CHANNEL === 'string') ipcMain.handle(DESKTOP_UPDATE_CH
   if (document && window?.isVisible()) updateHost?.start(document);
   return args.length === 1 && updateHost ? updateHost.dispatch(document, args[0]) : {ok: false, error: {code: 'UPDATE_UNAVAILABLE', status: 503}};
 });
+if (typeof EXTERNAL_AGENTS_CHANNEL === 'string') ipcMain.handle(EXTERNAL_AGENTS_CHANNEL, (event, ...args: unknown[]) => {
+  return externalAgentsHost?.dispatch(externalAgentsDocument(event), args.length === 1 ? args[0] : undefined)
+    ?? {ok: false, error: {code: 'EXTERNAL_AGENTS_UNAVAILABLE', status: 503}};
+});
 ipcMain.handle(NATIVE_ASSET_MEDIA_CHANNEL,(event,request)=>{if(!assetRelinkHost)throw new Error('Native media selection unavailable.');return assetRelinkHost.handle(event,request);});
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
@@ -1825,6 +1874,8 @@ else {
       onChanged: () => { installMenu(); trayHost?.refresh(); },
     });
     const projectsAfterUpdate = initializeDesktopUpdates();
+    try { initializeExternalAgents(); }
+    catch { /* An unavailable external Agent host must not stop the desktop app from opening. */ }
     installMenu();
     installTray();
     // Packaged Windows smoke: write only a fixed startup marker beside the
