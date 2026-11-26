@@ -6,6 +6,7 @@ import {timelineExportSettingsSchema,timelineExportDeliverySchema,isTimelineExpo
 import {z} from 'zod';
 import {TIMELINE_OUTPUT_MAX_EDGE,timelineOutputPreset} from './timeline-output-geometry.ts';
 import {TIMELINE_SUBTITLE_PROFILE_IDS} from './timeline-subtitle-profile.ts';
+import {SPEED_PROCESSING_NOT_READY} from './timeline-speed-export.ts';
 
 // Local source verification is bounded and never claims full media decoding.
 export const EXPORT_PREFLIGHT_LIMITS = Object.freeze({
@@ -69,7 +70,8 @@ export const exportPreflightResponseSchema = z.object({
     assetId: id.optional(),
     clipId: id.optional(),
     shotTitle: z.string().min(1).max(200).optional(),
-  }).strict()).max(EXPORT_PREFLIGHT_LIMITS.issues),
+    taskId: id.optional(),
+  }).strict().refine(issue=>!Object.hasOwn(issue,'taskId')||issue.code===SPEED_PROCESSING_NOT_READY&&issue.taskId!==undefined)).max(EXPORT_PREFLIGHT_LIMITS.issues),
 }).strict().superRefine((value, context) => {
   const fail = (path: (string | number)[], message: string) => context.addIssue({code: z.ZodIssueCode.custom, path, message});
   if (value.checks.checkedAssets > value.checks.totalAssets)
