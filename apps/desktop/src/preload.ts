@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import {createFcpExportBridge} from './fcp-export-preload.ts';
 import { isLocale } from '../../../packages/i18n/src/locale.ts';
 import { SETTINGS_DIAGNOSTICS_CHANNEL, parseSettingsDiagnosticRequest } from './settings-diagnostics-protocol.ts';
 import type { SettingsDiagnosticsBridge } from './settings-diagnostics-protocol.ts';
@@ -6,6 +7,9 @@ import { DESKTOP_CHROME_SCALE_EVENT, DESKTOP_FULLSCREEN_EVENT, DESKTOP_TITLEBAR_
   isDesktopTitleBarColor } from '../../../packages/contracts/src/desktop-window-chrome.ts';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
+if (process.isMainFrame && process.platform === 'darwin') {
+  contextBridge.exposeInMainWorld('__mioonFcpExport', createFcpExportBridge((channel, request) => ipcRenderer.invoke(channel, request)));
+}
 // Windows: the page owns the rendered appearance, so it reports the color behind
 // the system caption band; only a validated bounded CSS color can be sent.
 if (process.platform === 'win32') {
