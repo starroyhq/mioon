@@ -13,7 +13,7 @@ import { createRunwayUnknownFixture, syntheticPng } from './helpers/runway-unkno
 import type { Provider } from '../packages/business/src/provider-registry.ts';
 interface FixtureOptions { env?: Record<string, string | undefined>; now?: () => number }
 interface Deferred<T> { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: unknown) => void }
-interface FailureView { code?: string; uncertain?: boolean; retryable?: boolean; message: string }
+interface FailureView { code?: string; uncertain?: boolean; retryable?: boolean; httpStatus?: number; message: string }
 const failureOf = (value: unknown): FailureView => value as FailureView;
 
 const ID = '12345678-1234-4123-8123-123456789abc';
@@ -53,7 +53,12 @@ function safeFailure(error: unknown, code: string, uncertain: boolean): true {
 }
 for (const status of [400, 401, 402, 403, 404, 405, 413, 415, 422, 429]) test(`Runway parity: POST ${status} is a definite rejection, exactly once`, async t => {
   const f = await fixture(t, [json({ error: SECRET }, status)]);
-  await assert.rejects(f.provider.submit(f.input), e => safeFailure(e, `PROVIDER_HTTP_${status}`, false));
+  await assert.rejects(f.provider.submit(f.input), e => {
+    safeFailure(e, `PROVIDER_HTTP_${status}`, false);
+    assert.equal(failureOf(e).httpStatus, status);
+    assert.equal(failureOf(e).retryable, status === 429);
+    return true;
+  });
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0]?.[1]?.method, 'POST');
 });
 for (const status of [302, 408, 409, 410, 418, 425, 499, 500, 599]) test(`Runway parity: POST ${status} preserves unknown acceptance, exactly once`, async t => {
@@ -87,10 +92,18 @@ test('Runway parity: exactly 1 MiB valid JSON remains accepted', async t => {
   const core = JSON.stringify({ id: ID }), f = await fixture(t, [new Response(core.padEnd(JSON_LIMIT, ' '))]);
   assert.deepEqual(await f.provider.submit(f.input), { providerJobId: ID }); assert.equal(f.calls.length, 1);
 });
-const retryableStatuses: [number, boolean][] = [[400, false], [401, false], [409, false], [408, true], [429, true], [500, true]];
+const retryableStatuses: [number, boolean][] = [
+  ...[400, 401, 402, 403, 404, 405, 409, 413, 415, 422].map(status => [status, false] as [number, boolean]),
+  ...[408, 429, 500, 501, 502, 503, 504, 599].map(status => [status, true] as [number, boolean]),
+];
 for (const [status, retryable] of retryableStatuses) test(`Runway parity: GET ${status} preserves existing retryability and caches the error`, async t => {
   let now = 0; const f = await fixture(t, [json({ secret: SECRET }, status), json({ id: ID, status: 'RUNNING' })], { now: () => now });
-  for (let i = 0; i < 2; i++) await assert.rejects(f.provider.poll(ID), (e: unknown) => safeFailure(e, `PROVIDER_HTTP_${status}`, false) && failureOf(e).retryable === retryable);
+  for (let i = 0; i < 2; i++) await assert.rejects(f.provider.poll(ID), (e: unknown) => {
+    safeFailure(e, `PROVIDER_HTTP_${status}`, false);
+    assert.equal(failureOf(e).httpStatus, status);
+    assert.equal(failureOf(e).retryable, retryable);
+    return true;
+  });
   assert.equal(f.calls.length, 1); now = 5000;
   assert.equal((await f.provider.poll(ID)).status, 'running'); assert.equal(f.calls.length, 2);
   assert.ok(f.calls.every(([, init]) => init?.method === 'GET'));

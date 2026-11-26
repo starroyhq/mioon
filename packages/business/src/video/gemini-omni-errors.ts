@@ -1,4 +1,4 @@
-import {providerError} from '../providers/live-common.ts';
+import {getProviderHttpFailure, providerError} from '../providers/live-common.ts';
 import type {ProviderError} from '../providers/live-common.ts';
 
 export interface OmniFailure {
@@ -39,7 +39,7 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 const safeLabel = (value: unknown): string | undefined =>
   typeof value === 'string' && labels.has(value) ? value : undefined;
 
-export function omniFailure(payload: unknown, httpStatus?: number): Readonly<OmniFailure> {
+export function omniFailure(payload: unknown): Readonly<OmniFailure> {
   const body = record(payload);
   const recorded = Array.isArray(body?.errors) && body.errors.length <= 32 ? record(body.errors[0]) : undefined;
   const error = record(body?.error) ?? recorded ?? body;
@@ -56,7 +56,6 @@ export function omniFailure(payload: unknown, httpStatus?: number): Readonly<Omn
     ...(providerType ? {providerType} : {}),
     ...(code ? {code} : {}),
     ...(message ? {message} : {}),
-    ...(httpStatus !== undefined ? {httpStatus} : {}),
   });
 }
 export function omniProviderError(code: string, message: string, detail: Readonly<OmniFailure>, tags: Record<string, unknown> = {}): ProviderError {
@@ -65,13 +64,8 @@ export function omniProviderError(code: string, message: string, detail: Readonl
   return failure;
 }
 export function getOmniFailure(error: unknown): Readonly<OmniFailure> | undefined {
-  return error !== null && typeof error === 'object' ? failures.get(error) : undefined;
-}
-/** Preserve only admitted provider evidence when the owner adds recovery state. */
-export function retainOmniFailure<T extends object>(source: unknown, target: T): T {
-  const detail = getOmniFailure(source);
-  if (detail) failures.set(target, detail);
-  return target;
+  return error !== null && typeof error === 'object'
+    ? failures.get(error) ?? getProviderHttpFailure(error)?.providerFailure : undefined;
 }
 export function rememberOmniTaskFailure<T extends object>(task: T, detail: Readonly<OmniFailure>): T {
   taskFailures.set(task, detail);

@@ -591,11 +591,18 @@ test('definite format-upgrade refusals release the unknown state, while copy res
 });
 
 
-test('an unclassified upgrade outcome keeps unknown state but the upgrade dialog can still be closed', async t => {
+test('an unclassified upgrade outcome keeps unknown state until closed, and closing clears retry so home actions resume', async t => {
   const offer = {status: 'upgrade-required', token, preview: {projectId, contentToken: 'a'.repeat(32), contentSequence: 4,
     projectVersion: PROJECT_FILE_SCHEMA_VERSION, targetProjectVersion: FORMAT4_PROJECT_SCHEMA_VERSION,
     historyVersion: HISTORY_SCHEMA_VERSION, targetHistoryVersion: FORMAT4_HISTORY_SCHEMA_VERSION}};
-  const f = await fixture(t, {openSelectedFile: () => offer, resolveFormatUpgrade: () => {throw Error('lost upgrade acknowledgement');}});
+  let openCalls = 0;
+  const f = await fixture(t, {
+    openSelectedFile: () => {
+      openCalls++;
+      return openCalls === 1 ? offer : {status: 'opened', projectId: createdId, windowId: id(9)};
+    },
+    resolveFormatUpgrade: () => {throw Error('lost upgrade acknowledgement');},
+  });
   await f.controller.openFile();
   assert.equal(await f.controller.chooseFormatUpgrade('upgrade'), false);
   assert.equal(f.controller.getState().action.kind, 'unknown');
@@ -603,6 +610,14 @@ test('an unclassified upgrade outcome keeps unknown state but the upgrade dialog
   f.controller.closeFormatUpgrade();
   assert.equal(f.controller.getState().formatUpgrade, undefined);
   assert.equal(f.controller.getState().busy, false);
+  assert.equal(f.controller.getState().action.kind, 'idle');
+  assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  assert.deepEqual(f.calls.find(call => call.action === 'discardFormatUpgrade'), {action: 'discardFormatUpgrade', token});
+  // After closing the unknown upgrade dialog, creating or opening another project is no longer blocked.
+  assert.equal(f.controller.showCreate(), true);
+  f.controller.closeCreate();
+  assert.equal(await f.controller.openFile(), true);
+  assert.deepEqual(f.dispatched, ['host-opened']);
 });
 
 test('the upgrade dialog uses the generic retry label and exposes an exit in every state', async t => {

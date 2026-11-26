@@ -6,7 +6,7 @@ import type {VideoExecutionBinding} from '../../../contracts/src/video-providers
 import type {Provider,ProviderContext as RegisteredContext} from '../provider-registry.ts';
 import {checkpoint} from '../operation-lifecycle.ts';
 import {acquireBoundVideoCredential} from './credential.ts';
-import {createJsonRequest,createPollCache,downloadMp4,readProviderReferenceBytes,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
+import {createJsonRequest,createPollCache,downloadMp4,readProviderReferenceBytes,managedAudio,managedImage,outputUrl,providerError,retainProviderHttpFailure} from '../providers/live-common.ts';
 import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
 import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskNotFound,configuredTaskPath} from './adapters.ts';
@@ -102,7 +102,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       // This is the bound task lookup. A missing output file or rejected
       // submission has a different meaning even when it returns HTTP 404.
       const failure=record(error);
-      if(failure?.code==='PROVIDER_HTTP_404'&&failure.httpStatus===404&&(!omni||isOmniTaskLookupFailure(error))&&getOmniFailure(error)?.code!=='model_not_found')throw configuredTaskNotFound();
+      if(failure?.code==='PROVIDER_HTTP_404'&&failure.httpStatus===404&&(!omni||isOmniTaskLookupFailure(error))&&getOmniFailure(error)?.code!=='model_not_found')throw retainProviderHttpFailure(error,configuredTaskNotFound());
       throw error;
     }
   }});

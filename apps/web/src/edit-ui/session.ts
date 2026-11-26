@@ -13,7 +13,7 @@ import type {EditUiProjection, EditUiTimeline, EditUiVersion} from './projection
 import {sequenceSyncIntent} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceEditEnvelope, SequenceEditReceipt, SequenceEditTrackIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
-import {classifyCommitFailure, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
+import {classifyCommitFailure, extractSequenceErrorIds, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
 import type {LostResponseOptions, LostResponseView, LostRetryResult} from './lost-response.ts';
 
 export interface SequencePreviewResponse {
@@ -322,7 +322,8 @@ export class Format5EditSession {
       this.pending = {envelope: preview.envelope, planDigest: preview.planDigest};
       return preview;
     } catch (error) {
-      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};
+      const ids = extractSequenceErrorIds(error);
+      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
     }
   }
 
@@ -396,7 +397,10 @@ export class Format5EditSession {
       try {
         preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('format'),
           formatIntent: {side: 'timeline', operation: {kind: 'timeline-format', presetId}}}) as SequencePreviewResponse | SequenceFailure;
-      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      } catch (error) {
+        const ids = extractSequenceErrorIds(error);
+        return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+      }
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
       const response = preview as SequencePreviewResponse;
       if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
@@ -418,7 +422,10 @@ export class Format5EditSession {
       try {
         preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('split-scenes'),
           intents: [sequenceSyncIntent({kind: 'clip-split-scenes', assetId, resultId})]}) as SequencePreviewResponse | SequenceFailure;
-      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      } catch (error) {
+        const ids = extractSequenceErrorIds(error);
+        return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+      }
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
       const response = preview as SequencePreviewResponse;
       if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
@@ -442,7 +449,10 @@ export class Format5EditSession {
       try {
         preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('panel-preview'),
           ...payload}) as SequencePreviewResponse | SequenceFailure;
-      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      } catch (error) {
+        const ids = extractSequenceErrorIds(error);
+        return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+      }
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
       const response = preview as SequencePreviewResponse;
       if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
@@ -476,7 +486,10 @@ export class Format5EditSession {
       try {
         preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('track-preview'),
           trackIntent}) as SequencePreviewResponse | SequenceFailure;
-      } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+      } catch (error) {
+        const ids = extractSequenceErrorIds(error);
+        return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+      }
       if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
       const pending = {envelope: (preview as SequencePreviewResponse).envelope,
         planDigest: (preview as SequencePreviewResponse).planDigest};
@@ -542,7 +555,10 @@ export class Format5EditSession {
     try {
       return parsedOutcome(parseSequenceCommit(await this.endpoint('sequence.undo')({projectId, requestId: format5RequestId('undo'),
         origin: 'user', actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}})));
-    } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+    } catch (error) {
+      const ids = extractSequenceErrorIds(error);
+      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+    }
   }
   async redo(view: SequenceHistoryView): Promise<SequenceOutcome> {
     const blocked = this.guardUnconfirmed();
@@ -552,6 +568,9 @@ export class Format5EditSession {
     try {
       return parsedOutcome(parseSequenceCommit(await this.endpoint('sequence.redo')({projectId, requestId: format5RequestId('redo'),
         origin: 'user', actionId: view.redo.actionId, expected: {position: view.position, revision: view.revision}})));
-    } catch (error) {return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC'};}
+    } catch (error) {
+      const ids = extractSequenceErrorIds(error);
+      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+    }
   }
 }

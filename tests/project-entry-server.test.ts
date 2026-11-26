@@ -42,7 +42,7 @@ function object(value: unknown): Record<string, unknown> {
 }
 
 async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {
-  externalProjectsRoot = false, rejectBackup = false, legacyA = false, legacyHost = false, target4 = false,
+  externalProjectsRoot = false, rejectBackup = false, legacyA = false, legacyHost = false, target4 = false, staleDeviceA = false,
   projectCatalogClient = undefined as ServerOptions['projectCatalogClient'], projectCatalogTimeoutMsForTest = undefined as number | undefined,
 } = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
@@ -78,7 +78,9 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   try {
     // A registered cover is a cache snapshot, not permission to reopen its source.
     const {id: _id, name: _name, lastOpenedAt: _lastOpenedAt, cover: _cover, ...rest} = summary;
-    library.registry.upsert({...library.registry.get(a.projectId)!, projectFile: aFile,
+    const entry = library.registry.get(a.projectId)!;
+    library.registry.upsert({...entry, projectFile: aFile,
+      ...(staleDeviceA ? {fileIdentity: {...entry.fileIdentity, dev: String(BigInt(entry.fileIdentity.dev) + 1n)}} : {}),
       summary: {...rest, cover: {assetId: coverAsset, mimeType: 'image/png'}}});
     if (externalProjectsRoot) library.registry.upsert({...library.registry.get(b.projectId)!, projectFile: bFile});
   } finally {library.close();}
@@ -197,6 +199,22 @@ test('a legacy web host keeps format 3 and reports the format 4 pair as too new'
   assert.deepEqual(candidate.body.error?.details, {projectId: f.b.projectId, reason: 'PROJECT_FORMAT_NEWER'});
   assert.ok(recent);
   assert.deepEqual(recent.availability, {state: 'invalid', reason: 'format-newer'});
+});
+
+test('web read-only format entry refreshes the old device number of the registered project', async t => {
+  const f = await fixture(t, 'web', {legacyA: true, staleDeviceA: true});
+  const {projectId, projectFile} = f.a;
+  const registered = async () => (await registry(f)).find(entry => entry.projectId === projectId)!;
+  const before = await registered(), actual = statProjectFileIdentity(projectFile);
+  assert.ok(actual);
+  assert.notEqual(before.fileIdentity.dev, actual.dev);
+  assert.equal(before.fileIdentity.ino, actual.ino);
+  const bytes = readFileSync(projectFile);
+  const result = await f.json(`/api/projects/${projectId}/format-upgrade/read-only`);
+  assert.equal(result.status, 200);
+  assert.equal(projectFormatReadOnlyViewSchema.parse(result.body.data).projectId, projectId);
+  assert.deepEqual(await registered(), {...before, fileIdentity: actual});
+  assert.deepEqual(readFileSync(projectFile), bytes);
 });
 
 test('the default web host opens legacy metadata without writes and upgrades only a current confirmation after backing up', async t => {

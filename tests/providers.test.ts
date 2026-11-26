@@ -9,6 +9,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createMockProvider } from '../packages/business/src/providers/mock.ts';
+import { getProviderHttpFailure } from '../packages/business/src/providers/live-common.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createRunwayProvider } from '../packages/business/src/providers/runway.ts';
 const exec = promisify(execFile);
@@ -321,7 +322,11 @@ test('Runway expired download is refreshed by task ID with no second POST', asyn
     new Response(Buffer.from([0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109])),
   ]);
   const target = path.join(root, 'refreshed.mp4');
-  await assert.rejects(provider.download(ID, target), e => (e as RootFailure).retryable === true);
+  await assert.rejects(provider.download(ID, target), e => {
+    assert.equal((e as RootFailure).retryable, true);
+    assert.deepEqual(getProviderHttpFailure(e), {code: 'PROVIDER_HTTP_403', retryable: false, providerFailure: {httpStatus: 403}});
+    return true;
+  });
   await provider.download(ID, target);
   assert.equal(calls.length, 4);
   assert.equal(calls.filter(([, init]) => init.method === 'POST').length, 0);

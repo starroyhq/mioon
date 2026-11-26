@@ -30,7 +30,9 @@
 
 系统钥匙串等待授权时，设置页可以先查看和编辑普通字段。初始探测持续等待约 300 毫秒后，密钥一栏显示等待提示。macOS 如提示访问「Mioon Safe Storage」，请选择允许。若此前已拒绝，请完整退出 Mioon，重新打开并允许访问。
 
-任务记录用可选的 `error.diagnostic` 标识这类失败，包含固定类型 `video_credential`、原因码 `cause` 和处理方式 `recovery`（`automatic` 或 `user_action`）。短时故障期间，任务阶段为 `connection_retrying`；需要处理时为 `connection_required`。诊断不含密钥、密文或原始异常文本。Omni 的错误另可带严格脱敏的 `error.providerFailure`，保留已识别的服务商 type、code、简短原因及 HTTP 状态，查询凭据恢复期间也保留这份证据。
+任务记录用可选的 `error.diagnostic` 标识这类失败，包含固定类型 `video_credential`、原因码 `cause` 和处理方式 `recovery`（`automatic` 或 `user_action`）。短时故障阶段为 `connection_retrying`，需要处理时为 `connection_required`。诊断不含密钥、密文或原始异常文本。
+
+所有视频服务商的明确 HTTP 拒绝都在任务记录中保留 `error.code = PROVIDER_HTTP_<状态码>` 和 `error.providerFailure.httpStatus`。400、401、402、403、404、405、413、415、422 的 `retryable` 为 `false`，429 和 GET 的 408、5xx 为 `true`。凭据恢复时可同时携带 `diagnostic`。Omni 还可带脱敏后的服务商类型、错误码和原因。GET 暂时失败时继续查询原任务。POST 返回 5xx 时受理结果仍未知，任务进入对账并保留 HTTP 状态。
 
 ## Google 视频与兼容网关
 

@@ -6,7 +6,7 @@ import path from 'node:path';
 import {build} from 'esbuild';
 import {readFileSync} from 'node:fs';
 import {translate} from '../packages/i18n/src/index.ts';
-import {generationServiceChoices} from '../apps/web/src/generation-service-choices.ts';
+import {defaultBoardGenerationOptions, generationServiceChoices, resolveBoardGenerationSelection} from '../apps/web/src/generation-service-choices.ts';
 import type {GenerationProvider} from '../apps/web/src/generation-settings.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -76,4 +76,55 @@ test('the board and 21-09 panel use the same service menu component', () => {
   assert.match(board, /import GenerationServiceMenu from '\.\/GenerationServiceMenu.tsx'/u);
   assert.match(panel, /import GenerationServiceMenu from '\.\.\/board-ui\/GenerationServiceMenu.tsx'/u);
   for (const source of [board, panel]) assert.match(source, /<GenerationServiceMenu /u);
+});
+
+test('F2 default board service selection: sole service, else shot last-used if available, else unselected', () => {
+  const minimax = provider('minimax', {connectionId: 'conn-mm', configurationRevision: 3, name: 'MiniMax', models: [model('hailuo-2.3')]});
+  const kling = provider('kling', {connectionId: 'conn-kl', configurationRevision: 5, name: 'Kling', models: [model('kling-3.0')]});
+  const mock = provider('mock', {mock: true, models: [model('mock-v1')]});
+  const disabled = provider('vidu', {connectionId: 'conn-vd', enabled: false, status: 'disabled', models: [model('vidu-2')]});
+
+  // Rule 1: only 1 available service -> select it by default
+  const sole = resolveBoardGenerationSelection([disabled, minimax], {}, {id: 'shot-1'}, {shotId: 'shot-1', jobs: [], versions: []});
+  assert.equal(sole.provider?.connectionId, 'conn-mm');
+  assert.equal(sole.model, 'hailuo-2.3');
+  assert.equal(sole.modelEntryId, 'entry-hailuo-2.3');
+
+  // Rule 3: multiple available services (including Mock + real) with no shot history -> unselected (never auto-pick Mock)
+  const freshMulti = resolveBoardGenerationSelection([mock, minimax], {}, {id: 'shot-1'}, {shotId: 'shot-1', jobs: [], versions: []});
+  assert.equal(freshMulti.provider, undefined);
+  assert.equal(freshMulti.model, '');
+
+  // Rule 2: multiple available services + shot previously used Kling -> reuse Kling with current configurationRevision
+  const historyJobs = [
+    {
+      shotId: 'shot-1',
+      providerId: 'kling',
+      model: 'kling-3.0',
+      createdAt: '2026-11-24T12:00:00Z',
+      snapshot: {executionBinding: {connectionId: 'conn-kl', providerId: 'kling', configurationRevision: 1, model: {id: 'entry-kling-3.0', modelId: 'kling-3.0'}}},
+    },
+    {
+      shotId: 'shot-1',
+      providerId: 'minimax',
+      model: 'hailuo-2.3',
+      createdAt: '2026-11-23T12:00:00Z',
+      snapshot: {executionBinding: {connectionId: 'conn-mm', providerId: 'minimax', model: {id: 'entry-hailuo-2.3', modelId: 'hailuo-2.3'}}},
+    },
+  ];
+  const lastUsed = resolveBoardGenerationSelection([minimax, kling], {}, {id: 'shot-1'}, {shotId: 'shot-1', jobs: historyJobs, versions: []});
+  assert.equal(lastUsed.provider?.connectionId, 'conn-kl');
+  assert.equal(lastUsed.provider?.configurationRevision, 5);
+  assert.equal(lastUsed.model, 'kling-3.0');
+
+  // Rule 2 -> Rule 3: last-used service was deleted/disabled while multiple other services remain -> unselected
+  const deletedLast = defaultBoardGenerationOptions([mock, minimax, disabled], {
+    shotId: 'shot-1',
+    jobs: [{shotId: 'shot-1', providerId: 'vidu', createdAt: '2026-11-24T12:00:00Z', snapshot: {executionBinding: {connectionId: 'conn-vd', providerId: 'vidu'}}}],
+  });
+  assert.equal(deletedLast, null);
+
+  // Explicit choice in session options overrides default
+  const explicit = resolveBoardGenerationSelection([minimax, kling], {connectionId: 'conn-mm', providerId: 'minimax', model: 'hailuo-2.3', modelEntryId: 'entry-hailuo-2.3'}, {id: 'shot-1'}, {shotId: 'shot-1', jobs: historyJobs});
+  assert.equal(explicit.provider?.connectionId, 'conn-mm');
 });

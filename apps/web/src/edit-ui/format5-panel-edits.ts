@@ -163,7 +163,57 @@ export function format5PanelErrorKey(code: string | undefined): string {
 }
 /** Best-effort affected ids from a rejected shared action (anchor conflicts). */
 export function format5ConflictIds(error: unknown): readonly string[] {
-  const details = (error as {details?: {ids?: unknown}} | null)?.details;
-  const ids = details && typeof details === 'object' && Array.isArray((details as {ids?: unknown}).ids) ? (details as {ids: unknown[]}).ids : [];
-  return ids.filter((id): id is string => typeof id === 'string');
+  if (error === null || typeof error !== 'object') return [];
+  const record = error as {ids?: unknown; details?: {ids?: unknown}};
+  const raw = Array.isArray(record.ids) ? record.ids : record.details && typeof record.details === 'object' && Array.isArray(record.details.ids) ? record.details.ids : [];
+  return raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+export interface Format5AnchorConflictPresentation {
+  readonly message: string;
+  readonly highlightIds: readonly string[];
+}
+
+/** Resolves conflicting clip/subtitle IDs from SEQUENCE_EDIT_ANCHOR_CONFLICT into
+ * a specific toast line naming the overlapping segment(s) and the timeline highlight set. */
+export function format5AnchorConflictPresentation(
+  ids: readonly string[] | undefined,
+  timeline: {readonly clips?: readonly Row[]; readonly subtitles?: {readonly cues?: readonly Row[]} | null} | null | undefined,
+  assets: readonly Row[] | undefined,
+  t: (key: string, params?: Record<string, unknown>) => string,
+): Format5AnchorConflictPresentation {
+  const uniqueIds = [...new Set((ids ?? []).filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  const clips = timeline?.clips ?? [];
+  const cues = timeline?.subtitles?.cues ?? [];
+  const assetList = assets ?? [];
+  const matched: {readonly id: string; readonly name: string}[] = [];
+  for (const id of uniqueIds) {
+    const clip = clips.find(item => item.id === id);
+    if (clip) {
+      const asset = assetList.find(item => item.id === clip.assetId);
+      const name = String(clip.name || asset?.name || t('timeline.view.mediaClip'));
+      matched.push({id, name});
+      continue;
+    }
+    const cue = cues.find(item => item.id === id);
+    if (cue) {
+      const text = typeof cue.text === 'string' ? cue.text.replaceAll('\n', ' ').trim() : '';
+      const name = text ? (text.length > 24 ? `${text.slice(0, 24)}…` : text) : t('round3.timeline.subtitles');
+      matched.push({id, name});
+    }
+  }
+  if (matched.length === 0) {
+    return {message: t('editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT'), highlightIds: []};
+  }
+  const highlightIds = matched.map(item => item.id);
+  if (matched.length === 1) {
+    return {
+      message: t('editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT_ONE', {name: matched[0]!.name}),
+      highlightIds,
+    };
+  }
+  return {
+    message: t('editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT_MANY', {name: matched[0]!.name, count: matched.length}),
+    highlightIds,
+  };
 }

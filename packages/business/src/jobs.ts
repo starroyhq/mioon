@@ -36,6 +36,7 @@ import type {Provider} from './provider-registry.ts';
 import {readVideoBinding} from './video/generation.ts';
 import {videoCredentialDiagnostic} from './video/credential.ts';
 import {getOmniFailure} from './video/gemini-omni-errors.ts';
+import {getProviderHttpFailure} from './providers/live-common.ts';
 import type {VideoProviderFailure} from '../../contracts/src/video-provider-failure.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
@@ -220,13 +221,14 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(table==='exports')tx(apply);else apply();
  };
  const safeError=(e: unknown,fallback='PROVIDER_ERROR'): {code: string; message: string; retryable: boolean;providerFailure?:VideoProviderFailure}=>{
-  const code=stringValue(property(e,'code'))||fallback;
+  const httpFailure=getProviderHttpFailure(e);
+  const code=httpFailure?.code??(stringValue(property(e,'code'))||fallback);
   // Only Node filesystem errors carry this errno/syscall/path combination;
   // domain owner/effect codes and aborts retain their existing diagnostics.
   const filesystem=property(e,'name')!=='AbortError'&&(/^(?:E[A-Z0-9]+|UNKNOWN)$/u.test(code)||code.startsWith('ERR_FS_'))&&typeof property(e,'syscall')==='string'&&(typeof property(e,'path')==='string'||typeof property(e,'dest')==='string');
   const message=property(e,'uncertain')?'供应商可能已受理。正在对账，不会自动重新提交。':filesystem?'本地产物文件不可用，已保留任务记录':String(property(e,'message')||'任务操作失败');
-  const providerFailure=getOmniFailure(e);
-  return {code,message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true,...(providerFailure?{providerFailure}:{})};
+  const providerFailure=httpFailure?.providerFailure??getOmniFailure(e);
+  return {code,message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:httpFailure?.retryable??true,...(providerFailure?{providerFailure}:{})};
  };
  let invalidQueuedReported=false;
  for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='job')){
@@ -491,11 +493,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const unconfirmedSubmit=j.status==='submitting'&&!definitelyUnsubmitted;
     const delay=retry?.cause===credentialDiagnostic.cause?Math.min(retry.delay*2,300_000):5_000;
     const scheduledAt=credentialDiagnostic.cause==='VIDEO_SETTINGS_STORAGE_UNAVAILABLE'&&attemptStorageEpoch<storageEpoch?0:Date.now()+delay;
+    const httpFailure=getProviderHttpFailure(error);
     if(latest&&saveGenerationGuarded(latest,{
      ...rejectionPatch,
      ...(definitelyUnsubmitted?{status:'queued',submissionCount}:unconfirmedSubmit?{status:'submission_unknown',...(acceptedProviderId?{providerJobId:acceptedProviderId}:{})}:{}),
      phase:unconfirmedSubmit?'reconciliation_required':automatic?'connection_retrying':'connection_required',
-     error:{code:recordedDiagnostic&&errorCode?errorCode:'VIDEO_CREDENTIAL_UNAVAILABLE',message:'视频任务无法使用原连接。',retryable:automatic,diagnostic:credentialDiagnostic,...(getOmniFailure(error)?{providerFailure:getOmniFailure(error)}:{})},
+     error:{code:httpFailure?.code??(recordedDiagnostic&&errorCode?errorCode:'VIDEO_CREDENTIAL_UNAVAILABLE'),message:'视频任务无法使用原连接。',retryable:httpFailure?.retryable??automatic,diagnostic:credentialDiagnostic,...(httpFailure?{providerFailure:httpFailure.providerFailure}:{})},
      nextPollAt:automatic||unconfirmedSubmit?scheduledAt:Number.MAX_SAFE_INTEGER,
     })&&automatic&&!unconfirmedSubmit)credentialRetries.set(j.id,{cause:credentialDiagnostic.cause,delay,storageEpoch:attemptStorageEpoch});
     else credentialRetries.delete(j.id);
@@ -516,7 +519,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      return;
     }
     const uncertain=Boolean(property(error,'uncertain')||acceptedProviderId||signal.aborted);
-    services.saveJob(latest,{status:uncertain?'submission_unknown':'failed',phase:uncertain?'reconciliation_required':'submit_failed',...(acceptedProviderId?{providerJobId:acceptedProviderId,...(j.providerId==='kling'?{providerAcceptedAt:now()}: {})}:{}),error:{...safeError(uncertain?{code:'SUBMISSION_UNKNOWN',uncertain:true}:error),...(getOmniFailure(error)?{providerFailure:getOmniFailure(error)}:{})},nextPollAt:Date.now()+800});
+    const failure=safeError(error);
+    const jobError=uncertain?{...failure,...safeError({code:'SUBMISSION_UNKNOWN',uncertain:true})}:failure;
+    services.saveJob(latest,{status:uncertain?'submission_unknown':'failed',phase:uncertain?'reconciliation_required':'submit_failed',...(acceptedProviderId?{providerJobId:acceptedProviderId,...(j.providerId==='kling'?{providerAcceptedAt:now()}: {})}:{}),error:jobError,nextPollAt:Date.now()+800});
     if(property(error,'terminationUnconfirmed'))persistMediaPause('jobs',j.id,'');
    } else if(signal.aborted) {
     // Poll/download cancellation preserves the existing task and snapshot. A
@@ -745,10 +750,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const storageAvailable=pendingVideoStorageWake,connectionIds=new Set(changedVideoConnections);
   pendingVideoStorageWake=false;changedVideoConnections.clear();
   for(const ref of backgroundTasks.snapshot()){
-   if(ref.kind!=='job'||ref.reason!=='VIDEO_CREDENTIAL_UNAVAILABLE')continue;
+   if(ref.kind!=='job'||ref.classification!=='waiting_user')continue;
    const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;
    if(!job?.originalResultCredentialRejected||!job.providerJobId||job.phase!=='connection_required'||job.nextPollAt===0||
       !['running','downloading'].includes(job.status))continue;
+   const cause=property(property(job.error,'diagnostic'),'cause');
+   if(ref.reason!=='VIDEO_CREDENTIAL_UNAVAILABLE'&&cause!=='VIDEO_CREDENTIAL_UNAVAILABLE')continue;
    let binding:ReturnType<typeof readVideoBinding>;
    try{binding=readVideoBinding(job.snapshot);}catch{continue;}
    if(binding&&(storageAvailable||connectionIds.has(binding.connectionId)))saveGenerationGuarded(job,{nextPollAt:0});

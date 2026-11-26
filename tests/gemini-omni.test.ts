@@ -163,14 +163,32 @@ for (const [status, code, message] of [
   [402, 'payment_required', 'Your prepayment credits are depleted'],
   [429, 'quota_exceeded', 'Quota exceeded'], [429, 'rate_limit_exceeded', 'Rate limit exceeded'],
   [404, 'model_not_found', 'Model not found'], [400, 'safety', 'Safety violations blocked the request'],
-] as const) test('Omni retains safe documented rejection evidence ' + code, async t => {
+  [405, 'invalid_request', 'Invalid request'], [413, 'invalid_request', 'Invalid request'],
+  [415, 'invalid_request', 'Invalid request'], [422, 'invalid_request', 'Invalid request'],
+] as const) test(`Omni POST ${status} retains safe documented rejection evidence (${code})`, async t => {
   const f = await fixture(t); f.queue.push(json({error: {type: code, code, message: message + ': ' + KEY, details: {private: KEY}}}, status));
   await assert.rejects(f.client.submit(input()), error => {
-    const own = error as Error & {code: string; httpStatus: number; uncertain: boolean};
+    const own = error as Error & {code: string; httpStatus: number; uncertain: boolean; retryable: boolean};
     assert.equal(own.code, 'PROVIDER_HTTP_' + status); assert.equal(own.httpStatus, status); assert.equal(own.uncertain, false);
+    assert.equal(own.retryable, status === 429);
     assert.deepEqual(getOmniFailure(error), {providerType: code, code, message, httpStatus: status});
     assert.doesNotMatch(String(error) + JSON.stringify(error) + JSON.stringify(getOmniFailure(error)), new RegExp(KEY));
     assert.equal(getOmniFailure({...own}), undefined, 'Only transport-owned evidence can be persisted');
+    return true;
+  });
+  assert.equal(f.calls.length, 1);
+});
+
+for (const [status, retryable] of [
+  [400, false], [401, false], [402, false], [403, false], [404, false], [405, false],
+  [408, true], [413, false], [415, false], [422, false], [429, true], [500, true], [501, true], [599, true],
+] as const) test(`Omni GET ${status} reports the shared HTTP retryability`, async t => {
+  const f = await fixture(t);
+  f.queue.push(json({error: {message: KEY}}, status));
+  await assert.rejects(f.client.retrieve(ID), error => {
+    assert.deepEqual(getOmniFailure(error), {httpStatus: status});
+    assert.equal((error as {code?: string}).code, `PROVIDER_HTTP_${status}`);
+    assert.equal((error as {retryable?: boolean}).retryable, retryable);
     return true;
   });
   assert.equal(f.calls.length, 1);
@@ -235,6 +253,7 @@ test('Omni credential rejection on output download keeps HTTP status for existin
     json({error: {code: 'authentication', message: 'Invalid API key'}}, 401));
   await assert.rejects(f.client.download(ID, path.join(f.root, 'video.mp4')), error => {
     assert.equal((error as {httpStatus?: number}).httpStatus, 401);
+    assert.equal((error as {retryable?: boolean}).retryable, false);
     assert.deepEqual(getOmniFailure(error), {code: 'authentication', message: 'Invalid API key', httpStatus: 401});
     return true;
   });
