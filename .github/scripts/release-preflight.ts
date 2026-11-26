@@ -22,7 +22,7 @@ function isBranchDispatch(environment: NodeJS.ProcessEnv): boolean {
 }
 const UPDATE_FEED_CANDIDATE_BRANCH = 'howard/mac-universal-update-feed';
 const CLI_PACKAGING_CANDIDATE_BRANCH = 'howard/k2c-packaging';
-const CLI_PACKAGING_CANDIDATE_VERSION = '0.4.0-k2c.1';
+const CLI_PACKAGING_CANDIDATE_VERSIONS = ['0.4.0-k2c.1', '0.4.0-k2c.2'];
 type CandidateBranch = typeof UPDATE_FEED_CANDIDATE_BRANCH | typeof CLI_PACKAGING_CANDIDATE_BRANCH;
 
 export function frozenBranchCandidate(environment: NodeJS.ProcessEnv, checkoutSha: string): CandidateBranch | undefined {
@@ -32,7 +32,7 @@ export function frozenBranchCandidate(environment: NodeJS.ProcessEnv, checkoutSh
 }
 function candidateVersionOverride(value: unknown, branch?: CandidateBranch): string {
   const version = releaseVersion(value);
-  if (branch === CLI_PACKAGING_CANDIDATE_BRANCH && version === CLI_PACKAGING_CANDIDATE_VERSION) return version;
+  if (branch === CLI_PACKAGING_CANDIDATE_BRANCH && CLI_PACKAGING_CANDIDATE_VERSIONS.includes(version)) return version;
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Candidate override must be a stable version or the reviewed K2-C version');
   return version;
 }

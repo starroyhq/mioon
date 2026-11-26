@@ -159,17 +159,19 @@ test('frozen candidate branch permits artifact verification before merge and val
   assert.throws(() => resolvePreflight({...input, versionOverride: '0.4.2-rc.1'}), /stable version/);
   assert.throws(() => resolvePreflight({...input, pushedTag: tag}), /origin\/main/);
 });
-test('the exact K2-C prerelease is allowed only on its frozen artifact-only branch', () => {
+test('the reviewed K2-C prereleases are allowed only on their frozen artifact-only branch', () => {
   const environment = {GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_TYPE: 'branch',
     GITHUB_REF_NAME: 'howard/k2c-packaging', GITHUB_SHA: sha};
   const candidateBranch = frozenBranchCandidate(environment, sha);
   assert.equal(candidateBranch, 'howard/k2c-packaging');
-  const candidate = {...preflight, candidateBranch, isOnMain: () => false, versionOverride: '0.4.0-k2c.1'};
-  assert.deepEqual(resolvePreflight(candidate),
-    {release_sha: sha, version: '0.4.0-k2c.1', release_tag: '', should_publish: false, prerelease: true});
-  assert.throws(() => resolvePreflight({...candidate, manualTag: tag}), /origin\/main/);
-  assert.throws(() => resolvePreflight({...candidate, versionOverride: '0.4.0-k2c.2'}), /stable version/);
-  assert.throws(() => resolvePreflight({...preflight, versionOverride: candidate.versionOverride}), /stable version/);
+  const candidate = {...preflight, candidateBranch, isOnMain: () => false};
+  for (const versionOverride of ['0.4.0-k2c.1', '0.4.0-k2c.2']) {
+    assert.deepEqual(resolvePreflight({...candidate, versionOverride}),
+      {release_sha: sha, version: versionOverride, release_tag: '', should_publish: false, prerelease: true});
+    assert.throws(() => resolvePreflight({...candidate, versionOverride, manualTag: tag}), /origin\/main/);
+    assert.throws(() => resolvePreflight({...preflight, versionOverride}), /stable version/);
+  }
+  assert.throws(() => resolvePreflight({...candidate, versionOverride: '0.4.0-k2c.3'}), /stable version/);
   assert.equal(frozenBranchCandidate(environment, changedSha), undefined);
 });
 test('tag builds ignore candidate feed and version inputs, keeping the exact tagged package version', () => {
