@@ -1,5 +1,5 @@
 import {clipLayoutBasis, projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
-import {clipTransitionSides, isClipTransition, type ClipTransitionKind} from '../../contracts/src/timeline-clip-transition.ts';
+import {clipTransitionSides, isClipTransition, type ClipTransition, type ClipTransitionKind} from '../../contracts/src/timeline-clip-transition.ts';
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import type {Format5Anchor, Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {TimelineTrackRecord} from '../../contracts/src/timeline-replacement.ts';
@@ -76,7 +76,7 @@ const transitions: Record<ClipTransitionKind, {effect: Effect; parameters?: read
 };
 
 export function fcpxmlTransitions(timeline: Format5Timeline, assets: ReadonlyMap<string, unknown>) {
-  const cuts = new Map<string, NonNullable<Format5Clip['transitionIn']>>();
+  const cuts = new Map<string, ClipTransition>();
   const previousByTrack = new Map<string, Format5Clip>();
   const hasResource = (clip: Format5Clip) => clip.sourceState === 'ready' && clip.assetId && assets.has(clip.assetId);
   for (const clip of [...timeline.clips].sort(compareTime)) {
@@ -84,7 +84,7 @@ export function fcpxmlTransitions(timeline: Format5Timeline, assets: ReadonlyMap
     previousByTrack.set(clip.trackId, clip);
     const transition = clip.transitionIn;
     if (previous && endFrame(previous) === clip.startFrame && hasResource(previous) && hasResource(clip) &&
-        isClipTransition(transition)) cuts.set(clip.id, transition);
+        transition && isClipTransition(transition)) cuts.set(clip.id, transition);
   }
   return cuts;
 }
