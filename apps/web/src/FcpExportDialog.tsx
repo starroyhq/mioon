@@ -1,4 +1,5 @@
 import React, {useId, useState} from 'react';
+import {Button} from '@mioon/ui/components/button';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {Input} from '@mioon/ui/components/input';
 import {Label} from '@mioon/ui/components/label';
@@ -222,19 +223,21 @@ export default function FcpExportDialog({
         </section>}
 
         {approximationItems.length > 0 && <section className="fcp-export-group" data-testid="fcp-export-approximations-group">
-          <button
+          <Button
             type="button"
-            className="fcp-export-disclosure"
+            variant={null}
+            size={null}
+            className="fcp-export-disclosure whitespace-normal focus-visible:ring-0"
             data-testid="fcp-export-approximations-toggle"
             aria-expanded={approximationsOpen}
             onClick={() => setApproximationsOpen(value => !value)}
           >
             {approximationsOpen
-              ? <ChevronDown size={14} aria-hidden="true" />
-              : <ChevronRight size={14} aria-hidden="true" />}
+              ? <ChevronDown size={14} className="size-3.5" aria-hidden="true" />
+              : <ChevronRight size={14} className="size-3.5" aria-hidden="true" />}
             <span>{t('fcpExport.approximationsHeading')}</span>
             <span className="fcp-export-group-count">{approximationItems.length}</span>
-          </button>
+          </Button>
           {approximationsOpen && <FcpItemList items={approximationItems} tone="info" testId="fcp-export-approximations-list" />}
         </section>}
       </>}
@@ -311,19 +314,21 @@ export default function FcpExportDialog({
         </div>
       </div>
       {missingCount > 0 && (doneMissingItems.length ? <>
-        <button
+        <Button
           type="button"
-          className="fcp-export-missing-link"
+          variant={null}
+          size={null}
+          className="fcp-export-missing-link whitespace-normal focus-visible:ring-0"
           data-testid="fcp-export-done-missing-toggle"
           aria-expanded={doneMissingOpen}
           onClick={() => setDoneMissingOpen(value => !value)}
         >
-          <CircleSlash size={14} aria-hidden="true" />
+          <CircleSlash size={14} className="size-3.5" aria-hidden="true" />
           <span>{t('fcpExport.done.missingCount', {count: missingCount})}</span>
           {doneMissingOpen
-            ? <ChevronDown size={13} aria-hidden="true" />
-            : <ChevronRight size={13} aria-hidden="true" />}
-        </button>
+            ? <ChevronDown size={13} className="size-[13px]" aria-hidden="true" />
+            : <ChevronRight size={13} className="size-[13px]" aria-hidden="true" />}
+        </Button>
         {doneMissingOpen && doneMissingItems.length > 0 && (
           <FcpItemList items={doneMissingItems} tone="warning" testId="fcp-export-done-missing-list" />
         )}
