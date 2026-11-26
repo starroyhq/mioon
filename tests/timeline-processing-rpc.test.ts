@@ -135,7 +135,7 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   const file = path.join(root, 'source.mp4');
   await run(env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin',
     '-f', 'lavfi', '-i', 'color=c=red:size=64x64:rate=30', '-frames:v', '60',
-    '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', file], {env, timeout: 15_000});
+    '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p10le', file], {env, timeout: 15_000});
   const {id: assetId} = data(await rpc<{id: string}>('asset.import', {name: 'source.mp4', mimeType: 'video/mp4',
     dataBase64: (await readFile(file)).toString('base64')}));
   await edit('sequence.board.edit', {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}});

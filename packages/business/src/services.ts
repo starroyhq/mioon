@@ -83,6 +83,7 @@ import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5Dialog
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
 import {createExportLoudnessServices} from './export-loudness.ts';
@@ -156,7 +157,7 @@ export interface CreateServicesOptions {
  imageOptions?: Parameters<typeof createImageServices>[1];
  frameOptions?: Parameters<typeof createFrameServices>[1];
  sceneOptions?: Parameters<typeof createSceneServices>[1];
- exportOptions?: Omit<NonNullable<Parameters<typeof createTimelineExportAdmissionServices>[1]>, 'reverseProxy'>;
+ exportOptions?: Omit<NonNullable<Parameters<typeof createTimelineExportAdmissionServices>[1]>, 'reverseProxy' | 'opticalProxy'>;
  /** Project host's SP-P cache port. Never populated from an export request. */
  reverseProxy?: TimelineReverseProxyPort;
  agentAuthorizations?: AgentAuthorizations | null;
@@ -194,6 +195,7 @@ export interface OrdinaryServices {
  assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
  reverseProxy?: TimelineReverseProxyPort;
+ opticalProxy?: TimelineOpticalProxyPort;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
  resolveGenerationProvider?: (job: JobRecord)=>Provider|undefined;
@@ -288,6 +290,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...processingOptions, ...(ownerSignal ? {ownerSignal} : {}),
   beforeEffect: () => {assertApplicationMutationAllowed(); assertMutationAllowed?.();},
  }) : undefined;
+ const opticalProxy = processing?.opticalProxy;
  const configurationHandlers={
   'workspace.settings.get':()=>configuration.get(),
   'workspace.settings.set':(input:never)=>{assertApplicationMutationAllowed();return configuration.set(input);},
@@ -675,7 +678,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  };
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
- const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash,reverseProxy});
+ const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash,reverseProxy,opticalProxy});
  // The UI sequence service intentionally has no generation-submit port: the
   // timeline placement only adds the placeholder and opens the panel; the panel's
   // Generate button goes through the reviewed board generation path. Mio's
@@ -701,9 +704,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     }
   };
  const sequenceInspection=createSequenceInspectionService(store);
- const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,reverseProxy,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
+ const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,reverseProxy,opticalProxy,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
- const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin,reverseProxy});
+ const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin,reverseProxy,opticalProxy});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
   ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
@@ -860,9 +863,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...sequenceInspection.handlers,
   'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
-  'sequence.preview':(input: ServiceRow)=>{
+  'sequence.preview':(input: ServiceRow,{signal}: ServiceHandlerContext={})=>{
     assertExternalSpeedOrigin(input);
-    return sequenceEdit.preview((input.speedIntent?{...input,origin:'user'}:input) as never);
+    return sequenceEdit.previewForProperties((input.speedIntent?{...input,origin:'user'}:input) as never,
+      {signal:signal??undefined,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}});
   },
   'sequence.action.edit':previewSequenceAction('sequence.tool.edit'),
   'sequence.board.edit':previewSequenceAction('sequence.tool.board'),
@@ -1244,5 +1248,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,...(reverseProxy?{reverseProxy}:{}),saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,...(reverseProxy?{reverseProxy}:{}),...(opticalProxy?{opticalProxy}:{}),saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

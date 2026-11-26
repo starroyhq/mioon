@@ -52,7 +52,7 @@ import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
 
-type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'|'resolveGenerationResultProvider'|'reverseProxy'>;
+type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'|'resolveGenerationResultProvider'|'reverseProxy'|'opticalProxy'>;
 
 async function paidReferenceHash<T>(operation: Promise<T>): Promise<T> {
  try{return await operation;}catch(error){
@@ -584,7 +584,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
     exportStage(store,e.id,'encoding');
     const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{
-     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,reverseProxy:services.reverseProxy,
+     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,reverseProxy:services.reverseProxy,opticalProxy:services.opticalProxy,
      onSegmentProgress:(completed,total)=>exportEncodingProgress(store,e.id,completed,total),
      ...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{}),
     });checkpoint(signal);

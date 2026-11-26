@@ -19,6 +19,8 @@ export interface SpeedPictureWindow {
   readonly beginFrame: number;
   readonly endFrame: number;
   readonly plan: CompiledTimeMap;
+  /** The uncropped window owns source phase across every export range. */
+  readonly fullPlan: CompiledTimeMap;
 }
 
 export function speedExportMappingError(clipId: string | undefined, reason: string): AppError {
@@ -110,7 +112,7 @@ export function speedPictureWindows(clip: TimedClip, plan: CompiledTimeMap,
     const full = source();
     const plan = beginFrame === start && last === end ? full
       : mapped(clip.id, trimTimeMap(full, beginFrame - start, last - start));
-    windows.push({beginFrame, endFrame: last, plan});
+    windows.push({beginFrame, endFrame: last, plan, fullPlan: full});
   };
   append(picture.start, clip.startFrame, () => speedTransitionHandle(clip, plan, 'before', clip.startFrame - picture.start, sourceFrames));
   append(clip.startFrame, endFrame, () => plan);

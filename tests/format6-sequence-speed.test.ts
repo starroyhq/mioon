@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {createHash, randomUUID} from 'node:crypto';
+import {mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore, type ProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -9,6 +9,11 @@ import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-f
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
+import {run} from '../packages/business/src/media-runtime.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
@@ -156,6 +161,69 @@ function sourceFrames(store: ProjectStore, clipId = clipA): Int32Array {
   assert.ok(frames.ok, JSON.stringify(frames));
   return frames.value;
 }
+
+test('the speed preview rejects a blend above the phase bound without changing the edit', t => {
+  const store = fixture(t), api = editor(store), before = state(store);
+  const curve: TimeMapSpeed = {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom',
+    points: [
+      {sourceFrame: 0, rate: {numerator: 1, denominator: 10}},
+      {sourceFrame: 30, rate: {numerator: 2, denominator: 1}},
+      {sourceFrame: 60, rate: {numerator: 1, denominator: 10}},
+    ]};
+  assert.deepEqual(api.preview(set(curve, {interpolation: 'blend'})),
+    {ok: false, code: 'INTERPOLATION_UNAVAILABLE', ids: [clipA]});
+  assert.ok('envelope' in api.preview(set(curve, {interpolation: 'off'})));
+  // The optical task can report the same reason after an optical edit.
+  assert.ok('envelope' in api.preview(set(curve, {interpolation: 'optical'})));
+  assert.equal(saved(store).clips.find(clip => clip.id === clipA)?.timing, undefined);
+  assert.deepEqual(state(store).actions, before.actions);
+  assert.deepEqual(state(store).receipts, before.receipts);
+});
+
+test('the properties RPC checks the actual owned pixel format for blend before returning an envelope', async t => {
+  const store = fixture(t), references = createProjectAssetReferenceServices(store, {outsidePaths: {list: () => []}});
+  const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
+  const service = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {})});
+  const assetId = id(15), clipId = id(36), timeline = saved(store);
+  const clip = {id: clipId, trackId: videoTrack2, name: 'Standalone video', startFrame: 0, durationFrames: 60,
+    sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId,
+    sourceState: 'ready', anchor: null};
+  const preview = (operation: SequenceEditSpeedIntent['operation']) => service.call('sequence.preview', {
+    projectId: store.projectId, requestId: randomUUID(), speedIntent: {side: 'timeline', operation},
+  }) as Promise<Record<string, unknown>>;
+  try {
+    for (const pixel of ['yuv420p10le', 'yuv420p'] as const) {
+      const file = path.join(store.projectDir, pixel + '.mp4');
+      await run('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-n', '-filter_threads', '1', '-noauto_conversion_filters',
+        '-f', 'lavfi', '-i', 'nullsrc=s=64x64:r=30,format=' + pixel, '-frames:v', '60', '-c:v', 'libx264', '-threads:v', '1',
+        '-pix_fmt', '+' + pixel, '-preset', 'ultrafast', '-qp', '0', file]);
+      const {reference} = await references.referenceForImport(file);
+      const sha256 = createHash('sha256').update(readFileSync(file)).digest('hex');
+      store.tx(() => {
+        store.put('assets', {id: assetId, projectId: store.projectId, name: 'Standalone video', mimeType: 'video/mp4', duration: 2, hasAudio: false,
+          reference: {...reference, fullSha256: sha256}, referenceRevision: pixel === 'yuv420p' ? 2 : 1, sha256, sizeBytes: reference.sizeBytes});
+        if (pixel === 'yuv420p10le') store.put('timelines', {...timeline, clips: [...timeline.clips, clip]});
+      });
+      const before = state(store);
+      const result = await preview(set(constant(1, 2), {interpolation: 'blend'}, clipId));
+      if (pixel === 'yuv420p') assert.ok('envelope' in result, JSON.stringify(result));
+      else assert.deepEqual(result, {ok: false, code: 'UNSUPPORTED_FORMAT', ids: [clipId]});
+      assert.ok('envelope' in await preview(set(constant(2), {interpolation: 'blend'}, clipId)),
+        'fast-only clips do not enter the blend probe');
+      assert.deepEqual(state(store).timeline, before.timeline);
+      assert.deepEqual(state(store).actions, before.actions);
+      assert.deepEqual(state(store).receipts, before.receipts);
+      if (pixel === 'yuv420p') {
+        unlinkSync(file);
+        assert.deepEqual(await preview(set(constant(1, 2), {interpolation: 'blend'}, clipId)),
+          {ok: false, code: 'SPEED_SOURCE_NOT_READY', ids: [clipId]});
+      }
+    }
+  } finally {
+    await service.drain();
+    library.close();
+  }
+});
 
 test('identity and repeated identical speed edits are zero-write operations', t => {
   const store = fixture(t), api = editor(store);

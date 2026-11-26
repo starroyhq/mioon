@@ -1,7 +1,9 @@
 import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
-import {assertSpeedExportInterpolation, assertTimelineSpeedCapability, timelineSpeedExportLayout,
+import {assertFrozenInterpolationPhase, assertTimelineSpeedCapability, timelineSpeedExportLayout,
  type SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
 import {assertTimelineReverseProxyBindings, type TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import {assertTimelineOpticalProxyBindings} from './timeline-speed-export-optical.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {prepareTimelineSpeedInputs, type PreparedSpeedPicture} from './timeline-speed-export-media.ts';
 import {speedExportMappingError} from './timeline-speed-export-plan.ts';
 import {getTimelineOpacityRenderBinding} from './timeline-opacity-render-binding.ts';
@@ -54,6 +56,7 @@ interface RenderTimelineOptions {
  encoderPool?: MediaEncoderSlotPool;
  onSegmentProgress?: (completedFrames: number,totalFrames: number)=>void;
  reverseProxy?: TimelineReverseProxyPort;
+ opticalProxy?: TimelineOpticalProxyPort;
 }
 interface InodeIdentity {dev: number|bigint;ino: number|bigint;size: number;mtimeMs: number;ctimeMs: number}
 interface ReservedEntry {fd: number;identity: Stats}
@@ -124,7 +127,7 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
 // compositions. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{
- signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,reverseProxy,
+ signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,reverseProxy,opticalProxy,
  segmentConcurrency: requestedSegmentConcurrency,encoderPool,
 }: RenderTimelineOptions={}): Promise<unknown>{
  // Every project window shares one backend process and this application-wide
@@ -161,8 +164,10 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  if(transitions.length){await assertTimelineTransitionCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
  if(delivery){await assertTimelineExportCapability(delivery as never,{signal,beforeEffect,...(floatChecked?{capabilityWorkRoot:path.dirname(destination)}:{})} as never);checkMediaEffect(beforeEffect,signal);}
  if(speed){
-  assertSpeedExportInterpolation(speed);assertTimelineReverseProxyBindings(snapshot,speed,reverseProxy);
-  await assertTimelineSpeedCapability(speed,{signal,beforeEffect});
+  assertFrozenInterpolationPhase(snapshot,speed);
+  assertTimelineOpticalProxyBindings(snapshot,speed,opticalProxy);
+  assertTimelineReverseProxyBindings(snapshot,speed,reverseProxy);
+  await assertTimelineSpeedCapability(speed,{signal,beforeEffect,sources:assets});
  }
  if(delivery||plan.selected||speed)beforeEncode?.();
  checkMediaEffect(beforeEffect,signal);
@@ -197,7 +202,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
     '-vf',`${timelineColourInputFilter('limited')},${look}${TIMELINE_COLOUR_OUTPUT_FILTER}`,'-frames:v','1','-an','-f','null','-'],{timeout:15000,maxStdoutBytes:65536,maxStderrBytes:65536,signal,beforeEffect:effect});
    checkMediaEffect(effect,signal);colourStage!.verifyBytes();imageStage?.verifyBytes();beforeEncode?.();checkMediaEffect(effect,signal);
   }
-  const retimed=speed&&owned?await prepareTimelineSpeedInputs(snapshot,speed,assets,owned,{signal:segmentOwner,beforeEffect:effect,beforeStart,reverseProxy}):null;
+  const retimed=speed&&owned?await prepareTimelineSpeedInputs(snapshot,speed,assets,owned,{signal:segmentOwner,beforeEffect:effect,beforeStart,reverseProxy,opticalProxy}):null;
   if(speed){beforeEncode?.();checkMediaEffect(effect,signal);}
   const subtitles=await prepareTimelineSubtitles(snapshot as never,work,{signal,beforeEffect:effect,...(owned?{openOwnedFile:owned.openOwnedFile,writeOwnedFile:owned.writeOwnedFile}:{})} as never);checkMediaEffect(effect,signal);
   const encodeSegment=async(segment: number,segmentSignal: AbortSignal,onStopping: ()=>void)=>{

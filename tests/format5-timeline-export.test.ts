@@ -152,9 +152,15 @@ test('changing a previously matching crossfade overlap rejects output-domain env
   assert.throws(() => validateSpeedTransitions(after, before, () => undefined), {code: 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'});
 });
 
-test('format 6 reports reverse processing and interpolation refusals before any media work', async t => {
- for (const [timing, code] of [[{...unitTiming, view: {...unitTiming.view, direction: 'reverse'}}, 'SPEED_PROCESSING_NOT_READY'],
-   [{...unitTiming, interpolation: 'blend'}, 'SPEED_INTERPOLATION_NOT_READY']] as const) await t.test(code, async t => {
+const halfSpeed = {kind: 'constant', rate: {numerator: 1, denominator: 2}} as const;
+const halfTiming = {...unitTiming, basis: {...unitTiming.basis, speed: halfSpeed}, outputWindow: {fromFrame: 0, toFrame: 120}};
+
+test('format 6 rejects missing reverse and optical proxies before any media work', async t => {
+ for (const [mode, timing] of [
+   ['reverse', {...unitTiming, view: {...unitTiming.view, direction: 'reverse'}}],
+   ['optical', {...halfTiming, interpolation: 'optical'}],
+ ] as const) await t.test(mode, async t => {
+  const code = 'SPEED_PROCESSING_NOT_READY';
   const {createServices} = await import('../packages/business/src/services.ts');
   const store = fixture(t, timing);
   const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
@@ -179,7 +185,7 @@ test('format 6 reports reverse processing and interpolation refusals before any 
     assert.equal(preflight.status, 'blocked');
     assert.equal(preflight.issues[0]?.code, code);
     assert.equal(preflight.issues[0]?.clipId, clipA);
-    const expectedTaskId = code === 'SPEED_PROCESSING_NOT_READY' ? taskId : undefined;
+    const expectedTaskId = mode === 'reverse' ? taskId : undefined;
     assert.equal(capabilities.issues[0]?.taskId, expectedTaskId);
     assert.equal(preflight.issues[0]?.taskId, expectedTaskId);
     assert.equal(preflight.checks.bytesHashed, 0);
@@ -205,14 +211,16 @@ test('format 6 reports reverse processing and interpolation refusals before any 
 });
 
 test('format 6 preflight freezes the same timing and digest accepted and rendered by the worker', async t => {
- for (const direction of ['forward', 'reverse'] as const) await t.test(direction, async t => {
+ for (const [direction, interpolation] of [['forward', 'off'], ['reverse', 'off'], ['forward', 'blend'], ['forward', 'optical']] as const)
+  await t.test(direction + ' ' + interpolation, async t => {
   const {createServices} = await import('../packages/business/src/services.ts');
   const {startWorker} = await import('../packages/business/src/jobs.ts');
   const {run} = await import('../packages/business/src/media.ts');
   const {timelineSnapshotHash} = await import('../packages/business/src/timeline-preflight.ts');
   const {isTimelineRenderRecord} = await import('../packages/contracts/src/timeline-acknowledgement.ts');
-  const timing = {...unitTiming, view: {...unitTiming.view, direction}, basis: {...unitTiming.basis,
-    speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}} as const}, outputWindow: {fromFrame: 0, toFrame: 30}};
+  const timing = interpolation === 'off' ? {...unitTiming, view: {...unitTiming.view, direction}, basis: {...unitTiming.basis,
+    speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}} as const}, outputWindow: {fromFrame: 0, toFrame: 30}}
+    : {...halfTiming, interpolation};
   const temp = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-speed-admission-'));
   t.after(() => rmSync(temp, {recursive: true, force: true}));
   const source = path.join(temp, 'synthetic.mp4');
@@ -228,7 +236,10 @@ test('format 6 preflight freezes the same timing and digest accepted and rendere
   const store = fixture(t, timing, readFileSync(source));
   const projectId = store.projectId;
   const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
+  const {processingApplication} = await import('../packages/business/src/timeline-processing/scheduler.ts');
+  const processing = interpolation === 'optical' ? {enabled: true, ...processingApplication(library.db, library.dataDir)} : undefined;
   const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),
+    ...(processing ? {processing} : {}),
     ...(direction === 'reverse' ? {reverseProxy: {
       lookup: () => ({taskId: proof.taskId, readySha256: proof.sha256}),
       acquire: async (_request, frozen) => {
@@ -239,6 +250,17 @@ test('format 6 preflight freezes the same timing and digest accepted and rendere
       },
     }} : {})});
   try {
+    if (processing) {
+      let ready = false;
+      for (let attempt = 0; attempt < 150; attempt++) {
+        const {items} = await services.call('timeline.processing.list', {projectId}) as {items: {kind: string; status: string; reason?: string}[]};
+        const item = items.find(item => item.kind === 'optical');
+        assert.notEqual(item?.status, 'failed', JSON.stringify(item));
+        if (item?.status === 'ready') {ready = true; break;}
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.ok(ready, 'the optical proxy becomes ready via the owned service');
+    }
     const input = {projectId, expectedRevision: 1, exportRange: {startFrame: 9, endFrame: 21}};
     const report = await services.call('timeline.export.preflight', input) as {status: string; issues: unknown[];
       checks: {checkedAssets: number}; snapshotHash: string};

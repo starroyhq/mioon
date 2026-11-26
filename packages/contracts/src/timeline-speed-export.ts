@@ -2,19 +2,24 @@ import {z} from 'zod';
 import {AppError} from './app-error.ts';
 import {compileClipTimeMap, MAX_CLIP_SOURCE_SPAN_FRAMES} from './timeline-clip-timing.ts';
 import {clipTimingSchema, type ClipTiming} from './timeline-speed.ts';
+import {INTERPOLATION_PHASE_EPSILON, INTERPOLATION_PHASE_PROFILE} from './timeline-interpolation.ts';
 import {projectTimeMapToCurrentClipFields, type CompiledTimeMap} from './timeline-time-map.ts';
 
 export const TIMELINE_SPEED_EXPORT_PROFILE = 'timeline-speed-export-v1';
 export const SPEED_PROCESSING_NOT_READY = 'SPEED_PROCESSING_NOT_READY';
 export const SPEED_INTERPOLATION_NOT_READY = 'SPEED_INTERPOLATION_NOT_READY';
+export const INTERPOLATION_UNAVAILABLE = 'INTERPOLATION_UNAVAILABLE';
+export const UNSUPPORTED_INTERPOLATION_FORMAT = 'UNSUPPORTED_FORMAT';
 export const SPEED_CAPABILITY_UNAVAILABLE = 'SPEED_CAPABILITY_UNAVAILABLE';
 export const SPEED_BUDGET_EXCEEDED = 'SPEED_BUDGET_EXCEEDED';
 export const SPEED_MAPPING_INVALID = 'SPEED_MAPPING_INVALID';
 export const SPEED_SOURCE_UNSUPPORTED = 'SPEED_SOURCE_UNSUPPORTED';
 
 export const TIMELINE_SPEED_EXPORT_MESSAGES = Object.freeze({
-  [SPEED_PROCESSING_NOT_READY]: 'Wait for the reverse clip to finish processing before exporting.',
+  [SPEED_PROCESSING_NOT_READY]: 'Wait for the clip to finish processing before exporting.',
   [SPEED_INTERPOLATION_NOT_READY]: 'This export cannot use the selected frame interpolation.',
+  [INTERPOLATION_UNAVAILABLE]: 'Frame interpolation is unavailable for this speed window.',
+  [UNSUPPORTED_INTERPOLATION_FORMAT]: 'This source format cannot be used for frame interpolation.',
   [SPEED_CAPABILITY_UNAVAILABLE]: 'The selected media tools cannot prepare this retimed clip.',
   [SPEED_BUDGET_EXCEEDED]: 'There is not enough working space to prepare this retimed clip.',
   [SPEED_MAPPING_INVALID]: 'The clip’s saved speed settings cannot be verified.',
@@ -30,12 +35,16 @@ const id = z.string().uuid();
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/u);
 const maxClips = 100;
 const proxySchema = z.object({taskId: id, sha256}).strict();
-const clipSchema = z.object({clipId: id, mapHash: z.string().regex(/^[a-f0-9]{16}$/u), proxy: proxySchema.optional()})
-  .strict().refine(value => !Object.hasOwn(value, 'proxy') || value.proxy !== undefined);
+const phaseSchema = z.object({profile: z.literal(INTERPOLATION_PHASE_PROFILE), maxPhaseErrorFrames: z.number().finite().min(0).max(INTERPOLATION_PHASE_EPSILON)}).strict();
+const clipSchema = z.object({clipId: id, mapHash: z.string().regex(/^[a-f0-9]{16}$/u), proxy: proxySchema.optional(),
+  interpolationPhase: phaseSchema.optional(), opticalProxy: proxySchema.optional()})
+  .strict().refine(value => (['proxy', 'interpolationPhase', 'opticalProxy'] as const).every(key => !Object.hasOwn(value, key) || value[key] !== undefined)
+    && (!value.opticalProxy || value.interpolationPhase !== undefined));
 export const timelineSpeedExportSnapshotSchema = z.object({profileId: z.literal(TIMELINE_SPEED_EXPORT_PROFILE),
   clips: z.array(clipSchema).min(1).max(maxClips)}).strict();
 export type TimelineSpeedExportSnapshot = z.infer<typeof timelineSpeedExportSnapshotSchema>;
 export type TimelineSpeedExportProxy = z.infer<typeof proxySchema>;
+export type TimelineSpeedExportPhase = z.infer<typeof phaseSchema>;
 export interface CompiledTimelineSpeedExportClip {
   readonly clipId: string;
   readonly assetId: string;
@@ -83,19 +92,22 @@ export function compileTimelineSpeedExportClips(timeline: unknown): readonly Com
 
 /** Project the frozen clip bindings. The backend supplies any reverse proxy
  * digests from its admitted processing records. */
-export function timelineSpeedExportSnapshotFields(timeline: unknown, proxies: ReadonlyMap<string, TimelineSpeedExportProxy> = new Map()):
+export function timelineSpeedExportSnapshotFields(timeline: unknown, proxies: ReadonlyMap<string, TimelineSpeedExportProxy> = new Map(),
+  interpolation: {phases?: ReadonlyMap<string, TimelineSpeedExportPhase>; opticalProxies?: ReadonlyMap<string, TimelineSpeedExportProxy>} = {}):
   {speedExport?: TimelineSpeedExportSnapshot} {
   const compiled = compileTimelineSpeedExportClips(timeline);
   const clips: TimelineSpeedExportSnapshot['clips'] = [];
-  let proxyCount = 0;
-  for (const {clipId, mapHash, plan} of compiled) {
-    if (!proxies.has(clipId)) {clips.push({clipId, mapHash}); continue;}
-    const proxy = proxySchema.safeParse(proxies.get(clipId));
-    if (plan.direction !== 'reverse' || !proxy.success) invalid(clipId);
-    clips.push({clipId, mapHash, proxy: proxy.data});
-    proxyCount++;
+  const {phases = new Map(), opticalProxies = new Map()} = interpolation;
+  const known = new Set(compiled.map(clip => clip.clipId));
+  if ([proxies, phases, opticalProxies].some(map => [...map.keys()].some(clipId => !known.has(clipId)))) invalid();
+  for (const {clipId, mapHash, plan, timing} of compiled) {
+    const proxy = proxies.get(clipId), interpolationPhase = phases.get(clipId), opticalProxy = opticalProxies.get(clipId);
+    if (proxies.has(clipId) && (plan.direction !== 'reverse' || !proxySchema.safeParse(proxy).success)) invalid(clipId);
+    const mode = timing.profile === 'timeline-speed-v1' ? timing.interpolation : 'off';
+    if (phases.has(clipId) && (mode === 'off' || !phaseSchema.safeParse(interpolationPhase).success)) invalid(clipId);
+    if (opticalProxies.has(clipId) && (mode !== 'optical' || interpolationPhase === undefined || !proxySchema.safeParse(opticalProxy).success)) invalid(clipId);
+    clips.push({clipId, mapHash, ...(proxy && {proxy}), ...(interpolationPhase && {interpolationPhase}), ...(opticalProxy && {opticalProxy})});
   }
-  if (proxyCount !== proxies.size) invalid();
   return clips.length ? {speedExport: {profileId: TIMELINE_SPEED_EXPORT_PROFILE, clips}} : {};
 }
 
@@ -123,9 +135,12 @@ export function isTimelineSpeedExportSnapshot(snapshot: unknown, options: {purpo
     return compiled.every(({clipId, assetId, mapHash, plan, timing}, index) => {
       const frozen = parsed.data.clips[index]!;
       const asset = assets.get(assetId);
+      const mode = timing.profile === 'timeline-speed-v1' ? timing.interpolation : 'off';
       if (!asset || !sha256.safeParse(asset.sha256).success || typeof asset.mimeType !== 'string' ||
           (!asset.mimeType.startsWith('video/') && !asset.mimeType.startsWith('audio/')) ||
-          frozen.clipId !== clipId || frozen.mapHash !== mapHash || frozen.proxy !== undefined && plan.direction !== 'reverse') return false;
+          frozen.clipId !== clipId || frozen.mapHash !== mapHash || frozen.proxy !== undefined && plan.direction !== 'reverse' ||
+          frozen.interpolationPhase !== undefined && mode === 'off' ||
+          frozen.opticalProxy !== undefined && mode !== 'optical') return false;
       return timing.profile !== 'timeline-freeze-v1' || asset.mimeType.startsWith('video/') && asset.sha256 === timing.sourceSha256;
     });
   } catch {return false;}

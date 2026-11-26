@@ -1,13 +1,18 @@
 import {lstat} from 'node:fs/promises';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {timeMapPlanFrames, timeMapSourceRangeForEdit, timeMapSourceWindowForOutput, timeMapTailInverse} from '../../contracts/src/timeline-time-map.ts';
+import {timeMapHasSlowMotion, timeMapPlanFrames, timeMapPlanInfo, timeMapSourceRangeForEdit, timeMapSourceWindowForOutput, timeMapTailInverse} from '../../contracts/src/timeline-time-map.ts';
 import type {CompiledTimeMap, ContinuousSourcePosition, TimeMapResult, TimeMapSourceBoundary} from '../../contracts/src/timeline-time-map.ts';
 import type {ClipTiming} from '../../contracts/src/timeline-speed.ts';
-import {SPEED_BUDGET_EXCEEDED, SPEED_CAPABILITY_UNAVAILABLE, SPEED_MAPPING_INVALID, SPEED_SOURCE_UNSUPPORTED,
-  TIMELINE_SPEED_EXPORT_MESSAGES} from '../../contracts/src/timeline-speed-export.ts';
+import {compileInterpolationPhase, INTERPOLATION_PHASE_PROFILE, isInterpolationPixelFormat} from '../../contracts/src/timeline-interpolation.ts';
+import type {InterpolationPhasePlan} from '../../contracts/src/timeline-interpolation.ts';
+import {INTERPOLATION_UNAVAILABLE, SPEED_BUDGET_EXCEEDED, SPEED_CAPABILITY_UNAVAILABLE, SPEED_MAPPING_INVALID,
+  SPEED_PROCESSING_NOT_READY, SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_MESSAGES,
+  UNSUPPORTED_INTERPOLATION_FORMAT} from '../../contracts/src/timeline-speed-export.ts';
 import {checkMediaEffect, isMediaToolFailure, run, runStreaming} from './media-runtime.ts';
 import type {MediaEffectFence} from './media-runtime.ts';
 import {withProbePermit} from './media-probe.ts';
+import {renderSpeedBlend, speedBlendFrameBytes} from './timeline-speed-export-blend.ts';
+import {OPTICAL_FLOW_FILTER} from './timeline-processing/optical-proxy-port.ts';
 
 const fps = 30;
 const maxScriptBytes = 2 * 1024 * 1024;
@@ -45,7 +50,7 @@ export interface SpeedExportVideoStage {
   /** Source interpretation reclaimed when the rawvideo demuxer owns no metadata. */
   readonly filterPrefix: string;
   readonly bytes: number;
-  readonly path: 'cfr' | 'lookup' | 'freeze';
+  readonly path: 'cfr' | 'lookup' | 'freeze' | 'blend' | 'optical';
 }
 export interface SpeedExportReverseVideo {
   readonly file: string;
@@ -54,11 +59,21 @@ export interface SpeedExportReverseVideo {
   readonly frameCount: number;
   readonly storage: 'matroska' | 'raw';
 }
+export interface SpeedExportOpticalVideo {
+  readonly file: string;
+  /** Clip-local output-frame coordinates, including transition handles. */
+  readonly firstOutputFrame: number;
+  readonly frameCount: number;
+}
 export interface SpeedExportVideoOptions {
   readonly source: {readonly path: string; readonly videoStreamIndex?: number | string | null};
   readonly reverse?: SpeedExportReverseVideo;
+  readonly optical?: SpeedExportOpticalVideo;
+  readonly firstOutputFrame?: number;
   readonly timing: ClipTiming;
   readonly plan: CompiledTimeMap;
+  /** Full window used for the frozen phase bound before trimming a range. */
+  readonly interpolationPlan?: CompiledTimeMap;
   readonly file: string;
   readonly scriptFile: string;
   readonly reserve: (file: string) => void;
@@ -75,6 +90,13 @@ function mappingError(): never {
 function reverseCoverageError(): never {
   throw new AppError(SPEED_MAPPING_INVALID, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_MAPPING_INVALID], 409,
     {reason:'REVERSE_PROXY_COVERAGE'});
+}
+function opticalCoverageError(): never {
+  throw new AppError(SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_PROCESSING_NOT_READY], 409,
+    {reason:'OPTICAL_PROXY_COVERAGE'});
+}
+function interpolationError(code: typeof INTERPOLATION_UNAVAILABLE | typeof UNSUPPORTED_INTERPOLATION_FORMAT): never {
+  throw new AppError(code, TIMELINE_SPEED_EXPORT_MESSAGES[code], 409);
 }
 function sourceError(): never {
   throw new AppError(SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_SOURCE_UNSUPPORTED], 409);
@@ -242,15 +264,48 @@ function videoFrameTable(index: VideoIndex, plan: CompiledTimeMap): Int32Array {
   });
 }
 
-function reverseOrdinals(index: VideoIndex, table: Int32Array, reverse: SpeedExportReverseVideo): Int32Array {
+function reverseOrdinalLookup(index: VideoIndex, reverse: SpeedExportReverseVideo): (sourceOrdinal: number) => number {
   const {firstSourceOrdinal,frameCount} = reverse;
   if (!Number.isSafeInteger(firstSourceOrdinal) || firstSourceOrdinal < 0 || !Number.isSafeInteger(frameCount) ||
       frameCount < 1 || firstSourceOrdinal + frameCount > index.stamps.length) reverseCoverageError();
   const end = firstSourceOrdinal + frameCount;
-  return table.map(sourceOrdinal => {
+  return sourceOrdinal => {
     if (sourceOrdinal < firstSourceOrdinal || sourceOrdinal >= end) reverseCoverageError();
     return end - 1 - sourceOrdinal;
-  });
+  };
+}
+
+function phaseFor(index: VideoIndex, plan: CompiledTimeMap): InterpolationPhasePlan | null {
+  if (!unwrap(timeMapHasSlowMotion(plan))) return null;
+  if (!isInterpolationPixelFormat(index.pixelFormat)) interpolationError(UNSUPPORTED_INTERPOLATION_FORMAT);
+  const convert = (ticks: bigint) => Number(ticks * index.timeBase.numerator * BigInt(fps)) / Number(index.timeBase.denominator);
+  const result = compileInterpolationPhase(plan, {positions:index.stamps.map(convert), end:convert(index.end)});
+  if (!result.ok || !result.value.available) interpolationError(INTERPOLATION_UNAVAILABLE);
+  return result.value;
+}
+
+/** Probe the actual decoded source layout and clock before a final export can
+ * begin. A fast-only window never needs a supplemental frame. */
+export async function inspectSpeedVideoInterpolation({source,plan,signal,beforeEffect}:
+  Pick<SpeedExportVideoOptions, 'source' | 'plan' | 'signal' | 'beforeEffect'>):
+  Promise<{profile: typeof INTERPOLATION_PHASE_PROFILE; maxPhaseErrorFrames: number; active: boolean}> {
+  if (!unwrap(timeMapHasSlowMotion(plan))) return {profile:INTERPOLATION_PHASE_PROFILE,maxPhaseErrorFrames:0,active:false};
+  const index = await probeVideo(source.path, streamSelector(source.videoStreamIndex), {signal,beforeEffect});
+  const phase = phaseFor(index,plan);
+  return {profile:INTERPOLATION_PHASE_PROFILE,maxPhaseErrorFrames:phase?.maxPhaseErrorFrames??0,
+    active:phase?.frames.some(frame=>frame.active)??false};
+}
+
+function phaseWindow(plan: CompiledTimeMap, full: CompiledTimeMap): {start: number; end: number} {
+  const start = plan.outputWindow.fromFrame - full.outputWindow.fromFrame;
+  const end = start + plan.durationFrames;
+  if (start < 0 || end > full.durationFrames || plan.root.mapHash !== full.root.mapHash || plan.direction !== full.direction) mappingError();
+  if (plan !== full) {
+    const actual = unwrap(timeMapPlanInfo(plan)), expected = unwrap(timeMapPlanInfo(full));
+    if (actual.loTime.anchor !== expected.loTime.anchor || actual.loTime.offsetOutputFrames !== expected.loTime.offsetOutputFrames ||
+        actual.hiTime.anchor !== expected.hiTime.anchor || actual.hiTime.offsetOutputFrames !== expected.hiTime.offsetOutputFrames) mappingError();
+  }
+  return {start,end};
 }
 
 interface FastPath {readonly start: number; readonly end: number; readonly nativeFps: number; readonly p: number; readonly q: number}
@@ -333,7 +388,7 @@ function floatFrameBytes(index: VideoIndex): number | null {
   return index.width * index.height * channels * 4;
 }
 
-function rawVideoInput(index: VideoIndex): string[] {
+function rawVideoInput(index: Pick<VideoIndex, 'pixelFormat' | 'width' | 'height'>): string[] {
   return ['-f','rawvideo','-pixel_format',index.pixelFormat,'-video_size',`${index.width}x${index.height}`,'-framerate',String(fps)];
 }
 
@@ -388,34 +443,104 @@ function losslessVideoArgs(format: string): string[] {
     '-pix_fmt','+'+format,'-fps_mode','passthrough','-f','matroska'];
 }
 
+function capabilityError(): AppError {
+  return new AppError(SPEED_CAPABILITY_UNAVAILABLE, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_CAPABILITY_UNAVAILABLE], 409);
+}
+
+function mediaFailureCode(error: unknown): string | undefined {
+  return error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+}
+
+function blendEncoder(index: Pick<VideoIndex, 'pixelFormat' | 'width' | 'height' | 'stream'>, file: string, maxBytes: number): string[] {
+  const label = index.stream.sample_aspect_ratio;
+  const aspect = knownAspect(label) ? label.replace(':','/') : '1';
+  const colour = colourParameters(index.stream);
+  // FFmpeg 7.1.5 uses the input frame's chroma siting when muxing FFV1.
+  // Rawvideo carries none, so restore it on the decoder as well as the encoder.
+  return ['-nostdin','-hide_banner','-v','error','-xerror','-y','-filter_threads','1','-noauto_conversion_filters',
+    '-protocol_whitelist','file,pipe',...rawVideoInput(index),...colour,'-i','pipe:0','-map','0:v:0',
+    '-vf',`setsar=${aspect}`,'-map_metadata','-1','-an','-sn','-dn',...colour,
+    ...losslessVideoArgs(index.pixelFormat),'-fs',String(maxBytes),file];
+}
+
 /** Execute the actual time filters and lossless codec before enabling a speed
  * export. Capability discovery never depends on the installed filter names. */
-export async function assertSpeedExportVideoCapability({signal,beforeEffect}: Pick<SpeedExportVideoOptions,'signal'|'beforeEffect'> = {}): Promise<void> {
+export async function assertSpeedExportVideoCapability({signal,beforeEffect,interpolation}:
+  Pick<SpeedExportVideoOptions,'signal'|'beforeEffect'> & {interpolation?:'blend'|'optical'} = {}): Promise<void> {
   try {
     await run('ffmpeg',['-nostdin','-hide_banner','-v','error','-filter_threads','1',
       '-f','lavfi','-i','color=s=16x16:r=30:d=0.2','-vf',
       "trim=start_frame=1:end_frame=3,tpad=stop_mode=clone:stop=1,select='gte(n,0)',settb=1/30,setpts=N*2,fps=30:round=up,trim=end_frame=3",
       '-c:v','ffv1','-level','3','-threads:v','1','-pix_fmt','+yuv420p','-f','matroska','pipe:1'],{signal,beforeEffect,timeout:15000});
+    if (interpolation==='optical') {
+      await run('ffmpeg',['-nostdin','-hide_banner','-v','error','-filter_threads','1','-noauto_conversion_filters',
+        '-f','lavfi','-i','testsrc2=s=64x64:r=30:d=0.2,format=yuv420p','-vf',
+        `tpad=stop_mode=clone:stop=2,settb=1/90000,setpts=N*12000,${OPTICAL_FLOW_FILTER},trim=end_frame=8`,
+        '-frames:v','8',...losslessVideoArgs('yuv420p'),'pipe:1'],{signal,beforeEffect,timeout:15000});
+    }
+    if (interpolation==='blend') {
+      const index = {width:64,height:64,pixelFormat:'yuv420p',stream:{}};
+      await renderSpeedBlend({samples:[{from:0,to:1,weight:0.5}],frameBytes:64*64*3/2,
+        decodeArgs:() => ['-nostdin','-hide_banner','-v','error','-filter_threads','1','-noauto_conversion_filters',
+          '-f','lavfi','-i','testsrc2=s=64x64:r=30,format=yuv420p','-frames:v','2','-c:v','rawvideo','-threads:v','1',
+          '-pix_fmt','+yuv420p','-f','rawvideo','pipe:1'],
+        encodeArgs:blendEncoder(index,'pipe:1',1024*1024),timeout:15000,signal,beforeEffect,invalid:() => {throw capabilityError();}});
+    }
   } catch (error) {
-    if (!isMediaToolFailure(error)) throw error;
-    throw new AppError(SPEED_CAPABILITY_UNAVAILABLE, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_CAPABILITY_UNAVAILABLE], 409);
+    if (error && typeof error === 'object' && 'terminationUnconfirmed' in error && error.terminationUnconfirmed) throw error;
+    checkMediaEffect(beforeEffect,signal);
+    if (!isMediaToolFailure(error) && mediaFailureCode(error)!=='PROCESSING_FAILED') throw error;
+    throw capabilityError();
   }
 }
 
 export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions): Promise<SpeedExportVideoStage> {
   const {source,reverse,timing,plan,file,scriptFile,reserve,writeOwnedFile,signal,beforeEffect,beforeStart,maxBytes=defaultProxyBytes} = options;
-  if ((plan.direction==='reverse')!==Boolean(reverse) || plan.root.sourceFps.fpsNumerator!==fps || plan.root.sourceFps.fpsDenominator!==1 ||
+  const interpolation = timing.profile==='timeline-speed-v1' ? timing.interpolation : 'off';
+  if (options.optical && interpolation!=='optical') mappingError();
+  if (interpolation!=='optical' && (plan.direction==='reverse')!==Boolean(reverse)) mappingError();
+  if (plan.root.sourceFps.fpsNumerator!==fps || plan.root.sourceFps.fpsDenominator!==1 ||
       plan.root.outputFps.fpsNumerator!==fps || plan.root.outputFps.fpsDenominator!==1) mappingError();
   if (!Number.isSafeInteger(maxBytes) || maxBytes<1) budgetError();
   checkMediaEffect(beforeEffect,signal);
   const selector = streamSelector(source.videoStreamIndex);
   const index = await probeVideo(source.path,selector,{signal,beforeEffect});
-  let table = videoFrameTable(index,plan);
+  const full = options.interpolationPlan ?? plan;
+  let frames: InterpolationPhasePlan['frames'] = [];
+  if (interpolation!=='off' && unwrap(timeMapHasSlowMotion(plan))) {
+    const window = phaseWindow(plan,full);
+    frames = phaseFor(index,full)?.frames.slice(window.start,window.end) ?? [];
+  }
+  const active = frames.some(frame=>frame.active);
+  const optical = interpolation==='optical' ? options.optical : undefined;
+  if (active && interpolation==='optical' && !optical) opticalCoverageError();
+  if (!optical && (plan.direction==='reverse')!==Boolean(reverse)) mappingError();
+  let table = optical ? null : videoFrameTable(index,plan);
   const frameBytes = floatFrameBytes(index);
   let media = source.path, mediaSelector = selector;
   let mediaArgs = ['-format_whitelist','mov,matroska','-noautorotate'];
-  if (reverse) {
-    table = reverseOrdinals(index,table,reverse);
+  let opticalOffset = 0;
+  let reverseOrdinal: ((sourceOrdinal: number) => number) | undefined;
+  if (optical) {
+    const {firstOutputFrame, frameCount} = optical;
+    const begin = options.firstOutputFrame;
+    if (begin===undefined || !Number.isSafeInteger(begin) || !Number.isSafeInteger(firstOutputFrame) ||
+        !Number.isSafeInteger(frameCount) || frameCount < 1 || optical.file===source.path) opticalCoverageError();
+    opticalOffset = begin - firstOutputFrame;
+    if (opticalOffset<0 || opticalOffset+plan.durationFrames>frameCount) opticalCoverageError();
+    try {
+      verifyIndexedProxy(index,await probeVideo(optical.file,'v:0',{signal,beforeEffect}),frameCount);
+    } catch (error) {
+      checkMediaEffect(beforeEffect,signal);
+      if (!isMediaToolFailure(error) && !(error instanceof AppError && [SPEED_MAPPING_INVALID,SPEED_SOURCE_UNSUPPORTED].includes(error.code))) throw error;
+      opticalCoverageError();
+    }
+    media = optical.file;
+    mediaSelector = 'v:0';
+    mediaArgs = ['-format_whitelist','matroska','-noautorotate'];
+  } else if (reverse) {
+    reverseOrdinal = reverseOrdinalLookup(index,reverse);
+    table = table!.map(reverseOrdinal);
     media = reverse.file;
     mediaSelector = 'v:0';
     if (media===source.path || reverse.storage!==(frameBytes===null?'matroska':'raw')) reverseCoverageError();
@@ -432,23 +557,62 @@ export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions):
       mediaArgs = [...rawVideoInput(index),'-noautorotate'];
     }
   } else if (index.rotation!==0) mediaArgs.push(`-display_rotation:${selector}`,'0');
-  const fast = reverse ? null : proveFastPath(index,plan,timing,table);
-  const filter = fast ? fastFilter(fast) : lookupFilter(table);
-  const script = `[0:${mediaSelector}]${filter},trim=end_frame=${plan.durationFrames},settb=1/${fps},setpts=N[out]`;
-  if (Buffer.byteLength(script)>maxScriptBytes) budgetError();
+  const blended = interpolation==='blend' && active;
+  const fast = reverse || optical || blended ? null : proveFastPath(index,plan,timing,table!);
   const rawBytes = frameBytes===null ? null : frameBytes*plan.durationFrames;
   if (frameBytes!==null && (frameBytes>maxRawFrameBytes || !Number.isSafeInteger(rawBytes) || rawBytes!>maxBytes)) budgetError();
-  await writeOwnedFile(scriptFile,script);
-  checkMediaEffect(beforeEffect,signal);
-  reserve(file);
-  checkMediaEffect(beforeStart,signal);
-  const encoding = frameBytes===null ? losslessVideoArgs(index.pixelFormat)
-    : ['-c:v','rawvideo','-threads:v','1','-pix_fmt','+'+index.pixelFormat,'-fps_mode','passthrough','-f','rawvideo'];
-  await run('ffmpeg',['-nostdin','-hide_banner','-v','error','-xerror','-y','-filter_complex_threads','1','-threads','1',
-    '-protocol_whitelist','file,pipe',...mediaArgs,'-i',media,
-    '-/filter_complex',scriptFile,'-map','[out]','-map_metadata','-1','-an','-sn','-dn',...colourParameters(index.stream),
-    ...encoding,'-fs',String(maxBytes),file],
-    {signal,beforeEffect,timeout:Math.max(120000,plan.durationFrames*300)});
+  const timeout = Math.max(120000,plan.durationFrames*300);
+  if (blended) {
+    const bytes = speedBlendFrameBytes(index.pixelFormat,index.width,index.height);
+    if (bytes===null) interpolationError(UNSUPPORTED_INTERPOLATION_FORMAT);
+    if (bytes>maxRawFrameBytes) budgetError();
+    const ordinal = reverseOrdinal ?? ((sourceOrdinal: number) => sourceOrdinal);
+    const samples = frames.map((frame, offset) => {
+      const {active, weight, fromFrame, toFrame} = frame;
+      if (!active) return {from:table![offset]!,to:table![offset]!,weight:0};
+      if (weight === 0 || weight === 1) {
+        const chosen = ordinal(weight === 1 ? toFrame : fromFrame);
+        return {from:chosen,to:chosen,weight:0};
+      }
+      return {from:ordinal(fromFrame),to:ordinal(toFrame),weight};
+    });
+    checkMediaEffect(beforeEffect,signal);
+    reserve(file);
+    checkMediaEffect(beforeStart,signal);
+    try {
+      await renderSpeedBlend({samples,frameBytes:bytes,encodeArgs:blendEncoder(index,file,maxBytes),timeout,signal,beforeEffect,
+        invalid:mappingError,decodeArgs:(start,end) => ['-nostdin','-hide_banner','-v','error','-xerror','-filter_threads','1',
+          '-threads','1','-noauto_conversion_filters','-protocol_whitelist','file,pipe',...mediaArgs,'-i',media,'-map',`0:${mediaSelector}`,
+          '-vf',`trim=start_frame=${start}:end_frame=${end}`,'-an','-sn','-dn','-c:v','rawvideo','-threads:v','1',
+          '-pix_fmt','+'+index.pixelFormat,'-fps_mode','passthrough','-f','rawvideo','pipe:1']});
+    } catch (error) {
+      if (error && typeof error==='object' && 'terminationUnconfirmed' in error && error.terminationUnconfirmed) throw error;
+      checkMediaEffect(beforeEffect,signal);
+      if (mediaFailureCode(error)==='DISK_FULL') budgetError();
+      if (['EPIPE','ERR_STREAM_PREMATURE_CLOSE','ERR_STREAM_DESTROYED'].includes(mediaFailureCode(error) ?? '')) {
+        const stat = await lstat(file);
+        checkMediaEffect(beforeEffect,signal);
+        if (stat.isFile() && stat.size>=maxBytes) budgetError();
+      }
+      if (mediaFailureCode(error)!=='PROCESSING_FAILED') throw error;
+      throw capabilityError();
+    }
+  } else {
+    const filter = optical ? `trim=start_frame=${opticalOffset}:end_frame=${opticalOffset+plan.durationFrames}`
+      : fast ? fastFilter(fast) : lookupFilter(table!);
+    const script = `[0:${mediaSelector}]${filter},trim=end_frame=${plan.durationFrames},settb=1/${fps},setpts=N[out]`;
+    if (Buffer.byteLength(script)>maxScriptBytes) budgetError();
+    await writeOwnedFile(scriptFile,script);
+    checkMediaEffect(beforeEffect,signal);
+    reserve(file);
+    checkMediaEffect(beforeStart,signal);
+    const encoding = frameBytes===null ? losslessVideoArgs(index.pixelFormat)
+      : ['-c:v','rawvideo','-threads:v','1','-pix_fmt','+'+index.pixelFormat,'-fps_mode','passthrough','-f','rawvideo'];
+    await run('ffmpeg',['-nostdin','-hide_banner','-v','error','-xerror','-y','-filter_complex_threads','1','-threads','1',
+      '-protocol_whitelist','file,pipe',...mediaArgs,'-i',media,
+      '-/filter_complex',scriptFile,'-map','[out]','-map_metadata','-1','-an','-sn','-dn',...colourParameters(index.stream),
+      ...encoding,'-fs',String(maxBytes),file],{signal,beforeEffect,timeout});
+  }
   checkMediaEffect(beforeEffect,signal);
   const stat = await lstat(file);
   if (!stat.isFile() || stat.size===0) sourceError();
@@ -459,5 +623,5 @@ export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions):
   const inputArgs = frameBytes===null ? [] : rawVideoInput(index);
   if (index.rotation!==0) inputArgs.push('-display_rotation:v:0',String(index.rotation));
   return {file,inputArgs,stream:'v:0',frameCount:plan.durationFrames,filterPrefix:rawBytes===null?'':rawFilterPrefix(index.stream),
-    bytes:stat.size,path:timing.profile==='timeline-freeze-v1'?'freeze':fast?'cfr':'lookup'};
+    bytes:stat.size,path:optical?'optical':blended?'blend':timing.profile==='timeline-freeze-v1'?'freeze':fast?'cfr':'lookup'};
 }

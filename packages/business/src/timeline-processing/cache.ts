@@ -8,6 +8,7 @@ import {projectIdSchema} from '../../../contracts/src/project-file.ts';
 import {processingDigestSchema as digest, processingCacheReceiptSchema as receiptSchema, processingProxyResultSchema as proxyResultSchema,
   processingCachePinsSchema as pinSchema, PROCESSING_CACHE_MAX_ENTRIES as maxEntries} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingCacheReceipt as Receipt} from '../../../contracts/src/timeline-processing-storage.ts';
+import {MAX_OPTICAL_SEGMENTS, opticalSegmentName} from './reverse-io.ts';
 import type {SpeedProcessingReason} from '../../../contracts/src/timeline-speed.ts';
 
 export const PROCESSING_CACHE_LIMIT_BYTES = 10 * 1024 ** 3;
@@ -104,7 +105,8 @@ export function createProcessingCache(parent: string, {limitBytes = PROCESSING_C
         const directory = path.join(root, name);
         validateManagedDirectory(directory, {root, ...privateOptions});
         const files = readdirSync(directory);
-        if (files.length > 16) occupied();
+        const segmentCount = files.filter(file => opticalSegmentName.test(file)).length;
+        if (segmentCount > MAX_OPTICAL_SEGMENTS || files.length - segmentCount > 16) occupied();
         for (const fileName of files) {
           const info = validateManagedFile(path.join(directory, fileName), {root, ...privateOptions});
           if (!info || !Number.isSafeInteger(retainedBytes + info.size)) occupied();
@@ -231,6 +233,12 @@ export function createProcessingCache(parent: string, {limitBytes = PROCESSING_C
     const timestamp = new Date();
     utimesSync(current.directory, timestamp, timestamp);
   }
-  return {stats, clear, setPins, lookup, pin, stage, touch};
+  function invalidate(entry: ProcessingCacheEntry, beforeEffect: () => void): void {
+    if (activePins.has(entry.cacheKey)) occupied();
+    const current = readEntry(entry.cacheKey);
+    if (!current || current.projectId !== entry.projectId || current.directory !== entry.directory) occupied();
+    remove(current, beforeEffect);
+  }
+  return {stats, clear, setPins, lookup, pin, stage, touch, invalidate};
 }
 export type ProcessingCache = ReturnType<typeof createProcessingCache>;
