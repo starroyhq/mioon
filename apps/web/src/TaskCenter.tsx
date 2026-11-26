@@ -60,6 +60,8 @@ export interface TaskCenterProps {
   dispositions?: TaskDispositionView;
   /** Shot detection tasks, prepared by App with their detail cards. */
   scenes?: readonly { key: string; label: string; status: string; active: boolean; warning: boolean; detail: React.ReactNode }[];
+  /** Speed background processing tasks (reverse / optical flow); empty when `capabilities.speed !== true`. */
+  speedProcessing?: readonly { key: string; label: string; status: string; active: boolean; warning: boolean; detail: React.ReactNode }[];
 }
 export interface DurableTaskProps { task: DurableTaskView; uncertain: boolean; busy: boolean; onRecover: () => unknown; onAcknowledge: () => unknown; dispositionAction?: React.ReactNode }
 
@@ -97,7 +99,7 @@ function renderTaskRow(value: unknown, projectId: string): value is RenderTaskRo
     (clipAudio || row.mode === 'timeline' && ['preview', 'export'].includes(row.purpose ?? ''));
 }
 
-export default function TaskCenter({ activeCount, pending, busy, jobs, data, reconcileIds, setReconcileIds, run, retryGeneration, mockGenerationAvailable = false, onInspectJob, context, confirm, isCurrent, captureView, taskViewScope, tasks, onRecover, onReload, onAdopt, onOpenExportHistory, selectedTaskId, dispositions, scenes = [] }: TaskCenterProps): React.ReactElement {
+export default function TaskCenter({ activeCount, pending, busy, jobs, data, reconcileIds, setReconcileIds, run, retryGeneration, mockGenerationAvailable = false, onInspectJob, context, confirm, isCurrent, captureView, taskViewScope, tasks, onRecover, onReload, onAdopt, onOpenExportHistory, selectedTaskId, dispositions, scenes = [], speedProcessing = [] }: TaskCenterProps): React.ReactElement {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const visible = Boolean(useWorkspaceVisibility());
   const interaction = useTaskWorkspaceInteraction(pass(captureView), taskViewScope, visible);
@@ -115,6 +117,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
     ...tasks.items.map<TaskListEntry>(task => ({ key: `local:${task.id}`, label: subtitleLabels(t)[task.operation] || (task.operation === 'timeline.format.set' ? t('tasks.center.timelineFormatOperation') : task.operation), status: localStatus(task), warning: ['unknown', 'dispatching'].includes(task.status) || tasks.uncertain.includes(task.id), group: t('tasks.center.localEditRequests'), phase: ['applied', 'not_applied'].includes(task.status) ? 'finished' : 'uncertain', search: task.requestId })),
     ...pending.map<TaskListEntry>(entry => ({ key: `pending:legacy:${entry.key}`, label: entry.operation, status: t('tasks.pending.outcomeUnconfirmed'), warning: true, group: t('tasks.center.sessionPending'), phase: 'uncertain', search: entry.input.requestId })),
     ...scenes.map<TaskListEntry>(item => ({ key: item.key, label: item.label, status: item.status, warning: item.warning, group: t('scene.task.group'), phase: item.active ? 'active' : 'finished' })),
+    ...speedProcessing.map<TaskListEntry>(item => ({ key: item.key, label: item.label, status: item.status, warning: item.warning, group: t('speed.processing.taskGroup'), phase: item.active ? 'active' : 'finished' })),
     ...jobs.map<TaskListEntry>(job => {
       const connection = videoJobConnection(job);
       return {
@@ -207,6 +210,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
         {selectedDisposition?.markedFailed&&selectedDisposition.canMarkFailed&&<p className="notice warning" data-text-selectable data-testid="task-local-failed-marker">{t('redesign.tasks.markedFailedExplanation')}</p>}
       </section>}
       {scenes.map(item => detail(item.key, item.detail))}
+      {speedProcessing.map(item => detail(item.key, item.detail))}
       {renderTasks.map(item => detail(`render:${item.id}`, <TaskRenderList items={[item]} projectId={data.project?.id || ''}  onHistory={onOpenExportHistory ? () => { if (captureTask(`render:${item.id}`)) onOpenExportHistory(); } : undefined} />))}
       {tasks.items.map(task => detail(`local:${task.id}`, <DurableTask key={task.id} task={task} dispositionAction={dispositionAction(`local:${task.id}`)} uncertain={tasks.uncertain.includes(task.id)} busy={busy[`task:${task.id}`] || tasks.busy.includes(task.id) || typeof task.lane === 'string' && tasks.busy.includes(task.lane)} onRecover={() => { const stillCurrent = captureTask(`local:${task.id}`); if (stillCurrent) onRecover(task, false, stillCurrent); }} onAcknowledge={() => { const stillCurrent = captureTask(`local:${task.id}`); if (stillCurrent) onRecover(task, true, stillCurrent); }} />))}
       {pending.map(entry => detail(`pending:legacy:${entry.key}`, <><PendingSubmission key={`legacy:${entry.key}`} entry={pass(entry)} busy={busy[entry.key] || (isMutationOperation(entry.operation) && busy['canvas:mutation'])} duplicate={tasks.items.some(task => task.operation === entry.operation && task.requestId === entry.input.requestId)} onAdopt={isDurableEditOperation(entry.operation) ? () => { if (captureTask(`pending:legacy:${entry.key}`)) onAdopt(entry); } : undefined} onReplay={() => { if (!captureTask(`pending:legacy:${entry.key}`)) return; if (isSubjectRetryPending(pass(entry), pass(data.jobs))) run(entry.key, entry.operation, entry.input, message('tasks.center.originalRecovered'), { replay: true, subjectRetry: true }); else run(entry.key, entry.operation, entry.input, message('tasks.center.originalRecovered'), { replay: true }); }} />{entry.input.requestId && <p className="helper muted task-request-id" data-text-selectable>{t('tasks.center.requestIdentity', { requestId: creationParameter(entry.input.requestId) })}</p>}</>))}
