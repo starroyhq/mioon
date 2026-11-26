@@ -4,7 +4,7 @@
 
 外部 Agent 和界面里的 Mio 是两回事。它不经过 Mio 的放行档位，而是通过命令行或 MCP 直接调用和界面相同的操作；每次调用前是否先问你，由 Agent 客户端自己的权限设置决定。Mio 的用法见 [Mio 使用说明](MIO-GUIDE.zh-CN.md)。
 
-**当前限制：** 外部 Agent 通过命令行或 MCP 操作时，暂时改不了格式 5 项目的画板和时间线；读取项目、导入素材、生成和导出仍照常可用。下一版补齐。
+外部 Agent 可以修改格式 5 项目的画板和时间线。用 `sequence …` 命令或对应的 MCP 工具读取项目、预览修改并提交，也可撤销和重做。格式 5 项目请以这里的序列操作为准。[格式 5 命令与用法](CLI.md#格式-5统一序列动作外部-agent)
 
 **关于费用：**
 
@@ -15,10 +15,10 @@
 ## 1. 准备
 
 - **Mioon 正在运行**：桌面版，或按[源码试用指南](CORE-TRIAL.zh-CN.md)启动的本机服务。Agent 连接的是这个正在运行的 Mioon，不要为它再启动一份。
-- **一份 Mioon 源码**：命令行工具和 MCP 服务从源码运行，桌面安装包里不带。需要 Node.js 24 或更新版本，以及 pnpm 11.25.0：
+- **一份 Mioon 源码**：命令行工具和 MCP 服务从源码运行。需要 Node.js 24 或更新版本，以及 pnpm 11.25.0。以 0.3.1 桌面版为例，取对应版本的源码：
 
   ```sh
-  git clone https://github.com/starroyhq/mioon.git
+  git clone --branch v0.3.1 https://github.com/starroyhq/mioon.git
   cd mioon
   pnpm install --frozen-lockfile
   ```
@@ -53,15 +53,14 @@ Claude Code 从 `~/.claude/skills/` 读取个人技能，Codex 从 `~/.agents/sk
 
 ### 方式二：用 `npx skills` 安装
 
-[skills](https://github.com/vercel-labs/skills) 是 Vercel Labs 的开源技能安装工具，需要 Node.js 22.20 或更新版本。下面的命令从 GitHub 下载 main 分支上的技能：
+[skills](https://github.com/vercel-labs/skills) 是 Vercel Labs 的开源技能安装工具，需要 Node.js 22.20 或更新版本。从上面准备的源码目录安装：
 
 ```sh
-npx skills add starroyhq/mioon --skill mioon -g -a claude-code -a codex
+npx skills add "$MIOON_REPO" --skill mioon -g -a claude-code -a codex
 ```
 
 - 技能装在 `~/.agents/skills/mioon`，`~/.claude/skills/mioon` 是指向它的链接。去掉 `-g` 时只装到当前目录下的 `.agents/skills/` 和 `.claude/skills/`。
-- 更新用 `npx skills update mioon -g`。
-- 你的源码不在 main 上时，改从本地源码安装，保证版本一致：`npx skills add "$MIOON_REPO" --skill mioon -g -a claude-code -a codex`。
+- 更新 Mioon 后，从相同版本的源码目录再次运行安装命令。
 - 这个工具默认收集匿名使用数据，设置环境变量 `DISABLE_TELEMETRY=1` 可以关闭，见它的[说明](https://github.com/vercel-labs/skills#telemetry)。
 
 装好后重新打开 Agent。Claude Code 和 Codex 里都可以输入 `/skills` 查看已装的技能。
@@ -124,9 +123,9 @@ node apps/cli/src/index.ts doctor
 
 确认 Mioon 正在运行，重新打开 Agent，然后说：
 
-> 用 mioon 技能检查和 Mioon 的连接，列出我的项目。
+> 用 mioon 技能检查和 Mioon 的连接，读取我指定的项目的画板和时间线。
 
-Agent 应该先运行 `doctor`（MCP 工具名 `mioon_doctor`），再列出项目。Mioon 没有运行或连接文件不对时，`doctor` 会说明原因。
+Agent 应该先运行 `doctor`（MCP 工具名 `mioon_doctor`），再读取指定的项目。可以把项目 ID 一并给它。Mioon 没有运行或连接文件不对时，`doctor` 会说明原因。
 
 想先不花钱走一遍完整流程，可以让 Agent 用模拟服务（Mock）生成并导出，见[模拟流程](../skills/mioon/references/mock-workflow.md)。模拟服务生成的是带标记的测试画面，不是按提示词生成的内容；它需要 FFmpeg 带 `drawtext` 滤镜，见[安装与首次运行](INSTALL.zh-CN.md)。
 
