@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, type SequenceProjectFormat} from '../packages/business/src/project-file/schema/databases.ts';
 import {
   applySequenceEditTimelineDelta, moveSequenceSyncHistory, previewSequenceSync, readSequenceSyncProjection, runSequenceSync,
 } from '../packages/business/src/format5-sequence-sync.ts';
@@ -32,9 +33,10 @@ const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
 type Result = SequenceEditCommitResult;
 
-function fixture(t: test.TestContext): ProjectStore {
+function fixture(t: test.TestContext, format: SequenceProjectFormat = FORMAT5_PROJECT_SCHEMA_VERSION): ProjectStore {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-ts-sync-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: format,
+    ...(format === FORMAT6_PROJECT_SCHEMA_VERSION ? {allowFormat6: true as const} : {}),
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const projectId = store.projectId;
@@ -166,8 +168,9 @@ test('a format-5 projection reads the root association, chain order and both sid
     [[shotA, 'follow', versionA], [shotB, 'follow', null], [imageNode, 'locked', imageAsset]]);
 });
 
-test('a placeholder takes the full source length of its first version and downstream/anchored items shift', t => {
-  const store = fixture(t);
+for (const format of [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION])
+test(`format ${format} syncs board selection to the placeholder, suffix, anchors and history`, t => {
+  const store = fixture(t, format);
   const before = state(store);
   const result = apply(store, {kind: 'board-version', nodeId: shotB, versionId: versionB});
   const receipt = result.receipt;
@@ -218,8 +221,9 @@ test('selecting a short version keeps the old applied length and reports SOURCE_
   assert.equal(clip.durationFrames, 60);
 });
 
-test('locking pins one clip while a later board selection still follows the unlocked clips', t => {
-  const store = fixture(t);
+for (const format of [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION])
+test(`format ${format} pins a locked clip and follows the updated board version after unlocking`, t => {
+  const store = fixture(t, format);
   const locked = apply(store, {kind: 'clip-version', clipId: clipA, versionId: versionA, mode: 'locked'});
   assert.equal(locked.receipt.operation, 'timeline.clip.version');
   assert.equal(state(store).clips.find(value => value.id === clipA)!.sequenceSource.versionMode, 'locked');
