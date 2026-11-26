@@ -15,6 +15,7 @@ import {createTimelineProcessingService} from '../packages/business/src/timeline
 import type {ProcessingServiceOptions} from '../packages/business/src/timeline-processing/service.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+import {processingCacheReceiptSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -211,7 +212,7 @@ test('an owned committed source runs the real worker and reopens its verified ou
   const directory = path.join(f.cacheRoot, 'timeline-processing');
   const entry = readdirSync(directory).find(name => /^[0-9a-f]{64}$/u.test(name));
   assert.ok(entry);
-  const receipt = JSON.parse(readFileSync(path.join(directory, entry, 'receipt.json'), 'utf8'));
+  const receipt = processingCacheReceiptSchema.parse(JSON.parse(readFileSync(path.join(directory, entry, 'receipt.json'), 'utf8')));
   assert.equal(receipt.result.sampleCount, 48000);
   for (const file of receipt.result.files) {
     const hash = createHash('sha256').update(readFileSync(path.join(directory, entry, file.fileName))).digest('hex');
