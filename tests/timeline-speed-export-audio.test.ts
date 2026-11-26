@@ -10,10 +10,8 @@ import {
 } from '../packages/contracts/src/timeline-time-map.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {createSpeedAudioSourceClock} from '../packages/business/src/timeline-speed-export-audio-clock.ts';
-import {
-  assertTimelineSpeedAudioSupported, prepareTimelineSpeedAudio, timelineSpeedAudioMode,
-  type TimelineSpeedAudioSource,
-} from '../packages/business/src/timeline-speed-export-audio.ts';
+import {prepareTimelineSpeedAudio, timelineSpeedAudioMode, type TimelineSpeedAudioSource}
+  from '../packages/business/src/timeline-speed-export-audio.ts';
 
 const fps = {fpsNumerator: 30, fpsDenominator: 1};
 const samplesPerFrame = 1600;
@@ -88,6 +86,32 @@ test('changing curve uses the same PCM sample positions after split and trim', a
   const interior = unwrap(trimTimeMap(plan, 5, 12));
   assert.deepEqual(await remote.render({...timing, outputWindow: interior.outputWindow}, interior),
     whole.subarray(5 * bytesPerFrame, 12 * bytesPerFrame));
+});
+
+test('curves in the 2x–4x band resample continuously even with pitchShift disabled', async t => {
+  const frames = 73;
+  const remote = await fixture(t, frames, '0.2*sin(2*PI*440*t)|0.3*sin(2*PI*440*t)');
+  for (const [first, last] of [[2, 4], [3, 3]] as const) {
+    const curve = {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom',
+      points: [{sourceFrame: 0, rate: {numerator: first, denominator: 1}},
+        {sourceFrame: frames, rate: {numerator: last, denominator: 1}}]} as const;
+    const {timing, plan} = mapping({...curve, points: [...curve.points]}, frames);
+    assert.equal(timelineSpeedAudioMode(timing), 'shift');
+    const pcm = await remote.render(timing, plan);
+    let crossings = 0;
+    for (let sample = 1; sample <= 12000; sample++) {
+      if (pcm.readFloatLE((sample - 1) * 8) < 0 && pcm.readFloatLE(sample * 8) >= 0) crossings++;
+    }
+    // A preserved 440 Hz tone has 110 crossings in 250 ms.
+    if (first === last) assert.ok(Math.abs(crossings - 330) <= 1);
+    else assert.ok(crossings >= 219 && crossings <= 441);
+    const {left, right} = unwrap(splitTimeMap(plan, 5));
+    const parts = await Promise.all([left, right].map(part => remote.render({...timing, outputWindow: part.outputWindow}, part)));
+    assert.deepEqual(Buffer.concat(parts), pcm);
+    const interior = unwrap(trimTimeMap(plan, 4, 10));
+    assert.deepEqual(await remote.render({...timing, outputWindow: interior.outputWindow}, interior),
+      pcm.subarray(4 * bytesPerFrame, 10 * bytesPerFrame));
+  }
 });
 
 test('certified curve phase stays within one hundredth of a source sample through fast and slow knots', () => {
@@ -174,6 +198,36 @@ test('reverse playback consumes the trusted reverse sample clock and keeps the c
   assertSilentFrom(pcm, 1440);
 });
 
+test('raw reverse PCM uses its verified native sample rate and layout', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'mioon-speed-export-raw-reverse-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const frames = 9, sampleRate = 44100;
+  const {timing, plan} = mapping(constant(2), frames, true, 'reverse');
+  const source: TimelineSpeedAudioSource = {file: path.join(directory, 'proxy.f32le'), streamIndex: 'a:0',
+    reversed: {fromSample: 0, toSample: frames * samplesPerFrame, raw: {sampleRate, channels: 1, layout: 'mono'}}};
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i',
+    `aevalsrc=0.25+0.25*t:s=${sampleRate}`, '-af', `atrim=end_sample=${frames * sampleRate / 30},areverse`,
+    '-c:a', 'pcm_f32le', '-f', 'f32le', source.file]);
+  const destination = path.join(directory, 'output.f32le');
+  const output = await prepareTimelineSpeedAudio({timing, plan, source, destination},
+    {openOwnedFile: file => open(file, 'wx', 0o600)});
+  assert.equal(output?.samples, plan.durationFrames * samplesPerFrame);
+  const pcm = await readFile(destination);
+  assert.ok(Math.abs(pcm.readFloatLE(0) - 0.325 * Math.SQRT1_2) < 0.0001);
+  assert.ok(Math.abs(pcm.readFloatLE(4800 * 8) - 0.275 * Math.SQRT1_2) < 0.0001);
+  assert.equal(pcm.readFloatLE(0), pcm.readFloatLE(4));
+  assertSilentFrom(pcm, frames * samplesPerFrame / 2);
+
+  const never = {openOwnedFile() { throw Error('Invalid proxy must not create PCM'); }};
+  const clock = source.reversed!;
+  await assert.rejects(prepareTimelineSpeedAudio({timing, plan, source: {...source,
+    reversed: {...clock, toSample: clock.toSample - 1}}, destination}, never),
+  {code: 'SPEED_MAPPING_INVALID', details: {audioReason: 'REVERSE_PCM_WINDOW'}});
+  await assert.rejects(prepareTimelineSpeedAudio({timing, plan, source: {...source,
+    reversed: {...clock, raw: {...clock.raw!, layout: 'stereo'}}}, destination}, never),
+  {code: 'SPEED_SOURCE_UNSUPPORTED', details: {audioReason: 'SOURCE_CLOCK_UNVERIFIED'}});
+});
+
 test('mixed source normalizes both audio leads and audio delays to the selected video clock', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'mioon-speed-export-audio-sync-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
@@ -203,18 +257,10 @@ test('mixed source normalizes both audio leads and audio delays to the selected 
   {code: 'SPEED_SOURCE_UNSUPPORTED', details: {audioReason: 'SOURCE_CLOCK_UNVERIFIED'}});
 });
 
-test('freeze supplies no audible input and an unverified nonconstant tempo curve refuses without a file', async () => {
+test('freeze supplies no audible input and creates no PCM file', async () => {
   const freeze = {profile: 'timeline-freeze-v1', sourceFrame: 5, sourceVersionId: null, sourceSha256: 'a'.repeat(64)} as const;
   const plan = initialTimeMap(unwrap(compileFreezeTimeMap({sourceFrame: 5, durationFrames: 2, sourceFps: fps, outputFps: fps})));
   const never = {openOwnedFile() { throw Error('Must not create a file'); }};
   const input = {source: {file: 'unread', streamIndex: 0}, destination: 'unwritten'};
   assert.equal(await prepareTimelineSpeedAudio({...input, timing: freeze, plan}, never), null);
-  const curve = {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom',
-    points: [{sourceFrame: 0, rate: {numerator: 2, denominator: 1}}, {sourceFrame: 43, rate: {numerator: 4, denominator: 1}}]} as const;
-  const validIntent = mapping({...curve, points: [...curve.points]}, 43);
-  assert.equal(timelineSpeedAudioMode(validIntent.timing), 'preserve');
-  assert.throws(() => assertTimelineSpeedAudioSupported(validIntent.timing), {
-    code: 'SPEED_CAPABILITY_UNAVAILABLE', details: {audioReason: 'CURVE_TEMPO_NOT_VERIFIED'},
-  });
-  await assert.rejects(prepareTimelineSpeedAudio({...input, ...validIntent}, never), {code: 'SPEED_CAPABILITY_UNAVAILABLE'});
 });

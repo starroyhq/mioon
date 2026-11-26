@@ -3,10 +3,10 @@ import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import {timelineExportRangeFields} from '../../contracts/src/timeline-export-range.ts';
 import {
   compileTimelineSpeedExportClips, SPEED_BUDGET_EXCEEDED, SPEED_CAPABILITY_UNAVAILABLE, SPEED_INTERPOLATION_NOT_READY,
-  SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES, type CompiledTimelineSpeedExportClip,
+  TIMELINE_SPEED_EXPORT_MESSAGES, type CompiledTimelineSpeedExportClip,
   type TimelineSpeedExportSnapshot,
 } from '../../contracts/src/timeline-speed-export.ts';
-import {assertTimelineSpeedAudioSupported, timelineSpeedAudioMode} from './timeline-speed-export-audio.ts';
+import {timelineSpeedAudioMode} from './timeline-speed-export-audio.ts';
 import {assertSpeedExportVideoCapability} from './timeline-speed-export-video.ts';
 import {checkMediaEffect, run} from './media-runtime.ts';
 import {planTimelineExportRange, type TimelineExportRangePlan} from './timeline-export-range-plan.ts';
@@ -84,18 +84,11 @@ export function timelineSpeedExportLayout(snapshot: SpeedExportSnapshotContext,
   return {clips, segments: plan, transitions};
 }
 
-/** Reverse consumption is admitted together with SP-P's verified ownership,
- * window and timing contract. A frozen hash alone cannot authorize reading it. */
-export function assertForwardSpeedExport(snapshot: SpeedExportSnapshotContext, layout: SpeedExportLayout): void {
-  for (const {clipId, timing, plan} of layout.clips) {
+export function assertSpeedExportInterpolation(layout: SpeedExportLayout): void {
+  for (const {clipId, timing} of layout.clips) {
     if (timing.profile === 'timeline-speed-v1' && timing.interpolation !== 'off') {
       throw new AppError(SPEED_INTERPOLATION_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_INTERPOLATION_NOT_READY],
         409, {clipId});
-    }
-    if (plan.direction === 'reverse') {
-      const taskId = snapshot.speedExport?.clips.find(item => item.clipId === clipId)?.proxy?.taskId;
-      throw new AppError(SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_PROCESSING_NOT_READY],
-        409, {clipId, ...(taskId ? {taskId} : {})});
     }
   }
 }
@@ -110,7 +103,6 @@ export async function assertTimelineSpeedCapability(layout: SpeedExportLayout, {
   if (visual) await assertSpeedExportVideoCapability({signal, beforeEffect});
   if (!audio) return;
   const audible = layout.clips.filter(clip => clip.audio);
-  for (const clip of audible) assertTimelineSpeedAudioSupported(clip.timing);
   const tempo = audible.some(clip => timelineSpeedAudioMode(clip.timing) === 'preserve') ? 'atempo=2,atempo=1.5,' : '';
   try {
     await run('ffmpeg', ['-hide_banner', '-nostdin', '-loglevel', 'error', '-filter_threads', '1',

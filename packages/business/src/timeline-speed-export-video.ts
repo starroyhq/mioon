@@ -47,8 +47,16 @@ export interface SpeedExportVideoStage {
   readonly bytes: number;
   readonly path: 'cfr' | 'lookup' | 'freeze';
 }
+export interface SpeedExportReverseVideo {
+  readonly file: string;
+  /** The lowest original presentation ordinal included in this reverse proxy. */
+  readonly firstSourceOrdinal: number;
+  readonly frameCount: number;
+  readonly storage: 'matroska' | 'raw';
+}
 export interface SpeedExportVideoOptions {
   readonly source: {readonly path: string; readonly videoStreamIndex?: number | string | null};
+  readonly reverse?: SpeedExportReverseVideo;
   readonly timing: ClipTiming;
   readonly plan: CompiledTimeMap;
   readonly file: string;
@@ -63,6 +71,10 @@ export interface SpeedExportVideoOptions {
 
 function mappingError(): never {
   throw new AppError(SPEED_MAPPING_INVALID, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_MAPPING_INVALID], 409);
+}
+function reverseCoverageError(): never {
+  throw new AppError(SPEED_MAPPING_INVALID, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_MAPPING_INVALID], 409,
+    {reason:'REVERSE_PROXY_COVERAGE'});
 }
 function sourceError(): never {
   throw new AppError(SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_SOURCE_UNSUPPORTED], 409);
@@ -183,11 +195,14 @@ function displayRotation(side: Metadata | undefined): number {
 /** Compare the shared source clock against exact native ticks. A curve
  * interval crossing a genuine VFR boundary is ambiguous and fails closed.
  * Exact ties on the project grid use the shared chosen project frame. */
-function nativeOrdinal(index: VideoIndex, {source, frame}: {source: ContinuousSourcePosition; frame: number}): number {
+function nativeOrdinal(index: VideoIndex, {source, frame}: {source: ContinuousSourcePosition; frame: number}, reverse: boolean): number {
   const {stamps, timeBase, end} = index;
   const test = (stamp: bigint): boolean => {
     const clock = stamp * timeBase.numerator * BigInt(fps);
-    if (source.kind === 'exact') return clock * BigInt(source.denominator) <= BigInt(source.numerator) * timeBase.denominator;
+    if (source.kind === 'exact') {
+      const distance = clock * BigInt(source.denominator) - BigInt(source.numerator) * timeBase.denominator;
+      return reverse ? distance < 0n : distance <= 0n;
+    }
     if (clock % timeBase.denominator === 0n) return clock / timeBase.denominator <= BigInt(frame);
     const time = Number(clock) / Number(timeBase.denominator);
     const roundoff = 4 * Number.EPSILON * Math.max(1, Math.abs(time));
@@ -195,7 +210,9 @@ function nativeOrdinal(index: VideoIndex, {source, frame}: {source: ContinuousSo
     if (source.value + source.errorBound < time - roundoff) return false;
     return sourceError();
   };
-  if (!test(0n) || test(end) && (end > stamps.at(-1)! || source.kind === 'numeric' ||
+  // At the first presentation boundary the shared reverse map clamps to the
+  // first frame. Other exact ties follow its backward half-open interval.
+  if ((!reverse && !test(0n)) || test(end) && (end > stamps.at(-1)! || source.kind === 'numeric' ||
     BigInt(source.numerator) * timeBase.denominator !== end * BigInt(source.denominator) * timeBase.numerator * BigInt(fps))) sourceError();
   let low = 0, high = stamps.length - 1;
   while (low < high) {
@@ -209,16 +226,30 @@ function nativeOrdinal(index: VideoIndex, {source, frame}: {source: ContinuousSo
 function videoFrameTable(index: VideoIndex, plan: CompiledTimeMap): Int32Array {
   const projectFrames = unwrap(timeMapPlanFrames(plan));
   const window = unwrap(timeMapSourceWindowForOutput(plan));
-  if (projectFrames[0]! < window.startFrame || projectFrames.at(-1)! >= window.endFrame) mappingError();
+  const reverse = plan.direction === 'reverse';
+  const first = projectFrames[reverse ? projectFrames.length-1 : 0]!;
+  const last = projectFrames[reverse ? 0 : projectFrames.length-1]!;
+  if (first < window.startFrame || last >= window.endFrame) mappingError();
   if (index.framesPerSecond === fps) {
-    if (projectFrames.at(-1)! >= index.stamps.length) sourceError();
+    if (last >= index.stamps.length) sourceError();
     return projectFrames;
   }
   return projectFrames.map((frame, offset) => {
     const result = unwrap(timeMapTailInverse(plan, {numerator:String(plan.outputWindow.fromFrame + offset), denominator:'1'}, {tailInverse:'latest'}));
     // A freeze's persisted sourceFrame is an exact source-clock position.
     // Curve numeric uncertainty is retained through the actual PTS comparison.
-    return nativeOrdinal(index, {source: result.position, frame});
+    return nativeOrdinal(index, {source: result.position, frame}, reverse);
+  });
+}
+
+function reverseOrdinals(index: VideoIndex, table: Int32Array, reverse: SpeedExportReverseVideo): Int32Array {
+  const {firstSourceOrdinal,frameCount} = reverse;
+  if (!Number.isSafeInteger(firstSourceOrdinal) || firstSourceOrdinal < 0 || !Number.isSafeInteger(frameCount) ||
+      frameCount < 1 || firstSourceOrdinal + frameCount > index.stamps.length) reverseCoverageError();
+  const end = firstSourceOrdinal + frameCount;
+  return table.map(sourceOrdinal => {
+    if (sourceOrdinal < firstSourceOrdinal || sourceOrdinal >= end) reverseCoverageError();
+    return end - 1 - sourceOrdinal;
   });
 }
 
@@ -302,6 +333,10 @@ function floatFrameBytes(index: VideoIndex): number | null {
   return index.width * index.height * channels * 4;
 }
 
+function rawVideoInput(index: VideoIndex): string[] {
+  return ['-f','rawvideo','-pixel_format',index.pixelFormat,'-video_size',`${index.width}x${index.height}`,'-framerate',String(fps)];
+}
+
 function knownColourLabel(value: unknown): value is string {
   return typeof value==='string' && !['unknown','unspecified','N/A'].includes(value) && /^[a-z0-9_-]+$/ui.test(value);
 }
@@ -368,19 +403,39 @@ export async function assertSpeedExportVideoCapability({signal,beforeEffect}: Pi
 }
 
 export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions): Promise<SpeedExportVideoStage> {
-  const {source,timing,plan,file,scriptFile,reserve,writeOwnedFile,signal,beforeEffect,beforeStart,maxBytes=defaultProxyBytes} = options;
-  if (plan.direction!=='forward' || plan.root.sourceFps.fpsNumerator!==fps || plan.root.sourceFps.fpsDenominator!==1 ||
+  const {source,reverse,timing,plan,file,scriptFile,reserve,writeOwnedFile,signal,beforeEffect,beforeStart,maxBytes=defaultProxyBytes} = options;
+  if ((plan.direction==='reverse')!==Boolean(reverse) || plan.root.sourceFps.fpsNumerator!==fps || plan.root.sourceFps.fpsDenominator!==1 ||
       plan.root.outputFps.fpsNumerator!==fps || plan.root.outputFps.fpsDenominator!==1) mappingError();
   if (!Number.isSafeInteger(maxBytes) || maxBytes<1) budgetError();
   checkMediaEffect(beforeEffect,signal);
   const selector = streamSelector(source.videoStreamIndex);
   const index = await probeVideo(source.path,selector,{signal,beforeEffect});
-  const table = videoFrameTable(index,plan);
-  const fast = proveFastPath(index,plan,timing,table);
-  const filter = fast ? fastFilter(fast) : lookupFilter(table);
-  const script = `[0:${selector}]${filter},trim=end_frame=${plan.durationFrames},settb=1/${fps},setpts=N[out]`;
-  if (Buffer.byteLength(script)>maxScriptBytes) budgetError();
+  let table = videoFrameTable(index,plan);
   const frameBytes = floatFrameBytes(index);
+  let media = source.path, mediaSelector = selector;
+  let mediaArgs = ['-format_whitelist','mov,matroska','-noautorotate'];
+  if (reverse) {
+    table = reverseOrdinals(index,table,reverse);
+    media = reverse.file;
+    mediaSelector = 'v:0';
+    if (media===source.path || reverse.storage!==(frameBytes===null?'matroska':'raw')) reverseCoverageError();
+    if (frameBytes===null) {
+      const proxy = await probeVideo(media,mediaSelector,{signal,beforeEffect});
+      if (proxy.stamps.length!==reverse.frameCount) reverseCoverageError();
+      verifyIndexedProxy(index,proxy,reverse.frameCount);
+      mediaArgs = ['-format_whitelist','matroska','-noautorotate'];
+    } else {
+      const bytes = frameBytes*reverse.frameCount;
+      const info = await lstat(media);
+      checkMediaEffect(beforeEffect,signal);
+      if (!Number.isSafeInteger(bytes) || !info.isFile() || info.size!==bytes) reverseCoverageError();
+      mediaArgs = [...rawVideoInput(index),'-noautorotate'];
+    }
+  } else if (index.rotation!==0) mediaArgs.push(`-display_rotation:${selector}`,'0');
+  const fast = reverse ? null : proveFastPath(index,plan,timing,table);
+  const filter = fast ? fastFilter(fast) : lookupFilter(table);
+  const script = `[0:${mediaSelector}]${filter},trim=end_frame=${plan.durationFrames},settb=1/${fps},setpts=N[out]`;
+  if (Buffer.byteLength(script)>maxScriptBytes) budgetError();
   const rawBytes = frameBytes===null ? null : frameBytes*plan.durationFrames;
   if (frameBytes!==null && (frameBytes>maxRawFrameBytes || !Number.isSafeInteger(rawBytes) || rawBytes!>maxBytes)) budgetError();
   await writeOwnedFile(scriptFile,script);
@@ -389,9 +444,8 @@ export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions):
   checkMediaEffect(beforeStart,signal);
   const encoding = frameBytes===null ? losslessVideoArgs(index.pixelFormat)
     : ['-c:v','rawvideo','-threads:v','1','-pix_fmt','+'+index.pixelFormat,'-fps_mode','passthrough','-f','rawvideo'];
-  const clearRotation = index.rotation!==0 ? [`-display_rotation:${selector}`,'0'] : [];
   await run('ffmpeg',['-nostdin','-hide_banner','-v','error','-xerror','-y','-filter_complex_threads','1','-threads','1',
-    '-protocol_whitelist','file,pipe','-format_whitelist','mov,matroska','-noautorotate',...clearRotation,'-i',source.path,
+    '-protocol_whitelist','file,pipe',...mediaArgs,'-i',media,
     '-/filter_complex',scriptFile,'-map','[out]','-map_metadata','-1','-an','-sn','-dn',...colourParameters(index.stream),
     ...encoding,'-fs',String(maxBytes),file],
     {signal,beforeEffect,timeout:Math.max(120000,plan.durationFrames*300)});
@@ -402,7 +456,7 @@ export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions):
   if (rawBytes===null) verifyIndexedProxy(index,await probeVideo(file,'v:0',{signal,beforeEffect}),plan.durationFrames);
   else if (stat.size!==rawBytes) mappingError();
   checkMediaEffect(beforeEffect,signal);
-  const inputArgs = frameBytes===null ? [] : ['-f','rawvideo','-pixel_format',index.pixelFormat,'-video_size',`${index.width}x${index.height}`,'-framerate',String(fps)];
+  const inputArgs = frameBytes===null ? [] : rawVideoInput(index);
   if (index.rotation!==0) inputArgs.push('-display_rotation:v:0',String(index.rotation));
   return {file,inputArgs,stream:'v:0',frameCount:plan.durationFrames,filterPrefix:rawBytes===null?'':rawFilterPrefix(index.stream),
     bytes:stat.size,path:timing.profile==='timeline-freeze-v1'?'freeze':fast?'cfr':'lookup'};

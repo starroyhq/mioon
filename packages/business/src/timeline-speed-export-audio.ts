@@ -1,6 +1,6 @@
-import type {FileHandle} from 'node:fs/promises';
+import {lstat, type FileHandle} from 'node:fs/promises';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {SPEED_BUDGET_EXCEEDED, SPEED_CAPABILITY_UNAVAILABLE, SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_MESSAGES}
+import {SPEED_BUDGET_EXCEEDED, SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_MESSAGES}
   from '../../contracts/src/timeline-speed-export.ts';
 import type {ClipTiming} from '../../contracts/src/timeline-speed.ts';
 import {
@@ -21,12 +21,24 @@ const maximumTempoTailSamples = sampleRate / 50; // The SP-E0 20 ms extra-tail l
 const shortTempoContextSamples = 8_192;
 const demuxers = 'mov,matroska,mp3,wav';
 
+interface RawReverseAudio {
+  readonly sampleRate: number;
+  readonly channels: number;
+  readonly layout: string;
+}
+
+interface ReverseAudio {
+  readonly fromSample: number;
+  readonly toSample: number;
+  readonly raw?: RawReverseAudio;
+}
+
 export interface TimelineSpeedAudioSource {
   readonly file: string;
   readonly streamIndex: number | string;
   readonly videoStreamIndex?: number | string | null;
-  /** A reverse artifact contains this absolute source interval in reverse sample order. */
-  readonly reversed?: {readonly fromSample: number; readonly toSample: number};
+  /** Reverse artifacts describe absolute source bounds on the 48 kHz clock. */
+  readonly reversed?: ReverseAudio;
 }
 
 export interface TimelineSpeedAudioInput {
@@ -44,37 +56,32 @@ export interface TimelineSpeedAudioOptions {
 
 export type TimelineSpeedAudioMode = 'silence' | 'shift' | 'preserve';
 
+function pitchPreservingRate(timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>): TimeMapSpeedRate | undefined {
+  const speed = timing.basis.speed;
+  if (timing.pitchShift || speed.kind !== 'constant') return undefined;
+  const {numerator, denominator} = speed.rate;
+  return numerator >= 2 * denominator && numerator <= 4 * denominator ? speed.rate : undefined;
+}
+
 export function timelineSpeedAudioMode(timing: ClipTiming): TimelineSpeedAudioMode {
   if (timing.profile === 'timeline-freeze-v1') return 'silence';
-  const speed = timing.basis.speed;
-  const rates = speed.kind === 'constant' ? [speed.rate] : speed.points.map(point => point.rate);
-  return !timing.pitchShift && rates.every(({numerator, denominator}) =>
-    numerator >= 2 * denominator && numerator <= 4 * denominator) ? 'preserve' : 'shift';
+  return pitchPreservingRate(timing) ? 'preserve' : 'shift';
 }
 
 const budget = (): AppError =>
   new AppError(SPEED_BUDGET_EXCEEDED, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_BUDGET_EXCEEDED], 409);
-const unsupportedCurveTempo = (): AppError =>
-  new AppError(SPEED_CAPABILITY_UNAVAILABLE, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_CAPABILITY_UNAVAILABLE], 409,
-    {audioReason: 'CURVE_TEMPO_NOT_VERIFIED'});
 const unwrap = <T>(result: TimeMapResult<T>): T => {
   if (!result.ok) throw invalid(result.code);
   return result.value;
 };
 
-function constantRate(timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>): TimeMapSpeedRate | undefined {
+/** A flat curve can use the exact affine sample clock in the resampler. */
+function constantSourceRate(timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>): TimeMapSpeedRate | undefined {
   const speed = timing.basis.speed;
   if (speed.kind === 'constant') return speed.rate;
   const first = speed.points[0]?.rate;
   if (first && speed.points.every(({rate}) => rate.numerator === first.numerator && rate.denominator === first.denominator)) {
     return first;
-  }
-}
-
-/** Check only audible clips. Clip settings can still express this intent. */
-export function assertTimelineSpeedAudioSupported(timing: ClipTiming): void {
-  if (timing.profile === 'timeline-speed-v1' && timelineSpeedAudioMode(timing) === 'preserve' && !constantRate(timing)) {
-    throw unsupportedCurveTempo();
   }
 }
 
@@ -125,6 +132,12 @@ function resolveAudioStream(stream: string | number): string {
   throw invalid('AUDIO_STREAM');
 }
 
+function inputPcmArgs(source: TimelineSpeedAudioSource): string[] {
+  const raw = source.reversed?.raw;
+  return raw ? ['-format_whitelist', 'f32le', '-f', 'f32le', '-sample_rate', String(raw.sampleRate), '-ch_layout', raw.layout]
+    : ['-format_whitelist', demuxers];
+}
+
 const unverifiedSourceClock = (): AppError =>
   new AppError(SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_SOURCE_UNSUPPORTED], 409,
     {audioReason: 'SOURCE_CLOCK_UNVERIFIED'});
@@ -169,7 +182,11 @@ async function firstDecodedSample(source: TimelineSpeedAudioSource, selector: st
 
 async function sourceClockOrigin(source: TimelineSpeedAudioSource, options: TimelineSpeedAudioOptions): Promise<number> {
   // Reverse artifacts use the provider-verified PCM sample interval directly.
-  if (source.reversed) return 0;
+  if (source.reversed) {
+    const raw = source.reversed.raw;
+    if (raw) await verifyRawReverseAudio(source, source.reversed, raw, options);
+    return 0;
+  }
   const audio = resolveAudioStream(source.streamIndex);
   const picture = source.videoStreamIndex;
   if (picture === undefined || picture === null) return firstDecodedSample(source, audio, 'audio', options);
@@ -178,6 +195,27 @@ async function sourceClockOrigin(source: TimelineSpeedAudioSource, options: Time
   const origin = await firstDecodedSample(source, video, 'video', options);
   await firstDecodedSample(source, audio, 'audio', options);
   return origin;
+}
+
+async function verifyRawReverseAudio(source: TimelineSpeedAudioSource, clock: ReverseAudio, raw: RawReverseAudio,
+  options: TimelineSpeedAudioOptions): Promise<void> {
+  if (!Number.isSafeInteger(raw.sampleRate) || raw.sampleRate < 8_000 || raw.sampleRate > 192_000 ||
+      !Number.isSafeInteger(raw.channels) || raw.channels < 1 || raw.channels > 8 ||
+      typeof raw.layout !== 'string' || !/^[a-zA-Z0-9_ .()+-]{1,64}$/u.test(raw.layout)) throw unverifiedSourceClock();
+  const inputStart = BigInt(clock.fromSample) * BigInt(raw.sampleRate), inputEnd = BigInt(clock.toSample) * BigInt(raw.sampleRate);
+  const outputRate = BigInt(sampleRate);
+  if (inputStart % outputRate || inputEnd % outputRate) throw invalid('REVERSE_PCM_WINDOW');
+  const bytes = (inputEnd - inputStart) / outputRate * BigInt(4 * raw.channels);
+  checkMediaEffect(options.beforeEffect, options.signal);
+  const file = await lstat(source.file, {bigint: true});
+  checkMediaEffect(options.beforeEffect, options.signal);
+  if (!file.isFile() || file.size !== bytes) throw invalid('REVERSE_PCM_WINDOW');
+  const channelCount = await withProbePermit(options.signal, () => run('ffprobe', [
+    '-v', 'error', '-protocol_whitelist', 'file,pipe', ...inputPcmArgs(source), '-select_streams', resolveAudioStream(source.streamIndex),
+    '-show_entries', 'stream=channels', '-of', 'csv=p=0', source.file,
+  ], {signal: options.signal, beforeSpawn: options.beforeEffect, beforeEffect: options.beforeEffect,
+    maxStdoutBytes: 4096, timeout: 15_000}));
+  if (channelCount.trim() !== String(raw.channels)) throw unverifiedSourceClock();
 }
 
 type PcmConsumer = (chunk: Buffer) => Promise<void>;
@@ -198,7 +236,7 @@ async function readPcm(source: TimelineSpeedAudioSource, origin: number, window:
     : clip;
   const {stdoutBytes} = await runStreamingWithBackpressure('ffmpeg', [
     '-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-threads', '1', '-copyts',
-    '-protocol_whitelist', 'file,pipe', '-format_whitelist', demuxers,
+    '-protocol_whitelist', 'file,pipe', ...inputPcmArgs(source),
     '-reinit_filter', '0', '-i', source.file, '-map', `0:${stream}`, '-vn', '-sn', '-dn', '-filter_threads', '1',
     '-af', filters, '-c:a', 'pcm_f32le', '-ar', '48000', '-ac', '2', '-f', 'f32le', 'pipe:1',
   ], {signal: options.signal, beforeSpawn: options.beforeEffect, beforeEffect: options.beforeEffect,
@@ -234,19 +272,50 @@ function pcmReadWindow(window: SampleWindow, localPosition: (sample: number) => 
   return {start, end: Math.max(start + 1, Math.min(window.end, Math.floor(last) + 3))};
 }
 
+function pitchShiftClock(plan: CompiledTimeMap, timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>,
+  motionSamples: number, from: number, to: number, reverseEnd?: number) {
+  const speed = timing.basis.speed;
+  const position = createSpeedAudioSourceClock(plan, motionSamples, constantSourceRate(timing),
+    speed.kind === 'curve' ? speed.points : []);
+  const localPosition = reverseEnd === undefined ? position : (sample: number) => reverseEnd - position(sample);
+  const range = plan.root.sourceRange;
+  const start = sampleBoundary(range.start), end = sampleBoundary(range.end);
+  if (start >= end) throw invalid('EMPTY_SOURCE_PCM');
+  const bounds = reverseEnd === undefined ? {start, end} : {start: reverseEnd - end, end: reverseEnd - start};
+  return {window: pcmReadWindow(bounds, localPosition, from, to), localPosition};
+}
+
+function tempoSourceWindow(plan: CompiledTimeMap, timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>,
+  motionSamples: number): SampleWindow {
+  const complete = unwrap(restoreTimeMap(plan.root, {...timing.view,
+    outputWindow: {fromFrame: 0, toFrame: Math.ceil(motionSamples / samplesPerFrame)}}));
+  const {start, end} = unwrap(timeMapSourceRangeForEdit(complete));
+  return {start: sampleBoundary(start), end: sampleBoundary(end)};
+}
+
+/** On the original 48 kHz clock, including interpolation or WSOLA history. */
+export function timelineReverseAudioClock(plan: CompiledTimeMap, timing: ClipTiming):
+  {readonly fromSample: number; readonly toSample: number} | null {
+  if (timing.profile !== 'timeline-speed-v1' || plan.direction !== 'reverse') return null;
+  const motionSamples = motionLength(plan, timing);
+  const from = plan.outputWindow.fromFrame * samplesPerFrame;
+  const to = Math.min(from + plan.durationFrames * samplesPerFrame, motionSamples);
+  if (to <= from) return null;
+  if (pitchPreservingRate(timing)) {
+    const source = tempoSourceWindow(plan, timing, motionSamples);
+    return {fromSample: source.start, toSample: source.end};
+  }
+  const end = sampleBoundary(plan.root.sourceRange.end);
+  const {window} = pitchShiftClock(plan, timing, motionSamples, from, to, end);
+  return {fromSample: end - window.end, toSample: end - window.start};
+}
+
 async function pitchShift(input: TimelineSpeedAudioInput, timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>,
   options: TimelineSpeedAudioOptions, handle: FileHandle, fence: Fence,
-  motionSamples: number, from: number, to: number, rate: TimeMapSpeedRate | undefined, origin: number): Promise<void> {
+  motionSamples: number, from: number, to: number, origin: number): Promise<void> {
   if (to <= from) return;
   const reversed = input.source.reversed;
-  const speed = timing.basis.speed;
-  const sourcePosition = createSpeedAudioSourceClock(input.plan, motionSamples, rate, speed.kind === 'curve' ? speed.points : []);
-  const localPosition = reversed ? (sample: number) => reversed.toSample - sourcePosition(sample) : sourcePosition;
-  const range = input.plan.root.sourceRange;
-  const absolute = {start: sampleBoundary(range.start), end: sampleBoundary(range.end)};
-  if (absolute.start >= absolute.end) throw invalid('EMPTY_SOURCE_PCM');
-  const bounds = reversed ? {start: reversed.toSample - absolute.end, end: reversed.toSample - absolute.start} : absolute;
-  const {start, end} = pcmReadWindow(bounds, localPosition, from, to);
+  const {window: {start, end}, localPosition} = pitchShiftClock(input.plan, timing, motionSamples, from, to, reversed?.toSample);
   if (reversed && (start < 0 || end > reversed.toSample - reversed.fromSample)) throw invalid('REVERSE_PCM_WINDOW');
   const clamp = (index: number): number => Math.max(start, Math.min(end - 1, index));
 
@@ -304,10 +373,7 @@ async function tempo(input: TimelineSpeedAudioInput, timing: Extract<ClipTiming,
   if (to <= from) return 0;
   // All windows with this view start in the same WSOLA state. Trim after the
   // one continuous chain, retaining its preceding context for later windows.
-  const complete = unwrap(restoreTimeMap(input.plan.root, {...timing.view,
-    outputWindow: {fromFrame: 0, toFrame: Math.ceil(motionSamples / samplesPerFrame)}}));
-  const sourceRange = unwrap(timeMapSourceRangeForEdit(complete));
-  const source = localWindow(input.source, {start: sampleBoundary(sourceRange.start), end: sampleBoundary(sourceRange.end)});
+  const source = localWindow(input.source, tempoSourceWindow(input.plan, timing, motionSamples));
   if (source.start >= source.end) throw invalid('EMPTY_SOURCE_PCM');
   const step = rate.numerator / rate.denominator;
   const chain = step === 2 ? 'atempo=2' : `atempo=2,atempo=${step / 2}`;
@@ -336,12 +402,10 @@ export async function prepareTimelineSpeedAudio(input: TimelineSpeedAudioInput, 
   const fence = (): void => checkMediaEffect(options.beforeEffect, options.signal);
   fence();
   if (timing.profile === 'timeline-freeze-v1') return null;
-  assertTimelineSpeedAudioSupported(timing);
   if ((plan.direction === 'reverse') !== Boolean(source.reversed)) throw invalid('REVERSE_PCM_WINDOW');
   if (source.reversed && (!Number.isSafeInteger(source.reversed.fromSample) || !Number.isSafeInteger(source.reversed.toSample) ||
       source.reversed.fromSample < 0 || source.reversed.toSample <= source.reversed.fromSample)) throw invalid('REVERSE_PCM_WINDOW');
-  const mode = timelineSpeedAudioMode(timing);
-  const rate = constantRate(timing);
+  const tempoRate = pitchPreservingRate(timing);
   const samples = plan.durationFrames * samplesPerFrame;
   if (samples <= 0 || !Number.isSafeInteger(samples) || samples > maximumPipeSamples) throw budget();
   const motionSamples = motionLength(plan, timing);
@@ -356,8 +420,8 @@ export async function prepareTimelineSpeedAudio(input: TimelineSpeedAudioInput, 
     handle = await options.openOwnedFile(destination);
     fence();
     let emitted = to - from;
-    if (mode === 'preserve' && rate) emitted = await tempo(input, timing, options, handle, fence, motionSamples, from, to, rate, origin);
-    else await pitchShift(input, timing, options, handle, fence, motionSamples, from, to, rate, origin);
+    if (tempoRate) emitted = await tempo(input, timing, options, handle, fence, motionSamples, from, to, tempoRate, origin);
+    else await pitchShift(input, timing, options, handle, fence, motionSamples, from, to, origin);
     const silence = Buffer.alloc(outputBatchSamples * bytesPerSample);
     for (let pending = samples - emitted; pending > 0;) {
       const count = Math.min(pending, outputBatchSamples);

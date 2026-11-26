@@ -4,6 +4,7 @@ import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
 import {createFormat5ExportTicket,format5ExportBlockersFromTimeline,recheckFormat5ExportTicket} from './format5-timeline-export.ts';
 import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
 import {assertTimelineSpeedCapability,timelineSpeedExportLayout,type SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
+import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
 import {isTimelineSpeedExportReason,SPEED_PROCESSING_NOT_READY,TIMELINE_SPEED_EXPORT_MESSAGES} from '../../contracts/src/timeline-speed-export.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
@@ -60,7 +61,10 @@ export function timelineExportCapabilityError(code: string): AppError{return new
 
 // Own every underlying check, including a non-cooperative injected helper. No
 // asynchronous media work ever runs while an admission SQLite transaction is open.
-export function createTimelineExportAdmissionServices(store: ExportAdmissionStore,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash}: {signal?: AbortSignal;inspect?: (delivery: unknown,options: AdmissionInspectOptions)=>Promise<InspectResult|null>;hash?: (value: unknown)=>string}={}){
+export function createTimelineExportAdmissionServices(store: ExportAdmissionStore,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash,reverseProxy}: {
+ signal?: AbortSignal;inspect?: (delivery: unknown,options: AdmissionInspectOptions)=>Promise<InspectResult|null>;
+ hash?: (value: unknown)=>string;reverseProxy?: TimelineReverseProxyPort;
+}={}){
  assertProjectStore(store);
  const active=new Set<ActiveCheck>();let stopped=false,shutdownFailure: unknown;
  async function inspectOwned(delivery: unknown,{signal:callSignal}: AdmissionOptions={},speed?: SpeedAdmissionSnapshot): Promise<unknown>{
@@ -116,7 +120,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   if(ticket.blockers.length){report.status='blocked';report.issues=[issue(ticket.blockers[0]!.code as string)];return report;}
   let result: InspectResult, speedIssue: TimelineExportCapabilityReport['issues'][number]|undefined;
   try{
-   const snapshot=format6&&timeline?.clips.some(clip=>clip.timing)?freezeFormat5RenderSnapshot(store as never,{...input,purpose:'export'}) as SpeedAdmissionSnapshot:undefined;
+   const snapshot=format6&&timeline?.clips.some(clip=>clip.timing)?freezeFormat5RenderSnapshot(store as never,{...input,purpose:'export'},reverseProxy) as SpeedAdmissionSnapshot:undefined;
    result=await inspectOwned(report.delivery,options,snapshot) as InspectResult;
   }catch(error){
    const code=(error as {code?:unknown})?.code;

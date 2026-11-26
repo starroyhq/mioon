@@ -12,6 +12,7 @@ import type {CompiledTimeMap, TimeMapBasis, TimeMapResult, TimeMapSpeed} from '.
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {assertSpeedExportVideoCapability, prepareSpeedExportVideo} from '../packages/business/src/timeline-speed-export-video.ts';
+import type {SpeedExportReverseVideo} from '../packages/business/src/timeline-speed-export-video.ts';
 
 const clock = {fpsNumerator:30,fpsDenominator:1};
 const frameBytes = 16 * 16;
@@ -19,12 +20,12 @@ function unwrap<T>(value: TimeMapResult<T>): T {
   assert.ok(value.ok, JSON.stringify(value));
   return value.value;
 }
-function motion(speed: TimeMapSpeed, sourceFrames: number) {
+function motion(speed: TimeMapSpeed, sourceFrames: number, direction: 'forward'|'reverse'='forward') {
   const basis: TimeMapBasis = {profile:'timeline-speed-v1',sourceFps:clock,outputFps:clock,
     sourceRange:{start:{kind:'rational',numerator:'0',denominator:'1'},
       end:{kind:'rational',numerator:String(sourceFrames),denominator:'1'}},speed};
-  const plan=initialTimeMap(unwrap(compileTimeMap(basis)));
-  const timing: ClipTiming = {profile:'timeline-speed-v1',basis,view:{direction:'forward',loTime:{anchor:'start',offsetOutputFrames:0},
+  const plan=initialTimeMap(unwrap(compileTimeMap(basis)),direction);
+  const timing: ClipTiming = {profile:'timeline-speed-v1',basis,view:{direction,loTime:{anchor:'start',offsetOutputFrames:0},
     hiTime:{anchor:'end',offsetOutputFrames:0}},outputWindow:plan.outputWindow,interpolation:'off',pitchShift:false};
   return {timing,plan};
 }
@@ -34,13 +35,22 @@ async function fixture(t:test.TestContext) {
   const root=await mkdtemp(path.join(realpathSync(tmpdir()),'speed-export-video-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
   let count=0;
-  return {root,async stage(source:string,timing:ClipTiming,plan:CompiledTimeMap,maxBytes?:number) {
+  return {root,async stage(source:string,timing:ClipTiming,plan:CompiledTimeMap,maxBytes?:number,reverse?:SpeedExportReverseVideo) {
     const slot=String(count++);
-    return prepareSpeedExportVideo({source:{path:source,videoStreamIndex:0},timing,plan,
+    return prepareSpeedExportVideo({source:{path:source,videoStreamIndex:0},reverse,timing,plan,
       file:path.join(root,slot+'.media'),scriptFile:path.join(root,slot+'.filter'),maxBytes,
       reserve:file=>closeSync(openSync(file,'wx',0o600)),
       writeOwnedFile:(file,body)=>writeFile(file,body,{flag:'wx',mode:0o600})});
   }};
+}
+
+async function reverseFixture(root:string,source:string,firstSourceOrdinal:number,frameCount:number): Promise<SpeedExportReverseVideo> {
+  const file=path.join(root,'reverse.mkv');
+  const end=firstSourceOrdinal+frameCount;
+  await run('ffmpeg',['-nostdin','-hide_banner','-v','error','-n','-i',source,'-an','-filter_threads','1',
+    '-vf',`trim=start_frame=${firstSourceOrdinal}:end_frame=${end},reverse,settb=1/30,setpts=N`,
+    '-c:v','ffv1','-threads:v','1','-pix_fmt','+gray','-fps_mode','passthrough',file]);
+  return {file,firstSourceOrdinal,frameCount,storage:'matroska'};
 }
 
 async function sourceFixture(root:string,frames:number,{variable=false,nativeFps=30}: {variable?:boolean;nativeFps?:number}={}): Promise<string> {
@@ -116,6 +126,45 @@ test('VFR maps the shared continuous source clock into native frame PTS', async 
   assert.deepEqual(await readOrdinals(staged.file),truth);
 });
 
+test('synthetic reverse FFV1 proxies supply the original shared ordinals for each preset and a partial split',async t=>{
+  const f=await fixture(t),source=await sourceFixture(f.root,150),proxy=await reverseFixture(f.root,source,0,150);
+  for (const {id} of TIMELINE_SPEED_PRESETS) {
+    const {timing,plan}=motion(unwrap(instantiateSpeedPreset(id,0,150)),150,'reverse');
+    const staged=await f.stage(source,timing,plan,undefined,proxy);
+    assert.equal(staged.path,'lookup');
+    assert.deepEqual(await readOrdinals(staged.file),Array.from(unwrap(timeMapPlanFrames(plan))),id);
+  }
+  const {timing,plan}=motion(constant(3,2),150,'reverse');
+  const partial=unwrap(splitTimeMap(plan,17)).left;
+  const expected=Array.from(unwrap(timeMapPlanFrames(partial)));
+  const partialDirectory=await mkdtemp(path.join(f.root,'partial-'));
+  const first=expected.at(-1)!;
+  const partialProxy=await reverseFixture(partialDirectory,source,first,150-first);
+  assert.deepEqual(await readOrdinals((await f.stage(source,timing,partial,undefined,partialProxy)).file),expected);
+  await assert.rejects(f.stage(source,timing,plan,undefined,partialProxy),{
+    code:'SPEED_MAPPING_INVALID',details:{reason:'REVERSE_PROXY_COVERAGE'},
+  });
+  const {timing:shortTiming,plan:shortPlan}=motion(constant(3,2),30,'reverse');
+  await assert.rejects(f.stage(source,shortTiming,shortPlan,undefined,{...proxy,frameCount:30}),{
+    code:'SPEED_MAPPING_INVALID',details:{reason:'REVERSE_PROXY_COVERAGE'},
+  });
+});
+
+test('synthetic reverse VFR selects the original frame strictly before each backward boundary',async t=>{
+  const f=await fixture(t),source=await sourceFixture(f.root,60,{variable:true}),proxy=await reverseFixture(f.root,source,0,60);
+  // This VFR MOV gives its final frame only one native tick. End the clip
+  // inside the genuine media duration, exactly at that final frame's PTS.
+  const {timing,plan}=motion(constant(3,2),59,'reverse');
+  const pts=Array.from({length:60},(_,frame)=>frame*10+(frame===59?0:frame%3===1?-2:frame%3===2?3:0));
+  const truth=Array.from({length:plan.durationFrames},(_,frame)=>{
+    const source=unwrap(timeMapSourceAtOutputFrame(plan,frame)).source;
+    assert.equal(source.kind,'exact');
+    return Math.max(0,pts.findLastIndex(pts=>BigInt(pts)*BigInt(source.denominator)<BigInt(source.numerator)*10n));
+  });
+  const staged=await f.stage(source,timing,plan,undefined,proxy);
+  assert.deepEqual(await readOrdinals(staged.file),truth);
+});
+
 test('24/25/60 fps use the actual source clock on the 30fps project map',async t=>{
   const f=await fixture(t);
   for (const nativeFps of [24,25,60]) {
@@ -127,7 +176,7 @@ test('24/25/60 fps use the actual source clock on the 30fps project map',async t
   }
 });
 
-test('budget failure and unsupported reverse do not yield a valid video stage', async t=>{
+test('budget failure and missing reverse media do not yield a valid video stage', async t=>{
   const f=await fixture(t),source=await sourceFixture(f.root,30);
   const {timing,plan}=motion(constant(2,1),30);
   await assert.rejects(f.stage(source,timing,plan,32),{code:'SPEED_BUDGET_EXCEEDED'});
@@ -159,6 +208,13 @@ test('32-bit float video retimes native samples byte-for-byte in a raw stream', 
   assert.deepEqual(result.inputArgs,['-f','rawvideo','-pixel_format',format,'-video_size','32x64','-framerate','30']);
   assert.equal(result.bytes,plan.durationFrames*frame);
   assert.deepEqual(await readFile(result.file),Buffer.concat(Array.from(unwrap(timeMapPlanFrames(plan)),
+    index=>original.subarray(index*frame,(index+1)*frame))));
+  const {timing:reverseTiming,plan:reversePlan}=motion(constant(3,2),8,'reverse');
+  const raw=path.join(f.root,'reverse.raw');
+  await writeFile(raw,Buffer.concat(Array.from({length:8},(_,at)=>original.subarray((7-at)*frame,(8-at)*frame))));
+  const reverse=await f.stage(source,reverseTiming,reversePlan,undefined,{file:raw,firstSourceOrdinal:0,frameCount:8,storage:'raw'});
+  assert.deepEqual(reverse.inputArgs,result.inputArgs);
+  assert.deepEqual(await readFile(reverse.file),Buffer.concat(Array.from(unwrap(timeMapPlanFrames(reversePlan)),
     index=>original.subarray(index*frame,(index+1)*frame))));
 });
 

@@ -158,7 +158,9 @@ test('format 6 reports reverse processing and interpolation refusals before any 
   const {createServices} = await import('../packages/business/src/services.ts');
   const store = fixture(t, timing);
   const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
-  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}), exportOptions: {
+  const taskId = id(91);
+  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),
+    reverseProxy: {lookup: () => ({taskId}), acquire: async () => assert.fail('unready cache was opened')}, exportOptions: {
     inspect: async () => assert.fail('encoder capability check entered'),
   }});
   try {
@@ -167,19 +169,23 @@ test('format 6 reports reverse processing and interpolation refusals before any 
     const settings = {profileId: 'mp4_h264_v1', resolution: 'native', rateControl: {mode: 'crf', quality: 'standard'}};
     const exportInput = {projectId, expectedRevision, exportSettings: settings};
     const before = store.list('exports');
-    const capabilities = await services.call('timeline.export.capabilities', exportInput) as {status: string; issues: {code: string}[]};
+    const capabilities = await services.call('timeline.export.capabilities', exportInput) as {
+      status: string; issues: {code: string; taskId?: string}[]};
     assert.equal(capabilities.status, 'blocked');
     assert.equal(capabilities.issues[0]?.code, code);
     const preflight = await services.call('timeline.export.preflight', exportInput) as {
-      status: string; issues: {code: string; clipId?: string}[]; checks: {bytesHashed: number};
+      status: string; issues: {code: string; clipId?: string; taskId?: string}[]; checks: {bytesHashed: number};
     };
     assert.equal(preflight.status, 'blocked');
     assert.equal(preflight.issues[0]?.code, code);
     assert.equal(preflight.issues[0]?.clipId, clipA);
+    const expectedTaskId = code === 'SPEED_PROCESSING_NOT_READY' ? taskId : undefined;
+    assert.equal(capabilities.issues[0]?.taskId, expectedTaskId);
+    assert.equal(preflight.issues[0]?.taskId, expectedTaskId);
     assert.equal(preflight.checks.bytesHashed, 0);
     await assert.rejects(async () => services.call('timeline.render', {
       projectId, purpose: 'export', expectedRevision, requestId: randomUUID(),
-    }), {code});
+    }), {code, details: {clipId: clipA, ...(expectedTaskId ? {taskId: expectedTaskId} : {})}});
     const failure = {code: 'SPEED_RENDER_NOT_READY'};
     await assert.rejects(async () => services.call('timeline.render', {
       projectId, purpose: 'preview', expectedRevision, requestId: randomUUID(),
@@ -199,22 +205,39 @@ test('format 6 reports reverse processing and interpolation refusals before any 
 });
 
 test('format 6 preflight freezes the same timing and digest accepted and rendered by the worker', async t => {
+ for (const direction of ['forward', 'reverse'] as const) await t.test(direction, async t => {
   const {createServices} = await import('../packages/business/src/services.ts');
   const {startWorker} = await import('../packages/business/src/jobs.ts');
   const {run} = await import('../packages/business/src/media.ts');
   const {timelineSnapshotHash} = await import('../packages/business/src/timeline-preflight.ts');
   const {isTimelineRenderRecord} = await import('../packages/contracts/src/timeline-acknowledgement.ts');
-  const timing = {...unitTiming, basis: {...unitTiming.basis,
+  const timing = {...unitTiming, view: {...unitTiming.view, direction}, basis: {...unitTiming.basis,
     speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}} as const}, outputWindow: {fromFrame: 0, toFrame: 30}};
   const temp = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-speed-admission-'));
   t.after(() => rmSync(temp, {recursive: true, force: true}));
   const source = path.join(temp, 'synthetic.mp4');
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=30:duration=2',
     '-c:v', 'libx264', '-threads', '1', '-an', source]);
+  const file = path.join(temp, 'synthetic-reverse.mkv');
+  const proof = {taskId: id(91), sha256: sha('f')};
+  let acquired = 0, released = 0;
+  if (direction === 'reverse') {
+    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', source, '-vf', 'reverse',
+      '-c:v', 'ffv1', '-threads', '1', '-an', file]);
+  }
   const store = fixture(t, timing, readFileSync(source));
   const projectId = store.projectId;
   const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
-  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {})});
+  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}),
+    ...(direction === 'reverse' ? {reverseProxy: {
+      lookup: () => ({taskId: proof.taskId, readySha256: proof.sha256}),
+      acquire: async (_request, frozen) => {
+        assert.deepEqual(frozen, proof);
+        acquired++;
+        return {proof, video: {file, firstSourceOrdinal: 0, frameCount: 60, storage: 'matroska'},
+          verify: () => acquired > released, release: () => {released++;}};
+      },
+    }} : {})});
   try {
     const input = {projectId, expectedRevision: 1, exportRange: {startFrame: 9, endFrame: 21}};
     const report = await services.call('timeline.export.preflight', input) as {status: string; issues: unknown[];
@@ -226,6 +249,7 @@ test('format 6 preflight freezes the same timing and digest accepted and rendere
     assert.equal(isTimelineRenderRecord(accepted, request), true);
     const saved = store.get('exports', accepted.id) as {snapshot: unknown};
     assert.equal(timelineSnapshotHash(saved.snapshot), report.snapshotHash);
+    assert.ok(!JSON.stringify(saved.snapshot).includes(file));
     assert.deepEqual(await services.call('timeline.render', request), accepted);
     await assert.rejects(async () => services.call('timeline.render', {...request, requestId: randomUUID(),
       preflightSnapshotHash: '0'.repeat(64)}), {code: 'PREFLIGHT_STALE'});
@@ -238,11 +262,14 @@ test('format 6 preflight freezes the same timing and digest accepted and rendere
       const output = store.get('assets', completed.assetId) as {mimeType: string; duration: number};
       assert.equal(output.mimeType, 'video/mp4');
       assert.equal(output.duration, 12 / 30);
+      assert.equal(acquired, direction === 'reverse' ? 1 : 0);
+      assert.equal(released, acquired);
     } finally {await worker.stop();}
   } finally {
     await services.drain();
     library.close();
   }
+ });
 });
 
 test('a placeholder in the selected range blocks the frozen export ticket', t => {
