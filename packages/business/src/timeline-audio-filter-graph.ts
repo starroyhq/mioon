@@ -36,11 +36,12 @@ export function timelineAudioSilenceFilter(samples: number): string {
 }
 
 export function timelineClipAudioFilter(clip: TimelineAudioFilterClip, begin: number,
-  samples: number, input: number, streamIndex?: number): string {
+  samples: number, input: number, streamIndex?: number, sourceOffsetSamples?: number): string {
   const fields = Object.hasOwn(clip, 'volumeEnvelope') ? volumeEnvelopeField(clip) : {};
   const envelope = fields.volumeEnvelope == null ? '' :
     `aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aformat=sample_fmts=dblp:sample_rates=48000:channel_layouts=stereo,${compileVolumeEnvelopeFilterCandidate(clip, (begin-clip.startFrame)*1600, samples)},aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,`;
-  return `[${input}:${streamIndex ?? 'a:0'}]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip, begin)}${envelope}asetpts=N/SR/TB[a${input}]`;
+  const sourceTrim = sourceOffsetSamples === undefined ? '' : `atrim=start_sample=${sourceOffsetSamples},`;
+  return `[${input}:${streamIndex ?? 'a:0'}]${sourceTrim}asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clip.gain},apad,atrim=end_sample=${samples},${timelineAudioFadeFilters(clip, begin)}${envelope}asetpts=N/SR/TB[a${input}]`;
 }
 
 export function timelineMixedAudioFilter(sounds: readonly string[], samples: number,

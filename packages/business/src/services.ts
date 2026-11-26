@@ -82,6 +82,7 @@ import type {Format5LegacyGenerationService} from './format5-reference-inputs.ts
 import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
+import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
 import {createExportLoudnessServices} from './export-loudness.ts';
@@ -155,7 +156,9 @@ export interface CreateServicesOptions {
  imageOptions?: Parameters<typeof createImageServices>[1];
  frameOptions?: Parameters<typeof createFrameServices>[1];
  sceneOptions?: Parameters<typeof createSceneServices>[1];
- exportOptions?: Parameters<typeof createTimelineExportAdmissionServices>[1];
+ exportOptions?: Omit<NonNullable<Parameters<typeof createTimelineExportAdmissionServices>[1]>, 'reverseProxy'>;
+ /** Project host's SP-P cache port. Never populated from an export request. */
+ reverseProxy?: TimelineReverseProxyPort;
  agentAuthorizations?: AgentAuthorizations | null;
  readRecentOpened?: ()=>Readonly<Record<string,string>>;
  assertMutationAllowed?: ()=>void;
@@ -190,6 +193,7 @@ export interface OrdinaryServices {
  createGenerationJobInside: (input: GenerationSubmitInput)=>unknown;
  assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
+ reverseProxy?: TimelineReverseProxyPort;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
  resolveGenerationProvider?: (job: JobRecord)=>Provider|undefined;
@@ -264,7 +268,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,reverseProxy,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
  assertProjectStore(inputStore);
  const store = inputStore;
  const backgroundTasks=createProjectBackgroundState(store);
@@ -671,7 +675,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  };
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
- const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
+ const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash,reverseProxy});
  // The UI sequence service intentionally has no generation-submit port: the
   // timeline placement only adds the placeholder and opens the panel; the panel's
   // Generate button goes through the reviewed board generation path. Mio's
@@ -697,9 +701,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     }
   };
  const sequenceInspection=createSequenceInspectionService(store);
- const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
+ const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,reverseProxy,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
- const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
+ const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin,reverseProxy});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
   ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
@@ -1240,5 +1244,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,...(reverseProxy?{reverseProxy}:{}),saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }
