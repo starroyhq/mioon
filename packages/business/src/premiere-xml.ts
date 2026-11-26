@@ -158,12 +158,7 @@ function links(clip: Format5Clip): string {
   return tag('link', field('linkclipref', clipId(clip, 'video'))) + tag('link', field('linkclipref', clipId(clip, 'audio')));
 }
 
-export function serializePremiereXml({timeline, projectName, assets}: {
-  readonly timeline: Format5Timeline;
-  readonly projectName: string;
-  readonly assets: ReadonlyMap<string, FcpXmlAsset>;
-}): string {
-  if (timeline.fps !== fps) throw new RangeError('Premiere export requires the Format 5 30 fps timebase');
+function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<string, FcpXmlAsset>) {
   const tracks = [...timeline.tracks].sort((left, right) => left.orderIndex - right.orderIndex);
   if (!tracks.some(track => track.id === timeline.mainTrack.trackId && track.kind === 'video')) {
     throw new RangeError('Premiere export requires a primary video track');
@@ -217,6 +212,20 @@ export function serializePremiereXml({timeline, projectName, assets}: {
       exits.set(previous.clip.id, cut);
     }
   }
+  return {trackClips, cuts, exits};
+}
+
+export function premiereTransitionCuts(timeline: Format5Timeline, assets: ReadonlyMap<string, FcpXmlAsset>) {
+  return premiereTimelineLayout(timeline, assets).cuts;
+}
+
+export function serializePremiereXml({timeline, projectName, assets}: {
+  readonly timeline: Format5Timeline;
+  readonly projectName: string;
+  readonly assets: ReadonlyMap<string, FcpXmlAsset>;
+}): string {
+  if (timeline.fps !== fps) throw new RangeError('Premiere export requires the Format 5 30 fps timebase');
+  const {trackClips, cuts, exits} = premiereTimelineLayout(timeline, assets);
   function sourceStart(item: TrackClip): number {
     const before = cuts.get(item.clip.id)?.before ?? 0;
     return item.file.asset.isStill ? Math.max(before, item.clip.sourceInFrame) : item.clip.sourceInFrame;

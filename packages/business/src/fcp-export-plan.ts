@@ -1,13 +1,14 @@
 import {lstatSync, realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {FcpClipRef, FcpExportError, FcpExportPreviewOutput, FcpItemValues} from '../../contracts/src/fcp-export.ts';
 import type {PremiereExportPreviewOutput, PremiereItemCode} from '../../contracts/src/premiere-export.ts';
 import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
-import {isClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
-import type {FcpXmlAsset} from './fcp-xml.ts';
+import {fcpxmlTransitions, type FcpXmlAsset} from './fcp-xml.ts';
+import {premiereTransitionCuts} from './premiere-xml.ts';
 import type {PreparedAssetReference, ProjectAssetReferenceServices} from './project-asset-references.ts';
 
 type Row = Record<string, unknown>;
@@ -127,31 +128,8 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     const group = uses.get(clip.assetId) ?? [];
     group.push(clip);
     uses.set(clip.assetId, group);
-    const track = tracks.get(clip.trackId);
     const colour = clip.colour as {look?: {enabled?: boolean; strength?: number}} | null;
     if (colour?.look?.enabled && colour.look.strength !== 0) affected(missing, 'LUT', clip);
-    if (clip.anchor || clip.trackId !== timeline.mainTrack.trackId) affected(approximate, 'ANCHOR', clip);
-    if (clip.volumeEnvelope && volumeEnvelopeField(clip).volumeEnvelope != null) affected(approximate, 'VOLUME_KEYFRAMES', clip);
-    if (clip.fadeInFrames || clip.fadeOutFrames) affected(approximate, 'FADES', clip);
-    if (clip.muted || track?.muted) affected(approximate, 'MUTE', clip);
-    if (clip.soundOnly) affected(approximate, 'SEPARATE_SOUND', clip);
-    if (clip.transform || clip.layout && (clip.rect.x || clip.rect.y || clip.rect.width !== width || clip.rect.height !== height)) {
-      affected(approximate, 'TRANSFORM', clip);
-    }
-    const transition = clip.transitionIn;
-    if (transition && isClipTransition(transition)) {
-      const names = transitions[transition.kind];
-      const to = format === 'premiere' ? names.premiere : 'fcpxml' in names ? names.fcpxml : undefined;
-      if (to) affected(approximate, 'TRANSITION', clip, {from: names.from, to});
-    }
-  }
-  for (const cue of timeline.subtitles?.cues ?? []) {
-    const label = {id: cue.id, name: cue.text, trackLabel: '字幕'};
-    if (format === 'premiere') subtitles.push(label);
-    else {
-      item(approximate, 'SUBTITLE_STYLE', label);
-      item(approximate, 'ANCHOR', label);
-    }
   }
 
   const assets = new Map<string, PlannedAsset>();
@@ -219,6 +197,35 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     assets.set(id, {metadata, source, bundleRelativePath});
   }
 
+  const cuts = format === 'fcpxml' ? fcpxmlTransitions(timeline, assets)
+    : premiereTransitionCuts(timeline, editorExportXmlAssets(assets, destination));
+  for (const clip of clips) {
+    if (clip.sourceState !== 'ready' || !clip.assetId || !assets.has(clip.assetId)) continue;
+    const track = tracks.get(clip.trackId);
+    if (clip.anchor) affected(approximate, 'ANCHOR', clip);
+    if (clip.volumeEnvelope && volumeEnvelopeField(clip).volumeEnvelope != null) affected(approximate, 'VOLUME_KEYFRAMES', clip);
+    if (clip.fadeInFrames || clip.fadeOutFrames) affected(approximate, 'FADES', clip);
+    if (clip.muted || track?.muted) affected(approximate, 'MUTE', clip);
+    if (clip.soundOnly) affected(approximate, 'SEPARATE_SOUND', clip);
+    if (clip.transform || clip.layout && (clip.rect.x || clip.rect.y || clip.rect.width !== width || clip.rect.height !== height)) {
+      affected(approximate, 'TRANSFORM', clip);
+    }
+    const transition = cuts.get(clip.id);
+    if (transition) {
+      const names = transitions[transition.kind];
+      const to = format === 'premiere' ? names.premiere : 'fcpxml' in names ? names.fcpxml : undefined;
+      if (to) affected(approximate, 'TRANSITION', clip, {from: names.from, to});
+    }
+  }
+  for (const cue of timeline.subtitles?.cues ?? []) {
+    const label = {id: cue.id, name: cue.text, trackLabel: '字幕'};
+    if (format === 'premiere') subtitles.push(label);
+    else {
+      item(approximate, 'SUBTITLE_STYLE', label);
+      if (cue.anchor) item(approximate, 'ANCHOR', label);
+    }
+  }
+
   const planCopies = [...copies.values()];
   const missingItems: EditorExportPreview['missing'] = [...missing.values()];
   if (subtitles.length) missingItems.push({code: 'SUBTITLES', clips: subtitles});
@@ -232,6 +239,13 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     copies: planCopies,
     assets,
   };
+}
+
+export function editorExportXmlAssets(assets: ReadonlyMap<string, PlannedAsset>, directory: string): Map<string, FcpXmlAsset> {
+  return new Map([...assets].map(([id, asset]) => {
+    const file = asset.bundleRelativePath ? path.join(directory, asset.bundleRelativePath) : asset.source!.reference.file;
+    return [id, {...asset.metadata, fileUrl: pathToFileURL(file).href}];
+  }));
 }
 
 export function editorExportMissingMarkdown(preview: EditorExportPreview, appName: string): string {

@@ -15,6 +15,7 @@ import {
 } from '../packages/contracts/src/premiere-export.ts';
 import type {PremiereExportGetOutput, PremiereExportStartInput} from '../packages/contracts/src/premiere-export.ts';
 import {premiereExportTaskSchema} from '../packages/contracts/src/project-registry.ts';
+import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {createEditUiWireFixture, WIRE_IDS} from './helpers/edit-ui-wire-fixture.ts';
 
@@ -74,6 +75,46 @@ async function terminal(get: () => PremiereExportGetOutput | Promise<PremiereExp
   }
   assert.fail('Premiere export did not finish');
 }
+
+test('Premiere checklist matches rendered anchors, transitions and hard cuts', async t => {
+  const {store, services, projectId, outputDir} = await fixture(t, 8192);
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  assert.ok(timeline);
+  const [first, second] = timeline.clips.filter(clip => clip.trackId === WIRE_IDS.video2);
+  assert.ok(first && second);
+  const webp = randomUUID();
+  store.put('assets', {id: webp, projectId, name: 'Omitted.webp', mimeType: 'image/webp'});
+  const transition = (kind: 'dissolve' | 'wipeLeft' | 'wipeRight') => ({profileId: CLIP_TRANSITION_PROFILE, kind, durationFrames: 8});
+  const extra = (name: string, startFrame: number) => ({...second, id: randomUUID(), name, startFrame, anchor: null});
+  const omitted = {...extra('Omitted WebP', 29), assetId: webp, sourceInFrame: 0, transitionIn: transition('wipeLeft')};
+  const afterOmitted = {...extra('Cut after omitted', 41), transitionIn: transition('wipeLeft')};
+  const noHandles = {...extra('Cut with no handles', 53), sourceInFrame: 0, transitionIn: transition('wipeRight')};
+  const audio = {...extra('Stand-alone audio', 37), trackId: WIRE_IDS.audio, fadeInFrames: 3};
+  store.put('timelines', {...timeline, clips: [
+    ...timeline.clips.map(clip => clip.id === second.id ? {...clip, transitionIn: transition('dissolve')} : clip),
+    omitted, afterOmitted, noHandles, audio,
+  ]});
+  const preview = premiereExportPreviewOutputSchema.parse(await services.call('export.premiere.preview', {projectId, copyMedia: true}));
+  assert.deepEqual(preview.approximations.find(item => item.code === 'ANCHOR')?.clips.map(clip => clip.id), [first.id, second.id]);
+  assert.deepEqual(preview.approximations.find(item => item.code === 'FADES')?.clips.map(clip => clip.id), [audio.id]);
+  const cuts = preview.approximations.filter(item => item.code === 'TRANSITION');
+  assert.deepEqual(cuts.map(item => [item.values?.to, item.clips.map(clip => clip.id)]), [['Cross Dissolve', [second.id]]]);
+  assert.deepEqual(preview.missing.find(item => item.code === 'UNSUPPORTED_MEDIA')?.clips.map(clip => clip.id), [omitted.id]);
+  const start = premiereExportStartOutputSchema.parse(await services.call('export.premiere.start',
+    {projectId, requestId: 'checklist-cuts', name: 'Checklist', copyMedia: true, destination: {kind: 'project'}}));
+  const done = await terminal(async () => premiereExportGetOutputSchema.parse(await services.call('export.premiere.get', {projectId, ...start})));
+  assert.equal(done.status, 'done');
+  const bundle = path.join(outputDir, done.result!.bundleName);
+  const xml = readFileSync(path.join(bundle, 'Checklist.xml'), 'utf8');
+  assert.match(xml, /<name>Stand-alone audio<\/name>/u);
+  assert.equal(xml.match(/<transitionitem>/gu)?.length, 1);
+  assert.match(xml, /<transitionitem>.*?<name>Cross Dissolve<\/name>/u);
+  const manifest = JSON.parse(readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.approximations, preview.approximations);
+  const checklist = readFileSync(path.join(bundle, 'missing.md'), 'utf8');
+  assert.match(checklist, /Omitted WebP/u);
+  assert.doesNotMatch(checklist, /→ Wipe|Cut after omitted|Cut with no handles/u);
+});
 
 test('Premiere project RPC writes an xmeml package and isolates both editor export kinds', async t => {
   const {services, projectId, outputDir, bytes} = await fixture(t, 8192);

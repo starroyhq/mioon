@@ -4,14 +4,13 @@ import {constants, lstatSync, mkdirSync, openSync, closeSync, realpathSync, rmSy
 import {open} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
-import {pathToFileURL} from 'node:url';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {fcpExportGetOutputSchema, fcpExportResultSchema} from '../../contracts/src/fcp-export.ts';
 import type {FcpExportError, FcpExportStartInput, FcpExportGetInput, FcpExportGetOutput, FcpExportPreviewInput, FcpExportCancelOutput, FcpExportCancelInput, FcpExportProgress, FcpExportResult} from '../../contracts/src/fcp-export.ts';
 import type {Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {AppOperationReceiptStore, OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {assertAgentTaskJobEffect, assertTaskEffectOrigin, bindAgentTaskJobInside, taskEffectOrigin} from './agent/task-effects-v2.ts';
-import {editorExportDisplayPath, editorExportFileIdentity, EditorExportFailure, editorExportMissingMarkdown, editorExportSafeName, editorExportSourceIdentity} from './fcp-export-plan.ts';
+import {editorExportDisplayPath, editorExportFileIdentity, EditorExportFailure, editorExportMissingMarkdown, editorExportSafeName, editorExportSourceIdentity, editorExportXmlAssets} from './fcp-export-plan.ts';
 import type {EditorExportPlan, EditorExportPlanInput, EditorExportPreview, EditorMediaCopy, EditorExportSource} from './fcp-export-plan.ts';
 import type {FcpXmlAsset} from './fcp-xml.ts';
 import {discloseEditorExportTask, editorExportTaskSql} from './fcpxml-export-task.ts';
@@ -277,7 +276,6 @@ export function createEditorExportServices<Preview extends EditorExportPreview>(
       remember(allocated, row.id, allocation);
       const {bundle} = allocation;
       const bundleFence = (): void => {fence(); assertDirectory(parent!); assertDirectory(bundle);};
-      const assets = new Map<string, FcpXmlAsset>();
       const sourceFences = new Map<string, () => void>();
       for (const [id, asset] of plan.assets) {
         if (!asset.source) continue;
@@ -312,10 +310,7 @@ export function createEditorExportServices<Preview extends EditorExportPreview>(
           progressUpdate(row);
         }
       }
-      for (const [id, asset] of plan.assets) {
-        const file = asset.bundleRelativePath ? path.join(bundle.path, asset.bundleRelativePath) : asset.source!.reference.file;
-        assets.set(id, {...asset.metadata, fileUrl: pathToFileURL(file).href});
-      }
+      const assets = editorExportXmlAssets(plan.assets, bundle.path);
       bundleFence();
       for (const check of sourceFences.values()) check();
       const manifest = {
