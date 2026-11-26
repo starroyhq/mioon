@@ -427,4 +427,10 @@ test('a long retimed clip keeps effects when edited, replaced and separated', t 
   assert.equal(separated.durationFrames, 20_000);
   assert.deepEqual(separated.timing, replaced.timing);
   assert.deepEqual(separated.volumeEnvelope, editedEnvelope);
+
+  api.apply(set(constant(4, 21), {}, longClip));
+  const shortened = saved(store).clips.find(clip => clip.id === longClip)!;
+  assert.equal(shortened.durationFrames, 10_500);
+  assert.deepEqual(shortened.volumeEnvelope, {...volumeEnvelope,
+    points: [...volumeEnvelope.points, {frame: 10_500, multiplier: 0.25}]});
 });

@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
 
 test('format-5 render entry is no longer blocked before export, preview and sample', () => {
-  assert.doesNotMatch(app, /async function renderTimeline\([^)]*\)[^{]*\{[\s\S]{0,500}projectFormatVersion === 5\) \{ notify\(t\('editUi\.error\.GENERIC'\)/u,
+  assert.doesNotMatch(app, /async function renderTimeline\([^)]*\)[^{]*\{[\s\S]{0,500}(?:projectFormatVersion === 5|isSequenceTimelineFormat\([^)]*\))\) \{ notify\(t\('editUi\.error\.GENERIC'\)/u,
     'renderTimeline must not immediately reject the format-5 project');
   assert.match(app, /onExport=\{\(binding: unknown\) => renderTimeline\('export', binding\)\}/u);
   assert.match(app, /onRender=\{renderTimeline\}/u);
@@ -23,7 +23,7 @@ test('visible legacy format-5 entries are either connected to a format-5 action 
   // Connected: dialogue loudness gains -> one FR-A clip-properties action.
   assert.match(app, /if \(format5\) \{\s*\/\/ Format 5 has no legacy gain batch[\s\S]{0,500}kind: 'clip-properties', edits/u);
   // Connected: scene split -> format5Session().splitAtScenes.
-  assert.match(app, /if \(dataRef\.current\.projectFormatVersion === 5\) \{\s*const result = await format5Session\(\)\.splitAtScenes/u);
+  assert.match(app, /if \(isSequenceTimelineFormat\(dataRef\.current\.projectFormatVersion\)\) \{\s*const result = await format5Session\(\)\.splitAtScenes/u);
   // Connected: transition / transform / crossfade -> format5 property actions (tested in format5-panels).
   assert.match(app, /format5ClipPropertyEdit\(clipId, 'transform'/u);
   assert.match(app, /format5ClipPropertyEdit\(clipId, 'transition'/u);

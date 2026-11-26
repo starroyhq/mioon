@@ -224,10 +224,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   assertProjectStore(store);
   return put('timelines',newTimeline(projectId)) as TimelineRecord;
  }
- function read(projectId: string): TimelineRecord & {capabilities:{speed:boolean}} {
+ function read(projectId: string): TimelineRecord & {capabilities?:{speed:boolean}} {
   const timeline=ensure(projectId);
-  return {...timeline,capabilities:{speed:isProjectStore(store)&&
-    timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION}};
+  const format=timelineStorageFormat(db,timelineStorageSchema(db));
+  // Keep the released timeline record identical across legacy reads, writes
+  // and replay; the newer editing surface owns the native capabilities field.
+  return isSequenceProjectFormat(format)
+    ? {...timeline,capabilities:{speed:format===FORMAT6_PROJECT_SCHEMA_VERSION}}
+    : timeline;
  }
  function newTimeline(projectId: string,preset: TimelinePreset=timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET) as TimelinePreset): TimelineRecord{
   return newTimelineRecord(projectId,preset,now);

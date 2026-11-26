@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import {parseProjectApiPath, projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -112,6 +113,7 @@ async function harness(t: import('node:test').TestContext, { lose = 'execute' }:
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
   let keys = 0, epoch = 0;
   const env: Record<string, unknown> = {
+    isSequenceTimelineFormat,
     application: null, clipDraftRef: { current: null }, trackLocksRef: { current: {} }, touchesLockedTrack, setSubjectRefresh: () => undefined, msg: messageKey,
     localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, preferenceScope: { current: 'a'.repeat(64) },

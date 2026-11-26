@@ -15,9 +15,8 @@ import {
   timeMapBasisFromCurrentClip, timeMapHasSlowMotion, timeMapPlanInfo, timeMapSettingEquals,
   timeMapSourceAtOutputFrame, timeMapSourceRangeForEdit, trimTimeMap, type CompiledTimeMap, type TimeMapResult,
 } from '../../contracts/src/timeline-time-map.ts';
-import {
-  splitVolumeEnvelopeFields, type VolumeEnvelopeClip,
-} from '../../contracts/src/timeline-volume-envelope.ts';
+import {splitEditingVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope-editing.ts';
+import type {VolumeEnvelopeClip} from '../../contracts/src/timeline-volume-envelope.ts';
 
 type SpeedTiming = Extract<ClipTiming, {profile: 'timeline-speed-v1'}>;
 type SourceAsset = Parameters<typeof freezeSourceSha256>[0] & {readonly duration?: unknown};
@@ -50,7 +49,7 @@ function resizeEffects(clip: Format5Clip, durationFrames: number): Format5Clip {
     Object.assign(next, clipTransformFieldsAfterEdit(clip as ClipTransformClip, {durationFrames}, FORMAT5_LIMITS.durationFrames));
   }
   if (clip.volumeEnvelope !== undefined && durationFrames < clip.durationFrames) {
-    const [left] = splitVolumeEnvelopeFields(clip as VolumeEnvelopeClip, durationFrames, FORMAT5_LIMITS.durationFrames);
+    const [left] = splitEditingVolumeEnvelopeFields(clip as VolumeEnvelopeClip, durationFrames, FORMAT5_LIMITS.durationFrames);
     Object.assign(next, left);
   }
   if (clip.fadeInFrames !== undefined) next.fadeInFrames = Math.min(clip.fadeInFrames, durationFrames);
@@ -71,7 +70,7 @@ export function splitSequenceClip(clip: Format5Clip, timeline: Format5Timeline,
   const [leftTransform, rightTransform] = clip.transform === undefined ? [{}, {}]
     : splitClipTransformFields(clip as ClipTransformClip, offset, FORMAT5_LIMITS.durationFrames);
   const [leftVolume, rightVolume] = clip.volumeEnvelope === undefined ? [{}, {}]
-    : splitVolumeEnvelopeFields(clip as VolumeEnvelopeClip, offset, FORMAT5_LIMITS.durationFrames);
+    : splitEditingVolumeEnvelopeFields(clip as VolumeEnvelopeClip, offset, FORMAT5_LIMITS.durationFrames);
   const {transitionIn: _incoming, ...rightFields} = clip;
   let left = {...clip, durationFrames: offset, ...leftTransform, ...leftVolume};
   let right = {...rightFields, id: rightId, startFrame: clip.startFrame + offset,
