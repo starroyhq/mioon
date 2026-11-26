@@ -33,7 +33,7 @@ const binary = path.join(directory, historicalV3 ? 'video-workbench' : requireId
 const files = asar.listPackage(archive);
 assert.ok(files.length > 10);
 assert.equal(files.some((file: string) => file.startsWith('/node_modules')), false);
-assert.equal(files.some((file: string) => /\/(?:data|workspace|media|\.env|access-token|mcp-token|cli-token(?:\.tmp)?|\.cli-token\.[a-f0-9]+\.tmp|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(file)), false);
+assert.equal(files.some((file: string) => /\/(?:data|workspace|media|\.env|access-token|mcp-token|cli-token(?:\.tmp)?|\.cli-token\.[a-f0-9]+\.tmp|cli-install\.json(?:\.tmp)?|\.cli-install\.json\.[a-f0-9]+\.tmp|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(file)), false);
 const allowed = new Set(['main.cjs', 'backend.cjs', ...(!historicalV3 ? ['project-catalog.cjs', 'preload.cjs', 'cli-runtime.cjs', 'mcp-runtime.cjs'] : []), 'package.json', 'web', 'licenses']);
 if (!historicalV3) allowed.add('icons');
 for (const file of files) {

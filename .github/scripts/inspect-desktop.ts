@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import desktopIdentity from '../../apps/desktop/identity.ts';
+import {MAC_CLI_LAUNCHER_ARCHITECTURES, macCliLauncherBundleEntry, macCliLauncherIdentifier} from '../../apps/desktop/cli-launcher-binary.ts';
 import {verifySubtitleResources} from '../../apps/desktop/subtitle-resources.ts';
 import {verifyPackagedTrayResources} from '../../apps/desktop/tray-resources.ts';
 import {readBuildMetadata} from '../../apps/desktop/build-metadata.ts';
@@ -14,7 +15,7 @@ import {MacUpdatePackageFailure, verifyMacAppPermissions, withMacUpdateZip} from
 import {PROJECT_NOTICES} from '../../apps/desktop/scripts/stage-project-notices.ts';
 import {argumentsFor, CheckFailure, command, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {TargetArch, TargetPlatform} from './media-environment.ts';
-import {runAppleStapler} from './apple-notarization.ts';
+import {macCliLauncherArtifact, runAppleStapler, verifyCliLauncherNotarization} from './apple-notarization.ts';
 import type {AppleStaplerDiagnostic, AppleStaplerExecutor} from './apple-notarization.ts';
 import {attachMacDmg, detachMacDmg, macBundleExecutable, macDmgEvidence, uniqueMacApp} from './mac-dmg.ts';
 import type {MacDmgEvidence} from './mac-dmg.ts';
@@ -26,6 +27,7 @@ type PackageArch = TargetArch | 'universal';
 interface MacBinaryEvidence {name: string; architectures: string[]}
 interface MacAppEvidence {
   scope: MacScope; lipo: MacBinaryEvidence[]; codesign: true; stapled: true; gatekeeper: true;
+  cliLauncher: {entry: string; sha256: string; bytes: number; codesign: true};
   verificationOutput: {codesign: string[]; spctl: string[]};
 }
 interface Inspection {ok: boolean; platform: TargetPlatform; arch: PackageArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; package?: MacDmgEvidence; mountPoint?: string; extractRoot?: string; error?: string; unwritableEntry?: string; cleanupError?: string; appleStaplerDiagnostics?: MacStaplerDiagnostic[]; macApps?: MacAppEvidence[]}
@@ -36,7 +38,8 @@ const MAC_CHECK_ERRORS = {
   'tray-resources': 'TRAY_RESOURCES_INVALID', 'subtitle-resources': 'SUBTITLE_RESOURCES_INVALID',
   fuses: 'FUSE_INSPECTION_FAILED', 'runtime-notice-source': 'RUNTIME_NOTICE_PROVENANCE_INVALID',
   'runtime-notice-bytes': 'ELECTRON_NOTICE_MISMATCH', codesign: 'CODESIGN_VERIFICATION_FAILED',
-  'signing-identity': 'SIGNING_IDENTITY_MISMATCH', 'app-staple': 'APP_STAPLE_INVALID', 'app-gatekeeper': 'GATEKEEPER_REJECTED'
+  'signing-identity': 'SIGNING_IDENTITY_MISMATCH', 'cli-launcher': 'CLI_LAUNCHER_VERIFICATION_FAILED',
+  'app-staple': 'APP_STAPLE_INVALID', 'app-gatekeeper': 'GATEKEEPER_REJECTED'
 } as const;
 type MacScope = 'staged-mac-app' | 'mounted-dmg-app' | 'extracted-zip-app';
 type MacStaplerScope = MacScope | 'signed-dmg';
@@ -145,7 +148,7 @@ async function inspectAsar(resources: string, run: MacCheckRunner = async (_name
       'package.json', 'web', 'licenses', 'icons']);
     for (const raw of files) {
       const entry = raw.replace(/^\//, '');
-      if (!allowed.has(entry.split('/')[0]) || entry.split('/').some(part => part === '..' || part === '.') || /(?:^|\/)(?:data|workspace|media|\.env|access-token|mcp-token|cli-token(?:\.tmp)?|\.cli-token\.[a-f0-9]+\.tmp|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(entry)) fail('ASAR_UNEXPECTED_CONTENT');
+      if (!allowed.has(entry.split('/')[0]) || entry.split('/').some(part => part === '..' || part === '.') || /(?:^|\/)(?:data|workspace|media|\.env|access-token|mcp-token|cli-token(?:\.tmp)?|\.cli-token\.[a-f0-9]+\.tmp|cli-install\.json(?:\.tmp)?|\.cli-install\.json\.[a-f0-9]+\.tmp|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(entry)) fail('ASAR_UNEXPECTED_CONTENT');
       const stat = asar.statFile(archive, entry, false);
       if (stat.link) fail('ASAR_SYMLINK_REJECTED');
       if (!stat.files) assert.deepEqual(asar.extractFile(archive, entry), await readFile(path.join(root, 'apps/desktop/build', entry)), 'ASAR_STAGING_MISMATCH');
@@ -177,7 +180,8 @@ async function inspectUniversalArchitecture(app: string, binary: string): Promis
   if (!helpers.length || helpers.some(entry => !entry.isDirectory())) fail('MAC_HELPER_BUNDLES_INVALID');
   const helperExecutables = await Promise.all(helpers.sort((a, b) => a.name.localeCompare(b.name))
     .map(entry => macBundleExecutable(path.join(frameworks, entry.name))));
-  const executables = [binary, path.join(frameworks, 'Electron Framework.framework/Electron Framework'), ...helperExecutables];
+  const launcher = path.join(app, macCliLauncherBundleEntry(desktopIdentity.identityForChannel('production')));
+  const executables = [binary, path.join(frameworks, 'Electron Framework.framework/Electron Framework'), ...helperExecutables, launcher];
   const evidence: MacBinaryEvidence[] = [];
   for (const executable of executables) {
     const output = await command('lipo', ['-archs', executable], 'MACHO_PROBE_FAILED');
@@ -186,7 +190,19 @@ async function inspectUniversalArchitecture(app: string, binary: string): Promis
   }
   return evidence;
 }
-async function macApp(app: string, appOutDir: string, scope: MacScope, onPhase: (phase: MacPhase) => void, onAppleDiagnostic: (diagnostic: MacStaplerDiagnostic) => void): Promise<{binary: string; evidence: MacAppEvidence}> {
+async function inspectMacCliLauncher(app: string, notarization: unknown): Promise<MacAppEvidence['cliLauncher']> {
+  const {file, launcher} = await macCliLauncherArtifact(app);
+  verifyCliLauncherNotarization(notarization, launcher);
+  await command('/usr/bin/codesign', ['--verify', '--strict', '--all-architectures', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
+  const identifier = macCliLauncherIdentifier(desktopIdentity.identityForChannel('production'));
+  for (const arch of MAC_CLI_LAUNCHER_ARCHITECTURES) {
+    const output = await command('/usr/bin/codesign', ['--display', '--arch', arch, '--verbose=4', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
+    verifySigningIdentity(output, process.env.APPLE_SIGNING_IDENTITY, process.env.APPLE_TEAM_ID);
+    if (!output.split(/\r?\n/).includes(`Identifier=${identifier}`)) fail('CLI_LAUNCHER_IDENTIFIER_MISMATCH');
+  }
+  return {...launcher, codesign: true};
+}
+async function macApp(app: string, appOutDir: string, scope: MacScope, launcherNotarization: unknown, onPhase: (phase: MacPhase) => void, onAppleDiagnostic: (diagnostic: MacStaplerDiagnostic) => void): Promise<{binary: string; evidence: MacAppEvidence}> {
   const run: MacCheckRunner = (name, action) => runMacInspectionCheck(scope, name, action, onPhase);
   await run('bundle-permissions', () => verifyMacAppPermissions(app));
   const binary = await run('bundle-executable', () => macBundleExecutable(app));
@@ -208,13 +224,14 @@ async function macApp(app: string, appOutDir: string, scope: MacScope, onPhase: 
   await run('runtime-notice-bytes', () => verifyMacRuntimeNoticeFiles(app, provenance));
   const codesign = await run('codesign', () => command('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], 'CODESIGN_VERIFICATION_FAILED'));
   await run('signing-identity', async () => verifySigningIdentity(await command('codesign', ['--display', '--verbose=4', app], 'CODESIGN_IDENTITY_FAILED'), process.env.APPLE_SIGNING_IDENTITY, process.env.APPLE_TEAM_ID));
+  const cliLauncher = await run('cli-launcher', () => inspectMacCliLauncher(app, launcherNotarization));
   await run('app-staple', () => validateMacStapledArtifact(scope, app, {onDiagnostic: onAppleDiagnostic}));
   const spctl = await run('app-gatekeeper', () => command('spctl', ['--assess', '--type', 'execute', '--verbose=4', app], 'GATEKEEPER_REJECTED'));
   const verificationOutput = {
     codesign: ['valid on disk', 'satisfies its Designated Requirement'].filter(value => codesign.split(/\r?\n/).some(line => line.endsWith(`: ${value}`))),
     spctl: ['accepted', 'source=Notarized Developer ID'].filter(value => spctl.split(/\r?\n/).some(line => line === value || line.endsWith(`: ${value}`))),
   };
-  return {binary, evidence: {scope, lipo, codesign: true, stapled: true, gatekeeper: true, verificationOutput}};
+  return {binary, evidence: {scope, lipo, codesign: true, stapled: true, gatekeeper: true, cliLauncher, verificationOutput}};
 }
 /** Probe a disposable extracted copy, using recursive no-follow removal as
  * ShipIt does. Neither the signed ZIP nor the staged app is modified. */
@@ -263,9 +280,13 @@ export async function inspectDesktop(platform: TargetPlatform, arch: PackageArch
     if (arch !== 'universal') fail('UNIVERSAL_MAC_PACKAGE_REQUIRED');
     const {appVersion} = readBuildMetadata(root);
     if (process.env.MIOON_RELEASE_VERSION && process.env.MIOON_RELEASE_VERSION !== appVersion) fail('MAC_RELEASE_VERSION_MISMATCH');
+    const launcherReportPath = process.env.MIOON_APPLE_CLI_LAUNCHER_REPORT;
+    if (!launcherReportPath) fail('CLI_LAUNCHER_NOTARIZATION_REPORT_REQUIRED');
+    const launcherNotarization: unknown = await readFile(launcherReportPath, 'utf8').then(value => JSON.parse(value))
+      .catch(() => fail('CLI_LAUNCHER_NOTARIZATION_REPORT_REQUIRED'));
     const appOutDir = path.join(expected, 'mac-universal'), app = await uniqueMacApp(appOutDir);
     const inspectMacApp = async (bundle: string, scope: MacScope): Promise<string> => {
-      const {binary, evidence} = await macApp(bundle, appOutDir, scope, phase => { result.phase = phase; }, onAppleDiagnostic);
+      const {binary, evidence} = await macApp(bundle, appOutDir, scope, launcherNotarization, phase => { result.phase = phase; }, onAppleDiagnostic);
       (result.macApps ??= []).push(evidence);
       return binary;
     };
@@ -298,6 +319,7 @@ export async function inspectDesktop(platform: TargetPlatform, arch: PackageArch
         const descriptor = 'Contents/Resources/app-update.yml';
         if (!(await readFile(path.join(zipped, descriptor))).equals(await readFile(path.join(delivered, descriptor)))) fail('DMG_ZIP_UPDATE_DESCRIPTOR_MISMATCH');
         check('zip-app-signature-notarization-gatekeeper-architecture-and-update-descriptor');
+        check('staged-dmg-and-zip-cli-launcher-signature-architecture-and-standalone-notarization');
         result.phase = 'zip-app-quarantine-removal';
         await probeMacQuarantineRemoval(zipped);
         check('zip-entries-and-extracted-app-are-owner-writable');

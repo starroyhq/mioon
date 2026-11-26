@@ -268,6 +268,7 @@ test('Mac package subchecks expose only fixed phases and error codes', async () 
     ['subtitle-resources', 'SUBTITLE_RESOURCES_INVALID'], ['fuses', 'FUSE_INSPECTION_FAILED'],
     ['runtime-notice-source', 'RUNTIME_NOTICE_PROVENANCE_INVALID'], ['runtime-notice-bytes', 'ELECTRON_NOTICE_MISMATCH'],
     ['codesign', 'CODESIGN_VERIFICATION_FAILED'], ['signing-identity', 'SIGNING_IDENTITY_MISMATCH'],
+    ['cli-launcher', 'CLI_LAUNCHER_VERIFICATION_FAILED'],
     ['app-staple', 'APP_STAPLE_INVALID'], ['app-gatekeeper', 'GATEKEEPER_REJECTED']
   ] as const;
   for (const scope of ['staged-mac-app', 'mounted-dmg-app', 'extracted-zip-app'] as const) for (const [name, code] of cases) {

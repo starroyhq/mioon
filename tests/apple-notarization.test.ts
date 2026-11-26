@@ -1,10 +1,13 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
-import {AppleStaplerFailure, notarizeApp, runAppleStapler} from '../.github/scripts/apple-notarization.ts';
-import type {AppleAppNotarizationReport, AppleStaplerCommandResult, AppleStaplerDiagnostic, AppleStaplerExecutor, NotarizeAppDependencies} from '../.github/scripts/apple-notarization.ts';
+import {createHash} from 'node:crypto';
+import {chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {AppleStaplerFailure, notarizeApp, notarizeCliLauncher, runAppleStapler, verifyCliLauncherNotarization} from '../.github/scripts/apple-notarization.ts';
+import type {AppleAppNotarizationReport, AppleCliLauncherNotarizationReport, AppleStaplerCommandResult, AppleStaplerDiagnostic, AppleStaplerExecutor, NotarizeAppDependencies} from '../.github/scripts/apple-notarization.ts';
 import {CheckFailure, safeFailure} from '../.github/scripts/media-environment.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -207,6 +210,59 @@ test('release context, credentials and report location are validated before invo
   await assert.rejects(notarizeApp({...context(), packager: {appInfo: {productFilename: '../outside'}}}, f.dependencies), {code: 'INVALID_APPLE_APP_CONTEXT'});
   await assert.rejects(notarizeApp({...context(), arch: 1}, f.dependencies), {code: 'INVALID_APPLE_APP_CONTEXT'});
   await assert.rejects(notarizeApp({...context(), arch: 3}, f.dependencies), {code: 'INVALID_APPLE_APP_CONTEXT'});
+});
+
+async function launcherFixture(t: TestContext) {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-notarization-test-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const app = path.join(directory, 'mioon.app'), entry = 'Contents/Helpers/mioon', file = path.join(app, entry);
+  await mkdir(path.dirname(file), {recursive: true});
+  const bytes = Buffer.from('synthetic signed launcher bytes');
+  await writeFile(file, bytes);
+  await chmod(file, 0o755);
+  const launcher = {entry, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};
+  const env: NodeJS.ProcessEnv = {...syntheticEnv(), MIOON_APPLE_CLI_LAUNCHER_REPORT: path.join(root, 'artifacts', 'desktop-macos-universal', 'cli-launcher-notarization.json')};
+  return {directory, file, launcher, env};
+}
+
+test('standalone launcher notarization submits the exact signed binary once and binds acceptance to its digest', {skip: process.platform === 'win32'}, async t => {
+  const fixture = await launcherFixture(t);
+  const submissionId = '57e3438f-86aa-472a-94c3-a6ed1b8d5330';
+  const accepted = {...result(), stdout: JSON.stringify({status: 'Accepted', id: submissionId, message: PRIVATE})};
+  const {execute, calls} = executor([result(), result(), accepted]);
+  const reports: AppleCliLauncherNotarizationReport[] = [];
+  await notarizeCliLauncher(fixture.directory, {env: fixture.env, execute, platform: 'darwin', writeReport: async report => {reports.push(report);}});
+  assert.deepEqual(calls.map(call => call.file), ['/usr/bin/codesign', '/usr/bin/ditto', '/usr/bin/xcrun']);
+  assert.deepEqual(calls[0].args, ['--verify', '--strict', '--all-architectures', fixture.file]);
+  const zip = calls[1].args.at(-1)!;
+  assert.deepEqual(calls[1].args, ['-c', '-k', '--norsrc', fixture.file, zip]);
+  assert.deepEqual(calls[2].args, ['notarytool', 'submit', zip, '--key', fixture.env.APPLE_API_KEY_PATH, '--key-id', PRIVATE,
+    '--issuer', PRIVATE, '--wait', '--timeout', '30m', '--output-format', 'json']);
+  assert.deepEqual(reports, [{version: 1, kind: 'cli-launcher-notarization', ok: true, status: 'Accepted', submissionId, launcher: fixture.launcher}]);
+  verifyCliLauncherNotarization(reports[0], fixture.launcher);
+  assert.throws(() => verifyCliLauncherNotarization(reports[0], {...fixture.launcher, sha256: '0'.repeat(64)}),
+    {code: 'CLI_LAUNCHER_NOTARIZATION_MISMATCH'});
+  await assert.rejects(readFile(path.dirname(zip)), {code: 'ENOENT'});
+  safeDiagnostics(reports);
+});
+
+test('failed launcher verification or notarization cannot produce accepted evidence or retry submission', {skip: process.platform === 'win32'}, async t => {
+  const fixture = await launcherFixture(t);
+  const rejected = {...result(), stdout: JSON.stringify({status: 'Invalid', message: PRIVATE})};
+  for (const {results, code} of [
+    {results: [result(1, PRIVATE)], code: 'CLI_LAUNCHER_SIGNATURE_FAILED'},
+    {results: [result(), result(), rejected], code: 'CLI_LAUNCHER_NOTARIZATION_FAILED'},
+    {results: [result(), result(), {...result(), stdout: PRIVATE}], code: 'CLI_LAUNCHER_NOTARIZATION_FAILED'},
+  ]) {
+    const {execute, calls} = executor(results), reports: AppleCliLauncherNotarizationReport[] = [];
+    await assert.rejects(notarizeCliLauncher(fixture.directory, {env: fixture.env, execute, platform: 'darwin',
+      writeReport: async report => {reports.push(report);}}), {code});
+    assert.equal(calls.length, results.length);
+    assert.equal(reports[0].ok, false);
+    assert.equal(reports[0].status, undefined);
+    assert.throws(() => verifyCliLauncherNotarization(reports[0], fixture.launcher), {code: 'CLI_LAUNCHER_NOTARIZATION_MISMATCH'});
+    safeDiagnostics(reports);
+  }
 });
 
 test('electron-builder resolves the actual release-only CJS hook from its desktop working directory', async () => {
