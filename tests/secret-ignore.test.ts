@@ -10,10 +10,10 @@ const SYNTHETIC_SECRET = 'synthetic-private-storage-packaging-sentinel-only';
 const nonce = '0123456789abcdef0123456789abcdef';
 const runtimeNames = [
   'access-token', 'desktop-token', 'mcp-token', 'cli-token', 'server.lock', 'mcp-connection.json',
-  'desktop-config.json', 'desktop-identity.json', 'credentials.json', 'secrets.json',
-  'access-token.tmp', 'desktop-token.tmp', 'mcp-token.tmp', 'cli-token.tmp', 'mcp-connection.json.tmp', 'desktop-config.json.tmp',
+  'desktop-config.json', 'desktop-identity.json', 'cli-install.json', 'credentials.json', 'secrets.json',
+  'access-token.tmp', 'desktop-token.tmp', 'mcp-token.tmp', 'cli-token.tmp', 'cli-install.json.tmp', 'mcp-connection.json.tmp', 'desktop-config.json.tmp',
   `.access-token.${nonce}.tmp`, `.desktop-token.${nonce}.tmp`, `.mcp-token.${nonce}.tmp`, `.cli-token.${nonce}.tmp`,
-  `.mcp-connection.json.${nonce}.tmp`, `.desktop-config.json.${nonce}.tmp`, `.desktop-identity.json.${nonce}.tmp`,
+  `.mcp-connection.json.${nonce}.tmp`, `.desktop-config.json.${nonce}.tmp`, `.desktop-identity.json.${nonce}.tmp`, `.cli-install.json.${nonce}.tmp`,
   'agent-settings/settings.json', `agent-settings/.settings-${nonce}.tmp`, `agent-settings/.settings.json.${nonce}.tmp`,
 ];
 

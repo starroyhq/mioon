@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { rm, mkdir, cp, readFile, writeFile, readdir, realpath, access } from 'node:fs/promises';
+import { rm, mkdir, cp, readFile, writeFile, readdir, realpath, access, lstat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,7 @@ import {main as checkTypes} from '../../../scripts/tooling.ts';
 import {measureBuildStage, withDesktopTypecheckTiming, type BuildTimingStage} from '../../../scripts/lib/build-timings.ts';
 import {hasOuterTypecheckEvidence} from '../../../scripts/lib/typecheck-evidence.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
+import {buildMacCliLauncher} from './build-cli-launcher.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
 import {stageProjectNotices} from './stage-project-notices.ts';
@@ -85,6 +86,16 @@ await measureBuildStage('desktop-resource-staging', async () => {
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true,
   filter: source => source !== examples });
 await stageProjectExampleResources(examples, path.join(output, 'examples'));
+await cp(path.join(root, 'skills', 'mioon'), path.join(output, 'skills', 'mioon'), {
+  recursive: true,
+  async filter(source) {
+    const name = path.basename(source);
+    if (name === '.DS_Store' || name === '__pycache__' || name.endsWith('.pyc')) return false;
+    const entry = await lstat(source);
+    if (!entry.isFile() && !entry.isDirectory()) throw new Error('Unexpected file type in bundled Agent skill.');
+    return true;
+  },
+});
 await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
 await stageTrayResources(path.join(desktop, 'resources/tray'), path.join(output, 'icons/tray'));
@@ -94,6 +105,9 @@ await mkdir(path.join(output,'subtitles'));
 for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));
 await verifySubtitleResources(path.join(output,'subtitles'));
 });
+if (process.platform === 'darwin') {
+  await measureBuildStage('desktop-native-staging', () => buildMacCliLauncher({desktop, output, appVersion, identity}));
+}
 // Windows desktop storage opens only through the ACL helper staged beside the
 // bundles (outside ASAR when packaged); it is built separately, never here.
 if(process.platform==='win32'){

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {identityForChannel} from './identity.ts';
 import type {DesktopIdentity} from './identity.ts';
+import {MAC_CLI_LAUNCHER_HELPERS, MAC_CLI_LAUNCHER_STAGE, verifyMacCliLauncherFile} from './cli-launcher-binary.ts';
 import {readBuildMetadata, validateStagedMetadata} from './build-metadata.ts';
 import {verifySubtitleResources,packagedSubtitleDirectory,SUBTITLE_RESOURCE_FILES} from './subtitle-resources.ts';
 import {MAC_UNIVERSAL_ARCH,mergedMacRuntimeNotices,preserveMacRuntimeNotices,inspectMacRuntimeNotices,writeMacRuntimeNoticeProvenance} from './runtime-notices.ts';
@@ -65,6 +66,7 @@ export interface BuilderConfig {
   mac: {
     icon: string;
     target: Array<{target: string; arch: string[]}>;
+    extraFiles: Array<{from: string; to: string; filter: string[]}>;
     publish: MacPublishConfig | null;
     detectUpdateChannel: false;
     category: string;
@@ -121,7 +123,8 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
     // SQLite templates and external FFmpeg resources must be ordinary files
     // outside ASAR. Both resource trees are verified before and after packing.
     extraResources: [{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]},
-      {from:'build/examples',to:'examples',filter:['**/*']}],
+      {from:'build/examples',to:'examples',filter:['**/*']},
+      {from:'build/skills/mioon',to:'skills/mioon',filter:['**/*']}],
     npmRebuild: false,
     publish: null,
     // The DMG is stapled after electron-builder exits. Keep the updater
@@ -135,6 +138,9 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
       const metadata: unknown = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
       validateStagedMetadata(metadata, { appVersion, identity });
       if (context.electronPlatformName === 'win32') await verifyWindowsPrivateStorageHelper(context.packager.info.appDir, context.arch);
+      if (context.electronPlatformName === 'darwin') {
+        await verifyMacCliLauncherFile(path.join(context.packager.info.appDir, MAC_CLI_LAUNCHER_STAGE, identity.executableName));
+      }
       await verifySubtitleResources(path.join(context.packager.info.appDir,'subtitles'));
       verifyProjectExampleResources(path.join(context.packager.info.appDir,'examples'));
     },
@@ -204,6 +210,9 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
     mac: {
       icon: path.join(directory, 'resources/icon.icns'),
       target: [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }],
+      // The same universal Mach-O enters both arch packs and the nested-code
+      // signer processes Contents/Helpers before sealing the outer app.
+      extraFiles: [{from: `build/${MAC_CLI_LAUNCHER_STAGE}`, to: MAC_CLI_LAUNCHER_HELPERS, filter: [identity.executableName]}],
       publish: macPublish,
       detectUpdateChannel: false,
       category: 'public.app-category.video',

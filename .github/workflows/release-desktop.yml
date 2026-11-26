@@ -144,6 +144,7 @@ jobs:
       MIOON_DESKTOP_INSPECTION_REPORT: artifacts/desktop-macos-universal/inspection.json
       MIOON_DESKTOP_SMOKE_REPORT: artifacts/desktop-macos-universal/smoke.json
       MIOON_APPLE_NOTARIZATION_REPORT: artifacts/desktop-macos-universal/app-notarization.json
+      MIOON_APPLE_CLI_LAUNCHER_REPORT: artifacts/desktop-macos-universal/cli-launcher-notarization.json
     steps:
       - name: Checkout frozen source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -319,6 +320,16 @@ jobs:
             --output="../../artifacts/desktop-$MIOON_TARGET/dmg-stapling.json"
           printf 'DMG notarization and stapling: %ss\n' "$((SECONDS - dmg_started))" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Notarize the signed CLI launcher separately
+        id: notarize_cli_launcher
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          app_out="$GITHUB_WORKSPACE/release/desktop/production/mac-universal"
+          node .github/scripts/apple-notarization.ts --operation=notarize-cli-launcher --artifact="$app_out"
+
       - name: Inspect final package, signatures and resources
         id: inspect
         env:
@@ -351,7 +362,7 @@ jobs:
           mkdir -p artifacts/macos-verified/{packages,evidence}
           cp "$root/$stem.dmg" "$root/$stem.zip" "$root/$stem.zip.blockmap" "$root/latest-mac.yml" artifacts/macos-verified/packages/
           if [[ -f "$root/$stem.dmg.blockmap" ]]; then cp "$root/$stem.dmg.blockmap" artifacts/macos-verified/packages/; fi
-          cp "artifacts/desktop-$MIOON_TARGET/"{inspection,smoke,app-notarization,dmg-stapling}.json artifacts/macos-verified/evidence/
+          cp "artifacts/desktop-$MIOON_TARGET/"{inspection,smoke,app-notarization,cli-launcher-notarization,dmg-stapling}.json artifacts/macos-verified/evidence/
 
       - name: Transfer the signed universal package and arm64 evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -369,13 +380,14 @@ jobs:
           BUILD_RESULT: ${{ steps.build.outcome }}
           LINUX_PACKAGE_RESULT: ${{ steps.package_linux.outcome }}
           MACOS_PACKAGE_RESULT: ${{ steps.package_macos.outcome }}
+          CLI_NOTARIZATION_RESULT: ${{ steps.notarize_cli_launcher.outcome }}
           INSPECT_RESULT: ${{ steps.inspect.outcome }}
           SMOKE_RESULT: ${{ steps.smoke.outcome }}
           STAGE_RESULT: ${{ steps.stage.outcome }}
         run: |
           mkdir -p "artifacts/desktop-$MIOON_TARGET"
-          printf 'media=%s\nbuild=%s\nlinux-package=%s\nmacos-package=%s\ninspection=%s\nsmoke=%s\nstaging=%s\n' \
-            "$MEDIA_RESULT" "$BUILD_RESULT" "$LINUX_PACKAGE_RESULT" "$MACOS_PACKAGE_RESULT" "$INSPECT_RESULT" "$SMOKE_RESULT" "$STAGE_RESULT" \
+          printf 'media=%s\nbuild=%s\nlinux-package=%s\nmacos-package=%s\ncli-notarization=%s\ninspection=%s\nsmoke=%s\nstaging=%s\n' \
+            "$MEDIA_RESULT" "$BUILD_RESULT" "$LINUX_PACKAGE_RESULT" "$MACOS_PACKAGE_RESULT" "$CLI_NOTARIZATION_RESULT" "$INSPECT_RESULT" "$SMOKE_RESULT" "$STAGE_RESULT" \
             > "artifacts/desktop-$MIOON_TARGET/status.log"
           cat "artifacts/desktop-$MIOON_TARGET/status.log" >> "$GITHUB_STEP_SUMMARY"
 
@@ -390,6 +402,7 @@ jobs:
             artifacts/desktop-macos-universal/smoke.json
             artifacts/desktop-macos-universal/status.log
             artifacts/desktop-macos-universal/app-notarization.json
+            artifacts/desktop-macos-universal/cli-launcher-notarization.json
             artifacts/desktop-macos-universal/dmg-stapling.json
             artifacts/desktop-macos-universal/build-timings.jsonl
           retention-days: 14
