@@ -24,6 +24,9 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.clip.setTransition': message('timeline.history.setTransition'),
   'timeline.format.set': message('timeline.aspectFrame.label'),
 };
+export function timelineHistoryOperationMessage(operation: string | undefined): DisplayMessage {
+  return (operation !== undefined ? operationMessages[operation] : undefined) || message('timeline.history.edit');
+}
 interface HistoryEntryView {id?: unknown; operation?: unknown}
 interface HistoryView {
   cursor?: unknown;

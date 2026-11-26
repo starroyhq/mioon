@@ -8,6 +8,7 @@ import type {MenuCommandId, MenuCommandIntent, MenuDocumentIdentity} from '../ap
 import {createDesktopMenuController, readDesktopMenuBridge, workbenchMenuView, launcherMenuView, nativeMenuTextFocus, nativeMenuSpaceShortcut, nativeMenuSpaceTarget} from '../apps/web/src/desktop-menu-client.ts';
 import type {WorkbenchMenuAvailability, MenuPlaybackControl} from '../apps/web/src/desktop-menu-client.ts';
 import {timelineHistoryActionForKey, timelineSplitActionForKey} from '../apps/web/src/timeline-keyboard.ts';
+import {format5HistoryScope, format5TimelineHistoryState} from '../apps/web/src/edit-ui/session.ts';
 import {timelineAudioPreviewPosition} from '../apps/web/src/use-timeline-audio-preview.ts';
 import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 
@@ -111,7 +112,8 @@ function canvasStoryboardApp() {
     dataRef: {current: {project: {id: 'project'}, timeline: {id: 'timeline', revision: 1, clips: []}}},
     clipDraftRef: {current: null}, trackLocksRef: {current: {}}, document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}},
     hasOpenWorkbenchModal: () => false, comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
-    format5: false, format5HistorySource: null,
+    format5: false, format5HistoryState: {canUndo: false, canRedo: false},
+    format5HistoryRef: {current: null}, format5HistoryScope,
     assetsCollapsed: false, inspectorCollapsed: false, isBusy: () => false, online: true, auth: true,
     canOpenExport: false, historyState: {canUndo: true, canRedo: true},
     getSplitStateAt: () => ({canSplit: false}), playbackClock: createTimelinePlaybackClock(), effectivePlayhead: 0,
@@ -359,7 +361,7 @@ test('actual App availability retains live import and follows text focus and tra
     dataRef: {current: {project: {id: 'project'}, timeline: {clips: [{id: 'clip', trackId: 'track'}]}}}, clipDraftRef: {current: null}, trackLocksRef: trackLocks,
     document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}}, hasOpenWorkbenchModal: () => false,
     comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
-    assetsCollapsed: false, inspectorCollapsed: false, format5: false, format5HistorySource: null,
+    assetsCollapsed: false, inspectorCollapsed: false, format5: false, format5HistoryState: {canUndo: false, canRedo: false},
     isBusy: () => false, online: true, auth: true, canOpenExport: true, historyState: {canUndo: true, canRedo: true},
     getSplitStateAt: (frame: number) => ({canSplit: frame > 0 && frame < 60}),
     playbackClock: createTimelinePlaybackClock(), effectivePlayhead: 30,
@@ -410,10 +412,10 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
   const calls: string[] = [], doc = {modal: false}, playbackClock = createTimelinePlaybackClock();
-  const keyboard = (desktop: boolean, projectFormatVersion = 4, format5Clipboard = {current: null as string | null}) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'canvasShortcutInText', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip', `${code};return onKeyDown;`)(
+  const keyboard = (desktop: boolean, projectFormatVersion = 4, format5Clipboard = {current: null as string | null}, format5HistoryState = {canUndo: false, canRedo: false}) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'canvasShortcutInText', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'format5HistoryState', 'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip', `${code};return onKeyDown;`)(
     desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, () => false, timelineSplitActionForKey,
     (frame: number) => ({canSplit: frame > 0 && frame < 60}), playbackClock, 30, () => calls.push('split'), timelineHistoryActionForKey,
-    {canUndo: true, canRedo: true}, (direction: string) => calls.push(direction),
+    {canUndo: true, canRedo: true}, format5HistoryState, (direction: string) => calls.push(direction),
     {current: {projectFormatVersion}}, format5Clipboard, () => calls.push('copy'), () => calls.push('paste'),
   ) as (event: unknown) => void;
   const event = (key: string, patch = {}) => ({key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}, ...patch});
@@ -439,6 +441,97 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   const acceptedPaste = event('v'); format5(acceptedPaste);
   assert.equal(acceptedPaste.defaultPrevented, true);
   assert.deepEqual(calls.slice(-1), ['paste']);
+
+  const f5CallsBefore = calls.length;
+  const format5Disabled = keyboard(false, 5, clipboard, {canUndo: false, canRedo: false});
+  const blockedUndo = event('z', {metaKey: true, ctrlKey: false});
+  format5Disabled(blockedUndo);
+  assert.equal(blockedUndo.defaultPrevented, false, 'format 5 editing ignores legacy historyState when unified history cannot undo');
+  assert.equal(calls.length, f5CallsBefore);
+
+  const format5Enabled = keyboard(false, 5, clipboard, {canUndo: true, canRedo: true});
+  const f5Undo = event('z', {metaKey: true, ctrlKey: false});
+  const f5Redo = event('z', {metaKey: true, ctrlKey: false, shiftKey: true});
+  const f5CtrlY = event('y', {ctrlKey: true, metaKey: false});
+  format5Enabled(f5Undo); format5Enabled(f5Redo); format5Enabled(f5CtrlY);
+  assert.equal(f5Undo.defaultPrevented, true);
+  assert.equal(f5Redo.defaultPrevented, true);
+  assert.equal(f5CtrlY.defaultPrevented, true);
+  assert.deepEqual(calls.slice(f5CallsBefore), ['undo', 'redo', 'redo']);
+});
+
+test('format-5 desktop Edit menu shares unified history in both editing and canvas modes and tracks history scope', async () => {
+  const app = canvasStoryboardApp();
+  const dispatched: string[] = [];
+  const f5History = {
+    projectId: 'project', epoch: 'epoch-1', position: 1, revision: 2,
+    undo: {actionId: 'action-1', operation: 'timeline.subtitle.edit', affected: 1},
+    redo: {actionId: 'action-2', operation: 'timeline.subtitle.edit', affected: 1},
+    undoConflict: false, redoConflict: false, undoBlockedBy: null, redoBlockedBy: null, atEarliest: false,
+  };
+  app.bindings.format5 = true;
+  app.bindings.dataRef = {current: {project: {id: 'project'}, projectFormatVersion: 5, timeline: {id: 'timeline', revision: 1, clips: []}}};
+  app.bindings.historyState = {canUndo: false, canRedo: false};
+  app.bindings.format5HistoryRef = {current: f5History};
+  app.bindings.format5HistoryScope = format5HistoryScope;
+  app.bindings.format5HistoryState = format5TimelineHistoryState({projectId: 'project', history: f5History});
+  app.bindings.viewRef = {current: {activeMode: 'editing', editing: {selectedClipId: null, timelineCollapsed: false, playhead: 0, quickAssetId: null, previewKind: 'source'}}};
+
+  const executeF5 = (command: MenuCommandId) => appFunction('executeNativeMenuCommand', '  nativeMenuActions.current', {
+    ...app.bindings,
+    readNativeMenuView: app.read,
+    undoStoryboard: () => assert.fail('format 5 canvas must not invoke legacy storyboard undo'),
+    changeTimelineHistory: (direction: string) => dispatched.push(`${(app.bindings.viewRef as {current: {activeMode: string}}).current.activeMode}:${direction}`),
+  })(command);
+
+  const f = await fixture(executeF5, app.scope, app.read);
+  try {
+    // Editing mode: Edit -> Undo / Redo follow format5HistoryState even when legacy historyState is false.
+    assert.equal(f.state()?.commands['edit-undo'], true);
+    assert.equal(f.state()?.commands['edit-redo'], true);
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    assert.equal(f.host.send(f.contents, 'edit-redo'), true);
+    assert.deepEqual(dispatched, ['editing:undo', 'editing:redo']);
+
+    // Delayed intent is invalidated if format5History cursor changes even when timeline.revision stays unchanged.
+    f.holdMessages();
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    const updatedHistory = {...f5History, position: 2, revision: 3, undo: {actionId: 'action-3', operation: 'board.layout', affected: 1}};
+    (app.bindings.format5HistoryRef as {current: unknown}).current = updatedHistory;
+    app.bindings.format5HistoryState = format5TimelineHistoryState({projectId: 'project', history: updatedHistory});
+    f.deliver();
+    assert.deepEqual(dispatched, ['editing:undo', 'editing:redo'], 'stale menu undo intent rejected after external history advance');
+
+    // Canvas mode: Edit -> Undo / Redo stay enabled on format-5 unified history and route through changeTimelineHistory.
+    (app.bindings.viewRef as {current: {activeMode: string}}).current.activeMode = 'canvas';
+    f.controller.refresh();
+    await flush();
+    assert.equal(f.state()?.commands['edit-undo'], true);
+    assert.equal(f.state()?.commands['edit-redo'], true);
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    assert.equal(f.host.send(f.contents, 'edit-redo'), true);
+    assert.deepEqual(dispatched, ['editing:undo', 'editing:redo', 'canvas:undo', 'canvas:redo']);
+
+    // Mio blocking stack top keeps Edit -> Undo enabled so triggering it runs the same warning guard as toolbar/shortcut.
+    const mioHistory = {...updatedHistory, undoBlockedBy: 'mio' as const, undoConflict: true, redo: null};
+    (app.bindings.format5HistoryRef as {current: unknown}).current = mioHistory;
+    app.bindings.format5HistoryState = format5TimelineHistoryState({projectId: 'project', history: mioHistory});
+    f.controller.refresh();
+    await flush();
+    assert.equal(f.state()?.commands['edit-undo'], true);
+    assert.equal(f.state()?.commands['edit-redo'], false);
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    assert.deepEqual(dispatched.at(-1), 'canvas:undo');
+
+    // Busy/dirty disables both Edit -> Undo and Edit -> Redo identically to toolbar/shortcut.
+    app.bindings.format5HistoryState = format5TimelineHistoryState({projectId: 'project', history: updatedHistory, busy: true});
+    f.controller.refresh();
+    await flush();
+    assert.equal(f.state()?.commands['edit-undo'], false);
+    assert.equal(f.state()?.commands['edit-redo'], false);
+  } finally {
+    f.dispose();
+  }
 });
 
 test('absent bridges remain Web and malformed desktop bridges never become a usable transport', async () => {

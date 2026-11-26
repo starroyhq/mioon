@@ -15,6 +15,9 @@ import type {SequenceSyncCommand} from '../../../../packages/contracts/src/seque
 import type {SequenceEditEnvelope, SequenceEditReceipt, SequenceEditTrackIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {classifyCommitFailure, extractSequenceErrorIds, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
 import type {LostResponseOptions, LostResponseView, LostRetryResult} from './lost-response.ts';
+import {message, renderMessage} from '../../../../packages/i18n/src/index.ts';
+import {timelineHistoryOperationMessage} from '../timeline-history.ts';
+import type {TimelineHistoryState} from '../timeline-history.ts';
 
 export interface SequencePreviewResponse {
   readonly envelope: SequenceEditEnvelope;
@@ -34,6 +37,7 @@ export interface HistoryActionView {readonly actionId: string; readonly operatio
   /** Present only for Mio actions (D5); UI Ctrl+Z must not undo these. */
   readonly origin?: 'user' | 'mio'}
 export interface SequenceHistoryView {
+  readonly projectId?: string;
   readonly epoch: string; readonly position: number; readonly revision: number;
   readonly undo: HistoryActionView | null; readonly redo: HistoryActionView | null;
   /** Added by the unified history service (format-5 0.3.0). Older callers only
@@ -49,9 +53,90 @@ export interface SequenceHistoryView {
 }
 export type SequenceRpc = (operation: string, input: unknown) => Promise<unknown>;
 /** D5 minimal user-undo protection: a Mio action at the top is not part of the
- * user Ctrl+Z stack. MT-4 adds the separate cursor/conflict rules. */
+ * user Ctrl+Z stack. Covers both a Mio action above a user action (`undoBlockedBy: 'mio'`)
+ * and a Mio-only stack (`position > 0 && atEarliest === false && undo === null`). */
 export const format5UserUndoBlocked = (view: SequenceHistoryView | null): boolean =>
-  view?.undo?.origin === 'mio' || view?.undoBlockedBy === 'mio';
+  Boolean(view && (
+    view.undo?.origin === 'mio'
+    || view.undoBlockedBy === 'mio'
+    || (view.position > 0 && view.atEarliest === false && view.undo === null)
+  ));
+
+export interface Format5TimelineHistoryOptions {
+  readonly projectId: string | null | undefined;
+  readonly history: SequenceHistoryView | null | undefined;
+  readonly busy?: boolean;
+  readonly dirty?: boolean;
+  readonly online?: boolean;
+}
+
+/** Format-5 unified history state shared by the timeline toolbar, keyboard
+ * shortcuts (editing and board), and the native Edit menu. Format 3/4 stay on
+ * `timelineHistoryState`. */
+export function format5TimelineHistoryState({
+  projectId,
+  history,
+  busy = false,
+  dirty = false,
+  online = true,
+}: Format5TimelineHistoryOptions): TimelineHistoryState {
+  const synced = Boolean(
+    projectId
+    && history
+    && Number.isSafeInteger(history.position)
+    && history.position >= 0
+    && (!history.projectId || history.projectId === projectId),
+  );
+  const blockedMessage = busy ? message('timeline.history.busy')
+    : dirty ? message('timeline.history.dirty')
+    : !online ? message('timeline.history.offline')
+    : !synced ? message('timeline.history.syncing')
+    : null;
+  const blockedReason = renderMessage('zh-Hans', blockedMessage);
+  const mioUndoBlocked = synced && format5UserUndoBlocked(history ?? null);
+  const undoReady = Boolean(
+    synced
+    && (mioUndoBlocked || (Boolean(history?.undo) && history?.undoConflict !== true && history?.atEarliest !== true)),
+  );
+  const redoReady = Boolean(synced && history?.redo && history?.redoConflict !== true);
+  const undoMessage = synced && undoReady
+    ? (mioUndoBlocked ? message('editUi.error.mioUndoBlocked') : timelineHistoryOperationMessage(history?.undo?.operation))
+    : null;
+  const redoMessage = synced && redoReady
+    ? timelineHistoryOperationMessage(history?.redo?.operation)
+    : null;
+  const cursor = synced ? history!.position : null;
+  const length = synced ? history!.position + (history!.redo ? 1 : 0) : null;
+  return {
+    synced,
+    cursor,
+    length,
+    canUndo: Boolean(synced && !blockedMessage && undoReady),
+    canRedo: Boolean(synced && !blockedMessage && redoReady),
+    undoLabel: renderMessage('zh-Hans', undoMessage),
+    redoLabel: renderMessage('zh-Hans', redoMessage),
+    blockedReason,
+    blockedMessage,
+    undoMessage,
+    redoMessage,
+  };
+}
+
+export function format5HistoryScope(view: SequenceHistoryView | null | undefined): string {
+  if (!view) return 'none';
+  return JSON.stringify([
+    view.epoch,
+    view.position,
+    view.revision,
+    view.undo?.actionId ?? null,
+    view.redo?.actionId ?? null,
+    view.undoConflict === true,
+    view.redoConflict === true,
+    view.undoBlockedBy ?? null,
+    view.redoBlockedBy ?? null,
+    view.atEarliest === true,
+  ]);
+}
 
 const uuid = (): string => globalThis.crypto?.randomUUID?.() ??
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
