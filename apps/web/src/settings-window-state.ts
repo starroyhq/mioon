@@ -2,7 +2,7 @@ import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import type { ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
-export type SettingsPage = ProjectWindowSettingsSlot;
+export type SettingsPage = ProjectWindowSettingsSlot | 'external-agents';
 /** Keep native fixed intentions valid while the retired category joins generation services. */
 export const normalizeSettingsPage = (page: SettingsPage): SettingsPage => page === 'extensions' ? 'models' : page;
 export type SettingsConnectionPage = 'agent' | 'official' | 'custom' | 'comfy';
