@@ -280,7 +280,10 @@ test('the pinned Mac signer skips only verified example data while retaining cod
   const libraries = createRequire(builder.resolve('app-builder-lib'));
   const libraryRoot = path.dirname(builder.resolve('app-builder-lib/package.json'));
   const {Arch} = libraries('builder-util') as {Arch: {arm64: number}};
-  type SignOptions = Record<string, unknown> & {ignore(file: string): boolean};
+  type SignOptions = Record<string, unknown> & {
+    ignore(file: string): boolean;
+    optionsForFile(file: string): {hardenedRuntime: boolean};
+  };
   const {MacTargetHelper} = require(path.join(libraryRoot, 'out/mac/MacTargetHelper.js')) as {
     MacTargetHelper: new (packager: {config: {electronVersion: string}; resourceList: Promise<string[]>;
       platformSpecificBuildOptions: Record<string, never>}) => {
@@ -351,7 +354,13 @@ test('the pinned Mac signer skips only verified example data while retaining cod
     assert.ok(signed.indexOf(launcher) >= 0 && signed.indexOf(launcher) < signed.indexOf(app), 'sign the CLI launcher before its enclosing app');
     const launcherSignature = commands.find(args => args.includes('--sign') && args.at(-1) === launcher)!;
     assert.ok(launcherSignature.includes('--timestamp'));
-    assert.equal(launcherSignature[launcherSignature.indexOf('--options') + 1], 'runtime');
+    assert.equal(options.optionsForFile(launcher).hardenedRuntime, true);
+    // The pinned signer gates the runtime flag on the host's Darwin version.
+    if (process.platform === 'darwin') {
+      const flagsIndex = launcherSignature.indexOf('--options');
+      assert.ok(flagsIndex >= 0);
+      assert.equal(launcherSignature[flagsIndex + 1], 'runtime');
+    }
     for (const original of originals) {
       const bytes = await readFile(original.file);
       assert.deepEqual(bytes, original.bytes, 'signing selection cannot rewrite delivered example data');
