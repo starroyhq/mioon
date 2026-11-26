@@ -8,7 +8,9 @@ import {chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/
 import {tmpdir} from 'node:os';
 import {AppleStaplerFailure, notarizeApp, notarizeCliLauncher, runAppleStapler, verifyCliLauncherNotarization} from '../.github/scripts/apple-notarization.ts';
 import type {AppleAppNotarizationReport, AppleCliLauncherNotarizationReport, AppleStaplerCommandResult, AppleStaplerDiagnostic, AppleStaplerExecutor, NotarizeAppDependencies} from '../.github/scripts/apple-notarization.ts';
+import {inspectMacCliLauncher} from '../.github/scripts/inspect-desktop.ts';
 import {CheckFailure, safeFailure} from '../.github/scripts/media-environment.ts';
+import type {command} from '../.github/scripts/media-environment.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const app = path.join(root, 'release', 'desktop', 'production', 'mac', 'mioon.app');
@@ -222,7 +224,7 @@ async function launcherFixture(t: TestContext) {
   await chmod(file, 0o755);
   const launcher = {entry, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};
   const env: NodeJS.ProcessEnv = {...syntheticEnv(), MIOON_APPLE_CLI_LAUNCHER_REPORT: path.join(root, 'artifacts', 'desktop-macos-universal', 'cli-launcher-notarization.json')};
-  return {directory, file, launcher, env};
+  return {directory, app, file, launcher, env};
 }
 
 test('standalone launcher notarization submits the exact signed binary once and binds acceptance to its digest', {skip: process.platform === 'win32'}, async t => {
@@ -263,6 +265,38 @@ test('failed launcher verification or notarization cannot produce accepted evide
     assert.throws(() => verifyCliLauncherNotarization(reports[0], fixture.launcher), {code: 'CLI_LAUNCHER_NOTARIZATION_MISMATCH'});
     safeDiagnostics(reports);
   }
+});
+
+test('inspection requires an online ticket for both launcher slices after validating the exact signed submission', {skip: process.platform === 'win32'}, async t => {
+  const fixture = await launcherFixture(t);
+  const identity = 'Developer ID Application: Example Team (ABCDEFGHIJ)', team = 'ABCDEFGHIJ';
+  const accepted: AppleCliLauncherNotarizationReport = {version: 1, kind: 'cli-launcher-notarization', ok: true,
+    status: 'Accepted', submissionId: '57e3438f-86aa-472a-94c3-a6ed1b8d5330', launcher: fixture.launcher};
+  const calls: Array<{file: string; args: readonly string[]}> = [];
+  let rejectTicket = false;
+  const execute: typeof command = async (file, args, failureCode) => {
+    calls.push({file, args});
+    if (rejectTicket && args.includes('--check-notarization')) throw new CheckFailure(failureCode);
+    return [
+      `Authority=${identity}`, `TeamIdentifier=${team}`, 'Identifier=app.starroy.mioon.cli-launcher',
+      'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1', PRIVATE,
+    ].join('\n');
+  };
+  const evidence = await inspectMacCliLauncher(fixture.app, accepted, {execute, identity, team});
+  assert.deepEqual(evidence, {...fixture.launcher, codesign: true, ticketVerified: true});
+  safeDiagnostics(evidence);
+  assert.deepEqual(calls, [
+    {file: '/usr/bin/codesign', args: ['--verify', '--strict', '--all-architectures', fixture.file]},
+    {file: '/usr/bin/codesign', args: ['--display', '--arch', 'arm64', '--verbose=4', fixture.file]},
+    {file: '/usr/bin/codesign', args: ['--display', '--arch', 'x86_64', '--verbose=4', fixture.file]},
+    {file: '/usr/bin/codesign', args: ['--verify', '--strict', '--all-architectures', '--check-notarization', '-R=notarized', fixture.file]},
+  ]);
+  rejectTicket = true;
+  await assert.rejects(inspectMacCliLauncher(fixture.app, accepted, {execute, identity, team}),
+    {code: 'CLI_LAUNCHER_NOTARIZATION_TICKET_INVALID'});
+  await assert.rejects(inspectMacCliLauncher(fixture.app, {...accepted, launcher: {...fixture.launcher, sha256: '0'.repeat(64)}}, {execute, identity, team}),
+    {code: 'CLI_LAUNCHER_NOTARIZATION_MISMATCH'});
+  assert.equal(calls.length, 8);
 });
 
 test('electron-builder resolves the actual release-only CJS hook from its desktop working directory', async () => {
