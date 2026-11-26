@@ -2,7 +2,7 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import {createHash} from 'node:crypto';
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp, chmod, lstat, rename } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp, chmod, lstat, rename, symlink } from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -30,7 +30,7 @@ async function fixture(t: TestContext, root = rootPackage(), desktop = desktopPa
 
 async function builderFixture(t: TestContext) {
   const directory = await fixture(t);
-  for (const name of ['subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
+  for (const name of ['subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts', 'cli-launcher-binary.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
   // Keep the real verifier while resolving it from its original module URL.
@@ -232,6 +232,31 @@ test('staging build preflights metadata before cleanup and writes the root appli
   assert.doesNotMatch(source, /version: pkg\.version/);
 });
 
+test('Mac packing requires the same-channel launcher as an executable regular file', {skip: process.platform === 'win32'}, async t => {
+  const {directory, builderConfig} = await builderFixture(t);
+  const stage = path.join(directory, 'apps/desktop/build');
+  const launchers = path.join(stage, 'cli-launcher');
+  await mkdir(launchers, {recursive: true});
+  const identity = identityForChannel('development'), config = builderConfig(identity.channel);
+  const context = {electronPlatformName: 'darwin', packager: {info: {appDir: stage}}};
+  await writeFile(path.join(stage, 'package.json'), JSON.stringify(stagePackage(identity)));
+  await cp(new URL('../packages/business/resources/subtitles/', import.meta.url), path.join(stage, 'subtitles'), {recursive: true});
+  await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), path.join(stage, 'examples'));
+  const fixture = path.join(launchers, 'mioon');
+  await writeFile(fixture, Buffer.from([0xca, 0xfe, 0xba, 0xbe]));
+  await chmod(fixture, 0o755);
+  await assert.rejects(config.beforePack(context), {code: 'ENOENT'});
+  const launcher = path.join(launchers, 'mioon-dev');
+  await symlink(fixture, launcher);
+  await assert.rejects(config.beforePack(context), /regular executable/);
+  await unlink(launcher);
+  await copyFile(fixture, launcher);
+  await chmod(launcher, 0o644);
+  await assert.rejects(config.beforePack(context), /regular executable/);
+  await chmod(launcher, 0o755);
+  await config.beforePack(context);
+});
+
 test('beforePack rejects missing or corrupted examples after metadata and subtitle checks without changing the stage', async t => {
   const {directory, builderConfig} = await builderFixture(t), stage = path.join(directory, 'apps/desktop/build');
   await mkdir(stage); await cp(new URL('../packages/business/resources/subtitles/', import.meta.url), path.join(stage, 'subtitles'), {recursive: true});
@@ -255,7 +280,10 @@ test('the pinned Mac signer skips only verified example data while retaining cod
   const libraries = createRequire(builder.resolve('app-builder-lib'));
   const libraryRoot = path.dirname(builder.resolve('app-builder-lib/package.json'));
   const {Arch} = libraries('builder-util') as {Arch: {arm64: number}};
-  type SignOptions = Record<string, unknown> & {ignore(file: string): boolean};
+  type SignOptions = Record<string, unknown> & {
+    ignore(file: string): boolean;
+    optionsForFile(file: string): {hardenedRuntime: boolean};
+  };
   const {MacTargetHelper} = require(path.join(libraryRoot, 'out/mac/MacTargetHelper.js')) as {
     MacTargetHelper: new (packager: {config: {electronVersion: string}; resourceList: Promise<string[]>;
       platformSpecificBuildOptions: Record<string, never>}) => {
@@ -293,6 +321,8 @@ test('the pinned Mac signer skips only verified example data while retaining cod
 
   const codeFiles = [
     'MacOS/mioon',
+    'Helpers/mioon',
+    'Helpers/mioon-dev',
     'Frameworks/mioon Helper.app/Contents/MacOS/helper',
     'Frameworks/Electron Framework.framework/Versions/A/Electron Framework',
     'Resources/app.asar.unpacked/native.node',
@@ -320,6 +350,17 @@ test('the pinned Mac signer skips only verified example data while retaining cod
     await signer.signApp({...options, identity: 'MIOON_TEST_NO_SIGNING_IDENTITY', identityValidation: false,
       preEmbedProvisioningProfile: false, preAutoEntitlements: false});
     const signed = commands.filter(args => args.includes('--sign')).map(args => args.at(-1));
+    const launcher = path.join(contents, 'Helpers', config.executableName);
+    assert.ok(signed.indexOf(launcher) >= 0 && signed.indexOf(launcher) < signed.indexOf(app), 'sign the CLI launcher before its enclosing app');
+    const launcherSignature = commands.find(args => args.includes('--sign') && args.at(-1) === launcher)!;
+    assert.ok(launcherSignature.includes('--timestamp'));
+    assert.equal(options.optionsForFile(launcher).hardenedRuntime, true);
+    // The pinned signer gates the runtime flag on the host's Darwin version.
+    if (process.platform === 'darwin') {
+      const flagsIndex = launcherSignature.indexOf('--options');
+      assert.ok(flagsIndex >= 0);
+      assert.equal(launcherSignature[flagsIndex + 1], 'runtime');
+    }
     for (const original of originals) {
       const bytes = await readFile(original.file);
       assert.deepEqual(bytes, original.bytes, 'signing selection cannot rewrite delivered example data');

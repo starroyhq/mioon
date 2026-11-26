@@ -72,6 +72,8 @@ for (const expected of channels) {
     assert.equal(config.linux.syncDesktopName, true);
     assert.equal(config.linux.artifactName, `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`);
     assert.deepEqual(config.mac.target, [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }]);
+    assert.deepEqual(config.mac.extraFiles, [{from: 'build/cli-launcher', to: 'Helpers', filter: [identity.executableName]}]);
+    assert.ok(!config.files.some((file: string) => file.includes('cli-launcher')), 'Keep the native launcher out of ASAR');
     assert.equal(config.mac.artifactName, `${identity.executableName}-\${version}-mac.\${ext}`);
     assert.equal(config.mac.detectUpdateChannel, false);
     assert.equal(config.dmg.writeUpdateInfo, false);

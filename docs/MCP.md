@@ -4,7 +4,7 @@
 
 Mioon exposes an **official MCP SDK stdio server**. It talks to the same authenticated local HTTP operation layer as the Web app, Electron, and [CLI](CLI.md); it does not open a database or start another backend. Streamable HTTP MCP is not implemented or required. Start the normal backend or Electron separately before calling stateful tools.
 
-Node.js 24+ and installed source workspace dependencies are required for this optional source bridge. The Electron app itself uses bundled Node, but it does not bundle a standalone MCP executable.
+macOS 桌面包可用 `mioon mcp` 接入，开发渠道用 `mioon-dev mcp`。启动器把 stdio 交给正在运行的同渠道 Mioon。也可从源码运行 MCP，需 Node.js 24+ 和工作区依赖。[启动器协议](CLI-RUNTIME-PROTOCOL.md)
 
 ```sh
 pnpm install --frozen-lockfile
