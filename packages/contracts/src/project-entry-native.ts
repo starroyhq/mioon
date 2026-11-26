@@ -59,10 +59,36 @@ export type ProjectEntryWindowRevoked = z.infer<typeof projectEntryWindowRevoked
 export type ProjectEntrySaveAsInput = z.infer<typeof projectEntrySaveAsInputSchema>;
 export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInputSchema>;
 
+const nativeFcpOwner = z.object({projectId: projectIdSchema, windowId}).strict();
+const nativeFcpFileIdentity = {
+  device: z.string().regex(/^\d{1,20}$/u),
+  inode: z.string().regex(/^\d{1,20}$/u),
+};
+export const fcpChooseDestinationControlInputSchema = nativeFcpOwner.extend({
+  token: z.string().uuid(), directory: absolutePath, ...nativeFcpFileIdentity,
+});
+export const fcpChooseDestinationControlResultSchema = z.object({
+  token: z.string().uuid(), displayPath: z.string().min(1).max(4096),
+}).strict();
+export const fcpCompletedBundleControlInputSchema = nativeFcpOwner.extend({exportId: z.string().uuid()});
+export const fcpCompletedBundleControlResultSchema = z.object({
+  path: absolutePath.refine(value => value.endsWith('.fcpxmld')),
+  ...nativeFcpFileIdentity,
+}).strict().nullable();
+
+/** Absolute file paths travel on the captured main-to-utility port only. */
+export interface NativeFcpExportControlPort {
+  chooseDestination(input: z.infer<typeof fcpChooseDestinationControlInputSchema>, options?: {signal?: AbortSignal}):
+    Promise<z.infer<typeof fcpChooseDestinationControlResultSchema>>;
+  completedBundle(input: z.infer<typeof fcpCompletedBundleControlInputSchema>, options?: {signal?: AbortSignal}):
+    Promise<z.infer<typeof fcpCompletedBundleControlResultSchema>>;
+}
+
 /** No server types, SQL, caller-selected lease kinds or persisted lease IDs. */
 export interface ProjectEntryControlPort {
   readonly templates?: readonly import('./project-entry-desktop.ts').ProjectDesktopTemplate[];
   readonly nativeRelink?: NativeAssetMediaPort;
+  readonly nativeFcpExport?: NativeFcpExportControlPort;
   listRecent(): Promise<ProjectEntriesResponse>;
   /** Main-to-utility read of app-wide durable task activity. */
   updateActivity?(): import('./desktop-update.ts').DesktopUpdateActivity;

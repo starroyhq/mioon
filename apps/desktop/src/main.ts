@@ -87,6 +87,10 @@ import type { WindowsProjectVolumeReader } from './project-location-probe.ts';
 import { projectLocationDecision } from './project-location-policy.ts';
 import {createProjectLocationHelp} from './project-location-help.ts';
 import {createAssetRelinkHost} from './asset-relink-host.ts';
+import {FCP_EXPORT_NATIVE_CHANNEL} from '../../../packages/contracts/src/fcp-export-native.ts';
+import {createFcpExportHost} from './fcp-export-host.ts';
+import {fcpNativeInvalid, fcpNativeUnavailable} from '../../../packages/contracts/src/project-entry-fcp-bridge.ts';
+import {finalCutInstalled, openInFinalCut} from './fcp-export-macos.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 import {DESKTOP_UPDATE_CHANNEL, DESKTOP_UPDATE_EVENT} from '../../../packages/contracts/src/desktop-update.ts';
@@ -233,6 +237,7 @@ let workspaceNativeHost:WorkspaceNativeHost|null=null;
 let projectEntryHost:ReturnType<typeof createProjectEntryDesktopHost<IpcMainInvokeEvent,BrowserWindow>>|null=null;
 let assetImportHost:ReturnType<typeof createAssetImportHost<IpcMainInvokeEvent>>|null=null;
 let assetRelinkHost:ReturnType<typeof createAssetRelinkHost<IpcMainInvokeEvent,BrowserWindow>>|null=null;
+let fcpExportHost: {handle(event: IpcMainInvokeEvent, input: unknown): Promise<unknown>} | null = null;
 let trayHost: ReturnType<typeof createDesktopTray> | null = null;
 let trayOperation: {action: TrayAction; settingsSlot: ProjectWindowSettingsSlot; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
 const nativeDialogs = new Set<{window: BrowserWindow}>();
@@ -953,6 +958,32 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     });
     const relink=ownedRelinkHost;
     context.startup.signal.addEventListener('abort',()=>{relink.dispose();if(assetRelinkHost===relink)assetRelinkHost=null;},{once:true});
+    if (process.platform === 'darwin') {
+      const fcp = fcpExportHost = createFcpExportHost({
+        backend: ownedBackend.projectEntries.nativeFcpExport,
+        signal: context.startup.signal,
+        ownerForEvent: (event: IpcMainInvokeEvent) => {
+          const window = ownedWindowHost.windowForContents(event.sender), document = ownedWindowHost.ownerForContents(event.sender);
+          if (windowHost !== ownedWindowHost || nativeDialogs.size !== 0 || !window
+            || document?.role !== 'editor' || !document.projectId
+            || event.senderFrame !== window.webContents.mainFrame || event.senderFrame !== document.frame
+            || event.senderFrame?.url !== document.url) return null;
+          const selected = nativeOwner(window);
+          if (!selected?.isCurrent()) return null;
+          return {...selected, projectId: document.projectId, isCurrent: () => selected.isCurrent()
+            && windowHost === ownedWindowHost && event.senderFrame === window.webContents.mainFrame
+            && event.senderFrame === document.frame && event.senderFrame?.url === document.url};
+        },
+        chooseDirectory: owner => ownedPanel(owner, async () => {
+          const result = await dialog.showOpenDialog(owner.window, {properties: ['openDirectory', 'createDirectory']});
+          return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!;
+        }),
+        revealPath: bundle => shell.showItemInFolder(bundle),
+        openInFinalCut,
+        finalCutInstalled,
+      });
+      context.startup.signal.addEventListener('abort', () => {if (fcpExportHost === fcp) fcpExportHost = null;}, {once: true});
+    }
     const historyDivergedForFile=async(file:string):Promise<{projectId:string;name:string|null}|null>=>{
       // Only a registered path can have a history decision. Keeping the catalog
       // gate here means an arbitrary selected file takes the ordinary open path.
@@ -1718,6 +1749,10 @@ if (typeof DESKTOP_UPDATE_CHANNEL === 'string') ipcMain.handle(DESKTOP_UPDATE_CH
   return args.length === 1 && updateHost ? updateHost.dispatch(document, args[0]) : {ok: false, error: {code: 'UPDATE_UNAVAILABLE', status: 503}};
 });
 ipcMain.handle(NATIVE_ASSET_MEDIA_CHANNEL,(event,request)=>{if(!assetRelinkHost)throw new Error('Native media selection unavailable.');return assetRelinkHost.handle(event,request);});
+if (process.platform === 'darwin') ipcMain.handle(FCP_EXPORT_NATIVE_CHANNEL, (event, ...args: unknown[]) => {
+  if (args.length !== 1) return fcpNativeInvalid();
+  return fcpExportHost?.handle(event, args[0]) ?? fcpNativeUnavailable();
+});
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
   const result = windowHost.dispatch(event, request);
