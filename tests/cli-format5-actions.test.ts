@@ -40,7 +40,7 @@ async function commit(cliEnv: NodeJS.ProcessEnv, projectId: string, plan: Row): 
   return cli(cliEnv, 'sequence', 'action', 'commit', '--input', JSON.stringify({projectId,
     envelope: plan.envelope, expectedPlanDigest: plan.planDigest}));
 }
-async function connectMcp(t: TestContext, env: NodeJS.ProcessEnv) {
+async function connectMcp(t: TestContext, env: Record<string, string>) {
   const client = new Client({name: 'format5-actions-test', version: '1.0.0'});
   t.after(() => client.close());
   await client.connect(new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'],
