@@ -35,6 +35,13 @@ export const creationExtraMessages = {
   'tasks.error.generationStateChanged': { 'zh-Hans': '任务状态已变化，请重新核对', 'zh-Hant': '工作狀態已變更，請重新核對', en: 'The task state changed; check it again', ja: 'タスクの状態が変わりました。再確認してください' },
   'tasks.error.generationFailedCode': { 'zh-Hans': '生成失败（{code}）', 'zh-Hant': '生成失敗（{code}）', en: 'Generation failed ({code})', ja: '生成に失敗（{code}）' },
   'tasks.error.generationFailed': { 'zh-Hans': '生成失败', 'zh-Hant': '生成失敗', en: 'Generation failed', ja: '生成に失敗しました' },
+  'tasks.error.providerHttp401': { 'zh-Hans': '{service} 的密钥无效', 'zh-Hant': '{service} 的金鑰無效', en: 'Invalid API key for {service}', ja: '{service} のキーが無効です' },
+  'tasks.error.providerHttp402': { 'zh-Hans': '{service} 账户余额不足或没开通计费', 'zh-Hant': '{service} 帳戶餘額不足或尚未開通計費', en: '{service} account has insufficient balance or billing is not enabled', ja: '{service} のアカウント残高が不足しているか、課金が有効になっていません' },
+  'tasks.error.providerHttp403': { 'zh-Hans': '{service} 没有权限使用这个模型', 'zh-Hant': '{service} 沒有權限使用這個模型', en: '{service} does not have permission to use this model', ja: '{service} にはこのモデルを使用する権限がありません' },
+  'tasks.error.providerHttp404': { 'zh-Hans': '{service} 找不到这个模型', 'zh-Hant': '{service} 找不到這個模型', en: '{service} could not find this model', ja: '{service} でこのモデルが見つかりません' },
+  'tasks.error.providerHttp429': { 'zh-Hans': '{service} 请求太频繁，稍后再试', 'zh-Hant': '{service} 請求太頻繁，請稍後再試', en: 'Too many requests to {service}. Try again later', ja: '{service} へのリクエストが多すぎます。しばらくしてから再試行してください' },
+  'tasks.error.providerHttp5xx': { 'zh-Hans': '{service} 暂时出了故障', 'zh-Hant': '{service} 暫時發生故障', en: '{service} is temporarily unavailable', ja: '{service} で一時的な障害が発生しています' },
+  'tasks.error.providerHttpRejected': { 'zh-Hans': '{service} 拒绝了这次请求', 'zh-Hant': '{service} 拒絕了這次請求', en: '{service} rejected this request', ja: '{service} がこのリクエストを拒否しました' },
   'tasks.error.diagnosticCode': { 'zh-Hans': '诊断代码（原始值）：{code}', 'zh-Hant': '診斷代碼（原始值）：{code}', en: 'Diagnostic code (original): {code}', ja: '診断コード（元の値）：{code}' },
   'tasks.error.videoConnectionUnclassified': {
     'zh-Hans': '暂时无法读取此任务的视频连接，请等待连接状态更新。',

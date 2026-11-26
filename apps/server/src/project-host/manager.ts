@@ -38,6 +38,7 @@ import type {HistorySwitchBoundary} from '../../../../packages/business/src/proj
 import {projectHistoryResolveSchema} from '../../../../packages/contracts/src/project-history-recovery.ts';
 import type {ProjectHistoryResolveInput, ProjectHistoryResolveResult} from '../../../../packages/contracts/src/project-history-recovery.ts';
 import {archivedBackgroundHistorySource, currentBackgroundHistorySource} from './background-history.ts';
+import {refreshRegisteredIdentity} from './registration-identity.ts';
 
 export interface ManagerClock {
   now(): number;
@@ -897,7 +898,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       if (pending) {await pending; continue;}
       const registration = registry.get(projectId);
       if (!registration) throw projectNotFound(projectId);
-      if (sameProjectFileIdentity(readIdentity(registration.projectFile), registration.fileIdentity)) return registration;
+      const observed = readIdentity(registration.projectFile);
+      if (sameProjectFileIdentity(observed, registration.fileIdentity)) return registration;
+      const atRegisteredPath = refreshRegisteredIdentity(registry, registration, observed);
+      if (atRegisteredPath) return atRegisteredPath;
       let found: string | null;
       try {found = await registry.findMoved(registration);}
       catch (error) {

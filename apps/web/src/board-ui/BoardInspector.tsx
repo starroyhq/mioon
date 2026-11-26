@@ -10,8 +10,8 @@
 import React, {useEffect, useRef, useState} from 'react';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
-import {providerDisplayName, generationFailureDescriptor} from '../creation-i18n.ts';
-import {generationSelection} from '../generation-settings.ts';
+import {canRetryGenerationFailure, formatBoardGenerationFailure, jobServiceDisplayName, providerDisplayName} from '../creation-i18n.ts';
+import {resolveBoardGenerationSelection} from '../generation-service-choices.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
 import {BoardFilmOverview} from './BoardFilmComponents.tsx';
 import type {BoardLive} from './live.ts';
@@ -123,8 +123,7 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const runningJob = latestJob && isActiveJob(latestJob) ? latestJob : null;
   const failedJob = latestJob?.status === 'failed' ? latestJob : null;
   const unknownJob = latestJob?.status === 'submission_unknown' ? latestJob : null;
-  const jobServiceName = (job: Row): string => providerDisplayName(
-    props.providers?.find(provider => provider.id === job.providerId) ?? {id: String(job.providerId ?? '')}, t);
+  const jobServiceName = (job: Row): string => jobServiceDisplayName(job, t, props.providers);
   const retryPending = Boolean(failedJob && shotJobs.some(job => job.retryOfJobId === failedJob.id
     && (isActiveJob(job) || job.status === 'submission_unknown')));
   const cancelGeneration = async (job: Row): Promise<void> => {
@@ -174,7 +173,12 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const generationProviders = props.providers ?? [];
   const generationOptions = props.generationOptions ?? {};
   const generation = selected?.kind === 'shot'
-    ? generationSelection(generationProviders, generationOptions as Parameters<typeof generationSelection>[1], shot ?? {})
+    ? resolveBoardGenerationSelection(
+      generationProviders,
+      generationOptions as Parameters<typeof resolveBoardGenerationSelection>[1],
+      shot ?? {},
+      {shotId: selected.id, jobs: props.jobs, versions: props.versions},
+    )
     : null;
   const inputs = props.inputs ?? null;
   const hasService = Boolean(inputs?.service);
@@ -409,9 +413,9 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
         aria-valuenow={Math.round(Number(runningJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(runningJob.progress) || 0)))}%`}}/></div>
     </section> : <>
       {failedJob && <section className="board-shot-failure" data-testid={`failed-version-${failedJob.id}`} role="alert">
-        <span className="board-shot-failure-label" data-text-selectable>{t('redesign.board.failureReason',
-          {reason: renderMessage(generationFailureDescriptor(failedJob.error))})}</span>
-        {props.onRetryJob && <button type="button" className="board-shot-failure-retry" data-testid={`retry-failed-version-${failedJob.id}`}
+        <span className="board-shot-failure-label" data-text-selectable>{formatBoardGenerationFailure(
+          failedJob.error, jobServiceName(failedJob), t, renderMessage)}</span>
+        {props.onRetryJob && canRetryGenerationFailure(failedJob.error) && <button type="button" className="board-shot-failure-retry" data-testid={`retry-failed-version-${failedJob.id}`}
           disabled={props.busy || jobAction !== null || retryPending} onClick={() => { void retryGeneration(failedJob); }}>
           <Icon name="refresh" size={12}/>{t('redesign.board.retry')}
         </button>}

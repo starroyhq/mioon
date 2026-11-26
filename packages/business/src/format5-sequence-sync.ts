@@ -1728,6 +1728,15 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     const sceneData = command.kind === 'clip-split-scenes'
       ? applyOtherTrackSceneSplits(nextTimeline, context, provisional, cuts) : null;
     if (sceneData) nextTimeline = sceneData.timeline;
+    const transfer = successful.transfer;
+    if (transfer && transfer.trackId !== mainTrackId) {
+      // The main track compacts before the drop, which can pull anchored clips into its range.
+      const {clip: dropped, trackId} = transfer;
+      const dropEnd = dropped.startFrame + dropped.durationFrames;
+      const blockers = nextTimeline.clips.filter(clip => clip.trackId === trackId && clip.id !== dropped.id
+        && clip.startFrame < dropEnd && clip.startFrame + clip.durationFrames > dropped.startFrame);
+      if (blockers.length > 0) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', blockers.map(clip => clip.id).sort());
+    }
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
     const mainTrackClipSet = new Set(nextTimeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));

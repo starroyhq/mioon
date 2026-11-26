@@ -6,7 +6,7 @@ import type {BigIntStats} from 'node:fs';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError, sameContentStamp} from '@mioon/business/project-file/index';
 import type {ProjectFileFormat} from '@mioon/business/project-file/index';
 import {readClosedProjectForFormatUpgrade} from '../../../packages/business/src/project-file/closed-copy.ts';
-import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
+import {isAppLibraryHeld, projectFileIdentity, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, projectEntryIdentitySchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {isProjectId} from '../../../packages/contracts/src/project-file.ts';
@@ -37,6 +37,7 @@ import {json} from './http-json.ts';
 import {createProjectCatalog} from './project-host/project-catalog.ts';
 import {catalogFileGeneration as generation} from './project-catalog-scan.ts';
 import type {ProjectCatalogClient} from './project-catalog-client.ts';
+import {matchesRegisteredInode, refreshRegisteredIdentity} from './project-host/registration-identity.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly key: string;
@@ -160,7 +161,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       throw new AppError('PROJECT_NOT_FOUND', '项目未登记', 404, {projectId});
     }
     assertProjectFile?.(entry.projectFile);
-    return entry;
+    return refreshRegisteredIdentity(registry, entry, projectFileIdentity(entry.projectFile)) ?? entry;
   };
   const fileIdentity = (file: string) => {
     const info = lstatSync(file, {bigint: true});
@@ -181,18 +182,22 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     try{
       assertProjectFile?.(original.projectFile);
       const before=lstatSync(original.projectFile,{bigint:true});
-      if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||!sameProjectFileIdentity({dev:String(before.dev),ino:String(before.ino)},original.fileIdentity))return null;
+      const identity={dev:String(before.dev),ino:String(before.ino)};
+      if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||!matchesRegisteredInode(original,identity))return null;
+      const unchanged=()=>generation(lstatSync(original.projectFile,{bigint:true}))===generation(before);
       // An open host is the only reader allowed to touch its live connection;
       // refreshSummaries obtains its verified name without opening an alias.
-      if(isProjectFileHeld(original.fileIdentity)){
+      if(isProjectFileHeld(identity)){
         if(manager.status(original.projectId)?.state!=='open')return null;
         refreshSummaries();
         const current=registry.get(original.projectId);
-        return current&&current.projectFile===original.projectFile&&sameProjectFileIdentity(current.fileIdentity,original.fileIdentity)&&generation(lstatSync(original.projectFile,{bigint:true}))===generation(before)?current:null;
+        if(!current||current.projectFile!==original.projectFile||!sameProjectFileIdentity(current.fileIdentity,original.fileIdentity)||!unchanged())return null;
+        return refreshRegisteredIdentity(registry,current,identity);
       }
       const found=observeFile(original.projectFile);
-      if(found.metadata.projectId!==original.projectId||typeof found.metadata.name!=='string'||!sameProjectFileIdentity(found.identity,original.fileIdentity)||generation(lstatSync(original.projectFile,{bigint:true}))!==generation(before))return null;
-      return {...original,name:found.metadata.name};
+      if(found.metadata.projectId!==original.projectId||typeof found.metadata.name!=='string'||!sameProjectFileIdentity(found.identity,identity)||!unchanged())return null;
+      const current=refreshRegisteredIdentity(registry,original,identity);
+      return current&&{...current,name:found.metadata.name};
     }catch{return null;}
   };
   const nativeFence = (options:NativeAssetMediaRequestOptions|undefined):NativeAssetMediaRequestOptions & {beforeEffect():void} => {

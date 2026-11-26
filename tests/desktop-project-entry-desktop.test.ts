@@ -20,15 +20,23 @@ import type {ProjectWindowOpenResult} from '../apps/desktop/src/project-window-p
 import {FORMAT5_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION,inspectProjectFormatReadOnly,openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {projectLocation,serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {readFormat4BackupManifest} from '../packages/business/src/project-file/format4-backup.ts';
+import {openAppLibrary,projectFileIdentity} from '../packages/business/src/app-db/index.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
 const pendingChannel='mioon:project-entries:pending-open:v1';
 const settle=async()=>{for(let index=0;index<8;index++)await new Promise<void>(resolve=>setImmediate(resolve));};
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,openRecent?:(
- owner:ProjectEntryDesktopOwner,projectId:string,entryToken:string,remember:boolean)=>Promise<ProjectWindowOpenResult>,legacySource=false){
+ owner:ProjectEntryDesktopOwner,projectId:string,entryToken:string,remember:boolean)=>Promise<ProjectWindowOpenResult>,legacySource=false,staleDevice=false){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-desktop-')),dataDir=path.join(root,'app'),selected=path.join(root,'selected');mkdirSync(selected);
  const created=createServerProject(dataDir,{name:'Original',projectFormat:legacySource?PROJECT_FILE_SCHEMA_VERSION:FORMAT5_PROJECT_SCHEMA_VERSION}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
+ if(staleDevice){
+  const library=openAppLibrary({dataDir});
+  try{
+   const entry=library.registry.get(projectId)!;
+   library.registry.upsert({...entry,fileIdentity:{...entry.fileIdentity,dev:String(BigInt(entry.fileIdentity.dev)+1n)}});
+  }finally{library.close();}
+ }
  const server=await startServer({dataDir,port:0,token:'synthetic-desktop-entry-token',projectFormatForTest:FORMAT5_PROJECT_SCHEMA_VERSION}),backendId=randomUUID();
  let client!:ReturnType<typeof createProjectEntryControlClient>;
  const broker=createProjectEntryControlBroker({backendId,control:wrap?.(server.projectEntries)??server.projectEntries,send:message=>queueMicrotask(()=>client.handle(message))});
@@ -363,8 +371,8 @@ test('a system dialog answer from an old document cannot probe, create, or open 
  assert.equal(calls,0);host.close();backend.close();
 });
 
-test('a selected legacy copy is identified as a copy before the upgrade prompt', async t => {
-  const f = await fixture(t, undefined, undefined, true);
+for (const staleDevice of [false, true]) test(`a selected legacy copy is identified before the upgrade prompt${staleDevice ? ' after its original device number changes' : ''}`, async t => {
+  const f = await fixture(t, undefined, undefined, true, staleDevice);
   const copy = path.join(f.root, 'Finder copy.mioon');
   copyFileSync(f.file, copy);
   const original = readFileSync(f.file);
@@ -376,9 +384,18 @@ test('a selected legacy copy is identified as a copy before the upgrade prompt',
   assert.deepEqual(readFileSync(f.file), original);
   assert.equal(f.adopted.length, 0, 'copy detection must not start an upgrade or editor');
   const recent = await f.client.api.listRecent();
-  assert.equal(recent.registered.length, 1, 'copy detection must not register anything');
+  assert.equal(recent.registered.length, 1, 'copy detection must not register the copy');
   assert.equal(recent.registered[0]!.project.projectId, f.projectId);
   assert.equal(recent.registered[0]!.project.projectFile, f.file);
+  assert.deepEqual(recent.registered[0]!.project.fileIdentity, projectFileIdentity(f.file));
+  const openOriginal = await f.bridge.openOriginal({token: result.token});
+  assert.equal(openOriginal.status, 'upgrade-required');
+  if (openOriginal.status !== 'upgrade-required') assert.fail();
+  assert.equal(openOriginal.preview.projectId, f.projectId);
+  const view = await f.bridge.resolveFormatUpgrade!({token: openOriginal.token, choice: 'read-only'});
+  assert.equal(view.status, 'read-only');
+  assert.deepEqual(readFileSync(f.file), original);
+  assert.deepEqual(readFileSync(copy), original);
 });
 
 test('adopting a legacy copy carries the new identity into the ordinary upgrade prompt', async t => {
