@@ -9,6 +9,8 @@ import {pathToFileURL} from 'node:url';
 import {createFcpExportServices} from '../packages/business/src/fcp-export.ts';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
+import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
+import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -106,6 +108,71 @@ async function settle(get: () => FcpExportGetOutput | Promise<FcpExportGetOutput
   }
   assert.fail('FCP export did not settle');
 }
+
+test('FCP checklist includes only real anchors and transitions present in the XML', async t => {
+  const f = await fixture(t);
+  const timeline = readFormat5TimelineRecord(f.store.db, 'project');
+  assert.ok(timeline);
+  const first = timeline.clips[0]!;
+  const videoTrack = randomUUID(), audioTrack = randomUUID();
+  const omittedAsset = randomUUID(), audioAsset = randomUUID();
+  const supported = first.assetId!;
+  const audioFile = path.join(f.projectDir, 'media', 'Stand-alone.wav');
+  const wav = Buffer.alloc(44 + 96_000);
+  wav.write('RIFF');
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(48_000, 24);
+  wav.writeUInt32LE(96_000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(96_000, 40);
+  writeFileSync(audioFile, wav);
+  const application = createProjectServiceApplication(f.library);
+  const references = createProjectAssetReferenceServices(f.store, application);
+  const {reference} = await references.referenceForImport(audioFile);
+  f.store.put('assets', {id: audioAsset, projectId: f.projectId, name: 'Stand-alone.wav', mimeType: 'audio/wav', duration: 1,
+    reference, referenceRevision: 1, sha256: reference.fullSha256, sizeBytes: reference.sizeBytes});
+  f.store.put('assets', {id: omittedAsset, projectId: f.projectId, name: 'Omitted.webp', mimeType: 'image/webp'});
+  const overlay = (name: string, startFrame: number, assetId: string) => ({id: randomUUID(), trackId: videoTrack, name,
+    startFrame, assetId, sourceInFrame: 0, durationFrames: 12, rect: first.rect, gain: 1, sourceState: 'ready',
+    anchor: startFrame === 0 ? {clipId: first.id, offsetFrames: 0} : null});
+  const anchored = overlay('Anchored video', 0, supported);
+  const transitionIn = {profileId: CLIP_TRANSITION_PROFILE, kind: 'wipeLeft', durationFrames: 6};
+  const omitted = {...overlay('Omitted WebP', 12, omittedAsset), transitionIn};
+  const afterOmitted = {...overlay('Cut after omitted', 24, supported), transitionIn};
+  const retained = {...overlay('Retained transition', 36, supported), transitionIn};
+  const audio = {...overlay('Stand-alone audio', 3, audioAsset), trackId: audioTrack};
+  f.store.put('timelines', {...timeline, tracks: [...timeline.tracks,
+    {id: videoTrack, name: 'V2', kind: 'video', orderIndex: 1, hidden: false, muted: false},
+    {id: audioTrack, name: 'A1', kind: 'audio', orderIndex: 2, hidden: false, muted: false},
+  ], clips: [...timeline.clips, anchored, omitted, afterOmitted, retained, audio]});
+  const {projectId} = f;
+  const services = f.ordinary();
+  const preview = fcpExportSchemas['export.fcpxml.preview'].output.parse(
+    await services.call('export.fcpxml.preview', {projectId, copyMedia: true}));
+  assert.deepEqual(preview.approximations.find(item => item.code === 'ANCHOR')?.clips.map(clip => clip.id), [anchored.id]);
+  assert.deepEqual(preview.approximations.find(item => item.code === 'TRANSITION')?.clips.map(clip => clip.id), [retained.id]);
+  assert.deepEqual(preview.missing.find(item => item.code === 'UNSUPPORTED_MEDIA')?.clips.map(clip => clip.id), [omitted.id]);
+  const start = fcpExportSchemas['export.fcpxml.start'].output.parse(await services.call('export.fcpxml.start',
+    {projectId, requestId: 'checklist-cuts', name: 'Checklist', copyMedia: true, destination: {kind: 'project'}}));
+  const done = await settle(async () => fcpExportSchemas['export.fcpxml.get'].output.parse(
+    await services.call('export.fcpxml.get', {projectId, ...start})));
+  assert.equal(done.status, 'done');
+  const bundle = path.join(f.outputDir, done.result!.bundleName);
+  const xml = readFileSync(path.join(bundle, 'Info.fcpxml'), 'utf8');
+  assert.match(xml, /<asset-clip[^>]*name="Stand-alone audio"/u);
+  assert.equal(xml.match(/<transition name="Edge Wipe"/gu)?.length, 1);
+  const manifest = JSON.parse(readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.approximations, preview.approximations);
+  const checklist = readFileSync(path.join(bundle, 'missing.md'), 'utf8');
+  assert.match(checklist, /Omitted WebP/u);
+  assert.doesNotMatch(checklist, /Stand-alone audio|Cut after omitted/u);
+});
 
 test('project RPC previews without writing and exports one copy for equal SHA-256 sources', async t => {
   const f = await fixture(t);

@@ -75,6 +75,20 @@ const transitions: Record<ClipTransitionKind, {effect: Effect; parameters?: read
   pushRight: {effect: push, parameters: [{name: 'Direction', value: '0'}]},
 };
 
+export function fcpxmlTransitions(timeline: Format5Timeline, assets: ReadonlyMap<string, unknown>) {
+  const cuts = new Map<string, NonNullable<Format5Clip['transitionIn']>>();
+  const previousByTrack = new Map<string, Format5Clip>();
+  const hasResource = (clip: Format5Clip) => clip.sourceState === 'ready' && clip.assetId && assets.has(clip.assetId);
+  for (const clip of [...timeline.clips].sort(compareTime)) {
+    const previous = previousByTrack.get(clip.trackId);
+    previousByTrack.set(clip.trackId, clip);
+    const transition = clip.transitionIn;
+    if (previous && endFrame(previous) === clip.startFrame && hasResource(previous) && hasResource(clip) &&
+        isClipTransition(transition)) cuts.set(clip.id, transition);
+  }
+  return cuts;
+}
+
 interface ConnectedItem {startFrame: number; lane: number; xml: string}
 interface PrimaryItem {
   startFrame: number;
@@ -256,10 +270,10 @@ export function serializeFcpXml({timeline, projectName, assets}: {
   }
 
   const effectIds = new Map<Effect, string>();
-  function transitionXml(incoming: Format5Clip, outgoing: Format5Clip | undefined, base: number): string {
-    const transition = incoming.transitionIn;
-    if (!outgoing || endFrame(outgoing) !== incoming.startFrame || !transition || !isClipTransition(transition)
-      || !getResource(outgoing) || !getResource(incoming)) return '';
+  const cuts = fcpxmlTransitions(timeline, resources);
+  function transitionXml(incoming: Format5Clip, base: number): string {
+    const transition = cuts.get(incoming.id);
+    if (!transition) return '';
     const {effect, parameters} = transitions[transition.kind];
     let ref = effectIds.get(effect);
     if (!ref) {
@@ -297,7 +311,7 @@ export function serializeFcpXml({timeline, projectName, assets}: {
       // secondary clips linked by actual transitions, under one connection.
       for (; end < items.length; end++) {
         const next = items[end]!;
-        const transition = transitionXml(next, items[end - 1], first.startFrame);
+        const transition = transitionXml(next, first.startFrame);
         if (!transition) break;
         storyline += transition + clipXml(next, track, next.startFrame - first.startFrame);
       }
@@ -316,10 +330,10 @@ export function serializeFcpXml({timeline, projectName, assets}: {
     }, element('text', {}, xmlText(cue.text))));
   }
 
-  const spine = primary.map((item, index) => {
+  const spine = primary.map(item => {
     const children = item.connected.sort((a, b) => compareTime(a, b) || a.lane - b.lane).map(value => value.xml).join('');
     if (!item.clip) return gapXml(item.startFrame, item.durationFrames, children);
-    return transitionXml(item.clip, primary[index - 1]?.clip, 0) + clipXml(item.clip, mainTrack, item.startFrame, undefined, children);
+    return transitionXml(item.clip, 0) + clipXml(item.clip, mainTrack, item.startFrame, undefined, children);
   }).join('');
   const sequence = element('sequence', {
     format: sequenceFormat, duration: frameTime(timeline.durationFrames), tcStart: '0s',
