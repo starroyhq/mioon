@@ -310,6 +310,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
     };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, targetFormat, catalogClient,
+      nativeFcpExportFor: runtime => runtime.project.services.fcpExport,
       catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
       updateActivity: () => {
         const active = appLibrary.taskIndex.list().filter(task => task.phase === 'prepared' || task.phase === 'active');

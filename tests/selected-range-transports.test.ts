@@ -103,7 +103,7 @@ test('actual offline CLI and official MCP discover the same optional strict sele
   assert.equal((discoverSchema({operation: 'timeline.export.preflight'}) as TestOperationDefinition).effects.readOnly, true);
   assert.equal((discoverSchema({operation: 'timeline.render'}) as TestOperationDefinition).requiresRequestId, true);
   const cancellations=catalog.operations.filter((value: { operation: string; }) => /export.*cancel|timeline.*cancel/.test(value.operation));
-  assert.deepEqual(cancellations.map(value=>value.operation),['export.cancel'],'only the explicit owned-export cancellation operation is exposed');
+  assert.deepEqual(cancellations.map(value=>value.operation),['export.cancel','export.fcpxml.cancel'],'only explicit owned-export cancellation operations are exposed');
   const cancellation=(discoverSchema({operation:'export.cancel'}) as TestOperationDefinition),cancellationTool=tools.find(value=>value.name==='export_cancel');
   assert.deepEqual(cancellation.inputSchema.required,['projectId','exportId']);assert.equal(cancellation.inputSchema.additionalProperties,false);
   assert.deepEqual(Object.keys(cancellation.inputSchema.properties),['projectId','exportId']);

@@ -2,7 +2,7 @@ import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSync,lstatSync} from 'node:fs';
+import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSync,lstatSync,realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -97,6 +97,22 @@ test('cancelling an unacknowledged ready write never releases its displayed wind
  await new Promise<void>(resolve => setImmediate(resolve));
  assert.deepEqual(released, [windowId]);
  assert.equal(isProjectFileHeld(opened.project.fileIdentity), false);
+});
+
+test('FCP destination authorization requires the matching ready editor lease through the real utility control', async t => {
+ const f = await fixture(t);
+ const windowId = randomUUID(), token = randomUUID(), directory = realpathSync(f.parent);
+ const info = lstatSync(directory, {bigint: true});
+ const input = {projectId: f.projectId, windowId, token, directory, device: String(info.dev), inode: String(info.ino)};
+ const choose = f.client.api.nativeFcpExport.chooseDestination;
+ await assert.rejects(choose(input), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+ await f.client.api.acquire({windowId, projectId: f.projectId, deferRecent: true});
+ await assert.rejects(choose(input), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+ await f.client.api.markOpened({windowId, contextId: randomUUID()});
+ await assert.rejects(choose({...input, projectId: randomUUID()}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+ assert.deepEqual(await choose(input), {token, displayPath: directory});
+ f.client.api.release({windowId});
+ await assert.rejects(choose({...input, token: randomUUID()}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
 });
 
 for(const kind of ['project','history','cache','application'] as const)test(`source observation refuses an alias of a held ${kind} before any descriptor can release its real write lock`,async t=>{

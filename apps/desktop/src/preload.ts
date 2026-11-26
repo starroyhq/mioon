@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import {createFcpExportBridge} from './fcp-export-preload.ts';
 import { isLocale } from '../../../packages/i18n/src/locale.ts';
 import { SETTINGS_DIAGNOSTICS_CHANNEL, parseSettingsDiagnosticRequest } from './settings-diagnostics-protocol.ts';
 import type { SettingsDiagnosticsBridge } from './settings-diagnostics-protocol.ts';
@@ -51,6 +52,9 @@ if (process.isMainFrame && process.platform === 'darwin') {
     scaleObserver?.disconnect();
   }, {once: true});
   applyFullscreen();
+}
+if (process.isMainFrame && process.platform === 'darwin') {
+  contextBridge.exposeInMainWorld('__mioonFcpExport', createFcpExportBridge((channel, request) => ipcRenderer.invoke(channel, request)));
 }
 // Display metadata for shortening paths already present in the project list.
 if (process.isMainFrame) {
