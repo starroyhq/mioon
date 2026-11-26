@@ -11,6 +11,8 @@
  * shorter than its cut asks the user to select/lock a usable version first
  * (P5 D4). Nothing here writes project data.
  */
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {createHash} from 'node:crypto';
 import {AppError, sourceFrameCount} from '@mioon/contracts';
 import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
@@ -55,7 +57,7 @@ export interface Format5ExportTicket {
 }
 
 const format5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === 5;
+  isSequenceProjectFormat(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
 const stable = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stable);
   if (value !== null && typeof value === 'object') {
@@ -128,6 +130,7 @@ export function createFormat5ExportTicket(store: ProjectStore, range: Format5Exp
     if (!timeline || timeline.projectId !== store.projectId) {
       throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
     }
+    assertTimelineSpeedRenderable(timeline);
     const stamp = readProjectContentStamp(store.db);
     const blockers = format5ExportBlockersFromTimeline(store.db, timeline, range);
     const revisions = {contentRevision: stamp.contentSequence, timelineRevision: timeline.revision,

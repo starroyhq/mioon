@@ -1,6 +1,7 @@
 /** Plain-language reason for a terminal export failure. Unknown codes stay
  * bounded and never expose server paths, probe output or raw error codes. */
 export type ExportFailureKey =
+  | 'timeline.speed.renderNotReady'
   | 'redesign.export.failure.changed'
   | 'redesign.export.failure.blocked'
   | 'redesign.export.failure.cancelled'
@@ -9,6 +10,7 @@ export type ExportFailureKey =
 
 export function exportFailureKey(error: unknown): ExportFailureKey {
   const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
+  if (code === 'SPEED_RENDER_NOT_READY') return 'timeline.speed.renderNotReady';
   if (code === 'EXPORT_CANCELLED') return 'redesign.export.failure.cancelled';
   if (code === 'REVISION_CONFLICT' || code === 'PREFLIGHT_STALE' || code === 'CONFLICT') return 'redesign.export.failure.changed';
   if (code === 'EXPORT_BLOCKED' || code === 'PLACEHOLDER_CLIP' || code === 'EXPORT_RANGE_BOUNDS') return 'redesign.export.failure.blocked';

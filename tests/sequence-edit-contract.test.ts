@@ -195,10 +195,15 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
   }
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length
-    + trackSamples.length + soundSamples.length + 3, SEQUENCE_EDIT_OPERATIONS.length);
+    + trackSamples.length + soundSamples.length + 5, SEQUENCE_EDIT_OPERATIONS.length);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.format.set'), true);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.placeholder'), true);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.resize'), true);
+  assert.equal(sequenceEditEnvelopeOperationName({...envelope(), intents: [], speedIntent: {side: 'timeline',
+    operation: {kind: 'clip-speed', clipId: clipA, setting: {speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}},
+      direction: 'forward', pitchShift: false, interpolation: 'off'}}}}), 'timeline.clip.setSpeed');
+  assert.equal(sequenceEditEnvelopeOperationName({...envelope(), intents: [], speedIntent: {side: 'timeline',
+    operation: {kind: 'freeze-frame', clipId: clipA, atFrame: 1}}}), 'timeline.clip.freeze');
   for (const [operation, name] of subjectSamples) {
     assert.equal(sequenceEditSubjectOperationName(operation), name);
     assert.equal(sequenceEditIntentSide(operation), 'board');

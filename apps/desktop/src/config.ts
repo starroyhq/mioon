@@ -275,7 +275,7 @@ export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths, sto
   // Never inherit Node injection options or unrelated credentials into the utility.
   const result: Record<string, string> = {};
   for (const key of ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR', 'MIOON_COMFY_MODULE',
-    ...(channel === 'development' ? providerEnvironmentKeys : [])]) {
+    ...(channel === 'development' ? [...providerEnvironmentKeys, 'MIOON_FORMAT6_DEV'] : [])]) {
     const value = env[key];
     if (typeof value === 'string') result[key] = value;
   }

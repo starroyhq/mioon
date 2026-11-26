@@ -204,6 +204,19 @@ test('samples, source windows and reverse lookup agree with the frame vector', (
   assert.deepEqual(unwrap(timeMapVisibleSourceRange(identity), 'identity visible').sourceWindow, {startFrame: 0, endFrame: 90});
 })
 
+test('persisted source capacity includes motion after the last sample and flips keep the correct sampling side', () => {
+  const fast = initialTimeMap(unwrap(compileTimeMap(basis(0, 60, speed(10, 1))), '10x'));
+  const clip = {id: 'clip', startFrame: 0, durationFrames: 6, sourceInFrame: 0};
+  assert.equal(unwrap(timeMapVisibleSourceRange(fast), 'decode window').sourceWindow.endFrame, 51);
+  assert.equal(unwrap(projectTimeMapToCurrentClipFields(clip, fast), 'capacity').sourceSpanFrames, 60);
+  const root = unwrap(compileTimeMap(basis(0, 6, speed(3, 2))), '1.5x');
+  const cut = unwrap(trimTimeMap(initialTimeMap(root), 0, 2), 'trim');
+  assert.deepEqual(framesOf(cut), [0, 1]);
+  const reversed = reverseTimeMap(cut);
+  assert.deepEqual(framesOf(reversed), [2, 1]);
+  assert.deepEqual(framesOf(reverseTimeMap(reversed)), [0, 1]);
+});
+
 test('freeze holds one exact frame for the whole duration', () => {
   const root = unwrap(compileFreezeTimeMap({sourceFrame: 42, durationFrames: 60}), 'freeze');
   assert.equal(root.interpolation, 'freeze');
