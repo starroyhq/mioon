@@ -1,5 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../../contracts/src/app-error.ts';
+import type {BackgroundTaskKind} from '../../contracts/src/project-registry.ts';
 
 /** A real COMMIT already happened. Never translate this into domain failure or
  * nonacceptance, and never use it as permission to repeat a remote submission. */
@@ -15,7 +16,7 @@ export function safeBackgroundTaskIndexError(error: unknown): {code: string; mes
     details: {mutationOutcome: 'unknown', ...(typeof projectId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(projectId) ? {projectId} : {})}};
 }
 
-export type BackgroundTaskKind = 'job' | 'export' | 'edit_task' | 'image_task' | 'frame_task' | 'scene_task' | 'subject_variant_batch';
+export type {BackgroundTaskKind};
 export interface BackgroundTaskRef {readonly kind: BackgroundTaskKind; readonly taskId: string}
 type Listener = (changes: readonly BackgroundTaskRef[]) => void;
 interface Events {readonly pending: Map<string, BackgroundTaskRef>; readonly listeners: Set<Listener>; readonly admissions: Set<Listener>; readonly uncertainties: Set<Listener>; flushing: boolean}

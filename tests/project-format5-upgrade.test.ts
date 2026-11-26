@@ -7,7 +7,9 @@ import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {createProjectBackup, copyProjectBackup, inspectProjectFormatReadOnly, openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {openProjectStore as openStore} from '../packages/business/src/project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {historyManifestForVersion} from '../packages/business/src/project-file/schema/format-manifests.ts';
+import {compareManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {previewFormat5Upgrade, previewSequenceFormatUpgrade, upgradeProjectFormatTo5, upgradeProjectSequenceFormat} from '../packages/business/src/project-file/format5-upgrade.ts';
 import {createFormat4UpgradeBackup, readFormat4BackupManifest, verifyFormat4Backup} from '../packages/business/src/project-file/format4-backup.ts';
 import {restoreFormat4Backup} from '../packages/business/src/project-file/format4-restore.ts';
@@ -254,7 +256,7 @@ test('format 5 source releases pin real published commit identities', () => {
   for (const [release, sha] of Object.entries(FORMAT5_SOURCE_RELEASES)) assert.match(sha, /^[0-9a-f]{40}$/u, release);
 });
 
-test('format 6 uses the exact format 5 schema, preserves every timeline byte, and refuses a modified format 5', () => {
+test('format 6 preserves every timeline byte, upgrades execution history atomically, and refuses a modified format 5', () => {
   const f = released('v0.2.0'), options = {projectFile: f.projectFile, locate: () => f.location, approveUpgrade: () => true};
   const {store: legacy} = upgradeProjectFormatTo5(options);
   const initial = format5KernelSnapshot(legacy);
@@ -264,7 +266,7 @@ test('format 6 uses the exact format 5 schema, preserves every timeline byte, an
   assert.equal(preview.projectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
   assert.equal(preview.targetProjectVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
   assert.equal(preview.historyVersion, FORMAT5_HISTORY_SCHEMA_VERSION);
-  assert.equal(preview.targetHistoryVersion, preview.historyVersion);
+  assert.equal(preview.targetHistoryVersion, FORMAT6_HISTORY_SCHEMA_VERSION);
   assert.throws(() => upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, {...options, approveUpgrade: () => false}),
     {code: 'PROJECT_FORMAT_UPGRADE_REQUIRED'});
   for (const fault of ['before-backup', 'before-version-write', 'after-version-write', 'before-commit'] as const) {
@@ -272,6 +274,8 @@ test('format 6 uses the exact format 5 schema, preserves every timeline byte, an
     assert.throws(() => upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, {...options,
       onUpgradeBoundary: phase => {if (phase === fault) throw failure;}}), error => error === failure);
     assert.equal(inspectProjectFormatReadOnly(f.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+    const previous = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
+    try {assert.deepEqual(format5KernelSnapshot(previous), initial);} finally {previous.close();}
   }
   const unknown = path.join(f.root, 'unknown-format5.mioon');
   cpSync(f.projectFile, unknown);
@@ -280,8 +284,17 @@ test('format 6 uses the exact format 5 schema, preserves every timeline byte, an
   assert.throws(() => previewSequenceFormatUpgrade(FORMAT6_PROJECT_SCHEMA_VERSION, unknown), {code: 'PROJECT_INVALID'});
   const {store, backupId} = upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, options);
   try {
-    const after = format5KernelSnapshot(store);
-    assert.deepEqual(after, {...initial, versions: {...initial.versions, project: FORMAT6_PROJECT_SCHEMA_VERSION}});
+    const {manifests: {history, ...fileManifests}, ...after} = format5KernelSnapshot(store);
+    const {manifests: {history: oldHistory, ...oldFileManifests}, ...before} = initial;
+    assert.deepEqual(after, {...before,
+      versions: {...initial.versions, project: FORMAT6_PROJECT_SCHEMA_VERSION, history: FORMAT6_HISTORY_SCHEMA_VERSION},
+    });
+    assert.deepEqual(fileManifests, oldFileManifests);
+    assert.deepEqual(compareManifest(history, historyManifestForVersion(FORMAT6_HISTORY_SCHEMA_VERSION)!.entries),
+      {missing: [], unexpected: [], changed: []});
+    const historyAdditions = compareManifest(history, oldHistory);
+    assert.deepEqual(historyAdditions.missing, []);
+    assert.deepEqual(historyAdditions.changed, []);
     assert.deepEqual(decodeSupportedProjectDocument(previous, FORMAT6_PROJECT_SCHEMA_VERSION).tables, previous.tables);
     assert.ok(backupId);
     const backupRoot = path.join(f.location.localDir, 'format-upgrade-backups');
@@ -366,6 +379,11 @@ test('named versions, native backups, and project copies preserve format-6 timin
     assert.deepEqual(readFormat5TimelineRecord(store.db, 'project')!.clips.find(value => value.id === clip.id), timedTimeline.clips.find(value => value.id === clip.id));
     const backupFile = path.join(f.root, 'timed-backup.mioon');
     assert.equal((await createProjectBackup(store, backupFile)).formatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+    store.tx(() => {
+      store.db.prepare(`INSERT INTO timeline_processing_tasks
+        (id,projectId,demandKey,kind,state,revision,requestId,input,updatedAt)
+        VALUES (?,?,?,'reverse','ready',1,?,'{}',?)`).run(randomUUID(), store.projectId, 'a'.repeat(64), randomUUID(), new Date().toISOString());
+    });
     for (const role of ['copy', 'restore']) {
       const projectFile = path.join(f.root, role + '.mioon');
       const request: CopyProjectOptions = {projectFile, sourceProjectDir: f.root, targetFormat: FORMAT6_PROJECT_SCHEMA_VERSION};
@@ -377,6 +395,8 @@ test('named versions, native backups, and project copies preserve format-6 timin
       try {
         assert.notEqual(target.projectId, store.projectId);
         assert.deepEqual(readFormat5TimelineRecord(target.db, 'project')!.clips.find(value => value.id === clip.id)?.timing, timing);
+        assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT6_HISTORY_SCHEMA_VERSION);
+        assert.equal(target.db.prepare('SELECT count(*) AS count FROM timeline_processing_tasks').get()!.count, 0);
       } finally {target.close();}
     }
   } finally {store.close();}
