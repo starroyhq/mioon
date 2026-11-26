@@ -1956,7 +1956,7 @@ export const timelineDeliveryMessages = {
   },
   "recovery.storage.durableCount": {
     "zh-Hans": "{count} 类本地编辑请求由现有 SQLite 任务台账保留原编号与完整参数。最多保留 4096 个请求身份，已完成并关闭的记录也占容量；尚未提供归档或槽位清理，不会自动删除旧身份。达到上限会阻止新建此类任务，不表示磁盘已满，也不是整个数据库或 WAL 的大小上限",
-    "zh-Hant": "{count} 類本機編輯請求由既有 SQLite 工作台帳保留原編號與完整參數。最多保留 4096 個請求身分，已完成並關閉的記錄也占容量；尚未提供封存或槽位清理，不會自動刪除舊身分。達到上限將阻止建立此類新工作，不表示磁碟已滿，也不是整個資料庫或 WAL 的大小上限",
+    "zh-Hant": "{count} 類本機編輯請求由既有 SQLite 任務台帳保留原編號與完整參數。最多保留 4096 個請求身分，已完成並關閉的記錄也占容量；尚未提供封存或槽位清理，不會自動刪除舊身分。達到上限將阻止建立此類新工作，不表示磁碟已滿，也不是整個資料庫或 WAL 的大小上限",
     "en": "The existing SQLite task ledger retains original IDs and complete parameters for {count} types of local edit requests. It holds up to 4096 request identities, including completed and closed records. Archiving and slot cleanup are not yet available; old identities are not automatically deleted. Reaching the limit blocks new tasks of these types. It does not mean the disk is full or limit the entire database or WAL size",
     "ja": "{count} 種類のローカル編集リクエストについて、既存の SQLite タスク台帳が元 ID と全パラメーターを保持します。最大 4096 件のリクエスト識別情報を保持し、完了して閉じた記録も容量を使います。アーカイブや枠の整理機能はまだなく、古い識別情報は自動削除しません。上限に達すると該当する新規タスクを作成できませんが、ディスクが満杯という意味でも、データベース全体や WAL のサイズ上限でもありません"
   },

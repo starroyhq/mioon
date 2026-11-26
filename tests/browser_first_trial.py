@@ -242,7 +242,7 @@ class Trial:
     def login(self, project=None):
         self.page.goto(self.base + ("/?project=" + project if project else "/"))
         self.page.get_by_label("访问令牌", exact=True).fill(self.token)
-        self.page.get_by_role("button", name="进入工作台", exact=True).click()
+        self.page.get_by_role("button", name="进入 Mioon", exact=True).click()
         expect(self.page.get_by_test_id("workbench" if project else "project-home")).to_be_visible()
         expect(self.page.get_by_test_id("workspace-loading")).to_have_count(0)
 

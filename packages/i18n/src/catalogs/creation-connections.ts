@@ -56,12 +56,6 @@ export const connectionMessages = {
     "en": "Back to Mio chat",
     "ja": "Mio チャットに戻る"
   },
-  "agent.settings.saveScope": {
-    "zh-Hans": "保存仅更新本机工作台设置，不发起模型请求，也不发送项目内容",
-    "zh-Hant": "儲存僅更新本機工作台設定，不會發起模型請求，也不會傳送專案內容",
-    "en": "Saving only updates local workbench settings. It does not send model requests or project content",
-    "ja": "保存ではローカルのワークベンチ設定のみ更新します。モデルへのリクエストやプロジェクト内容は送信しません"
-  },
   "agent.settings.unverified": {
     "zh-Hans": "尚未验证连接",
     "zh-Hant": "尚未驗證連線",
@@ -923,10 +917,10 @@ export const connectionMessages = {
   "agent.settings.notice.review": {"zh-Hans": "已重新读取当前设置，草稿仍保留", "zh-Hant": "已重新讀取目前設定，草稿仍保留", "en": "Current settings were read again; the draft is retained", "ja": "現在の設定を再読み込みしました。下書きは保持されています"},
   "agent.settings.notice.blocked": {"zh-Hans": "暂时无法核实保存结果，草稿已保留", "zh-Hant": "暫時無法核實儲存結果，草稿已保留", "en": "The save result cannot be verified right now; the draft is retained", "ja": "保存結果を現在確認できません。下書きは保持されています"},
   "agent.settings.notice.loadError": {
-    "zh-Hans": "暂时无法读取 Mio 设置，请检查工作台连接后重试",
-    "zh-Hant": "暫時無法讀取 Mio 設定，請檢查工作台連線後重試",
-    "en": "Mio settings cannot currently be read. Check the workbench connection and retry",
-    "ja": "Mio 設定を現在読み取れません。ワークベンチの接続を確認して再試行してください"
+    "zh-Hans": "暂时无法读取 Mio 设置，请检查 Mioon 连接后重试",
+    "zh-Hant": "暫時無法讀取 Mio 設定，請檢查 Mioon 連線後重試",
+    "en": "Mio settings cannot currently be read. Check the Mioon connection and retry",
+    "ja": "Mio 設定を現在読み取れません。Mioon への接続を確認して再試行してください"
   },
   "connections.notice.useSaved": {
     "zh-Hans": "已使用当前已保存设置",
