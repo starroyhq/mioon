@@ -224,11 +224,19 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(!main.replace(fixedSettingsFactory, '').replace(links, '').includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'EXTERNAL_AGENTS_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   const updateHandler = main.match(/^if \(typeof DESKTOP_UPDATE_CHANNEL[^\n]+[\s\S]*?^\}\);$/m)?.[0];
   assert.ok(updateHandler);
   assert.match(updateHandler, /event\.senderFrame === window\.webContents\.mainFrame \? updateDocument\(window\) : null/);
   assert.match(updateHandler, /args\.length === 1 && updateHost \? updateHost\.dispatch\(document, args\[0\]\)/);
+  const externalAgentsHandler = main.match(/^if \(typeof EXTERNAL_AGENTS_CHANNEL[^\n]+[\s\S]*?^\}\);$/m)?.[0];
+  assert.ok(externalAgentsHandler);
+  assert.match(externalAgentsHandler, /externalAgentsHost\?\.dispatch\(externalAgentsDocument\(event\), args\.length === 1 \? args\[0\] : undefined\)/);
+  const externalAgentsOwner = main.match(/^function externalAgentsDocument\([^\n]+[\s\S]*?^\}$/m)?.[0];
+  assert.ok(externalAgentsOwner);
+  assert.match(externalAgentsOwner, /ownerForContents\(event\.sender\)/);
+  assert.match(externalAgentsOwner, /owner\.role !== 'settings' \|\| event\.senderFrame !== owner\.frame/);
+  assert.match(externalAgentsOwner, /ownsWindow\(window, context\) && owner\.isCurrent\(\)/);
   const clipboardHandler = main.match(/^ipcMain\.handle\(CANVAS_CLIPBOARD_CHANNEL,[\s\S]*?^\}\);$/m)?.[0];
   assert.ok(clipboardHandler);
   assert.match(clipboardHandler, /if \(args\.length\) return null/);
