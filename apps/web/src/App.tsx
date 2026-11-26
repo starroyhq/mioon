@@ -3620,7 +3620,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const state = dataRef.current;
     const timelineNow = state.timeline;
     if (
-      state.projectFormatVersion !== 5
+      !isSequenceTimelineFormat(state.projectFormatVersion)
       || !timelineNow
       || currentProject.current !== target.projectId
       || timelineNow.revision !== target.revision

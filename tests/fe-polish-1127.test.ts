@@ -297,6 +297,7 @@ test('A5/A6: Timeline wires danger drop preview & conflict clip highlighting wit
 
   // Format 3/4 does not pass onPreviewDropConflict.
   assert.match(appSrc, /onPreviewDropConflict=\{format5 \? previewFormat5DropConflict : undefined\}/);
+  assert.match(appSrc, /const previewFormat5DropConflict = useCallback[\s\S]{0,280}!isSequenceTimelineFormat\(state.projectFormatVersion\)/);
 
   // Timeline marks drop preview, snap guide, and clips/subtitles using dragConflictActive while keeping drop submission intact.
   assert.match(timelineSrc, /createDragConflictPreviewController/);

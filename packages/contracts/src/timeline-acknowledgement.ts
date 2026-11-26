@@ -17,7 +17,7 @@ import {isTimelineExportSnapshot,timelineExportSettingsSchema,TIMELINE_EXPORT_CA
 import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.ts';
 import {timelineFormatSchemas,timelineFrameSetSchema,timelineOutputPreset} from './timeline-format.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.ts';
-import {FORMAT5_TIMELINE_FORMAT, FORMAT6_TIMELINE_FORMAT, isTimelineRecord, isTimelineReplacementResponse, type TimelineRecord, type TimelineRecordOptions} from './timeline-replacement.ts';
+import {FORMAT5_TIMELINE_FORMAT, FORMAT6_TIMELINE_FORMAT, isSequenceTimelineFormat, isTimelineRecord, isTimelineReplacementResponse, type TimelineRecord, type TimelineRecordOptions} from './timeline-replacement.ts';
 import {sourceFrameCount} from './source-range.ts';
 import {clipSourceEndFrame} from './timeline-clip-timing.ts';
 import {isTimelineSpeedExportReason,SPEED_PROCESSING_NOT_READY} from './timeline-speed-export.ts';
@@ -36,10 +36,10 @@ const digest = (value: unknown): value is string => typeof value === 'string' &&
 const encoder = new TextEncoder();
 const baseFields = ['projectId', 'expectedRevision', 'requestId'];
 const baseClipFields = ['trackId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope'];
-// Format 5 alone may carry the clip sound flags; formats 3/4 keep the closed list.
+// Native sequence formats may carry clip sound flags; formats 3/4 keep the closed list.
 const format5ClipFields = ['muted', 'soundOnly'];
 const clipFieldsFor = (options: TimelineRecordOptions): string[] =>
-  options.format === FORMAT5_TIMELINE_FORMAT ? [...baseClipFields, ...format5ClipFields] : [...baseClipFields];
+  isSequenceTimelineFormat(options.format) ? [...baseClipFields, ...format5ClipFields] : [...baseClipFields];
 const provenance = ['versionId', 'shotId', 'jobId'];
 const same = (a: unknown, b: unknown): boolean => object(a) && object(b)
   ? Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && same(a[key], b[key]))
@@ -95,9 +95,11 @@ function acknowledgementContracts(format: TimelineRecordOptions['format']) {
 }
 const legacyContracts = acknowledgementContracts(undefined);
 const format5Contracts = acknowledgementContracts(FORMAT5_TIMELINE_FORMAT);
+const format6Contracts = acknowledgementContracts(FORMAT6_TIMELINE_FORMAT);
+const nativeContracts = {[FORMAT5_TIMELINE_FORMAT]: format5Contracts, [FORMAT6_TIMELINE_FORMAT]: format6Contracts};
 export function isTimelineMutationResponse(operation: unknown, input: unknown, value: unknown,
   options: TimelineRecordOptions = {}): boolean {
-  const contracts = options.format === FORMAT5_TIMELINE_FORMAT ? format5Contracts : legacyContracts;
+  const contracts = isSequenceTimelineFormat(options.format) ? nativeContracts[options.format] : legacyContracts;
   const {loudnessApply: loudnessApplyContracts, shotSync: shotSyncContracts, sceneSplit: sceneSplitContracts,
     crossfade: crossfadeContracts, clipGains: clipGainsContracts, clipTransform: clipTransformContracts,
     clipTransition: clipTransitionContracts} = contracts;
@@ -130,7 +132,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
     case 'timeline.subtitle.remove':
       return (timelineSubtitleSchemas as Record<string, z.ZodTypeAny>)['timeline.subtitle.remove'].safeParse(input).success && Boolean(timeline.subtitles) && !(timeline.subtitles as {cues: {id: string}[]}).cues.some(cue => cue.id===request.cueId);
     case 'timeline.clip.replaceSource':
-      return operationInput(input, ['clipId', 'assetId'], ['versionId']) && isTimelineReplacementResponse(value, input);
+      return operationInput(input, ['clipId', 'assetId'], ['versionId']) && isTimelineReplacementResponse(value, input, options);
     case 'timeline.track.add': {
       if (!operationInput(input, ['kind'], ['name']) || typeof request.kind !== 'string' || !['video', 'audio'].includes(request.kind) ||
           (request.name !== undefined && !text(request.name, 1, 150))) return false;
