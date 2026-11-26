@@ -301,5 +301,5 @@ test('native launcher owns the plain Mioon title across locale changes and remou
   releaseCurrent();
   const fallback = translate(host.store.getSnapshot().locale, 'app.title');
   assert.equal(host.document.title, fallback);
-  assert.deepEqual(host.writes, [fallback]);
+  assert.deepEqual(host.writes, fallback === 'Mioon' ? [] : [fallback]);
 });

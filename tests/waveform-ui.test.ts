@@ -18,6 +18,7 @@ import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
 import * as compactLayout from '../apps/web/src/timeline-compact-layout.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
+import {createDragConflictPreviewController, dragPreviewTargetKey} from '../apps/web/src/edit-ui/drag-conflict-preview.ts';
 import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
@@ -319,6 +320,7 @@ function componentHarness({ hook = false, realTimelineWaveforms = false, wavefor
       if (id === './TimelineWaveform.tsx') return load('TimelineWaveform.tsx');
       if (id === './timeline-keyboard.ts') return { rulerFrameForKey: () => null };
       if (id === './timeline-snapping.ts') return { timelineDropPreview: () => null };
+      if (id === './edit-ui/drag-conflict-preview.ts') return { createDragConflictPreviewController, dragPreviewTargetKey };
       if (id.startsWith('@mioon/ui/')) return primitive;
       return { default: 'Control', __esModule: true };
     }, module, module.exports, document, ResizeObserver, { addEventListener() {}, removeEventListener() {} });
