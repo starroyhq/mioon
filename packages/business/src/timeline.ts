@@ -435,19 +435,31 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   }
   return frozen;
  }
- function renderFormat5(input: TimelineMutationInput,outputLocale?: unknown): unknown{
+ function prepareFormat5Render(input: TimelineMutationInput){
+  const requestHash=hash({operation:'timeline.render',input});
+  const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?')
+   .get(input.requestId as string) as {requestHash?:string;response?:string}|undefined;
+  if(previous){
+   if(previous.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
+   return {replayed:true as const,response:JSON.parse(String(previous.response)) as unknown};
+  }
+  const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input) as
+   {delivery: unknown; timeline: {id: string; revision: number}};
+  if(Object.hasOwn(frozen,'speedExport')&&input.preflightSnapshotHash!==undefined&&hash(frozen)!==input.preflightSnapshotHash)
+   throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
+  return {replayed:false as const,frozen,requestHash};
+ }
+ function renderFormat5(input: TimelineMutationInput,outputLocale?: unknown,admission?: RenderAdmission): unknown{
   // The legacy receipt verifier reconstructs/validates the released aggregate;
   // format 5 has its own projected snapshot, so keep the same immutable request
   // receipt shape but verify replay by the stored request hash instead.
   return tx(()=>{
-   const requestHash=hash({operation:'timeline.render',input});
-   const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?')
-     .get(input.requestId as string) as {requestHash?:string;response?:string}|undefined;
-   if(previous){
-    if(previous.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
-    return JSON.parse(String(previous.response));
-   }
-   const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   const prepared=prepareFormat5Render(input);
+   if(prepared.replayed)return prepared.response;
+   const {frozen,requestHash}=prepared;
+   if(admission&&(frozen.timeline.id!==admission.timelineId||hash(frozen)!==admission.snapshotHash))
+    throw new AppError('EXPORT_CAPABILITY_STALE','时间线或素材元数据已变化，请重新检查当前导出配置',409);
+   if(admission?.failure)throw admission.failure;
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
      timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',
@@ -614,7 +626,17 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   'timeline.render':(input: TimelineMutationInput,options: unknown={})=>{
    assertProjectStore(store);
    const outputLocale = (options as {outputLocale?: unknown} | null)?.outputLocale;
-   if(format5Store())return renderFormat5(input,outputLocale);
+   if(format5Store()){
+    if(input.purpose==='export'&&timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION){
+     const prepared=tx(()=>prepareFormat5Render(input));
+     if(prepared.replayed)return prepared.response;
+     if(Object.hasOwn(prepared.frozen,'speedExport'))return exportAdmission.render(input,options,{
+      prepare:()=>({snapshot:prepared.frozen}),
+      accept:(admission: RenderAdmission)=>renderFormat5(input,outputLocale,admission),
+     });
+    }
+    return renderFormat5(input,outputLocale);
+   }
    const invoke=()=>{assertProjectStore(store);beforeEffect?.();return input.exportSettings===undefined?render(input,undefined,outputLocale):exportAdmission.render(input,options,{
    prepare:()=>{
     const result=transaction<{snapshot: unknown;mode?: string;replayed?: boolean;response?: unknown}>('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));

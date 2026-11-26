@@ -5,21 +5,23 @@ import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
-import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
+import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource,validatePreparedTimelineSources} from './timeline-sources.ts';
 import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
-import {validateTimeline,validateSavedTimeline,freezeTimelineSnapshot} from './timeline-inputs.ts';
+import {validateTimeline,validateSavedTimeline} from './timeline-inputs.ts';
 import {terminateMediaProcesses} from './media-processes.ts';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
 import {inspectSubtitleRenderer} from './subtitle-renderer-capability.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
-import {unreadyTimelineSpeedClips, SPEED_RENDER_NOT_READY, SPEED_RENDER_NOT_READY_MESSAGE} from '../../contracts/src/timeline-speed-render.ts';
+import {isTimelineSpeedExportReason, SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES}
+ from '../../contracts/src/timeline-speed-export.ts';
+import {assertTimelineSpeedCapability, timelineSpeedExportLayout} from './timeline-speed-export-admission.ts';
 import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
-import {readFormat5RenderProjection} from './format5-timeline-render.ts';
+import {freezeFormat5RenderProjection,readFormat5RenderProjection} from './format5-timeline-render.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelinePreflightSnapshot,TimelinePreflightSnapshotAsset} from './timeline-sources.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -30,7 +32,7 @@ interface PreflightProbeOptions {signal?: AbortSignal;timeout?: number;beforeSpa
 interface PreflightProbeResult {probe: unknown;width: number;height: number;duration: number|null;hasVideo: boolean;hasAudio: boolean;videoStreamIndex: number|string|null;audioStreamIndex: number|string|null}
 type PreflightInput = {[key: string]: unknown;projectId: string;expectedRevision: number;requestId?: string;exportSettings?: unknown;exportRange?: unknown;deliveryName?: string;preflightSnapshotHash?: string};
 interface PreflightChecks {totalAssets: number;checkedAssets: number;bytesHashed: number;fullDecode: boolean;subtitles?: {profileId: string;fontVerified: boolean;inkMeasured: boolean}}
-interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string}
+interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string;taskId?: string}
 export interface TimelinePreflightReport {projectId: string;timelineId: string|null;timelineRevision: number|null;expectedRevision: number;snapshotHash: string|null;checkedAt: string;status: string;summary: unknown;checks: PreflightChecks;issues: PreflightIssue[]}
 interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void}
 interface PreflightCallOptions {signal?: AbortSignal}
@@ -38,7 +40,7 @@ interface PreflightAttempt {controller: AbortController;task: Promise<unknown>|n
 
 const messages: Readonly<Record<string,string>>=Object.freeze({
  ...TIMELINE_COLOUR_PREFLIGHT_MESSAGES,
- [SPEED_RENDER_NOT_READY]:SPEED_RENDER_NOT_READY_MESSAGE,
+ ...TIMELINE_SPEED_EXPORT_MESSAGES,
  EXPORT_RANGE_BOUNDS:'The export range must fit inside the saved timeline and contain at least one 30fps frame; the end is exclusive.',
  SUBTITLE_RESOURCE_UNAVAILABLE:'The bundled subtitle font is missing or does not match this rendering profile.',
  SUBTITLE_RENDERER_UNAVAILABLE:'This FFmpeg build lacks the drawtext options required for subtitles. Select a build with libfreetype and libharfbuzz.',
@@ -58,7 +60,12 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  PLACEHOLDER_CLIP:'The export range contains a placeholder segment. Generate it or split/remove it before exporting.',
  VERSION_TOO_SHORT:'A following segment selects a version shorter than its cut. Select or lock a usable version before exporting.',
 });
-const issue=(code: string,severity='error'): PreflightIssue=>({code,severity,message:messages[code]});
+const issue=(code: string,severity='error',error?: unknown): PreflightIssue=>{
+ const details=(error as {details?:{clipId?:unknown;taskId?:unknown}}|null)?.details;
+ return {code,severity,message:messages[code],
+  ...(isTimelineSpeedExportReason(code)&&typeof details?.clipId==='string'?{clipId:details.clipId}:{}),
+  ...(code===SPEED_PROCESSING_NOT_READY&&typeof details?.taskId==='string'?{taskId:details.taskId}:{})};
+};
 const canonical=(v: unknown): string|undefined=>JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
 const object=(value: unknown): value is Record<string, unknown>=>(value!==null&&typeof value==='object'&&!Array.isArray(value));
 export const timelineSnapshotHash=(snapshot: unknown): string=>createHash('sha256').update(canonical(snapshot) as string).digest('hex');
@@ -84,7 +91,8 @@ function classify(error: unknown): [string,string]{
  if(failure.code==='MANAGED_SOURCE_INVALID')return ['blocked','PREFLIGHT_SOURCE_INVALID'];
  if(failure.code==='MANAGED_SOURCE_CHANGED')return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
  if(failure.code==='PREFLIGHT_STALE')return ['stale','PREFLIGHT_STALE'];
- if(failure.code===SPEED_RENDER_NOT_READY)return ['blocked',SPEED_RENDER_NOT_READY];
+ if(isTimelineSpeedExportReason(failure.code))return ['blocked',failure.code];
+ if(failure.code==='EXPORT_RANGE_BOUNDS')return ['blocked','EXPORT_RANGE_BOUNDS'];
  if(failure.code==='TIMELINE_SOURCE_UNAVAILABLE')return ['blocked','TIMELINE_SOURCE_UNAVAILABLE'];
  if(failure.code==='INVALID_TIMELINE_SNAPSHOT')return ['blocked','INVALID_TIMELINE_SNAPSHOT'];
  return ['blocked','PREFLIGHT_MEDIA_INVALID'];
@@ -98,9 +106,9 @@ function classify(error: unknown): [string,string]{
 export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
   if(isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
-   const projection=readFormat5RenderProjection(store as never);
+   const projection=readFormat5RenderProjection(store as never,{purpose:'export'});
    if(!projection)return {timeline:null,snapshot:null};
-   return {timeline:projection.legacy,snapshot:freezeTimelineSnapshot(projection.legacy,projection.assets,input.exportSettings,input) as TimelinePreflightSnapshot};
+   return {timeline:projection.legacy,snapshot:freezeFormat5RenderProjection(projection,input) as unknown as TimelinePreflightSnapshot};
   }
   const read=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
@@ -127,11 +135,6 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    if(format5Timeline){
     report.timelineId=format5Timeline.id;report.timelineRevision=format5Timeline.revision;
     if(format5Timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
-    const speedClips=unreadyTimelineSpeedClips(format5Timeline);
-    if(speedClips.length){
-     report.issues=speedClips.slice(0,EXPORT_PREFLIGHT_LIMITS.issues).map(clipId=>({...issue(SPEED_RENDER_NOT_READY),clipId}));
-     return report;
-    }
     const requestedRange=object(input.exportRange)?{startFrame:Number(input.exportRange.startFrame),endFrame:Number(input.exportRange.endFrame)}:null;
     const blockers=format5ExportBlockersFromTimeline(store.db,format5Timeline,requestedRange);
     if(blockers.length){
@@ -144,7 +147,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   }
   let initial,referencePreparedBytes=0;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
-  catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
+  catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error',error)];return report;}
   if(initial?.timeline){report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;}
   const referenceController=new AbortController(),referenceSignal=external?AbortSignal.any([external,referenceController.signal]):referenceController.signal;
   const referenceEntry: PreflightAttempt={controller:referenceController,task:null};active.add(referenceEntry);
@@ -159,7 +162,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    checkpoint(external);if(stopped)checkpoint(referenceController.signal);if(hostEffectFailure)throw hostEffectFailure;
    const failure=error as {code?: string};if(failure.code==='NOT_FOUND')throw error;
    const [status,code]=referenceTimedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(error);
-   report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];
+   report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error',error)];
    if(failure.code?.startsWith('MEDIA_')&&initial?.snapshot){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;}
    const unavailable=error as {details?:{assetId?:unknown}};
    const assetId=unavailable.details?.assetId;
@@ -185,7 +188,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    validateTimeline(validationTimeline,savedAssets as unknown as ReadonlyMap<string, import('./timeline-inputs.ts').ManagedAssetRecord>,{structureOnly:true});
    validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never});
   }
-  catch{report.issues=[issue('INVALID_TIMELINE_SNAPSHOT')];return report;}
+  catch(error){const code=(error as {code?: unknown})?.code;
+   report.issues=[issue(validation.speedExport&&(isTimelineSpeedExportReason(code)||code==='TIMELINE_SOURCE_UNAVAILABLE')?code:'INVALID_TIMELINE_SNAPSHOT','error',error)];return report;}
   const remaining=limits.timeoutMs-(performance.now()-started);
   if(remaining<=0){report.status='incomplete';report.issues=[issue('PREFLIGHT_TIMEOUT','warning')];return report;}
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
@@ -196,8 +200,16 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
    const options={signal,budget,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
-   return prepareTimelineInputs(initial.snapshot as never,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
+   const sourceSnapshot=initial.snapshot as Parameters<typeof prepareTimelineInputs>[0];
+   const prepared=await prepareTimelineInputs(sourceSnapshot,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
     ...options,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});
+   const speed=timelineSpeedExportLayout(initial.snapshot!,prepared);
+   if(speed){
+    await assertTimelineSpeedCapability(speed,{signal,beforeEffect});
+    checkpoint(signal);beforeEffect();
+    validatePreparedTimelineSources(store.db,input.projectId,sourceSnapshot,prepared,{root:store.root});
+   }
+   return prepared;
   })();
   // A caller can observe its deadline, but the exact underlying preparation
   // remains owned until it settles. No new check is admitted, nor successful
@@ -218,7 +230,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
     if((rawError as {code?:unknown})?.code==='PROJECT_STORE_UNVERIFIED')throw rawError;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
     const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(rawError);
-    report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];
+    report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error',rawError)];
     if(initial.snapshot!.assets.some(a=>a.id===error.timelineAssetId))report.issues[0].assetId=error.timelineAssetId;
    }finally{
     clearTimeout(timer);controller.abort();

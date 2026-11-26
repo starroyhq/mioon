@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
@@ -15,6 +15,7 @@ import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-t
 import {timelineCrossfadeEnvelopes} from '../packages/contracts/src/timeline-crossfade.ts';
 import {canRenderTimelineClipAtIdentity} from '../packages/contracts/src/timeline-speed-render.ts';
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {
   assertFormat5ExportAdmissible, createFormat5ExportTicket, recheckFormat5ExportTicket,
 } from '../packages/business/src/format5-timeline-export.ts';
@@ -27,18 +28,30 @@ const clipA = id(30), clipB = id(31), groupA = id(40), groupB = id(41);
 const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
 
-function fixture(t: test.TestContext, timing?: ClipTiming): ProjectStore {
+function fixture(t: test.TestContext, timing?: ClipTiming, bytes?: Buffer): ProjectStore {
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-tsb-export-'));
   const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: timing ? FORMAT6_PROJECT_SCHEMA_VERSION : 5,
     ...(timing ? {allowFormat6: true as const} : {}),
     locate: () => ({localDir: path.join(directory, 'records'), cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'temp')})});
   t.after(() => {store.close(); rmSync(directory, {recursive: true, force: true});});
   const projectId = store.projectId;
+  const sha256 = bytes ? createHash('sha256').update(bytes).digest('hex') : sha('a');
+  const relativePath = 'media/synthetic.mp4';
+  let sourceReference: MediaReference | undefined;
+  if (bytes) {
+    const source = path.join(store.projectDir, relativePath);
+    mkdirSync(path.dirname(source), {recursive: true});
+    writeFileSync(source, bytes);
+    const mtimeMs = Number(lstatSync(source, {bigint: true}).mtimeNs / 1000n) / 1000;
+    sourceReference = {pathForm: 'relative', path: relativePath, volume: null, sizeBytes: bytes.length,
+      mtimeMs, sampledSha256: sha256, fullSha256: sha256};
+  }
+  const shotFrames = timing?.profile === 'timeline-speed-v1' ? timing.outputWindow.toFrame - timing.outputWindow.fromFrame : 60;
   const timeline = {id: timelineId, projectId, revision: 1, width: 720, height: 1280, fps: 30, durationFrames: 90,
     createdAt: at, updatedAt: at, mainTrack: {trackId: track, sequenceNodeId: root},
     tracks: [{id: track, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
     clips: [
-      {id: clipA, trackId: track, name: 'Shot A', startFrame: 0, durationFrames: 60, sourceInFrame: 0,
+      {id: clipA, trackId: track, name: 'Shot A', startFrame: 0, durationFrames: shotFrames, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: assetA, versionId: versionA, shotId: shotA,
         sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: 'follow'},
         ...(timing ? {sourceSpanFrames: 60, timing} : {})},
@@ -52,18 +65,22 @@ function fixture(t: test.TestContext, timing?: ClipTiming): ProjectStore {
     {nodeId: shotB, segmentGroupId: groupB, clipId: clipB, kind: 'shot', versionMode: 'follow', appliedVersionId: null}]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'Synthetic export', createdAt: at, updatedAt: at, revision: 1});
-    store.put('assets', {id: assetA, projectId, mimeType: 'video/mp4', duration: 2, sha256: sha('a')});
+    store.put('assets', {id: assetA, projectId, mimeType: 'video/mp4', duration: 2, sha256,
+      ...(bytes ? {name: 'Synthetic source', width: 64, height: 64, hasAudio: false, hasVideo: true,
+        sizeBytes: bytes.length, reference: sourceReference, referenceRevision: 1, createdAt: at} : timing ? {relativePath} : {})});
     store.put('assets', {id: assetShort, projectId, mimeType: 'video/mp4', duration: 1, sha256: sha('b')});
-    store.put('versions', {id: versionA, projectId, jobId: id(70), shotId: shotA, number: 1, assetId: assetA, sha256: sha('a'), createdAt: at});
+    store.put('versions', {id: versionA, projectId, jobId: id(70), shotId: shotA, number: 1, assetId: assetA, sha256, createdAt: at});
     store.put('versions', {id: versionShort, projectId, jobId: id(71), shotId: shotA, number: 2, assetId: assetShort, sha256: sha('b'), createdAt: at});
     store.put('shots', {id: shotA, projectId, orderIndex: 0, selectedVersionId: versionA, duration: 2, createdAt: at, updatedAt: at});
     store.put('shots', {id: shotB, projectId, orderIndex: 1, selectedVersionId: null, duration: 1, createdAt: at, updatedAt: at});
+    if (bytes) store.put('jobs', {id: id(70), projectId, shotId: shotA, status: 'succeeded', versionId: versionA, assetId: assetA,
+      createdAt: at, updatedAt: at});
     store.put('nodes', {id: root, projectId, type: 'sequence_root', name: 'Film', position: {x: 0, y: 0}, createdAt: at});
     store.put('edges', {id: id(80), projectId, kind: 'sequence', source: root, target: shotA, createdAt: at});
-    store.put('edges', {id: id(81), projectId, kind: 'sequence', source: shotA, target: shotB, createdAt: at});
-    store.put('timelines', timeline);
+    if (!timing) store.put('edges', {id: id(81), projectId, kind: 'sequence', source: shotA, target: shotB, createdAt: at});
+    store.put('timelines', timing ? {...timeline, durationFrames: shotFrames, clips: timeline.clips.slice(0, 1)} : timeline);
     store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
-      .run(timelineId, projectId, root, 1, JSON.stringify(baseline));
+      .run(timelineId, projectId, root, 1, JSON.stringify(timing ? {...baseline, board: baseline.board.slice(0, 1), track: baseline.track.slice(0, 1)} : baseline));
   });
   return store;
 }
@@ -135,9 +152,11 @@ test('changing a previously matching crossfade overlap rejects output-domain env
   assert.throws(() => validateSpeedTransitions(after, before, () => undefined), {code: 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'});
 });
 
-test('a format 6 reverse mapping refuses preview, export, audio and preflight before any media work', async t => {
+test('format 6 reports reverse processing and interpolation refusals before any media work', async t => {
+ for (const [timing, code] of [[{...unitTiming, view: {...unitTiming.view, direction: 'reverse'}}, 'SPEED_PROCESSING_NOT_READY'],
+   [{...unitTiming, interpolation: 'blend'}, 'SPEED_INTERPOLATION_NOT_READY']] as const) await t.test(code, async t => {
   const {createServices} = await import('../packages/business/src/services.ts');
-  const store = fixture(t, {...unitTiming, view: {...unitTiming.view, direction: 'reverse'}});
+  const store = fixture(t, timing);
   const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
   const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {}), exportOptions: {
     inspect: async () => assert.fail('encoder capability check entered'),
@@ -146,22 +165,25 @@ test('a format 6 reverse mapping refuses preview, export, audio and preflight be
     const {projectId} = store;
     const expectedRevision = 1;
     const settings = {profileId: 'mp4_h264_v1', resolution: 'native', rateControl: {mode: 'crf', quality: 'standard'}};
-    const failure = {code: 'SPEED_RENDER_NOT_READY'};
     const exportInput = {projectId, expectedRevision, exportSettings: settings};
     const before = store.list('exports');
-    await assert.rejects(async () => services.call('timeline.export.capabilities', exportInput), failure);
+    const capabilities = await services.call('timeline.export.capabilities', exportInput) as {status: string; issues: {code: string}[]};
+    assert.equal(capabilities.status, 'blocked');
+    assert.equal(capabilities.issues[0]?.code, code);
     const preflight = await services.call('timeline.export.preflight', exportInput) as {
       status: string; issues: {code: string; clipId?: string}[]; checks: {bytesHashed: number};
     };
     assert.equal(preflight.status, 'blocked');
-    assert.equal(preflight.issues[0]?.code, failure.code);
+    assert.equal(preflight.issues[0]?.code, code);
     assert.equal(preflight.issues[0]?.clipId, clipA);
     assert.equal(preflight.checks.bytesHashed, 0);
-    for (const purpose of ['preview', 'export']) {
-      await assert.rejects(async () => services.call('timeline.render', {
-        projectId, purpose, expectedRevision, requestId: randomUUID(),
-      }), failure);
-    }
+    await assert.rejects(async () => services.call('timeline.render', {
+      projectId, purpose: 'export', expectedRevision, requestId: randomUUID(),
+    }), {code});
+    const failure = {code: 'SPEED_RENDER_NOT_READY'};
+    await assert.rejects(async () => services.call('timeline.render', {
+      projectId, purpose: 'preview', expectedRevision, requestId: randomUUID(),
+    }), failure);
     for (const operation of ['timeline.audioPreview.plan', 'timeline.audioPreview.continuousPlan']) {
       await assert.rejects(async () => services.call(operation, {
         projectId, timelineId, expectedRevision, startFrame: 0,
@@ -169,6 +191,54 @@ test('a format 6 reverse mapping refuses preview, export, audio and preflight be
     }
     await assert.rejects(async () => services.call('clip.audio.export', {projectId, clipId: clipA, requestId: randomUUID()}), failure);
     assert.deepEqual(store.list('exports'), before);
+  } finally {
+    await services.drain();
+    library.close();
+  }
+ });
+});
+
+test('format 6 preflight freezes the same timing and digest accepted and rendered by the worker', async t => {
+  const {createServices} = await import('../packages/business/src/services.ts');
+  const {startWorker} = await import('../packages/business/src/jobs.ts');
+  const {run} = await import('../packages/business/src/media.ts');
+  const {timelineSnapshotHash} = await import('../packages/business/src/timeline-preflight.ts');
+  const {isTimelineRenderRecord} = await import('../packages/contracts/src/timeline-acknowledgement.ts');
+  const timing = {...unitTiming, basis: {...unitTiming.basis,
+    speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}} as const}, outputWindow: {fromFrame: 0, toFrame: 30}};
+  const temp = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-speed-admission-'));
+  t.after(() => rmSync(temp, {recursive: true, force: true}));
+  const source = path.join(temp, 'synthetic.mp4');
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=30:duration=2',
+    '-c:v', 'libx264', '-threads', '1', '-an', source]);
+  const store = fixture(t, timing, readFileSync(source));
+  const projectId = store.projectId;
+  const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
+  const services = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {})});
+  try {
+    const input = {projectId, expectedRevision: 1, exportRange: {startFrame: 9, endFrame: 21}};
+    const report = await services.call('timeline.export.preflight', input) as {status: string; issues: unknown[];
+      checks: {checkedAssets: number}; snapshotHash: string};
+    assert.equal(report.status, 'ready', JSON.stringify(report.issues));
+    assert.equal(report.checks.checkedAssets, 1);
+    const request = {...input, purpose: 'export', requestId: randomUUID(), preflightSnapshotHash: report.snapshotHash};
+    const accepted = await services.call('timeline.render', request) as {id: string};
+    assert.equal(isTimelineRenderRecord(accepted, request), true);
+    const saved = store.get('exports', accepted.id) as {snapshot: unknown};
+    assert.equal(timelineSnapshotHash(saved.snapshot), report.snapshotHash);
+    assert.deepEqual(await services.call('timeline.render', request), accepted);
+    await assert.rejects(async () => services.call('timeline.render', {...request, requestId: randomUUID(),
+      preflightSnapshotHash: '0'.repeat(64)}), {code: 'PREFLIGHT_STALE'});
+    assert.equal(store.list('exports').length, 1);
+    const worker = startWorker(store, services, new Map());
+    try {
+      await worker.tick();
+      const completed = store.get('exports', accepted.id) as {status: string; assetId: string; error?: unknown};
+      assert.equal(completed.status, 'succeeded', JSON.stringify(completed.error));
+      const output = store.get('assets', completed.assetId) as {mimeType: string; duration: number};
+      assert.equal(output.mimeType, 'video/mp4');
+      assert.equal(output.duration, 12 / 30);
+    } finally {await worker.stop();}
   } finally {
     await services.drain();
     library.close();
