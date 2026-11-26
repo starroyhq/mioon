@@ -182,6 +182,8 @@ pnpm --filter @mioon/desktop package:mac:dev
 
 三个开发包入口都先构建 Web 和桌面暂存，再运行 builder。它们共用暂存目录，请串行执行。macOS 开发包包含 Apple 芯片和 Intel 两种架构。发布流程生成正式包并在 macOS 上签名、公证、装订票据。[打包入口说明](PACKAGE-ENTRYPOINTS.md) · [发布流程](GITHUB-ACTIONS.zh-CN.md#正式发布)
 
+macOS 的原生启动器位于应用包的 `Contents/Helpers/`。对本地开发目录包做 ad hoc 签名后，运行 `node apps/desktop/scripts/cli-launcher-packaged-qa.ts "<mioon-dev.app>"` 可核对签名和架构，验证 CLI、MCP 与运行中的应用往返，并量测启动耗时。脚本以临时 HOME 和空 PATH 运行开发应用及启动器。
+
 ## 验证
 
 ```sh

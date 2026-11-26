@@ -9,6 +9,7 @@ import {main as checkTypes} from '../../../scripts/tooling.ts';
 import {measureBuildStage, withDesktopTypecheckTiming, type BuildTimingStage} from '../../../scripts/lib/build-timings.ts';
 import {hasOuterTypecheckEvidence} from '../../../scripts/lib/typecheck-evidence.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
+import {buildMacCliLauncher} from './build-cli-launcher.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
 import {stageProjectNotices} from './stage-project-notices.ts';
@@ -94,6 +95,9 @@ await mkdir(path.join(output,'subtitles'));
 for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));
 await verifySubtitleResources(path.join(output,'subtitles'));
 });
+if (process.platform === 'darwin') {
+  await measureBuildStage('desktop-native-staging', () => buildMacCliLauncher({desktop, output, appVersion, identity}));
+}
 // Windows desktop storage opens only through the ACL helper staged beside the
 // bundles (outside ASAR when packaged); it is built separately, never here.
 if(process.platform==='win32'){

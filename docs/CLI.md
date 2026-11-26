@@ -2,7 +2,9 @@
 
 工作区开关、项目备份、任务处置和导出控制也通过同一后端提供。具体范围见[工作区设置](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)，使用 `schema` 查询当前参数，避免拼接服务器文件路径
 
-The CLI is a local HTTP client for the **same running backend and database** used by the browser, Electron, and MCP. It never starts a second service or reads backend database/media paths. Node.js 24+ and the source workspace dependencies are required; this is not a bundled standalone executable.
+The CLI uses the same local backend as the browser, Electron, and MCP. Running the CLI from a source checkout requires Node.js 24+ and the source workspace dependencies.
+
+macOS 桌面包带有无需额外安装 Node 的原生启动器，正式渠道命令为 `mioon`，开发渠道为 `mioon-dev`。单独运行 `--version` 可查看启动器版本。其他命令由正在运行的同渠道 Mioon 执行。运行时约定见 [启动器协议](CLI-RUNTIME-PROTOCOL.md)。
 
 ## Mio 的独立管理命令
 
@@ -164,7 +166,7 @@ mioon schema generation.submit
 mioon generation submit --help
 ```
 
-`--help`, `--version`, and `schema` work offline. `doctor` authenticates against the backend and reports safe readiness metadata and provider capabilities; it neither submits generation nor exposes secret locations. `capabilities` returns the current `provider.list` data, including legacy fields and per-model `modelCapabilities`. Use enabled/configured/model constraints from that response rather than assuming a provider is ready. Production discovery also includes exact `inputProfiles`, server API region and dated lifecycle evaluations; inspect [model input limits](GENERATION-INPUT-LIMITS.md) before submitting. These fields are not client overrides. Current provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`; live providers stay disabled without explicit backend opt-in and an authorized budget.
+In the source CLI, `--help`, `--version`, and `schema` work offline. `doctor` authenticates against the backend and reports safe readiness metadata and provider capabilities; it neither submits generation nor exposes secret locations. `capabilities` returns the current `provider.list` data, including legacy fields and per-model `modelCapabilities`. Use enabled/configured/model constraints from that response rather than assuming a provider is ready. Production discovery also includes exact `inputProfiles`, server API region and dated lifecycle evaluations; inspect [model input limits](GENERATION-INPUT-LIMITS.md) before submitting. These fields are not client overrides. Current provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`; live providers stay disabled without explicit backend opt-in and an authorized budget.
 
 `schema [operation]` converts the shared Zod business input schema to JSON Schema and adds the required transport `projectId` for the 11 entity-addressed operations below. CLI discovery and MCP `tools/list` expose the same input shape. It returns the operation, natural command, MCP tool name, description, `inputSchema`, `requiresRequestId`, and explicit advisory `effects`. Custom refinements (such as rectangle containment) still run in the shared Zod validator even where JSON Schema cannot represent them. Effects describe direct and scheduled work; they never authorize a call or waive required approval. Missing effect coverage is an error, not a suffix-based safety guess.
 

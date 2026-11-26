@@ -1,10 +1,16 @@
 import {execFile} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {mkdtemp, readFile, realpath, rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {argumentsFor, CheckFailure, cleanEnvironment, isMain, report, safeFailure} from './media-environment.ts';
+import {uniqueMacApp} from './mac-dmg.ts';
 import {MAC_UNIVERSAL_ARCH} from '../../apps/desktop/runtime-notices.ts';
+import {macCliLauncherBundleEntry, verifyMacCliLauncherFile} from '../../apps/desktop/cli-launcher-binary.ts';
+import {identityForChannel} from '../../apps/desktop/identity.ts';
 
 export type AppleStaplerOperation = 'staple' | 'validate';
 export interface AppleStaplerDiagnostic {
@@ -135,13 +141,17 @@ function installedNotarize(): (options: NotarizeOptions) => Promise<void> {
   if (typeof module.notarize !== 'function') throw new CheckFailure('APPLE_NOTARIZATION_UNAVAILABLE');
   return module.notarize;
 }
-function reportPath(env: NodeJS.ProcessEnv): string {
+function reportPath(env: NodeJS.ProcessEnv, output = env.MIOON_APPLE_NOTARIZATION_REPORT): string {
   if (env.MIOON_TARGET !== 'macos-universal') throw new CheckFailure('INVALID_APPLE_RELEASE_TARGET');
-  const output = env.MIOON_APPLE_NOTARIZATION_REPORT;
   if (!output || /[\0\r\n]/.test(output)) throw new CheckFailure('APPLE_NOTARIZATION_REPORT_REQUIRED');
   const resolved = path.resolve(root, output), directory = path.join(root, 'artifacts', `desktop-${env.MIOON_TARGET}`);
   if (path.dirname(resolved) !== directory || !/^[a-z][a-z0-9-]*\.json$/.test(path.basename(resolved))) throw new CheckFailure('INVALID_APPLE_NOTARIZATION_REPORT');
   return resolved;
+}
+function notaryCredentials(env: NodeJS.ProcessEnv): Omit<NotarizeOptions, 'appPath'> {
+  const appleApiKey = env.APPLE_API_KEY_PATH ?? env.APPLE_API_KEY, appleApiKeyId = env.APPLE_API_KEY_ID, appleApiIssuer = env.APPLE_API_ISSUER;
+  if (!appleApiKey || !path.isAbsolute(appleApiKey) || /[\0\r\n]/.test(appleApiKey) || !appleApiKeyId || /[\0\r\n]/.test(appleApiKeyId) || !appleApiIssuer || /[\0\r\n]/.test(appleApiIssuer)) throw new CheckFailure('APPLE_NOTARIZATION_CREDENTIALS_REQUIRED');
+  return {appleApiKey, appleApiKeyId, appleApiIssuer};
 }
 export async function notarizeApp(context: NotarizeAppContext, dependencies: NotarizeAppDependencies = {}): Promise<void> {
   const env = dependencies.env ?? process.env, result: AppleAppNotarizationReport = {version: 1, kind: 'app-notarization', operation: 'notarize-app', ok: false, phase: 'preflight', acceptedKnown: false, notarizeCalls: 0, diagnostics: []};
@@ -153,8 +163,7 @@ export async function notarizeApp(context: NotarizeAppContext, dependencies: Not
     const filename = context.packager?.appInfo?.productFilename;
     if (typeof context.appOutDir !== 'string' || !path.isAbsolute(context.appOutDir) || path.resolve(context.appOutDir) !== context.appOutDir || /[\0\r\n]/.test(context.appOutDir) || typeof filename !== 'string' || !filename || /[\/\\\0\r\n]/.test(filename) || filename === '.' || filename === '..') throw new CheckFailure('INVALID_APPLE_APP_CONTEXT');
     const appPath = path.join(context.appOutDir, `${filename}.app`); artifactKind(appPath);
-    const appleApiKey = env.APPLE_API_KEY_PATH ?? env.APPLE_API_KEY, appleApiKeyId = env.APPLE_API_KEY_ID, appleApiIssuer = env.APPLE_API_ISSUER;
-    if (!appleApiKey || !path.isAbsolute(appleApiKey) || /[\0\r\n]/.test(appleApiKey) || !appleApiKeyId || /[\0\r\n]/.test(appleApiKeyId) || !appleApiIssuer || /[\0\r\n]/.test(appleApiIssuer)) throw new CheckFailure('APPLE_NOTARIZATION_CREDENTIALS_REQUIRED');
+    const credentials = notaryCredentials(env);
     const record = (value: AppleStaplerDiagnostic) => { result.diagnostics.push({...value}); };
     const stapler = {execute: dependencies.execute, wait: dependencies.wait, failureCode: 'APP_STAPLE_INVALID' as const, onDiagnostic: record};
     result.phase = 'notarize';
@@ -163,7 +172,7 @@ export async function notarizeApp(context: NotarizeAppContext, dependencies: Not
     try {
       // The pinned @electron/notarize awaits app stapling. This entire
       // afterSign hook must finish before electron-builder creates its ZIP.
-      await notarize({appPath, appleApiKey, appleApiKeyId, appleApiIssuer});
+      await notarize({appPath, ...credentials});
       result.acceptedKnown = true;
       record(diagnostic('staple', 'app', 1, {exitCode: 0, signal: null, timedOut: false, stdout: '', stderr: ''}));
     } catch (error) {
@@ -190,13 +199,99 @@ export async function notarizeApp(context: NotarizeAppContext, dependencies: Not
   }
 }
 
+interface CliLauncherArtifact {entry: string; sha256: string; bytes: number}
+export interface AppleCliLauncherNotarizationReport {
+  version: 1;
+  kind: 'cli-launcher-notarization';
+  ok: boolean;
+  launcher?: CliLauncherArtifact;
+  status?: 'Accepted';
+  submissionId?: string;
+  error?: string;
+}
+export async function macCliLauncherArtifact(app: string): Promise<{file: string; launcher: CliLauncherArtifact}> {
+  const entry = macCliLauncherBundleEntry(identityForChannel('production'));
+  const file = path.join(app, entry);
+  await verifyMacCliLauncherFile(file);
+  const data = await readFile(file);
+  return {file, launcher: {entry, sha256: createHash('sha256').update(data).digest('hex'), bytes: data.length}};
+}
+
+const submissionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function verifyCliLauncherNotarization(value: unknown, launcher: CliLauncherArtifact): void {
+  if (!value || typeof value !== 'object') throw new CheckFailure('CLI_LAUNCHER_NOTARIZATION_MISMATCH');
+  const report = value as Partial<AppleCliLauncherNotarizationReport>;
+  if (report.version !== 1 || report.kind !== 'cli-launcher-notarization' || report.ok !== true || report.status !== 'Accepted' ||
+      typeof report.submissionId !== 'string' || !submissionIdPattern.test(report.submissionId) ||
+      report.launcher?.entry !== launcher.entry || report.launcher.sha256 !== launcher.sha256 || report.launcher.bytes !== launcher.bytes) {
+    throw new CheckFailure('CLI_LAUNCHER_NOTARIZATION_MISMATCH');
+  }
+}
+
+export async function notarizeCliLauncher(appOutDir: string, dependencies: {
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  execute?: AppleStaplerExecutor;
+  writeReport?(value: AppleCliLauncherNotarizationReport): Promise<void>;
+} = {}): Promise<void> {
+  const env = dependencies.env ?? process.env, execute = dependencies.execute ?? executeCommand;
+  const result: AppleCliLauncherNotarizationReport = {version: 1, kind: 'cli-launcher-notarization', ok: false};
+  let output: string | undefined, scratch: string | undefined;
+  try {
+    if ((dependencies.platform ?? process.platform) !== 'darwin' || !/^[a-f0-9]{40}$/.test(env.MIOON_RELEASE_SHA ?? '')) throw new CheckFailure('APPLE_NOTARIZATION_RELEASE_ONLY');
+    if (!env.MIOON_APPLE_CLI_LAUNCHER_REPORT) throw new CheckFailure('APPLE_NOTARIZATION_REPORT_REQUIRED');
+    output = reportPath(env, env.MIOON_APPLE_CLI_LAUNCHER_REPORT);
+    if (!path.isAbsolute(appOutDir) || path.resolve(appOutDir) !== appOutDir || /[\0\r\n]/.test(appOutDir)) throw new CheckFailure('INVALID_APPLE_ARTIFACT');
+    const {appleApiKey, appleApiKeyId, appleApiIssuer} = notaryCredentials(env);
+    const app = await uniqueMacApp(appOutDir);
+    const {file, launcher} = await macCliLauncherArtifact(app);
+    result.launcher = launcher;
+    const run = async (tool: string, args: readonly string[], failureCode: string, timeout = COMMAND_TIMEOUT): Promise<string> => {
+      const probe = await execute(tool, args, {timeout, env: cleanEnvironment(env)});
+      if (probe.exitCode !== 0 || probe.signal || probe.timedOut || probe.outputLimitExceeded) throw new CheckFailure(failureCode);
+      return probe.stdout;
+    };
+    await run('/usr/bin/codesign', ['--verify', '--strict', '--all-architectures', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
+    scratch = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-cli-notarization-'));
+    const zip = path.join(scratch, 'mioon-launcher.zip');
+    await run('/usr/bin/ditto', ['-c', '-k', '--norsrc', file, zip], 'CLI_LAUNCHER_ZIP_FAILED');
+    if ((await macCliLauncherArtifact(app)).launcher.sha256 !== launcher.sha256) throw new CheckFailure('CLI_LAUNCHER_CHANGED');
+    // Apple issues a standalone ticket for the signed Mach-O inside this ZIP.
+    // Only the existing app and DMG flows use stapler.
+    const response = await run('/usr/bin/xcrun', ['notarytool', 'submit', zip, '--key', appleApiKey, '--key-id', appleApiKeyId,
+      '--issuer', appleApiIssuer, '--wait', '--timeout', '30m', '--output-format', 'json'], 'CLI_LAUNCHER_NOTARIZATION_FAILED', 31 * 60_000);
+    let submission: {status?: unknown; id?: unknown} | null;
+    try { submission = JSON.parse(response); } catch { throw new CheckFailure('CLI_LAUNCHER_NOTARIZATION_FAILED'); }
+    if (submission?.status !== 'Accepted' || typeof submission.id !== 'string' || !submissionIdPattern.test(submission.id)) {
+      throw new CheckFailure('CLI_LAUNCHER_NOTARIZATION_FAILED');
+    }
+    result.ok = true;
+    result.status = 'Accepted';
+    result.submissionId = submission.id;
+  } catch (error) {
+    result.error = error instanceof CheckFailure ? safeFailure(error) : 'CLI_LAUNCHER_NOTARIZATION_FAILED';
+    throw new CheckFailure(result.error);
+  } finally {
+    try {
+      if (dependencies.writeReport) await dependencies.writeReport(result);
+      else if (output) await report(output, result);
+    } catch { throw new CheckFailure('APPLE_NOTARIZATION_REPORT_FAILED'); }
+    finally { if (scratch) await rm(scratch, {recursive: true, force: true}); }
+  }
+}
+
 if (isMain(import.meta.url)) {
   let output: string | undefined;
   const diagnostics: AppleStaplerDiagnostic[] = [];
   try {
     const args = argumentsFor(process.argv.slice(2), ['operation', 'artifact'], ['output']); output = args.output;
-    if (args.operation !== 'staple' && args.operation !== 'validate') throw new CheckFailure('INVALID_APPLE_OPERATION');
-    await runAppleStapler(args.operation, args.artifact, {onDiagnostic: value => diagnostics.push(value)});
+    if (args.operation === 'notarize-cli-launcher') {
+      if (output) throw new CheckFailure('INVALID_ARGUMENTS');
+      await notarizeCliLauncher(args.artifact);
+    } else {
+      if (args.operation !== 'staple' && args.operation !== 'validate') throw new CheckFailure('INVALID_APPLE_OPERATION');
+      await runAppleStapler(args.operation, args.artifact, {onDiagnostic: value => diagnostics.push(value)});
+    }
     const result = {ok: true, operation: args.operation, diagnostics};
     if (output) {try {await report(output, result);} catch {throw new CheckFailure('APPLE_STAPLER_REPORT_FAILED');}}
     console.log(JSON.stringify(result));
