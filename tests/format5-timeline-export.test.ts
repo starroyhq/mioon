@@ -92,11 +92,20 @@ test('the legacy projection admits exactly aligned 1× timing and refuses phase,
   assert.equal(canRenderTimelineClipAtIdentity({...clip, timing: {...unitTiming, basis: {...unitTiming.basis, speed}}}, 30), false);
 });
 
+function transitionTimeline(clips: Format5Clip[]): Format5Timeline {
+  return {id: timelineId, projectId: id(1), revision: 1, fps: 30, width: 720, height: 1280,
+    durationFrames: Math.max(...clips.map(clip => clip.startFrame + clip.durationFrames)),
+    createdAt: at, updatedAt: at, mainTrack: {trackId: track, sequenceNodeId: root},
+    tracks: [...new Set(clips.map(clip => clip.trackId))].map((id, orderIndex) => ({
+      id, name: `V${orderIndex + 1}`, kind: 'video', orderIndex, hidden: false, muted: false,
+    })), clips};
+}
+
 test('a timed transition validates the real source handles in its traversal direction', () => {
   const incoming: Format5Clip = {id: clipB, trackId: track, name: 'Incoming', startFrame: 20, durationFrames: 20,
     sourceInFrame: 10, sourceState: 'ready', assetId: assetShort, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1};
   const outgoing: Format5Clip = {...incoming, id: clipA, name: 'Outgoing', startFrame: 0, assetId: assetA};
-  const before = {fps: 30, clips: [outgoing, incoming]} as Format5Timeline;
+  const before = transitionTimeline([outgoing, incoming]);
   const timing: ClipTiming = {...unitTiming, basis: {...unitTiming.basis, sourceRange: {
     start: {kind: 'rational', numerator: '10', denominator: '1'},
     end: {kind: 'rational', numerator: '50', denominator: '1'},
@@ -105,9 +114,12 @@ test('a timed transition validates the real source handles in its traversal dire
   // The outgoing forward tail needs eight frames past source frame 50; its
   // reverse tail only goes down to 2. The source contains exactly 50 frames.
   const readAsset = () => ({mimeType: 'video/mp4', duration: 50 / 30});
-  const edited = {...before, clips: [{...outgoing, sourceSpanFrames: 40, timing}, cut]};
+  const timedOutgoing = {...outgoing, sourceSpanFrames: 40, timing};
+  const edited = transitionTimeline([timedOutgoing, cut]);
   assert.throws(() => validateSpeedTransitions(edited, before, readAsset), {code: 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'});
-  const reverse = {...edited, clips: [{...edited.clips[0], timing: {...timing, view: {...timing.view, direction: 'reverse' as const}}}, cut]};
+  const reverse = transitionTimeline([
+    {...timedOutgoing, timing: {...timing, view: {...timing.view, direction: 'reverse'}}}, cut,
+  ]);
   assert.doesNotThrow(() => validateSpeedTransitions(reverse, before, readAsset));
 });
 
@@ -117,8 +129,9 @@ test('changing a previously matching crossfade overlap rejects output-domain env
   const incoming: Format5Clip = {...outgoing, id: clipB, trackId: id(61), startFrame: 14};
   const curves = timelineCrossfadeEnvelopes(outgoing, incoming)!;
   const out = {...outgoing, volumeEnvelope: curves.outgoing};
-  const before = {fps: 30, clips: [out, {...incoming, volumeEnvelope: curves.incoming}]} as Format5Timeline;
-  const after = {...before, clips: [{...out, durationFrames: 24}, before.clips[1]]};
+  const inWithEnvelope = {...incoming, volumeEnvelope: curves.incoming};
+  const before = transitionTimeline([out, inWithEnvelope]);
+  const after = transitionTimeline([{...out, durationFrames: 24}, inWithEnvelope]);
   assert.throws(() => validateSpeedTransitions(after, before, () => undefined), {code: 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID'});
 });
 

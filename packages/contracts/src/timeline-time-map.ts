@@ -1233,25 +1233,28 @@ export function timeMapPlanFrames(plan: CompiledTimeMap): TimeMapResult<Int32Arr
   }
   return done(frames);
 }
-/** Continuous visible source interval (earlier→later clock times) and the strict
- * integer envelope `[floor(lo), ceil(hi))` used for decode/capacity checks. */
+/** The first and last displayed source positions and the decode sample window.
+ * Persisted clip capacity uses the full motion interval, including the time
+ * after the last displayed frame start. */
 export function timeMapVisibleSourceRange(plan: CompiledTimeMap): TimeMapResult<TimeMapVisibleSourceRange> {
   const state = rootState(plan.root), planInfo = planState(plan);
   if (state.freezeFrame !== null) {
     const position = {kind: 'exact' as const, numerator: String(state.freezeFrame), denominator: '1'};
     return done({lo: position, hi: position, sourceWindow: {startFrame: state.freezeFrame, endFrame: state.freezeFrame + 1}});
   }
-  const interval = planClockInterval(state, planInfo);
-  const startBoundary = resolvePositionInteger(state, interval.lo, 'floor');
+  const first = planTimeValue(planInfo, 0), last = planTimeValue(planInfo, plan.durationFrames - 1);
+  const {lo, hi} = timeValueLess(state, last, first) ? {lo: last, hi: first} : {lo: first, hi: last};
+  const forward = plan.direction === 'forward';
+  const startBoundary = resolvePositionInteger(state, lo, forward ? 'floor' : 'ceil');
   if (!startBoundary.ok) return startBoundary;
-  const endBoundary = resolvePositionInteger(state, interval.hi, 'ceil');
+  const endBoundary = resolvePositionInteger(state, hi, forward ? 'floor' : 'ceil');
   if (!endBoundary.ok) return endBoundary;
-  const low = invertAtTime(state, interval.lo, 0);
+  const low = invertAtTime(state, lo, 0);
   if (!low.ok) return low;
-  const high = invertAtTime(state, interval.hi, 0);
+  const high = invertAtTime(state, hi, 0);
   if (!high.ok) return high;
-  const startFrame = Math.max(state.frameRange.start, startBoundary.value);
-  const endFrame = Math.min(state.frameRange.end + 1, endBoundary.value);
+  const startFrame = Math.max(state.frameRange.start, forward ? startBoundary.value : startBoundary.value - 1);
+  const endFrame = Math.min(state.frameRange.end + 1, forward ? endBoundary.value + 1 : endBoundary.value);
   if (endFrame <= startFrame) return fail('INVALID_WINDOW', 'visible source envelope is empty');
   return done({lo: low.value, hi: high.value, sourceWindow: {startFrame, endFrame}});
 }
@@ -1323,14 +1326,13 @@ export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: n
 // ---------------------------------------------------------------------------
 
 export interface TimeMapOutputPosition {readonly numerator: string; readonly denominator: string}
-function tailResult(plan: CompiledTimeMap, state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
+function tailResult(plan: CompiledTimeMap, _state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
+  const visible = timeMapVisibleSourceRange(plan);
+  if (!visible.ok) return visible;
   const latest = options.tailInverse === 'latest';
-  const forward = plan.direction === 'forward';
-  const offset = latest === forward ? plan.durationFrames - 1 : 0;
-  const sample = resolvePositionInteger(state, planTimeValue(planState(plan), offset), forward ? 'floor' : 'ceil');
-  if (!sample.ok) return sample;
-  const frame = clampFrame(state, forward ? sample.value : sample.value - 1);
-  return done({position: {kind: 'numeric', value: latest ? frame + 1 : frame, errorBound: 0}, frame, tail: true});
+  const frame = latest ? visible.value.sourceWindow.endFrame - 1 : visible.value.sourceWindow.startFrame;
+  return done({position: {kind: 'numeric', value: latest ? visible.value.sourceWindow.endFrame : visible.value.sourceWindow.startFrame, errorBound: 0},
+    frame, tail: true});
 }
 /** Resolves an output clock position (in output frames from the view start) to a
  * source position. Positions beyond the motion range are the explicit tail hold
@@ -1568,11 +1570,18 @@ export function timeMapBasisFromCurrentClip(clip: CurrentTimelineClipLike, timel
 }
 /** Projects the compiled source envelope onto the current clip fields. */
 export function projectTimeMapToCurrentClipFields(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<ClipFrameProjection> {
-  const range = timeMapVisibleSourceRange(plan);
-  if (!range.ok) return range;
-  const start = range.value.sourceWindow.startFrame;
-  const span = range.value.sourceWindow.endFrame - start;
-  return done({startFrame: clip.startFrame, durationFrames: plan.durationFrames, sourceInFrame: start, sourceSpanFrames: span});
+  const state = rootState(plan.root);
+  const output = {startFrame: clip.startFrame, durationFrames: plan.durationFrames};
+  if (state.freezeFrame !== null) return done({...output, sourceInFrame: state.freezeFrame, sourceSpanFrames: 1});
+  const interval = planClockInterval(state, planState(plan));
+  const start = resolvePositionInteger(state, interval.lo, 'floor');
+  if (!start.ok) return start;
+  const end = resolvePositionInteger(state, interval.hi, 'ceil');
+  if (!end.ok) return end;
+  const sourceInFrame = Math.max(state.frameRange.start, start.value);
+  const sourceSpanFrames = Math.min(state.frameRange.end + 1, end.value) - sourceInFrame;
+  if (sourceSpanFrames < 1) return fail('INVALID_WINDOW', 'visible source envelope is empty');
+  return done({...output, sourceInFrame, sourceSpanFrames});
 }
 /** Verifies that the current integer fields equal the compiled projection. */
 export function verifyCurrentClipTiming(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<{readonly projection: ClipFrameProjection; readonly matches: boolean}> {
