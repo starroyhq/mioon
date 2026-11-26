@@ -27,7 +27,7 @@ type PackageArch = TargetArch | 'universal';
 interface MacBinaryEvidence {name: string; architectures: string[]}
 interface MacAppEvidence {
   scope: MacScope; lipo: MacBinaryEvidence[]; codesign: true; stapled: true; gatekeeper: true;
-  cliLauncher: {entry: string; sha256: string; bytes: number; codesign: true};
+  cliLauncher: {entry: string; sha256: string; bytes: number; codesign: true; ticketVerified: true};
   verificationOutput: {codesign: string[]; spctl: string[]};
 }
 interface Inspection {ok: boolean; platform: TargetPlatform; arch: PackageArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; package?: MacDmgEvidence; mountPoint?: string; extractRoot?: string; error?: string; unwritableEntry?: string; cleanupError?: string; appleStaplerDiagnostics?: MacStaplerDiagnostic[]; macApps?: MacAppEvidence[]}
@@ -190,17 +190,23 @@ async function inspectUniversalArchitecture(app: string, binary: string): Promis
   }
   return evidence;
 }
-async function inspectMacCliLauncher(app: string, notarization: unknown): Promise<MacAppEvidence['cliLauncher']> {
+export async function inspectMacCliLauncher(app: string, notarization: unknown, {
+  execute = command, identity = process.env.APPLE_SIGNING_IDENTITY, team = process.env.APPLE_TEAM_ID,
+}: {execute?: typeof command; identity?: string; team?: string} = {}): Promise<MacAppEvidence['cliLauncher']> {
   const {file, launcher} = await macCliLauncherArtifact(app);
   verifyCliLauncherNotarization(notarization, launcher);
-  await command('/usr/bin/codesign', ['--verify', '--strict', '--all-architectures', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
+  await execute('/usr/bin/codesign', ['--verify', '--strict', '--all-architectures', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
   const identifier = macCliLauncherIdentifier(desktopIdentity.identityForChannel('production'));
   for (const arch of MAC_CLI_LAUNCHER_ARCHITECTURES) {
-    const output = await command('/usr/bin/codesign', ['--display', '--arch', arch, '--verbose=4', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
-    verifySigningIdentity(output, process.env.APPLE_SIGNING_IDENTITY, process.env.APPLE_TEAM_ID);
+    const output = await execute('/usr/bin/codesign', ['--display', '--arch', arch, '--verbose=4', file], 'CLI_LAUNCHER_SIGNATURE_FAILED');
+    verifySigningIdentity(output, identity, team);
     if (!output.split(/\r?\n/).includes(`Identifier=${identifier}`)) fail('CLI_LAUNCHER_IDENTIFIER_MISMATCH');
   }
-  return {...launcher, codesign: true};
+  // Apple issues online tickets for standalone Mach-O files. The enclosing
+  // app and DMG carry stapled tickets and undergo their own Gatekeeper checks.
+  await execute('/usr/bin/codesign', ['--verify', '--strict', '--all-architectures', '--check-notarization', '-R=notarized', file],
+    'CLI_LAUNCHER_NOTARIZATION_TICKET_INVALID');
+  return {...launcher, codesign: true, ticketVerified: true};
 }
 async function macApp(app: string, appOutDir: string, scope: MacScope, launcherNotarization: unknown, onPhase: (phase: MacPhase) => void, onAppleDiagnostic: (diagnostic: MacStaplerDiagnostic) => void): Promise<{binary: string; evidence: MacAppEvidence}> {
   const run: MacCheckRunner = (name, action) => runMacInspectionCheck(scope, name, action, onPhase);
