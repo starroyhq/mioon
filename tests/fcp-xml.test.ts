@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import test from 'node:test';
 import {pathToFileURL} from 'node:url';
+import {testEnv} from './helpers/test-env.ts';
 import {serializeFcpXml, type FcpXmlAsset} from '../packages/business/src/fcp-xml.ts';
 import {getFormat5TimelineIssue, type Format5Clip, type Format5Timeline} from '../packages/contracts/src/project-format5.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
@@ -176,7 +177,7 @@ test('validates the representative sequence against the locally supplied Apple F
 }, () => {
   const dtd = process.env.MIOON_FCPXML_DTD!;
   const tool = spawnSync('xmllint', ['--noout', '--nonet', '--dtdvalid', pathToFileURL(dtd).href, '-'], {
-    input: serializeFcpXml(fixture()), encoding: 'utf8',
+    input: serializeFcpXml(fixture()), encoding: 'utf8', env: testEnv(),
   });
   assert.ifError(tool.error);
   assert.equal(tool.status, 0, tool.stderr);
