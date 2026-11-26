@@ -281,6 +281,7 @@ export interface SequenceEditClipPropertiesPatch {
   /** Mute the clip's own sound without touching its gain. `false` clears the
    * persisted flag so a format-5 row never stores `muted:false`. */
   readonly muted?: boolean;
+  readonly sourceReplacement?: {readonly assetId: string; readonly versionId?: string};
 }
 export interface SequenceEditClipPropertyEdit {
   readonly clipId: string;
@@ -794,7 +795,7 @@ export const sequenceEditReferenceIntentSchema = z.object({
   operation: z.object({kind: z.literal('reference-edge'), edit: referenceEdgeEditSchema}).strict(),
 }).strict();
 const referenceIntentSchema = sequenceEditReferenceIntentSchema;
-const clipPropertiesPatchSchema = z.object({
+const clipPropertiesPatchFields = z.object({
   transform: z.unknown().optional(),
   transition: z.unknown().optional(),
   gain: z.number().finite().min(0).max(2).optional(),
@@ -805,12 +806,21 @@ const clipPropertiesPatchSchema = z.object({
   volumeEnvelope: z.unknown().optional(),
   name: z.string().min(1).max(200).optional(),
   muted: z.boolean().optional(),
-}).strict().refine(value => Object.keys(value).length > 0, 'At least one clip property is required');
+}).strict();
+const hasClipProperties = (value: SequenceEditClipPropertiesPatch): boolean => Object.keys(value).length > 0;
+function clipPropertyEdits(patch: z.ZodType<SequenceEditClipPropertiesPatch>) {
+  return z.array(z.object({clipId: uuidSchema, patch}).strict()).min(1).max(100)
+    .refine(list => new Set(list.map(edit => edit.clipId)).size === list.length, 'Each clip may appear once');
+}
+export const sequenceClipPropertyEditsSchema = clipPropertyEdits(
+  clipPropertiesPatchFields.refine(hasClipProperties, 'At least one clip property is required'));
+const clipPropertiesWithSourcePatchSchema = clipPropertiesPatchFields.extend({
+  sourceReplacement: z.object({assetId: uuidSchema, versionId: uuidSchema.optional()}).strict().optional(),
+}).refine(hasClipProperties, 'At least one clip property is required');
 export const sequenceEditClipPropertiesIntentSchema = z.object({
   side: z.literal('timeline'),
   operation: z.object({kind: z.literal('clip-properties'),
-    edits: z.array(z.object({clipId: uuidSchema, patch: clipPropertiesPatchSchema}).strict()).min(1).max(100)
-      .refine(list => new Set(list.map(edit => edit.clipId)).size === list.length, 'Each clip may appear once')}).strict(),
+    edits: clipPropertyEdits(clipPropertiesWithSourcePatchSchema)}).strict(),
 }).strict();
 const trackPatchSchema = z.object({
   name: z.string().min(1).max(150).optional(),

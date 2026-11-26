@@ -922,10 +922,10 @@ export const operationMessages = {
     "ja": "フォーマット5のタイムライン動作（字幕、台詞、画面比、シーン分割、音声分離、トラック、素材配置、編集中生成）をプレビューし、計画概要と共有 envelope を返します。生成は費用が発生し、安定した generation requestId を使用し、未知の結果を自動再試行しません"
   },
   "operation.sequence.clip.edit": {
-    "zh-Hans": "预览格式5片段属性动作：变换、转场、增益、淡入淡出、颜色、音频角色、音量包络和名称；返回计划摘要和共享 envelope，不改时间线或历史",
-    "zh-Hant": "預覽格式5片段屬性動作：變換、轉場、增益、淡入淡出、顏色、音訊角色、音量包絡和名稱；回傳計畫摘要和共用 envelope，不改時間軸或歷史",
-    "en": "Preview one format-5 clip-properties action: transform, transition, gain, fades, colour, audio role, volume envelope or name; returns the plan summary and shared envelope without changing the timeline or history",
-    "ja": "フォーマット5のクリップ属性動作（変形、トランジション、ゲイン、フェード、色、音声役割、音量エンベロープ、名前）をプレビューし、計画概要と共有 envelope を返します。タイムラインや履歴は変更しません"
+    "zh-Hans": "预览格式5片段属性编辑或兼容素材替换，返回计划摘要和共享 envelope",
+    "zh-Hant": "預覽格式5片段屬性編輯或相容素材替換，回傳計畫摘要和共用 envelope",
+    "en": "Preview a format-5 clip property edit or compatible source replacement and return the plan summary and shared envelope",
+    "ja": "フォーマット5のクリップ属性編集や互換素材への差し替えをプレビューし、計画概要と共有 envelope を返します"
   },
   "operation.sequence.action.commit": {
     "zh-Hans": "凭预览返回的共享 envelope 和计划凭据提交格式5序列动作；计划不匹配时拒绝。生成动作按付费和稳定请求规则执行，未知结果不自动重试",

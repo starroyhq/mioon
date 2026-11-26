@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="882ddab3b4b5b6420367f95840baeb8177ad9c204180e34aa7cf029d2524bfe1";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="7f8c33a5349914570c59667230a518a25354089f5388ceb624d5eb059523d31c";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -1657,6 +1657,23 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             },
             "muted": {
              "type": "boolean"
+            },
+            "sourceReplacement": {
+             "type": "object",
+             "properties": {
+              "assetId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "versionId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              }
+             },
+             "required": [
+              "assetId"
+             ],
+             "additionalProperties": false
             }
            },
            "additionalProperties": false
@@ -3657,6 +3674,23 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               },
               "muted": {
                "type": "boolean"
+              },
+              "sourceReplacement": {
+               "type": "object",
+               "properties": {
+                "assetId": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "versionId": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                }
+               },
+               "required": [
+                "assetId"
+               ],
+               "additionalProperties": false
               }
              },
              "additionalProperties": false
@@ -7497,6 +7531,33 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "edits"
     ],
     "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "replace-source"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "assetId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "versionId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "assetId"
+    ],
+    "additionalProperties": false
    }
   ],
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -8028,6 +8089,23 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               },
               "muted": {
                "type": "boolean"
+              },
+              "sourceReplacement": {
+               "type": "object",
+               "properties": {
+                "assetId": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "versionId": {
+                 "type": "string",
+                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                }
+               },
+               "required": [
+                "assetId"
+               ],
+               "additionalProperties": false
               }
              },
              "additionalProperties": false
@@ -18718,6 +18796,33 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "edits"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "replace-source"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "assetId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "versionId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "assetId"
     ],
     "additionalProperties": false
    }

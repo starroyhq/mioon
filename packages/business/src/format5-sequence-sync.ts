@@ -1108,6 +1108,59 @@ function buildBaseline(context: SyncContext, timeline: Format5Timeline, shotUpda
   return parsed.data;
 }
 
+/** A fixed-media clip shares its source with the board node and the sync
+ * baseline. Only an independent node can change without editing other objects. */
+export function planFixedMediaClipSources(store: ProjectStore, timeline: Format5Timeline,
+  nextClips: readonly Format5Clip[]): {before: SequenceEditStateDelta; after: SequenceEditStateDelta} {
+  const context = readSyncContext(store);
+  const nodeRows = new Map<string, Row>();
+  const before = emptyDelta(), after = emptyDelta();
+  const beforeNodes: SequenceEditBoardEntity[] = [], afterNodes: SequenceEditBoardEntity[] = [];
+  function invalid(clip: Format5Clip, message: string): never {
+    throw new AppError('SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', message, 409, {clipId: clip.id});
+  }
+  const originalById = new Map(timeline.clips.map(clip => [clip.id, clip]));
+  const hasFrozenReference = store.db.prepare(`
+    SELECT 1 FROM (
+      SELECT data FROM project.versions WHERE projectId=?
+      UNION ALL SELECT data FROM main.jobs WHERE projectId=?
+    ) AS owner, json_each(owner.data, '$.snapshot.referenceConnections') AS ref
+    WHERE CASE WHEN ref.type='object' THEN json_extract(ref.value,'$.sourceNodeId') END=?
+    LIMIT 1`);
+  for (const clip of nextClips) {
+    const original = originalById.get(clip.id);
+    const source = original?.sequenceSource;
+    const row = source?.kind === 'media' ? context.nodeRows.get(source.nodeId) : undefined;
+    if (!source || source.kind !== 'media' || !row || row.assetId !== original?.assetId) {
+      invalid(clip, '主轨片段与画板素材的绑定无效');
+    }
+    const nodeId = source.nodeId;
+    if (context.clips.some(item => item.nodeId === nodeId && item.id !== clip.id)) {
+      invalid(clip, '拆分片段共享同一个画板节点，不能只替换其中一段');
+    }
+    const isReference = (edge: Row): boolean => edge.kind === 'reference' && edge.source === nodeId;
+    if ([...context.edgeRows.values()].some(isReference) || [...context.archivedEdges.values()].some(isReference)
+      || hasFrozenReference.get(store.projectId, store.projectId, nodeId)) {
+      invalid(clip, '画板节点仍作为引用素材，不能改变其来源');
+    }
+    const revision = Number.isSafeInteger(row.revision) ? Number(row.revision) + 1 : 1;
+    if (!Number.isSafeInteger(revision)) invalid(clip, '画板节点修订号已达到上限');
+    const next = {...row, assetId: clip.assetId, revision, updatedAt: now()};
+    nodeRows.set(nodeId, next);
+    beforeNodes.push({kind: 'node', id: nodeId, data: row});
+    afterNodes.push({kind: 'node', id: nodeId, data: next});
+  }
+  const replacements = new Map(nextClips.map(clip => [clip.id, clip]));
+  const draft = {...timeline, clips: timeline.clips.map(clip => replacements.get(clip.id) ?? clip)};
+  const nextBaseline = buildBaseline(context, draft, new Map(), new Map(), new Map(), nodeRows);
+  return {
+    before: {board: {...before.board, writes: beforeNodes},
+      timeline: {...before.timeline, baseline: {kind: 'set', value: context.baseline}}},
+    after: {board: {...after.board, writes: afterNodes},
+      timeline: {...after.timeline, baseline: {kind: 'set', value: nextBaseline}}},
+  };
+}
+
 /** Resolve an `add` edit against the live board/media projection. Only existing
  * chain nodes are added here; creating a media card/track belongs to CS. */
 function enrichAddEdit(context: SyncContext, edit: Extract<ChainSyncOperation, {kind: 'track'}>['edit'] & {kind: 'add'}):
@@ -2126,7 +2179,9 @@ export function createMainTrackProjectionPort(store: ProjectStore,
 // Undo / redo
 // ---------------------------------------------------------------------------
 
-function undoApplyPatch(store: ProjectStore, patch: SequenceEditStateDelta, context: SyncContext): {
+/** Apply coupled board and timeline entities with their baseline in the caller's transaction. */
+export function applySequenceEditStateDelta(store: ProjectStore, patch: SequenceEditStateDelta,
+  context = readSyncContext(store)): {
   readonly contentRevision: number; readonly timelineRevision: number; readonly syncRevision: number;
 } {
   applyBoardDelta(store, patch.board);
@@ -2158,8 +2213,8 @@ export function moveSequenceSyncHistory(store: ProjectStore, command: SequenceEd
       return writeHistoryFailure(store, command, inputDigest, 'SEQUENCE_EDIT_HISTORY_CONFLICT');
     }
     const source = command.direction === 'undo' ? entry.beforePatch : entry.afterPatch;
-    let revisions: ReturnType<typeof undoApplyPatch>;
-    try { revisions = undoApplyPatch(store, source, context); }
+    let revisions: ReturnType<typeof applySequenceEditStateDelta>;
+    try { revisions = applySequenceEditStateDelta(store, source, context); }
     catch (error) { if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_PATCH_INVALID') return writeHistoryFailure(store, command, inputDigest, 'SEQUENCE_EDIT_PATCH_INVALID'); throw error; }
     const operation = entry.operation;
     const receipt = moveSequenceEditHistoryCursor(store, command, {

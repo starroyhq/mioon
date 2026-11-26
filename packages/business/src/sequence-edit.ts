@@ -117,52 +117,51 @@ export const FORMAT5_LEGACY_WRITE_USES: Readonly<Record<string, Format5LegacyWri
   // a shot still goes through `sequence.preview/commit`.
   'subject.binding.set': 'sequence.preview/commit',
 });
-/** Concrete CLI/MCP replacement for every gated format-5 entry. These are
- * command names, not authority: every write still previews and commits through
- * the unified sequence contract. */
+/** Public CLI/MCP routes for each gated entry. Where the format-5 model changes
+ * the operation's scope, the hint names the supported subset. */
 export const FORMAT5_LEGACY_WRITE_COMMANDS: Readonly<Record<string, string>> = Object.freeze({
-  'timeline.get':'sequence board get（读取当前画板挂载投影）',
+  'timeline.get':'成片主轨和生成占位用 sequence inspect；所有片段来源均可检查时，可用 timeline inspect 查看轨道和片段',
   'timeline.track.add':'sequence timeline edit（动作 track-add）',
   'timeline.track.update':'sequence timeline edit（动作 track-update）',
-  'timeline.clip.add':'sequence timeline edit（动作 insert-asset）或 sequence action edit（动作 insert）',
-  'timeline.clip.update':'sequence clip edit（动作 clip-properties）',
-  'timeline.clip.replaceSource':'sequence board edit（动作 board-version）或 sequence action edit（动作 set-mode）',
-  'timeline.clip.remove':'sequence action edit（动作 remove）',
-  'timeline.clip.rippleRemove':'sequence action edit（动作 remove）',
-  'timeline.clip.split':'sequence action edit（动作 split）',
+  'timeline.clip.add':'sequence timeline edit（动作 insert-asset，按素材、轨道和起始帧入轨）',
+  'timeline.clip.update':'sequence clip edit（动作 clip-properties，仅改片段属性；移动或裁切使用剪辑面板）',
+  'timeline.clip.replaceSource':'sequence clip edit（动作 replace-source，传 projectId、clipId、assetId；镜头主轨还须传镜头拥有或已采纳的 versionId）。用返回的 envelope 和 planDigest 调用 sequence action commit（将 planDigest 传为 expectedPlanDigest）',
+  'timeline.clip.remove':'sequence action edit（动作 remove；删除主轨片段会收拢主轨）',
+  'timeline.clip.rippleRemove':'sequence action edit（动作 remove，随动收拢仅适用主轨）',
+  'timeline.clip.split':'sequence action edit（动作 split，仅适用主轨，传片段内的 offsetFrames）',
   'timeline.clip.splitAtScenes':'sequence timeline edit（动作 split-at-scenes）',
-  'timeline.clip.crossfade':'sequence clip edit（动作 clip-properties）',
+  'timeline.clip.crossfade':'sequence clip edit（动作 clip-properties，在一次编辑中手动设置两个片段的 volumeEnvelope）',
   'timeline.clip.setGains':'sequence clip edit（动作 clip-properties）',
   'timeline.clip.setTransform':'sequence clip edit（动作 clip-properties）',
   'timeline.clip.setTransition':'sequence clip edit（动作 clip-properties）',
-  'timeline.loudness.apply':'sequence clip edit（动作 clip-properties）',
+  'timeline.loudness.apply':'整片响度校验并应用暂无等价命令；手动改增益可用 sequence clip edit（动作 clip-properties）',
   'timeline.subtitle.add':'sequence timeline edit（动作 subtitles）',
   'timeline.subtitle.update':'sequence timeline edit（动作 subtitles）',
   'timeline.subtitle.remove':'sequence timeline edit（动作 subtitles）',
-  'timeline.seed':'sequence timeline edit（动作 insert-asset）',
-  'timeline.shots.append':'sequence timeline edit（动作 insert-asset）',
-  'timeline.clip.refreshSources':'sequence action edit（动作 set-mode）',
+  'timeline.seed':'按镜头批量初始化时间线暂无等价命令；逐个按素材入轨可用 sequence timeline edit（动作 insert-asset，仅插入素材）',
+  'timeline.shots.append':'按镜头批量追加暂无等价命令；逐个按素材入轨可用 sequence timeline edit（动作 insert-asset，仅插入素材）',
+  'timeline.clip.refreshSources':'批量刷新所选版本暂无等价命令；单个主轨片段改为跟随可用 sequence action edit（动作 set-mode，mode 为 follow）',
   'timeline.format.set':'sequence timeline edit（动作 format-set）',
   'timeline.history.get':'sequence history get',
   'timeline.undo':'sequence undo',
   'timeline.redo':'sequence redo',
-  'canvas.apply':'sequence board edit（动作 board-layout-move）',
+  'canvas.apply':'布局移动用 sequence board edit（动作 board-layout-move）；恢复镜头或节点用 sequence board edit（动作 board-restore）；粘贴快照用 sequence preview（操作 board.paste）后用 sequence commit；批量归档暂无等价命令',
   'canvas.history.get':'sequence history get',
   'canvas.history.undo':'sequence undo',
   'canvas.history.redo':'sequence redo',
-  'edge.create':'sequence action edit（动作 connect）',
-  'edge.delete':'sequence action edit（动作 disconnect）',
-  'shot.reorder':'sequence action edit（动作 reorder）',
-  'version.select':'sequence action edit（动作 set-mode）',
-  'shot.create':'sequence board edit（动作 board-shot-append）',
-  'shot.update':'sequence board edit（动作 board-shot-update）',
-  'node.create':'sequence board edit（动作 board-node-create）',
-  'node.update':'sequence board edit（动作 board-node-update）',
-  'reference.attach':'sequence reference edit（动作 reference-attach）',
+  'edge.create':'sequence action edit（动作 connect，仅用来创建顺序连线）',
+  'edge.delete':'sequence action edit（动作 disconnect，仅用来断开顺序连线）',
+  'shot.reorder':'sequence action edit（动作 reorder，逐个移动主轨片段，成片顺序会同步到画板）',
+  'version.select':'sequence preview（操作 board-version，在画板 intent 中传 nodeId 和 version，version 含 id 和 sourceFrames: null）后用 sequence commit',
+  'shot.create':'sequence board edit（动作 board-shot-append，在成片链末追加镜头；再编辑镜头属性或引用）',
+  'shot.update':'sequence board edit（动作 board-shot-update，改标题、提示词、时长、横竖比例或位置）',
+  'node.create':'sequence board edit（动作 board-node-create，用 name 设置节点名称）',
+  'node.update':'sequence board edit（动作 board-node-update，用 patch.name 修改节点名称）',
+  'reference.attach':'sequence reference edit（动作 reference-attach，首帧请指定 role 为 first_frame）',
   'reference.detach':'sequence reference edit（动作 reference-detach）',
   'previs.create':'sequence previs edit（动作 previs-create）',
   'previs.scene.set':'sequence previs edit（动作 previs-scene-set）',
-  'subject.binding.set':'sequence subject edit（动作 subject-binding）',
+  'subject.binding.set':'sequence subject edit（动作 subject-binding，按绑定状态选择新建、切换跟随或锁定、解绑或恢复）',
 });
 export function format5LegacyWriteUse(operation: string): Format5LegacyWriteUse | null {
   return Object.hasOwn(FORMAT5_LEGACY_WRITE_USES, operation) ? FORMAT5_LEGACY_WRITE_USES[operation]! : null;
@@ -174,7 +173,7 @@ export function assertFormat5LegacyWriteAllowed(store: ProjectStore, operation: 
   const use = format5LegacyWriteUse(operation);
   if (!use || !isFormat5Project(store)) return;
   const command=FORMAT5_LEGACY_WRITE_COMMANDS[operation]??String(use);
-  throw new AppError('UNSUPPORTED_OPERATION', `格式 5 的这个编辑入口暂不开放，请使用命令：${command}。`, 409, {use,command});
+  throw new AppError('UNSUPPORTED_OPERATION', `格式 5 的这个旧入口已停用。${command}。`, 409, {use,command});
 }
 export function assertLegacyCanvasWriteAllowed(store: ProjectStore, use: LegacyCanvasWrite): void {
   if (!isFormat5Project(store)) return;

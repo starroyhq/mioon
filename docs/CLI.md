@@ -1171,7 +1171,15 @@ mioon sequence action commit --input '{"projectId":"PROJECT_UUID","envelope":{..
 | `sequence subject edit` | `mioon_sequence_subject_edit` | 主体绑定与主体卡 |
 | `sequence previs edit` | `mioon_sequence_previs_edit` | 预演节点与场景 |
 | `sequence timeline edit` | `mioon_sequence_timeline_edit` | 字幕、台词、画幅、场景切开、分离声音、轨道、素材入轨、剪辑里生成 |
-| `sequence clip edit` | `mioon_sequence_clip_edit` | 片段变换、转场、增益、淡入淡出、颜色、音频角色、音量包络、名称 |
+| `sequence clip edit` | `mioon_sequence_clip_edit` | 片段属性、兼容素材替换 |
+
+格式 5 的旧 `timeline clip replaceSource` 改用 `sequence clip edit` 的 `replace-source` 动作。新素材须与原素材类型相同，并覆盖片段原有的入点和长度。固定媒体和叠加轨使用当前项目中的 `assetId`。固定媒体主轨片段的画板节点须独立使用，拆分片段或其他引用共用该节点时会拒绝替换。主轨镜头还须提供它拥有或已采纳、且素材匹配的 `versionId`，提交后片段锁定到该版本。
+
+```sh
+mioon sequence clip edit --input '{"projectId":"PROJECT_UUID","kind":"replace-source","clipId":"CLIP_UUID","assetId":"ASSET_UUID"}'
+```
+
+把预览的 `envelope` 和 `planDigest` 分别作为 `envelope`、`expectedPlanDigest` 传给 `sequence action commit`。
 
 外部 CLI 和 MCP 的动作以用户来源（`origin: 'user'`）提交，进入剪辑页的用户历史，可用 ⌘Z（Windows/Linux 上为 Ctrl+Z）撤销。
 
