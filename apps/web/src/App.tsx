@@ -218,6 +218,7 @@ import type {FcpExportTaskRecord} from './fcp-export-state.ts';
 import FcpExportDialog, {FcpExportToast, fcpExportTaskCenterEntries, fcpExportTaskOverviewItems} from './FcpExportDialog.tsx';
 import type {FcpExportDialogPhase} from './FcpExportDialog.tsx';
 import {FCP_EXPORT_TASK_KIND, fcpExportCancelOutputSchema, fcpExportErrorSchema, fcpExportGetOutputSchema, fcpExportPreviewOutputSchema, fcpExportStartOutputSchema} from '../../../packages/contracts/src/fcp-export.ts';
+import {PREMIERE_EXPORT_TASK_KIND} from '../../../packages/contracts/src/premiere-export.ts';
 import type {FcpExportDestination, FcpExportError, FcpExportPreviewOutput, FcpExportStartInput} from '../../../packages/contracts/src/fcp-export.ts';
 import {clipContextMenuPlan} from './clip-sound-state.ts';
 import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
@@ -5117,7 +5118,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const activeClipAudioCount = clipAudioExports.filter(item => ['queued', 'running'].includes(item.status)).length;
   const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activeFcpExportCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
-  const orderedExports = data.exports.filter(item => item.mode !== 'clip-audio' && !isFcpExportHistoryRow(item)).sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
+  const orderedExports = data.exports.filter(item => item.mode !== 'clip-audio' && !isFcpExportHistoryRow(item)
+    && item.mode !== PREMIERE_EXPORT_TASK_KIND && item.kind !== PREMIERE_EXPORT_TASK_KIND).sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
   const saveIsDirty=Boolean(inspectorDirty||formatDirty||annotations.state?.dirtyCount);
   const historyHasPendingEdits = saveIsDirty || preferenceStatus.pending;
   const saveFailed=['error','conflict'].includes(preferenceStatus.phase);
