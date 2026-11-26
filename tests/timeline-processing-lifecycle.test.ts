@@ -18,7 +18,7 @@ import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/proje
 import {processingCacheReceiptSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
-const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
 const noEffect = () => {};
 function silentWave(): Buffer {
   const rate = 48000, sampleBytes = rate * 2 * 2;
@@ -215,8 +215,7 @@ test('an owned committed source runs the real worker and reopens its verified ou
   const receipt = processingCacheReceiptSchema.parse(JSON.parse(readFileSync(path.join(directory, entry, 'receipt.json'), 'utf8')));
   assert.equal(receipt.result.sampleCount, 48000);
   for (const file of receipt.result.files) {
-    const hash = createHash('sha256').update(readFileSync(path.join(directory, entry, file.fileName))).digest('hex');
-    assert.equal(hash, file.sha256);
+    assert.equal(sha(readFileSync(path.join(directory, entry, file.fileName))), file.sha256);
   }
   await f.reopen();
   assert.deepEqual(f.processing.inspect({projectId: f.projectId, taskId: task.taskId}), {item: result.item});
