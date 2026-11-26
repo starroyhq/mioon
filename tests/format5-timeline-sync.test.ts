@@ -31,6 +31,7 @@ const clipA = id(30), clipB = id(31), clipImage = id(32), clipAudio = id(33), cu
 const groupA = id(40), groupB = id(41), groupImage = id(42);
 const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
+const sequenceFormats = [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION] as const;
 type Result = SequenceEditCommitResult;
 
 function fixture(t: test.TestContext, format: SequenceProjectFormat = FORMAT5_PROJECT_SCHEMA_VERSION): ProjectStore {
@@ -168,7 +169,7 @@ test('a format-5 projection reads the root association, chain order and both sid
     [[shotA, 'follow', versionA], [shotB, 'follow', null], [imageNode, 'locked', imageAsset]]);
 });
 
-for (const format of [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION])
+for (const format of sequenceFormats)
 test(`format ${format} syncs board selection to the placeholder, suffix, anchors and history`, t => {
   const store = fixture(t, format);
   const before = state(store);
@@ -221,7 +222,7 @@ test('selecting a short version keeps the old applied length and reports SOURCE_
   assert.equal(clip.durationFrames, 60);
 });
 
-for (const format of [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION])
+for (const format of sequenceFormats)
 test(`format ${format} pins a locked clip and follows the updated board version after unlocking`, t => {
   const store = fixture(t, format);
   const locked = apply(store, {kind: 'clip-version', clipId: clipA, versionId: versionA, mode: 'locked'});
