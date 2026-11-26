@@ -40,7 +40,8 @@ function speedTiming(speed: TimeMapSpeed, frames = sourceFrames, direction: 'for
   return {timing, duration: plan.durationFrames};
 }
 
-async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeof speedTiming>[], {freeze = false, reverse = false, ready = true} = {}) {
+async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeof speedTiming>[],
+  {freeze = false, reverse = false, ready = true, visibleAudioOnly = false} = {}) {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-speed-preview-audio-'));
   const sourceDir = path.join(root, 'media'); await mkdir(sourceDir);
   const title = freeze ? 'source.mp4' : 'source.wav';
@@ -58,6 +59,7 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
   const mimeType = freeze ? 'video/mp4' : 'audio/wav';
   const taskId = randomUUID(), key = 'd'.repeat(64), proof = {taskId, sha256: key};
   let leases = 0, releases = 0;
+  const audioWindows: {visibleStart: number; requiredStart: number}[] = [];
   const reversedFile = path.join(root, 'reverse.wav');
   const reverseClock = {fromSample: 0, toSample: recordedSourceFrames * samplesPerFrame};
   let port: TimelineReverseProxyPort | undefined;
@@ -67,7 +69,11 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
       assert.ok(ready && request.needsAudio && request.audioWindow);
       assert.ok(request.audioWindow.fromSample >= reverseClock.fromSample && request.audioWindow.toSample <= reverseClock.toSample);
       assert.deepEqual(frozen, proof); leases++;
-      return {proof, audio: {file: reversedFile, clock: reverseClock}, verify: () => leases > releases, release: () => {releases++;}};
+      const {startFrame, endFrame} = request.sourceWindow;
+      const visible = {fromSample: startFrame * samplesPerFrame, toSample: endFrame * samplesPerFrame};
+      audioWindows.push({visibleStart: visible.fromSample, requiredStart: request.audioWindow.fromSample});
+      return {proof, audio: {file: reversedFile, clock: visibleAudioOnly ? visible : reverseClock},
+        verify: () => leases > releases, release: () => {releases++;}};
     }};
   }
   const store = createProjectStore({projectId: randomUUID(), projectFile: path.join(root, 'project.mioon'),
@@ -139,7 +145,7 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
     return services.audioPreview.consumeSource({...input, startFrame: start, planHash: plan.planHash,
       clipId: match.clipId, sourceHash: match.sourceHash}, {consume: async ({pcm}) => pcm});
   };
-  return {render, readContinuous, readLegacyPlan, readLegacy, counts: () => ({leases, releases})};
+  return {render, readContinuous, readLegacyPlan, readLegacy, audioWindows, counts: () => ({leases, releases})};
 }
 
 test('preview PCM and SP-E render the same output samples through both real service lanes', async t => {
@@ -178,4 +184,24 @@ test('unready reverse PCM fails closed and never attempts to acquire an unverifi
   await assert.rejects(() => f.readLegacy(0), {code: 'SPEED_PROCESSING_NOT_READY'});
   await assert.rejects(() => f.readContinuous(0), {code: 'SPEED_PROCESSING_NOT_READY'});
   assert.deepEqual(f.counts(), {leases: 0, releases: 0});
+});
+
+test('a trimmed 2× reverse clip requires audio preceding its visible source window', async t => {
+  const {timing} = speedTiming(constant(2), sourceFrames, 'reverse');
+  const clipped = {timing: {...timing, outputWindow: {fromFrame: 5, toFrame: 30}}, duration: 25};
+  await t.test('the required context gives the same samples as export after seek', async t => {
+    const f = await fixture(t, [clipped], {reverse: true});
+    const start = 3, expected = (await f.render()).subarray(start * bytesPerFrame);
+    assert.ok((await f.readLegacy(start)).equals(expected), 'V1 must keep the pre-roll context after seek');
+    assert.ok((await f.readContinuous(start)).equals(expected), 'V2 must keep the pre-roll context after seek');
+    assert.equal(f.audioWindows.length, 2);
+    assert.ok(f.audioWindows.every(window => window.requiredStart < window.visibleStart));
+    assert.deepEqual(f.counts(), {leases: 2, releases: 2});
+  });
+  await t.test('a lease that covers only visible samples is refused and released', async t => {
+    const f = await fixture(t, [clipped], {reverse: true, visibleAudioOnly: true});
+    await assert.rejects(() => f.readLegacy(3), {code: 'SPEED_PROCESSING_NOT_READY'});
+    await assert.rejects(() => f.readContinuous(3), {code: 'SPEED_PROCESSING_NOT_READY'});
+    assert.deepEqual(f.counts(), {leases: 2, releases: 2});
+  });
 });

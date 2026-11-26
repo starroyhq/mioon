@@ -29,6 +29,9 @@ export function readTimelinePreviewMedia(store: ProjectStore, input: Input): Pre
   if (row.columns.sourceState !== 'ready' || !row.columns.assetId) {
     throw new AppError('SPEED_SOURCE_NOT_READY', '片段素材尚未就绪。', 409);
   }
+  if (parsed.data?.profile === 'timeline-speed-v1' && parsed.data.interpolation === 'blend') {
+    throw new AppError('UNSUPPORTED_FORMAT', '帧混合预览暂不可用。', 409);
+  }
   const native = nativePreviewMedia(parsed.data);
   if (native) return native;
   // A proxy read needs a preview task bound to the current clip and an owned,

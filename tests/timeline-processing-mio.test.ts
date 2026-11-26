@@ -16,7 +16,7 @@ import {openServerTestStore} from '../packages/business/src/project-file/test-st
 import {createServices, type OrdinaryServices} from '../packages/business/src/services.ts';
 import type {AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {isTimelineProcessingOperation, timelineProcessingSchemas} from '../packages/contracts/src/timeline-processing.ts';
-import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {timelinePreviewMediaPath} from '../packages/contracts/src/timeline-preview-media.ts';
 import {authorizeTestScope, createTestAuthorizations} from './helpers/agent-authorizations.ts';
 import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import {putTestAgentConfiguration, testAgentExecution} from './helpers/agent-settings-fixture.ts';
@@ -72,7 +72,8 @@ test('Mio processing retry honors approval and recovers only its original durabl
     const effects: unknown[] = [];
     let lostResponse: 'applied' | 'not_applied' | undefined;
     const previewClipId = randomUUID();
-    const proxyUrl = projectMediaPath(projectId, randomUUID());
+    const address = {projectId, clipId: previewClipId, assetId: randomUUID(), taskId, digest: 'a'.repeat(64)};
+    const proxyUrl = timelinePreviewMediaPath(address);
     let previewResponse: unknown = {mode: 'proxy', status: 'ready', url: proxyUrl, durationFrames: 60};
     // Exercise the real Mio approval/runtime around a synthetic processing
     // port. Transport parity and the real processor run independently.
@@ -120,7 +121,7 @@ test('Mio processing retry honors approval and recovers only its original durabl
       const previewContext = {runId: randomUUID(), stepId: randomUUID(), requestId: randomUUID(), beforeEffect() {},
         recordInside() {assert.fail('preview observation must not write');}};
       assert.deepEqual(await tools.execute(preview, previewContext), {result: previewResponse, changes: [], recorded: false});
-      previewResponse = {mode: 'proxy', status: 'ready', url: projectMediaPath(randomUUID(), randomUUID()), durationFrames: 60};
+      previewResponse = {mode: 'proxy', status: 'ready', url: timelinePreviewMediaPath({...address, projectId: randomUUID()}), durationFrames: 60};
       await assert.rejects(() => tools.execute(preview, previewContext), {code: 'AGENT_TASK_INVALID_TOOL_RESULT'});
       assert.throws(() => tools.prepare({projectId: randomUUID(), operation, input: {taskId}}), {code: 'AGENT_TASK_TOOL_FORBIDDEN'});
       assert.throws(() => tools.prepare({projectId, operation, input: {projectId, taskId}}), {code: 'AGENT_TASK_INVALID_TOOL'});

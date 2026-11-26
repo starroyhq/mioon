@@ -26,7 +26,7 @@ import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createWaveformServices,probeWaveform,WAVEFORM_ALGORITHM,WAVEFORM_CACHE_LIMITS, type WaveformService} from '../packages/business/src/waveforms.ts';
-import {createWaveformHistoryReaders} from '../packages/business/src/waveforms-history.ts';
+import {projectTimelineWaveformPeaks} from '@mioon/contracts/timeline-preview-waveform';
 import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
 import {withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
@@ -98,10 +98,9 @@ test('actual PCM coverage is explicit and codec tails remain null rather than fa
  assert.deepEqual((tail.peaks)!.slice(0,4),Array(4).fill(32768/65535));assert.deepEqual((tail.peaks)!.slice(4),Array(6).fill(null));
 });
 
-test('timeline waveform reads reuse the owned source cache and leave the source endpoint unchanged',async t=>{
+test('timeline projection consumes the existing waveform response while leaving source caching untouched',async t=>{
  const values=Uint16Array.from({length:100},(_,index)=>index<50?6553:52428);
  const f=await fixture(t,{decode:async()=>({...decoded(),peaks:values})}),asset=await f.asset();
- const timeline={projectId:f.project.id,fps:30},readers=createWaveformHistoryReaders(f.store);
  const clock={fpsNumerator:30,fpsDenominator:1};
  const clip:Format5Clip={id:randomUUID(),trackId:randomUUID(),assetId:asset.id,name:'Retimed sound',startFrame:90,
   durationFrames:15,sourceInFrame:0,rect:{x:0,y:0,width:960,height:540},gain:1,sourceState:'ready',timing:{profile:'timeline-speed-v1',
@@ -111,14 +110,14 @@ test('timeline waveform reads reuse the owned source cache and leave the source 
      loTime:{anchor:'start',offsetOutputFrames:0},hiTime:{anchor:'end',offsetOutputFrames:0}},
    outputWindow:{fromFrame:0,toFrame:15},interpolation:'off',pitchShift:false}};
  const window={outputStartFrame:90,outputEndFrame:105,points:2};
- const read=()=>readers.getTimelineClipWaveform(timeline,clip,window);
+ const read=()=>projectTimelineWaveformPeaks(clip,30,window,f.get(asset,{points:2}));
  const before=changes(f);
- assert.equal(read().status,'missing');assert.equal(changes(f),before);
- assert.throws(()=>readers.getTimelineClipWaveform({...timeline,projectId:f.other.id},clip,window),missing);
+ assert.equal(read(),null);assert.equal(changes(f),before);
+ assert.throws(()=>f.get({...asset,projectId:f.other.id}),missing);
  assert.equal(rows(f).length,0);
  await f.ready(asset);
  const saved=rows(f),readyChanges=changes(f);
- assert.deepEqual(read(),{...window,clipId:clip.id,assetId:asset.id,status:'ready',peaks:[.8,6553/65535]});
+ assert.deepEqual(read(),[.8,6553/65535]);
  assert.deepEqual(f.get(asset,{points:2}).peaks,[6553/65535,.8]);
  assert.deepEqual(rows(f),saved);assert.equal(changes(f),readyChanges);
 });

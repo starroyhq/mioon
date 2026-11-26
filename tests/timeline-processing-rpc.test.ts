@@ -14,6 +14,7 @@ import {effectAnnotations} from '../packages/contracts/src/operation-effects.ts'
 import {projectRpcPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {timelineProcessingResponseSchemas, timelineProcessingSchemas} from '../packages/contracts/src/timeline-processing.ts';
 import type {PreviewMedia} from '../packages/contracts/src/timeline-preview-media.ts';
+import {parseTimelinePreviewMediaQuery, timelinePreviewMediaPath} from '../packages/contracts/src/timeline-preview-media.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
@@ -81,10 +82,17 @@ test('preview response accepts task identities and only authentic project media 
   assert.deepEqual(await read(), output);
   output = {mode: 'proxy', status: 'failed', taskId, reason: 'INTERPOLATION_UNAVAILABLE'};
   assert.deepEqual(await read(), output);
-  output = {mode: 'proxy', status: 'ready', url: projectMediaPath(projectId, assetId), durationFrames: 60};
+  const address = {projectId, clipId, taskId, assetId, digest: 'a'.repeat(64)};
+  const validUrl = timelinePreviewMediaPath(address);
+  assert.deepEqual(parseTimelinePreviewMediaQuery(new URL(validUrl, 'http://localhost').searchParams),
+    {clipId, taskId, digest: address.digest});
+  output = {mode: 'proxy', status: 'ready', url: validUrl, durationFrames: 60};
   assert.deepEqual(await read(), output);
-  for (const url of [projectMediaPath(randomUUID(), assetId), '/private/tmp/synthetic.mp4', 'C:\\tmp\\synthetic.mp4',
-    'https://example.invalid/media', projectMediaPath(projectId, assetId) + '?path=%2Fprivate%2Ftmp']) {
+  for (const url of [timelinePreviewMediaPath({...address, projectId: randomUUID()}),
+    timelinePreviewMediaPath({...address, clipId: randomUUID()}), projectMediaPath(projectId, assetId),
+    validUrl + '&taskId=' + taskId, validUrl + '&download=1', validUrl + '&preview=1',
+    validUrl.replace(address.digest, 'z'.repeat(64)), '/private/tmp/synthetic.mp4', 'C:\\tmp\\synthetic.mp4',
+    'https://example.invalid/media', validUrl + '&path=%2Fprivate%2Ftmp']) {
     output = {mode: 'proxy', status: 'ready', url, durationFrames: 60};
     await assert.rejects(read, {code: 'BACKEND_PROTOCOL_ERROR'});
   }
@@ -190,6 +198,19 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   const clipId = timeline.clips.find(clip => clip.assetId === assetId)?.id;
   assert.ok(clipId);
   const previewInput = {projectId, clipId};
+  const content = projectMediaPath(projectId, assetId);
+  const pendingProxy = timelinePreviewMediaPath({...previewInput, assetId, taskId: randomUUID(), digest: 'a'.repeat(64)});
+  const media = (url: string, method = 'GET', authenticated = true) => fetch(baseUrl + url, {method,
+    headers: authenticated ? {authorization: 'Bearer ' + token} : {}});
+  const original = await media(content, 'HEAD');
+  assert.equal(original.status, 200);
+  assert.equal(original.headers.get('content-type'), 'video/mp4');
+  assert.equal((await media(pendingProxy, 'HEAD', false)).status, 401);
+  for (const url of [pendingProxy, pendingProxy + '&download=1']) {
+    const response = await media(url);
+    assert.equal(response.status, 404);
+    assert.equal(errorCode(await response.json() as Envelope), 'NOT_FOUND');
+  }
   const native = {mode: 'native', rate: {numerator: 1, denominator: 1}};
   assert.deepEqual(data(await rpc<PreviewMedia>('timeline.preview.media', previewInput)), native);
   assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, projectId: otherProjectId})), 'PROJECT_ID_MISMATCH');
@@ -225,6 +246,7 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   assert.deepEqual(data(await cli('timeline.processing.retry', retry)), {taskId});
   assert.deepEqual(data(await mcpCall('timeline.processing.retry', retry)), {taskId});
   await setInterpolation('blend');
+  assert.equal(errorCode(await rpc('timeline.preview.media', previewInput)), 'UNSUPPORTED_FORMAT');
   assert.deepEqual(data(await mcpCall('timeline.processing.retry', retry)), {taskId});
   assert.equal(errorCode(await cli('timeline.processing.retry', {...task, requestId: randomUUID()})), 'SPEED_PROCESSING_STALE');
   assert.deepEqual(data(await mcpCall('timeline.processing.cache.clear', {projectId})), {freedBytes: 0});

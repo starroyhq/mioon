@@ -6,7 +6,7 @@ import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
 import {mioAssetImportInputSchema} from '../../../contracts/src/mio-asset-import.ts';
 import {publicOperationSchemas} from '../../../contracts/src/public-operations.ts';
 import {isTimelineProcessingOperation,timelineProcessingResponseSchemas,timelineProcessingSchemas} from '../../../contracts/src/timeline-processing.ts';
-import {isPreviewMediaForProject} from '../../../contracts/src/timeline-preview-media.ts';
+import {isPreviewMediaForClip} from '../../../contracts/src/timeline-preview-media.ts';
 import {subjectVariantSnapshotSchema,SUBJECT_VARIANT_LIMITS} from '../../../contracts/src/subject-variants.ts';
 import {createProjectVersions} from '../project-versions/service.ts';
 import {readTimelineHeaderStorage,readTimelineStorage} from '../project-file/timeline-storage.ts';
@@ -1223,7 +1223,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    const result=parsed.data;
    if('item' in result&&result.item.taskId!==input.taskId||
       'taskId' in result&& !('mode' in result)&&result.taskId!==input.taskId||
-      'mode' in result&&!isPreviewMediaForProject(result,prepared.projectId))
+      'mode' in result&&!isPreviewMediaForClip(result,prepared.projectId,String(input.clipId)))
     fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次查询');
    return {result:projectResult(result),changes:[],recorded:false};
   }
