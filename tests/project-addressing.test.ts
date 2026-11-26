@@ -17,6 +17,8 @@ import {schemas as modelSchemas} from '../packages/contracts/src/index.ts';
 const TOKEN = 'synthetic-project-addressing-token';
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 const PREVIS_OUTPUT_OPERATIONS = ['previs.output.publish', 'previs.output.lookup'] as const;
+const PROCESSING_OPERATIONS = ['timeline.processing.list', 'timeline.processing.inspect', 'timeline.processing.wait',
+  'timeline.processing.retry', 'timeline.processing.cancel', 'timeline.processing.cache.get', 'timeline.processing.cache.clear'] as const;
 type Json = Record<string, unknown>;
 const sharedSchema = (operation: string): Parameters<typeof jsonSchema>[0] =>
   (schemas as unknown as Record<string, Parameters<typeof jsonSchema>[0]>)[operation];
@@ -31,11 +33,12 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 175);
+  assert.equal(operations.length, 182);
+  assert.deepEqual(operations.filter(operation => operation.startsWith('timeline.processing.')).sort(), [...PROCESSING_OPERATIONS].sort());
   for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list'])assert.ok(operations.includes(operation),operation);
   assert.equal(operations.includes('project.notes.set'), false);
   assert.equal(operations.includes('sequence.undo-action'), false);
-  for (const operation of PREVIS_OUTPUT_OPERATIONS) {
+  for (const operation of [...PREVIS_OUTPUT_OPERATIONS, ...PROCESSING_OPERATIONS]) {
     assert.ok(Object.hasOwn(schemas, operation), operation);
     assert.equal(isAppLevelOperation(operation), false, operation);
     assert.equal(isEntityAddressedOperation(operation), false, operation);
@@ -76,7 +79,7 @@ test('rpcPathFor and the CLI/MCP project address', () => {
   assert.deepEqual(splitProjectAddress('job.get', {projectId, jobId}), {input: {jobId}, projectId});
   assert.deepEqual(splitProjectAddress('job.get', {jobId}), {input: {jobId}});
   assert.deepEqual(splitProjectAddress('project.get', {projectId}), {input: {projectId}}, 'an input that names its project is left whole');
-  for (const operation of PREVIS_OUTPUT_OPERATIONS) {
+  for (const operation of [...PREVIS_OUTPUT_OPERATIONS, ...PROCESSING_OPERATIONS]) {
     const input = {projectId};
     assert.equal(inputProjectId(operation, input), projectId, operation);
     assert.equal(rpcPathFor(operation, input, other), projectRpcPath(projectId), operation);
