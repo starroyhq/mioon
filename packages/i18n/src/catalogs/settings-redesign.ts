@@ -10,6 +10,7 @@ export const settingsRedesignMessages = {
   'redesign.settings.models': { 'zh-Hans': '生成服务', 'zh-Hant': '生成服務', en: 'Generation services', ja: '生成サービス' },
   'redesign.settings.providers': { 'zh-Hans': '服务商', 'zh-Hant': '服務商', en: 'Providers', ja: 'プロバイダー' },
   'redesign.settings.agent': { 'zh-Hans': 'Mio', 'zh-Hant': 'Mio', en: 'Mio', ja: 'Mio' },
+  'redesign.settings.external-agents': { 'zh-Hans': '外部 Agent', 'zh-Hant': '外部 Agent', en: 'External Agents', ja: '外部 Agent' },
   'redesign.settings.extensions': { 'zh-Hans': '扩展', 'zh-Hant': '擴充功能', en: 'Extensions', ja: '拡張機能' },
   'redesign.settings.shortcuts': { 'zh-Hans': '快捷键', 'zh-Hant': '快速鍵', en: 'Shortcuts', ja: 'ショートカット' },
   'redesign.settings.about': { 'zh-Hans': '关于', 'zh-Hant': '關於', en: 'About', ja: '情報' },

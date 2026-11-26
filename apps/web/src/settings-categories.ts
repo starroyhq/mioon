@@ -1,6 +1,8 @@
-import type { ProjectWindowSettingsSlot } from '../../desktop/src/project-window-protocol.ts';
+import type { SettingsPage } from './settings-window-state.ts';
 
-export const settingsCategories = ['general', 'workspace', 'video-tools', 'models', 'agent', 'shortcuts', 'about'] as const;
+export const settingsCategories = ['general', 'workspace', 'video-tools', 'models', 'agent', 'external-agents', 'shortcuts', 'about'] as const;
 export type SettingsCategory = typeof settingsCategories[number];
-export const settingsCategoryFor = (page: ProjectWindowSettingsSlot): SettingsCategory =>
+export const visibleSettingsCategories = (externalAgentsAvailable: boolean): readonly SettingsCategory[] =>
+  externalAgentsAvailable ? settingsCategories : settingsCategories.filter(category => category !== 'external-agents');
+export const settingsCategoryFor = (page: SettingsPage): SettingsCategory =>
   page === 'official' || page === 'custom' || page === 'comfy' || page === 'extensions' ? 'models' : page;

@@ -140,3 +140,8 @@ if (process.isMainFrame) contextBridge.exposeInMainWorld('mioonDesktopUpdate', c
   on: (channel, listener) => {ipcRenderer.on(channel, listener);},
   removeListener: (channel, listener) => {ipcRenderer.removeListener(channel, listener);},
 }));
+
+import {createExternalAgentsBridge} from './external-agents-preload.ts';
+if (process.isMainFrame) contextBridge.exposeInMainWorld('__mioonExternalAgents', createExternalAgentsBridge({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+}));
