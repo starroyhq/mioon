@@ -8,11 +8,14 @@ import {createProjectStore} from '../packages/business/src/project-file/store.ts
 import {createProjectBackgroundState, pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from '../packages/business/src/background-task-state.ts';
 import {markBackgroundTaskChanged, subscribeBackgroundTaskChanges} from '../packages/business/src/background-task-events.ts';
 import type {BackgroundTaskRef} from '../packages/business/src/background-task-events.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/domains/sequence.ts';
 
-function fixture(t: TestContext, initialise = true) {
+function fixture(t: TestContext, initialise = true, format6 = false) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-background-state-')), directory = path.join(root, 'project');
   mkdirSync(directory, {mode: 0o700});
-  const store = createProjectStore({projectFile: path.join(directory, 'Film.mioon'), locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
+  const store = createProjectStore({projectFile: path.join(directory, 'Film.mioon'),
+    ...(format6 ? {targetFormat: FORMAT6_PROJECT_SCHEMA_VERSION, allowFormat6: true as const} : {}),
+    locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   store.put('projects', {id: store.projectId, name: 'Background state', revision: 1});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const state = initialise ? createProjectBackgroundState(store) : undefined;
@@ -50,6 +53,30 @@ test('only successful task writes notify after COMMIT; rollback and unrelated/re
   f.store.tx(() => {f.store.put('jobs', job); f.store.put('jobs', {...job, revision: 2}); assert.equal(calls.length, 0);});
   assert.deepEqual(calls, [[{kind: 'job', taskId: job.id}]]);
   assert.equal(f.state!.snapshot()[0]!.taskRevision, 2);
+});
+
+test('format-6 processing history is projected by stable ID and only unfinished work retains the host', t => {
+  const {store} = fixture(t, false, true), taskId = randomUUID(), readyId = randomUUID();
+  const first = '2026-11-27T00:00:00.000Z';
+  const insert = store.db.prepare(`INSERT INTO timeline_processing_tasks
+    (id,projectId,demandKey,kind,state,revision,requestId,input,updatedAt)
+    VALUES (?,?,?,'reverse',?,1,?,'{}',?)`);
+  store.tx(() => {
+    insert.run(taskId, store.projectId, 'a'.repeat(64), 'queued', 'first-request', first);
+    insert.run(readyId, store.projectId, 'b'.repeat(64), 'ready', 'second-request', first);
+  });
+  const state = createProjectBackgroundState(store);
+  assert.deepEqual(state.snapshot(), [{kind: 'timeline-processing', taskId, classification: 'running', keepAlive: true, reason: null, taskRevision: 1}]);
+  const observed: unknown[] = [];
+  t.after(state.subscribe(tasks => observed.push(tasks)));
+  store.tx(() => {
+    store.db.prepare("UPDATE timeline_processing_tasks SET state='failed',revision=2,errorCode='DISK_FULL' WHERE id=?").run(taskId);
+    markBackgroundTaskChanged(store.db, 'timeline-processing', taskId);
+    assert.equal(state.snapshot()[0]?.keepAlive, true);
+    assert.equal(observed.length, 0);
+  });
+  assert.deepEqual(state.snapshot(), [{kind: 'timeline-processing', taskId, classification: 'terminal', keepAlive: false, reason: null, taskRevision: 2}]);
+  assert.equal(observed.length, 1);
 });
 
 test('post-COMMIT uncertainty pauses every affected live identity, survives due reads and never resurrects terminal work', t => {

@@ -1,8 +1,10 @@
 import {toAssetMediaDto,publicMediaFingerprint} from './asset-media.ts';
 import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
 import {clipAudioExportSchemas,clipAudioExportDescriptions} from './clip-audio-export.ts';
+import {timelineProcessingSchemas,timelineProcessingDescriptions} from './timeline-processing.ts';
 export * from './export-controls.ts';
 export * from './clip-audio-export.ts';
+export * from './timeline-processing.ts';
 import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
 export * from './workspace-configuration.ts';
 import {taskDispositionSchemas,taskDispositionDescriptions} from './task-dispositions.ts';
@@ -159,6 +161,7 @@ export const schemas={
 ...sequenceGenerationInputSchemas,
 ...exportControlSchemas,
 ...clipAudioExportSchemas,
+...timelineProcessingSchemas,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
 ...projectLifecycleSchemas,
@@ -266,6 +269,7 @@ export const descriptions: Record<string, string> = {
  ...projectBackupDescriptions,...projectVersionDescriptions,
  ...exportControlDescriptions,
  ...clipAudioExportDescriptions,
+ ...timelineProcessingDescriptions,
  'workspace.settings.get':'读取旧版工作区设置客户端的兼容响应',
  'workspace.settings.set':'推进旧版工作区设置的修订号',
  ...taskDispositionDescriptions,
