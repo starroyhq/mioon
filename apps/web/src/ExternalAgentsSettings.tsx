@@ -445,7 +445,6 @@ export default function ExternalAgentsSettings({
         {skills.map(skill => {
           const badge = externalAgentSkillBadge(skill.state);
           const installDisabled = !cliInstalled;
-          const updateDisabled = !cliInstalled;
           const installButton = <WorkbenchButton
             type="button"
             variant="secondary"
@@ -463,7 +462,7 @@ export default function ExternalAgentsSettings({
             variant="primary"
             data-testid={`external-agents-skill-update-${skill.agent}`}
             loading={busyAction === `update-skill:${skill.agent}`}
-            disabled={busy || updateDisabled}
+            disabled={busy}
             onClick={() => handleUpdateSkill(skill.agent)}
           >
             <RefreshCw size={14} aria-hidden="true" />
@@ -509,17 +508,7 @@ export default function ExternalAgentsSettings({
                 {t('externalAgents.action.uninstall')}
               </WorkbenchButton>}
 
-              {(skill.state === 'update-available' || skill.state === 'modified') && (updateDisabled
-                ? <WorkbenchTooltip content={t('externalAgents.cliRequiredTooltip')}>
-                  <span
-                    className="external-agents-disabled-wrap"
-                    tabIndex={0}
-                    data-testid={`external-agents-skill-disabled-${skill.agent}`}
-                  >
-                    {updateButton}
-                  </span>
-                </WorkbenchTooltip>
-                : updateButton)}
+              {(skill.state === 'update-available' || skill.state === 'modified') && updateButton}
             </div>
           </div>;
         })}

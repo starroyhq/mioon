@@ -113,7 +113,7 @@ function createFakeBridge(initial: ExternalAgentsView, overrides: Partial<Extern
     uninstallCli: () => overrides.uninstallCli
       ? record('uninstallCli', [], () => overrides.uninstallCli!())
       : record('uninstallCli', [], async () => {
-        current = sampleView();
+        current = { ...current, cli: sampleView().cli };
         return current;
       }),
     repairCli: () => overrides.repairCli
@@ -696,6 +696,47 @@ test('F6 confirms modified skill overwrite on SKILL_MODIFIED 409 before retrying
   assert.deepEqual(fake.calls.at(-1), { method: 'uninstallSkill', args: ['claude-code'] });
   assert.equal(collectText(h.find('external-agents-skill-status-claude-code')), '未安装');
 
+  h.unmount();
+});
+
+test('F7 leaves skill uninstall and update available after uninstalling the CLI', async () => {
+  const fake = createFakeBridge(installedView({}, [
+    { agent: 'claude-code', state: 'installed', displayDirectory: '~/.claude/skills/mioon' },
+    { agent: 'codex', state: 'modified', displayDirectory: '~/.codex/skills/mioon' },
+  ]), {
+    updateSkill: async () => { throw { code: 'CLI_REQUIRED', status: 409 }; },
+  });
+  const h = mountExternalAgents({ bridge: fake.bridge });
+  h.render();
+  await flush();
+  h.render();
+
+  h.find('external-agents-cli-uninstall')!.props.onClick!();
+  await flush();
+  h.render();
+  assert.equal(collectText(h.find('external-agents-cli-status')), '未安装');
+  const uninstall = h.find('external-agents-skill-uninstall-claude-code')!;
+  const update = h.find('external-agents-skill-update-codex')!;
+  assert.equal(uninstall.props.disabled, false);
+  assert.equal(update.props.disabled, false);
+  assert.equal(h.find('external-agents-skill-disabled-codex'), undefined);
+  assert.equal(h.find('external-agents-copy-mcp-claude-code')?.props.disabled, true);
+  assert.equal(h.find('external-agents-copy-mcp-codex')?.props.disabled, true);
+
+  update.props.onClick!();
+  await flush();
+  h.render();
+  assert.deepEqual(fake.calls.at(-1), { method: 'updateSkill', args: ['codex', false] });
+  assert.equal(collectText(h.find('external-agents-error')), translate('zh-Hans', 'externalAgents.error.CLI_REQUIRED'));
+  assert.equal(h.findAll(node => node.type === 'Dialog')[0]!.props.open, false);
+
+  h.find('external-agents-skill-uninstall-claude-code')!.props.onClick!();
+  await flush();
+  h.render();
+  assert.deepEqual(fake.calls.at(-1), { method: 'uninstallSkill', args: ['claude-code'] });
+  assert.equal(collectText(h.find('external-agents-skill-status-claude-code')), '未安装');
+  assert.equal(h.find('external-agents-skill-install-claude-code')?.props.disabled, true);
+  assert.equal(h.find('external-agents-error'), undefined);
   h.unmount();
 });
 
