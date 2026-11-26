@@ -117,6 +117,23 @@ test('a trimmed pitch-preserving reverse export asks for the entire audio view',
   assert.deepEqual(freezeTimelineReverseProxies(snapshot, layout, assets, resolver), new Map([[item.clipId, proof]]));
 });
 
+test('sound-only video on an audio track requests the same audio proxy as the processing task', () => {
+  const {snapshot, assets, item} = fixture();
+  const timeline: TimelineRecord = {...snapshot.timeline,
+    tracks: snapshot.timeline.tracks.map(track => ({...track, kind: 'audio'})),
+    clips: [{...item.clip, soundOnly: true}], durationFrames: item.plan.durationFrames};
+  const audioSnapshot = {...snapshot, timeline};
+  const layout = timelineSpeedExportLayout(audioSnapshot, assets);
+  assert.ok(layout);
+  const resolver = port(request => {
+    assert.equal(request.media, 'audio');
+    assert.deepEqual(request.pictureWindows, []);
+    assert.deepEqual(request.audioWindow, {fromSample: 19200, toSample: 38400});
+    return {taskId: proof.taskId, readySha256: proof.sha256};
+  });
+  assert.deepEqual(freezeTimelineReverseProxies(audioSnapshot, layout, assets, resolver), new Map([[item.clipId, proof]]));
+});
+
 test('reverse coverage outside the export range does not require a task', () => {
   const {snapshot, assets} = fixture();
   const selected = {...snapshot, exportRange: {startFrame: 10, endFrame: 16}};

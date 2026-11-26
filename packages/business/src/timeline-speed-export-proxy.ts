@@ -77,10 +77,12 @@ function requestFor(snapshot: SpeedExportSnapshotContext, item: ReverseClip,
     return result.value;
   };
   if (!asset?.sha256 || !sha256.test(asset.sha256)) throw speedExportMappingError(item.clipId, 'REVERSE_SOURCE_IDENTITY');
+  const track = snapshot.timeline.tracks.find(track => track.id === item.clip.trackId);
   return {
     projectId: snapshot.timeline.projectId, timelineId: snapshot.timeline.id, clipId: item.clipId,
     assetId: item.assetId, sourceSha256: asset.sha256, mapHash: item.mapHash,
-    media: asset.mimeType.startsWith('video/') ? 'video' : 'audio', sourceFps: item.plan.root.sourceFps,
+    media: asset.mimeType.startsWith('video/') && track?.kind !== 'audio' ? 'video' : 'audio',
+    sourceFps: item.plan.root.sourceFps,
     sourceWindow: window(item.plan), pictureWindows: item.video.map(value => window(value.plan)), needsAudio: item.audio,
     audioWindow: item.audio ? timelineReverseAudioClock(item.plan, item.timing) : null,
   };
