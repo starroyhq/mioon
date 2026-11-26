@@ -339,6 +339,67 @@ test('freeze inserts one locked silent row at the first, middle and last playabl
   }
 });
 
+const overlayId = id(91), overlayNeighbourId = id(92);
+const anchoredOverlay: Format5Clip = {
+  id: overlayId, trackId: videoTrack2, name: 'Anchored overlay', assetId: assetA, sourceState: 'ready',
+  startFrame: 8, durationFrames: 60, sourceInFrame: 0, gain: 1, rect: {x: 0, y: 0, width: 720, height: 1280},
+  anchor: {clipId: clipA, offsetFrames: 8},
+};
+
+test('anchored auxiliary freeze preserves valid host offsets at the start, middle and end', async t => {
+  const scenarios = [
+    ...[8, 29, 67].map(atFrame => ({atFrame, ownerId: clipA, ownerStart: 0, ownerEnd: 60})),
+    {atFrame: 85, ownerId: clipB, ownerStart: 60, ownerEnd: 90},
+  ];
+  for (const {atFrame, ownerId, ownerStart, ownerEnd} of scenarios) {
+    await t.test(String(atFrame), t => {
+      const store = fixture(t), api = editor(store), original = saved(store);
+      const startFrame = ownerStart + 8;
+      const overlay = {...anchoredOverlay, startFrame, anchor: {clipId: ownerId, offsetFrames: 8}};
+      store.tx(() => store.put('timelines', {...original, clips: [...original.clips, overlay]}));
+      const before = state(store);
+      const request = api.apply({kind: 'freeze-frame', clipId: overlayId, atFrame, durationFrames: 5});
+      const after = state(store);
+      const excludedOverlay = (clips: Format5Clip[]) => clips.filter(clip => clip.trackId !== videoTrack2);
+      assert.deepEqual(excludedOverlay(after.timeline.clips), excludedOverlay(before.timeline.clips));
+      assert.deepEqual(after.timeline.subtitles, before.timeline.subtitles);
+      assert.deepEqual(after.sync, before.sync);
+      const parts = after.timeline.clips.filter(clip => clip.trackId === videoTrack2);
+      const sourceFrame = atFrame - startFrame;
+      const windows: [number, number, number][] = atFrame === startFrame
+        ? [[startFrame, 5, 0], [startFrame + 5, 60, 0]]
+        : [[startFrame, sourceFrame, 0], [atFrame, 5, sourceFrame], [atFrame + 5, 60 - sourceFrame, sourceFrame]];
+      assert.deepEqual(parts.map(clip => [clip.startFrame, clip.durationFrames, clip.sourceInFrame]), windows);
+      assert.deepEqual(parts.map(clip => clip.anchor), windows.map(([start]) => start < ownerEnd
+        ? {clipId: ownerId, offsetFrames: start - ownerStart} : null));
+      const frozen = parts.find(clip => clip.timing?.profile === 'timeline-freeze-v1');
+      assert.ok(frozen);
+      assert.deepEqual(frozen.timing, {profile: 'timeline-freeze-v1', sourceFrame, sourceVersionId: null, sourceSha256: sha('a')});
+      assert.equal(frozen.muted, true);
+      assert.equal(after.actions.length, before.actions.length + 1);
+      assert.deepEqual(request.replay(), request.receipt);
+      assert.deepEqual(state(store), after);
+      api.history('undo', request.receipt.actionId);
+      assert.deepEqual(saved(store).clips, before.timeline.clips);
+      api.history('redo', request.receipt.actionId);
+      assert.deepEqual(saved(store).clips, after.timeline.clips);
+    });
+  }
+});
+
+test('an auxiliary freeze overlapping another clip on its track is rejected without writes', t => {
+  const store = fixture(t), api = editor(store), original = saved(store);
+  store.tx(() => store.put('timelines', {...original, clips: [...original.clips, anchoredOverlay,
+    {...anchoredOverlay, id: overlayNeighbourId, startFrame: 71, durationFrames: 5, anchor: null}]}));
+  const before = state(store);
+  const preview = api.preview({kind: 'freeze-frame', clipId: overlayId, atFrame: 29, durationFrames: 5});
+  assert.ok('code' in preview);
+  assert.equal(preview.code, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
+  assert.equal(preview.ids.length, 2);
+  assert.ok(preview.ids.includes(overlayNeighbourId));
+  assert.deepEqual(state(store), before);
+});
+
 test('timing of an auxiliary clip does not ripple the main track, and overlap is rejected atomically', t => {
   const store = fixture(t), api = editor(store);
   const before = state(store);

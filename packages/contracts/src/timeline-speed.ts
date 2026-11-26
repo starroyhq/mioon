@@ -29,7 +29,7 @@ export type SpeedProcessingReason =
   'SOURCE_UNAVAILABLE' | 'DISK_FULL' | 'CACHE_LIMIT' | 'UNSUPPORTED_FORMAT' | 'PROCESSING_FAILED'
   | 'INTERPOLATION_UNAVAILABLE';
 export interface SpeedProcessingItem {
-  taskId: string; clipId: string; kind: 'reverse' | 'optical';
+  taskId: string; clipId: string; kind: 'reverse' | 'optical' | 'preview';
   status: 'queued' | 'running' | 'failed' | 'ready';
   progress?: number;
   reason?: SpeedProcessingReason;

@@ -182,13 +182,26 @@ export function planSpeedTimeline(timeline: Format5Timeline, operation: Sequence
   if (sourceFrames === null || sourceFrames < clipSourceEndFrame(clip)) {
     invalid('SPEED_SOURCE_NOT_READY', clip.id, '片段素材尚未就绪。');
   }
-  const parts = operation.kind === 'clip-speed' ? [setClipSpeed(clip, timeline, operation.setting, video && track?.kind === 'video')]
+  const main = clip.trackId === timeline.mainTrack.trackId;
+  let parts = operation.kind === 'clip-speed' ? [setClipSpeed(clip, timeline, operation.setting, video && track?.kind === 'video')]
     : freezeClip(clip, timeline, operation, asset, allocation);
   if (parts[0] === clip) invalid('SEQUENCE_EDIT_NOOP', clip.id, '片段已经是这些变速设置。');
   if (parts.some(part => clipSourceEndFrame(part) > sourceFrames)) {
     invalid('SPEED_SOURCE_NOT_READY', clip.id, '素材没有足够的源帧。');
   }
-  const main = clip.trackId === timeline.mainTrack.trackId;
+  if (!main && operation.kind === 'freeze-frame' && clip.anchor) {
+    const ownerId = clip.anchor.clipId;
+    const owner = timeline.clips.find(item => item.id === ownerId && item.trackId === timeline.mainTrack.trackId);
+    if (owner) {
+      // A split piece keeps its original host only while its new start is
+      // inside that host. Auxiliary edits never move any main-track row.
+      parts = parts.map(part => {
+        const offsetFrames = part.startFrame - owner.startFrame;
+        return {...part, anchor: offsetFrames >= 0 && offsetFrames < owner.durationFrames
+          ? {clipId: owner.id, offsetFrames} : null};
+      });
+    }
+  }
   const originalEnd = clip.startFrame + clip.durationFrames;
   const newEnd = parts.at(-1)!.startFrame + parts.at(-1)!.durationFrames;
   const shift = newEnd - originalEnd;
