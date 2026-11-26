@@ -4,10 +4,11 @@ import {projectEntryAcquireInputSchema,projectEntryPrepareAcquireInputSchema,pro
 import {projectCopyInputSchema,projectCopyToInputSchema,projectCopyResponseSchema,projectCopySourceSchema,projectTemplateInputSchema} from './project-copies.ts';
 import {PROJECT_ENTRY_LIMITS,projectEntriesResponseSchema} from './project-entry.ts';
 import {recentProjectSchema} from './project-registry.ts';
-import type {NativeFcpExportControlPort,ProjectEntryWindow} from './project-entry-native.ts';
-import {fcpChooseDestinationControlInputSchema,fcpChooseDestinationControlResultSchema,fcpCompletedBundleControlInputSchema,fcpCompletedBundleControlResultSchema} from './project-entry-native.ts';
+import type {ProjectEntryWindow} from './project-entry-native.ts';
+import {projectIdSchema} from './project-file.ts';
+import {projectEntryControlErrorSchema} from './project-entry-control-error.ts';
+export {projectEntryControlErrorSchema} from './project-entry-control-error.ts';
 import type {ProjectEntrySourceObservation,ProjectFormatSource} from './project-entry-native.ts';
-import {projectFormatUpgradePreviewSchema} from './project-format-upgrade.ts';
 import type {ProjectFormatReadOnlyView} from './project-format-upgrade.ts';
 import type {ProjectCopyResponse} from './project-copies.ts';
 import type {ProjectEntriesResponse} from './project-entry.ts';
@@ -22,6 +23,32 @@ import type {DesktopUpdateActivity} from './desktop-update.ts';
 export const PROJECT_ENTRY_CONTROL_LIMITS=Object.freeze({requestBytes:64*1024,responseBytes:PROJECT_ENTRY_LIMITS.responseBytes,pending:32,completed:64,readMs:15000,writeMs:120000,maxMs:600000});
 const id=z.string().uuid(),file=z.string().min(1).max(4096).refine(isNormalizedAbsolutePath);
 export const projectEntryInspectCopyInputSchema=z.object({projectFile:file}).strict();
+const fcpDirectory = projectEntryOpenPathInputSchema.shape.projectFile;
+const nativeFcpOwner = z.object({projectId: projectIdSchema, windowId: id}).strict();
+const nativeFcpFileIdentity = {
+  device: z.string().regex(/^\d{1,20}$/u),
+  inode: z.string().regex(/^\d{1,20}$/u),
+};
+export const fcpChooseDestinationControlInputSchema = nativeFcpOwner.extend({
+  token: z.string().uuid(), directory: fcpDirectory, ...nativeFcpFileIdentity,
+});
+export const fcpChooseDestinationControlResultSchema = z.object({
+  token: z.string().uuid(), displayPath: z.string().min(1).max(4096),
+}).strict();
+export const fcpCompletedBundleControlInputSchema = nativeFcpOwner.extend({exportId: z.string().uuid()});
+export const fcpCompletedBundleControlResultSchema = z.object({
+  path: fcpDirectory.refine(value => value.endsWith('.fcpxmld')),
+  ...nativeFcpFileIdentity,
+}).strict().nullable();
+
+/** Absolute file paths travel on the captured main-to-utility port only. */
+export interface NativeFcpExportControlPort {
+  chooseDestination(input: z.infer<typeof fcpChooseDestinationControlInputSchema>, options?: {signal?: AbortSignal}):
+    Promise<z.infer<typeof fcpChooseDestinationControlResultSchema>>;
+  completedBundle(input: z.infer<typeof fcpCompletedBundleControlInputSchema>, options?: {signal?: AbortSignal}):
+    Promise<z.infer<typeof fcpCompletedBundleControlResultSchema>>;
+}
+
 const commands=[
  z.object({operation:z.literal('capabilities'),input:z.object({}).strict()}).strict(),
  z.object({operation:z.literal('listRecent'),input:z.object({}).strict()}).strict(),
@@ -55,7 +82,6 @@ export const projectEntryControlRequestSchema=z.object({type:z.literal('project-
 export const projectEntryControlCancelSchema=z.object({type:z.literal('project-entry-control-cancel'),version:z.literal(1),backendId:id,requestId:id}).strict();
 /** Main-to-utility cleanup only; never a renderer action or queued business request. */
 export const projectEntryControlReleaseSchema=z.object({type:z.literal('project-entry-control-release'),version:z.literal(1),backendId:id,windowId:id}).strict();
-export const projectEntryControlErrorSchema=z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{1,90}$/u),status:z.number().int().min(400).max(599),details:z.object({projectId:id.optional(),requestId:z.string().min(8).max(200).optional(),operation:z.enum(['create','adoptCopy','saveAs','duplicate','copyTo','instantiateTemplate','release','openPath','acquire','markOpened','prepareAcquire','listRecent','updateActivity','inspectCopy','observeSource','observeFormat','readOnlyFormat','capabilities','mediaRelinkCandidate','mediaRelinkPreview','mediaRelinkApply','mediaRelinkDiscard','fcpChooseDestination','fcpCompletedBundle']).optional(),database:z.enum(['project','history','cache']).optional(),reason:z.string().max(100).optional(),invalidReason:z.string().max(100).optional(),formatVersion:z.number().int().positive().optional(),supportedFormatVersion:z.number().int().positive().optional(),formatUpgrade:projectFormatUpgradePreviewSchema.optional()}).strict()}).strict();
 export const projectEntryControlResponseSchema=z.discriminatedUnion('ok',[
  z.object({type:z.literal('project-entry-control-response'),version:z.literal(1),backendId:id,requestId:id,ok:z.literal(true),data:z.unknown()}).strict(),
  z.object({type:z.literal('project-entry-control-response'),version:z.literal(1),backendId:id,requestId:id,ok:z.literal(false),error:projectEntryControlErrorSchema}).strict(),

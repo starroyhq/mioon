@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   fcpChooseDestinationControlInputSchema, fcpChooseDestinationControlResultSchema, fcpCompletedBundleControlResultSchema,
   type NativeFcpExportControlPort,
-} from '../../../packages/contracts/src/project-entry-native.ts';
+} from '../../../packages/contracts/src/project-entry-control.ts';
 import {fcpNativeInvalid, fcpNativeRequest, fcpNativeUnavailable} from '../../../packages/contracts/src/project-entry-fcp-bridge.ts';
 
 export interface FcpExportOwner {

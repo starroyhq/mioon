@@ -16,11 +16,10 @@ import {
   projectEntryMarkOpenedInputSchema, projectEntryReleaseInputSchema, projectEntryWindowSchema,
   projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema, projectEntrySourceObservationSchema,
   projectEntryObserveFormatInputSchema, projectEntryReadOnlyFormatSchema, projectFormatSourceSchema,
-  fcpChooseDestinationControlInputSchema, fcpCompletedBundleControlInputSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
 import type {ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
-import {projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
+import {fcpChooseDestinationControlInputSchema, fcpCompletedBundleControlInputSchema, projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectDesktopTemplate} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {NativeFcpExportControlPort, ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
