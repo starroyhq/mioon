@@ -224,7 +224,7 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(!main.replace(fixedSettingsFactory, '').replace(links, '').includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'FCP_EXPORT_NATIVE_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   const updateHandler = main.match(/^if \(typeof DESKTOP_UPDATE_CHANNEL[^\n]+[\s\S]*?^\}\);$/m)?.[0];
   assert.ok(updateHandler);
   assert.match(updateHandler, /event\.senderFrame === window\.webContents\.mainFrame \? updateDocument\(window\) : null/);
