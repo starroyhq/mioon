@@ -13,6 +13,7 @@ import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
 import type {TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
 import {timelineGenerateTargetForBlank} from '../apps/web/src/edit-ui/generate-in-editing.ts';
+import {createDragConflictPreviewController, dragPreviewTargetKey} from '../apps/web/src/edit-ui/drag-conflict-preview.ts';
 
 const nodes=(tree:TestTree):CollapsedNode[]=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree as CollapsedNode,...nodes(tree.props?.children)]:[];
 function harness(locale: unknown='zh-Hans'){
@@ -38,6 +39,7 @@ function harness(locale: unknown='zh-Hans'){
   if(name==='./waveform-state.ts')return{WAVEFORM_LIMITS:{entries:20}};
   if(name==='./TimelineWaveform.tsx')return{__esModule:true,default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls'};
   if(name==='./edit-ui/generate-in-editing.ts')return{timelineGenerateTargetForBlank};
+  if(name==='./edit-ui/drag-conflict-preview.ts')return{createDragConflictPreviewController,dragPreviewTargetKey};
   if(name==='./edit-ui/status.tsx')return{EditUiClipTitle:'EditUiClipTitle'}; if(name==='./edit-ui/anchors.tsx')return{EditUiAnchorLayer:'EditUiAnchorLayer',EditUiDetachedAnchor:'EditUiDetachedAnchor'};
   if((name)!.endsWith('.css'))return{};
   if((name)!.startsWith('@mioon/ui/'))return new Proxy({},{get:(_,key)=>String(key)});

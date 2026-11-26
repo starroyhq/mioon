@@ -63,7 +63,7 @@ def stop(proc, handle):
     handle.close()
 def login(page, base):
     page.goto(base + '/?project=' + PID); page.get_by_label('访问令牌', exact=True).fill(TOKEN)
-    page.get_by_role('button', name='进入工作台', exact=True).click()
+    page.get_by_role('button', name='进入 Mioon', exact=True).click()
     expect(page.get_by_test_id('workbench')).to_be_visible(timeout=15000)
 def dismiss(page):
     for name in ['关闭生成任务', '关闭提示']:

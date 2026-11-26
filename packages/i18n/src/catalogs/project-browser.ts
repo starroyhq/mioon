@@ -12,7 +12,7 @@ export const projectBrowserMessages = {
   'launcher.empty.title': { 'zh-Hans': '开始一个新项目', 'zh-Hant': '開始一個新專案', en: 'Start a new project', ja: '新しいプロジェクトを始める' },
  'redesign.projects.searchShortcut':{'zh-Hans':'⌘F','zh-Hant':'⌘F',en:'⌘F',ja:'⌘F'},
   'redesign.projects.versionBadge': { 'zh-Hans': 'V{number}', 'zh-Hant': 'V{number}', en: 'V{number}', ja: 'V{number}' },
-  'redesign.login.tagline': { 'zh-Hans': '内置视频 Agent 的创作工作台', 'zh-Hant': '內建影片 Agent 的創作工作台', en: 'The video workspace with a built-in agent', ja: '動画エージェント搭載の制作ワークスペース' },
+  'redesign.login.tagline': { 'zh-Hans': '内置视频 Agent 的视频创作应用', 'zh-Hant': '內建影片 Agent 的影片創作應用', en: 'Video creation app with a built-in agent', ja: '動画エージェント搭載の動画制作アプリ' },
   'redesign.login.location': { 'zh-Hans': '令牌在本机', 'zh-Hant': '權杖位於本機', en: 'Local token file:', ja: 'ローカルトークン：' },
   'redesign.login.show': { 'zh-Hans': '显示访问令牌', 'zh-Hant': '顯示存取權杖', en: 'Show access token', ja: 'アクセストークンを表示' },
   'redesign.login.hide': { 'zh-Hans': '隐藏访问令牌', 'zh-Hant': '隱藏存取權杖', en: 'Hide access token', ja: 'アクセストークンを隠す' },
