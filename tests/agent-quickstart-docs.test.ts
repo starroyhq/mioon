@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (name: string) => readFileSync(path.join(root, name), 'utf8');
 const documentPath = 'docs/AGENT-QUICKSTART-AUDIT.md';
 const document = read(documentPath);
-const cli = read('apps/cli/src/index.ts');
+const cli = read('apps/cli/src/run.ts');
 const cliArguments = read('apps/cli/src/arguments.ts');
 const client = read('packages/client/src/index.ts');
 const contracts = read('packages/contracts/src/index.ts');
