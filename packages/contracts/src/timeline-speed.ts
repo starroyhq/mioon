@@ -28,6 +28,9 @@ export interface SequenceEditSpeedIntent {
 export type SpeedProcessingReason =
   'SOURCE_UNAVAILABLE' | 'DISK_FULL' | 'CACHE_LIMIT' | 'UNSUPPORTED_FORMAT' | 'PROCESSING_FAILED'
   | 'INTERPOLATION_UNAVAILABLE';
+export const speedProcessingReasonSchema = z.enum([
+  'SOURCE_UNAVAILABLE', 'DISK_FULL', 'CACHE_LIMIT', 'UNSUPPORTED_FORMAT', 'PROCESSING_FAILED', 'INTERPOLATION_UNAVAILABLE',
+]) satisfies z.ZodType<SpeedProcessingReason>;
 export interface SpeedProcessingItem {
   taskId: string; clipId: string; kind: 'reverse' | 'optical' | 'preview';
   status: 'queued' | 'running' | 'failed' | 'ready';

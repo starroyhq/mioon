@@ -38,6 +38,7 @@ export const operationEffects = Object.freeze({
   'clip.audio.export':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Durably accepts one format-5 clip-sound extraction before bounded local FFmpeg work. Required stable requestId replays the immutable original record without starting again. Copies AAC or transcodes with the fixed export audio profile, then publishes one new audio asset with portable source provenance. Source asset and clip are not modified; no network, model or paid generation.'}),
   'clip.audio.export.get':define({...read,notes:'Reads one owned clip-audio background task record and its bounded local activity descriptor. Never starts, cancels, retries or decodes.'}),
   'timeline.processing.list':define({...read,notes:'Reads the current project’s bounded timeline processing task summaries.'}),
+  'timeline.preview.media':define({...read,notes:'Reads the playback rate or existing preview proxy state for one clip in the current project.'}),
   'timeline.processing.inspect':define({...read,notes:'Reads one owned timeline processing task summary.'}),
   'timeline.processing.wait':define({...read,notes:'Waits for one owned timeline processing task within a fixed deadline. Aborting the wait never cancels the task.'}),
   'timeline.processing.retry':define({...render,destructive:true,notes:'Queues an explicit retry of one owned processing task with stable request replay. Local work may create and evict derived proxies; it does not change clips or media sources.'}),

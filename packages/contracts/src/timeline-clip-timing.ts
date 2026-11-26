@@ -1,8 +1,8 @@
 import type {ClipTiming} from './timeline-speed.ts';
 import {
   compileFreezeTimeMap, compileTimeMap, initialTimeMap, restoreTimeMap, timeMapBasisFromCurrentClip, timeMapRootInfo,
-  TIMELINE_TIME_MAP_LIMITS,
-  type CompiledTimeMap, type CurrentTimelineClipLike, type CurrentTimelineLike, type TimeMapResult,
+  timeMapSourceAtOutputFrame, TIMELINE_TIME_MAP_LIMITS,
+  type CompiledTimeMap, type CurrentTimelineClipLike, type CurrentTimelineLike, type TimeMapResult, type TimeMapSourceSample,
 } from './timeline-time-map.ts';
 
 /** An interval with fractional endpoints can cover one extra whole frame. */
@@ -30,6 +30,31 @@ export function compileClipTimeMap(clip: CurrentTimelineClipLike & {timing?: Cli
   if (timeMapRootInfo(root.value).frameRange.end > maxSampleFrame) return sourceLimit;
   if (!timing) return {ok: true, value: initialTimeMap(root.value)};
   return restoreTimeMap(root.value, {...timing.view, outputWindow: timing.outputWindow});
+}
+
+/** Sample a clip at an absolute timeline frame. The result carries both the
+ * selected project-clock source frame and its continuous source position. */
+export function timelineClipSourceAtFrame(clip: CurrentTimelineClipLike & {timing?: ClipTiming},
+  timeline: CurrentTimelineLike, timelineFrame: number): TimeMapResult<Pick<TimeMapSourceSample, 'sourceFrame' | 'source'>> {
+  const outputFrame = timelineFrame - clip.startFrame;
+  if (!Number.isSafeInteger(timelineFrame) || !Number.isSafeInteger(outputFrame) ||
+      outputFrame < 0 || outputFrame >= clip.durationFrames) {
+    return {ok: false, code: 'INVALID_WINDOW', detail: 'timeline frame outside the clip'};
+  }
+  if (!clip.timing) {
+    const sourceFrame = clip.sourceInFrame + outputFrame;
+    if (!Number.isSafeInteger(sourceFrame) || sourceFrame < 0) return sourceLimit;
+    return {ok: true, value: {sourceFrame, source: {kind: 'exact', numerator: String(sourceFrame), denominator: '1'}}};
+  }
+  const plan = compileClipTimeMap(clip, timeline);
+  if (!plan.ok) return plan;
+  if (plan.value.durationFrames !== clip.durationFrames) {
+    return {ok: false, code: 'INVALID_WINDOW', detail: 'compiled duration differs from the clip'};
+  }
+  const sample = timeMapSourceAtOutputFrame(plan.value, outputFrame);
+  if (!sample.ok) return sample;
+  const {sourceFrame, source} = sample.value;
+  return {ok: true, value: {sourceFrame, source}};
 }
 
 export function clipSourceEndFrame(clip: {sourceInFrame: number; durationFrames: number; sourceSpanFrames?: number}): number {

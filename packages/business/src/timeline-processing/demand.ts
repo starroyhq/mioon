@@ -12,7 +12,7 @@ import {timelineTransitionRegions, transitionPictureRange} from '../timeline-tra
 import {clipTimingSchema} from '../../../contracts/src/timeline-speed.ts';
 import type {SpeedProcessingReason} from '../../../contracts/src/timeline-speed.ts';
 import {processingDigestSchema as digest} from '../../../contracts/src/timeline-processing-storage.ts';
-import type {ProcessingInput} from '../../../contracts/src/timeline-processing-storage.ts';
+import type {ProcessingInput, ProcessingTaskRow} from '../../../contracts/src/timeline-processing-storage.ts';
 import {REVERSE_PROXY_PROFILE} from './reverse.ts';
 import {OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
 
@@ -20,7 +20,7 @@ export interface ProcessingDemand {
   readonly demandKey: string;
   readonly clipId: string;
   readonly input: ProcessingInput;
-  readonly unavailable: SpeedProcessingReason | null;
+  readonly unavailable: ProcessingTaskRow['errorCode'];
 }
 type Asset = NonNullable<ReturnType<typeof readOwnedTimelineAsset>>;
 export function processingHash(value: unknown): string {

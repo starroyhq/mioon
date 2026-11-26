@@ -38,6 +38,7 @@
     "./mio-project-import": "./src/mio-project-import.ts",
     "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
+    "./timeline-preview-media": "./src/timeline-preview-media.ts",
     "./timeline-audio-continuous": "./src/timeline-audio-continuous.ts",
     "./native-audio-preview": "./src/native-audio-preview.ts",
     "./timeline-segments": "./src/timeline-segments.ts",

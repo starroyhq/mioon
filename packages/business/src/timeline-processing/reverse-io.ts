@@ -152,7 +152,7 @@ export interface ReverseProxyFile {
 }
 
 const fileNames = ['proxy.mkv', 'video.raw', 'audio.f32le', 'clock.json', 'frames.jsonl', 'video-block.raw', 'audio-source.f32le',
-  'optical.ffconcat'] as const;
+  'optical.ffconcat', 'preview.mp4', 'preview-frames.raw'] as const;
 export const MAX_OPTICAL_SEGMENTS = 8192;
 export const opticalSegmentName = /^optical-[0-9]{5}\.mkv$/u;
 type FileName = typeof fileNames[number] | `optical-${string}.mkv`;

@@ -99,15 +99,17 @@ export function readFormat5RenderProjection(store: ProjectStore, {purpose}: {pur
  * timeline. Single-clip loudness still validates its selected clip's own source;
  * mix/preview audio reads the remaining real clips and treats placeholder spans
  * as silence. Render/export keeps the stricter projection above. */
-export function readFormat5AudioProjection(store: ProjectStore): {legacy: TimelineRecord; assets: ReadonlyMap<string, ManagedAssetRecord>} | null {
+export function readFormat5AudioProjection(store: ProjectStore, {previewSpeed = false}: {previewSpeed?: boolean} = {}):
+  {legacy: TimelineRecord; assets: ReadonlyMap<string, ManagedAssetRecord>} | null {
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) return null;
   const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId});
   if (issue) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线数据不可用。', 409, {clipIds: issue.ids ?? []});
-  assertTimelineSpeedRenderable(timeline);
+  const keepTiming = previewSpeed && timelineStorageFormat(store.db, timelineStorageSchema(store.db)) === FORMAT6_PROJECT_SCHEMA_VERSION;
+  if (!keepTiming) assertTimelineSpeedRenderable(timeline);
   const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
   const ready = clips.filter(clip => clip.sourceState !== 'placeholder' && clip.assetId !== null);
-  const legacyClips = ready.map(clip => stripClip(clip));
+  const legacyClips = ready.map(clip => stripClip(clip, keepTiming));
   const cues = subtitles?.cues.map(stripCue) ?? [];
   // The audio range ends at the last clip that actually has a source. A trailing
   // placeholder is silence and must not make the mix decoder reject a timeline
