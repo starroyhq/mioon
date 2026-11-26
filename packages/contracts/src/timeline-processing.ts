@@ -7,7 +7,7 @@ const task = {...project, taskId: uuid};
 const bytes = z.number().int().safe().nonnegative();
 const status = z.enum(['queued', 'running', 'failed', 'ready']);
 const reason = z.enum([
-  'SOURCE_UNAVAILABLE', 'DISK_FULL', 'CACHE_LIMIT', 'UNSUPPORTED_FORMAT', 'PROCESSING_FAILED',
+  'SOURCE_UNAVAILABLE', 'DISK_FULL', 'CACHE_LIMIT', 'UNSUPPORTED_FORMAT', 'PROCESSING_FAILED', 'INTERPOLATION_UNAVAILABLE',
 ] satisfies [SpeedProcessingReason, ...SpeedProcessingReason[]]);
 
 export const TIMELINE_PROCESSING_WAIT_DEFAULT_MS = 30_000;

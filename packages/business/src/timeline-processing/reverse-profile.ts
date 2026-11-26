@@ -36,7 +36,7 @@ export interface ReverseProxyInput {
   readonly audioStreamIndex?: number;
 }
 
-interface VideoProfile {
+export interface VideoProfile {
   readonly index: number;
   readonly codec: string;
   readonly width: number;
@@ -69,12 +69,19 @@ export interface PreparedReverseProxy {
   readonly reservationBytes: number;
 }
 
-interface VideoFrame { readonly pts: number; readonly previousKey: number }
+export interface VideoFrame { readonly pts: number; readonly previousKey: number }
 export interface ReverseVideoChunk { readonly start: number; readonly end: number; readonly key: number; }
 interface ReverseVideoPlan {
   readonly frames: readonly VideoFrame[];
   readonly chunks: readonly ReverseVideoChunk[];
   readonly frameCount: number;
+  readonly endOfStream: number;
+}
+export interface SourceVideoPlan {
+  readonly input: Pick<ReverseProxyInput, 'sourcePath'>;
+  readonly container: string;
+  readonly originUs: number;
+  readonly video: Pick<ReverseVideoPlan, 'frames'>;
 }
 interface ReverseAudioPlan {readonly startSample: number; readonly sampleCount: number}
 interface PreparedState {
@@ -255,7 +262,9 @@ function lowerBound(frames: readonly VideoFrame[], pts: number, allowEqual = tru
   return lo;
 }
 
-async function buildVideoPlan(input: ReverseProxyInput, profile: VideoProfile, container: string, originUs: number, options: ReverseProxyMediaOptions): Promise<ReverseVideoPlan> {
+type VideoSourceInput = Pick<ReverseProxyInput, 'sourcePath' | 'sourceWindow' | 'sourceFps'>;
+
+async function buildVideoPlan(input: VideoSourceInput, profile: VideoProfile, container: string, originUs: number, options: ReverseProxyMediaOptions): Promise<ReverseVideoPlan> {
   const {sourceWindow: w, sourceFps: fps} = input;
   const startPts = tickBound(w.startFrame, fps, profile.timeBase, originUs, 'floor');
   const endPts = tickBound(w.endFrame, fps, profile.timeBase, originUs, 'ceil');
@@ -317,7 +326,7 @@ async function buildVideoPlan(input: ReverseProxyInput, profile: VideoProfile, c
     chunks.push({start, end, key: frames[start]!.previousKey});
     end = start;
   }
-  return {frames, chunks, frameCount: last - first};
+  return {frames, chunks, frameCount: last - first, endOfStream};
 }
 
 function metadataStream(streams: Record<string, unknown>[], kind: 'video' | 'audio', index?: number): Record<string, unknown> | undefined {
@@ -325,6 +334,33 @@ function metadataStream(streams: Record<string, unknown>[], kind: 'video' | 'aud
     !(kind === 'video' && isRecord(stream.disposition) && stream.disposition.attached_pic === 1));
   if (index !== undefined && !selected) return unsupported();
   return selected;
+}
+
+async function videoTools(video: VideoProfile | null, options: ReverseProxyMediaOptions): Promise<string> {
+  const tools = {...options, beforeSpawn: options.beforeEffect, maxStdoutBytes: 128 * 1024, maxStderrBytes: 64 * 1024};
+  const ffmpegVersion = await run('ffmpeg', ['-version'], tools);
+  const ffprobeVersion = await run('ffprobe', ['-version'], tools);
+  if (video) {
+    const encoder = await run('ffmpeg', ['-hide_banner', '-h', 'encoder=ffv1'], tools);
+    const formats = /Supported pixel formats:\s*([^\r\n]+)/.exec(encoder)?.[1]?.trim().split(/\s+/) ?? [];
+    if (!formats.includes(video.pixelFormat)) unsupported();
+  }
+  return createHash('sha256').update(JSON.stringify([ffmpegVersion, ffprobeVersion])).digest('hex');
+}
+
+export async function prepareSourceVideo(input: VideoSourceInput, admit: (video: VideoProfile) => boolean,
+  options: ReverseProxyMediaOptions) {
+  const metadata = await reverseProbe(input.sourcePath, options);
+  const format = metadata.format.format_name;
+  const container = typeof format === 'string' && containers.find(choice => format.split(',').includes(choice));
+  const stream = metadataStream(metadata.streams, 'video');
+  if (!container || !stream) return unsupported();
+  const originUs = timeUs(metadata.format.start_time);
+  const video = makeVideo(stream);
+  if (!admit(video)) return unsupported();
+  return {video, buildSha256: await videoTools(video, options), state: {
+    input, originUs, container, video: await buildVideoPlan(input, video, container, originUs, options),
+  }};
 }
 
 export async function prepareReverseProxy(value: ReverseProxyInput, options: ReverseProxyMediaOptions): Promise<PreparedReverseProxy> {
@@ -340,17 +376,8 @@ export async function prepareReverseProxy(value: ReverseProxyInput, options: Rev
   const video = videoStream ? makeVideo(videoStream) : null;
   const audio = audioStream ? makeAudio(audioStream, originUs) : null;
   const storage = video?.pixelFormat.endsWith('f32le') ? 'raw' : 'matroska';
-  const tools = {...options, beforeSpawn: options.beforeEffect, maxStdoutBytes: 128 * 1024, maxStderrBytes: 64 * 1024};
-  const ffmpegVersion = await run('ffmpeg', ['-version'], tools);
-  const ffprobeVersion = await run('ffprobe', ['-version'], tools);
-  if (storage === 'matroska' && video) {
-    const encoder = await run('ffmpeg', ['-hide_banner', '-h', 'encoder=ffv1'], tools);
-    const formats = /Supported pixel formats:\s*([^\r\n]+)/.exec(encoder)?.[1]?.trim().split(/\s+/) ?? [];
-    if (!formats.includes(video.pixelFormat)) unsupported();
-  }
   const profile: ReverseProxyProfile = Object.freeze({id: REVERSE_PROXY_PROFILE,
-    buildSha256: createHash('sha256').update(JSON.stringify([ffmpegVersion, ffprobeVersion])).digest('hex'),
-    storage, video, audio});
+    buildSha256: await videoTools(storage === 'matroska' ? video : null, options), storage, video, audio});
   const w = input.sourceWindow;
   const audioPlan = audio && (() => {
     const startSample = sampleBound(w.startFrame, input.sourceFps, audio.rate);

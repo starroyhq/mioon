@@ -7,6 +7,8 @@ import {SPEED_BUDGET_EXCEEDED, SPEED_SOURCE_UNSUPPORTED, TIMELINE_SPEED_EXPORT_M
 import {checkMediaEffect} from './media-runtime.ts';
 import type {SpeedExportLayout, SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
 import {withTimelineReverseProxy, type TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import {withTimelineOpticalProxy} from './timeline-speed-export-optical.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {prepareTimelineSpeedAudio} from './timeline-speed-export-audio.ts';
 import {prepareSpeedExportVideo, type SpeedExportVideoStage} from './timeline-speed-export-video.ts';
 
@@ -28,6 +30,7 @@ interface StageOptions {
   readonly beforeEffect?: () => void;
   readonly beforeStart?: () => void;
   readonly reverseProxy?: TimelineReverseProxyPort;
+  readonly opticalProxy?: TimelineOpticalProxyPort;
 }
 
 export interface PreparedSpeedPicture extends SpeedExportVideoStage {
@@ -62,26 +65,28 @@ export async function prepareTimelineSpeedInputs(snapshot: SpeedExportSnapshotCo
           {clipId: item.clipId});
       }
       const sourcePath = asset.path;
-      const media = await withTimelineReverseProxy(snapshot, item, asset, options.reverseProxy, options, async (proxy, beforeEffect) => {
-        const video: PreparedSpeedPicture[] = [];
-        for (const [part, window] of item.video.entries()) {
-          const stem = path.join(staging.work, `speed-v-${index}-${part}`);
-          const result = await prepareSpeedExportVideo({source: {path: sourcePath, videoStreamIndex: asset.videoStreamIndex},
-            reverse: proxy?.video, timing: item.timing, plan: window.plan, file: stem + '.mkv', scriptFile: stem + '.filter',
-            reserve: staging.reserve, writeOwnedFile: staging.writeOwnedFile, maxBytes: remaining,
-            signal: options.signal, beforeEffect, beforeStart: options.beforeStart});
-          video.push({...result, beginFrame: window.beginFrame, endFrame: window.endFrame});
-          remaining -= result.bytes;
-        }
-        const audio = item.audio ? await prepareTimelineSpeedAudio({timing: item.timing, plan: item.plan,
-          source: proxy?.audio ? {file: proxy.audio.file, streamIndex: 'a:0',
-            reversed: {...proxy.audio.clock, ...(proxy.audio.raw ? {raw: proxy.audio.raw} : {})}}
-            : {file: sourcePath, streamIndex: asset.audioStreamIndex ?? 'a:0', videoStreamIndex: asset.videoStreamIndex},
-          destination: path.join(staging.work, `speed-a-${index}.f32`)}, {signal: options.signal,
-          beforeEffect: () => {checkMediaEffect(beforeEffect, options.signal); options.beforeStart?.();},
-          openOwnedFile: staging.openOwnedFile}) : null;
-        return {video, audio};
-      });
+      const media = await withTimelineReverseProxy(snapshot, item, asset, options.reverseProxy, options, (proxy, reverseFence) =>
+        withTimelineOpticalProxy(snapshot, item, asset, options.opticalProxy, {...options, beforeEffect: reverseFence}, async (optical, beforeEffect) => {
+          const video: PreparedSpeedPicture[] = [];
+          for (const [part, window] of item.video.entries()) {
+            const stem = path.join(staging.work, `speed-v-${index}-${part}`);
+            const result = await prepareSpeedExportVideo({source: {path: sourcePath, videoStreamIndex: asset.videoStreamIndex},
+              reverse: proxy?.video, optical, firstOutputFrame: window.beginFrame - item.clip.startFrame,
+              timing: item.timing, plan: window.plan, interpolationPlan: window.fullPlan, file: stem + '.mkv', scriptFile: stem + '.filter',
+              reserve: staging.reserve, writeOwnedFile: staging.writeOwnedFile, maxBytes: remaining,
+              signal: options.signal, beforeEffect, beforeStart: options.beforeStart});
+            video.push({...result, beginFrame: window.beginFrame, endFrame: window.endFrame});
+            remaining -= result.bytes;
+          }
+          const audio = item.audio ? await prepareTimelineSpeedAudio({timing: item.timing, plan: item.plan,
+            source: proxy?.audio ? {file: proxy.audio.file, streamIndex: 'a:0',
+              reversed: {...proxy.audio.clock, ...(proxy.audio.raw ? {raw: proxy.audio.raw} : {})}}
+              : {file: sourcePath, streamIndex: asset.audioStreamIndex ?? 'a:0', videoStreamIndex: asset.videoStreamIndex},
+            destination: path.join(staging.work, `speed-a-${index}.f32`)}, {signal: options.signal,
+            beforeEffect: () => {checkMediaEffect(beforeEffect, options.signal); options.beforeStart?.();},
+            openOwnedFile: staging.openOwnedFile}) : null;
+          return {video, audio};
+        }));
       prepared.set(item.clipId, media);
     }
   } catch (error) {
