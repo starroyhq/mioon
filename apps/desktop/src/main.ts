@@ -1455,7 +1455,16 @@ function externalAgentsDocument(event: IpcMainInvokeEvent) {
     canMutate,
     chooseDirectory: () => ownedPanel({window, contextId, isCurrent}, async () => {
       const result = await dialog.showOpenDialog(window, {properties: ['openDirectory', 'createDirectory']});
-      return result.canceled ? null : result.filePaths[0] ?? null;
+      const selected = result.canceled ? undefined : result.filePaths[0];
+      if (!selected) return null;
+      if (!path.isAbsolute(selected) || path.normalize(selected) !== selected) return selected;
+      const home = app.getPath('home');
+      const relative = path.relative(home, selected);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return selected;
+      // Cocoa can also return the HOME alias when choosing a folder within it.
+      // Resolve just that prefix so the installer can still validate the selected child.
+      try {return path.join(realpathSync(home), relative);}
+      catch {return selected;}
     }),
   };
 }
