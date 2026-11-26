@@ -11,6 +11,7 @@ import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {PROJECT_OUTPUT_FOLDERS, projectOutputOwnerSchema, projectOutputPublicationProofSchema, projectOutputPublicationReceiptSchema as receiptSchema, projectOutputPublicationIndexSchema as indexSchema} from '../../contracts/src/project-output-publication.ts';
 import type {ProjectOutputOwner, ProjectOutputPublicationProof, ProjectOutputPublicationReceipt as Receipt, ProjectOutputPublicationIndex} from '../../contracts/src/project-output-publication.ts';
 import {projectIdSchema as uuid} from '../../contracts/src/project-file.ts';
+import {projectVideoExportBasename} from '../../contracts/src/timeline-delivery.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {isProjectFileHeld} from './project-file/held-files.ts';
@@ -130,6 +131,19 @@ function outputPath(input: Pick<ProjectOutputInput, 'targetKind' | 'owner' | 'di
   const extension = extensions[input.mimeType]; if (!extension) invalid();
   const name = input.displayName ? safeName(input.displayName) : input.owner.kind;
   return `${PROJECT_OUTPUT_FOLDERS[input.targetKind]}/${name}-${input.owner.id}-${publicationId}-${attempt}.${extension}`;
+}
+function nextOutputPath(store: ProjectStore, input: ProjectOutputInput, publicationId: string, attempt: number,
+  abandoned: readonly string[] = []): string {
+  if (input.targetKind !== 'exports' || input.owner.kind !== 'export' || input.mimeType !== 'video/mp4' || input.displayName === undefined) {
+    return outputPath(input, publicationId, attempt);
+  }
+  const unavailable = new Set(abandoned);
+  // The serial number counts occupied names, not the receipt's limit on I/O
+  // retries. The exclusive create still arbitrates a file appearing after lstat.
+  for (let sequence = 1; ; sequence++) {
+    const candidate = `${PROJECT_OUTPUT_FOLDERS.exports}/${projectVideoExportBasename(input.displayName, sequence)}`;
+    if (!unavailable.has(candidate) && !lstatSync(path.join(store.projectDir, candidate), {throwIfNoEntry: false})) return candidate;
+  }
 }
 function ordinaryDirectory(store: ProjectStore, targetKind: ProjectOutputInput['targetKind'], options: ProjectOutputOptions, create: boolean): {directory: string; identity: OutputFileIdentity} {
   fence(store, options); const directory = path.join(store.projectDir, PROJECT_OUTPUT_FOLDERS[targetKind]);
@@ -399,8 +413,10 @@ export async function readPublishedProjectOutput(store: ProjectStore, input: {ow
 }
 function nextAttempt(store: ProjectStore, receipt: Receipt, input: ProjectOutputInput, options: ProjectOutputOptions): Receipt {
   if (receipt.attempt >= 16 || receipt.abandoned.length >= 16) throw new AppError('INVALID_MEDIA', '本地产物发布重试已达上限，请检查项目目录', 409);
-  const result: Receipt = {...receipt, proof: {...receipt.proof, relativePath: outputPath(input, receipt.proof.publicationId, receipt.attempt + 1)},
-    attempt: receipt.attempt + 1, mode: 'link', phase: 'intent', targetIdentity: null, abandoned: [...receipt.abandoned, receipt.proof.relativePath]};
+  const abandoned = [...receipt.abandoned, receipt.proof.relativePath];
+  const relativePath = nextOutputPath(store, input, receipt.proof.publicationId, receipt.attempt + 1, abandoned);
+  const result: Receipt = {...receipt, proof: {...receipt.proof, relativePath},
+    attempt: receipt.attempt + 1, mode: 'link', phase: 'intent', targetIdentity: null, abandoned};
   writeReceipt(store, result, options); return result;
 }
 async function executePublication(store: ProjectStore, input: ProjectOutputInput, options: ProjectOutputOptions): Promise<PublishedProjectOutput> {
@@ -436,7 +452,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     indexSchema.parse(index);
     writePrivateFileAtomic(keyFile, JSON.stringify(index), {root: store.tempDir, maxBytes: 4096}); syncDirectory(privateRoot); fence(store, options);
     const proof = projectOutputPublicationProofSchema.parse({version: 1, publicationId: index.publicationId, projectId: store.projectId, assetId: input.assetId, owner: input.owner,
-      targetKind: input.targetKind, relativePath: outputPath(input, index.publicationId, 1), sha256: input.sha256, sizeBytes: input.sizeBytes, mimeType: input.mimeType});
+      targetKind: input.targetKind, relativePath: nextOutputPath(store, input, index.publicationId, 1), sha256: input.sha256, sizeBytes: input.sizeBytes, mimeType: input.mimeType});
     receipt = {version: 1, proof, stageRelativePath, stageIdentity: outputFileIdentity(stage), rootIdentity: assertProjectOutputStore(store), directoryIdentity: directory.identity,
       mode: 'link', phase: 'intent', targetIdentity: null, attempt: 1, abandoned: []};
     writeReceipt(store, receipt, options); testHooks.get(store)?.fault?.('after_intent', proof); fence(store, options);

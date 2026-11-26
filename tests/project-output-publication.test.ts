@@ -13,6 +13,7 @@ import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.
 import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import {png,pngChunk} from './helpers/timeline-image-fixtures.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {canonicalJson} from '../packages/business/src/project-versions/document.ts';
 
 const sha=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -423,6 +424,51 @@ test('publication collisions are bounded and do not destroy the complete artifac
  const f=fixture(t),remove=setProjectOutputPublicationTestHooks(f.store,{forceCopy:true,fault:(point,proof)=>{if(point==='after_target_create')throw Error('unknown new target');}});
  for(let i=0;i<16;i++)await assert.rejects(publishProjectOutput(f.store,f.input));remove();await assert.rejects(publishProjectOutput(f.store,f.input),{code:'INVALID_MEDIA'});
  assert.equal(readdirSync(path.join(f.projectDir,'生成')).length,16);assert.deepEqual(readFileSync(f.input.stageFile),bytes);assert.equal(f.store.get('assets',f.input.assetId),null);
+});
+
+function videoExport(f: ReturnType<typeof fixture>, displayName: string, payload: Buffer): ProjectOutputInput {
+ const assetId = randomUUID(), stageFile = path.join(path.dirname(f.input.stageFile), `${assetId}.mp4`);
+ writeFileSync(stageFile, payload, {mode: 0o600, flag: 'wx'});
+ return {...f.input, owner: {...f.input.owner, id: randomUUID(), requestId: randomUUID()}, assetId, stageFile,
+  mimeType: 'video/mp4', sha256: sha(payload), sizeBytes: payload.length, displayName};
+}
+
+test('concurrent exports use separate numbered filenames without replacing any existing file', async t => {
+ const f = fixture(t, 'exports'), directory = path.join(f.projectDir, '导出');
+ mkdirSync(directory);
+ const existing = new Map(Array.from({length: 17}, (_, index) => [
+  index === 0 ? 'Mioon混剪.mp4' : `Mioon混剪 ${index + 1}.mp4`, Buffer.from(`Existing file ${index + 1}`),
+ ] as const));
+ for (const [name, payload] of existing) writeFileSync(path.join(directory, name), payload, {flag: 'wx'});
+ const payloads = [mp4HeaderFixture('First export bytes'), mp4HeaderFixture('Second export bytes')];
+ const inputs = payloads.map(payload => videoExport(f, 'Mioon混剪.mp4', payload));
+ const results = await Promise.all(inputs.map(input => publishProjectOutput(f.store, input)));
+ assert.deepEqual(new Set(results.map(result => result.relativePath)), new Set(['导出/Mioon混剪 18.mp4', '导出/Mioon混剪 19.mp4']));
+ for (const [index, result] of results.entries()) {
+  assert.equal(result.reference.path, result.relativePath);
+  assert.equal(result.publication.relativePath, result.relativePath);
+  assert.deepEqual(result.publication.owner, inputs[index]!.owner);
+  assert.deepEqual(readFileSync(path.join(f.projectDir, result.relativePath)), payloads[index]);
+ }
+ for (const [name, payload] of existing) assert.deepEqual(readFileSync(path.join(directory, name)), payload);
+});
+
+test('export filenames sanitize reserved characters and bound Unicode while keeping the suffix', async t => {
+ const f = fixture(t, 'exports'), payload = mp4HeaderFixture('Sanitized export bytes');
+ const unsafe = await publishProjectOutput(f.store, videoExport(f, 'Cut/\\mid\u0000?:end.v1.MP4', payload));
+ assert.equal(unsafe.relativePath, '导出/Cut__mid___end.v1.mp4');
+ const reserved = await publishProjectOutput(f.store, videoExport(f, 'CON.mp4', payload));
+ assert.equal(reserved.relativePath, '导出/_CON.mp4');
+ const longName = '海🌊'.repeat(120) + '.mp4';
+ const first = await publishProjectOutput(f.store, videoExport(f, longName, payload));
+ const next = await publishProjectOutput(f.store, videoExport(f, longName, payload));
+ const ordinal = path.posix.basename(first.relativePath), numbered = path.posix.basename(next.relativePath);
+ assert.match(ordinal, /^(?:海🌊)+(?:海)?\.mp4$/u);
+ assert.match(numbered, /^(?:海🌊)+(?:海)? 2\.mp4$/u);
+ for (const name of [ordinal, numbered]) {
+  assert.ok(Buffer.byteLength(name) <= 180);
+  assert.ok(name.length <= 160);
+ }
 });
 
 test('corrupt and oversized private intents are refused without repairing them',async t=>{
