@@ -321,7 +321,10 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input
     await command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2', '-c:a', 'pcm_s16le', '-n', audio], 'SYNTHETIC_AUDIO_FAILED', {env});
     check('self-contained-color-sine-mp4-and-wav-fixture');
     result.phase = 'startup';
-    child = spawn(binary, [], {env, detached: true, stdio: ['ignore', 'ignore', 'ignore']});
+    // Chromium waits for login-keychain authorization during shutdown in the isolated macOS profile.
+    // Use its test keychain only for this process and its disposable data.
+    const appArgs = platform === 'darwin' ? ['--use-mock-keychain'] : [];
+    child = spawn(binary, appArgs, {env, detached: true, stdio: ['ignore', 'ignore', 'ignore']});
     const app = child;
     outcome = new Promise<Outcome>((resolve, reject) => {
       app.once('error', () => { ended = true; reject(new CheckFailure('APP_SPAWN_FAILED')); });
