@@ -215,10 +215,10 @@ import type {ClipAudioToastTarget} from './ClipAudioTaskToast.tsx';
 import {clipContextMenuPlan} from './clip-sound-state.ts';
 import type {EditUiNotice} from './edit-ui/EditUiNotice.tsx';
 import ShotDialogue from './ShotDialogue.tsx';
-import {format5AnchorConflictPresentation, format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
+import {format5AnchorConflictPresentation, format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5DialogueConflictPresentation, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
-import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5EditUiTimeline, format5HistoryScope, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TimelineHistoryState, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import type {LostResponseView, SequenceDialogueConflict} from './edit-ui/lost-response.ts';
+import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5CopyAsNewShotCommand, format5EditUiTimeline, format5HistoryScope, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TimelineHistoryState, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import {previewFormat5DragConflict} from './edit-ui/drag-conflict-preview.ts';
 import type {Format5DragPreviewTarget} from './edit-ui/drag-conflict-preview.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
@@ -397,7 +397,7 @@ export interface SharedViewState {assetFilter: string; assetSearch: string; [key
 export interface LayoutModeState {assetsWidth: number; inspectorWidth: number; timelineHeight: number; assetsCollapsed: boolean; inspectorCollapsed: boolean; [key: string]: unknown}
 export type ViewState = ReturnType<typeof import('./workspace-state.ts').normalizeWorkspaceState>;
 export type ProviderRecord = GenerationProvider;
-export interface ToastState {message: AppMessage; type: ToastTone; time: number; conflictIds?: readonly string[]}
+export interface ToastState {message: AppMessage; type: ToastTone; time: number; conflictIds?: readonly string[]; action?: {readonly label: AppMessage; readonly onClick: () => void}}
 interface WebFormatUpgrade {
   readonly preview: ProjectFormatUpgradePreview;
   readonly isCurrent: () => boolean;
@@ -3485,6 +3485,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     switch (command.kind) {
       case 'clip-remove': return {id, message: t('editUi.notice.removedFromMainTrack', {name: clipName})};
       case 'clip-split': return {id, message: t('editUi.notice.split', {name: clipName})};
+      case 'clip-copy-as-new-shot': return {id, message: t('editUi.notice.copiedAsNewShot', {name: clipName})};
       case 'clip-trim': return {id, message: t('editUi.notice.trimmed', {name: clipName})};
       case 'clip-move': return {id, message: t('editUi.notice.moved', {name: clipName})};
       case 'clip-move-off-track': {
@@ -3523,9 +3524,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function clearFormat5ConflictToast(): void {
     setToast(current => current?.conflictIds?.length ? null : current);
   }
+  function format5LocateSubtitleCue(cueId: string, startFrame: number): void {
+    const live = dataRef.current.timeline?.subtitles?.cues?.find(item => item.id === cueId);
+    if (live) {
+      void openSubtitle(live.id);
+      updateView('editing', {playhead: live.startFrame});
+      return;
+    }
+    updateView('editing', {playhead: startFrame});
+  }
   function notifyFormat5CommandFailure(
-    result: {readonly code?: string; readonly ids?: readonly string[]},
+    result: {readonly code?: string; readonly ids?: readonly string[]; readonly dialogueConflict?: SequenceDialogueConflict},
     fallbackKey: (code: string | undefined) => string = format5CommandErrorMessageKey,
+    options?: {readonly copying?: boolean},
   ): void {
     if (result.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT') {
       const presentation = format5AnchorConflictPresentation(
@@ -3542,10 +3553,27 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       });
       return;
     }
+    if (result.code === 'SEQUENCE_EDIT_DIALOGUE_CONFLICT') {
+      const presentation = format5DialogueConflictPresentation(
+        result.dialogueConflict,
+        dataRef.current.timeline as never,
+        t as never,
+        {copying: options?.copying},
+      );
+      const locateCue = presentation.locateCue;
+      setToast({
+        message: presentation.message,
+        type: 'error',
+        time: Date.now(),
+        ...(presentation.highlightIds.length ? {conflictIds: presentation.highlightIds} : {}),
+        ...(locateCue ? {action: {label: t('editUi.error.locateSubtitle'), onClick: () => { format5LocateSubtitleCue(locateCue.cueId, locateCue.startFrame); }}} : {}),
+      });
+      return;
+    }
     notify(t(fallbackKey(result.code) as never), 'error');
   }
-  function notifyFormat5Failure(result: {readonly code: string; readonly ids?: readonly string[]}): void {
-    if (result.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT') {
+  function notifyFormat5Failure(result: {readonly code: string; readonly ids?: readonly string[]; readonly dialogueConflict?: SequenceDialogueConflict}): void {
+    if (result.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT' || result.code === 'SEQUENCE_EDIT_DIALOGUE_CONFLICT') {
       notifyFormat5CommandFailure(result, format5PanelErrorKey);
       return;
     }
@@ -3788,8 +3816,35 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!result.ok) {notifyFormat5CommandFailure(result); return null;}
     clearFormat5ConflictToast();
     setFormat5Notice(null);
-    await refresh(currentProject.current); await format5RefreshHistory();
+    await refresh(currentProject.current); await format5RefreshHistory(); await format5LoadBoard();
     return result;
+  }
+  /** Copy one main-track clip as a new board shot and main-track clip right after
+   * its split group, in one unified history step. */
+  async function format5CopyClipAsNewShot(clipId: string): Promise<unknown> {
+    const timelineNow = dataRef.current.timeline;
+    const clip = timelineNow?.clips.find(item => item.id === clipId);
+    const mainTrackId = (timelineNow as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+    if (!clip || !format5 || format5SessionBusy || mainTrackId === null || clip.trackId !== mainTrackId) return null;
+    const clipName = format5ClipName(clipId);
+    const command = format5CopyAsNewShotCommand(clipId);
+    const newClipId = command.kind === 'clip-copy-as-new-shot' ? command.newClipId : null;
+    setFormat5SessionBusy(true);
+    try {
+      const result = await format5Session().run(command as never);
+      if (!result.ok) { notifyFormat5CommandFailure(result, format5CommandErrorMessageKey, {copying: true}); return null; }
+      clearFormat5ConflictToast();
+      const notice = format5NoticeMessage(command as never, clipName);
+      if (notice) { setFormat5Notice(notice); setFormat5NoticeActionId(result.actionId); }
+      await refresh(currentProject.current);
+      await format5RefreshHistory();
+      await format5LoadBoard();
+      if (newClipId) {
+        const created = dataRef.current.timeline?.clips.find(item => item.id === newClipId);
+        if (created) { setSelectedClipId(created.id); setPlayhead(created.startFrame); }
+      }
+      return result;
+    } finally { setFormat5SessionBusy(false); }
   }
   /** Mute or unmute a clip's own sound as one saved properties action. */
   async function format5ToggleClipMute(clipId: string, muted: boolean): Promise<unknown> {
@@ -5544,10 +5599,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         const plan = clipContextMenuPlan({format5, clip: clip as never, asset: asset as never, track: track as never});
         const canSplit = Boolean(format5SplitState?.canSplit) && format5SplitState?.clipId === clip.id;
         const clipMain = (clip as {trackId?: string; sequenceSource?: {kind?: string}});
-        const generateAround = format5 && clipMain.trackId === (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId
-          && clipMain.sequenceSource?.kind === 'shot';
+        const mainTrackId = (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+        const isMainTrackClip = format5 && mainTrackId !== null && clipMain.trackId === mainTrackId;
+        const generateAround = isMainTrackClip && clipMain.sequenceSource?.kind === 'shot';
         return <TimelineClipContextMenu anchor={clipContextMenu} plan={plan} canSplit={canSplit}
           busy={format5SessionBusy} onSplit={() => { void splitTimelineClip(); }}
+          {...(isMainTrackClip ? {onCopyAsNewShot: id => { void format5CopyClipAsNewShot(id); }} : {})}
           {...(generateAround ? {
             onGenerateBefore: () => { void format5GenerateAroundClip(clip.id, 'before'); },
             onGenerateAfter: () => { void format5GenerateAroundClip(clip.id, 'after'); },
@@ -5580,7 +5637,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
     <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
-    {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
+    {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span>{toast.action && <Button type="button" variant="ghost" size="sm" className="workbench-toast-action" data-testid="global-toast-action" onClick={() => { toast.action?.onClick(); }}>{renderImportFeedback(locale, toast.action.label)}</Button>}<Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {!nativeWindow && showCreate && <CreateProject newProjectFormatVersion={projectEntryIdentityRef.current!.getState().snapshot?.newProjectFormatVersion} onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}
     {previewAsset && <Modal title={previewAsset.name} subtitle={`${previewAsset.mimeType} · ${formatNumber(previewAsset.sizeBytes / 1024 / 1024, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MB`} onClose={() => setPreviewAsset(null)} wide><div className="asset-preview-large"><Media asset={previewAsset} controls /></div><div className="modal-footer"><Button variant="ghost" className="button primary" onClick={() => { addNode(assetKind(previewAsset), previewAsset); setPreviewAsset(null); }}><Icon name="plus" size={16} />{t('assets.addCanvas')}</Button></div></Modal>}
     {realConfirm && <Dialog open onOpenChange={open => { if (!open) closeGenerationReview(); }}><WorkbenchDialogContent size="confirm" className="generation-confirm-dialog" data-testid="generation-confirm-dialog" showCloseButton={false} title={<>{t('shell.generationConfirmTitle')} <WorkbenchTooltip content={t('shell.generationCosts')}><Button type="button" variant="ghost" size="icon-sm" className="pf-info" aria-label={t('shell.details')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></>} footer={<><WorkbenchButton type="button" data-testid="cancel-live-generation" onClick={closeGenerationReview}>{t('common.cancel')}</WorkbenchButton><WorkbenchButton type="button" variant="primary" data-testid="confirm-live-generation" onClick={() => { void confirmGeneration(realConfirm); }}>{t('shell.generationConfirmSend')}</WorkbenchButton></>}><div className="confirmation-summary" data-text-selectable><strong>{realConfirm.connectionName || providerDisplayName(findGenerationProvider(providers, realConfirm.providerId, realConfirm.connectionId) || { id: realConfirm.providerId }, t)}</strong>{realConfirm.connectionId && <p data-testid="generation-connection-review">{realConfirm.connectionEndpoint && <>{realConfirm.connectionEndpoint}<br /></>}{t('video.providers.resolution')}: {String(realConfirm.shot.parameters?.resolution || '—')}{typeof realConfirm.shot.parameters?.generateAudio === 'boolean' ? ` · ${t('video.providers.generateAudio')}: ${t(realConfirm.shot.parameters.generateAudio ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}` : ''}{typeof realConfirm.shot.parameters?.promptExtend === 'boolean' && <><br />{t('video.wan.promptExtend')}: {t(realConfirm.shot.parameters.promptExtend ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}</>}{typeof realConfirm.shot.parameters?.watermark === 'boolean' && <><br />{t('video.wan.watermark')}: {t(realConfirm.shot.parameters.watermark ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}</>}{realConfirm.shot.parameters?.seed !== undefined && <><br />{t('inspector.seed')}: {String(realConfirm.shot.parameters.seed)}</>}</p>}{realConfirm.retryJobId && <p>{t('shell.generationRetryScope')}</p>}{realConfirm.replacementJobId && <p>{t('tasks.center.regenerateVideoReview')}</p>}<span>{realConfirm.shot.videoInput || realConfirm.shot.parameters?.durationSeconds !== undefined || realConfirm.shot.parameters?.aspectRatio !== undefined ? t('video.wan.reviewParameters', { model: realConfirm.model as string, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode as string)), duration: realConfirm.shot.parameters?.durationSeconds === -1 ? t('video.wan.smartDuration') : t('shell.durationSeconds', { seconds: Number(realConfirm.shot.parameters?.durationSeconds ?? realConfirm.shot.duration) }), ratio: realConfirm.shot.parameters?.aspectRatio === 'adaptive' ? t('video.wan.adaptive') : (realConfirm.shot.parameters?.aspectRatio ?? realConfirm.shot.aspectRatio) as string }) : t('shell.generationReviewParameters', { model: realConfirm.model as string, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode as string)), seconds: realConfirm.shot.duration as number, ratio: realConfirm.shot.aspectRatio as string })}</span><p>{t('shell.generationDataScope', { count: generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId), subjectReference: realConfirm.subjectReference }).references.length })}</p>{(realConfirm.subjectReference || realConfirm.shot.subjectReference) ? <><SubjectVideoSummary reference={realConfirm.subjectReference || realConfirm.shot.subjectReference} assets={realConfirm.referenceAssets} latestSubject={((subjects as never as {state?: {subjects: Record<string, unknown>}} | null)?.state?.subjects[((realConfirm.subjectReference || realConfirm.shot.subjectReference) as AppSubjectReference).subjectVersion.subjectId as string]) as never} /><p className="subject-warning" data-testid="paid-subject-face-warning">{renderMessage(realConfirm.providerId === 'ark' ? ARK_SUBJECT_WARNING_MESSAGE : MOCK_SUBJECT_WARNING_MESSAGE)}</p><p className="muted">{t('shell.generationSubjectScope')}</p></> : realConfirm.shot.videoInput ? <div data-testid="wan-video-review"><p>{realConfirm.shot.videoInput.prompt ?? realConfirm.shot.prompt}</p><ol>{realConfirm.shot.videoInput.images.map((image, index) => <li key={image.assetId}>{realConfirm.referenceAssets?.find(asset => asset.id === image.assetId) && projectMedia.canRead(realConfirm.referenceAssets.find(asset => asset.id === image.assetId)) && <img className="video-frame-thumbnail" src={assetUrl(realConfirm.referenceAssets.find(asset => asset.id === image.assetId)!)} alt={realConfirm.referenceAssets.find(asset => asset.id === image.assetId)!.name} style={{ width: 64, height: 64, objectFit: 'contain' }} />}<span>{t(realConfirm.providerId === 'ark' ? 'video.seedance.imageNumber' : 'video.wan.imageNumber', { number: index + 1, name: realConfirm.referenceAssets?.find(asset => asset.id === image.assetId)?.name || image.assetId })} · {t(image.role === 'first_frame' ? 'video.wan.firstFrame' : image.role === 'last_frame' ? 'generation.inputs.lastFrameRole' : 'video.wan.referenceImages')}</span></li>)}</ol>{realConfirm.providerId === 'ark' && realConfirm.shot.videoInput.mode === 'reference_images' && realConfirm.shot.videoInput.images.length > 0 && <p className="subject-warning" data-testid="paid-reference-face-warning">{t('video.seedance.faceWarning')}</p>}{realConfirm.shot.videoInput.audios?.length ? <ol data-testid="paid-reference-audios">{realConfirm.shot.videoInput.audios.map((audio, index) => { const asset = realConfirm.referenceAssets?.find(item => item.id === audio.assetId); return <li key={audio.assetId}>{t('video.seedance.audioNumber', { number: index + 1, name: asset?.name || audio.assetId, seconds: formatNumber(Number(asset?.duration) || 0, { maximumFractionDigits: 1 }) })}</li>; })}</ol> : null}</div> : <VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} />}</div></WorkbenchDialogContent></Dialog>}
