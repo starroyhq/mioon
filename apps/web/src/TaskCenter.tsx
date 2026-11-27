@@ -160,7 +160,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
   const selectedEntry=matchingEntries.find(item=>item.key===selectedKey);
   const selectedDisposition=dispositionFor(selectedKey);
   const pendingSelection=selectedKey.startsWith('pending:');
-  const selectedId=selectedDisposition?.taskId??(pendingSelection?selectedEntry?.search:selectedKey.replace(/^(render|local|processing):/,''));
+  const selectedId=selectedDisposition?.taskId??(pendingSelection?selectedEntry?.search:selectedKey.replace(/^(render|local|processing|speed):/,''));
   const completed=dispositions?.items.filter(item=>item.canArchive&&!item.archived).slice(0,100)??[];
   const detail = (key: string, content: React.ReactNode) => <div key={key} className="task-center-detail-pane" data-task-detail-key={key} hidden={key !== selectedKey} inert={key !== selectedKey} aria-hidden={key !== selectedKey}>{content}</div>;
   const dispositionAction = (key: string) => {
