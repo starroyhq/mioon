@@ -216,15 +216,18 @@ const section = (start: string, end: string) => app.slice(app.indexOf(start), ap
 const compile = (source: string, name: string, scope:Record<string,unknown>) => { const env = { msg: message, ...scope }; return Function(...Object.keys(env), `${source}; return ${name};`)(...Object.values(env)) as (...args:unknown[])=>Promise<{status:string}>; };
 
 test('actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard', async () => {
-  const h = fixture(), updates: unknown[] = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };
+  const h = fixture(), updates: unknown[] = [], settledClaims: string[] = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };
   let approved = false, current = true;
   const scope = { playbackClock: createTimelinePlaybackClock(), context: () => ({ projectId, epoch: 1 }), panelIntent: { current: 1 }, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false,
-    confirm: async () => approved, isCurrent: () => current, notify: () => {}, openTasks: () => {}, setPropertiesPage: (value: unknown) => updates.push(['page', value]), setRightDockTab: (value: unknown) => updates.push(['tab', value]), setPanelOpen: (...args: unknown[]) => updates.push(['panel', ...args]) };
+    confirm: async () => approved, isCurrent: () => current, notify: () => {}, openTasks: () => {}, setPropertiesPage: (value: unknown) => updates.push(['page', value]), setRightDockTab: (value: unknown) => updates.push(['tab', value]), setPanelOpen: (...args: unknown[]) => updates.push(['panel', ...args]),
+    settleDiscardedAgentEditingDrafts: (id: string) => { assert.equal(h.controller.getState().dirty, false); settledClaims.push(id); } };
   const open = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scope);
   await open(cueId); assert.equal(h.controller.getState().cueId, cueId); h.controller.edit('text', 'subtitle draft'); updates.length = 0;
   await open(secondId); assert.equal((h.controller.getState().draft)!.text, 'subtitle draft'); assert.deepEqual((updates as unknown), []);
+  assert.deepEqual((settledClaims as unknown), []);
   approved = true; await open(secondId); assert.equal(h.controller.getState().cueId, secondId); assert.deepEqual(untouched, { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' });
   h.controller.edit('text', 'keep'); current = false; await open(cueId); assert.equal((h.controller.getState().draft)!.text, 'keep');
+  assert.deepEqual(settledClaims, [projectId]);
 });
 
 test('actual App selection confirmation rejects later edits and panel intent instead of reopening a hidden pane', async () => {
@@ -258,7 +261,8 @@ test('actual App history handler blocks a dirty subtitle and calls the shared un
 
 function navigationGuard(h: { controller: unknown; intents?: subtitles.SubtitleIntent[]; changes?: subtitles.SubtitleState[]; set?: (patch: { scope?: string; projectId?: string; timeline?: { id: string; projectId: string; revision: number; fps: number; width: number; height: number; durationFrames: number; tracks: { id: string; kind: string; name: string; orderIndex: number; hidden: boolean; muted: boolean; }[]; clips: { id: string; assetId: string; trackId: string; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; rect: { x: number; y: number; width: number; height: number; }; }[]; subtitles: { profileId: string; cues: { id: string; text: string; startFrame: number; durationFrames: number; }[]; }; createdAt: string; updatedAt: string; }; pending?: boolean; connected?: boolean; }) => void; context?: { pending: boolean; scope: string; projectId: string; timeline: { durationFrames: number; subtitles: { profileId: string; cues: ReturnType<typeof cue>[]; }; projectId: string; revision: number; id: string; fps: number; width: number; height: number; tracks: { id: string; kind: string; name: string; orderIndex: number; hidden: boolean; muted: boolean; }[]; clips: { id: string; assetId: string; trackId: string; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; rect: { x: number; y: number; width: number; height: number; }; }[]; createdAt: string; updatedAt: string; }; connected: boolean; }; requests?: number; }, confirm: (message?:unknown)=>Promise<unknown>, resets: unknown[][]) {
   const scope = { nativeWindow: null, shotTextRef: { current: null }, clipDraftRef: { current: null }, context: () => ({ projectId }), isCurrent: () => true, subtitlesRef: { current: { controller: h.controller } }, dirtyRef: { current: false }, confirm,
-    subjectsRef: { current: null }, ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, (value: unknown) => resets.push([name, value])])) };
+    subjectsRef: { current: null }, settleDiscardedAgentEditingDrafts: (id: string) => resets.push(['settleClaims', id]),
+    ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, (value: unknown) => resets.push([name, value])])) };
   return compile(section('  async function guardNavigation(', '  async function guardProjectNavigation('), 'guardNavigation', scope);
 }
 test('actual App navigation consults same-tick subtitle state before React dirty rerender', async () => {
@@ -268,6 +272,7 @@ test('actual App navigation consults same-tick subtitle state before React dirty
   assert.equal(await guard(), false); assert.equal(prompts.length, 1); assert.equal((h.controller.getState().draft)!.text, 'same-tick'); assert.deepEqual((resets as unknown), []);
   approved = true; assert.equal(await guard(), true); assert.equal(h.controller.getState().dirty, false); assert.equal((h.controller.getState().draft)!.text, cue().text);
   assert.ok(resets.some(([name, value]) => name === 'setSubtitleDirty' && value === false));
+  assert.deepEqual(resets.at(-1), ['settleClaims', projectId]);
 });
 
 test('actual App late navigation confirmation cannot discard a newer subtitle draft in the same project', async () => {
