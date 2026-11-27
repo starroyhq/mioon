@@ -106,7 +106,7 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
       ...(edit.nodeName ? {nodeName: edit.nodeName} : {}),
       ...(edit.copyFromClipId ? {copyFromClipId: edit.copyFromClipId} : {})};
     case 'insert-asset': return {kind: 'insert-asset', assetId: edit.assetId, trackId: edit.trackId,
-      startFrame: edit.startFrame};
+      startFrame: edit.startFrame, ...(edit.assetRange === undefined ? {} : {assetRange: edit.assetRange})};
     case 'paste-clip': return {kind: 'paste-clip', clipId: edit.clipId, startFrame: edit.startFrame};
     case 'copy-as-new-shot': return {kind: 'clip-copy-as-new-shot', clipId: edit.clipId,
       newClipId: edit.newClipId, copyNodeId: edit.copyNodeId};

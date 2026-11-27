@@ -3,9 +3,10 @@ import test from 'node:test';
 import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
 import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
-import {sequencePreviewResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
+import {sequencePreviewFailureResponseSchema, sequencePreviewResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
 import {sequenceEditReceiptSchema} from '../packages/contracts/src/sequence-edit.ts';
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
+import type {SourceRangeResponse} from '../packages/contracts/src/source-range.ts';
 import {format5CopiedDialogueLineId, format5DialogueCueId} from '../packages/business/src/format5-dialogue-projection.ts';
 import {adoptFormat5GeneratedVersionInside} from '../packages/business/src/format5-sequence-sync.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
@@ -129,6 +130,86 @@ test('format-5 insert asset and paste clip through one confirmable action each',
   assert.ok(overlays.every((clip: Row) => Boolean(clip.anchor?.clipId)));
   await undo();
   await undo();
+});
+
+test('saved video and audio ranges insert one reversible clip with exact source bounds', async t => {
+  const {projectId, store, services, library} = await createEditUiWireFixture();
+  t.after(async () => {await services.drain(); store.close(); library.close();});
+  const timeline = (): Format5Timeline => store.get('timelines', WIRE_IDS.timeline) as Format5Timeline;
+  const history = async () => sequenceHistoryViewResponseSchema.parse(await services.call('sequence.history.get', {projectId}));
+  const saveRange = async (assetId: string, inFrame: number, outFrame: number, expectedRevision = 0) => {
+    const saved = await services.call('asset.range.set', {projectId, assetId, inFrame, outFrame,
+      requestId: crypto.randomUUID(), expectedRevision}) as SourceRangeResponse;
+    assert.ok(saved.range);
+    return saved.range;
+  };
+  const travel = async (direction: 'undo' | 'redo', actionId: string) => {
+    const view = await history();
+    assert.equal(view[direction]?.actionId, actionId);
+    const receipt = await services.call(`sequence.${direction}`, {projectId, requestId: crypto.randomUUID(), actionId,
+      expected: {position: view.position, revision: view.revision}});
+    assert.equal(sequenceEditReceiptSchema.parse(receipt).status, 'applied');
+  };
+
+  for (const {assetId, trackId, startFrame, actualStart, inFrame, outFrame} of [
+    {assetId: WIRE_IDS.assetB, trackId: null, startFrame: 45, actualStart: 60, inFrame: 12, outFrame: 37},
+    {assetId: WIRE_IDS.audioAsset, trackId: WIRE_IDS.audio, startFrame: 5, actualStart: 5, inFrame: 9, outFrame: 44},
+  ]) {
+    const assetRange = await saveRange(assetId, inFrame, outFrame);
+    const initial = timeline(), beforeHistory = await history();
+    const actionId = crypto.randomUUID();
+    const preview = sequencePreviewResponseSchema.parse(await services.call('sequence.preview', {projectId,
+      requestId: crypto.randomUUID(), actionId,
+      intents: [sequenceSyncIntent({kind: 'insert-asset', assetId, trackId, startFrame, assetRange})]}));
+    const input = {projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest};
+    assert.deepEqual(timeline(), initial);
+    assert.deepEqual(await history(), beforeHistory);
+
+    const committed = sequenceEditReceiptSchema.parse(await services.call('sequence.commit', input));
+    assert.equal(committed.status, 'applied');
+    const after = timeline(), clip = after.clips.find(item => !initial.clips.some(previous => previous.id === item.id));
+    assert.ok(clip);
+    assert.equal(after.clips.length, initial.clips.length + 1);
+    assert.equal(clip.assetId, assetId);
+    assert.equal(clip.trackId, trackId ?? initial.mainTrack.trackId);
+    assert.equal(clip.startFrame, actualStart);
+    assert.equal(clip.sourceInFrame, inFrame);
+    assert.equal(clip.sourceInFrame + clip.durationFrames, outFrame);
+    assert.equal((await history()).position, beforeHistory.position + 1);
+    if (trackId === null) {
+      assert.equal(clip.sequenceSource?.kind, 'media');
+      assert.equal((store.get('nodes', clip.sequenceSource!.nodeId) as Row).assetId, assetId);
+    } else {
+      assert.deepEqual(clip.anchor, {clipId: WIRE_IDS.clipA, offsetFrames: startFrame});
+      assert.equal(clip.sequenceSource, undefined);
+    }
+
+    await saveRange(assetId, inFrame + 1, outFrame + 1, 1);
+    await travel('undo', actionId);
+    assert.deepEqual(timeline().clips, initial.clips);
+    const undoneHistory = await history();
+    assert.equal(undoneHistory.position, beforeHistory.position);
+    assert.deepEqual(await services.call('sequence.commit', input), committed);
+    assert.deepEqual(await history(), undoneHistory, 'replaying the original commit does not reapply the undone edit');
+    assert.deepEqual(timeline().clips, initial.clips);
+    await travel('redo', actionId);
+    assert.deepEqual(timeline().clips, after.clips, 'redo keeps the originally committed source range');
+    assert.equal((await history()).position, beforeHistory.position + 1);
+    await travel('undo', actionId);
+  }
+
+  const before = timeline(), cursor = await history();
+  for (const {assetId, assetRange, code} of [
+    {assetId: WIRE_IDS.assetB, assetRange: {inFrame: 89, outFrame: 91}, code: 'SOURCE_BOUNDS'},
+    {assetId: WIRE_IDS.imageAsset, assetRange: {inFrame: 1, outFrame: 2}, code: 'INVALID_CLIP_FRAMES'},
+  ]) {
+    const preview = sequencePreviewFailureResponseSchema.parse(await services.call('sequence.preview', {projectId,
+      requestId: crypto.randomUUID(),
+      intents: [sequenceSyncIntent({kind: 'insert-asset', assetId, trackId: null, startFrame: 0, assetRange})]}));
+    assert.equal(preview.code, code);
+  }
+  assert.deepEqual(timeline(), before);
+  assert.deepEqual(await history(), cursor);
 });
 
 test('overlay clips inherit the landscape timeline frame', async t => {

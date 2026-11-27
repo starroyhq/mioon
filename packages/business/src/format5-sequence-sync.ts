@@ -18,6 +18,7 @@
  */
 import {randomUUID} from 'node:crypto';
 import {AppError, sourceFrameCount} from '@mioon/contracts';
+import {assetRangeOnSourceGridSchema} from '../../contracts/src/source-range.ts';
 import type {
   SequenceEditAffectedCounts, SequenceEditBaselineChange, SequenceEditBoardDelta, SequenceEditBoardEntity,
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditHistoryAction,
@@ -647,9 +648,9 @@ function planOverlayInsert(context: SyncContext, clip: Format5Clip, owner: Forma
     nodeKinds: new Map(), clipNames: new Map(), extraOtherClips: [clip]});
 }
 function overlayClipForAsset(context: SyncContext, asset: Row, kind: 'image' | 'video' | 'audio', clipId: string,
-  trackId: string, startFrame: number, durationFrames: number, owner: Format5Clip): Format5Clip {
+  trackId: string, startFrame: number, durationFrames: number, sourceInFrame: number, owner: Format5Clip): Format5Clip {
   return {id: clipId, trackId, name: assetName(asset, kind === 'audio' ? 'Audio' : kind), startFrame,
-    durationFrames, sourceInFrame: 0, rect: {x: 0, y: 0, width: context.timeline.width, height: context.timeline.height}, gain: 1,
+    durationFrames, sourceInFrame, rect: {x: 0, y: 0, width: context.timeline.width, height: context.timeline.height}, gain: 1,
     assetId: String(asset.id), sourceState: 'ready',
     anchor: {clipId: owner.id, offsetFrames: startFrame - owner.startFrame}};
 }
@@ -740,7 +741,12 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
     const kind = assetKindOf(asset);
     if (kind === null) return failure('INVALID_MEDIA', [edit.assetId!], 'ASSET_KIND_UNSUPPORTED');
     if (track.kind === 'audio' ? kind !== 'audio' : kind === 'audio') return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
-    clip = overlayClipForAsset(context, asset, kind, edit.clipId, edit.trackId, edit.startFrame, edit.durationFrames, owner);
+    // Commit validates the expanded envelope against the current asset again.
+    const frames = assetFrames(asset, kind);
+    if (kind === 'image' ? edit.sourceInFrame !== 0 : frames === null || edit.sourceInFrame > frames - edit.durationFrames)
+      return failure('SOURCE_BOUNDS', [edit.assetId!]);
+    clip = overlayClipForAsset(context, asset, kind, edit.clipId, edit.trackId, edit.startFrame,
+      edit.durationFrames, edit.sourceInFrame, owner);
   }
   return planOverlayInsert(context, clip, owner);
 }
@@ -765,13 +771,20 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
     const main = targetTrackId === mainTrackId;
     if (main ? kind === 'audio' : track.kind !== (kind === 'audio' ? 'audio' : 'video'))
       return failure('INVALID_TRACK_TARGET', [targetTrackId], 'TRACK_KIND_MISMATCH');
-    const frames = assetFrames(asset, kind);
+    let frames = assetFrames(asset, kind), sourceInFrame = 0;
+    if (edit.assetRange !== undefined) {
+      const range = assetRangeOnSourceGridSchema.safeParse(edit.assetRange);
+      if (kind === 'image' || !range.success) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
+      if (frames === null || range.data.outFrame > frames) return failure('SOURCE_BOUNDS', [edit.assetId]);
+      sourceInFrame = range.data.inFrame;
+      frames = range.data.outFrame - sourceInFrame;
+    }
     if (frames === null || frames < 1 || frames > 18000) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
     if (main) {
       const ids = allocated ?? {nodeId: randomUUID(), clipId: randomUUID()};
       if (!allocated) allocation.push(ids);
       const addEdit: TrackSyncEdit = {kind: 'add', clip: {id: ids.clipId, nodeId: ids.nodeId, versionId: null,
-        versionLocked: false, startFrame: 0, durationFrames: frames, sourceInFrame: 0, splitGroupId: ids.clipId},
+        versionLocked: false, startFrame: 0, durationFrames: frames, sourceInFrame, splitGroupId: ids.clipId},
         beforeClipId: insertionBefore(context, edit.startFrame), nodeKind: kind as 'image' | 'video',
         nodeAssetId: edit.assetId, nodeName: assetName(asset, kind)};
       return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: addEdit}}]};
@@ -780,7 +793,7 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
     const ids = allocated ?? {nodeId: targetTrackId, clipId: randomUUID()};
     if (!allocated) allocation.push(ids);
     const overlayEdit: TrackSyncEdit = {kind: 'add-overlay', clipId: ids.clipId, trackId: targetTrackId,
-      startFrame: edit.startFrame, durationFrames: frames, sourceInFrame: 0,
+      startFrame: edit.startFrame, durationFrames: frames, sourceInFrame,
       name: assetName(asset, kind === 'audio' ? 'Audio' : kind), assetId: edit.assetId};
     return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: overlayEdit}}]};
   }
