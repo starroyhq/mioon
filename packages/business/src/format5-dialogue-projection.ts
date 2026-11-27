@@ -9,7 +9,8 @@ import {AppError} from '@mioon/contracts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
 import {format5DialogueSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Cue, Format5Dialogue} from '../../contracts/src/project-format5.ts';
-import type {SequenceEditDialogueLine, SequenceEditSubtitleProfileChange} from '../../contracts/src/sequence-edit.ts';
+import {SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT} from '../../contracts/src/sequence-edit.ts';
+import type {SequenceEditDialogueConflict, SequenceEditDialogueLine, SequenceEditSubtitleProfileChange} from '../../contracts/src/sequence-edit.ts';
 
 type Row = Record<string, unknown>;
 
@@ -120,7 +121,8 @@ export interface Format5DialogueProjectionSuccess {
 }
 export type Format5DialogueProjectionResult =
   | Format5DialogueProjectionSuccess
-  | {readonly ok: false; readonly code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT'; readonly ids: readonly string[]};
+  | {readonly ok: false; readonly code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT'; readonly ids: readonly string[];
+    readonly dialogueConflict: SequenceEditDialogueConflict};
 
 type Interval = {start: number; end: number};
 
@@ -145,6 +147,21 @@ function cueIntervals(cues: readonly Format5Cue[]): Interval[] {
   return cues.map(cue => ({start: cue.startFrame, end: cue.startFrame + cue.durationFrames}));
 }
 
+function dialogueBlockers(occupied: readonly Format5Cue[], startFrame: number, endFrame: number,
+  previousCues: Format5DialogueProjectionInput['previousCues']): Pick<SequenceEditDialogueConflict, 'blockers' | 'blockerCount'> {
+  const blockers = occupied
+    .filter(cue => cue.startFrame < endFrame && cue.startFrame + cue.durationFrames > startFrame)
+    // Identify the saved subtitle and its current location even if the
+    // rejected plan had proposed moving it.
+    .flatMap(cue => previousCues.get(cue.id) ?? [])
+    .sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
+  return {blockerCount: blockers.length, blockers: blockers.slice(0, SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT).map(cue => {
+    const characters = [...cue.text.replace(/[\s\p{Cc}\p{Cf}]+/gu, ' ').trim()];
+    const textExcerpt = characters.slice(0, 12).join('') + (characters.length > 12 ? '…' : '');
+    return {cueId: cue.id, startFrame: cue.startFrame, endFrame: cue.startFrame + cue.durationFrames, textExcerpt};
+  })};
+}
+
 interface PendingLine {readonly lineId: string; readonly cue: Format5Cue | null}
 
 /**
@@ -157,6 +174,7 @@ export function projectFormat5DialogueCues(input: Format5DialogueProjectionInput
   const changed = new Set<string>();
   const removed = new Set<string>();
   const conflictIds = new Set<string>();
+  let dialogueConflict: SequenceEditDialogueConflict | undefined;
 
   // A cue of a shot that no longer exists (archived by this action) becomes an
   // ordinary cue at the same frame. Undo restores the link from the patch.
@@ -279,9 +297,13 @@ export function projectFormat5DialogueCues(input: Format5DialogueProjectionInput
         anchor: {clipId: owner.clipId, offsetFrames: startFrame - owner.startFrame}, dialogueRef: {shotId: shot.shotId, lineId: item.lineId}});
       changed.add(id);
     }
+    if (!dialogueConflict && conflictIds.has(shot.shotId)) {
+      dialogueConflict = {...dialogueBlockers(occupied, spanStart, spanEnd, input.previousCues),
+        requiredFrames: pending.length, availableFrames: free.reduce((sum, slot) => sum + slot.end - slot.start, 0)};
+    }
   }
-  if (conflictIds.size > 0) {
-    return {ok: false, code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT', ids: [...conflictIds].sort()};
+  if (dialogueConflict) {
+    return {ok: false, code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT', ids: [...conflictIds].sort(), dialogueConflict};
   }
   // A cue linked to a shot that is still live but no longer on the main track
   // keeps its identity and absolute frame (anchor null); its text still follows

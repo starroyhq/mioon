@@ -28,11 +28,13 @@ import {
 import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
 import {
   applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, applySubjectBindingWrite,
-  createMainTrackProjectionPort, previewMainTrackProjection, readSequenceSyncContext,
+  createMainTrackProjectionPort, FORMAT5_BOARD_DUPLICATE_OFFSET, previewMainTrackProjection, readSequenceSyncContext,
 } from './format5-sequence-sync.ts';
 import {copyFormat5ShotDialogue} from './format5-dialogue-projection.ts';
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
-import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
+import {sequenceEditCommitError, sequenceEditFailureEvidence, sequenceEditFailureMessage, sequenceEditPreviewFailure,
+  type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
+import type {Locale} from '../../i18n/src/types.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, prepareSequenceEditHistory,
   readSequenceEditHistoryEntry, sequenceEditHistoryFloor, sequenceEditInputDigest, writeSequenceEditAction,
@@ -314,6 +316,10 @@ export function planSequenceEditIntents(state: ChainSyncState, intents: readonly
       const ids: string[] = [];
       const record = plan as unknown as Row;
       for (const key of ['id', 'nodeId', 'clipId']) if (typeof record[key] === 'string') ids.push(record[key] as string);
+      if ('issues' in plan) {
+        const evidence = sequenceEditFailureEvidence(plan.code, {ids: plan.issues.flatMap(issue => issue.nodeIds)});
+        if (evidence) ids.push(...evidence.ids);
+      }
       return {ok: false, code: plan.code, ids: [...new Set(ids)]};
     }
     current = plan.after;
@@ -560,7 +566,8 @@ function boardIntentPreparation(context: EditContext, store: ProjectStore, inten
       for (const card of copyable) mapped.set(card.id, pairFor(card.id));
       const points = copyable.map(card => rowPosition(card.fields));
       const anchor = {x: Math.min(...points.map(point => point.x)), y: Math.min(...points.map(point => point.y))};
-      const offset = {x: viewport!.x + 40 - anchor.x, y: viewport!.y + 40 - anchor.y};
+      const offset = {x: viewport!.x + FORMAT5_BOARD_DUPLICATE_OFFSET - anchor.x,
+        y: viewport!.y + FORMAT5_BOARD_DUPLICATE_OFFSET - anchor.y};
       let order = [...context.rows.shots.values()].reduce((maximum, row) =>
         Math.max(maximum, Number.isSafeInteger(row.orderIndex) ? Number(row.orderIndex) : -1), -1);
       for (const card of copyable) {
@@ -1174,10 +1181,10 @@ function timelineDeltaMatches(store: ProjectStore, delta: SequenceEditTimelineDe
 // Apply one action
 // ---------------------------------------------------------------------------
 
-type ApplyOutcome = {readonly receipt: SequenceEditReceipt; readonly failure?: {readonly code: string; readonly ids: readonly string[]}};
+type ApplyOutcome = {readonly receipt: SequenceEditReceipt; readonly failure?: Omit<SequenceEditPreviewFailure, 'ok'>};
 
 export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnvelope,
-  authorize: () => void = () => {}, clipboardOwner?: object): SequenceEditReceipt {
+  authorize: () => void = () => {}, clipboardOwner?: object, locale?: Locale): SequenceEditReceipt {
   assertFormat5(store);
   const inputDigest = sequenceEditInputDigest(envelope);
   const outcome = store.tx((): ApplyOutcome => {
@@ -1220,8 +1227,8 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     }
     for (const intent of planIntents) {
       const planned = planSequenceEditIntents(state, [intent], planEnvelope.allocation);
-      if (!planned.ok) return {receipt: writeSequenceEditFailure(store, envelope, planned.code as never),
-        failure: {code: planned.code, ids: planned.ids}};
+      if (!planned.ok) return {receipt: writeSequenceEditFailure(store, envelope, planned.code as never,
+        sequenceEditFailureEvidence(planned.code, planned)), failure: planned};
       stateBeforeFinal = state;
       state = planned.state;
       plan = planned.plan;
@@ -1235,8 +1242,11 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
       }
       if (!state.board.nodes.some(node => node.id === item.nodeId)) continue;
       const copy = copyNodeRow(context, item.fromNodeId, item.nodeId);
-      if (!copy) return {receipt: writeSequenceEditFailure(store, envelope, 'COPY_NODE_REQUIRED'),
-        failure: {code: 'COPY_NODE_REQUIRED', ids: [item.fromNodeId]}};
+      if (!copy) {
+        const ids = [item.fromNodeId];
+        return {receipt: writeSequenceEditFailure(store, envelope, 'COPY_NODE_REQUIRED', {ids}),
+          failure: {code: 'COPY_NODE_REQUIRED', ids}};
+      }
       copiedNodes.set(item.nodeId, copy);
       if (allocatedCopyIds.has(item.nodeId) && !context.board.nodes.some(node => node.id === item.fromNodeId)) {
         return {receipt: writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_CONTRACT_INVALID'),
@@ -1268,7 +1278,8 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
       const projectionContext = projectionShots === syncContext.shots ? syncContext : {...syncContext, shots: projectionShots};
       const result = createMainTrackProjectionPort(store, () => projectionContext).projectMainTrack({envelope: planEnvelope, state: stateBeforeFinal, plan: plan!});
       if (!result.ok) {
-        return {receipt: writeSequenceEditFailure(store, envelope, result.code), failure: {code: result.code, ids: result.ids}};
+        return {receipt: writeSequenceEditFailure(store, envelope, result.code, sequenceEditFailureEvidence(result.code, result)),
+          failure: result};
       }
       syncCommit = result;
       // The projection port plans the timeline half; the coordinator applies it
@@ -1298,7 +1309,12 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
     const stored = writeSequenceEditAction(store, {envelope, patch, receipt: draft});
     return {receipt: stored};
   });
-  if (outcome.failure) fail(outcome.failure.code, '画板顺序链不能按这条命令修改。', outcome.failure.ids, {reason: outcome.failure.code});
+  if (outcome.failure) {
+    const {code, ids, reason} = outcome.failure;
+    const message = '画板顺序链不能按这条命令修改。';
+    if (sequenceEditFailureMessage(code, reason, locale)) throw sequenceEditCommitError(outcome.failure, message, locale);
+    fail(code, message, ids, {reason: code});
+  }
   return outcome.receipt;
 }
 
