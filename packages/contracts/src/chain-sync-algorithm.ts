@@ -390,10 +390,12 @@ function planTrackEdit(
         if (!Number.isSafeInteger(offsetFrames) || offsetFrames <= 0 || offsetFrames >= clip.durationFrames || !rightClipId)
           return {ok: false, code: 'INVALID_SPLIT', id: clip.id};
         if (next.some(item => item.id === rightClipId)) return {ok: false, code: 'DUPLICATE_CLIP', id: rightClipId};
+        const still = nodes.get(clip.nodeId)?.kind === 'image';
+        if (still && (edit.rightSourceInFrame ?? 0) !== 0) return {ok: false, code: 'SOURCE_BOUNDS', id: clip.id};
         const splitGroupId = clip.splitGroupId ?? clip.id;
         const splitFrame = clip.startFrame + offsetFrames;
         const right = {...clip, id: rightClipId, startFrame: splitFrame, durationFrames: clip.durationFrames - offsetFrames,
-          splitGroupId, sourceInFrame: edit.rightSourceInFrame ?? (clip.versionId === null ? 0 : clip.sourceInFrame + offsetFrames),
+          splitGroupId, sourceInFrame: edit.rightSourceInFrame ?? (still || clip.versionId === null ? 0 : clip.sourceInFrame + offsetFrames),
           ...sourceProjections?.get(rightClipId)};
         if (!validChainClipFrames(right)) return {ok: false, code: 'INVALID_CLIP_FRAMES', id: rightClipId};
         if (exceedsKnownSource(right, media.get(clip.nodeId))) return {ok: false, code: 'SOURCE_BOUNDS', id: rightClipId};

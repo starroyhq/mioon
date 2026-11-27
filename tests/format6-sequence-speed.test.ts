@@ -9,6 +9,7 @@ import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-f
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {sequenceSyncIntent, type SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
@@ -364,6 +365,64 @@ test('static images and placeholders return their specific explicit failures', t
   const store = fixture(t), api = editor(store);
   for (const [clipId, code] of [[clipImage, 'SPEED_NOT_SUPPORTED'], [clipB, 'SPEED_SOURCE_NOT_READY']]) {
     assert.deepEqual(api.preview(set(constant(2), {}, clipId)), {ok: false, code, ids: [clipId]});
+  }
+});
+
+test('ordinary splits preserve still-image source positions on both tracks and advance video', async t => {
+  const cases = [
+    {name: 'main-track still', assetId: imageAsset, trackId: videoTrack, sourceAtCut: 0},
+    {name: 'auxiliary still', assetId: imageAsset, trackId: videoTrack2, sourceAtCut: 0},
+    {name: 'main-track video control', assetId: assetB, trackId: videoTrack, sourceAtCut: 45},
+  ];
+  for (const {name, assetId, trackId, sourceAtCut} of cases) {
+    await t.test(name, t => {
+      const store = fixture(t), api = editor(store), projectId = store.projectId;
+      const preview = (command: SequenceSyncCommand) => {
+        const plan = api.service.preview({projectId, requestId: randomUUID(), intents: [sequenceSyncIntent(command)]});
+        assert.ok('envelope' in plan, JSON.stringify(plan));
+        return {projectId, envelope: plan.envelope, expectedPlanDigest: plan.planDigest};
+      };
+      const insert = preview({kind: 'insert-asset', assetId, trackId: trackId === videoTrack ? null : trackId, startFrame: 0});
+      assert.equal((api.service.commit(insert) as SequenceEditReceipt).status, 'applied');
+      const before = state(store);
+      const original = before.timeline.clips.find(clip => clip.trackId === trackId && clip.startFrame === 0 && clip.assetId === assetId);
+      assert.ok(original);
+      assert.equal(original.durationFrames, 90);
+      assert.equal(original.sourceInFrame, 0);
+
+      const rightClipId = randomUUID();
+      const command = {kind: 'clip-split', clipId: original.id, offsetFrames: 45, rightClipId} as const;
+      if (assetId === imageAsset) {
+        const invalid = api.service.preview({projectId, requestId: randomUUID(),
+          intents: [sequenceSyncIntent({...command, rightSourceInFrame: 45})]});
+        assert.ok('code' in invalid);
+        assert.equal(invalid.code, 'SOURCE_BOUNDS');
+      }
+      const split = preview(command);
+      assert.deepEqual(state(store), before, 'preview leaves timeline and history unchanged');
+      const receipt = api.service.commit(split) as SequenceEditReceipt;
+      assert.equal(receipt.status, 'applied');
+      const after = state(store);
+      assert.equal(after.timeline.clips.length, before.timeline.clips.length + 1);
+      assert.equal(after.timeline.durationFrames, before.timeline.durationFrames);
+      assert.equal(after.actions.length, before.actions.length + 1);
+      assert.equal(after.receipts.length, before.receipts.length + 1);
+      const left = after.timeline.clips.find(clip => clip.id === original.id);
+      const right = after.timeline.clips.find(clip => clip.id === rightClipId);
+      assert.deepEqual(left, {...original, durationFrames: 45});
+      assert.deepEqual(right, {...original, id: rightClipId, startFrame: 45, durationFrames: 45, sourceInFrame: sourceAtCut,
+        ...(original.anchor ? {anchor: {clipId: original.anchor.clipId, offsetFrames: 45}} : {})});
+
+      assert.deepEqual(api.service.commit(split), receipt);
+      assert.deepEqual(state(store), after, 'replaying the commit does not add history or mutate the split');
+      api.history('undo', receipt.actionId);
+      assert.deepEqual(saved(store).clips, before.timeline.clips);
+      const undone = state(store);
+      assert.deepEqual(api.service.commit(split), receipt);
+      assert.deepEqual(state(store), undone, 'replaying the commit does not redo an undone split');
+      api.history('redo', receipt.actionId);
+      assert.deepEqual(saved(store).clips, after.timeline.clips);
+    });
   }
 });
 
