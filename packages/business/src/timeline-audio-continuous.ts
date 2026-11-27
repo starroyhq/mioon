@@ -21,6 +21,7 @@ import type {ContinuousDecoder, ContinuousDecodeCursor} from './timeline-audio-c
 import type {CompiledTimelineSpeedExportClip} from '../../contracts/src/timeline-speed-export.ts';
 import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
 import {readAudioPreviewTimings, renderAudioPreviewSpeedWindow} from './timeline-audio-preview-speed.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 
 type Snapshot = ContinuousAudioSnapshot;
 type Clip = Snapshot['timeline']['clips'][number];
@@ -107,13 +108,17 @@ export function createProjectAudioSnapshotStamp(db: DatabaseSync): () => string 
   const local = db.prepare('SELECT CAST(total_changes() AS TEXT) AS changes');
   return () => {
     if (db.isTransaction) return undefined;
-    const version = data.get()?.data_version;
-    const cookie = schema.get()?.schema_version;
-    const userVersion = format.get()?.user_version;
-    const changes = local.get()?.changes;
-    if (typeof version !== 'number' || typeof cookie !== 'number' ||
-        typeof userVersion !== 'number' || typeof changes !== 'string') return undefined;
-    return `${version}:${cookie}:${userVersion}:${changes}`;
+    try {
+      if (format.get()?.user_version !== FORMAT6_PROJECT_SCHEMA_VERSION) return undefined;
+      const cookie = schema.get()?.schema_version;
+      const changes = local.get()?.changes;
+      const version = data.get()?.data_version;
+      if (typeof version !== 'number' || typeof cookie !== 'number' || typeof changes !== 'string') return undefined;
+      return `${version}:${cookie}:${changes}`;
+    } catch {
+      // A failed stamp is never evidence. Let the regular read report its error.
+      return undefined;
+    }
   };
 }
 /** This conservative bound includes twelve source-read allocations, a 1 MiB
