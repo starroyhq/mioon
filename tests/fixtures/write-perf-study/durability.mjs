@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
+import {testEnv} from '../../helpers/test-env.ts';
 
 const configurations = [
   {name: 'delete-full', sync: 'FULL'},
@@ -35,6 +36,7 @@ original.close();
 const canonicalTemp = realpathSync(os.tmpdir());
 const historyBytes = 229 * 1024;
 const changedClips = 48;
+const maxProbeLogBytes = 16 * 1024;
 
 function seed(directory) {
   mkdirSync(directory);
@@ -214,49 +216,82 @@ function takeSnapshots(directory, label = 'open') {
   return {copy: {...inspect(raw, 'project'), headerMode}, historyWalBytes: sidecar('history'), projectWalBytes: sidecar('project')};
 }
 
+function readProbeLog(file, completeLinesOnly = false) {
+  const descriptor = openSync(file, 'r');
+  const bytes = Buffer.alloc(maxProbeLogBytes + 1);
+  try {
+    let total = 0;
+    while (total < bytes.length) {
+      const length = readSync(descriptor, bytes, total, bytes.length - total, null);
+      if (!length) break;
+      total += length;
+    }
+    if (total > maxProbeLogBytes) throw Error('VFS probe log exceeded its byte limit');
+    const snapshot = bytes.subarray(0, total);
+    const end = completeLinesOnly ? snapshot.lastIndexOf(0x0a) + 1 : total;
+    return new TextDecoder('utf-8', {fatal: true}).decode(snapshot.subarray(0, end));
+  } finally { closeSync(descriptor); }
+}
+
+function startProbe(probe, args, stdout, stderr) {
+  const out = openSync(stdout, 'wx', 0o600);
+  try {
+    const err = openSync(stderr, 'wx', 0o600);
+    try { return spawn(probe, args, {env: testEnv(), stdio: ['ignore', out, err]}); }
+    finally { closeSync(err); }
+  } finally { closeSync(out); }
+}
+
 function crashWorker(probe, directory, config, phase, changes, graceful = false) {
   return new Promise((resolve, reject) => {
-    const child = spawn(probe, [
+    const stdout = path.join(directory, 'probe.stdout.log');
+    const stderr = path.join(directory, 'probe.stderr.log');
+    const child = startProbe(probe, [
       path.join(directory, names.history), path.join(directory, names.project), path.join(directory, names.cache),
       config.history, config.project, config.sync, phase, changes, config.fullfsync ? '1' : '0',
-    ], {stdio: ['ignore', 'pipe', 'pipe']});
-    let captured, stdout = '', stderr = '', failure, ended = false;
+    ], stdout, stderr);
+    let captured, failure;
     const timer = setTimeout(() => { failure = new Error(`VFS probe timed out at ${phase}`); child.kill('SIGKILL'); }, 20_000);
-    function resumeWhenStopped() {
-      if (failure || ended) return;
-      const state = spawnSync('ps', ['-o', 'stat=', '-p', String(child.pid)], {encoding: 'utf8'}).stdout?.trim();
-      if (state?.startsWith('T')) child.kill('SIGCONT');
-      else setTimeout(resumeWhenStopped, 5);
-    }
-    child.stdout.setEncoding('utf8').on('data', chunk => {
-      stdout += chunk;
-      if (!stdout.includes(`PAUSED ${phase}\n`) || captured) return;
-      try { captured = takeSnapshots(directory); }
-      catch (error) { failure = error; }
-      if (graceful && !failure) resumeWhenStopped();
-      else child.kill('SIGKILL');
-    });
-    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    const poll = setInterval(() => {
+      if (failure) return;
+      try {
+        if (!captured) {
+          if (!readProbeLog(stdout, true).split('\n').includes(`PAUSED ${phase}`)) return;
+          captured = takeSnapshots(directory);
+        }
+        if (graceful) {
+          const state = spawnSync('ps', ['-o', 'stat=', '-p', String(child.pid)],
+            {env: testEnv(), encoding: 'utf8', maxBuffer: maxProbeLogBytes, timeout: 1_000}).stdout?.trim();
+          if (!state?.startsWith('T')) return;
+        }
+        clearInterval(poll);
+        child.kill(graceful ? 'SIGCONT' : 'SIGKILL');
+      } catch (error) {
+        failure = error;
+        clearInterval(poll);
+        child.kill('SIGKILL');
+      }
+    }, 5);
     child.on('error', error => { failure = error; });
     child.on('close', (code, signal) => {
-      ended = true;
       clearTimeout(timer);
-      if (failure || !captured || (graceful ? code !== 0 : signal !== 'SIGKILL')) {
-        reject(failure ?? new Error(`VFS did not reach ${config.name}/${phase} (${code}/${signal})\n${stderr}`));
-      } else {
-        try {
-          // Recover the original project first, matching the kernel's explicit order.
-          const project = inspect(path.join(directory, names.project), 'project');
-          const history = inspect(path.join(directory, names.history), 'history');
-          const syncs = /^SYNC (\d+) (\d+) (\d+)$/m.exec(stdout);
-          assert.ok(syncs);
-          const [, rollbackJournal, other, superjournalUnlinks] = syncs.map(Number);
-          resolve({...captured, project, history, syncs: {rollbackJournal, other, superjournalUnlinks},
-            pairComplete: project.healthy && history.healthy && project.complete &&
+      clearInterval(poll);
+      try {
+        const output = readProbeLog(stdout), diagnostics = readProbeLog(stderr);
+        if (failure || !captured || (graceful ? code !== 0 : signal !== 'SIGKILL')) {
+          throw failure ?? Error(`VFS did not reach ${config.name}/${phase} (${code}/${signal})\n${diagnostics}`);
+        }
+        // Recover the original project first, matching the kernel's explicit order.
+        const project = inspect(path.join(directory, names.project), 'project');
+        const history = inspect(path.join(directory, names.history), 'history');
+        const syncs = /^SYNC (\d+) (\d+) (\d+)$/m.exec(output);
+        assert.ok(syncs);
+        const [, rollbackJournal, other, superjournalUnlinks] = syncs.map(Number);
+        resolve({...captured, project, history, syncs: {rollbackJournal, other, superjournalUnlinks},
+          pairComplete: project.healthy && history.healthy && project.complete &&
             history.complete && (config.projectOnly || project.generation === history.generation),
           ...(graceful ? {closedCopy: takeSnapshots(directory, 'closed').copy} : {})});
-        } catch (error) { reject(error); }
-      }
+      } catch (error) { reject(error); }
     });
   });
 }
@@ -264,9 +299,10 @@ function crashWorker(probe, directory, config, phase, changes, graceful = false)
 async function crash(temp, seedDir, variants, repeats) {
   const probe = path.join(temp, 'durability-probe');
   const source = fileURLToPath(new URL('./durability-vfs.c', import.meta.url));
-  const cc = spawnSync('cc', ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', source, '-lsqlite3', '-o', probe], {encoding: 'utf8'});
+  const processOptions = {env: testEnv(), encoding: 'utf8', maxBuffer: maxProbeLogBytes, timeout: 60_000};
+  const cc = spawnSync('cc', ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', source, '-lsqlite3', '-o', probe], processOptions);
   if (cc.status !== 0) throw Error(`Build the SQLite VFS probe with a C compiler and sqlite3 headers:\n${cc.stderr ?? cc.error}`);
-  const version = spawnSync(probe, ['--version'], {encoding: 'utf8'});
+  const version = spawnSync(probe, ['--version'], processOptions);
   assert.equal(version.status, 0);
   const changes = path.join(temp, 'changes.sql');
   const outcomes = [];
