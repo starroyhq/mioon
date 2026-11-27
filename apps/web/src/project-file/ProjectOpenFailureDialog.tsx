@@ -88,7 +88,7 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
     case PROJECT_READER_UPDATE_REQUIRED:
       title = t('projectFile.open.readerUpdate.title');
       body = t('projectFile.open.readerUpdate.body');
-      buttons = <>{close(t('common.close'), !props.onCheckUpdate)}{run('update', t('projectFile.open.newer.checkUpdate'), props.onCheckUpdate, true)}</>;
+      buttons = <>{close(t('native.acknowledge'), !props.onCheckUpdate)}{run('update', t('projectFile.open.newer.checkUpdate'), props.onCheckUpdate, true)}</>;
       break;
     case 'PROJECT_FORMAT_NEWER': {
       // Only the project file's own format is "this file"; history and cache are this computer's records.

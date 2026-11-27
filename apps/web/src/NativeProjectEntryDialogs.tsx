@@ -1,4 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../packages/contracts/src/project-reader-requirements.ts';
+import {useDesktopCheckUpdate} from './DesktopUpdate.tsx';
 import type {NativeProjectDesktopController} from './native-project-desktop-state.ts';
 import {projectLocationRisks} from './native-project-desktop-state.ts';
 import {NewProjectFileDialog} from './project-file/NewProjectFileDialog.tsx';
@@ -22,6 +24,7 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0, onHistoryRes
    * this presentation, decides whether the project window may start. */
   readonly onHistoryResolved?: (projectId: string) => void}) {
   const {t} = useI18n();
+  const checkUpdate = useDesktopCheckUpdate();
   const state = useDesktop(desktop);
   const handledFormIntent = useRef(0);
   useEffect(() => {
@@ -47,6 +50,10 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0, onHistoryRes
       onResolved={() => {desktop.closeFailure(); onHistoryResolved?.(historyProjectId);}} />
       : failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action} notice={failure.entryExpired ? t('nativeEntry.requestExpired') : state.selectionInvalid ? t(failure.reselect === 'open-file' ? 'nativeEntry.copySelectionExpired' : 'nativeEntry.selectionExpired') : undefined}
       onClose={desktop.closeFailure}
+      onCheckUpdate={failure.issue.code === PROJECT_READER_UPDATE_REQUIRED && checkUpdate ? () => {
+        desktop.closeFailure();
+        checkUpdate();
+      } : undefined}
       onOpenSystemSettings={enabled && capabilities?.help ? () => {void desktop.openPrivacySettings();} : undefined}
       onChooseLocation={failure.issue.code === 'PROJECT_ACCESS_DENIED' && 'context' in failure.issue && failure.issue.context === 'create' && enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}
       onRetry={enabled ? () => {void desktop.retryFailure();} : undefined}
