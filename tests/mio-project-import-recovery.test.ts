@@ -6,6 +6,14 @@ import path from 'node:path';
 import {sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioAssembly} from '../packages/business/src/agent/mio-assembly.ts';
+import {readMioProjectImportDependencies} from '../packages/business/src/agent/mio-project-import-dependencies.ts';
+import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {encodeProjectDocument} from '../packages/business/src/project-versions/codec.ts';
+import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
+import {storeManualVersionInside} from '../packages/business/src/project-versions/repository.ts';
+import {applySequenceEditHistory, readSequenceEditHistory} from '../packages/business/src/sequence-edit.ts';
+import {newTimelineRecord} from '../packages/business/src/timeline-new-record.ts';
 import {MIO_PROJECT_FILE_IMPORT_TOOL,MIO_PROJECT_FILE_IMPORT_OPERATION,mioProjectFileImportResultSchema} from '../packages/contracts/src/mio-project-import.ts';
 import {protocols,object,fixture,plan,imports,receipts} from './helpers/mio-project-import-tools-fixture.ts';
 
@@ -84,6 +92,65 @@ test('dedicated compensation removes only the untouched row and cannot revive it
   await assert.rejects(f.port.execute(original,{beforeEffect(){},recordCreatedInside(){assert.fail('A retired request must not create an asset');}}));
   const lookup=await f.port.lookup(original,{beforeEffect(){}});assert.equal(lookup.outcome,'retired');lookup.assertCurrent();
   assert.equal(imports(f).length,0);assert.deepEqual(receipts(f),before);assert.equal(f.creations.length,1);
+});
+
+test('native import undo requires no live or restorable clip reference and retains the source file', async t => {
+  const f = await fixture(t, 'responses', {targetFormat: FORMAT5_PROJECT_SCHEMA_VERSION});
+  const createdAt = new Date().toISOString(), sequenceNodeId = randomUUID();
+  const template = newTimelineRecord(f.projectId, {fps: 30, width: 1080, height: 1920}, () => createdAt);
+  f.store.tx(() => {
+    f.store.put('nodes', {id: sequenceNodeId, projectId: f.projectId, type: 'sequence_root', name: 'Film', position: {x: 0, y: 0}, createdAt});
+    f.store.put('timelines', {...template, mainTrack: {trackId: template.tracks[0]!.id, sequenceNodeId}});
+    f.store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,1,?)')
+      .run(template.id, f.projectId, sequenceNodeId, JSON.stringify({version: 1, board: [], track: []}));
+  });
+  const edit = async (operation: string, action: Record<string, unknown>) => {
+    const {envelope, planDigest} = object(await f.services.call(operation, {projectId: f.projectId, ...action}));
+    const receipt = object(await f.services.call('sequence.action.commit', {projectId: f.projectId, envelope, expectedPlanDigest: planDigest}));
+    assert.equal(receipt.status, 'applied');
+  };
+  await edit('sequence.board.edit', {kind: 'board-shot-append', name: 'Unrelated placeholder'});
+  await edit('sequence.timeline.edit', {kind: 'track-add', trackKind: 'video', name: 'Overlay'});
+  f.store.tx(() => {
+    const beforeImport = captureProjectDocumentInside(f.store);
+    storeManualVersionInside(f.store.db, f.projectId, 'Before import', beforeImport.evidence.contentSequence, encodeProjectDocument(beforeImport));
+  });
+  plan(f, 'responses');
+  const done = await f.settle((await f.send()).run.id);
+  const current = () => f.runtime.get(f.projectId, done.run.id);
+  const change = () => current().changes.find(item => item.operation === MIO_PROJECT_FILE_IMPORT_OPERATION)!;
+  const assetId = change().targets[0]!.id;
+  const proof = () => readMioProjectImportDependencies(f.store, assetId);
+  const timeline = () => readFormat5TimelineRecord(f.store.db, 'project')!;
+  assert.deepEqual(proof(), {status: 'clear'});
+  assert.equal(change().undoDisposition, 'undo');
+
+  const overlay = timeline().tracks.find(item => item.name === 'Overlay');
+  assert.ok(overlay);
+  await edit('sequence.timeline.edit', {kind: 'insert-asset', assetId, trackId: overlay.id, startFrame: 0});
+  assert.ok(timeline().clips.some(item => item.assetId === assetId && item.trackId === overlay.id));
+  assert.deepEqual(proof(), {status: 'referenced', source: 'project.timeline_clips.data'});
+  await assert.rejects(f.action(current(), 'undo_change', {changeId: change().id}), {code: 'AGENT_TASK_TARGET_CHANGED'});
+
+  const history = readSequenceEditHistory(f.store);
+  assert.ok(history.undo);
+  assert.equal(applySequenceEditHistory(f.store, 'undo', {projectId: f.projectId, origin: 'user',
+    requestId: randomUUID(), actionId: history.undo.actionId,
+    expected: {position: history.position, revision: history.revision}}).status, 'applied');
+  assert.ok(!timeline().clips.some(item => item.assetId === assetId));
+  assert.deepEqual(proof(), {status: 'referenced', source: 'main.editor_history_entries.afterPatch'});
+  assert.equal(change().undoDisposition, 'blocked');
+  await assert.rejects(f.action(current(), 'undo_change', {changeId: change().id}), {code: 'AGENT_TASK_TARGET_CHANGED'});
+  assert.ok(f.store.get('assets', assetId));
+
+  // An unrelated edit discards that redo branch. Its receipt is retained,
+  // but carries no restorable clip data.
+  await edit('sequence.timeline.edit', {kind: 'track-update', trackId: overlay.id, patch: {name: 'Renamed overlay'}});
+  assert.deepEqual(proof(), {status: 'clear'});
+  await f.action(current(), 'undo_change', {changeId: change().id});
+  assert.equal(change().status, 'reverted');
+  assert.equal(f.store.get('assets', assetId), null);
+  assert.deepEqual(readFileSync(f.source), f.sourceBytes);
 });
 
 for(const obstacle of ['claim','modified','consumer'] as const)test('compensation preserves an imported row with a later '+obstacle,async t=>{

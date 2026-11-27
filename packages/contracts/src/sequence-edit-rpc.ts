@@ -8,7 +8,7 @@
  * including oldest-entry eviction and `atEarliest`.
  */
 import {z} from 'zod';
-import {sequenceEditClipPropertiesIntentSchema, sequenceEditDialogueIntentSchema, sequenceEditEnvelopeSchema,
+import {sequenceEditClipPropertiesIntentSchema, sequenceEditDialogueConflictSchema, sequenceEditDialogueIntentSchema, sequenceEditEnvelopeSchema,
   sequenceEditFormatIntentSchema, sequenceEditPrevisIntentSchema, sequenceEditReferenceIntentSchema,
   sequenceEditSeparateSoundIntentSchema, sequenceEditSubjectIntentSchema, sequenceEditSubtitlesIntentSchema,
   sequenceEditTrackIntentSchema, sequenceEditGenerateIntentSchema} from './sequence-edit.ts';
@@ -92,6 +92,11 @@ export const sequencePreviewResponseSchema = z.object({
   envelope: sequenceEditEnvelopeSchema,
   planDigest: digest,
   warnings: z.array(z.object({code: z.string().min(1).max(80)}).passthrough()).max(500),
+}).strict();
+export const sequencePreviewFailureResponseSchema = z.object({
+  ok: z.literal(false), code: z.string(), ids: z.array(uuid),
+  reason: z.string().optional(), message: z.string().optional(),
+  dialogueConflict: sequenceEditDialogueConflictSchema.optional(),
 }).strict();
 export const sequenceEditRpcSchemas = Object.freeze({
   'sequence.preview': sequencePreviewRequestSchema,

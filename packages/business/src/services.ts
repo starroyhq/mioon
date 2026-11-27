@@ -74,6 +74,7 @@ import {createTimelineExportAdmissionServices} from './timeline-export-admission
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {assertSequenceSpeedMedia} from './format5-sequence-sync.ts';
 import {previewMioSequenceAction,commitMioSequenceAction} from './format5-mio-sequence.ts';
+import {sequenceEditFailureMessage} from './format5-sequence-preview-errors.ts';
 import {mioSequenceEditSchemas} from '../../contracts/src/mio-sequence.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
 import type {MioSequencePlan} from './format5-mio-sequence.ts';
@@ -892,7 +893,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     const plan={envelope:input.envelope,planDigest:stringValue(input.expectedPlanDigest),summary:{action:'commit',affected:[],counts:{nodes:0,edges:0,clips:0,other:0},warnings:0}} as MioSequencePlan;
     const fence=await assertSequenceSpeedMedia(store,plan.envelope,sequenceMediaOptions(context),plan.planDigest);
     fence?.();
-    return commitMioSequenceAction(store,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
+    const receipt=commitMioSequenceAction(store,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
+    const message=receipt.status==='not_applied'&&receipt.code?sequenceEditFailureMessage(receipt.code,receipt.failure?.reason):undefined;
+    return message?{...receipt,message}:receipt;
   },
   'sequence.commit':async(input: ServiceRow,context: ServiceHandlerContext={})=>{
     assertExternalSpeedOrigin(input.envelope);

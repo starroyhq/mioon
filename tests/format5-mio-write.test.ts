@@ -17,6 +17,8 @@ import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
+import type {TaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import type {AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
@@ -27,6 +29,7 @@ import {authorizeTestScope, createTestAuthorizations} from './helpers/agent-auth
 import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import {putTestAgentConfiguration, testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {mioTestPolicy} from './helpers/mio-runtime-fixture.ts';
+import {call, output} from './helpers/agent-task-runtime-fixture.ts';
 import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createHash, randomUUID} from 'node:crypto';
 import {format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
@@ -110,7 +113,9 @@ export function fixture(t: test.TestContext, {withMioRuntime = false, format6 = 
 }
 
 import {previewMioSequenceAction, commitMioSequenceAction, prepareMioSequenceUndo, applyMioSequenceUndo} from '../packages/business/src/format5-mio-sequence.ts';
+import type {MioSequencePlan} from '../packages/business/src/format5-mio-sequence.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {readSequenceEditHistory} from '../packages/business/src/sequence-edit.ts';
 import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
@@ -133,6 +138,84 @@ const previsNode = (store: ProjectStore) => store.db.prepare(`SELECT id,data FRO
   .all(projectId).flatMap((row: any) => { try { return [{id: String(row.id), value: JSON.parse(String(row.data))}]; } catch { return []; } });
 
 const req=(n:number)=>`mt-write-request-${String(n).padStart(4,'0')}`;
+
+test('Mio sends native clip and cue counts frozen at the start of a format-5 run', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const addSubtitle = (text: string, startFrame: number) => {
+    const plan = previewMioSequenceAction(store, projectId, randomUUID(), {kind: 'subtitles',
+      edits: [{kind: 'add', cue: {text, startFrame, durationFrames: 10}}]}, {origin: 'user'});
+    assert.equal(commitMioSequenceAction(store, plan).status, 'applied');
+  };
+  const split = previewMioSequenceAction(store, projectId, randomUUID(),
+    {kind: 'split', clipId: clipA, offsetFrames: 10}, {origin: 'user'});
+  assert.equal(commitMioSequenceAction(store, split).status, 'applied');
+  addSubtitle('第一行', 0);
+  const rows = store.db.prepare(`SELECT json_type(data,'$.clips') AS headerClips,
+    json_type(data,'$.subtitles.cues') AS headerCues,
+    (SELECT count(*) FROM project.timeline_clips WHERE timelineId=t.id) AS clips,
+    (SELECT count(*) FROM project.timeline_cues WHERE timelineId=t.id) AS cues
+    FROM project.timelines t WHERE t.id=?`).get(timelineId);
+  assert.deepEqual({...rows}, {headerClips: null, headerCues: null, clips: 4, cues: 1});
+
+  const totalChanges = () => store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  const before = totalChanges();
+  store.db.exec('PRAGMA query_only=ON');
+  try {
+    const {clips, subtitles} = collectTaskProjectOverview(store, projectId).counts;
+    assert.deepEqual({clips, subtitles}, {clips: 4, subtitles: 1});
+    assert.equal(totalChanges(), before);
+  } finally {store.db.exec('PRAGMA query_only=OFF');}
+
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy);
+  const tools = createAgentTaskTools({store, services, journal});
+  const authorizations = createTestAuthorizations(store, settings);
+  const counts: {clips: number; subtitles: number}[] = [];
+  const gateway: TaskGateway = async function* (request): ReturnType<TaskGateway> {
+    request.beforeSubmit?.();
+    const {messages} = JSON.parse(request.body) as {messages: {content?: unknown}[]};
+    const notice = messages.map(message => message.content).find(content =>
+      typeof content === 'string' && content.includes('"kind":"mio.project.overview"'));
+    assert.ok(typeof notice === 'string');
+    const overview = JSON.parse(notice.slice(notice.indexOf('\n') + 1)) as {data: TaskProjectOverview};
+    const {clips, subtitles} = overview.data.counts;
+    counts.push({clips, subtitles});
+    if (counts.length === 1) {
+      addSubtitle('发送之后添加的一行', 45);
+      const call = {id: 'read_native_timeline', name: 'mioon_sequence_inspect', arguments: {}};
+      yield {type: 'done', output: {text: '', toolCalls: [call], providerOutput: {role: 'assistant',
+        content: null, tool_calls: [{id: call.id, type: 'function',
+          function: {name: call.name, arguments: JSON.stringify(call.arguments)}}]}}};
+      return;
+    }
+    const text = '已读取项目。';
+    yield {type: 'done', output: {text, toolCalls: [], providerOutput: {role: 'assistant', content: text}}};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, tools, agentSettings: settings,
+    authorizations, gateway, selfPort: () => 4318});
+  try {
+    await putTestAgentConfiguration(settings, {expectedRevision: 0,
+      configuration: defaultTestAgentConfiguration('chat_completions'),
+      secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_OVERVIEW'}});
+    await authorizeTestScope(authorizations, 'project_agent');
+    for (const text of ['读取第一次发送时的项目概览', '读取现在的项目概览']) {
+      const started = await runtime.send(projectId, {requestId: randomUUID(), text,
+        expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+      await runtime.drain();
+      const finished = runtime.get(projectId, started.run.id);
+      assert.equal(finished.run.status, 'completed',
+        JSON.stringify(finished.steps.map(({kind, status, error}) => ({kind, status, error}))));
+    }
+    assert.deepEqual(counts, [{clips: 4, subtitles: 1}, {clips: 4, subtitles: 1}, {clips: 4, subtitles: 2}]);
+  } finally {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  }
+});
 
 test('Mio reports a foreign unadopted source version without editing the project', async t => {
   const store = fixture(t, {withMioRuntime: true});
@@ -277,6 +360,142 @@ test('FR-A clip properties are opened as a Mio action through the same envelope'
   const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(7),receipt.actionId));
   assert.equal(undone.status,'applied');
   assert.equal((store.get('timelines',timelineId) as any).clips.find((clip: any)=>clip.id===clipA).name,'A');
+});
+
+test('Mio waits for approval to copy a clip as a new shot and compensates it in one step', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy);
+  const tools = createAgentTaskTools({store, services, journal});
+  const authorizations = createTestAuthorizations(store, settings);
+  const toolName = 'mioon_sequence_clip_edit';
+  const copy = call(toolName, {kind: 'copy-as-new-shot', clipId: clipA});
+  const rounds = [[call('mioon_tools_load', {names: [toolName]})], [copy]];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.();
+    yield {type: 'done', output: output('chat_completions', rounds.shift())};
+  };
+  const preparedPlans: MioSequencePlan[] = [];
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, authorizations, gateway,
+    agentSettings: settings, selfPort: () => 4318, tools: {...tools, prepare(args) {
+      const prepared = tools.prepare(args);
+      if (prepared.sequence?.action === 'copy-as-new-shot') preparedPlans.push(prepared.sequence.plan as MioSequencePlan);
+      return prepared;
+    }}});
+  t.after(async () => {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  });
+  await putTestAgentConfiguration(settings, {expectedRevision: 0,
+    configuration: defaultTestAgentConfiguration('chat_completions'),
+    secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_COPY_SHOT'}});
+  await authorizeTestScope(authorizations, 'project_agent');
+  const clips = () => readFormat5TimelineRecord(store.db, 'project')?.clips;
+  const before = clips();
+  const started = await runtime.send(projectId, {requestId: randomUUID(), text: '把主轨片段复制成新镜头',
+    locale: 'zh-Hans', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+  await runtime.drain();
+  const awaiting = runtime.get(projectId, started.run.id);
+  const step = awaiting.steps.find(item => item.toolCall?.id === copy.id);
+  assert.ok(step);
+  assert.equal(step.status, 'awaiting_approval');
+  assert.equal(step.tier, 'local_reversible');
+  assert.deepEqual(clips(), before);
+  assert.equal(preparedPlans.length, 1);
+  await runtime.action(projectId, started.run.id, {requestId: randomUUID(), action: 'approve',
+    expectedRevision: awaiting.run.revision, stepId: step.id});
+  await runtime.drain();
+  const after = runtime.get(projectId, started.run.id);
+  assert.equal(after.steps.find(item => item.id === step.id)?.status, 'completed');
+  const audit = after.changes.find(change => change.stepId === step.id);
+  assert.ok(audit);
+  assert.equal(audit.reversible, false, 'only the unified sequence history can compensate the copy');
+  assert.equal(preparedPlans.length, 2);
+  const edits = preparedPlans.map(plan => {
+    assert.equal(plan.envelope.requestId, step.id);
+    const operation = plan.envelope.intents?.[0]?.operation;
+    assert.ok(operation?.kind === 'track' && operation.edit.kind === 'copy-as-new-shot');
+    return operation.edit;
+  });
+  assert.deepEqual(edits[0], edits[1]);
+  const created = clips()?.find(clip => clip.id === edits[0]!.newClipId);
+  assert.ok(created);
+  assert.equal(created.sequenceSource?.nodeId, edits[0]!.copyNodeId);
+  assert.equal(created.startFrame, 30);
+  const history = readSequenceEditHistory(store, 'mio');
+  assert.equal(history.undo?.operation, 'timeline.clip.copy-as-new-shot');
+  assert.equal(history.undo?.origin, 'mio');
+  const replay = commitMioSequenceAction(store, preparedPlans[1]!);
+  assert.equal(replay.actionId, history.undo?.actionId);
+  assert.equal(clips()?.length, (before?.length ?? 0) + 1);
+  const undone = applyMioSequenceUndo(store, prepareMioSequenceUndo(store, projectId, randomUUID(), replay.actionId));
+  assert.equal(undone.status, 'applied');
+  assert.deepEqual(clips(), before);
+  assert.equal(readSequenceEditHistory(store, 'mio').position, history.position - 1);
+});
+
+test('Mio reports the subtitle blocking a copy as a new shot before approval', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const blockerText = '门外广播占了字幕。';
+  const setup = (action: Parameters<typeof previewMioSequenceAction>[3]) =>
+    commitMioSequenceAction(store, previewMioSequenceAction(store, projectId, randomUUID(), action, {origin: 'user'}));
+  setup({kind: 'dialogue', shotId: shotA, edits: [{kind: 'add', text: '请进。'}, {kind: 'add', text: '等等我。'}]});
+  setup({kind: 'dialogue', shotId: shotB, edits: [{kind: 'add', text: blockerText}]});
+  const blocker = readFormat5TimelineRecord(store.db, 'project')?.subtitles?.cues.find(cue => cue.dialogueRef?.shotId === shotB);
+  assert.ok(blocker);
+  setup({kind: 'delete-node', nodeId: shotB});
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  const history = readSequenceEditHistory(store, 'mio');
+
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy);
+  const tools = createAgentTaskTools({store, services, journal});
+  const authorizations = createTestAuthorizations(store, settings);
+  const toolName = 'mioon_sequence_clip_edit';
+  const copy = call(toolName, {kind: 'copy-as-new-shot', clipId: clipA});
+  const rounds = [[call('mioon_tools_load', {names: [toolName]})], [copy]];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.();
+    yield {type: 'done', output: output('chat_completions', rounds.shift())};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, authorizations, gateway,
+    agentSettings: settings, selfPort: () => 4318, tools});
+  t.after(async () => {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  });
+  await putTestAgentConfiguration(settings, {expectedRevision: 0,
+    configuration: defaultTestAgentConfiguration('chat_completions'),
+    secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_COPY_SUBTITLE_CONFLICT'}});
+  await authorizeTestScope(authorizations, 'project_agent');
+  const started = await runtime.send(projectId, {requestId: randomUUID(), text: '把第一段复制成新镜头',
+    locale: 'zh-Hans', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+  await runtime.drain();
+  const snapshot = runtime.get(projectId, started.run.id);
+  const step = snapshot.steps.find(item => item.toolCall?.id === copy.id);
+  assert.ok(step?.error);
+  assert.equal(step.status, 'failed');
+  assert.equal(snapshot.run.status, 'failed');
+  assert.equal(step.error.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.match(step.error.message, /副本的台词放不进去/u);
+  assert.ok(step.error.message.includes(blockerText));
+  assert.match(step.error.message, /(?:挪开|移开).*删掉/u);
+  assert.deepEqual(step.result, {error: {...step.error, details: {dialogueConflict: {
+    requiredFrames: 2, availableFrames: 0, blockerCount: 1,
+    blockers: [{cueId: blocker.id, startFrame: blocker.startFrame,
+      endFrame: blocker.startFrame + blocker.durationFrames, textExcerpt: blockerText}],
+  }}}});
+  assert.deepEqual(snapshot.changes, []);
+  assert.deepEqual(readFormat5TimelineRecord(store.db, 'project'), timeline);
+  assert.deepEqual(readSequenceEditHistory(store, 'mio'), history);
 });
 
 test('D5: user undo sees the Mio stack as blocked and Mio undo cannot cross a user action', async t => {
