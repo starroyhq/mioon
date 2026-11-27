@@ -3,6 +3,7 @@ import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_PROFILE_ID, getTimelineSubtitleIssue, isTimelineMutationResponse } from '@mioon/contracts';
+import { FORMAT5_LIMITS, isFormat5Timeline, type Format5Timeline } from '@mioon/contracts/project-format5';
 import { taskInputKey } from './edit-task-client.ts';
 
 export { TIMELINE_SUBTITLE_LIMITS };
@@ -13,6 +14,7 @@ export interface SubtitleTimeline {
   readonly projectId: string;
   readonly revision: number;
   readonly durationFrames: number;
+  readonly mainTrack?: Format5Timeline['mainTrack'];
   readonly subtitles?: { readonly cues?: readonly SubtitleCue[] } | null;
 }
 export interface SubtitleCueFields { text: string; startFrame: number | string; durationFrames: number | string }
@@ -88,6 +90,8 @@ export interface SubtitleControllerOptions {
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const fields = (cue: { readonly text?: unknown; readonly startFrame?: unknown; readonly durationFrames?: unknown } | null | undefined): { text?: unknown; startFrame?: unknown; durationFrames?: unknown } | null => cue ? { text: cue.text, startFrame: cue.startFrame, durationFrames: cue.durationFrames } : null;
 const cues = (timeline: SubtitleTimeline | null | undefined): readonly SubtitleCue[] => timeline?.subtitles?.cues || [];
+const nativeSubtitleLimits = { cues: FORMAT5_LIMITS.subtitleCues, durationFrames: FORMAT5_LIMITS.durationFrames };
+const subtitleLimits = (timeline: SubtitleTimeline) => timeline.mainTrack ? nativeSubtitleLimits : TIMELINE_SUBTITLE_LIMITS;
 const initial = (): SubtitleState => ({ scope: null, projectId: null, timeline: null, cueId: null, selection: 0, draft: null, baseRevision: null, dirty: false, conflict: false, submitting: false, uncertain: null, connected: false, pending: true, error: '', errorMessage: null });
 const protocolError = (): Error => Object.assign(new Error('字幕确认与原请求不一致；草稿仍保留，请在任务中心核对。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
@@ -97,14 +101,19 @@ function subtitleIssue(value: unknown): SubtitleIssue | null {
 }
 function subtitleDraftValidation(state: SubtitleState | null | undefined): SubtitleDraftValidation | null {
   if (!state?.draft || !state.timeline) return { message: '请先选择字幕或在播放头处新增。', displayMessage: message('subtitles.error.select') };
-  const draft = state.draft;
+  const { draft, timeline } = state;
   if (draft.startFrame === '' || draft.durationFrames === '') return { message: '开始帧与持续帧数必须填写整数。', displayMessage: message('subtitles.error.integer') };
   // The placeholder exists only for shared draft validation, never in an RPC.
-  const ids = new Set(cues(state.timeline).map(cue => cue.id));
+  const ids = new Set(cues(timeline).map(cue => cue.id));
   let placeholder = 0, draftId: string;
   do { draftId = `00000000-0000-4000-8000-${String(placeholder++).padStart(12, '0')}`; } while (ids.has(draftId));
   const candidate = { id: state.cueId || draftId, ...fields(draft), startFrame: Number(draft.startFrame), durationFrames: Number(draft.durationFrames) };
-  return subtitleIssue(getTimelineSubtitleIssue({ profileId: TIMELINE_SUBTITLE_PROFILE_ID, cues: [...cues(state.timeline).filter(cue => cue.id !== state.cueId), candidate] }, state.timeline.durationFrames));
+  const siblings = cues(timeline).filter(cue => cue.id !== state.cueId);
+  // Drafts validate editable fields. The native timeline separately validates
+  // each cue's anchor and dialogue reference against its actual rows.
+  const draftCues = timeline.mainTrack ? siblings.map(cue => ({id: cue.id, ...fields(cue)})) : siblings;
+  return subtitleIssue(getTimelineSubtitleIssue({ profileId: TIMELINE_SUBTITLE_PROFILE_ID, cues: [...draftCues, candidate] },
+    timeline.durationFrames, subtitleLimits(timeline)));
 }
 
 export const subtitleDraftIssue = (state: SubtitleState | null | undefined): string => subtitleDraftValidation(state)?.message || '';
@@ -127,13 +136,26 @@ export const subtitleCanSave = (state: SubtitleState | null | undefined): boolea
 export function subtitleAddMessage(timeline: SubtitleTimeline | null | undefined, frame: number, blocked = false): DisplayMessage | null {
   if (blocked) return message('subtitles.error.pending');
   if (!timeline || timeline.durationFrames < 1) return message('subtitles.error.mediaFirst');
-  if (cues(timeline).length >= TIMELINE_SUBTITLE_LIMITS.cues) return message('subtitles.error.limit');
+  if (cues(timeline).length >= subtitleLimits(timeline).cues) return message('subtitles.error.limit');
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= timeline.durationFrames) return message('subtitles.error.playhead');
   return null;
 }
 export const subtitleAddReason = (timeline: SubtitleTimeline | null | undefined, frame: number, blocked = false): string => renderMessage('zh-Hans', subtitleAddMessage(timeline, frame, blocked));
-export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined, timeline: SubtitleTimeline | null | undefined): boolean {
-  if (!intent || timeline?.id !== intent.timelineId || !isTimelineMutationResponse(intent.operation, intent.input, timeline)) return false;
+export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined,
+  timeline: SubtitleTimeline | null | undefined, native = false): boolean {
+  if (!intent || !timeline || timeline.id !== intent.timelineId) return false;
+  if (native) {
+    const { expectedRevision, cueId, patch } = intent.input;
+    if (!intent.projectId || expectedRevision === null || expectedRevision < 1 || timeline.revision !== expectedRevision + 1
+      || !isFormat5Timeline(timeline, {projectId: intent.projectId})) return false;
+    const cue = cues(timeline).find(row => row.id === cueId);
+    if (intent.operation === 'timeline.subtitle.remove') return Boolean(cueId && !cue);
+    if (intent.operation === 'timeline.subtitle.update') return Boolean(cue && patch
+      && (patch.text === undefined || cue.text === patch.text)
+      && (patch.startFrame === undefined || cue.startFrame === patch.startFrame)
+      && (patch.durationFrames === undefined || cue.durationFrames === patch.durationFrames));
+    if (intent.operation !== 'timeline.subtitle.add') return false;
+  } else if (!isTimelineMutationResponse(intent.operation, intent.input, timeline)) return false;
   if (intent.operation !== 'timeline.subtitle.add') return true;
   const added = cues(timeline).filter(cue => !intent.previousIds.includes(cue.id));
   if (added.length !== 1) return false;
@@ -158,7 +180,12 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
     const timeline = state.timeline, draft = state.draft;
     if (!timeline || !draft) return null;
     const patchFields = { ...fields(draft), startFrame: Number(draft.startFrame), durationFrames: Number(draft.durationFrames) };
-    const input: SubtitleMutationInput = { projectId: state.projectId, expectedRevision: state.baseRevision, requestId: createRequestId(), ...(removing ? { cueId: state.cueId } : state.cueId ? { cueId: state.cueId, patch: patchFields } : patchFields) };
+    const existing = cues(timeline).find(cue => cue.id === state.cueId);
+    // A native start-frame patch recalculates the anchor. Preserve it when
+    // editing only text or duration, including for detached subtitles.
+    const patch = timeline.mainTrack && existing?.startFrame === patchFields.startFrame
+      ? {text: patchFields.text, durationFrames: patchFields.durationFrames} : patchFields;
+    const input: SubtitleMutationInput = { projectId: state.projectId, expectedRevision: state.baseRevision, requestId: createRequestId(), ...(removing ? { cueId: state.cueId } : state.cueId ? { cueId: state.cueId, patch } : patchFields) };
     if (input.patch) Object.freeze(input.patch);
     const intent: SubtitleIntent = Object.freeze({ scope: state.scope, projectId: state.projectId, timelineId: timeline.id, selection: state.selection, serial, operation, input: Object.freeze(input), previousIds: Object.freeze(cues(timeline).map(cue => cue.id)) });
     emit({ submitting: true, error: '', errorMessage: null });
@@ -168,7 +195,7 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       if (!owns(intent)) return null;
       if (result?.status === 'applied') {
         const saved = result.timeline;
-        if (!subtitleAcknowledged(intent, saved as SubtitleTimeline)) throw protocolError();
+        if (!subtitleAcknowledged(intent, saved as SubtitleTimeline, Boolean(timeline.mainTrack))) throw protocolError();
         const applied = saved as SubtitleTimeline, current = state.timeline;
         if (!current) return null;
         if (current.revision > applied.revision) { emit({ submitting: false, conflict: true, error: '时间线已有更新版本；请核对后放弃草稿并载入最新字幕。', errorMessage: message('subtitles.error.newer') }); return applied; }

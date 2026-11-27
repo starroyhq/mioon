@@ -18,7 +18,7 @@ export interface ProjectEntryState extends LauncherState {
   readonly pendingOpenProjectId?: string | null;
   readonly createdProjectId: string | null;
 }
-interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number; readonly contextVersion: number; readonly external: string }
+interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number; readonly contextVersion: number; readonly external: string; readonly directOpen: boolean }
 interface Permit {
   readonly token: string;
   readonly projectId: string;
@@ -26,6 +26,7 @@ interface Permit {
   readonly backendId: string;
   readonly localVersion: number;
   readonly owner: number;
+  readonly directOpen: boolean;
   consumed: boolean;
   result?: ProjectWindowOpenResult;
 }
@@ -40,7 +41,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   probeHistory,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
 }: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; identity?: ProjectEntryIdentityOwner | null; manageIdentityLifecycle?: boolean;
-  explicitProjectId?: string | null; desktopClient?: ProjectEntriesDesktopBridge | null;
+  explicitProjectId?: string | null; desktopClient?: Pick<ProjectEntriesDesktopBridge, 'openRecent'> | null;
   readAdditionalSnapshot?: () => {dirty: boolean; busy: boolean; unknown: boolean; identity: readonly unknown[]};
   onNativeOpenError?: (error: unknown, projectId: string) => void;
   onNativeUpgradeRequired?: (result: Extract<Awaited<ReturnType<ProjectEntriesDesktopBridge['openRecent']>>, {status: 'upgrade-required'}>) => void;
@@ -63,7 +64,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   const emit = (patch: Partial<ProjectEntryState> = {}) => { state = Object.freeze({ ...state, ...patch, version: state.version + 1 }); if (active) onChange(state); };
   const alive = (owner: number) => active && lifetime === owner;
   const ownerCurrent = () => active && !context.quitting && !context.leaseRevoked && !context.settingsModalOpen && !identity?.getState().identityBlocked && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
-  const available = () => ownerCurrent() && visible && state.shown && (context.role !== 'launcher' || context.editorCount === 0) && !permit && !state.creating && !state.createUnknown && !state.openUnknown;
+  const available = (directOpen = false) => ownerCurrent() && visible && (state.shown || directOpen) && (context.role !== 'launcher' || context.editorCount === 0) && !permit && !state.creating && !state.createUnknown && !state.openUnknown;
   const homeNavigationBlocked = () => nativeActionMetadata.busy || nativeActionMetadata.unknown && !nativeActionMetadata.allowOpen;
   const interact = () => { intent++; interactionSerial++; autoConsumed = true; };
   function reportCreate(next: LauncherCreateMetadata) {
@@ -73,12 +74,12 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (permit || state.creating) return;
     metadata = Object.freeze({ ...next }); localVersion++;
   }
-  const departureCurrent = (ticket: Departure) => alive(ticket.owner) && available() && !metadata.busy &&
+  const departureCurrent = (ticket: Departure) => alive(ticket.owner) && available(ticket.directOpen) && !metadata.busy &&
     ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.intent === intent && ticket.contextVersion === contextVersion && ticket.external === JSON.stringify(readAdditionalSnapshot().identity);
-  async function departure(message: string | DisplayMessage = msg('projects.keepCreateOpen'), preserveDraft = false): Promise<Departure | null> {
-    if (!available() || metadata.busy) return null;
-    const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version, contextVersion, external: JSON.stringify(readAdditionalSnapshot().identity) });
-    if (!preserveDraft && (metadata.dirty || readAdditionalSnapshot().dirty) && !await confirm(message)) return null;
+  async function departure(message: string | DisplayMessage = msg('projects.keepCreateOpen'), directOpen = false): Promise<Departure | null> {
+    if (!available(directOpen) || metadata.busy) return null;
+    const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version, contextVersion, external: JSON.stringify(readAdditionalSnapshot().identity), directOpen });
+    if ((metadata.dirty || readAdditionalSnapshot().dirty) && !await confirm(message)) return null;
     return departureCurrent(ticket) ? ticket : null;
   }
   function settle(attempt: Permit, result: ProjectWindowOpenResult, presentIssue = true): boolean {
@@ -88,24 +89,27 @@ export function createProjectEntryController({ client, bridge, context: initialC
     const present = ownerCurrent(), cancelled = result.reason === 'cancelled';
     const showIssue = present && presentIssue && result.reason === 'unavailable' && desktopClient && onNativeOpenError;
     const showInline = present && !result.ok && !cancelled && !showIssue;
+    const editorPicker = present && context.role === 'editor' && (result.ok || attempt.directOpen)
+      ? {shown: showInline, ...(showInline ? {mode: 'open' as const} : {})} : {};
     emit({ sealed: false, openUnknown: false, openingProjectId: showInline ? attempt.projectId : null, pendingOpenProjectId: null,
       phase: showInline ? 'error' : 'home',
       error: showInline ? msg(result.reason === 'busy' ? 'projects.checkCurrentRequest' : 'projects.windowOpenFailed') : '',
       notice: result.ok ? (result.targetPhase === 'failed' ? msg('projects.targetWindowFailed') : '') : state.notice,
-      ...(present && result.ok && context.role === 'editor' ? { shown: false } : {}) });
+      ...editorPicker });
     if (showIssue) showIssue(result.failure ?? {code: 'OPEN_UNAVAILABLE'}, attempt.projectId);
     return result.ok;
   }
   function pendingEntry() {
     const pending = context.entryPending;
-    if (!pending || !ownerCurrent() || !visible || !state.shown) return undefined;
-    if (pending.kind === 'selected') return desktopClient ? pending : undefined;
+    if (!pending || !ownerCurrent() || !visible) return undefined;
+    if (pending.kind === 'selected') return desktopClient && state.shown ? pending : undefined;
     return permit?.consumed && alive(permit.owner) && pending.entryToken === permit.token &&
       pending.projectId === permit.projectId ? pending : undefined;
   }
   function updatePending() {
     const pendingOpenProjectId = pendingEntry()?.projectId ?? null;
-    if (pendingOpenProjectId !== state.pendingOpenProjectId) emit({pendingOpenProjectId});
+    if (pendingOpenProjectId !== state.pendingOpenProjectId) emit({pendingOpenProjectId,
+      ...(pendingOpenProjectId && !state.shown ? {shown: true, mode: 'open'} : {})});
   }
   function updateContext(next: ProjectWindowContext) {
     if (next.contextId !== context.contextId || next.backendId !== context.backendId || next.windowId !== context.windowId || next.role !== context.role) return;
@@ -121,11 +125,11 @@ export function createProjectEntryController({ client, bridge, context: initialC
       if (next.entryMode) void show(next.entryMode);
     }
   }
-  async function dispatchOpen(projectId: string, remember: boolean): Promise<boolean> {
+  async function dispatchOpen(projectId: string, remember: boolean, directOpen = false): Promise<boolean> {
     if (!ownerCurrent() || permit || state.createUnknown || !isProjectWindowId(projectId)) return false;
     const token = newToken();
     if (!isProjectWindowId(token)) return false;
-    const attempt: Permit = { token, projectId, contextId: context.contextId, backendId: context.backendId, localVersion, owner: lifetime, consumed: false };
+    const attempt: Permit = { token, projectId, contextId: context.contextId, backendId: context.backendId, localVersion, owner: lifetime, directOpen, consumed: false };
     permit = attempt;
     emit({ sealed: true, openUnknown: false, phase: 'opening', openingProjectId: projectId, error: '', notice: '' });
     try {
@@ -172,7 +176,8 @@ export function createProjectEntryController({ client, bridge, context: initialC
       await reconcileOpen();
       if (!alive(attempt.owner)) return false;
       if (attempt.result) return attempt.result.ok;
-      emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown') });
+      emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown'),
+        ...(directOpen && ownerCurrent() ? {shown: true, mode: 'open'} : {}) });
       return false;
     }
   }
@@ -182,17 +187,21 @@ export function createProjectEntryController({ client, bridge, context: initialC
     const flight = {}; openFlight = flight;
     try {
       interact();
-      if (context.role === 'editor' && !state.shown) emit({ shown: true, mode: 'open' });
-      const ticket = await departure();
+      // The editor menu already chose a project. Only a pending candidate or
+      // inline recovery needs the picker and its separate directory reader.
+      const directOpen = context.role === 'editor' && !state.shown;
+      const ticket = await departure(undefined, directOpen);
       if (!ticket || !departureCurrent(ticket)) return false;
       // Consent precedes the metadata GET. Cached UUID membership can never
       // authorize opening a project in a replacement application library.
       const serial = readSerial + 1, refreshed = await refresh();
-      if (!departureCurrent(ticket) || serial !== readSerial || state.listBusy || !refreshed) return false;
+      if (!departureCurrent(ticket) || serial !== readSerial || state.listBusy) return false;
+      const revealPicker = directOpen ? {shown: true, mode: 'open' as const} : {};
+      if (!refreshed) {if (directOpen) emit(revealPicker); return false;}
       if (!state.projects.some(project => project.id === projectId)) {
-        emit({ phase: 'error', error: msg('projects.listUnavailable') }); return false;
+        emit({ ...revealPicker, phase: 'error', error: msg('projects.listUnavailable') }); return false;
       }
-      return await dispatchOpen(projectId, remember);
+      return await dispatchOpen(projectId, remember, directOpen);
     } finally {if (openFlight === flight) openFlight = null;}
   }
   async function reconcileOpen(): Promise<void> {

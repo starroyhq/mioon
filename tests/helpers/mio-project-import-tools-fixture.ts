@@ -6,6 +6,7 @@ import {existsSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,utim
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
+import type {ProjectFileFormat} from '../../packages/business/src/project-file/schema/databases.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {testProjectAppLibrary} from '../../packages/business/src/project-service-application.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
@@ -37,9 +38,9 @@ export function output(protocol:AgentProtocol,calls:AgentTaskToolCall[]=[]):Task
   return {text,toolCalls:calls,providerOutput};
 }
 type Script=(index:number,request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
-export async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:{safetyStepLimit?:number;withoutPort?:boolean}={}){
+export async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:{safetyStepLimit?:number;withoutPort?:boolean;targetFormat?:ProjectFileFormat}={}){
   const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-project-import-tools-'));
-  let store=openStore(root),services=createServices(store,new Map());
+  let store=openStore(root,options.targetFormat),services=createServices(store,new Map());
   await services.call('project.create',{name:'Mio project import tool test'});
   const projectId=store.projectId,source=path.join(root,'source.png'),sourceBytes=png({width:32,height:24,rgba:false});
   writeFileSync(source,sourceBytes);const sourceTime=new Date('2026-11-01T00:00:00.000Z');utimesSync(source,sourceTime,sourceTime);
