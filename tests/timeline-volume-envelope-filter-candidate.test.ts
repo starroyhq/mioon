@@ -3,7 +3,7 @@ type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) exte
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileVolumeEnvelopeFilterCandidate as compile,VOLUME_ENVELOPE_FILTER_BYTE_CAP} from '../packages/business/src/timeline-volume-envelope-filter-candidate.ts';
-import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
+import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator,type VolumeEnvelope} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {compileTimelineVolumeEnvelopeFilter,createTimelineVolumeEnvelopeSampler} from '../packages/business/src/timeline-volume-envelope-clock.ts';
 const clip=(points: readonly (readonly [number,number])[],durationFrames: number|undefined=18000)=>({durationFrames,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:points.map(([frame,multiplier])=>({frame,multiplier}))}});
 
@@ -52,7 +52,8 @@ test('nearest holds, exact anchors, sample boundaries and detached output',()=>{
 });
 
 test('project-clock envelope sampler and filter agree at interior cuts for all integer rates',()=>{
-  const saved= {...clip([[2,0.8],[4,0.1],[7,1],[9,0]],12),startFrame:111};
+  const c=clip([[2,0.8],[4,0.1],[7,1],[9,0]],12);
+  const saved={...c,startFrame:111,volumeEnvelope:{...c.volumeEnvelope,profileId:VOLUME_ENVELOPE_PROFILE} satisfies VolumeEnvelope};
   for(const [fps,frameSamples] of [[24,2000],[25,1920],[30,1600],[60,800]] as const){
     const offset=3*frameSamples+1,count=12*frameSamples-offset;
     const filter=compileTimelineVolumeEnvelopeFilter(saved,offset,count,fps), evaluate=parseFilter(filter);
