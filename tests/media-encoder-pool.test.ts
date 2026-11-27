@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   MAX_ENCODER_POOL_SLOTS, MAX_SEGMENT_ENCODERS, coreEncoderSlots, createMediaEncoderPool, memoryEncoderSlots,
   encoderPoolLimits, globalMediaEncoderPool, segmentConcurrencyFor, withMediaEncoderSlot,
+  ENCODER_MEMORY_RESERVE_BYTES, ENCODER_RESIDENT_BYTES, encoderMemoryAllows, encoderResidentBytesForOutput,
 } from '../packages/business/src/media-encoder-pool.ts';
 
 const GiB = 1024 ** 3;
@@ -98,6 +99,41 @@ test('a release is idempotent', async () => {
   assert.deepEqual(pool.stats(), { limit: 1, active: 0, waiting: 0, owners: 0 });
   (await pool.acquire())();
   assert.deepEqual(pool.stats(), { limit: 1, active: 0, waiting: 0, owners: 0 });
+});
+
+test('4K charges actual frame bytes and reserves room across export owners', async () => {
+  const uhd = encoderResidentBytesForOutput(3840, 2160);
+  const wide = encoderResidentBytesForOutput(4096, 1756);
+  assert.equal(uhd, encoderResidentBytesForOutput(2160, 3840));
+  assert.equal(encoderResidentBytesForOutput(1920, 1080), ENCODER_RESIDENT_BYTES);
+  assert.ok(wide > 2 * ENCODER_RESIDENT_BYTES);
+  assert.ok(uhd > wide && uhd < 3 * ENCODER_RESIDENT_BYTES);
+  assert.ok(encoderMemoryAllows(uhd, ENCODER_MEMORY_RESERVE_BYTES + uhd));
+  assert.equal(encoderMemoryAllows(uhd, ENCODER_MEMORY_RESERVE_BYTES + uhd - 1), false);
+
+  const pool = createMediaEncoderPool(4);
+  const first = await pool.acquire(undefined, {}, uhd);
+  const normal = await pool.acquire();
+  const next = pool.acquire(undefined, {}, uhd);
+  assert.deepEqual(pool.stats(), { limit: 4, active: 2, waiting: 1, owners: 1 });
+  normal();
+  assert.equal(pool.stats().waiting, 1);
+  first();
+  (await next)();
+  assert.equal(pool.stats().active, 0);
+});
+
+test('a queued 4K request can accumulate slots and cancelling it admits the next owner', async () => {
+  const pool = createMediaEncoderPool(3);
+  const holder = await pool.acquire();
+  const cancel = new AbortController();
+  const uhd = pool.acquire(cancel.signal, {}, encoderResidentBytesForOutput(3840, 2160));
+  const other = pool.acquire();
+  assert.equal(pool.stats().waiting, 2);
+  cancel.abort();
+  await assert.rejects(uhd, { code: 'MEDIA_CANCELLED' });
+  (await other)();
+  holder();
 });
 
 test('withMediaEncoderSlot always returns the slot, including on failure', async () => {

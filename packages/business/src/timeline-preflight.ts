@@ -2,6 +2,8 @@ import {assertProjectStore} from './store-runtime.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
+import {createTimelineExportResourceServices, readTimelineExportBasis} from './timeline-export-estimate.ts';
+import type {TimelineExportResourceIssue} from '../../contracts/src/timeline-export-estimate.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
@@ -29,9 +31,9 @@ interface PreflightProbeOptions {signal?: AbortSignal;timeout?: number;beforeSpa
 interface PreflightProbeResult {probe: unknown;width: number;height: number;duration: number|null;hasVideo: boolean;hasAudio: boolean;videoStreamIndex: number|string|null;audioStreamIndex: number|string|null}
 type PreflightInput = {[key: string]: unknown;projectId: string;expectedRevision: number;requestId?: string;exportSettings?: unknown;exportRange?: unknown;deliveryName?: string;preflightSnapshotHash?: string};
 interface PreflightChecks {totalAssets: number;checkedAssets: number;bytesHashed: number;fullDecode: boolean;subtitles?: {profileId: string;fontVerified: boolean;inkMeasured: boolean}}
-interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string}
+interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string;details?: TimelineExportResourceIssue['details']}
 export interface TimelinePreflightReport {projectId: string;timelineId: string|null;timelineRevision: number|null;expectedRevision: number;snapshotHash: string|null;checkedAt: string;status: string;summary: unknown;checks: PreflightChecks;issues: PreflightIssue[]}
-interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void}
+interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void;exportResources?: Pick<ReturnType<typeof createTimelineExportResourceServices>,'selectedIssue'>}
 interface PreflightCallOptions {signal?: AbortSignal}
 interface PreflightAttempt {controller: AbortController;task: Promise<unknown>|null}
 
@@ -93,7 +95,9 @@ function classify(error: unknown): [string,string]{
  * ownership, bytes, streams and renderer rules; a report cannot promise future
  * bytes or full decode success. Owned children are joined before drain/close.
  */
-export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
+export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect,exportResources}: PreflightServiceOptions={}){
+ assertProjectStore(store);
+ const resources=exportResources??createTimelineExportResourceServices(store);
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
   if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
    const projection=readFormat5RenderProjection(store as never);
@@ -118,6 +122,22 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const report: TimelinePreflightReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
+  // Refuse a known resource mismatch before source hashing and media probes.
+  let basis;
+  try{basis=readTimelineExportBasis(store,input.projectId);}
+  catch(error){
+   // The existing full snapshot reader owns classification of corrupt saved
+   // metadata; the resource gate has no estimate for a malformed header.
+   if(!(error instanceof AppError)||!['PROJECT_INVALID','INVALID_TIMELINE_SNAPSHOT'].includes(error.code))throw error;
+  }
+  if(basis&&basis.revision===input.expectedRevision&&basis.durationFrames>0&&
+     !timelineExportRangeBoundsIssue(input,basis.durationFrames)){
+   const resourceIssue=resources.selectedIssue(input,basis);
+   if(resourceIssue){
+    report.timelineId=basis.id;report.timelineRevision=basis.revision;
+    report.issues=[resourceIssue];return report;
+   }
+  }
   // Format 5 placeholders and pending too-short follow versions block the exact
   // export range before any media hashing or probe work.
   if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){

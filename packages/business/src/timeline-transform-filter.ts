@@ -21,6 +21,7 @@ export interface ClipTransformRenderPlan {
  readonly animated: boolean;
 }
 interface PlanClip {readonly durationFrames: number;readonly rect: ClipTransformRect;readonly transform?: unknown;readonly layout?: unknown}
+interface RenderGeometry {readonly width: number;readonly height: number}
 const even=(value: number): number=>Math.max(2,2*Math.round(value/2));
 
 /** maxFactor 1 keeps the layer at the rectangle size: managed image layers
@@ -41,13 +42,36 @@ function projectedTransformPlan(rect: ClipTransformRect,transform: ProjectedTran
 }
 
 /** Raster dimensions are even, but the placement still uses the projected centre. */
-export function clipRenderPlacement(clip: PlanClip,frame: {fps: number;width: number;height: number},maxFactor=Infinity) {
+export function clipRenderPlacement(clip: PlanClip,frame: {fps: number;width: number;height: number},maxFactor=Infinity,renderGeometry?: RenderGeometry) {
  const relative=Object.hasOwn(clip,'layout');
  const projected=relative?projectClipLayout(clip,frame):null;
+ if(renderGeometry){
+  // Validate the persisted placement on its own canvas before projecting
+  // transient export coordinates. 4K is never accepted as an editing canvas.
+  const saved=projected?.rect??clip.rect;
+  const scaleX=renderGeometry.width/frame.width,scaleY=renderGeometry.height/frame.height;
+  const rect={x:saved.x*scaleX,y:saved.y*scaleY,width:saved.width*scaleX,height:saved.height*scaleY};
+  const savedTransform=projected?.transform??validateClipTransform(clip.transform??null,clip.durationFrames);
+  const transform=savedTransform&&{...savedTransform,keyframes:savedTransform.keyframes.map(point=>({...point,x:point.x*scaleX,y:point.y*scaleY}))};
+  return {rect,transform:projectedTransformPlan(rect,transform,maxFactor,true),...rasterClipRect(rect),relative};
+ }
  const rect=projected?.rect??clip.rect;
  const transform=projected?projectedTransformPlan(rect,projected.transform,maxFactor,true):clipTransformRenderPlan(clip,{maxFactor});
  const {x,y,width,height}=relative?rasterClipRect(rect):rect;
  return {rect,transform,width,height,x,y,relative};
+}
+
+/** FFmpeg's rotate and animated scale filters each allocate an intermediate. */
+export function clipRenderPeakRaster(placement: ReturnType<typeof clipRenderPlacement>): RenderGeometry {
+ const {transform,width,height}=placement;
+ if(!transform)return {width,height};
+ const {layerWidth,layerHeight,factor}=transform;
+ const angle=transform.transform.rotation*Math.PI/180;
+ const cosine=Math.abs(Math.cos(angle)),sine=Math.abs(Math.sin(angle));
+ const rotatedWidth=Math.ceil(layerWidth*cosine+layerHeight*sine);
+ const rotatedHeight=Math.ceil(layerWidth*sine+layerHeight*cosine);
+ const scale=Math.max(1,...transform.transform.keyframes.map(point=>point.scale/factor));
+ return {width:even(rotatedWidth*scale),height:even(rotatedHeight*scale)};
 }
 
 /** Display aspect is read from the decoded, cropped input. The frozen asset's

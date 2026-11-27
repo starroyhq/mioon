@@ -1,4 +1,5 @@
 import {sameMediaLocator} from './asset-reference-record.ts';
+import {TIMELINE_EXPORT_RESOURCE_REJECTION_CODES} from '../../contracts/src/timeline-export-estimate.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
@@ -115,9 +116,10 @@ export function projectVersionRestoreBefore(saved: unknown,afterText: unknown): 
 
 const bounded=(column: string,bytes: number): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END`;
 const identity=(column: string): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
+const exportRejections: readonly string[]=[...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,...TIMELINE_EXPORT_RESOURCE_REJECTION_CODES];
 const definiteRejections=new Set<string>(['AUDIO_ROLE_CLIP_UNSUPPORTED','TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
  'SUBTITLE_LIMIT','SUBTITLE_BOUNDS','SUBTITLE_OVERLAP','SUBTITLE_NOT_FOUND','INVALID_FADE','FADE_AUDIO_UNSUPPORTED','AUDIO_HIDDEN_UNSUPPORTED','TIMELINE_LIMIT','CLIP_OVERLAP','SPLIT_BOUNDS','SPLIT_FADE_BOUNDS',
- 'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_TIER_MISMATCH','TIMELINE_FORMAT_SNAPSHOT_LIMIT','CLIP_LAYOUT_RECT_READ_ONLY','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES]);
+ 'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_TIER_MISMATCH','TIMELINE_FORMAT_SNAPSHOT_LIMIT','CLIP_LAYOUT_RECT_READ_ONLY','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...exportRejections]);
 
 // A proof is attached only outside the transaction after its rollback. A fresh
 // receipt absence is necessary, but cannot make a post-write or scope failure
@@ -152,7 +154,7 @@ export function rejectTimelineMutation(db: DatabaseSync,input: TimelineRecoveryI
   return;
  }
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
-  failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||error.code==='CLIP_LAYOUT_RECT_READ_ONLY'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
+  failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||error.code==='CLIP_LAYOUT_RECT_READ_ONLY'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||exportRejections.includes(error.code))?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db: DatabaseSync,input: TimelineRecoveryInput,operation: string): TimelineReceiptRow|undefined{

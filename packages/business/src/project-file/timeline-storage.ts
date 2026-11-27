@@ -4,7 +4,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import type {ContentStamp} from '../../../contracts/src/project-file.ts';
 import {readProjectContentStamp} from './content-stamp.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './schema/databases.ts';
-import {readFormat5TimelineRecord, readFormat5TimelineState} from './format5-timeline.ts';
+import {readFormat5TimelineRecord, readFormat5TimelineStateForIds} from './format5-timeline.ts';
 
 type Schema = 'main' | 'project';
 type Row = Record<string, unknown>;
@@ -85,7 +85,7 @@ export function readTimelineStorage(db: DatabaseSync, projectId: string, options
 export function readTimelineHeaderStorage(db: DatabaseSync, projectId: string, options: TimelineReadOptions = {}): TimelineHeaderSnapshot | null {
   const schema = options.schema ?? timelineStorageSchema(db);
   if (timelineStorageFormat(db, schema) === FORMAT5_PROJECT_SCHEMA_VERSION) {
-    const state = readFormat5TimelineState(db, schema);
+    const state = readFormat5TimelineStateForIds(db, schema, {clipIds: [], cueIds: []});
     if (!state.header || state.header.projectId !== projectId) return null;
     let header: unknown;
     try { header = JSON.parse(state.header.raw); } catch { return invalid(); }

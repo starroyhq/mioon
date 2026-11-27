@@ -87,7 +87,6 @@ export const FORMAT5_UNAVAILABLE_OPERATIONS:Readonly<Record<string,string>>=Obje
  'timeline.history.get':'格式 5 使用序列统一历史，旧 timeline.history.get 不可用',
  'timeline.undo':'格式 5 使用序列统一撤销，旧 timeline.undo 不可用',
  'timeline.redo':'格式 5 使用序列统一重做，旧 timeline.redo 不可用',
- 'timeline.render':'格式 5 导出/渲染归 FR-B，旧 timeline.render 暂不可用',
  'shot.create':'画板创建归 FR-C，格式 5 暂不可用',
  'shot.update':'画板创建/更新归 FR-C，格式 5 暂不可用',
  'shot.reorder':'格式 5 用明确链顺序，旧 shot.reorder 不代表成片重排',
@@ -120,6 +119,7 @@ const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROU
 export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4'|'format5';
 const format4GroupedTools=[...groupedTools,...mioCanvasCopyOperations.map(operation=>({group:'canvas' as const,operation,name:`mioon_${operation.replaceAll('.','_')}`})),...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
 const format5GroupedTools=[...groupedTools.filter(tool=>FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation]===undefined),
+ {group:'exports' as const,operation:'timeline.export.estimate',name:'mioon_timeline_export_estimate'},
  {group:'core' as const,operation:'sequence.inspect',name:'mioon_sequence_inspect'},
  {group:'core' as const,operation:'sequence.board.get',name:'mioon_sequence_board_get'},
  {group:'core' as const,operation:'sequence.generation-inputs.get',name:'mioon_sequence_generation_inputs_get'},

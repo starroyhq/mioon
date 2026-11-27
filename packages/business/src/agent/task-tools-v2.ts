@@ -49,7 +49,7 @@ import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../pr
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskLocale} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
-import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
+import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_LEGACY_EXPORT_SCHEMAS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
 import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,agentTaskToolSupportsGroupLoad,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
 import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
@@ -109,6 +109,7 @@ const readOperations=[
  'scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
  'sequence.inspect','sequence.generation-inputs.get','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
+ 'timeline.export.estimate',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
 ] as const;
 const reversibleOperations=[
@@ -588,7 +589,8 @@ const previsWrite=(operation:string):boolean=>operation==='previs.create'||opera
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export').map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+const exportEstimateOperation='timeline.export.estimate';
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export'&&operation!==exportEstimateOperation).map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_LEGACY_EXPORT_SCHEMAS[operation]??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -617,6 +619,11 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   // The scene may name a subject per mannequin/prop only in a format-5
   // project; formats 3/4 keep the frozen reviewed tool shape (and fingerprints).
   if(format5&&tool.operation==='previs.scene.set')return {...tool,parameters:AGENT_TASK_FORMAT5_PREVIS_SCENE_PARAMETERS};
+  if(format5&&Object.hasOwn(AGENT_TASK_LEGACY_EXPORT_SCHEMAS,tool.operation)){
+   const parameters=AGENT_TASK_TOOL_SCHEMAS[tool.operation] as {properties:Value};
+   if(tool.operation==='timeline.render')return {...tool,description:'导出当前保存的时间线为 H.264 MP4。先检查预检结果，在 exportSettings 中选择分辨率和画质；4K 用 short_2160。入队后用 task.wait 查询结果。',parameters:{...parameters,properties:{...parameters.properties,purpose:{type:'string',const:'export'}}}};
+   return {...tool,parameters};
+  }
   if(frameTransaction&&tool.operation.startsWith('previs.thumbnail.'))return {...tool,parameters:AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS[tool.operation]};
   if(frameTransaction&&tool.operation===FRAME_SET){
    const parameters=tool.parameters as {properties:Value};
@@ -632,6 +639,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {type:'object',properties:{source:{const:'selected'},handle:{type:'string',format:'uuid'}},required:['source','handle'],additionalProperties:false},
  ]},risk:'local_irreversible',receipt:'original bounded import receipt',recovery:'inspect the retained source request; never repeat an unknown import',undo:'only project-file registrations are compensable'});
  if(format5){
+  definitions.push({name:'mioon_timeline_export_estimate',operation:exportEstimateOperation,description:'只读估算当前时间线的各档导出大小、耗时及项目导出卷的可用空间。4K 用 short_2160。每档返回可用性原因，估算约值会随内容和机器变化。',parameters:AGENT_TASK_TOOL_SCHEMAS[exportEstimateOperation],risk:'read_only',receipt:'observation',recovery:'read the current export estimate again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_edit',operation:'sequence.tool.edit',description:'执行格式 5 基础序列动作：连接/断开/插入/删除节点、成片内重排/移除/切开/跟随锁定/切开后复制挪动（9 个）。其余动作按需加载：mioon_sequence_board_edit（画板对象）、mioon_sequence_reference_edit（素材引用线）、mioon_sequence_subject_edit（主体绑定与主体卡）、mioon_sequence_previs_edit（预演）、mioon_sequence_timeline_edit（画幅/场景切开/字幕/轨道/素材入轨/剪辑里生成）、mioon_sequence_clip_edit（片段属性）。服务器预览 envelope 后按审批提交；模型不提供 envelope、ID 或回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.edit'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_board_edit',operation:'sequence.tool.board',description:'按需加载的格式 5 画板动作：画板根/镜头创建、画布节点创建与更新、有界布局移动、归档恢复、复制。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.board'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
@@ -700,10 +708,11 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject,format5});
  const diagnosticList=()=>{const base=listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
   if(!format5)return base;
-  const sequenceOnly=listAgentTaskTools(false,true).filter(tool=>['sequence.tool.edit','sequence.tool.undo',
+  const format5Only=listAgentTaskTools(false,true).filter(tool=>[exportEstimateOperation,'sequence.tool.edit','sequence.tool.undo',
     ...MIO_SEQUENCE_GROUP_OPERATIONS.filter(operation=>operation!=='sequence.tool.edit'),
     'sequence.inspect','sequence.board.get','sequence.generation-inputs.get'].includes(tool.operation));
-  return [...base,...sequenceOnly];};
+  const exportTools=base.map(tool=>Object.hasOwn(AGENT_TASK_LEGACY_EXPORT_SCHEMAS,tool.operation)?{...tool,parameters:AGENT_TASK_TOOL_SCHEMAS[tool.operation]}:tool);
+  return [...exportTools,...format5Only];};
  function generationServiceIssue({operation,input}:PreparedAgentTaskTool):typeof GENERATION_SERVICE_UNAVAILABLE|'IMAGE_SETTINGS_SELECTION_REQUIRED'|undefined{
   if(operation!=='generation.submit'&&operation!=='image.generate')return;
   if(input.providerId==='mock')return generationAvailability.mockAllowed?undefined:GENERATION_SERVICE_UNAVAILABLE;
@@ -933,6 +942,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  }
 function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester,locale}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester;locale?:AgentTaskLocale}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
+ if(!format5&&operation===exportEstimateOperation)fail('AGENT_TASK_TOOL_FORBIDDEN','导出估算只用于格式 5 项目');
  if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input,locale,canvasRequester?.stepId);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   if(operation==='asset.import'){
@@ -963,6 +973,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   }
   let risk=operation===MIO_PROJECT_FILE_IMPORT_OPERATION?'local_reversible':operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',MIO_PROJECT_MEDIA_LIST_OPERATION,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');
+  if(format5&&operation==='timeline.render'&&input.purpose!=='export')fail('VALIDATION_ERROR','此工具只用于导出');
   if(operation==='previs.thumbnail.get'||operation==='previs.thumbnail.set'){
    prepareParityThumbnail(operation,input,projectId,{format4:frameProject});
    const {dataBase64:_thumbnail,...rest}=input;rejectHostFields(rest);

@@ -68,6 +68,8 @@ import type {GenerationAsset,GenerationJob,GenerationRecord,GenerationShot,Gener
 import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
+import {createTimelineExportResourceServices} from './timeline-export-estimate.ts';
+import type {TimelineExportResourceOptions} from './timeline-export-estimate.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {previewMioSequenceAction,commitMioSequenceAction} from './format5-mio-sequence.ts';
 import {sequenceEditFailureMessage} from './format5-sequence-preview-errors.ts';
@@ -152,7 +154,7 @@ export interface CreateServicesOptions {
  imageOptions?: Parameters<typeof createImageServices>[1];
  frameOptions?: Parameters<typeof createFrameServices>[1];
  sceneOptions?: Parameters<typeof createSceneServices>[1];
- exportOptions?: Parameters<typeof createTimelineExportAdmissionServices>[1];
+ exportOptions?: Parameters<typeof createTimelineExportAdmissionServices>[1] & TimelineExportResourceOptions;
  agentAuthorizations?: AgentAuthorizations | null;
  readRecentOpened?: ()=>Readonly<Record<string,string>>;
  assertMutationAllowed?: ()=>void;
@@ -663,6 +665,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  };
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
+ const exportResources=createTimelineExportResourceServices(store,exportOptions);
  const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
  // The UI sequence service intentionally has no generation-submit port: the
   // timeline placement only adds the placeholder and opens the panel; the panel's
@@ -684,9 +687,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     return {projectId,envelope:plan.envelope,planDigest:plan.planDigest,summary:plan.summary};
   };
  const sequenceInspection=createSequenceInspectionService(store);
- const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
+ const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,exportResources,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
- const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
+ const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin,exportResources});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
   ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
@@ -831,6 +834,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...colourSource.handlers,
   ...imageColourSource.handlers,
   ...exportAdmission.handlers,
+  ...exportResources.handlers,
   ...waveforms.handlers,
   ...sourceRanges.handlers,
   ...assetDispositions.handlers,

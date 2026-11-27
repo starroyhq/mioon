@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {timelineExportOutputFrames} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields} from './timeline-delivery.ts';
-import {TIMELINE_OUTPUT_MAX_EDGE,isTimelineDeliveryGeometry,timelineDeliveryGeometry,timelineOutputPreset} from './timeline-output-geometry.ts';
+import {TIMELINE_DELIVERY_MAX_EDGE,TIMELINE_EXPORT_RESOLUTIONS,isTimelineDeliveryGeometry,isTimelineExportVideoKbps,timelineDeliveryGeometry,timelineExportVideoKbps,timelineOutputPreset} from './timeline-output-geometry.ts';
 import type {TimelineOutputResolution,TimelineOutputGeometry} from './timeline-output-geometry.ts';
 
 /** Opt-in export policy only. Neither this profile nor a within-limit report
@@ -28,7 +28,7 @@ export type TimelineExportSettings = TimelineExportSettingsV1|TimelineExportSett
 
 const bitrate = z.union([z.literal(2000),z.literal(4000),z.literal(8000)]);
 export const timelineExportFloatSettingsSchema = z.object({
-  profileId:z.literal(TIMELINE_EXPORT_FLOAT_PROFILE_ID),resolution:z.enum(['native','short_360','short_720','short_1080']),
+  profileId:z.literal(TIMELINE_EXPORT_FLOAT_PROFILE_ID),resolution:z.enum(TIMELINE_EXPORT_RESOLUTIONS),
   rateControl:z.discriminatedUnion('mode',[
     z.object({mode:z.literal('crf'),quality:z.enum(['compact','standard','high'])}).strict(),
     z.object({mode:z.literal('bitrate'),targetKbps:bitrate}).strict(),
@@ -37,17 +37,18 @@ export const timelineExportFloatSettingsSchema = z.object({
 
 export const timelineExportFloatEffectiveSchema = z.object({
   profileId:z.literal(TIMELINE_EXPORT_FLOAT_PROFILE_ID),container:z.literal('mp4'),
-  width:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),height:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),fps:z.literal(30),
+  width:z.number().int().min(2).max(TIMELINE_DELIVERY_MAX_EDGE).multipleOf(2),height:z.number().int().min(2).max(TIMELINE_DELIVERY_MAX_EDGE).multipleOf(2),fps:z.literal(30),
   videoCodec:z.literal('libx264'),pixelFormat:z.literal('yuv420p'),preset:z.literal('veryfast'),
   rateControl:z.discriminatedUnion('mode',[
     z.object({mode:z.literal('crf'),crf:z.union([z.literal(28),z.literal(23),z.literal(18)])}).strict(),
-    z.object({mode:z.literal('bitrate'),targetKbps:bitrate}).strict(),
+    z.object({mode:z.literal('bitrate'),targetKbps:z.number().int().min(2000).max(32000)}).strict(),
   ]),
   bFrames:z.literal(0),gopFrames:z.literal(60),videoTrackTimescale:z.literal(30000),scaling:z.literal('lanczos'),
   audioCodec:z.literal('aac'),audioKbps:z.literal(128),audioSampleRate:z.literal(48000),audioChannels:z.literal(2),movflags:z.literal('faststart'),
   intermediateAudio:z.object({container:z.literal('mov'),codec:z.literal('pcm_f32le'),sampleFormat:z.literal('flt'),sampleRate:z.literal(48000),channels:z.literal(2)}).strict(),
   preencodeAudioPolicy:z.object({policyId:z.literal(TIMELINE_EXPORT_FLOAT_POLICY_ID),maxPeakLinear:z.literal(1),overRange:z.literal('reject')}).strict(),
-}).strict().refine(isTimelineDeliveryGeometry,{message:'Unsupported encoded timeline dimensions.'});
+}).strict().refine(isTimelineDeliveryGeometry,{message:'Unsupported encoded timeline dimensions.'})
+ .refine(isTimelineExportVideoKbps,{message:'Unsupported bitrate for encoded timeline dimensions.'});
 export type TimelineExportEffectiveV2 = z.infer<typeof timelineExportFloatEffectiveSchema>;
 export type TimelineExportEffectiveV1 = Omit<TimelineExportEffectiveV2,'profileId'|'intermediateAudio'|'preencodeAudioPolicy'> & {profileId:'mp4_h264_v1'};
 export const timelineExportFloatDeliverySchema = z.object({
@@ -75,7 +76,7 @@ export function resolveTimelineExportFloatDelivery(timeline:unknown,settings:unk
   return {exportSettings:JSON.parse(JSON.stringify(settings)) as TimelineExportSettingsV2,effective:{
     profileId:TIMELINE_EXPORT_FLOAT_PROFILE_ID,container:'mp4',width:geometry.width,height:geometry.height,fps:30,
     videoCodec:'libx264',pixelFormat:'yuv420p',preset:'veryfast',
-    rateControl:rate.mode==='crf'?{mode:'crf',crf:({compact:28,standard:23,high:18} as const)[rate.quality]}:{mode:'bitrate',targetKbps:rate.targetKbps},
+    rateControl:rate.mode==='crf'?{mode:'crf',crf:({compact:28,standard:23,high:18} as const)[rate.quality]}:{mode:'bitrate',targetKbps:timelineExportVideoKbps(rate.targetKbps,exportSettings.resolution,timeline)},
     bFrames:0,gopFrames:60,videoTrackTimescale:30000,scaling:'lanczos',audioCodec:'aac',audioKbps:128,audioSampleRate:48000,audioChannels:2,movflags:'faststart',
     intermediateAudio:{container:'mov',codec:'pcm_f32le',sampleFormat:'flt',sampleRate:48000,channels:2},
     preencodeAudioPolicy:{policyId:TIMELINE_EXPORT_FLOAT_POLICY_ID,maxPeakLinear:1,overRange:'reject'},

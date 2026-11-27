@@ -42,6 +42,17 @@ test('streaming ink scanner crosses arbitrary chunk boundaries and rejects empty
  for(const value of ['/tmp/line\nfeed','relative',NaN])assert.throws(()=>subtitleFilterPath(value));
 });
 
+test('4K subtitle preparation measures the delivery-sized font and keeps the proportional bottom inset',async t=>{
+ const root=await temp(t),snapshot=snap(['4K 字幕'],2520,1080),renderGeometry={width:4096,height:1756};
+ const prepared=await prepareTimelineSubtitles(snapshot,root,{renderGeometry});
+ assert.ok(prepared);
+ const cue=prepared.entries.get('4K 字幕');
+ assert.ok(cue);
+ assert.equal(prepared.layout.fontSize,Math.round(28*1756/1080));
+ assert.equal(renderGeometry.height-cue.box.top-cue.box.height,Math.round(48*1756/1080));
+ assert.match(timelineSubtitleFilters(prepared,0,2,'base').filters.join(';'),new RegExp(`fontsize=${prepared.layout.fontSize}`));
+});
+
 test('bounded renderer inspection and one font-only process measure literal cues with hostile paths and all 100 captions',async t=>{
  const root=await temp(t),work=path.join(root,"中文 space ' apostrophe :colon,[brackets];semi\\slash");await mkdir(work);
  const texts=['你好，世界！\n字幕与 English 100%',"%{eif:1+1:d} ' \\", '中文字'.repeat(6)+'字幕'];

@@ -2,7 +2,24 @@ export const TIMELINE_OUTPUT_RATIOS=Object.freeze(['9:16','16:9','1:1','4:3','3:
 export type TimelineOutputRatio=typeof TIMELINE_OUTPUT_RATIOS[number];
 export type TimelineOutputShortEdge=720|1080;
 export type TimelineOutputGeometry=Readonly<{fps:30;width:number;height:number}>;
-export type TimelineOutputResolution='native'|'short_360'|'short_720'|'short_1080';
+export const TIMELINE_EXPORT_RESOLUTIONS=Object.freeze(['native','short_360','short_720','short_1080','short_2160'] as const);
+export type TimelineOutputResolution=typeof TIMELINE_EXPORT_RESOLUTIONS[number];
+export const TIMELINE_EXPORT_4K_MAX_FPS=30;
+export const TIMELINE_DELIVERY_MAX_EDGE=4096;
+
+// The wide format is capped so every delivery fits H.264 Level 5.1 at 30 fps.
+const geometry2160: Readonly<Record<TimelineOutputRatio,Readonly<{width:number;height:number}>>>=Object.freeze({
+  '16:9':{width:3840,height:2160},'9:16':{width:2160,height:3840},'1:1':{width:2160,height:2160},
+  '4:3':{width:2880,height:2160},'3:4':{width:2160,height:2880},'21:9':{width:4096,height:1756},
+});
+
+export function timelineExport4KFrameRateSupported(fps:number):boolean{
+  return fps<=TIMELINE_EXPORT_4K_MAX_FPS;
+}
+
+function isTimeline4KDeliverySize(width:number,height:number):boolean{
+  return Object.values(geometry2160).some(size=>width===size.width&&height===size.height);
+}
 
 function geometryForRatio(ratio:TimelineOutputRatio,short:360|TimelineOutputShortEdge):TimelineOutputGeometry{
   const [width,height]=ratio.split(':').map(Number) as [number,number];
@@ -68,6 +85,7 @@ export function isTimelineDeliveryGeometry<Value>(value:Value):value is Value&Ti
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   const geometry=value as Record<string,unknown>,{width,height}=geometry;
   if(typeof width!=='number'||typeof height!=='number')return false;
+  if(isTimeline4KDeliverySize(width,height))return geometry.fps===30;
   const short=Math.min(width,height);
   return (short===360||short===720||short===1080)&&TIMELINE_OUTPUT_RATIOS.some(ratio=>matchesGeometry(geometry,geometryForRatio(ratio,short)));
 }
@@ -80,5 +98,26 @@ export function timelineDeliveryGeometry(value:unknown,resolution:TimelineOutput
   if(resolution==='native')return {fps:30,width:source.width,height:source.height};
   const short=resolution==='short_360'?360:resolution==='short_720'?720:resolution==='short_1080'?1080:null;
   const ratio=timelineOutputRatio(source);
+  if(resolution==='short_2160')return ratio&&timelineExport4KFrameRateSupported(source.fps)?{fps:source.fps,...geometry2160[ratio]}:null;
   return short===null||ratio===null?null:geometryForRatio(ratio,short);
+}
+
+/** 4K preserves the selected 1080p bitrate per pixel at the same aspect ratio. */
+export function timelineExportVideoKbps(targetKbps:2000|4000|8000,resolution:TimelineOutputResolution,timeline:unknown):number{
+  if(resolution!=='short_2160')return targetKbps;
+  const hd=timelineDeliveryGeometry(timeline,'short_1080'),uhd=timelineDeliveryGeometry(timeline,resolution);
+  if(!hd||!uhd)throw new TypeError('Missing timeline delivery geometry');
+  return Math.round(targetKbps*uhd.width*uhd.height/(hd.width*hd.height));
+}
+
+/** Effective bitrate was selected from three closed settings on earlier presets. */
+export function isTimelineExportVideoKbps({width,height,rateControl}:{
+  width:number;height:number;rateControl:{mode:'crf';crf:number}|{mode:'bitrate';targetKbps:number};
+}):boolean{
+  if(rateControl.mode==='crf')return true;
+  const rates=[2000,4000,8000] as const;
+  const ratio=(Object.keys(geometry2160) as TimelineOutputRatio[]).find(key=>geometry2160[key].width===width&&geometry2160[key].height===height);
+  if(!ratio)return rates.some(rate=>rate===rateControl.targetKbps);
+  const source=geometryForRatio(ratio,1080);
+  return rates.some(rate=>timelineExportVideoKbps(rate,'short_2160',source)===rateControl.targetKbps);
 }
