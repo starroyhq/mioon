@@ -110,12 +110,35 @@ export type AgentTaskControlAction=AgentTaskControlInput['action'];
 
 export const agentTaskEditingSchema=z.object({requestId,action:z.enum(['claim','restore','release','heartbeat','resolve']),projectId:id,ownerId:requestId,generation:revision,sequence:revision,targets:z.array(z.object({kind:z.string().min(1).max(80),id:z.string().min(1).max(200),revision}).strict()).min(1).max(100)}).strict();
 export type AgentTaskEditingInput=z.infer<typeof agentTaskEditingSchema>;
+export const agentTaskEditingLivenessSchema=z.enum(['in_use','retained','uncertain']);
+export type AgentTaskEditingLiveness=z.infer<typeof agentTaskEditingLivenessSchema>;
+const editingClaimSnapshot=z.string().regex(/^[a-f0-9]{64}$/u);
+const editingClaimSelection=z.object({claimId:id,ownerId:requestId,generation:revision,sequence:revision,claimSnapshot:editingClaimSnapshot}).strict();
+export const agentTaskEditingResolveBatchSchema=z.object({
+  projectId:id,requestId,claims:z.array(editingClaimSelection).min(1).max(100)
+    .refine(claims=>new Set(claims.map(claim=>claim.claimId.toLowerCase())).size===claims.length),
+}).strict();
+export type AgentTaskEditingResolveBatchInput=z.infer<typeof agentTaskEditingResolveBatchSchema>;
+export const agentTaskEditingResolveBatchReceiptSchema=z.object({projectId:id,requestId,releasedClaimIds:z.array(id).min(1).max(100)}).strict();
+export type AgentTaskEditingResolveBatchReceipt=z.infer<typeof agentTaskEditingResolveBatchReceiptSchema>;
 const json:z.ZodType<AgentTaskJson>=z.lazy(()=>z.union([z.null(),z.boolean(),z.number().finite(),z.string(),z.array(json),z.record(json)]));
 const error=z.object({code:z.string(),message:z.string()}).strict();
 export const agentTaskStepErrorSchema=error.extend({diagnostic:agentFailureDiagnosticSchema.optional()});
 const displayValue=z.union([z.number().finite(),z.string().max(240),z.boolean(),z.null()]);
 export const agentTaskDisplaySchema:z.ZodType<AgentTaskDisplay>=z.object({conflict:z.literal(true).optional(),operation:z.string().regex(/^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/u).max(100),targets:z.array(z.object({kind:z.enum(AGENT_TASK_DISPLAY_TARGET_KINDS),id,name:z.string().min(1).max(80).optional()}).strict()).max(200),targetCount:revision,fields:z.array(z.object({targetIndex:revision.optional(),property:z.enum(AGENT_TASK_DISPLAY_PROPERTIES),unit:z.enum(['frames','seconds','db','pixels','ratio','text','count','boolean','enum']),before:displayValue.optional(),after:displayValue.optional(),current:displayValue.optional()}).strict().refine(field=>field.before!==undefined||field.after!==undefined)).max(2000)}).strict().refine(display=>display.targetCount>=display.targets.length&&display.fields.every(field=>field.targetIndex===undefined||field.targetIndex<display.targets.length));
 export const agentTaskTargetSchema=z.object({kind:z.string(),id:z.string(),revision,revisionBefore:revision.optional(),revisionAfter:revision.optional()}).strict();
+const editingClaim=z.object({
+  id,projectId:id,ownerId:requestId,target:agentTaskTargetSchema,state:z.enum(['active','uncertain']),
+  createdAt:z.string(),updatedAt:z.string(),
+}).strict();
+export const agentTaskEditingClaimOwnerSchema=z.object({
+  claim:editingClaim,generation:revision.nullable(),sequence:revision.nullable(),claimSnapshot:editingClaimSnapshot,liveness:agentTaskEditingLivenessSchema,
+}).strict();
+export type AgentTaskEditingClaimOwner=z.infer<typeof agentTaskEditingClaimOwnerSchema>;
+export const agentTaskEditingClaimGroupSchema=z.object({
+  projectId:id,kind:z.string(),id:z.string(),owners:z.array(agentTaskEditingClaimOwnerSchema).min(1),
+}).strict();
+export type AgentTaskEditingClaimGroup=z.infer<typeof agentTaskEditingClaimGroupSchema>;
 export const agentTaskNoteSchema:z.ZodType<AgentTaskNote>=z.object({requestId,text:agentTaskTextSchema,createdAt:z.string().datetime(),modelStepId:id.optional()}).strict();
 export const agentTaskSkippedTargetSchema:z.ZodType<AgentTaskSkippedTarget>=z.object({target:agentTaskTargetSchema,stepId:id,createdAt:z.string().datetime()}).strict();
 export const agentTaskRunSchema:z.ZodType<AgentTaskRun>=z.object({id,projectId:id,conversationId:id.optional(),requestId,text:z.string(),notes:z.array(agentTaskNoteSchema).optional(),skippedTargets:z.array(agentTaskSkippedTargetSchema).optional(),status:z.enum(AGENT_TASK_STATUSES),revision,stepLimit:revision,budget:revision,stepsUsed:revision,configuration:json,settingsRevision:revision.optional(),settingsBinding:agentSettingsBindingSchema.optional(),context:z.array(json).optional(),attachments:z.array(id).max(20).optional(),diagnostic:agentTaskDiagnosticSchema.optional(),createdAt:z.string(),updatedAt:z.string(),pauseReason:z.string().optional(),error:error.optional()}).strict();

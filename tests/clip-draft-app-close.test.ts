@@ -40,6 +40,7 @@ function fixture({ native = false, pending = true, result = true, held = null, v
   const scope = { nativeWindow: native ? {} : null,
     useEffect: (callback: () => () => void) => { cleanup = callback(); }, globalThis: global, document, window: events('window:'),
     preferencesRef: { current: { flush: async () => { calls.push('view'); if (viewHeld) await viewHeld.promise; }, hasUnsaved: () => false } },
+    releaseCleanAgentEditingOnPageHide: () => { calls.push('editing-release'); },
     lastProjectRef: { current: { flush: async () => { calls.push('locator'); return true; } } },
     localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef, editorSession,
   };
@@ -102,10 +103,12 @@ test('actual App checks renewed persistence uncertainty after clip ACK while oth
 test('actual App hidden/pagehide/beforeunload paths flush only unpersisted clip input', async () => {
   for (const event of ['window:beforeunload', 'window:pagehide', 'document:visibilitychange'] as const) {
     const f = fixture(); f.document.visibilityState = 'hidden';
-    f.listeners.get(event)!(); await new Promise(setImmediate);
+    const exit = {type:event.split(':')[1],persisted:false,preventDefault() {}};
+    f.listeners.get(event)!(exit); await new Promise(setImmediate);
     assert.equal(f.calls.filter(value => value === 'clip').length, 1, event);
+    assert.equal(f.calls.includes('editing-release'), event === 'window:pagehide');
     const clean = fixture({ pending: false }); clean.document.visibilityState = 'hidden';
-    clean.listeners.get(event)!(); await new Promise(setImmediate);
+    clean.listeners.get(event)!(exit); await new Promise(setImmediate);
     assert.equal(clean.calls.includes('clip'), false, event);
   }
   const visible = fixture(); visible.listeners.get('document:visibilitychange')!();
@@ -169,7 +172,8 @@ test('desktop close warning shows the risk of losing unconfirmed local drafts an
 
 test('native editor close drains its own clip and view without writing the retired locator', async () => {
   const f=fixture({native:true});assert.equal(await f.drain(),true);assert.deepEqual(f.calls,['view','clip']);
-  f.calls.length=0;await f.listeners.get('window:pagehide')!();assert.equal(f.calls.includes('locator'),false);assert.equal(f.calls.includes('view'),true);
+  f.calls.length=0;await f.listeners.get('window:pagehide')!({type:'pagehide',preventDefault() {}});
+  assert.equal(f.calls.includes('locator'),false);assert.equal(f.calls.includes('view'),true);assert.equal(f.calls.includes('editing-release'),true);
 });
 
 test('actual App composition blocks close drain and beforeunload', async () => {
