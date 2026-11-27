@@ -4,6 +4,7 @@ import {clipTransitionSides, isClipTransition, type ClipTransitionKind} from '..
 import type {TimelineTrackRecord} from '../../contracts/src/timeline-replacement.ts';
 import {createVolumeEnvelopeEvaluator, VOLUME_ENVELOPE_LIMITS} from '../../contracts/src/timeline-volume-envelope.ts';
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import {hasEditorExportSpeed, premiereSpeedAudioUnavailable, type EditorExportSpeed} from './editor-export-speed.ts';
 import type {FcpXmlAsset} from './fcp-xml.ts';
 
 export const PREMIERE_XMEML_VERSION = '5';
@@ -24,6 +25,8 @@ interface TrackClip {
   clip: Format5Clip;
   file: SourceFile;
   attachedSound: boolean;
+  timed: boolean;
+  speed?: EditorExportSpeed;
 }
 
 function tag(name: string, content = '', id?: string): string {
@@ -84,6 +87,30 @@ const motion = {name: 'Basic Motion', effectId: 'basic', category: 'motion', typ
 const cropEffect = {name: 'Crop', effectId: 'crop', category: 'motion', type: 'motion', media: 'video'} as const;
 const levels = {name: 'Audio Levels', effectId: 'audiolevels', category: 'audiolevels', type: 'filter', media: 'audio'} as const;
 
+function speedFilter(clip: Format5Clip, speed: EditorExportSpeed, media: MediaType): string {
+  const {direction, kind, points} = speed;
+  if (kind === 'freeze' || media === 'audio' && premiereSpeedAudioUnavailable(speed)) return '';
+  const reverse = direction === 'reverse';
+  const variable = kind === 'curve' || points.length > 2;
+  const first = points[0]!, last = points[points.length - 1]!;
+  const basis = clip.timing?.profile === 'timeline-speed-v1' ? clip.timing.basis.speed : undefined;
+  const nominalRate = basis?.kind === 'constant' ? 100 * basis.rate.numerator / basis.rate.denominator
+    : 100 * Math.abs(last.sourceFrame - first.sourceFrame) / last.outputFrame;
+  // XMEML's last keyframe is the exclusive endpoint. Its constant reverse
+  // graph stores one-based source coordinates, including that endpoint once.
+  const reverseOffset = reverse && !variable ? 1 : 0;
+  const keys = points.map((point, index) => {
+    const boundary = index === 0 ? field('speedkfin', true)
+      : index === points.length - 1 ? field('speedkfout', true) : '';
+    return tag('keyframe', field('when', point.outputFrame) + numberValue(point.sourceFrame + reverseOffset) + boundary);
+  }).join('');
+  const effect = {name: 'Time Remap', effectId: 'timeremap', category: 'motion', type: 'motion', media} as const;
+  return filter(effect, parameter('variablespeed', 'Variable Speed', numberValue(variable ? 1 : 0)) +
+    parameter('speed', 'Speed', numberValue(nominalRate)) + parameter('reverse', 'Reverse', field('value', reverse)) +
+    parameter('frameblending', 'Frame Blending', field('value', media === 'video' && speed.interpolation === 'blend')) +
+    tag('parameter', field('parameterid', 'graphdict') + field('name', 'Graph') + keys));
+}
+
 function pictureFilters(clip: Format5Clip, asset: FcpXmlAsset, timeline: Format5Timeline, sourceStart: number): string {
   const basis = clipLayoutBasis(clip.layout === undefined ? {} : {layout: clip.layout}, timeline);
   if (!basis) throw new RangeError('Invalid Premiere clip layout basis');
@@ -115,7 +142,7 @@ function pictureFilters(clip: Format5Clip, asset: FcpXmlAsset, timeline: Format5
   return adjustments + (cropParameters ? filter(cropEffect, cropParameters) : '');
 }
 
-function audioFilters(clip: Format5Clip, track: TimelineTrackRecord): string {
+function audioFilters(clip: Format5Clip, track: TimelineTrackRecord, sourceStart = clip.sourceInFrame): string {
   const level = (value: number, keys?: readonly {when: number; value: string}[]) =>
     filter(levels, parameter('level', 'Level', numberValue(value), keys));
   // XMEML Audio Levels stores linear gain. This is the equivalent of −96 dB.
@@ -132,7 +159,7 @@ function audioFilters(clip: Format5Clip, track: TimelineTrackRecord): string {
   const keys = frames.map(frame => {
     const fade = frame < fadeIn ? frame / fadeIn : frame > fadeOutStart ? (clip.durationFrames - frame) / fadeOut : 1;
     const multiplier = evaluator?.limitAtSample(frame * VOLUME_ENVELOPE_LIMITS.samplesPerFrame) ?? 1;
-    return {when: clip.sourceInFrame + frame, value: numberValue(clip.gain * multiplier * fade)};
+    return {when: sourceStart + frame, value: numberValue(clip.gain * multiplier * fade)};
   });
   return level(clip.gain, keys);
 }
@@ -158,7 +185,8 @@ function links(clip: Format5Clip): string {
   return tag('link', field('linkclipref', clipId(clip, 'video'))) + tag('link', field('linkclipref', clipId(clip, 'audio')));
 }
 
-function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<string, FcpXmlAsset>) {
+function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<string, FcpXmlAsset>,
+  speedByClip?: ReadonlyMap<string, EditorExportSpeed>) {
   const tracks = [...timeline.tracks].sort((left, right) => left.orderIndex - right.orderIndex);
   if (!tracks.some(track => track.id === timeline.mainTrack.trackId && track.kind === 'video')) {
     throw new RangeError('Premiere export requires a primary video track');
@@ -173,6 +201,9 @@ function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<s
     for (const clip of clips.get(track.id)!) {
       const asset = clip.sourceState === 'ready' && clip.assetId ? assets.get(clip.assetId) : undefined;
       if (!asset || (track.kind === 'video' ? !asset.hasVideo : !asset.hasAudio)) continue;
+      const speed = speedByClip?.get(clip.id);
+      const timed = Boolean(speed) || hasEditorExportSpeed(clip, timeline.fps);
+      if (!speed && timed && clip.sourceInFrame + clip.durationFrames > asset.durationFrames) continue;
       // Files copied by hash share a path. Keep separate definitions if asset
       // rows disagree about whether those bytes are still, video or audio.
       const kind = asset.isStill ? 'still' : asset.hasVideo ? 'video' : 'audio';
@@ -189,8 +220,8 @@ function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<s
           audioChannels: file.asset.audioChannels ?? asset.audioChannels, audioRate: file.asset.audioRate ?? asset.audioRate};
         file.duration = Math.max(file.duration, asset.durationFrames);
       }
-      const attachedSound = track.kind === 'video' && asset.hasAudio;
-      items.push({clip, file, attachedSound});
+      const attachedSound = track.kind === 'video' && asset.hasAudio && speed?.kind !== 'freeze';
+      items.push({clip, file, attachedSound, timed, speed});
     }
     return {track, items};
   });
@@ -202,6 +233,7 @@ function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<s
       const previous = items[index - 1];
       const transition = item.clip.transitionIn;
       if (!previous || endFrame(previous.clip) !== item.clip.startFrame || !transition || !isClipTransition(transition)) continue;
+      if (previous.timed || item.timed) continue;
       const cut = {kind: transition.kind, ...clipTransitionSides(transition.durationFrames)};
       const previousIntro = cuts.get(previous.clip.id)?.after ?? 0;
       const outgoingSourceEnd = previous.clip.sourceInFrame + previous.clip.durationFrames + cut.after;
@@ -215,44 +247,57 @@ function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<s
   return {trackClips, cuts, exits};
 }
 
-export function premiereTransitionCuts(timeline: Format5Timeline, assets: ReadonlyMap<string, FcpXmlAsset>) {
-  return premiereTimelineLayout(timeline, assets).cuts;
+export function premiereTransitionCuts(timeline: Format5Timeline, assets: ReadonlyMap<string, FcpXmlAsset>,
+  speed?: ReadonlyMap<string, EditorExportSpeed>) {
+  return premiereTimelineLayout(timeline, assets, speed).cuts;
 }
 
-export function serializePremiereXml({timeline, projectName, assets}: {
+export function serializePremiereXml({timeline, projectName, assets, speed}: {
   readonly timeline: Format5Timeline;
   readonly projectName: string;
   readonly assets: ReadonlyMap<string, FcpXmlAsset>;
+  readonly speed?: ReadonlyMap<string, EditorExportSpeed>;
 }): string {
   if (timeline.fps !== fps) throw new RangeError('Premiere export requires the Format 5 30 fps timebase');
-  const {trackClips, cuts, exits} = premiereTimelineLayout(timeline, assets);
+  const {trackClips, cuts, exits} = premiereTimelineLayout(timeline, assets, speed);
   function sourceStart(item: TrackClip): number {
     const before = cuts.get(item.clip.id)?.before ?? 0;
     return item.file.asset.isStill ? Math.max(before, item.clip.sourceInFrame) : item.clip.sourceInFrame;
   }
   for (const {items} of trackClips) {
     for (const item of items) {
-      const out = sourceStart(item) + item.clip.durationFrames + (exits.get(item.clip.id)?.after ?? 0);
+      const out = item.speed?.sourceEndFrame ??
+        sourceStart(item) + item.clip.durationFrames + (exits.get(item.clip.id)?.after ?? 0);
       item.file.duration = Math.max(item.file.duration, out);
     }
   }
   function renderClip(item: TrackClip, track: TimelineTrackRecord, media: MediaType): string {
-    const {clip, file} = item;
+    const {clip, file, speed} = item;
     const cut = media === 'video' ? cuts.get(clip.id) : undefined;
     const exit = media === 'video' ? exits.get(clip.id) : undefined;
-    const source = media === 'video' ? sourceStart(item) : clip.sourceInFrame;
+    // Each retime graph is rebased to the visible output. Graph values keep
+    // absolute source coordinates, so a source trim does not shift the edit.
+    const source = speed ? 0 : media === 'video' ? sourceStart(item) : clip.sourceInFrame;
     // XMEML uses -1 beside a transition. Include the source handles so the
     // importer can infer its boundary without moving the underlying edit.
     const start = cut ? -1 : clip.startFrame;
     const end = exit ? -1 : endFrame(clip);
     const inFrame = source - (cut?.before ?? 0);
     const outFrame = source + clip.durationFrames + (exit?.after ?? 0);
-    const filters = media === 'video' ? pictureFilters(clip, file.asset, timeline, source) : audioFilters(clip, track);
-    const rendered = tag('clipitem', field('name', clip.name) + field('enabled', true) + field('duration', file.duration) + rate +
+    const filters = media === 'video' ? pictureFilters(clip, file.asset, timeline, source) : audioFilters(clip, track, source);
+    const retime = speed ? speedFilter(clip, speed, media) : '';
+    const freeze = speed?.kind === 'freeze' && media === 'video';
+    const still = freeze ? field('stillframe', true) + field('stillframeoffset', Math.floor(speed.points[0]!.sourceFrame))
+      : file.asset.isStill ? field('stillframe', true) : '';
+    // Premiere's variable Time Remapping does not retime its linked audio.
+    // Keep the source editable at the same position and duration in silence.
+    const enabled = media === 'video' || !speed || speed.kind !== 'freeze' && !premiereSpeedAudioUnavailable(speed);
+    const rendered = tag('clipitem', field('name', clip.name) + field('enabled', enabled) +
+      field('duration', speed ? clip.durationFrames : file.duration) + rate +
       field('start', start) + field('end', end) + field('in', inFrame) + field('out', outFrame) +
-      (file.asset.isStill ? field('stillframe', true) : '') + fileXml(file, timeline) +
+      still + fileXml(file, timeline) +
       tag('sourcetrack', field('mediatype', media) + (media === 'audio' ? field('trackindex', 1) : '')) +
-      (item.attachedSound ? links(clip) : '') + filters, clipId(clip, media));
+      (item.attachedSound ? links(clip) : '') + retime + filters, clipId(clip, media));
     return (cut ? transitionXml(cut, clip.startFrame) : '') + rendered;
   }
 

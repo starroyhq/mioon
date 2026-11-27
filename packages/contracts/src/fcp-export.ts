@@ -15,15 +15,16 @@ export const FCP_EXPORT_OPERATIONS = Object.freeze([
 ] as const);
 export type FcpExportOperation = (typeof FCP_EXPORT_OPERATIONS)[number];
 
-export const FCP_MISSING_ITEM_CODES = Object.freeze([
+const missingItemCodes = [
   'LUT',
   'PLACEHOLDER',
   'MEDIA_MISSING',
   'UNSUPPORTED_MEDIA',
-] as const);
+] as const;
+export const FCP_MISSING_ITEM_CODES = Object.freeze([...missingItemCodes, 'SPEED'] as const);
 export type FcpMissingItemCode = (typeof FCP_MISSING_ITEM_CODES)[number];
 
-export const FCP_APPROXIMATION_ITEM_CODES = Object.freeze([
+const approximationItemCodes = [
   'TRANSITION',
   'VOLUME_KEYFRAMES',
   'FADES',
@@ -32,13 +33,11 @@ export const FCP_APPROXIMATION_ITEM_CODES = Object.freeze([
   'MUTE',
   'SEPARATE_SOUND',
   'TRANSFORM',
-] as const);
+] as const;
+export const FCP_APPROXIMATION_ITEM_CODES = Object.freeze([...approximationItemCodes, 'SPEED'] as const);
 export type FcpApproximationItemCode = (typeof FCP_APPROXIMATION_ITEM_CODES)[number];
 
-export const FCP_ITEM_CODES = Object.freeze([
-  ...FCP_MISSING_ITEM_CODES,
-  ...FCP_APPROXIMATION_ITEM_CODES,
-] as const);
+export const FCP_ITEM_CODES = Object.freeze([...missingItemCodes, ...approximationItemCodes, 'SPEED'] as const);
 export type FcpItemCode = (typeof FCP_ITEM_CODES)[number];
 
 export const FCP_EXPORT_STATUSES = Object.freeze([
@@ -75,10 +74,12 @@ export const fcpClipRefSchema = z.object({
 export interface FcpItemValues {
   readonly from?: string | undefined;
   readonly to?: string | undefined;
+  readonly maxErrorFrames?: number | undefined;
 }
 export const fcpItemValuesSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
+  maxErrorFrames: z.number().finite().nonnegative().optional(),
 }).strict();
 
 export interface FcpItem<Code extends FcpItemCode = FcpItemCode> {

@@ -149,7 +149,7 @@ export function fcpProgressPercent(progress: FcpExportProgress): number {
   return 0;
 }
 
-export function fcpItemLabelMessage(item: FcpItem): DisplayMessage {
+export function fcpItemLabelMessage(item: FcpItem): DisplayMessage | string {
   switch (item.code) {
     case 'LUT': return message('fcpExport.item.LUT');
     case 'PLACEHOLDER': return message('fcpExport.item.PLACEHOLDER');
@@ -166,6 +166,7 @@ export function fcpItemLabelMessage(item: FcpItem): DisplayMessage {
     case 'MUTE': return message('fcpExport.item.MUTE');
     case 'SEPARATE_SOUND': return message('fcpExport.item.SEPARATE_SOUND');
     case 'TRANSFORM': return message('fcpExport.item.TRANSFORM');
+    case 'SPEED': return item.code;
   }
 }
 

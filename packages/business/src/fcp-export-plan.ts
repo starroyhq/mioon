@@ -7,6 +7,9 @@ import type {FcpClipRef, FcpExportError, FcpExportPreviewOutput, FcpItemValues} 
 import type {PremiereExportPreviewOutput, PremiereItemCode} from '../../contracts/src/premiere-export.ts';
 import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import {compileEditorExportSpeed, hasEditorExportSpeed, premiereSpeedAudioUnavailable,
+  type EditorExportSpeed, type EditorSourceClock} from './editor-export-speed.ts';
+import {readEditorSourceClock} from './editor-export-source-clock.ts';
 import {fcpxmlTransitions, type FcpXmlAsset} from './fcp-xml.ts';
 import {premiereTransitionCuts} from './premiere-xml.ts';
 import type {PreparedAssetReference, ProjectAssetReferenceServices} from './project-asset-references.ts';
@@ -77,6 +80,7 @@ export interface EditorExportPlan<Preview extends EditorExportPreview> {
   readonly preview: Preview;
   readonly copies: ReadonlyArray<EditorMediaCopy>;
   readonly assets: ReadonlyMap<string, PlannedAsset>;
+  readonly speed: ReadonlyMap<string, EditorExportSpeed>;
 }
 
 const numeric = (value: unknown): number | undefined => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
@@ -101,6 +105,7 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
   const {timeline, projectName, destination, copyMedia, references, readAsset, signal, beforeEffect} = input;
   const {width, height, fps, durationFrames, clips} = timeline;
   const tracks = new Map(timeline.tracks.map(track => [track.id, track]));
+  const retimed = new Set(clips.filter(clip => hasEditorExportSpeed(clip, fps)).map(clip => clip.id));
   const uses = new Map<string, Format5Clip[]>();
   const missing = new Map<string, ChecklistItem<MissingCode>>();
   const approximate = new Map<string, ChecklistItem<ApproximationCode>>();
@@ -134,6 +139,7 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
 
   const assets = new Map<string, PlannedAsset>();
   const copies = new Map<string, EditorMediaCopy>();
+  const clocks = new Map<string, EditorSourceClock>();
   for (const [id, used] of uses) {
     signal?.throwIfAborted();
     const asset = readAsset(id);
@@ -148,7 +154,8 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     const metadata = {
       id, name, hasVideo: !mime.startsWith('audio/') && (mime !== '' || used.some(clip => tracks.get(clip.trackId)?.kind === 'video')),
       hasAudio: mime.startsWith('audio/') || asset?.hasAudio === true || used.some(clip => tracks.get(clip.trackId)?.kind === 'audio'),
-      durationFrames: Math.max(Math.ceil((numeric(asset?.duration) ?? 0) * fps), ...used.map(clip => clip.sourceInFrame + clip.durationFrames)),
+      durationFrames: used.reduce((duration, clip) => retimed.has(clip.id) ? duration : Math.max(duration, clip.sourceInFrame + clip.durationFrames),
+        Math.ceil((numeric(asset?.duration) ?? 0) * fps)),
       width: numeric(asset?.width), height: numeric(asset?.height), audioChannels: numeric(asset?.audioChannels), audioRate: numeric(asset?.audioRate), isStill: still,
     };
     let reference: PreparedAssetReference;
@@ -183,6 +190,24 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
       throw new EditorExportFailure({code: 'MEDIA_UNREADABLE', values: {file: path.basename(name)}});
     }
     const source = {reference, identity, name};
+    let clock: EditorSourceClock | null = null;
+    if (!still && metadata.hasVideo && used.some(clip => retimed.has(clip.id) && !clip.soundOnly && tracks.get(clip.trackId)?.kind === 'video')) {
+      const sourceFence = () => {
+        signal?.throwIfAborted();
+        beforeEffect?.();
+        if (readAsset(id)?.referenceRevision !== reference.referenceRevision ||
+            editorExportSourceIdentity(lstatSync(reference.file, {bigint: true})) !== identity) {
+          throw new EditorExportFailure({code: 'MEDIA_UNREADABLE', values: {file: path.basename(name)}});
+        }
+      };
+      try { clock = await readEditorSourceClock(reference.file, {signal, beforeEffect: sourceFence}); }
+      catch (error) {
+        sourceFence();
+        if (error instanceof EditorExportFailure || (error as {terminationUnconfirmed?: unknown})?.terminationUnconfirmed === true) throw error;
+      }
+      sourceFence();
+      if (clock) clocks.set(id, clock);
+    }
     let bundleRelativePath: string | undefined;
     if (copyMedia && sha256) {
       let copy = copies.get(sha256);
@@ -194,20 +219,72 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
       }
       bundleRelativePath = 'Media/' + copy.fileName;
     }
-    assets.set(id, {metadata, source, bundleRelativePath});
+    assets.set(id, {metadata: clock && format === 'fcpxml'
+      ? {...metadata, sourceFps: clock.fps, sourceFpsDenominator: clock.fpsDenominator} : metadata, source, bundleRelativePath});
+  }
+
+  const speed = new Map<string, EditorExportSpeed>();
+  for (const clip of clips) {
+    if (!retimed.has(clip.id)) continue;
+    const asset = clip.assetId ? assets.get(clip.assetId) : undefined;
+    if (!asset || clip.sourceState !== 'ready' || asset.metadata.isStill) {
+      affected(missing, 'SPEED', clip, {from: '变速', to: '保留时间线长度，素材无法写入变速'});
+      continue;
+    }
+    const hasPicture = asset.metadata.hasVideo && !clip.soundOnly && tracks.get(clip.trackId)?.kind === 'video';
+    const hasAudio = asset.metadata.hasAudio && clip.timing?.profile !== 'timeline-freeze-v1';
+    const clock = hasPicture && clip.assetId ? clocks.get(clip.assetId) : undefined;
+    const native = clock && (format === 'fcpxml' || clock.fps === fps * (clock.fpsDenominator ?? 1)) ? clock : undefined;
+    const mapping = compileEditorExportSpeed(clip, timeline, native);
+    if (!mapping) {
+      affected(missing, 'SPEED', clip, {from: '变速', to: '保留时间线长度，源范围足够时按原速写入，否则留空'});
+      continue;
+    }
+    speed.set(clip.id, mapping);
+    if (hasPicture && !native) affected(missing, 'SPEED', clip, {
+      from: '原片帧号对应', to: '按项目时钟写变速，原片帧采样无法保证',
+    });
+    if (mapping.kind === 'curve') affected(approximate, 'SPEED', clip, {
+      from: '曲线变速', to: '线性关键时间点', maxErrorFrames: mapping.maxErrorFrames,
+    });
+    if (hasPicture && mapping.interpolation !== 'off') {
+      if (format === 'premiere' && mapping.interpolation === 'optical') affected(missing, 'SPEED', clip, {
+        from: '光流', to: '按原片取帧',
+      });
+      else affected(approximate, 'SPEED', clip, {from: mapping.interpolation === 'blend' ? '帧混合' : '光流',
+        to: (format === 'premiere' ? 'Premiere Pro' : 'Final Cut Pro') + ' 自带补帧'});
+    }
+    if (format === 'premiere' && hasAudio) {
+      if (premiereSpeedAudioUnavailable(mapping)) affected(missing, 'SPEED', clip, {from: '分段变速的音频', to: '保留音频位置，禁用播放'});
+      else affected(missing, 'SPEED', clip, {from: mapping.pitchShift ? '声音变调' : '保音调', to: '沿用导入器的音调处理'});
+    }
   }
 
   const cuts = format === 'fcpxml' ? fcpxmlTransitions(timeline, assets)
-    : premiereTransitionCuts(timeline, editorExportXmlAssets(assets, destination));
+    : premiereTransitionCuts(timeline, editorExportXmlAssets(assets, destination), speed);
+  const previousByTrack = new Map<string, Format5Clip>();
+  for (const clip of [...clips].sort((a, b) => a.startFrame - b.startFrame)) {
+    const previous = previousByTrack.get(clip.trackId);
+    previousByTrack.set(clip.trackId, clip);
+    if (clip.transitionIn && previous && previous.startFrame + previous.durationFrames === clip.startFrame &&
+        (retimed.has(clip.id) || retimed.has(previous.id)) && clip.assetId && previous.assetId && assets.has(clip.assetId) && assets.has(previous.assetId)) {
+      affected(missing, 'SPEED', clip, {from: '变速片段相邻转场', to: '保留原切点'});
+    }
+  }
   for (const clip of clips) {
     if (clip.sourceState !== 'ready' || !clip.assetId) continue;
     const asset = assets.get(clip.assetId);
     if (!asset) continue;
     const track = tracks.get(clip.trackId);
+    const mapping = speed.get(clip.id);
+    if (!mapping && retimed.has(clip.id) && !asset.metadata.isStill &&
+        clip.sourceInFrame + clip.durationFrames > asset.metadata.durationFrames) continue;
     if (clip.anchor) affected(approximate, 'ANCHOR', clip);
-    if (clip.volumeEnvelope && volumeEnvelopeField(clip).volumeEnvelope != null) affected(approximate, 'VOLUME_KEYFRAMES', clip);
-    if (clip.fadeInFrames || clip.fadeOutFrames) affected(approximate, 'FADES', clip);
-    if (asset.metadata.hasAudio && (clip.muted || track?.muted)) affected(approximate, 'MUTE', clip);
+    const silent = clip.timing?.profile === 'timeline-freeze-v1' ||
+      format === 'premiere' && mapping && premiereSpeedAudioUnavailable(mapping);
+    if (!silent && clip.volumeEnvelope && volumeEnvelopeField(clip).volumeEnvelope != null) affected(approximate, 'VOLUME_KEYFRAMES', clip);
+    if (!silent && (clip.fadeInFrames || clip.fadeOutFrames)) affected(approximate, 'FADES', clip);
+    if (!silent && asset.metadata.hasAudio && (clip.muted || track?.muted)) affected(approximate, 'MUTE', clip);
     if (clip.soundOnly) affected(approximate, 'SEPARATE_SOUND', clip);
     if (clip.transform || clip.layout && (clip.rect.x || clip.rect.y || clip.rect.width !== width || clip.rect.height !== height)) {
       affected(approximate, 'TRANSFORM', clip);
@@ -240,6 +317,7 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     },
     copies: planCopies,
     assets,
+    speed,
   };
 }
 
@@ -255,7 +333,7 @@ export function editorExportMissingMarkdown(preview: EditorExportPreview, appNam
     LUT: 'LUT 调色', PLACEHOLDER: '未生成的镜头（空隙）', MEDIA_MISSING: '找不到的素材（离线）',
     UNSUPPORTED_MEDIA: appName + ' 不支持的素材', TRANSITION: '转场', VOLUME_KEYFRAMES: '音量关键帧',
     FADES: '淡入和淡出', SUBTITLE_STYLE: '字幕样式', SUBTITLES: '字幕', ANCHOR: '挂靠', MUTE: '静音（−96 dB）',
-    SEPARATE_SOUND: '分离声音', TRANSFORM: '位置、缩放、旋转或裁切',
+    SEPARATE_SOUND: '分离声音', TRANSFORM: '位置、缩放、旋转或裁切', SPEED: '变速',
   };
   const text = (value: string): string => value.replace(/[\\`*_{}\[\]()#+\-.!<>|]/gu, '\\$&').replace(/[\p{Cc}]/gu, ' ');
   const lines = ['# ' + appName + ' 导出清单'];
@@ -263,7 +341,9 @@ export function editorExportMissingMarkdown(preview: EditorExportPreview, appNam
     lines.push('', '## ' + title, '');
     if (!group.length) lines.push('无');
     for (const entry of group) {
-      const change = entry.values ? '（' + text(entry.values.from ?? '') + ' → ' + text(entry.values.to ?? '') + '）' : '';
+      const error = entry.values?.maxErrorFrames;
+      const change = entry.values ? '（' + text(entry.values.from ?? '') + ' → ' + text(entry.values.to ?? '') +
+        (error === undefined ? '' : '，最大误差 ' + error + ' 帧') + '）' : '';
       lines.push('- ' + labels[entry.code] + change + '（' + entry.clips.length + '）');
       for (const clip of entry.clips) lines.push('  - ' + text(clip.name) + (clip.trackLabel ? ' · ' + text(clip.trackLabel) : ''));
     }
