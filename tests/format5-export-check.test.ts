@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {hasRequestNotAppliedProof,isExportPreflightResponse} from '@mioon/contracts';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {freezeFormat5RenderSnapshot, readFormat5AudioProjection, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
 import {prepareTimelineReferenceHashes} from '../packages/business/src/timeline-reference-prepare.ts';
@@ -91,7 +92,9 @@ test('format-5 capabilities, preflight and real render complete through the expo
   const store=createProjectStore({projectId:fid(1),projectFile:path.join(root,'project.mioon'),targetFormat:5,
     locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})});
   const library=openAppLibrary({dataDir:path.join(root,'app')});
-  const services=createServices(store,new Map(),{env:{},application:createProjectServiceApplication(library,undefined,{})});
+  let availableBytes = 2 ** 40;
+  const services=createServices(store,new Map(),{env:{},application:createProjectServiceApplication(library,undefined,{}),
+    exportOptions:{availableBytes:()=>availableBytes,memoryAllows:()=>true}});
   t.after(async()=>{await services.drain();library.close();store.close();rmSync(root,{recursive:true,force:true});});
   const projectId=store.projectId;
   const media=(name:string,args:string[],mimeType:string,duration:number)=>{
@@ -143,6 +146,22 @@ test('format-5 capabilities, preflight and real render complete through the expo
   for(const aid of [fid(10),fid(12),fid(13)])console.error('OWN',aid,Boolean(readOwnedTimelineAsset(store.db,projectId,aid)));
   console.error('JOBROW',JSON.stringify((store.get('jobs',job) as any)));console.error('VERROW',JSON.stringify((store.get('versions',v1) as any)));console.error('ASSETROW',JSON.stringify((store.get('assets',fid(10)) as any)));
   const settings={profileId:'mp4_h264_v1',resolution:'native',rateControl:{mode:'crf',quality:'standard'}};
+  availableBytes=1;
+  const resourceInput={projectId,expectedRevision:1,exportSettings:{...settings,resolution:'short_2160'}};
+  const blocked=await services.call('timeline.export.preflight',resourceInput) as {status:string;issues:{code:string;details:unknown}[];checks:{checkedAssets:number}};
+  assert.ok(isExportPreflightResponse(blocked,resourceInput));
+  assert.equal(blocked.status,'blocked');assert.equal(blocked.checks.checkedAssets,0);
+  assert.equal(blocked.issues[0]?.code,'EXPORT_DISK_SPACE_INSUFFICIENT');
+  const blockedRequest={...resourceInput,requestId:randomUUID(),purpose:'export'};
+  await assert.rejects(services.call('timeline.render',blockedRequest),(raw:unknown)=>{
+    const error=raw as {code:string;details:Record<string,unknown>};
+    assert.equal(error.code,'EXPORT_DISK_SPACE_INSUFFICIENT');
+    assert.equal(error.details.availableBytes,availableBytes);
+    assert.ok(hasRequestNotAppliedProof(error,blockedRequest,{operation:'timeline.render'}));
+    return true;
+  });
+  assert.equal(store.list('exports').length,0);
+  availableBytes=2 ** 40;
   const capability:any=await services.call('timeline.export.capabilities',{projectId,expectedRevision:1,exportSettings:settings});
   assert.equal(capability.status,'available',JSON.stringify(capability));
   const preflight:any=await services.call('timeline.export.preflight',{projectId,expectedRevision:1,exportSettings:settings});

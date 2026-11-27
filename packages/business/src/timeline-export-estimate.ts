@@ -107,10 +107,11 @@ export function timelineExportResourceError(issue: TimelineExportResourceIssue):
   return new AppError(issue.code, issue.message, 409, issue.details);
 }
 
-// A content-dependent CRF estimate, based on one CRF-23 reference. Each +6
-// CRF approximately halves the model bitrate. MP4 overhead excludes audio.
+// A content-dependent CRF estimate, calibrated at CRF 23. Each +6 CRF
+// approximately halves the modeled video bitrate. Add AAC and MP4 overhead.
 const CRF23_BITS_PER_PIXEL_FRAME = 0.04;
-const ENCODE_PIXELS_PER_SECOND = 400_000_000;
+// Measured on SDR 4K with the software compositor and x264 veryfast.
+const RENDER_PIXELS_PER_SECOND = 150_000_000;
 const MP4_OVERHEAD = 1.01;
 
 export function estimateTimelineExportRow(timeline: ExportBasis, settings: TimelineExportSettings, frames: number,
@@ -121,7 +122,7 @@ export function estimateTimelineExportRow(timeline: ExportBasis, settings: Timel
   const videoKbps = rateControl.mode === 'bitrate' ? rateControl.targetKbps
     : CRF23_BITS_PER_PIXEL_FRAME * pixels * timeline.fps / 1000 * 2 ** ((23 - rateControl.crf) / 6);
   const estimatedBytes = Math.ceil((videoKbps + audioKbps) * 1000 / 8 * duration * MP4_OVERHEAD);
-  const estimatedSeconds = frames ? 1 + pixels * frames / ENCODE_PIXELS_PER_SECOND : 0;
+  const estimatedSeconds = frames ? 1 + pixels * frames / RENDER_PIXELS_PER_SECOND : 0;
   const issues: TimelineExportResourceIssue[] = [];
   const fpsIssue = timelineExportFrameRateIssue(timeline.fps, settings);
   if (fpsIssue) issues.push(fpsIssue);

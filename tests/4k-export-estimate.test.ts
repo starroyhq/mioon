@@ -8,6 +8,7 @@ import {
   hasRequestNotAppliedProof, isExportPreflightResponse, operationEffect,
   TIMELINE_EXPORT_DEFAULT_SETTINGS, timelineExportEstimateResponseSchema,
 } from '@mioon/contracts';
+import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {OUTPUT_ARTIFACT_MAX_BYTES} from '../packages/contracts/src/output-artifact.ts';
 import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-publication.ts';
 import type {TimelineExportEstimateResponse} from '../packages/contracts/src/timeline-export-estimate.ts';
@@ -43,7 +44,7 @@ async function fixture(t: test.TestContext, {availableBytes, memoryAllows}: {
     width: 16, height: 16, duration: 0, hasAudio: false, createdAt: new Date().toISOString()});
   const timeline = await services.call('timeline.clip.add', {projectId, expectedRevision: initial.revision,
     requestId: randomUUID(), trackId: initial.tracks[0]!.id, assetId, startFrame: 0, durationFrames: 90,
-  }) as {id: string; revision: number};
+  }) as {id: string; revision: number; clips: {id: string}[]};
   const binding = {projectId, expectedRevision: timeline.revision};
   const estimateInput = {...binding, profileId: exportSettings.profileId, rateControl: bitrate};
   const snapshot = () => ({
@@ -51,7 +52,7 @@ async function fixture(t: test.TestContext, {availableBytes, memoryAllows}: {
     renders: store.db.prepare('SELECT count(*) AS count FROM exports').get()?.count,
     receipts: store.db.prepare('SELECT count(*) AS count FROM timeline_requests').get()?.count,
   });
-  return {root, store, services, binding, estimateInput, snapshot, get probes() {return probes;}};
+  return {root, store, services, binding, estimateInput, clipId: timeline.clips[0]!.id, snapshot, get probes() {return probes;}};
 }
 
 test('estimate is a version-bound read of all five tiers and an optional exact export range', async t => {
@@ -121,6 +122,29 @@ test('resource blocks agree across estimates, preflight and direct admission wit
   assert.equal(f.probes, 1, 'an exact accepted receipt wins over current disk space');
 });
 
+test('a saved transform beyond the 4K raster bound blocks preflight before a process can start', async t => {
+  const f = await fixture(t, {availableBytes: () => 2 ** 40});
+  const {timeline} = await f.services.call('timeline.clip.setTransform', {
+    ...f.binding, requestId: randomUUID(), clipId: f.clipId, transform: {
+      profileId: CLIP_TRANSFORM_PROFILE, crop: {left: 0, right: 0, top: 0, bottom: 0},
+      rotation: 45, keyframes: [{frame: 0, x: 0, y: 0, scale: 8}],
+    },
+  }) as {timeline: {revision: number}};
+  const expectedRevision = timeline.revision;
+  const estimate = await f.services.call('timeline.export.estimate', {...f.estimateInput, expectedRevision}) as TimelineExportEstimateResponse;
+  const raster = estimate.estimates.at(-1)!.issues[0]!;
+  assert.equal(raster.code, 'EXPORT_4K_RASTER_UNSUPPORTED');
+  assert.deepEqual(estimate.estimates.find(row => row.resolution === 'short_1080')?.issues, []);
+  const preflightInput = {projectId: f.binding.projectId, expectedRevision, exportSettings};
+  const preflight = await f.services.call('timeline.export.preflight', preflightInput) as {status: string;issues: unknown[]};
+  assert.ok(isExportPreflightResponse(preflight, preflightInput));
+  assert.equal(preflight.status, 'blocked');
+  assert.deepEqual(preflight.issues, [raster]);
+  await assert.rejects(f.services.call('timeline.render', {...preflightInput, requestId: randomUUID(), purpose: 'export'}),
+    {code: 'EXPORT_4K_RASTER_UNSUPPORTED'});
+  assert.equal(f.probes, 0);
+});
+
 test('future FPS and the artifact size cap have separate details and do not affect other tiers', () => {
   const basis = {id: randomUUID(), revision: 1, width: 1920, height: 1080, fps: 30, durationFrames: 90};
   for (const fps of [24, 25, 30]) {
@@ -136,6 +160,27 @@ test('future FPS and the artifact size cap have separate details and do not affe
   assert.ok(long.estimatedBytes > OUTPUT_ARTIFACT_MAX_BYTES);
   assert.equal(long.issues[0]?.code, 'EXPORT_OUTPUT_TOO_LARGE');
   assert.deepEqual(long.issues[0]?.details, {estimatedBytes: long.estimatedBytes, maxBytes: OUTPUT_ARTIFACT_MAX_BYTES});
+});
+
+test('preflight reports the 8 GiB cap before probing media', async t => {
+  const f = await fixture(t, {availableBytes: () => 2 ** 40});
+  // A saved duration beyond the editor limit makes the cap reachable in this
+  // synthetic fixture without encoding hours of footage.
+  f.store.db.prepare("UPDATE project.timelines SET data=json_set(data,'$.durationFrames',?) WHERE projectId=?")
+    .run(60 * 60 * 30, f.binding.projectId);
+  const input = {...f.binding, exportSettings: {...exportSettings, rateControl: {mode: 'bitrate', targetKbps: 8000}}};
+  const report = await f.services.call('timeline.export.preflight', input) as {
+    status: string; issues: {code: string; details: {estimatedBytes: number; maxBytes: number}}[];
+    checks: {checkedAssets: number};
+  };
+  assert.ok(isExportPreflightResponse(report, input));
+  assert.equal(report.status, 'blocked');
+  const issue = report.issues[0]!;
+  assert.equal(issue.code, 'EXPORT_OUTPUT_TOO_LARGE');
+  assert.equal(issue.details.maxBytes, OUTPUT_ARTIFACT_MAX_BYTES);
+  assert.ok(issue.details.estimatedBytes > issue.details.maxBytes);
+  assert.equal(report.checks.checkedAssets, 0);
+  assert.equal(f.probes, 0);
 });
 
 test('space lookup does not create the export folder or follow a substituted symlink', {skip: process.platform === 'win32'}, async t => {

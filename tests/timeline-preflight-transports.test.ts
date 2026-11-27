@@ -417,7 +417,7 @@ test('preflight agrees across actual HTTP, CLI and official MCP without export/c
   for (const {name, call} of transports) {
     const report = await call(operation, input);
     assert.equal(isExportPreflightResponse(report, input), true, name); assert.equal(report.status, 'blocked');
-    assert.ok(report.issues.some((issue) => issue.severity === 'error' && issue.assetId === audioId), 'missing source is a known blocker');
+    assert.ok(report.issues.some((issue) => issue.severity === 'error' && 'assetId' in issue && issue.assetId === audioId), 'missing source is a known blocker');
     await backend.unchanged(afterRemoval, `${name} missing source`);
   }
   const beforeReplay = await backend.audit();
