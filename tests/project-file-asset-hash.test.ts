@@ -36,7 +36,7 @@ const target = (store: ProjectStore, id: string): number => Number(store.db.prep
 const changes = (store: ProjectStore): number => Number(store.db.prepare('SELECT total_changes() AS n').get()?.n);
 function commit(store: ProjectStore, row: Asset, overrides: Partial<Parameters<typeof commitProjectAssetHash>[1]> = {}): Record<string, unknown> {
   return commitProjectAssetHash(store, {assetId: row.id, expectedRaw: raw(store, row.id),
-    reference: {...row.reference, fullSha256: HASH}, sha256: HASH, ...overrides});
+    reference: {...row.reference, fullSha256: HASH}, sha256: HASH, ...overrides}).asset;
 }
 
 test('full hash completion retains all domain fields, calls transaction fences and never domain observers', t => {
