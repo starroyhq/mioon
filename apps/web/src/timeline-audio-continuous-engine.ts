@@ -84,7 +84,8 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
   const readOutputSample = (presentationTimeMs = performance.now()): number => {
     if (status !== 'playing') return cursor;
     const stamp = context.getOutputTimestamp?.();
-    if (!stamp?.performanceTime || !Number.isFinite(stamp.performanceTime) || !Number.isFinite(stamp.contextTime)) {
+    if (!stamp?.performanceTime || !Number.isFinite(stamp.performanceTime) ||
+        typeof stamp.contextTime !== 'number' || !Number.isFinite(stamp.contextTime)) {
       return sampleAt(context.currentTime - ((context.baseLatency || 0) + (context.outputLatency || 0)));
     }
     const deviceTime = stamp.contextTime + (presentationTimeMs - stamp.performanceTime) / 1000;

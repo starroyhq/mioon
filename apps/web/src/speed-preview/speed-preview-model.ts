@@ -1,9 +1,7 @@
 /** Pure shared time-map, preview-media, thumbnail-sampling, and waveform-projection
  * helpers for Speed Preview (SP-V).
  *
- * Uses ONLY `packages/contracts/src/timeline-time-map.ts` and
- * `packages/contracts/src/timeline-speed.ts` so the frontend branch stays cleanly
- * isolated from backend contract additions prior to integration.
+ * Uses the shared clip time-map compiler and frame rules used by export.
  */
 import {
   TIMELINE_TIME_MAP_LIMITS,
