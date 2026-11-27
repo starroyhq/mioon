@@ -140,10 +140,10 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
       .run(timeline.id, projectId, rootId, 1, JSON.stringify({version: 1, board: [], track: []}));
   });
   processing.activate();
-  function direction(direction: 'forward' | 'reverse', numerator = 1) {
+  function direction(direction: 'forward' | 'reverse', numerator = 1, clipId = initialClip.id) {
     const service = createFormat5SequenceEditService(store);
     const reviewed = service.preview({projectId, requestId: randomUUID(), speedIntent: {side: 'timeline',
-      operation: {kind: 'clip-speed', clipId: initialClip.id, setting: {speed: {kind: 'constant', rate: {numerator, denominator: 1}},
+      operation: {kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator, denominator: 1}},
         direction, pitchShift: false, interpolation: 'off'}}}});
     assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
     return service.commit({projectId, envelope: reviewed.envelope, expectedPlanDigest: reviewed.planDigest});
@@ -254,8 +254,6 @@ test('an owned committed source runs the real worker and reopens its verified ou
   for (const file of receipt.result.files) {
     assert.equal(sha(readFileSync(path.join(directory, entry, file.fileName))), file.sha256);
   }
-  await f.reopen();
-  assert.deepEqual(f.processing.inspect({projectId: f.projectId, taskId: task.taskId}), {item: result.item});
   const timeline = readFormat5TimelineRecord(f.store.db, 'project')!;
   const clip = timeline.clips.find(value => value.id === f.clipId)!;
   const timeMap = compileClipTimeMap(clip, timeline);
@@ -273,9 +271,50 @@ test('an owned committed source runs the real worker and reopens its verified ou
   const proof = f.processing.reverseProxy.lookup(request);
   assert.ok(proof?.readySha256);
   assert.equal(proof.taskId, task.taskId);
-  const leased = await f.processing.reverseProxy.acquire(request, {taskId: proof.taskId, sha256: proof.readySha256}, {});
+  await f.reopen();
+  assert.deepEqual(f.processing.inspect({projectId: f.projectId, taskId: task.taskId}), {item: result.item});
+  assert.deepEqual(f.processing.reverseProxy.lookup(request), proof, 'a frozen export proof survives reopening the host');
+  const originalProof = {taskId: proof.taskId, sha256: proof.readySha256};
+  const leased = await f.processing.reverseProxy.acquire(request, originalProof, {});
   assert.ok(leased?.audio);
+  t.after(() => leased.release());
   assert.deepEqual(leased.audio.clock, request.audioWindow);
+
+  const aliasId = randomUUID();
+  f.store.tx(() => {
+    const twin = {...clip, id: aliasId, startFrame: clip.durationFrames};
+    f.store.put('timelines', {...timeline, revision: timeline.revision + 1,
+      durationFrames: clip.durationFrames * 2, clips: [clip, twin]});
+  });
+  const aliasRequest = {...request, clipId: aliasId};
+  const aliasReady = f.processing.reverseProxy.lookup(aliasRequest);
+  assert.ok(aliasReady?.readySha256);
+  assert.equal(aliasReady.taskId, originalProof.taskId, 'the equivalent clips share one task');
+  const aliasProof = {taskId: aliasReady.taskId, sha256: aliasReady.readySha256};
+  const wrongAlias = await f.processing.reverseProxy.acquire(aliasRequest, originalProof, {});
+  wrongAlias?.release();
+  assert.equal(wrongAlias, null, 'the original clip credential cannot authorize its alias');
+  const wrongOriginal = await f.processing.reverseProxy.acquire(request, aliasProof, {});
+  wrongOriginal?.release();
+  assert.equal(wrongOriginal, null, 'the alias credential cannot authorize the original clip');
+  assert.notEqual(aliasProof.sha256, originalProof.sha256);
+
+  const aliasLease = await f.processing.reverseProxy.acquire(aliasRequest, aliasProof, {});
+  assert.ok(aliasLease?.audio);
+  t.after(() => aliasLease.release());
+  assert.equal(aliasLease.audio.file, leased.audio.file, 'the separate credentials pin the same cache file');
+  assert.equal(aliasLease.verify(), true);
+  f.direction('reverse', 2, aliasId);
+  assert.equal(aliasLease.verify(), false, 'the changed alias no longer owns the old demand');
+  aliasLease.release();
+  assert.equal(await f.processing.reverseProxy.acquire(aliasRequest, aliasProof, {}), null);
+  const retained = await f.processing.reverseProxy.acquire(request, originalProof, {});
+  assert.ok(retained?.audio);
+  t.after(() => retained.release());
+  assert.equal(retained.audio.file, leased.audio.file);
+  assert.equal(retained.verify(), true);
+  retained.release();
+
   f.direction('forward');
   assert.equal(f.processing.reverseProxy.lookup(request), null);
   assert.equal(leased.verify(), true, 'a frozen export retains its verified original attempt');
@@ -356,6 +395,79 @@ test('preview submission runs only after a commit and leases are tied to the cur
   assert.equal(readFileSync(lease.file, 'utf8'), 'preview fixture');
   lease.release();
   assert.ok(f.processing.cacheClear(f).freedBytes > 0);
+});
+
+test('two clips share one preview render and retain independent media leases', async t => {
+  let renders = 0;
+  const f = await fixture(t, {video: true, previewRenderer: {...fakePreview, async render(...args) {
+    renders++;
+    return fakePreview.render(...args);
+  }}});
+  f.direction('reverse');
+  const a = {projectId: f.projectId, clipId: f.clipId};
+  const b = {projectId: f.projectId, clipId: randomUUID()};
+  f.store.tx(() => {
+    const timeline = readFormat5TimelineRecord(f.store.db, 'project')!;
+    const clip = timeline.clips[0]!;
+    const twin = {...clip, id: b.clipId, startFrame: clip.durationFrames};
+    f.store.put('timelines', {...timeline, revision: timeline.revision + 1,
+      durationFrames: clip.durationFrames * 2, clips: [clip, twin]});
+  });
+  const task = await until(() => f.processing.preview.lookup(a) ?? undefined);
+  assert.equal((await f.processing.wait({...a, taskId: task.item.taskId})).item.status, 'ready');
+  const first = f.processing.preview.lookup(a)?.ready;
+  const second = f.processing.preview.lookup(b)?.ready;
+  assert.ok(first && second);
+  assert.equal(first.proof.taskId, second.proof.taskId);
+  assert.equal(renders, 1);
+
+  for (const [proof, {clipId}] of [[first.proof, b], [second.proof, a]] as const) {
+    const swapped = await f.processing.preview.acquire({...proof, clipId});
+    swapped?.release();
+    assert.equal(swapped, null, 'a ready proof cannot be transplanted to the other current clip');
+  }
+  assert.notEqual(first.proof.sha256, second.proof.sha256);
+
+  const leaseA = await f.processing.preview.acquire(first.proof);
+  const leaseB = await f.processing.preview.acquire(second.proof);
+  try {
+    assert.ok(leaseA && leaseB);
+    assert.equal(leaseA.file, leaseB.file);
+    const cacheKey = path.basename(path.dirname(leaseA.file));
+    const receipt = createProcessingCache(f.cacheRoot).lookupWithClock(f.projectId, cacheKey, TIMELINE_PREVIEW_CACHE_PROFILE);
+    assert.ok(receipt);
+    const rawProof = await f.processing.preview.acquire({...first.proof, sha256: receipt.digest});
+    rawProof?.release();
+    assert.equal(rawProof, null, 'the shared cache receipt cannot authorize a clip read');
+    assert.equal(leaseA.verify(), true);
+    assert.equal(leaseB.verify(), true);
+    f.direction('forward', 2);
+    assert.equal(leaseA.verify(), false);
+    leaseA.release();
+    assert.equal(await f.processing.preview.acquire(first.proof), null);
+    assert.equal(leaseB.verify(), true);
+
+    const nextRead = await f.processing.preview.acquire(second.proof);
+    try {
+      assert.ok(nextRead);
+      assert.equal(nextRead.file, leaseB.file);
+      assert.equal(readFileSync(nextRead.file, 'utf8'), 'preview fixture');
+    } finally {
+      nextRead?.release();
+    }
+
+    f.direction('reverse');
+    const restored = f.processing.preview.lookup(a)?.ready;
+    assert.ok(restored);
+    assert.equal(restored.proof.taskId, first.proof.taskId);
+    assert.notEqual(restored.proof.sha256, first.proof.sha256);
+    assert.equal(await f.processing.preview.acquire(first.proof), null, 'restoring the time map does not restore its old address');
+    assert.deepEqual(f.processing.preview.lookup(b)?.ready, second);
+    assert.equal(renders, 1);
+  } finally {
+    leaseA?.release();
+    leaseB?.release();
+  }
 });
 
 test('a host with a preview renderer submits missing tasks when it restores committed clips', async t => {

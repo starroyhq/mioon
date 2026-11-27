@@ -50,7 +50,7 @@ export interface TimelineReverseProxyPort {
   acquire(request: TimelineReverseProxyRequest, proof: ProxyProof, options: ProxyOptions): Promise<TimelineReverseProxyLease | null>;
 }
 
-type ResolvedTask = {readonly taskId: string; readonly ready?: {readonly cacheKey: string}};
+type ResolvedTask = {readonly taskId: string; readonly ready?: {readonly cacheKey: string; readonly requestId: string}};
 interface ReverseProxyPortOptions {
   readonly resolveTask: (request: TimelineReverseProxyRequest, taskId?: string) => ResolvedTask | null;
   readonly cache: Pick<ProcessingCache, 'lookupWithClock' | 'acquire'>;
@@ -325,6 +325,14 @@ async function validateIndex(directory: string, video: VideoClock, fps: TimeMapT
     (video.firstSourceOrdinal === 0 ? lastPts === video.sourceZeroPts : lastPts > video.sourceZeroPts);
 }
 
+/** Export keeps this credential in its frozen snapshot, so it must survive
+ * reopening the host while still binding the specific clip and attempt. */
+function clipProofDigest(request: TimelineReverseProxyRequest, task: ResolvedTask, receiptDigest: string): string {
+  return createHash('sha256').update(JSON.stringify(['mioon.reverse-proxy-clip-proof.v1',
+    request.projectId, request.timelineId, request.clipId, task.taskId, task.ready?.requestId, receiptDigest,
+  ])).digest('hex');
+}
+
 export function createTimelineReverseProxyPort({resolveTask, cache}: ReverseProxyPortOptions): TimelineReverseProxyPort {
   return {
     lookup(request) {
@@ -335,7 +343,7 @@ export function createTimelineReverseProxyPort({resolveTask, cache}: ReverseProx
       if (!sha(cacheKey)) return {taskId: task.taskId};
       const proof = cache.lookupWithClock(request.projectId, cacheKey, REVERSE_PROXY_PROFILE);
       return proof && sha(proof.digest) && inspectClock(request, proof)
-        ? {taskId: task.taskId, readySha256: proof.digest} : {taskId: task.taskId};
+        ? {taskId: task.taskId, readySha256: clipProofDigest(request, task, proof.digest)} : {taskId: task.taskId};
     },
     async acquire(request, proof, options) {
       if (!requestIsValid(request) || !projectIdSchema.safeParse(proof.taskId).success || !sha(proof.sha256)) return null;
@@ -343,7 +351,9 @@ export function createTimelineReverseProxyPort({resolveTask, cache}: ReverseProx
       const task = resolveTask(request, proof.taskId);
       const cacheKey = task?.ready?.cacheKey;
       if (task?.taskId !== proof.taskId || !sha(cacheKey)) return null;
-      const held = await cache.acquire(request.projectId, cacheKey, REVERSE_PROXY_PROFILE, {...options, expectedDigest: proof.sha256});
+      const owned = cache.lookupWithClock(request.projectId, cacheKey, REVERSE_PROXY_PROFILE);
+      if (!owned || clipProofDigest(request, task, owned.digest) !== proof.sha256) return null;
+      const held = await cache.acquire(request.projectId, cacheKey, REVERSE_PROXY_PROFILE, {...options, expectedDigest: owned.digest});
       if (!held) return null;
       let keep = false, released = false;
       const release = (): void => {
@@ -352,10 +362,11 @@ export function createTimelineReverseProxyPort({resolveTask, cache}: ReverseProx
         held.release();
       };
       const current = (): boolean => {
-        if (released || held.digest !== proof.sha256) return false;
+        if (released || held.digest !== owned.digest) return false;
         checkMediaEffect(options.beforeEffect, options.signal);
         const live = resolveTask(request, proof.taskId);
-        if (live?.taskId !== proof.taskId || live.ready?.cacheKey !== cacheKey) return false;
+        if (live?.taskId !== proof.taskId || live.ready?.cacheKey !== cacheKey ||
+            clipProofDigest(request, live, held.digest) !== proof.sha256) return false;
         try {held.verify();} catch {return false;}
         return true;
       };

@@ -41,6 +41,7 @@ export interface PreviewProcessingRequest {
 
 export interface PreviewProcessingProof extends PreviewProcessingRequest {
   readonly taskId: string;
+  /** Opaque clip credential for this host and demand, not the shared receipt hash. */
   readonly sha256: string;
 }
 

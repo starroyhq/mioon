@@ -29,12 +29,12 @@ async function fixture(t: test.TestContext, limitBytes?: number) {
     mapHash: 'ab'.repeat(8), media: 'video', sourceFps, sourceWindow: window(10, 13),
     pictureWindows: [window(9, 14)], needsAudio: true, audioWindow: {fromSample: 14_600, toSample: 23_600},
   };
-  const target = {active: true, current: true, cacheKey: hash('cache'), request: input};
+  const target = {active: true, current: true, cacheKey: hash('cache'), requestId: randomUUID(), request: input};
   const port = createTimelineReverseProxyPort({cache, resolveTask(request, id) {
     if (!target.active || (id === undefined ? !target.current : id !== taskId) ||
       !(['projectId', 'timelineId', 'clipId', 'assetId', 'sourceSha256', 'mapHash', 'media'] as const)
         .every(key => request[key] === target.request[key])) return null;
-    return {taskId, ready: {cacheKey: target.cacheKey}};
+    return {taskId, ready: {cacheKey: target.cacheKey, requestId: target.requestId}};
   }});
   return {root, cache, input, target, port, taskId};
 }
@@ -86,6 +86,10 @@ test('reverse lease binds the exact digest and native ordinal, pins media, and r
   assert.equal(ready?.taskId, taskId);
   assert.ok(ready.readySha256);
   const proof = {taskId, sha256: ready.readySha256};
+  const rawEvidence = cache.lookupWithClock(input.projectId, target.cacheKey, REVERSE_PROXY_PROFILE);
+  assert.ok(rawEvidence);
+  assert.notEqual(proof.sha256, rawEvidence.digest);
+  assert.equal(await port.acquire(input, {taskId, sha256: rawEvidence.digest}, {}), null);
   assert.equal(await port.acquire(input, {...proof, taskId: randomUUID()}, {}), null);
   assert.equal(await port.acquire(input, {...proof, sha256: hash('wrong receipt')}, {}), null);
   assert.equal(port.lookup({...input, projectId: randomUUID()}), null);
@@ -111,6 +115,9 @@ test('reverse lease binds the exact digest and native ordinal, pins media, and r
   const frozen = await port.acquire(input, proof, {});
   assert.ok(frozen);
   frozen.release();
+  target.requestId = randomUUID();
+  assert.equal(lease.verify(), false, 'a replacement attempt cannot reuse the old credential');
+  assert.equal(await port.acquire(input, proof, {}), null);
   target.active = false;
   assert.equal(lease.verify(), false);
   lease.release();
@@ -125,10 +132,17 @@ test('reverse lease refuses incorrect clock or index evidence and releases its p
     target.cacheKey = hash(defect);
     const entry = await publishSynthetic(cache, target.cacheKey, input, {[defect]: true});
     const advertised = port.lookup(input);
-    const proof = cache.lookupWithClock(input.projectId, target.cacheKey, REVERSE_PROXY_PROFILE);
-    assert.ok(proof);
-    assert.deepEqual(advertised, defect === 'corruptIndex' ? {taskId, readySha256: proof.digest} : {taskId});
-    assert.equal(await port.acquire(input, {taskId, sha256: proof.digest}, {}), null);
+    const evidence = cache.lookupWithClock(input.projectId, target.cacheKey, REVERSE_PROXY_PROFILE);
+    assert.ok(evidence);
+    if (defect === 'corruptIndex') {
+      assert.equal(advertised?.taskId, taskId);
+      assert.ok(advertised.readySha256);
+      assert.notEqual(advertised.readySha256, evidence.digest);
+      assert.equal(await port.acquire(input, {taskId, sha256: advertised.readySha256}, {}), null);
+    } else {
+      assert.deepEqual(advertised, {taskId});
+    }
+    assert.equal(await port.acquire(input, {taskId, sha256: evidence.digest}, {}), null);
     assert.deepEqual(cache.clear(input.projectId, allow), {freedBytes: entry.usedBytes});
   }
 

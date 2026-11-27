@@ -1,11 +1,11 @@
-import {randomUUID} from 'node:crypto';
+import {createHmac, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import path from 'node:path';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {speedProcessingItemSchema, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '../../../contracts/src/timeline-processing.ts';
 import type {SpeedProcessingItem, SpeedProcessingReason} from '../../../contracts/src/timeline-speed.ts';
 import {processingInputWithClipSchema as inputWithClipSchema, processingReasonSchema as reasons,
   processingRowSchema as rowSchema, processingResultSchema as resultSchema,
-  processingProxyResultSchema} from '../../../contracts/src/timeline-processing-storage.ts';
+  processingDigestSchema, processingProxyResultSchema} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingInput, ProcessingInputWithClip, ProcessingTaskRow, ProcessingTaskState as TaskState,
   ProcessingTaskResult as TaskResult} from '../../../contracts/src/timeline-processing-storage.ts';
 import {compileTimeMap, restoreTimeMap, timeMapPlanInfo} from '../../../contracts/src/timeline-time-map.ts';
@@ -46,6 +46,8 @@ const terminationUnconfirmed = (error: unknown) => Boolean(error && typeof error
   'terminationUnconfirmed' in error && error.terminationUnconfirmed);
 const errorCode = (error: unknown) => error && typeof error === 'object' && 'code' in error ? error.code : undefined;
 const sourceStatHash = (info: ManagedFileIdentity) => processingHash([info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs]);
+const previewBindingKey = ({demandKey, input}: ProcessingDemand): string =>
+  processingHash([demandKey, input.timelineId, input.assetId, input.sourceIdentity]);
 function reasonFor(error: unknown): SpeedProcessingReason {
   const code = errorCode(error), direct = reasons.safeParse(code);
   if (direct.success) return direct.data;
@@ -78,6 +80,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     engine = {prepare: prepareReverseProxy, render: renderReverseProxy}} = options;
   const running = new Map<string, {controller: AbortController; done: Promise<void>; cancel: boolean}>();
   const listeners = new Set<() => void>();
+  const previewBindings = new Map<string, {key: string; secret: Buffer}>();
   let active = false, closed = false, scheduled = false, uncertain: unknown;
   let content: ReturnType<typeof readProjectContentStamp> | undefined;
   let demands: ProcessingDemand[] = [];
@@ -162,7 +165,16 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     cache.setPins(projectId, [...keys], () => assertEffect(ownerSignal));
   }
   function scanDemands(): ProcessingDemand[] {
-    return readProcessingDemands(store, Boolean(previewRenderer));
+    const current = readProcessingDemands(store, Boolean(previewRenderer));
+    if (previewBindings.size > 0 && !db.isTransaction) {
+      const live = new Map(current.filter(demand => demand.input.kind === 'preview' && !demand.unavailable)
+        .map(demand => [demand.clipId, demand]));
+      for (const [clipId, binding] of previewBindings) {
+        const demand = live.get(clipId);
+        if (!demand || binding.key !== previewBindingKey(demand)) previewBindings.delete(clipId);
+      }
+    }
+    return current;
   }
   function currentDemands(): readonly ProcessingDemand[] {
     const latest = readProjectContentStamp(db);
@@ -426,6 +438,18 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     } catch {return null;}
     return {source, owned, durationFrames};
   }
+  function previewCredential(demand: ProcessingDemand, task: Task, receiptDigest: string, issue = false): string | null {
+    const key = previewBindingKey(demand);
+    let binding = previewBindings.get(demand.clipId);
+    if (binding?.key !== key) {
+      if (!issue || db.isTransaction) return null;
+      binding = {key, secret: randomBytes(32)};
+      previewBindings.set(demand.clipId, binding);
+    }
+    return createHmac('sha256', binding.secret).update(JSON.stringify([
+      projectId, demand.clipId, key, task.id, task.requestId, receiptDigest,
+    ])).digest('hex');
+  }
   const preview: PreviewProcessingPort = {
     lookup(input) {
       const selection = readPreviewTask(input);
@@ -434,18 +458,22 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       if (summary.status !== 'ready') return {item: summary};
       const evidence = readPreviewEvidence(selection);
       if (!evidence) return {item: {...summary, status: 'failed', reason: 'PROCESSING_FAILED'}};
-      return {item: summary, ready: {proof: {projectId, clipId: input.clipId, taskId: summary.taskId, sha256: evidence.owned.digest},
+      const sha256 = previewCredential(selection.demand, selection.task, evidence.owned.digest, true);
+      if (!sha256) return {item: summary};
+      return {item: summary, ready: {proof: {projectId, clipId: input.clipId, taskId: summary.taskId, sha256},
         durationFrames: evidence.durationFrames}};
     },
     async acquire(input, options = {}) {
       options.signal?.throwIfAborted();
       options.beforeEffect?.();
       const selection = readPreviewTask(input);
-      if (!selection || selection.task.id !== input.taskId) return null;
+      if (!selection || selection.task.id !== input.taskId || !processingDigestSchema.safeParse(input.sha256).success) return null;
       const evidence = readPreviewEvidence(selection);
-      if (!evidence || evidence.owned.digest !== input.sha256) return null;
+      if (!evidence) return null;
+      const expected = previewCredential(selection.demand, selection.task, evidence.owned.digest);
+      if (!expected || !timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(input.sha256, 'hex'))) return null;
       const lease = await cache.acquire(projectId, evidence.owned.entry.cacheKey, TIMELINE_PREVIEW_CACHE_PROFILE,
-        {...options, expectedDigest: input.sha256});
+        {...options, expectedDigest: evidence.owned.digest});
       if (!lease) return null;
       const verify = (): boolean => {
         try {
@@ -454,6 +482,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
           const current = readPreviewTask(input);
           if (!current || current.demand.unavailable || current.task.state !== 'ready' || current.task.id !== input.taskId ||
               current.task.requestId !== selection.task.requestId || current.task.result?.cacheKey !== lease.entry.cacheKey ||
+              previewCredential(current.demand, current.task, lease.digest) !== expected ||
               !sameManagedFile(sourceEvidence(current.task, current.demand.input), evidence.source)) return false;
           lease.verify();
           return true;
@@ -483,7 +512,9 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
         frozen.sourceSha256 && frozen.sourceSha256 !== request.sourceSha256) return null;
     const ready = task.state === 'ready' && task.result?.sourceSha256 === request.sourceSha256 &&
       (demand?.demandKey !== task.demandKey || !demand.unavailable) && sourceEvidence(task, frozen);
-    return {taskId: task.id, ...(ready && task.result ? {ready: {cacheKey: task.result.cacheKey}} : {})};
+    return {taskId: task.id, ...(ready && task.result ? {ready: {
+      cacheKey: task.result.cacheKey, requestId: task.requestId,
+    }} : {})};
   }
   const reverseProxy = createTimelineReverseProxyPort({resolveTask: resolveReverseTask, cache});
   function wait(input: {projectId: string; taskId: string; timeoutMs?: number}, signal?: AbortSignal) {
@@ -560,6 +591,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
   }
   async function close(): Promise<void> {
     closed = true;
+    previewBindings.clear();
     removeObserver();
     for (const attempt of running.values()) attempt.controller.abort();
     emit();
