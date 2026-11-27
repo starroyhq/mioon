@@ -9,7 +9,8 @@ import {syncBuiltinESMExports} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {ensurePrivateDirectory, validatePrivateDirectory, createPrivateTemporaryDirectory, validateManagedDirectory,
   validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile,
-  createPrivateStoragePolicy, getStoragePrivacyCapability} from '@mioon/contracts/private-storage';
+  createPrivateStoragePolicy, getStoragePrivacyCapability,
+  PRIVATE_STORAGE_BUFFER_BYTES, PRIVATE_STORAGE_STREAM_BYTES} from '@mioon/contracts/private-storage';
 
 const posix = {skip: process.platform === 'win32'};
 function fixture(t: test.TestContext) {
@@ -111,15 +112,30 @@ test('private files reject symlinks, hardlinks, directories, FIFOs and oversized
 
 test('metadata validates streamed file sizes without lifting the private buffer size limit', posix, t => {
   const root = fixture(t), file = path.join(root, 'artifact');
-  const size = 64 * 1024 ** 2 + 1;
-  fs.writeFileSync(file, '', {mode: 0o600}); fs.truncateSync(file, size);
-  assert.equal(validateManagedFile(file, {root, private: true, maxBytes: size})?.size, size);
-  rejects(() => validateManagedFile(file, {root, private: true, maxBytes: size - 1}), 'SIZE_LIMIT');
-  rejects(() => validateManagedFile(file, {root, private: true, maxBytes: 8 * 1024 ** 3 + 1}), 'INVALID_LIMIT');
-  rejects(() => readPrivateFile(file, {root, maxBytes: size}), 'INVALID_LIMIT');
-  rejects(() => writePrivateFileAtomic(file, 'replacement', {root, maxBytes: size}), 'INVALID_LIMIT');
-  rejects(() => removePrivateFile(file, {root, maxBytes: size}), 'INVALID_LIMIT');
+  const size = PRIVATE_STORAGE_BUFFER_BYTES + 1, options = {root, private: true, maxBytes: size};
+  fs.writeFileSync(file, '', {mode: 0o600});
+  fs.truncateSync(file, size);
+  assert.equal(validateManagedFile(file, options)?.size, size);
+  rejects(() => validateManagedFile(file, {...options, maxBytes: size - 1}), 'SIZE_LIMIT');
+  for (const access of [
+    (maxBytes: number) => readPrivateFile(file, {root, maxBytes}),
+    (maxBytes: number) => writePrivateFileAtomic(file, 'replacement', {root, maxBytes}),
+    (maxBytes: number) => removePrivateFile(file, {root, maxBytes}),
+  ]) {
+    rejects(() => access(size), 'INVALID_LIMIT');
+    rejects(() => access(size - 1), 'SIZE_LIMIT');
+  }
   assert.equal(fs.statSync(file).size, size);
+  const hard = path.join(root, 'hard-link');
+  fs.linkSync(file, hard);
+  rejects(() => validateManagedFile(file, options), 'HARD_LINK');
+  fs.unlinkSync(hard);
+
+  // Truncation makes a sparse file of the requested size without reading or writing its contents.
+  fs.truncateSync(file, PRIVATE_STORAGE_STREAM_BYTES);
+  assert.equal(validateManagedFile(file, {...options, maxBytes: PRIVATE_STORAGE_STREAM_BYTES})?.size,
+    PRIVATE_STORAGE_STREAM_BYTES);
+  rejects(() => validateManagedFile(file, {...options, maxBytes: PRIVATE_STORAGE_STREAM_BYTES + 1}), 'INVALID_LIMIT');
 });
 
 test('missing reads are side-effect free, and writers require an already validated parent', posix, t => {
