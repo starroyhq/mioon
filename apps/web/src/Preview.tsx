@@ -463,12 +463,14 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
           const frame = timelineFrame(el);
           timelineClock.tick(binding, frame);
           if (clip && !rendered && frame >= clip.startFrame + clip.durationFrames) {
+            const clipEnd = clip.startFrame + clip.durationFrames;
+            if (timelineClock.stop(binding)) commitNativeFrame(binding, clipEnd);
             const liveSpeed = speedPreviewRef.current;
             if (liveSpeed) {
-              const clampSec = liveSpeed.outputFrameToMediaSeconds(clip.startFrame + clip.durationFrames);
+              const clampSec = liveSpeed.outputFrameToMediaSeconds(clipEnd - 1) + SPEED_SEEK_EPSILON_SECONDS;
               const maxSec = Number.isFinite(el.duration) ? Math.max(0, el.duration - .001) : clampSec;
               const target = Math.max(0, Math.min(clampSec, maxSec));
-              if (Math.abs(el.currentTime - target) > .02) {
+              if (Math.abs(el.currentTime - target) > SPEED_SEEK_EPSILON_SECONDS) {
                 binding.programmaticSeek = target;
                 el.currentTime = target;
               }
