@@ -8,6 +8,7 @@ import {build} from 'esbuild';
 import {LOCALES, renderMessage, translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 import {Format5EditSession, format5CommandErrorMessageKey, format5CopyAsNewShotCommand} from '../apps/web/src/edit-ui/session.ts';
+import {format5DialogueConflictPresentation, format5PanelErrorKey} from '../apps/web/src/edit-ui/format5-panel-edits.ts';
 import {timelineHistoryOperationMessage} from '../apps/web/src/timeline-history.ts';
 import {BOARD_IDS, createBoardUiWireFixture} from './helpers/board-ui-wire-fixture.ts';
 
@@ -114,6 +115,7 @@ test('copy-as-new-shot command, error codes, notice and history copy cover all f
     'NODE_ALREADY_LINKED',
     'SEQUENCE_EDIT_REQUEST_REUSED',
     'SEQUENCE_EDIT_ANCHOR_CONFLICT',
+    'SEQUENCE_EDIT_DIALOGUE_CONFLICT',
     'SEQUENCE_EDIT_REVISION_CONFLICT',
     'SEQUENCE_EDIT_CONTRACT_INVALID',
     'SEQUENCE_EDIT_PATCH_INVALID',
@@ -226,4 +228,192 @@ test('App shell wires copy-as-new-shot only for main-track format-5 clips with u
   const menuCallSlice = app.slice(menuCallStart - 320, menuCallStart + 420);
   assert.ok(menuCallSlice.includes('isMainTrackClip'));
   assert.ok(menuCallSlice.includes('isMainTrackClip ? {onCopyAsNewShot:'));
+  assert.ok(fnBody.includes('{copying: true}'));
+  assert.ok(app.includes('format5DialogueConflictPresentation('));
+  assert.ok(app.includes('data-testid="global-toast-action"'));
+  assert.ok(app.includes('format5LocateSubtitleCue('));
+});
+
+test('real format-5 copy-as-new-shot preserves dialogue and projects subtitles, and returns structured blocker details on conflict', async () => {
+  const fixture = await createBoardUiWireFixture();
+  try {
+    const rpc = (operation: string, input: unknown) => fixture.services.call(operation, input ?? {});
+    const session = new Format5EditSession(rpc, () => fixture.projectId);
+
+    // Attach two dialogue lines to shotA via real dialogueIntent.
+    const line1 = '70000000-0000-4000-8000-000000008101';
+    const line2 = '70000000-0000-4000-8000-000000008102';
+    const addDialogue = await session.runPayload({
+      dialogueIntent: {
+        side: 'board',
+        operation: {
+          kind: 'dialogue',
+          edits: [
+            {kind: 'add', shotId: BOARD_IDS.shotA, line: {id: line1, text: '第一句台词'}},
+            {kind: 'add', shotId: BOARD_IDS.shotA, line: {id: line2, text: '第二句台词'}},
+          ],
+        },
+      },
+    });
+    assert.equal(addDialogue.ok, true);
+
+    // Add an anchored audio clip on A1 under clipA so we verify original overlay & cues stay untouched.
+    const addAudio = await session.run({kind: 'insert-asset', assetId: BOARD_IDS.audioAsset, trackId: BOARD_IDS.audio, startFrame: 0});
+    assert.equal(addAudio.ok, true);
+
+    const beforeCopy = await rpc('project.get', {projectId: fixture.projectId}) as {
+      shots: {id: string; title: string; dialogue?: {id: string; text: string}[]}[];
+      timeline: {clips: {id: string; trackId: string; startFrame: number}[]; subtitles?: {cues: {id: string; text: string; startFrame: number; durationFrames: number; dialogueRef?: {shotId: string; lineId: string}}[]}};
+    };
+    const origCues = beforeCopy.timeline.subtitles?.cues ?? [];
+    assert.equal(origCues.length, 2, 'original shot dialogue projected to two cues');
+    const origAudioClips = beforeCopy.timeline.clips.filter(clip => clip.trackId === BOARD_IDS.audio);
+    assert.equal(origAudioClips.length, 1);
+
+    // 1) Copy shotA: copy preserves both dialogue lines and auto-projects them into [60, 120).
+    const newClipId = '70000000-0000-4000-8000-000000008201';
+    const copyNodeId = '70000000-0000-4000-8000-000000008202';
+    const copied = await session.run(format5CopyAsNewShotCommand(BOARD_IDS.clipA, newClipId, copyNodeId));
+    assert.equal(copied.ok, true);
+
+    const afterCopy = await rpc('project.get', {projectId: fixture.projectId}) as typeof beforeCopy;
+    const copyShot = afterCopy.shots.find(shot => shot.id === copyNodeId);
+    assert.ok(copyShot, 'copied shot exists on board');
+    assert.deepEqual(copyShot.dialogue?.map(line => line.text), ['第一句台词', '第二句台词']);
+    assert.notEqual(copyShot.dialogue?.[0]?.id, line1, 'copied dialogue lines use fresh ids');
+
+    const cuesAfterCopy = afterCopy.timeline.subtitles?.cues ?? [];
+    assert.equal(cuesAfterCopy.length, 4, 'original 2 cues + copied 2 projected cues');
+    const copyCues = cuesAfterCopy.filter(cue => cue.dialogueRef?.shotId === copyNodeId);
+    assert.equal(copyCues.length, 2);
+    assert.ok(copyCues.every(cue => cue.startFrame >= 60 && cue.startFrame + cue.durationFrames <= 120));
+    const keptOrigCues = cuesAfterCopy.filter(cue => cue.dialogueRef?.shotId === BOARD_IDS.shotA);
+    assert.deepEqual(keptOrigCues.map(cue => ({id: cue.id, startFrame: cue.startFrame, text: cue.text})),
+      origCues.map(cue => ({id: cue.id, startFrame: cue.startFrame, text: cue.text})));
+    assert.equal(afterCopy.timeline.clips.filter(clip => clip.trackId === BOARD_IDS.audio).length, 1, 'original audio overlay untouched');
+
+    // Undo restores timeline, board and projected cues in one step.
+    const historyAfterCopy = await session.history();
+    assert.ok(historyAfterCopy?.undo);
+    assert.equal((await session.undo(historyAfterCopy)).ok, true);
+    const afterUndo = await rpc('project.get', {projectId: fixture.projectId}) as typeof beforeCopy;
+    assert.equal((afterUndo.timeline.subtitles?.cues ?? []).length, 2);
+    assert.equal(afterUndo.shots.some(shot => shot.id === copyNodeId), false);
+
+    // 2) Block the copy window [60, 119) with an unanchored subtitle cue -> SEQUENCE_EDIT_DIALOGUE_CONFLICT with blocker details.
+    const blockingCueId = '70000000-0000-4000-8000-000000008301';
+    const addBlocker = await session.runPayload({
+      subtitlesIntent: {
+        side: 'timeline',
+        operation: {
+          kind: 'subtitles',
+          edits: [{kind: 'add', cue: {id: blockingCueId, text: '挡住副本的测试字幕一行很长很长', startFrame: 60, durationFrames: 59}}],
+        },
+      },
+    });
+    assert.equal(addBlocker.ok, true);
+    // Clear its anchor so it stays fixed at [60, 119) when clipA is copied right after [0, 60).
+    fixture.store.tx(() => {
+      const currentTl = fixture.store.get('timelines', BOARD_IDS.timeline) as Record<string, any>;
+      currentTl.subtitles.cues = currentTl.subtitles.cues.map((cue: Record<string, unknown>) =>
+        cue.id === blockingCueId ? {...cue, anchor: null} : cue);
+      fixture.store.put('timelines', currentTl);
+    });
+
+    const conflictOutcome = await session.run(format5CopyAsNewShotCommand(
+      BOARD_IDS.clipA,
+      '70000000-0000-4000-8000-000000008203',
+      '70000000-0000-4000-8000-000000008204',
+    ));
+    assert.equal(conflictOutcome.ok, false);
+    if (conflictOutcome.ok || 'unconfirmed' in conflictOutcome) return;
+    assert.equal(conflictOutcome.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+    assert.ok(conflictOutcome.dialogueConflict, 'session must preserve dialogueConflict payload');
+    assert.equal(conflictOutcome.dialogueConflict.blockerCount, 1);
+    assert.equal(conflictOutcome.dialogueConflict.blockers[0]?.cueId, blockingCueId);
+    assert.equal(conflictOutcome.dialogueConflict.blockers[0]?.startFrame, 60);
+    assert.equal(conflictOutcome.dialogueConflict.blockers[0]?.endFrame, 119);
+
+    const tlNow = (await rpc('project.get', {projectId: fixture.projectId}) as typeof beforeCopy).timeline;
+    const tZh = (key: string, params?: Record<string, unknown>) => translate('zh-Hans', key as never, params as never);
+    const presentation = format5DialogueConflictPresentation(conflictOutcome.dialogueConflict, tlNow, tZh, {copying: true});
+    assert.equal(
+      presentation.message,
+      '副本的台词放不进去：这段时间已有字幕「挡住副本的测试字幕一行很…」，先挪开或删掉再复制。',
+    );
+    assert.deepEqual(presentation.highlightIds, [blockingCueId]);
+    assert.deepEqual(presentation.locateCue, {cueId: blockingCueId, startFrame: 60});
+  } finally {
+    await fixture.services.drain();
+    await fixture.settings.close();
+    fixture.store.close();
+    fixture.library.close();
+    rmSync(fixture.root, {recursive: true, force: true});
+  }
+});
+
+test('dialogue conflict presentation covers all four locales, multi-blocker, insufficient space, and bare error fallback', async () => {
+  assert.equal(format5CommandErrorMessageKey('SEQUENCE_EDIT_DIALOGUE_CONFLICT'), 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.equal(format5PanelErrorKey('SEQUENCE_EDIT_DIALOGUE_CONFLICT'), 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+
+  for (const locale of LOCALES) {
+    const tLoc = (key: string, params?: Record<string, unknown>) => translate(locale, key as never, params as never);
+    assert.ok(tLoc('editUi.error.locateSubtitle').length > 0, `locateSubtitle/${locale}`);
+
+    const one = format5DialogueConflictPresentation({
+      blockers: [{cueId: 'cue-1', startFrame: 60, endFrame: 119, textExcerpt: '挡住字幕'}],
+      blockerCount: 1, requiredFrames: 2, availableFrames: 1,
+    }, null, tLoc, {copying: true});
+    assert.ok(one.message.includes('挡住字幕'), `one/${locale}`);
+    assert.deepEqual(one.highlightIds, ['cue-1']);
+    assert.deepEqual(one.locateCue, {cueId: 'cue-1', startFrame: 60});
+
+    const many = format5DialogueConflictPresentation({
+      blockers: [
+        {cueId: 'cue-1', startFrame: 60, endFrame: 90, textExcerpt: '第一条'},
+        {cueId: 'cue-2', startFrame: 90, endFrame: 120, textExcerpt: '第二条'},
+      ],
+      blockerCount: 2, requiredFrames: 2, availableFrames: 0,
+    }, null, tLoc, {copying: true});
+    assert.ok(many.message.includes('第一条') && many.message.includes('2'), `many/${locale}`);
+    assert.deepEqual(many.highlightIds, ['cue-1', 'cue-2']);
+    assert.deepEqual(many.locateCue, {cueId: 'cue-1', startFrame: 60});
+
+    const space = format5DialogueConflictPresentation({
+      blockers: [], blockerCount: 0, requiredFrames: 2, availableFrames: 1,
+    }, null, tLoc, {copying: true});
+    assert.ok(space.message.includes('2') && space.message.includes('1'), `space/${locale}`);
+    assert.deepEqual(space.highlightIds, []);
+    assert.equal(space.locateCue, null);
+
+    const bare = format5DialogueConflictPresentation(undefined, null, tLoc, {copying: true});
+    assert.notEqual(bare.message, tLoc('editUi.error.GENERIC'), `bare/${locale} must not fall back to generic error`);
+    assert.equal(bare.locateCue, null);
+
+    const nonCopy = format5DialogueConflictPresentation({
+      blockers: [{cueId: 'cue-1', startFrame: 10, endFrame: 40, textExcerpt: '已有'}],
+      blockerCount: 1, requiredFrames: 2, availableFrames: 0,
+    }, null, tLoc, {copying: false});
+    assert.ok(nonCopy.message.includes('已有'), `nonCopy/${locale}`);
+  }
+
+  // Thrown ApiError carrying details.dialogueConflict is also preserved by Format5EditSession.
+  const thrownSession = new Format5EditSession(async () => {
+    throw Object.assign(new Error('conflict'), {
+      code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT',
+      details: {
+        ids: ['shot-copy'],
+        dialogueConflict: {
+          blockers: [{cueId: 'cue-9', startFrame: 30, endFrame: 90, textExcerpt: '拦截字幕'}],
+          blockerCount: 1, requiredFrames: 2, availableFrames: 0,
+        },
+      },
+    });
+  }, () => 'project-1');
+  const thrownOutcome = await thrownSession.runPayload({intents: []});
+  assert.equal(thrownOutcome.ok, false);
+  if (!thrownOutcome.ok && !('unconfirmed' in thrownOutcome)) {
+    assert.equal(thrownOutcome.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+    assert.equal(thrownOutcome.dialogueConflict?.blockers[0]?.cueId, 'cue-9');
+  }
 });
