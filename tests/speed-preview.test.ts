@@ -334,6 +334,87 @@ test('createSpeedPreviewMediaController polls every 2000ms while queued/running,
   controller.dispose();
 });
 
+test('createSpeedPreviewMediaController backs off on retryable 503, stops as unknown after consecutive failures, and cancels on clip leave/close', async () => {
+  const flush = async () => { for (let i = 0; i < 4; i++) await Promise.resolve(); };
+  const makeController = (maxConsecutiveFailures = 5) => {
+    const timers: Array<{fn: () => void; ms: number; cleared: boolean}> = [];
+    const reqs: Array<{signal: AbortSignal; resolve: (v: unknown) => void; reject: (e: unknown) => void}> = [];
+    const observed: Array<PreviewMedia | null> = [];
+    const controller = createSpeedPreviewMediaController({
+      projectId: PROJECT_ID,
+      clipId: CLIP_ID,
+      maxConsecutiveFailures,
+      read: signal => new Promise((resolve, reject) => { reqs.push({signal, resolve, reject}); }),
+      onMedia: media => observed.push(media),
+      setTimeoutFn: ((fn: () => void, ms: number) => {
+        const entry = {fn, ms, cleared: false};
+        timers.push(entry);
+        return entry as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout,
+      clearTimeoutFn: ((handle: ReturnType<typeof setTimeout>) => {
+        (handle as unknown as {cleared: boolean}).cleared = true;
+      }) as typeof clearTimeout,
+    });
+    const activeTimers = () => timers.filter(t => !t.cleared);
+    const fireTimer = () => {
+      const pending = activeTimers();
+      assert.equal(pending.length, 1);
+      pending[0]!.cleared = true;
+      pending[0]!.fn();
+    };
+    return {controller, timers, activeTimers, fireTimer, reqs, observed};
+  };
+
+  // 1) Transient 503 during running proxy recovers to ready.
+  {
+    const h = makeController();
+    h.controller.start();
+    h.reqs[0]!.resolve({mode: 'proxy', status: 'running', taskId: TASK_ID, progress: 42});
+    await flush();
+    h.fireTimer();
+    h.reqs[1]!.reject(Object.assign(new Error('503'), {status: 503, definitive: false}));
+    await flush();
+    assert.equal(h.controller.getState(), 'retrying');
+    assert.equal(h.activeTimers().length, 1);
+    h.fireTimer();
+    h.reqs[2]!.resolve({mode: 'proxy', status: 'ready', url: PROXY_URL, durationFrames: 90});
+    await flush();
+    assert.equal(h.controller.getState(), 'idle');
+    assert.equal(h.activeTimers().length, 0);
+    assert.equal(h.observed.at(-1)?.mode, 'proxy');
+    h.controller.dispose();
+  }
+
+  // 2) Consecutive 503s back off (2s, 4s, 8s, 16s) then stop in 'unknown' on 5th failure.
+  {
+    const h = makeController(5);
+    h.controller.start();
+    h.reqs[0]!.resolve({mode: 'proxy', status: 'running', taskId: TASK_ID, progress: 42});
+    await flush();
+    for (let i = 1; i <= 5; i++) {
+      h.fireTimer();
+      h.reqs[i]!.reject(Object.assign(new Error('503'), {status: 503, definitive: false}));
+      await flush();
+    }
+    assert.deepEqual(h.timers.map(t => t.ms), [2000, 2000, 4000, 8000, 16000]);
+    assert.equal(h.activeTimers().length, 0);
+    assert.equal(h.controller.getState(), 'unknown');
+    h.controller.dispose();
+  }
+
+  // 3) Leaving clip / closing preview cancels pending backoff timer immediately.
+  {
+    const h = makeController(5);
+    h.controller.start();
+    h.reqs[0]!.reject(Object.assign(new Error('503'), {status: 503, definitive: false}));
+    await flush();
+    assert.equal(h.activeTimers().length, 1);
+    h.controller.dispose();
+    assert.equal(h.activeTimers().length, 0);
+    assert.equal(h.controller.getState(), 'idle');
+  }
+});
+
 test('timeline thumbnails sample the same reverse and curve frames as export and seek inside those frames', () => {
   const fast = makeConstantTiming({sourceInFrame: 0, sourceDurationFrames: 120, numerator: 2, denominator: 1});
   const fastSamples = computeClipThumbnailSamples(

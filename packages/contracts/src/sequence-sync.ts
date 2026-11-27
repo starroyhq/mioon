@@ -13,7 +13,7 @@ import {sequenceEditIntentSide} from './sequence-edit.ts';
 export const SEQUENCE_SYNC_COMMANDS = Object.freeze([
   'sync-board', 'board-version', 'clip-version',
   'clip-remove', 'clip-add', 'clip-split', 'clip-trim', 'clip-move', 'clip-move-off-track',
-  'insert-asset', 'paste-clip',
+  'insert-asset', 'paste-clip', 'clip-copy-as-new-shot',
 ] as const);
 export type SequenceSyncCommandKind = (typeof SEQUENCE_SYNC_COMMANDS)[number];
 
@@ -44,6 +44,7 @@ export type SequenceSyncCommand =
     readonly copyFromClipId?: string}
   | {readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number}
   | {readonly kind: 'paste-clip'; readonly clipId: string; readonly startFrame: number}
+  | {readonly kind: 'clip-copy-as-new-shot'; readonly clipId: string; readonly newClipId: string; readonly copyNodeId: string}
   /** Split one segment; left keeps its id, the right takes the allocated id. */
   | {readonly kind: 'clip-split'; readonly clipId: string; readonly offsetFrames: number;
     readonly rightClipId: string; readonly rightSourceInFrame?: number}
@@ -91,6 +92,9 @@ export function sequenceSyncOperation(command: SequenceSyncCommand): ChainSyncOp
         startFrame: command.startFrame}};
     case 'paste-clip':
       return {kind: 'track', edit: {kind: 'paste-clip', clipId: command.clipId, startFrame: command.startFrame}};
+    case 'clip-copy-as-new-shot':
+      return {kind: 'track', edit: {kind: 'copy-as-new-shot', clipId: command.clipId,
+        newClipId: command.newClipId, copyNodeId: command.copyNodeId}};
     case 'clip-split-scenes':
       return {kind: 'track', edit: {kind: 'split-at-scenes', assetId: command.assetId, resultId: command.resultId}};
     case 'clip-split':

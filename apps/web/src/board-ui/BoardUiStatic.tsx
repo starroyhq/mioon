@@ -1,11 +1,12 @@
 import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Background, BackgroundVariant, ReactFlow, ReactFlowProvider, useReactFlow} from '@xyflow/react';
+import {Background, BackgroundVariant, ReactFlow, ReactFlowProvider, useReactFlow, useStore} from '@xyflow/react';
 import type {Node, NodeChange, NodeProps} from '@xyflow/react';
 import type {ChainReferenceRole} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {BoardPorts} from './BoardPorts.tsx';
 import {boardEdgeTypes} from './BoardEdges.tsx';
 import type {BoardReferenceEdge, BoardSequenceEdge} from './BoardEdges.tsx';
+import {shouldUseStaticBoardEdges} from './edge-motion.ts';
 import {resolveBoardPortConnection, boardPorts} from './connection-ports.ts';
 import type {BoardPortConnection, BoardPortEndpoint, BoardPortId} from './connection-ports.ts';
 import type {BoardUiNode, BoardUiProjection} from './projection.ts';
@@ -103,6 +104,9 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   const {projection, nodes, edges, reduceMotion = false} = props;
   const {t} = useI18n();
   const flow = useReactFlow<CardNode, BoardSequenceEdge | BoardReferenceEdge>();
+  // Subscribe only to the boolean threshold crossing so panning and zooming
+  // within one regime never trigger extra React renders.
+  const staticEdges = useStore(state => shouldUseStaticBoardEdges(state.transform[2]));
   useEffect(() => {
     if (!props.revealNodeId) return;
     const flowNode = flowNodes.find(node => node.id === props.revealNodeId);
@@ -201,7 +205,7 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
   };
   const film = projection.films.find(item => item.items.some(node => node.nodeId === selectedId) || item.id === selectedId) ?? projection.films[0];
   const selected = selectedId ? byId.get(selectedId) : null;
-  return <div className={`board-ui-static${props.showInspector === false ? ' board-ui-no-inspector' : ''}`} data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') {setDrag(null); props.onSelectEdge?.(null);}}}>
+  return <div className={`board-ui-static${props.showInspector === false ? ' board-ui-no-inspector' : ''}`} data-testid="board-ui-static" data-reduce-motion={reduceMotion ? 'true' : undefined} data-board-static-edges={staticEdges ? 'true' : undefined} onKeyDownCapture={event => {if (event.key === 'Escape') {setDrag(null); props.onSelectEdge?.(null);}}}>
     <div className="board-ui-canvas" data-testid="board-ui-canvas"
       onDragOver={event => {if (event.dataTransfer.types.includes(SUBJECT_DRAG) || event.dataTransfer.types.includes(ASSET_DRAG_MIME)) {
         event.preventDefault(); event.dataTransfer.dropEffect = 'copy';}}}

@@ -18,7 +18,7 @@ const clip = (id: string, patch: Record<string, unknown> = {}) => ({id, trackId:
 const main = 'main';
 const clips = [clip('a'), clip('b', {startFrame: 30}), clip('c', {startFrame: 60}), clip('x', {trackId: 'other'})];
 
-test('opening the clip menu keeps the playhead only with the speed capability', () => {
+test('opening the clip menu intentionally keeps the playhead regardless of the speed capability', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   const begin = app.indexOf('  function openClipContextMenu(');
   const end = app.indexOf('\n  /**', begin);
@@ -30,7 +30,7 @@ test('opening the clip menu keeps the playhead only with the speed capability', 
       speedEnabled, (...args: unknown[]) => selected.push(args), (value: unknown) => menus.push(value));
     assert.ok(typeof open === 'function');
     open('a', {x: 20, y: 30});
-    assert.deepEqual(selected, [['a', true, {preservePlayhead: speedEnabled}]]);
+    assert.deepEqual(selected, [['a', true, {preservePlayhead: true}]]);
     assert.deepEqual(menus, [{clipId: 'a', x: 20, y: 30}]);
   }
 });
