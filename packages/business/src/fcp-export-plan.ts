@@ -179,12 +179,14 @@ export async function planFcpExport(input: {
 
   const cuts = fcpxmlTransitions(timeline, assets);
   for (const clip of clips) {
-    if (clip.sourceState !== 'ready' || !clip.assetId || !assets.has(clip.assetId)) continue;
+    if (clip.sourceState !== 'ready' || !clip.assetId) continue;
+    const asset = assets.get(clip.assetId);
+    if (!asset) continue;
     const track = tracks.get(clip.trackId);
     if (clip.anchor) affected(approximate, 'ANCHOR', clip);
     if (clip.volumeEnvelope && volumeEnvelopeField(clip).volumeEnvelope != null) affected(approximate, 'VOLUME_KEYFRAMES', clip);
     if (clip.fadeInFrames || clip.fadeOutFrames) affected(approximate, 'FADES', clip);
-    if (clip.muted || track?.muted) affected(approximate, 'MUTE', clip);
+    if (asset.metadata.hasAudio && (clip.muted || track?.muted)) affected(approximate, 'MUTE', clip);
     if (clip.soundOnly) affected(approximate, 'SEPARATE_SOUND', clip);
     if (clip.transform || clip.layout && (clip.rect.x || clip.rect.y || clip.rect.width !== width || clip.rect.height !== height)) {
       affected(approximate, 'TRANSFORM', clip);
