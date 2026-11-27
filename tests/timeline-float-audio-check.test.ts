@@ -3,9 +3,12 @@ type FloatCall={command:string;args:string[];options:MediaStreamingRunOptions};
 type FloatPermit=string & {command?:never;args?:never;options?:never};
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
+import {DatabaseSync} from 'node:sqlite';
+import {LEGACY_TIMELINE_LIMITS,TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
+import {createExportAttemptChunkFence} from '../packages/business/src/export-attempt-fence.ts';
 import {createTimelineFloatAudioAccumulator,createTimelineFloatAudioChecker,parseTimelineFloatAudioProbe,
-  assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure,isOwnedTimelineFloatAudioMeasurement,readTimelineFloatAudioCheckFailure,TIMELINE_FLOAT_AUDIO_LIMITS} from '../packages/business/src/timeline-float-audio-check.ts';
+  assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure,isOwnedTimelineFloatAudioMeasurement,readTimelineFloatAudioCheckFailure,TIMELINE_FLOAT_AUDIO_LIMITS,
+  timelineFloatAudioBudgetMs} from '../packages/business/src/timeline-float-audio-check.ts';
 const pcm=(frames: number|undefined=1600,value: ((arg0: number,arg1: number) => number)|undefined=(_frame?: unknown,channel?: unknown)=>channel?-1.5:1.25)=>{const bytes=Buffer.alloc(frames*8);for(let frame=0;frame<frames;frame++)for(let channel=0;channel<2;channel++)bytes.writeFloatLE(value(frame,channel),frame*8+channel*4);return bytes;};
 const metadata=()=>({format:{format_name:'concat'},streams:[{index:0,codec_type:'video'},{index:1,codec_type:'audio',codec_name:'pcm_f32le',sample_fmt:'flt',sample_rate:'48000',channels:2,channel_layout:'stereo'}]});
 const options=(overrides?: { signal?: AbortSignal; beforeEffect?: (() => void)|(() => void); remainingMs?: (() => number)|(() => number)|(() => number); ownedSegments?: { file: string; outputFrames: number; }[]|{ file: string; outputFrames: number; }[]; }|undefined)=>({beforeEffect(){},ownedSegments:[{file:'/private/segment-0.mov',outputFrames:1}],...overrides});
@@ -103,6 +106,56 @@ test('queued probe wait is bounded by the same total deadline without reassignin
  const keepAlive=setTimeout(()=>{},1000);try{await assert.rejects(createTimelineFloatAudioChecker(((r) as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]))('/private/list',1,options({remainingMs:()=>20})),{code:'EXPORT_AUDIO_TIMEOUT'});}finally{clearTimeout(keepAlive);}assert.equal(spawned,false);
 });
 
+
+test('float-check budgets scale separately with extra frames and segments within the admitted envelope',()=>{
+ const legacy=LEGACY_TIMELINE_LIMITS, current=TIMELINE_LIMITS;
+ assert.equal(timelineFloatAudioBudgetMs(1,1),120_000);
+ assert.equal(timelineFloatAudioBudgetMs(legacy.maxFrames,legacy.maxSegments),120_000);
+ assert.equal(timelineFloatAudioBudgetMs(legacy.maxFrames+30,legacy.maxSegments),120_100);
+ assert.equal(timelineFloatAudioBudgetMs(legacy.maxFrames,legacy.maxSegments+1),120_500);
+ assert.equal(timelineFloatAudioBudgetMs(current.maxFrames,current.maxClips),290_000);
+ assert.equal(timelineFloatAudioBudgetMs(current.maxFrames,current.maxSegments),440_000);
+ assert.throws(()=>timelineFloatAudioBudgetMs(current.maxFrames+1,1),{code:'MEDIA_INVALID_CONFIGURATION'});
+ assert.throws(()=>timelineFloatAudioBudgetMs(1,current.maxSegments+1),{code:'MEDIA_INVALID_CONFIGURATION'});
+});
+
+test('a revoked stream fence rejects later PCM without branding a completed observation',async()=>{
+ let consumed=0;
+ const revoked=Object.assign(Error('The stage was replaced'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ const r=runtime({async runStreaming(_command:string,_args:string[],{onStdout}:{onStdout:(bytes:Buffer<ArrayBuffer>)=>void}){
+  const bytes=pcm();
+  onStdout(bytes.subarray(0,8));
+  assert.equal(consumed,1);
+  onStdout(bytes.subarray(8));
+  assert.fail('Revoked streaming appended the remaining bytes');
+ }});
+ const check=createTimelineFloatAudioChecker(r as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]);
+ await assert.rejects(check('/private/list',1,{...options(),beforeChunk(){if(++consumed===2)throw revoked;}}),
+  error=>error===revoked&&readTimelineFloatAudioCheckFailure(error)===undefined);
+});
+
+test('a streaming attempt revalidates locally edited or uncommitted ownership',()=>{
+ const db=new DatabaseSync(':memory:');
+ try{
+  db.exec("ATTACH ':memory:' AS project; ATTACH ':memory:' AS cache; CREATE TABLE project.sources(id INTEGER)");
+  let live=0,full=0;
+  const fence=createExportAttemptChunkFence(db,()=>{live++;},()=>{full++;});
+  fence();fence();
+  assert.deepEqual({live,full},{live:2,full:1});
+  db.exec('INSERT INTO project.sources VALUES (1)');
+  fence();
+  assert.equal(full,2);
+  db.exec('CREATE TEMP VIEW current_sources AS SELECT * FROM project.sources');
+  fence();
+  assert.equal(full,3);
+  db.exec('BEGIN');
+  fence();fence();
+  assert.equal(full,5);
+  db.exec('ROLLBACK');
+  fence();
+  assert.equal(full,6);
+ }finally{db.close();}
+});
 
 test('completed check remains owned evidence when later AAC/probe/cleanup fails, never on cancellation or uncertain close',()=>{
  const accumulator=createTimelineFloatAudioAccumulator(1);accumulator.write(pcm(1600,((()=>0.5) as unknown as Parameters<typeof pcm>[1])));const measurement=accumulator.finish();

@@ -8,6 +8,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {resolveTimelineExportDelivery,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -58,6 +59,41 @@ test('omitted and explicit v1 preserve byte-identical integer rendering with no 
  const root=await sandbox(t),f=await fixture(root,{amplitude:.7,gain:2}),omitted=path.join(root,'omitted.mp4'),v1=path.join(root,'v1.mp4');
  const a=(await renderTimeline((({timeline:f.timeline}) as unknown as Parameters<typeof renderTimeline>[0]),f.assets,omitted) as FloatRenderResult),b=(await renderTimeline((({timeline:f.timeline,delivery:resolveTimelineExportDelivery(f.timeline,{profileId:'mp4_h264_v1',resolution:'native',rateControl:{mode:'crf',quality:'standard'}})}) as unknown as Parameters<typeof renderTimeline>[0]),f.assets,v1) as FloatRenderResult);
  assert.equal('audioCheck' in a,false);assert.equal('audioCheck' in b,false);assert.deepEqual(await readFile(v1),await readFile(omitted));
+});
+
+test('real float checked render covers the full native duration and 300 composition segments',{timeout:480_000},async t=>{
+ const root=await sandbox(t),f=await fixture(root,{amplitude:.25,gain:.5});
+ const {maxFrames,maxClips,framesPerSecond}=TIMELINE_LIMITS;
+ const perClip=maxFrames/maxClips;
+ f.asset.duration=perClip/framesPerSecond;
+ await run('ffmpeg',['-v','error','-y','-f','lavfi','-i','aevalsrc=0.25|-0.25:s=48000:c=stereo',
+  '-t',String(f.asset.duration),'-c:a','pcm_f32le',f.asset.path]);
+ const first=f.timeline.clips[0]!;
+ f.timeline.durationFrames=maxFrames;
+ f.timeline.clips=Array.from({length:maxClips},(_,index)=>({
+  ...first,id:randomUUID(),startFrame:index*perClip,durationFrames:perClip,...(index<maxClips-1?{muted:true as const}:{}),
+ }));
+ const destination=path.join(root,'full-length.mp4');
+ let encoded=0,streamFences=0;
+ const result=await renderTimeline(snapshot(f.timeline) as unknown as Parameters<typeof renderTimeline>[0],f.assets,destination,{
+  onSegmentProgress(){encoded++;},beforeFloatAudioChunk(){streamFences++;},
+ }) as FloatRenderResult;
+ assert.equal(encoded,maxClips);
+ assert.ok(streamFences>maxClips);
+ assert.equal(isOwnedTimelineFloatAudioMeasurement(result.audioCheck),true);
+ assert.equal(result.audioCheck.sampleFrames,maxFrames*1600);
+ assert.equal(result.audioCheck.overRangeSampleCount,0);
+ assert.equal(result.audioCheck.peakLinear,.125);
+ const raw=await run('ffprobe',['-v','error','-show_streams','-of','json',destination]);
+ const metadata=JSON.parse(raw) as {streams:{codec_type:string;nb_frames?:string;duration?:string;duration_ts?:number;time_base?:string}[]};
+ const video=metadata.streams.find(stream=>stream.codec_type==='video');
+ const audio=metadata.streams.find(stream=>stream.codec_type==='audio');
+ assert.equal(video?.nb_frames,String(maxFrames));
+ assert.equal(Number(video?.duration),maxFrames/framesPerSecond);
+ assert.equal(Number(audio?.duration),maxFrames/framesPerSecond);
+ assert.equal(audio?.time_base,'1/48000');
+ assert.equal(audio?.duration_ts,maxFrames*1600);
+ assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-')),false);
 });
 
 test('actual complete within-limit check survives a subsequent AAC spawn failure as owned evidence',{timeout:30000},async t=>{

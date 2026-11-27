@@ -1,11 +1,12 @@
 import path from 'node:path';
 import {TIMELINE_EXPORT_FLOAT_LIMITS} from '@mioon/contracts/timeline-export-float';
 import type {TimelineExportAudioMeasurement} from '@mioon/contracts/timeline-export-float';
-import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+import {LEGACY_TIMELINE_LIMITS,TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 
 export const TIMELINE_FLOAT_AUDIO_LIMITS = Object.freeze({outputFrames: TIMELINE_EXPORT_FLOAT_LIMITS.outputFrames, sampleFrames: TIMELINE_EXPORT_FLOAT_LIMITS.sampleFrames,
   pcmBytes: TIMELINE_EXPORT_FLOAT_LIMITS.pcmBytes, totalMs: TIMELINE_EXPORT_FLOAT_LIMITS.timeoutMs, responseBytes: TIMELINE_EXPORT_FLOAT_LIMITS.reportBytes, probeBytes: 128 * 1024, stderrBytes: 64 * 1024});
 const FRAME_BYTES = 8, SAMPLES_PER_FRAME = 1600, CHECKPOINT_BYTES = 64 * 1024;
+const EXTRA_SECOND_MS = 100, EXTRA_SEGMENT_MS = 500;
 type CheckError = Error & {code: string; terminationUnconfirmed?: boolean};
 const failure = (code: string, message: string): CheckError => Object.assign(new Error(message), {code});
 const configuration = (): CheckError => failure('MEDIA_INVALID_CONFIGURATION', 'Invalid float audio check configuration.');
@@ -19,6 +20,15 @@ const exactFrames = (outputFrames: number): number => {
   if (!Number.isSafeInteger(outputFrames) || outputFrames < 1 || outputFrames > TIMELINE_FLOAT_AUDIO_LIMITS.outputFrames) throw configuration();
   return outputFrames * SAMPLES_PER_FRAME;
 };
+/** Preserve the historical floor. Beyond it, budget separately for streaming
+ * the extra audio and probing each additional generated MOV. */
+export function timelineFloatAudioBudgetMs(outputFrames: number, segments: number): number {
+  exactFrames(outputFrames);
+  if (!Number.isSafeInteger(segments) || segments < 1 || segments > TIMELINE_LIMITS.maxSegments) throw configuration();
+  const extraSeconds = Math.max(0, outputFrames - LEGACY_TIMELINE_LIMITS.maxFrames) / TIMELINE_LIMITS.framesPerSecond;
+  const extraSegments = Math.max(0, segments - LEGACY_TIMELINE_LIMITS.maxSegments);
+  return TIMELINE_FLOAT_AUDIO_LIMITS.totalMs + Math.ceil(extraSeconds * EXTRA_SECOND_MS) + extraSegments * EXTRA_SEGMENT_MS;
+}
 
 /** Server-created evidence only. Never infer authority from an error's public
  * properties or from a caller-supplied JSON-shaped measurement. */
@@ -113,9 +123,11 @@ export interface TimelineFloatAudioCheckOptions {
   readonly signal?: AbortSignal;
   /** Synchronous live attempt/source/owned staging inode fence. */
   readonly beforeEffect: () => void;
+  /** Worker-supplied fence for streamed bytes. It also checks the staged files. */
+  readonly beforeChunk?: () => void;
   /** Exact generated, reserved segment paths and frame counts, never DTO input. */
   readonly ownedSegments: readonly {readonly file: string; readonly outputFrames: number}[];
-  /** Optional tighter existing capability deadline; never expands 120 seconds. */
+  /** The existing capability deadline can only shorten the measurement budget. */
   readonly remainingMs?: () => number;
 }
 const concatInput = (list: string): string[] => ['-protocol_whitelist', 'file', '-format_whitelist', 'concat,mov', '-f', 'concat', '-safe', '0', '-i', list];
@@ -142,6 +154,7 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
   (list: string, outputFrames: number, options: TimelineFloatAudioCheckOptions) => Promise<TimelineExportAudioMeasurement> {
   return async (list, outputFrames, options) => {
     if (typeof list !== 'string' || !path.isAbsolute(list) || list.includes('\0') || !options || typeof options.beforeEffect !== 'function' ||
+        (options.beforeChunk !== undefined && typeof options.beforeChunk !== 'function') ||
         (options.remainingMs !== undefined && typeof options.remainingMs !== 'function') || !Number.isSafeInteger(runtime.terminationMs) ||
         runtime.terminationMs < 0 || runtime.terminationMs >= TIMELINE_FLOAT_AUDIO_LIMITS.totalMs) throw configuration();
     if (!Array.isArray(options.ownedSegments) || options.ownedSegments.length < 1 || options.ownedSegments.length > TIMELINE_LIMITS.maxSegments ||
@@ -150,16 +163,17 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
         new Set(options.ownedSegments.map(segment => segment.file)).size !== options.ownedSegments.length ||
         options.ownedSegments.reduce((total, segment) => total + segment.outputFrames, 0) !== outputFrames) throw configuration();
     const accumulator = createTimelineFloatAudioAccumulator(outputFrames);
-    const outerBudget = options.remainingMs?.() ?? TIMELINE_FLOAT_AUDIO_LIMITS.totalMs;
-    if (!Number.isFinite(outerBudget) || outerBudget > TIMELINE_FLOAT_AUDIO_LIMITS.totalMs) throw configuration();
+    const totalMs = timelineFloatAudioBudgetMs(outputFrames, options.ownedSegments.length);
+    const outerBudget = options.remainingMs?.() ?? totalMs;
+    if (!Number.isFinite(outerBudget) || outerBudget > totalMs) throw configuration();
     if (outerBudget < 1) throw timeout();
-    const computeMs = Math.min(outerBudget, TIMELINE_FLOAT_AUDIO_LIMITS.totalMs - runtime.terminationMs), deadline = performance.now() + computeMs;
+    const computeMs = Math.min(outerBudget, totalMs - runtime.terminationMs), deadline = performance.now() + computeMs;
     const budgetController = new AbortController(), queueSignal = options.signal ? AbortSignal.any([options.signal, budgetController.signal]) : budgetController.signal;
     const timer = setTimeout(() => budgetController.abort(), computeMs); timer.unref();
     let callbackFailure: unknown;
     const remaining = (): number => {
       const outer = options.remainingMs?.() ?? computeMs;
-      if (!Number.isFinite(outer) || outer > TIMELINE_FLOAT_AUDIO_LIMITS.totalMs) throw configuration();
+      if (!Number.isFinite(outer) || outer > totalMs) throw configuration();
       const left = Math.floor(Math.min(outer, deadline - performance.now()));
       if (left < 1 || budgetController.signal.aborted) throw timeout();
       return left;
@@ -190,12 +204,13 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
       });
       fence();
       let bytesSeen = 0;
+      const scanFence = (): void => {runtime.checkMediaEffect(options.beforeChunk ?? options.beforeEffect, options.signal); remaining();};
       const decoded = await runtime.runStreaming('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-threads', '1', '-filter_threads', '1',
         '-reinit_filter', '0', ...concatInput(list), '-map', `0:${index}`, '-vn', '-sn', '-dn', '-threads', '1', '-af', 'asetpts=N/SR/TB',
         '-c:a', 'pcm_f32le', '-f', 'f32le', 'pipe:1'], {...runOptions(TIMELINE_FLOAT_AUDIO_LIMITS.pcmBytes), onStdout(chunk: Buffer): void {
           try {
-            fence(); if (!Buffer.isBuffer(chunk)) throw invalidPcm();
-            for (let at = 0; at < chunk.length; at += CHECKPOINT_BYTES) { if (at) fence(); accumulator.write(chunk.subarray(at, at + CHECKPOINT_BYTES)); }
+            scanFence(); if (!Buffer.isBuffer(chunk)) throw invalidPcm();
+            for (let at = 0; at < chunk.length; at += CHECKPOINT_BYTES) { if (at) scanFence(); accumulator.write(chunk.subarray(at, at + CHECKPOINT_BYTES)); }
             bytesSeen += chunk.length;
           } catch (error) { callbackFailure = error; throw error; }
         }});

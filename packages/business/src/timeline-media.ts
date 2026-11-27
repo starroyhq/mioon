@@ -43,6 +43,7 @@ interface TimelineSnapshotLike {
 interface RenderAsset extends ManagedAssetRecord {path?: string;videoStreamIndex?: number|string|null;audioStreamIndex?: number|string|null;colourProbe?: unknown;colourImageEvidence?: unknown}
 interface RenderTimelineOptions {
  signal?: AbortSignal;beforeEncode?: ()=>void;beforeStart?:()=>void;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown;
+ beforeFloatAudioChunk?: ()=>void;
  segmentConcurrency?: number;
  encoderPool?: MediaEncoderSlotPool;
  onSegmentProgress?: (completedFrames: number,totalFrames: number)=>void;
@@ -116,7 +117,7 @@ function ownedTimelineWork(destination: string,maxFiles: number,beforeEffect: ((
 // compositions. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{
- signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
+ signal,beforeEncode,beforeStart,beforeEffect,beforeFloatAudioChunk,readLut,onSegmentProgress,
  segmentConcurrency: requestedSegmentConcurrency,encoderPool,
 }: RenderTimelineOptions={}): Promise<unknown>{
  // Every project window shares one backend process and this application-wide
@@ -155,7 +156,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  // distinct cue, plus the subtitle font, measurement scripts and concat list.
  const subtitleCueCount=timeline.subtitles?.cues.length??0;
  const maxStageFiles=2*plan.segments.length+subtitleCueCount+Math.ceil(subtitleCueCount/SUBTITLE_INK_BATCH_SIZE)+2;
- const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect,maxFiles:maxStageFiles},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
+ let workerFence=beforeEffect;
+ const stagingFence=floatChecked&&beforeFloatAudioChunk?()=>workerFence?.():beforeEffect;
+ const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect:stagingFence,maxFiles:maxStageFiles},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
   :beforeEffect===undefined?null:ownedTimelineWork(destination,maxStageFiles,beforeEffect,signal);
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  const segmentOwner=signal??new AbortController().signal;
@@ -296,7 +299,16 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   const {manifest,movieTimescale}=timelineExportConcat(ownedSegments,timeline);
   const list=path.join(work,'segments.txt');await (owned?owned.writeOwnedFile(list,manifest):writeFile(list,manifest));
   checkMediaEffect(effect,signal);
-  if(floatChecked){audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect as never,ownedSegments});checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck as never);}
+  if(floatChecked){
+   const beforeChunk=beforeFloatAudioChunk&&(()=>{
+    // Reuse the same synchronous staging/LUT/layer chain with the lightweight
+    // worker check. Restore the full check before returning or throwing.
+    workerFence=beforeFloatAudioChunk;
+    try{checkMediaEffect(effect,signal);}finally{workerFence=beforeEffect;}
+   });
+   audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect as never,beforeChunk,ownedSegments});
+   checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck as never);
+  }
   // The fenced worker reserves and retains the destination inode and checks
   // it in beforeEffect. Only that owned empty output may be overwritten.
   const concatRelease=await pool.acquire(signal,encoderOwner);
