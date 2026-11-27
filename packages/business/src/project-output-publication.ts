@@ -24,7 +24,13 @@ import {isPublishedProjectOutput} from './project-output-proof.ts';
 export type {ProjectOutputOwner, ProjectOutputPublicationProof};
 export {isPublishedProjectOutput} from './project-output-proof.ts';
 export type {PublishedProjectOutputExpectation} from './project-output-proof.ts';
-export interface ProjectOutputOptions {readonly signal?: AbortSignal; readonly beforeEffect?: () => void}
+export interface ProjectOutputOptions {
+  readonly signal?: AbortSignal;
+  readonly beforeEffect?: () => void;
+  /** Optional worker fence for steady-state byte I/O. Boundaries always use beforeEffect. */
+  readonly beforeChunk?: () => void;
+}
+type CheckOutput = (phase?: 'chunk') => void;
 export interface ProjectOutputInput {
   readonly owner: ProjectOutputOwner; readonly assetId: string; readonly publicationId?: string;
   readonly targetKind: 'generated' | 'exports' | 'assets'; readonly stageFile: string;
@@ -67,8 +73,16 @@ class CtimeChanged extends Error {
   constructor(point: VerificationPoint) {super('Output ctime changed during verification'); this.point = point;}
 }
 const maxVerificationRetries = 2;
-function fence(store: ProjectStore, options: ProjectOutputOptions): void {
-  options.signal?.throwIfAborted();try{options.beforeEffect?.();}catch(error){if(record(error))ownerFailures.add(error);throw error;}assertProjectOutputStore(store);
+const defaultChunkBytes = 64 * 1024;
+const exportChunkBytes = 1024 * 1024;
+function bytePassChunkSize(options: ProjectOutputOptions, sizeBytes: number): number {
+  // Keep both fences around each actual I/O. Larger transfers amortize the
+  // same identity and path checks on large exports with a worker chunk fence.
+  return options.beforeChunk && sizeBytes > exportChunkBytes ? exportChunkBytes : defaultChunkBytes;
+}
+function fence(store: ProjectStore, options: ProjectOutputOptions, phase?: 'chunk'): void {
+  const check = phase === 'chunk' ? options.beforeChunk ?? options.beforeEffect : options.beforeEffect;
+  options.signal?.throwIfAborted();try{check?.();}catch(error){if(record(error))ownerFailures.add(error);throw error;}assertProjectOutputStore(store);
 }
 function normalizeOutputIo(error:unknown):never{
   if(record(error)&&!ownerFailures.has(error)&&!isProjectOutputAdmissionFailure(error)&&typeof error.code==='string'&&typeof error.path==='string'){
@@ -145,18 +159,18 @@ function nextOutputPath(store: ProjectStore, input: ProjectOutputInput, publicat
     if (!unavailable.has(candidate) && !lstatSync(path.join(store.projectDir, candidate), {throwIfNoEntry: false})) return candidate;
   }
 }
-function ordinaryDirectory(store: ProjectStore, targetKind: ProjectOutputInput['targetKind'], options: ProjectOutputOptions, create: boolean): {directory: string; identity: OutputFileIdentity} {
-  fence(store, options); const directory = path.join(store.projectDir, PROJECT_OUTPUT_FOLDERS[targetKind]);
+function ordinaryDirectory(store: ProjectStore, targetKind: ProjectOutputInput['targetKind'], options: ProjectOutputOptions, create: boolean, phase?: 'chunk'): {directory: string; identity: OutputFileIdentity} {
+  fence(store, options, phase); const directory = path.join(store.projectDir, PROJECT_OUTPUT_FOLDERS[targetKind]);
   if (create) {try {mkdirSync(directory, {mode: 0o755});} catch (error) {if (!record(error) || error.code !== 'EEXIST') throw error;} fence(store, options);}
   const info = lstatSync(directory, {bigint: true});
   if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(directory) !== directory) invalid();
   if (create) {syncDirectory(store.projectDir); syncDirectory(directory);}
   return {directory, identity: outputFileIdentity(info)};
 }
-function checkReceiptDirectories(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions): void {
-  fence(store, options);
+function checkReceiptDirectories(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions, phase?: 'chunk'): void {
+  fence(store, options, phase);
   if (!sameOutputIdentity(receipt.rootIdentity, assertProjectOutputStore(store)) ||
-      !sameOutputIdentity(receipt.directoryIdentity, ordinaryDirectory(store, receipt.proof.targetKind, options, false).identity)) invalid();
+      !sameOutputIdentity(receipt.directoryIdentity, ordinaryDirectory(store, receipt.proof.targetKind, options, false, phase).identity)) invalid();
 }
 function stagePath(store: ProjectStore, receipt: Pick<Receipt, 'stageRelativePath'>): string {
   const relative = receipt.stageRelativePath;
@@ -184,11 +198,11 @@ function pinnedFile(bytes: ExpectedOutputBytes, info: BigIntStats): ExpectedOutp
 }
 interface FileVerification {
   observe(info: BigIntStats, point: VerificationPoint): void;
-  current(point: VerificationPoint): BigIntStats;
+  current(point: VerificationPoint, phase?: 'chunk'): BigIntStats;
 }
 /** A metadata change discards this entire read. Every retry compares against
  * the original identity, size and mtime and reads the expected bytes again. */
-async function verifyStableFile<T>(file: string, expected: ExpectedOutputFile, check: () => void, point: VerificationPoint,
+async function verifyStableFile<T>(file: string, expected: ExpectedOutputFile, check: CheckOutput, point: VerificationPoint,
   read: (verification: FileVerification) => Promise<T>): Promise<{value: T; stats: BigIntStats}> {
   const first = fileMetadata(file, check);
   assertFileFacts(first, expected, point);
@@ -200,8 +214,8 @@ async function verifyStableFile<T>(file: string, expected: ExpectedOutputFile, c
       assertFileFacts(info, pinned, at);
       if (info.ctimeNs !== start.ctimeNs) throw new CtimeChanged(at);
     };
-    const current = (at: VerificationPoint): BigIntStats => {
-      const info = fileMetadata(file, check);
+    const current = (at: VerificationPoint, phase?: 'chunk'): BigIntStats => {
+      const info = fileMetadata(file, () => check(phase));
       observe(info, at);
       return info;
     };
@@ -216,18 +230,18 @@ async function verifyStableFile<T>(file: string, expected: ExpectedOutputFile, c
     }
   }
 }
-async function readVerifiedBytes(file: string, expected: ExpectedOutputBytes, check: () => void,
-  verification: FileVerification, point: VerificationPoint, bytes?: Buffer): Promise<void> {
+async function readVerifiedBytes(file: string, expected: ExpectedOutputBytes, check: CheckOutput,
+  verification: FileVerification, point: VerificationPoint, {bytes, chunkBytes = defaultChunkBytes}: {bytes?: Buffer; chunkBytes?: number} = {}): Promise<void> {
   check(); const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     check(); verification.observe(await handle.stat({bigint: true}), point);
-    const hash = createHash('sha256'), buffer = bytes ?? Buffer.alloc(65536);
+    const hash = createHash('sha256'), buffer = bytes ?? Buffer.alloc(chunkBytes);
     let offset = 0;
     while (offset < expected.sizeBytes) {
-      verification.current(point);
+      verification.current(point, 'chunk');
       const start = bytes ? offset : 0;
-      const {bytesRead} = await handle.read(buffer, start, Math.min(65536, expected.sizeBytes - offset), offset);
-      check();
+      const {bytesRead} = await handle.read(buffer, start, Math.min(chunkBytes, expected.sizeBytes - offset), offset);
+      check('chunk');
       if (!bytesRead) throw new BytesMismatch(point, 'size');
       hash.update(buffer.subarray(start, start + bytesRead)); offset += bytesRead;
     }
@@ -246,9 +260,9 @@ async function syncVerifiedFile(file: string, check: () => void, verification: F
     verification.current(point);
   } finally {await handle.close();}
 }
-async function hashFile(file: string, expected: ExpectedOutputFile, check: () => void, point: VerificationPoint): Promise<BigIntStats> {
+async function hashFile(file: string, expected: ExpectedOutputFile, check: CheckOutput, point: VerificationPoint, chunkBytes?: number): Promise<BigIntStats> {
   const {stats} = await verifyStableFile(file, expected, check, point,
-    verification => readVerifiedBytes(file, expected, check, verification, point));
+    verification => readVerifiedBytes(file, expected, check, verification, point, {chunkBytes}));
   return stats;
 }
 function saveFinalStats(receipt: Receipt, info: BigIntStats): void {
@@ -257,34 +271,35 @@ function saveFinalStats(receipt: Receipt, info: BigIntStats): void {
 /** Copy a stage once into its exclusive target. A source ctime change calls
  * for a fresh hash of the entire source, without rewriting the target. */
 async function copyVerifiedStage(stage: string, stageInfo: BigIntStats, targetFile: string, target: FileHandle,
-  targetIdentity: OutputFileIdentity, expected: ExpectedOutputBytes, check: () => void, afterChunk: () => void): Promise<void> {
+  targetIdentity: OutputFileIdentity, expected: ExpectedOutputBytes, check: CheckOutput, afterChunk: () => void, chunkBytes = defaultChunkBytes): Promise<void> {
   const pinned = pinnedFile(expected, stageInfo);
   let ctimeChanged = false;
   const observeSource = (info: BigIntStats): void => {
     assertFileFacts(info, pinned, 'copy-source');
     ctimeChanged ||= info.ctimeNs !== stageInfo.ctimeNs;
   };
-  const ioFence = (): void => {
-    observeSource(fileMetadata(stage, check));
-    if (!sameOutputIdentity(targetIdentity, outputFileIdentity(fileMetadata(targetFile, check)))) throw new BytesMismatch('copy-target', 'identity');
+  const ioFence = (phase?: 'chunk'): void => {
+    const checkFile = () => check(phase);
+    observeSource(fileMetadata(stage, checkFile));
+    if (!sameOutputIdentity(targetIdentity, outputFileIdentity(fileMetadata(targetFile, checkFile)))) throw new BytesMismatch('copy-target', 'identity');
   };
   ioFence();
   const source = await open(stage, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     check(); observeSource(await source.stat({bigint: true}));
-    const buffer = Buffer.alloc(65536), hash = createHash('sha256');
+    const buffer = Buffer.alloc(chunkBytes), hash = createHash('sha256');
     let offset = 0;
     while (offset < expected.sizeBytes) {
-      ioFence();
+      ioFence('chunk');
       const {bytesRead} = await source.read(buffer, 0, Math.min(buffer.length, expected.sizeBytes - offset), offset);
-      ioFence();
+      ioFence('chunk');
       if (!bytesRead) throw new BytesMismatch('copy-source', 'size');
       hash.update(buffer.subarray(0, bytesRead));
       let written = 0;
       while (written < bytesRead) {
-        ioFence();
+        ioFence('chunk');
         const {bytesWritten} = await target.write(buffer, written, bytesRead - written, offset + written);
-        ioFence();
+        ioFence('chunk');
         if (!bytesWritten) throw new BytesMismatch('copy-target', 'size');
         written += bytesWritten;
       }
@@ -303,25 +318,27 @@ async function copyVerifiedStage(stage: string, stageInfo: BigIntStats, targetFi
     ioFence();
     assertFileFacts(await target.stat({bigint: true}), targetFacts, 'copy-target');
     assertFileFacts(fileMetadata(targetFile, check), targetFacts, 'copy-target');
-    if (ctimeChanged) await hashFile(stage, pinned, check, 'copy-source');
+    if (ctimeChanged) await hashFile(stage, pinned, check, 'copy-source', chunkBytes);
   } finally {await source.close();}
 }
 async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions, durable = false, mtimeNs?: bigint): Promise<PublishedProjectOutput> {
-  const check = (): void => checkReceiptDirectories(store, receipt, options);
+  const check: CheckOutput = phase => checkReceiptDirectories(store, receipt, options, phase);
   check(); const file = path.join(store.projectDir, receipt.proof.relativePath);
   const identity = receipt.targetIdentity ?? (receipt.mode === 'link' ? receipt.stageIdentity : undefined);
   if (!identity) invalid();
   const expectedMtime = mtimeNs ?? (receipt.finalStats ? BigInt(receipt.finalStats.mtimeNs) : undefined);
+  const chunkBytes = bytePassChunkSize(options, receipt.proof.sizeBytes);
   const {value, stats} = await verifyStableFile(file, {...receipt.proof, identity, mtimeNs: expectedMtime}, check, 'final-hash', async verification => {
-    await readVerifiedBytes(file, receipt.proof, check, verification, 'final-hash');
+    await readVerifiedBytes(file, receipt.proof, check, verification, 'final-hash', {chunkBytes});
     if (durable) {
       // Recovery may find a complete target whose creator died before syncing it.
       await syncVerifiedFile(file, check, verification, 'final-sync');
       syncDirectory(path.dirname(file));
       verification.current('final-sync');
     }
-    const reference = await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal,
-      beforeEffect: () => {verification.current('reference');}});
+    if (options.beforeChunk) verification.current('reference');
+    const reference = await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal, hashChunkBytes: chunkBytes,
+      beforeEffect: () => {verification.current('reference', 'chunk');}});
     verification.current('reference');
     return reference;
   });
@@ -400,7 +417,7 @@ export async function readPublishedProjectOutput(store: ProjectStore, input: {ow
     const {value} = await verifyStableFile(file, {...receipt.proof, identity, mtimeNs}, check, 'read-published', async verification => {
       if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < receipt.proof.sizeBytes) invalid();
       bytes ??= Buffer.alloc(receipt.proof.sizeBytes);
-      await readVerifiedBytes(file, receipt.proof, check, verification, 'read-published', bytes);
+      await readVerifiedBytes(file, receipt.proof, check, verification, 'read-published', {bytes});
       await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal,
         beforeEffect: () => {verification.current('reference');}});
       return bytes;
@@ -434,9 +451,9 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     validateManagedFile(file, {root: store.tempDir, private: true, maxBytes: input.sizeBytes});
     const stage = fileMetadata(file, () => fence(store, options));
     if (stage.nlink !== 1n) invalid();
-    const check = (): void => fence(store, options);
+    const check: CheckOutput = phase => fence(store, options, phase);
     const {stats} = await verifyStableFile(file, pinnedFile(input, stage), check, 'stage-hash', async verification => {
-      await readVerifiedBytes(file, input, check, verification, 'stage-hash');
+      await readVerifiedBytes(file, input, check, verification, 'stage-hash', {chunkBytes: bytePassChunkSize(options, input.sizeBytes)});
       await syncVerifiedFile(file, check, verification, 'stage-sync');
       syncDirectory(path.dirname(file));
       verification.current('stage-sync');
@@ -458,7 +475,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     writeReceipt(store, receipt, options); testHooks.get(store)?.fault?.('after_intent', proof); fence(store, options);
   }
   while (true) {
-    const current = receipt, check = (): void => checkReceiptDirectories(store, current, options), file = path.join(store.projectDir, current.proof.relativePath);
+    const current = receipt, check: CheckOutput = phase => checkReceiptDirectories(store, current, options, phase), file = path.join(store.projectDir, current.proof.relativePath);
     check(); const existing = lstatSync(file, {throwIfNoEntry: false, bigint: true});
     if (existing) {
       const identity = current.targetIdentity ?? (current.mode === 'link' ? current.stageIdentity : null);
@@ -472,7 +489,8 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     const stage = stagePath(store, current);
     validateManagedDirectory(path.dirname(stage),{root:store.tempDir,private:true});
     validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: current.proof.sizeBytes});
-    stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash');
+    const chunkBytes = bytePassChunkSize(options, current.proof.sizeBytes);
+    stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash', chunkBytes);
     check();
     const upload = current.proof.targetKind === 'assets';
     const outputMode = upload ? 0o644 : ordinaryOutputMode;
@@ -498,7 +516,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
           current.targetIdentity = outputFileIdentity(created); current.phase = 'copying'; writeReceipt(store, current, options);
           testHooks.get(store)?.fault?.('after_target_identity', current.proof); check();
           await copyVerifiedStage(stage, stageInfo, file, target, current.targetIdentity, current.proof, check,
-            () => testHooks.get(store)?.fault?.('after_copy_chunk', current.proof));
+            () => testHooks.get(store)?.fault?.('after_copy_chunk', current.proof), chunkBytes);
           targetMtime = undefined;
         } finally {await target.close();}
       }

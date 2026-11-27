@@ -3,7 +3,7 @@ import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,readdir} from 'node:fs/promises';
-import {lstatSync,readdirSync,renameSync,writeFileSync,existsSync} from 'node:fs';
+import {lstatSync,readdirSync,renameSync,writeFileSync,existsSync,utimesSync} from 'node:fs';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -17,6 +17,8 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
+import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
+import type {ProjectOutputPublicationProof} from '../packages/business/src/project-output-publication.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
@@ -56,8 +58,8 @@ async function foreignProject(t: {after(fn: () => unknown): void}): Promise<Proj
 }
 
 const byName=(a: {name: string},b: {name: string}): number => a.name<b.name?-1:a.name>b.name?1:0;
-function wave(): Buffer {
- const samples=3*48000,bytes=Buffer.alloc(44+samples*4);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
+function wave(durationSeconds=3): Buffer {
+ const samples=durationSeconds*48000,bytes=Buffer.alloc(44+samples*4);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
  bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(2,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(192000,28);
  bytes.writeUInt16LE(4,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(samples*4,40);
  for(let n=0;n<samples;n++)for(let channel=0;channel<2;channel++){
@@ -367,6 +369,74 @@ test('worker rechecks frozen source ownership, retained lineage and identity aft
 
 test('worker publication guards refuse stale registration and preserve completed, replaced or uncertain files',{timeout:20000},async t=>{
  for(const phase of ['prepublication','publication-tx','publication-replacement','publication-read-unknown'])await t.test(phase,t=>sourceOwnershipRace(t,{mutation:'asset-sql-owner',phase}));
+});
+
+test('worker publication rejects a source change during multi-chunk copy',{timeout:30000},async t=>{
+ for(const mutation of ['source row on the worker connection','source file timestamp'] as const)await t.test(mutation,async t=>{
+  const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace);
+  const services=createServices(store,new Map()) as unknown as LocalServices;
+  let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
+  try{
+   const project=await services.call<ProjectShape>('project.create',{name:'Synthetic export copy race'});
+   const durationSeconds=8;
+   const asset=await services.call<AssetShape>('asset.import',{
+    projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave(durationSeconds).toString('base64')
+   });
+   const source=mediaFixturePath(workspace,store.get('assets',asset.id));
+   let timeline=await services.call<TimelineShape>('timeline.get',{projectId:project.id});
+   timeline=await services.call<TimelineShape>('timeline.clip.add',{
+    projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
+    trackId:timeline.tracks.find(track=>track.kind==='audio')!.id,assetId:asset.id,
+    startFrame:0,durationFrames:durationSeconds*30
+   });
+   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:selected('short_360')};
+   const accepted=await services.call<ProjectShape>('timeline.render',input);
+   const requestReceipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?');
+   const receipt=requestReceipt.get(input.requestId)?.response;
+   assert.equal(typeof receipt,'string');
+   let copy: {proof: ProjectOutputPublicationProof; firstChunkBytes: number} | undefined;
+   let chunks=0,finished=false,mutationApplied=false;
+   const removeHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
+    if(point==='after_final')finished=true;
+    if(point!=='after_copy_chunk')return;
+    chunks++;
+    if(chunks!==1)return;
+    copy={proof,firstChunkBytes:lstatSync(path.join(workspace,proof.relativePath)).size};
+    if(mutation==='source row on the worker connection'){
+     const current=store.get('assets',asset.id);
+     assert.ok(current&&typeof current==='object');
+     const result=store.db.prepare('UPDATE assets SET data=? WHERE id=?')
+      .run(JSON.stringify({...current,sha256:'b'.repeat(64)}),asset.id);
+     mutationApplied=result.changes===1;
+    }else{
+     const original=lstatSync(source);
+     utimesSync(source,original.atime,new Date(original.mtimeMs+10000));
+     mutationApplied=lstatSync(source).mtimeMs!==original.mtimeMs;
+    }
+   }});
+   try{
+    worker=startWorker(store,services as unknown as Parameters<typeof startWorker>[1],new Map());
+    await worker.tick();
+   }finally{removeHook();}
+   assert.equal(mutationApplied,true);
+   assert.ok(copy);
+   const {proof,firstChunkBytes}=copy;
+   assert.ok(firstChunkBytes>0&&firstChunkBytes<proof.sizeBytes,'fixture must require multiple copy chunks');
+   if(mutation==='source row on the worker connection'){
+    assert.equal(chunks,1,'a changed database generation must be revalidated before the next chunk is written');
+    assert.equal(lstatSync(path.join(workspace,proof.relativePath)).size,firstChunkBytes);
+   }
+   assert.equal(finished,false,'source changes must abort before preparing the final output receipt');
+   const publication=JSON.parse(await readFile(path.join(store.tempDir,'publications',proof.publicationId+'.json'),'utf8'));
+   assert.equal(publication.phase,'copying');
+   const rejected=store.get('exports',accepted.id) as Json;
+   assert.equal(rejected.status,'failed');
+   assert.equal((rejected.error as {code?: string}).code,'TIMELINE_SOURCE_UNAVAILABLE');
+   assert.equal(rejected.assetId,null);
+   assert.deepEqual(store.list('assets',project.id),[store.get('assets',asset.id)]);
+   assert.equal(requestReceipt.get(input.requestId)?.response,receipt);
+  }finally{await worker?.stop();await services.drain();store.close();}
+ });
 });
 
 test('postcommit publication exception preserves the successful custom export and its exact owned output',{timeout:20000},async t=>{

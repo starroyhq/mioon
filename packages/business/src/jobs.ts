@@ -560,7 +560,55 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
    floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false,renderStarted=false,blockedGate=false;
   const beforeStart=():void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}renderStarted=true;}};
-  const beforeEffect=(): void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}}const latest=currentOwnedExport(e);if(!claimLive||stopped||signal.aborted||latest?.status!=='running'||writerOwner&&outputArtifactDigest(exportOutputArtifactIdentity(latest))!==outputOwner.inputHash)throw effectError();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}if(writerOwner&&artifact&&lstatSync(outputArtifactStage(writerOwner,artifact),{throwIfNoEntry:false}))assertOutputArtifactStage(writerOwner,artifact);validateSources?.();};
+  const checkRunning=(): void=>{
+   if(agentBound&&!renderStarted){
+    try{assertAgentTaskJobEffect(store.db,'export',e.id);}
+    catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}
+   }
+   if(!claimLive||stopped||signal.aborted)throw effectError();
+  };
+  const checkOutputIdentity=(): void=>{
+   if(outputIdentity){
+    let actual;
+    try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}
+    if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();
+   }
+   if(writerOwner&&artifact&&lstatSync(outputArtifactStage(writerOwner,artifact),{throwIfNoEntry:false}))assertOutputArtifactStage(writerOwner,artifact);
+  };
+  const beforeEffect=(): void=>{
+   checkRunning();
+   const latest=currentOwnedExport(e);
+   if(latest?.status!=='running'||writerOwner&&outputArtifactDigest(exportOutputArtifactIdentity(latest))!==outputOwner.inputHash)throw effectError();
+   checkOutputIdentity();
+   validateSources?.();
+  };
+  // These schemas remain attached for the lifetime of this exact store.
+  // total_changes covers local row writes; data_version covers other
+  // connections. Schema versions also cover DDL on the worker connection.
+  // Neither an in-transaction read nor a changing generation can seed the memo.
+  const finalOutputFence=()=>{
+   const changeCount=store.db.prepare('SELECT total_changes() AS n');
+   changeCount.setReadBigInts(true);
+   const schemas=['main','project','cache'];
+   const dataVersions=schemas.map(schema=>store.db.prepare('PRAGMA '+schema+'.data_version'));
+   const schemaVersions=[...schemas,'temp'].map(schema=>store.db.prepare('PRAGMA '+schema+'.schema_version'));
+   const generation=()=>[changeCount.get()!.n,
+    ...dataVersions.map(statement=>statement.get()!.data_version),
+    ...schemaVersions.map(statement=>statement.get()!.schema_version)].join('/');
+   let validated: string | undefined;
+   const full=(): void=>{
+    validated=undefined;
+    const start=store.db.isTransaction?undefined:generation();
+    beforeEffect();
+    if(start!==undefined&&!store.db.isTransaction&&generation()===start)validated=start;
+   };
+   const chunk=(): void=>{
+    checkRunning();
+    if(validated===undefined||store.db.isTransaction||generation()!==validated)full();
+    else checkOutputIdentity();
+   };
+   return {beforeEffect:full,beforeChunk:chunk};
+  };
   const checkCustomSources=(): void=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
   try {
    beforeEffect?.();
@@ -615,7 +663,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    }
    exportStage(store,e.id,'finalizing');
    }
-   const info=artifact?.info??await fileInfo(part,{signal,beforeEffect});checkpoint(signal);
+   // Rendering is finished. The remaining streams only read the stage or
+   // destination. Full checks still run at the boundaries of each byte pass,
+   // before publishing receipts and during the registration transaction.
+   const outputFence=writerOwner?finalOutputFence():undefined;
+   outputFence?.beforeEffect();
+   const info=artifact?.info??await fileInfo(part,{signal,beforeEffect:outputFence?.beforeChunk??beforeEffect});checkpoint(signal);
+   outputFence?.beforeEffect();
    // Recheck the preserved relational owner immediately before publication.
    if(currentOwnedExport(e)?.status!=='running')return;
    if(artifact){
@@ -643,9 +697,10 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const audioCheck=floatExport?restoredArtifactAudioCheck(artifact,e):undefined;
     const displayName=e.mode==='timeline'&&e.purpose!=='export'?undefined
      :stringValue(property(e.snapshot,'deliveryName'))??stringValue(property(get('projects',e.projectId),'name'))??'';
-    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},{signal,beforeEffect});checkpoint(signal);beforeEffect();
+    const publicationOptions={signal,beforeEffect,...outputFence};
+    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},publicationOptions);checkpoint(signal);beforeEffect();
     const {relativePath:_publishedPath,...locator}=published;
-    await registerVerifiedProjectOutputs(writerOwner, {signal, beforeEffect}, () => {
+    await registerVerifiedProjectOutputs(writerOwner, publicationOptions, () => {
      tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
      const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
