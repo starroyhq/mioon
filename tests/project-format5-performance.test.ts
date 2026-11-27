@@ -139,7 +139,12 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing bu
       store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
         .run(timeline.id, options.projectId, id(7), 1, JSON.stringify(baseline));
     });
-    store.close(); store = openProjectStore(options);
+    store.close();
+    // Measure the persisted project's connection reopen. Fixture creation has
+    // already loaded the modules and initialized SQLite for this process.
+    const opening = performance.now();
+    store = openProjectStore(options);
+    const coldOpenMs = performance.now() - opening;
     let committedMs = 0, commits = 0;
     const nativeExec = store.db.exec.bind(store.db);
     // Observe the exact owned connection without changing SQL or its order.
@@ -151,7 +156,7 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing bu
       finally {committedMs += performance.now() - started; commits++;}
     });
     const committed = () => ({milliseconds: committedMs, count: commits});
-    const cold = sample(store, 'single', committed), results = [];
+    const firstEdit = sample(store, 'single', committed), results = [];
     for (const mode of modes) {
       for (let iteration = 0; iteration < 5; iteration++) sample(store, mode, committed);
       const samples = Array.from({length: 30}, () => sample(store, mode, committed));
@@ -170,10 +175,15 @@ for (const total of [100, 500, 1500]) test(`format 5 persisted K1 row-editing bu
       journal: store.db.prepare('PRAGMA project.journal_mode').get()!.journal_mode,
       synchronous: store.db.prepare('PRAGMA project.synchronous').get()!.synchronous,
       totalClips: total, mainClips: Math.min(total, FORMAT5_LIMITS.mainTrackClips), subtitleCues: timeline.subtitles!.cues.length,
-      cold: Object.fromEntries(Object.entries(cold).map(([key, value]) => [key, round(value)])), results,
+      coldOpenMs: round(coldOpenMs),
+      firstEdit: Object.fromEntries(Object.entries(firstEdit).map(([key, value]) => [key, round(value)])), results,
       peakProcessRssMiB: round(process.resourceUsage().maxRSS / 1024)}));
     const linux = process.platform === 'linux', file = 'tests/project-format5-performance.test.ts', limit = (value: number) => linux ? value * 2 : value;
-    checkPerformanceBudget({file, name: `cold open with ${total} clips`, actual: cold.totalMs, budget: limit(200), unit: 'ms'});
+    checkPerformanceBudget({file, name: `cold open with ${total} clips`, actual: coldOpenMs, budget: limit(200), unit: 'ms'});
+    // Like the steady-state samples, the first edit reports native COMMIT
+    // separately on shared Linux runners and gates end-to-end time on macOS.
+    checkPerformanceBudget({file, name: `first edit with ${total} clips`,
+      actual: linux ? firstEdit.codePathMs : firstEdit.totalMs, budget: limit(200), unit: 'ms'});
     for (const result of results) {
       // The measured phases must explain the transaction median. A large
       // residual is the signal to add a timer, not noise to retry away.

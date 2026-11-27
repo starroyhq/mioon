@@ -54,7 +54,7 @@ async function fixture(t: test.TestContext, {large = false, external = false} = 
     const file = files[index]!;
     writeFileSync(file, bytes, {mode: 0o600});
     const {reference} = await references.referenceForImport(file);
-    assets.push({id: randomUUID(), projectId, name, mimeType: 'image/png', width: 1, height: 1, duration: null,
+    assets.push({id: randomUUID(), projectId, name, mimeType: 'image/png', hasAudio: false, width: 1, height: 1, duration: null,
       reference, referenceRevision: 1, sha256: reference.fullSha256, sizeBytes: reference.sizeBytes});
   }
   unlinkSync(files[2]!);
@@ -109,11 +109,12 @@ async function settle(get: () => FcpExportGetOutput | Promise<FcpExportGetOutput
   assert.fail('FCP export did not settle');
 }
 
-test('FCP checklist includes only real anchors and transitions present in the XML', async t => {
+test('FCP checklist matches anchors, transitions and mute present in the XML', async t => {
   const f = await fixture(t);
   const timeline = readFormat5TimelineRecord(f.store.db, 'project');
   assert.ok(timeline);
   const first = timeline.clips[0]!;
+  const silentPicture = {...timeline.clips[1]!, name: 'Muted PNG', muted: true};
   const videoTrack = randomUUID(), audioTrack = randomUUID();
   const omittedAsset = randomUUID(), audioAsset = randomUUID();
   const supported = first.assetId!;
@@ -146,17 +147,18 @@ test('FCP checklist includes only real anchors and transitions present in the XM
   const omitted = {...overlay('Omitted WebP', 12, omittedAsset), transitionIn};
   const afterOmitted = {...overlay('Cut after omitted', 24, supported), transitionIn};
   const retained = {...overlay('Retained transition', 36, supported), transitionIn};
-  const audio = {...overlay('Stand-alone audio', 3, audioAsset), trackId: audioTrack};
+  const audio = {...overlay('Stand-alone audio', 3, audioAsset), trackId: audioTrack, muted: true};
   f.store.put('timelines', {...timeline, tracks: [...timeline.tracks,
     {id: videoTrack, name: 'V2', kind: 'video', orderIndex: 1, hidden: false, muted: false},
     {id: audioTrack, name: 'A1', kind: 'audio', orderIndex: 2, hidden: false, muted: false},
-  ], clips: [...timeline.clips, anchored, omitted, afterOmitted, retained, audio]});
+  ], clips: [...timeline.clips.map(clip => clip.id === silentPicture.id ? silentPicture : clip), anchored, omitted, afterOmitted, retained, audio]});
   const {projectId} = f;
   const services = f.ordinary();
   const preview = fcpExportSchemas['export.fcpxml.preview'].output.parse(
     await services.call('export.fcpxml.preview', {projectId, copyMedia: true}));
   assert.deepEqual(preview.approximations.find(item => item.code === 'ANCHOR')?.clips.map(clip => clip.id), [anchored.id]);
   assert.deepEqual(preview.approximations.find(item => item.code === 'TRANSITION')?.clips.map(clip => clip.id), [retained.id]);
+  assert.deepEqual(preview.approximations.find(item => item.code === 'MUTE')?.clips.map(clip => clip.id), [audio.id]);
   assert.deepEqual(preview.missing.find(item => item.code === 'UNSUPPORTED_MEDIA')?.clips.map(clip => clip.id), [omitted.id]);
   const start = fcpExportSchemas['export.fcpxml.start'].output.parse(await services.call('export.fcpxml.start',
     {projectId, requestId: 'checklist-cuts', name: 'Checklist', copyMedia: true, destination: {kind: 'project'}}));
@@ -165,13 +167,15 @@ test('FCP checklist includes only real anchors and transitions present in the XM
   assert.equal(done.status, 'done');
   const bundle = path.join(f.outputDir, done.result!.bundleName);
   const xml = readFileSync(path.join(bundle, 'Info.fcpxml'), 'utf8');
-  assert.match(xml, /<asset-clip[^>]*name="Stand-alone audio"/u);
+  assert.match(xml, /<asset-clip[^>]*name="Muted PNG"[^>]*\/>/u);
+  assert.match(xml, /<asset-clip[^>]*name="Stand-alone audio"[^>]*><adjust-volume amount="-96dB"\/>/u);
   assert.equal(xml.match(/<transition name="Edge Wipe"/gu)?.length, 1);
   const manifest = JSON.parse(readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.approximations, preview.approximations);
   const checklist = readFileSync(path.join(bundle, 'missing.md'), 'utf8');
   assert.match(checklist, /Omitted WebP/u);
-  assert.doesNotMatch(checklist, /Stand-alone audio|Cut after omitted/u);
+  assert.match(checklist, /静音（−96 dB）（1）\n  - Stand\\-alone audio · A1/u);
+  assert.doesNotMatch(checklist, /Muted PNG|Cut after omitted/u);
 });
 
 test('project RPC previews without writing and exports one copy for equal SHA-256 sources', async t => {

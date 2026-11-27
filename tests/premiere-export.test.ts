@@ -76,27 +76,36 @@ async function terminal(get: () => PremiereExportGetOutput | Promise<PremiereExp
   assert.fail('Premiere export did not finish');
 }
 
-test('Premiere checklist matches rendered anchors, transitions and hard cuts', async t => {
-  const {store, services, projectId, outputDir} = await fixture(t, 8192);
+test('Premiere checklist matches rendered anchors, transitions and mute', async t => {
+  const {store, services, projectId, root, outputDir} = await fixture(t, 8192);
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   assert.ok(timeline);
   const [first, second] = timeline.clips.filter(clip => clip.trackId === WIRE_IDS.video2);
   assert.ok(first && second);
   const webp = randomUUID();
   store.put('assets', {id: webp, projectId, name: 'Omitted.webp', mimeType: 'image/webp'});
+  const png = randomUUID(), pngPath = path.join(root, 'mute.png');
+  writeFileSync(pngPath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8JkyoAAAAASUVORK5CYII=', 'base64'));
+  const references = createProjectAssetReferenceServices(store, {outsidePaths: {list: () => []}});
+  const {reference} = await references.referenceForImport(pngPath);
+  store.put('assets', {id: png, projectId, name: 'mute.png', mimeType: 'image/png', hasAudio: false, width: 1, height: 1,
+    duration: null, reference, referenceRevision: 1, sha256: reference.fullSha256, sizeBytes: reference.sizeBytes});
   const transition = (kind: 'dissolve' | 'wipeLeft' | 'wipeRight') => ({profileId: CLIP_TRANSITION_PROFILE, kind, durationFrames: 8});
   const extra = (name: string, startFrame: number) => ({...second, id: randomUUID(), name, startFrame, anchor: null});
   const omitted = {...extra('Omitted WebP', 29), assetId: webp, sourceInFrame: 0, transitionIn: transition('wipeLeft')};
   const afterOmitted = {...extra('Cut after omitted', 41), transitionIn: transition('wipeLeft')};
   const noHandles = {...extra('Cut with no handles', 53), sourceInFrame: 0, transitionIn: transition('wipeRight')};
   const audio = {...extra('Stand-alone audio', 37), trackId: WIRE_IDS.audio, fadeInFrames: 3};
+  const mutedAudio = {...extra('Muted audio', 49), trackId: WIRE_IDS.audio, muted: true};
+  const mutedPng = {...extra('Muted PNG', 65), assetId: png, sourceInFrame: 0, muted: true};
   store.put('timelines', {...timeline, clips: [
     ...timeline.clips.map(clip => clip.id === second.id ? {...clip, transitionIn: transition('dissolve')} : clip),
-    omitted, afterOmitted, noHandles, audio,
+    omitted, afterOmitted, noHandles, audio, mutedAudio, mutedPng,
   ]});
   const preview = premiereExportPreviewOutputSchema.parse(await services.call('export.premiere.preview', {projectId, copyMedia: true}));
   assert.deepEqual(preview.approximations.find(item => item.code === 'ANCHOR')?.clips.map(clip => clip.id), [first.id, second.id]);
   assert.deepEqual(preview.approximations.find(item => item.code === 'FADES')?.clips.map(clip => clip.id), [audio.id]);
+  assert.deepEqual(preview.approximations.find(item => item.code === 'MUTE')?.clips.map(clip => clip.id), [mutedAudio.id]);
   const cuts = preview.approximations.filter(item => item.code === 'TRANSITION');
   assert.deepEqual(cuts.map(item => [item.values?.to, item.clips.map(clip => clip.id)]), [['Cross Dissolve', [second.id]]]);
   assert.deepEqual(preview.missing.find(item => item.code === 'UNSUPPORTED_MEDIA')?.clips.map(clip => clip.id), [omitted.id]);
@@ -107,13 +116,21 @@ test('Premiere checklist matches rendered anchors, transitions and hard cuts', a
   const bundle = path.join(outputDir, done.result!.bundleName);
   const xml = readFileSync(path.join(bundle, 'Checklist.xml'), 'utf8');
   assert.match(xml, /<name>Stand-alone audio<\/name>/u);
+  const clipItems = xml.match(/<clipitem[^>]*>.*?<\/clipitem>/gsu) ?? [];
+  const pictureXml = clipItems.filter(item => item.includes('<name>Muted PNG</name>'));
+  assert.equal(pictureXml.length, 1);
+  assert.doesNotMatch(pictureXml[0]!, /<effectid>audiolevels<\/effectid>/u);
+  const audioXml = clipItems.find(item => item.includes('<name>Muted audio</name>'));
+  assert.ok(audioXml);
+  assert.match(audioXml, /<effectid>audiolevels<\/effectid>.*?<value>0\.00001585<\/value>/su);
   assert.equal(xml.match(/<transitionitem>/gu)?.length, 1);
   assert.match(xml, /<transitionitem>.*?<name>Cross Dissolve<\/name>/u);
   const manifest = JSON.parse(readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.approximations, preview.approximations);
   const checklist = readFileSync(path.join(bundle, 'missing.md'), 'utf8');
   assert.match(checklist, /Omitted WebP/u);
-  assert.doesNotMatch(checklist, /→ Wipe|Cut after omitted|Cut with no handles/u);
+  assert.match(checklist, /静音（−96 dB）（1）\n  - Muted audio/u);
+  assert.doesNotMatch(checklist, /→ Wipe|Cut after omitted|Cut with no handles|Muted PNG/u);
 });
 
 test('Premiere project RPC writes an xmeml package and isolates both editor export kinds', async t => {

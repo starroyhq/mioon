@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {mkdtempSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -10,6 +10,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
+import {exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 
 const exec = promisify(execFile);
@@ -154,9 +155,17 @@ test('real CLI format-5 flow: generate in editing, references, reorder, split, s
   }
   assert.equal(exported?.status, 'succeeded');
   assert.ok(exported?.assetId);
+  const outputResult = await mcp.callTool({name: 'export_output_get', arguments: {projectId, exportId: exported.id}},
+    undefined, {timeout: 15_000});
+  assert.equal(outputResult.isError, false);
+  const outputBody = outputResult.structuredContent as {ok?: unknown; data?: unknown} | undefined;
+  assert.equal(outputBody?.ok, true);
+  const proof = exportOutputSchema.parse(outputBody?.data);
+  assert.equal(proof.assetId, exported.assetId);
+  assert.equal(proof.publication?.projectRelativePath, '导出/CLI E2E.mp4');
   const output = path.join(root, 'cli-format5-export.mp4');
   await cli(env, 'export', 'download', '--input', JSON.stringify({projectId, exportId: exported.id}), '--output', output);
   const bytes = readFileSync(output);
   assert.equal(bytes.subarray(4, 8).toString('latin1'), 'ftyp');
-  assert.ok(exported.assetId);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), proof.sha256);
 });
