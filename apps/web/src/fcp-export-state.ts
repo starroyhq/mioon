@@ -1,8 +1,10 @@
 import {message, translate} from '../../../packages/i18n/src/index.ts';
 import type {DisplayMessage, Locale} from '../../../packages/i18n/src/index.ts';
 import {FCP_EXPORT_TASK_KIND} from '../../../packages/contracts/src/fcp-export.ts';
-import {fcpxmlExportTaskSchema} from '../../../packages/contracts/src/project-registry.ts';
+import {PREMIERE_EXPORT_TASK_KIND} from '../../../packages/contracts/src/premiere-export.ts';
+import {fcpxmlExportTaskSchema, premiereExportTaskSchema} from '../../../packages/contracts/src/project-registry.ts';
 import type {
+  FcpClipRef,
   FcpExportError,
   FcpExportGetOutput,
   FcpExportPreviewOutput,
@@ -10,10 +12,27 @@ import type {
   FcpExportResult,
   FcpExportStartInput,
   FcpExportStatus,
-  FcpItem,
+  FcpItemValues,
 } from '../../../packages/contracts/src/fcp-export.ts';
+import type {
+  PremiereExportPreviewOutput,
+  PremiereItemCode,
+} from '../../../packages/contracts/src/premiere-export.ts';
 
-export type FcpExportTaskKind = typeof FCP_EXPORT_TASK_KIND;
+export type FcpExportTaskKind = typeof FCP_EXPORT_TASK_KIND | typeof PREMIERE_EXPORT_TASK_KIND;
+export type EditorExportItemCode = PremiereItemCode | 'SPEED';
+
+export interface EditorExportItemValues extends FcpItemValues {
+  readonly maxErrorFrames?: number | undefined;
+}
+
+export interface EditorExportItem {
+  readonly code: EditorExportItemCode;
+  readonly clips: ReadonlyArray<FcpClipRef>;
+  readonly values?: EditorExportItemValues | undefined;
+}
+
+export type EditorExportPreviewOutput = FcpExportPreviewOutput | PremiereExportPreviewOutput;
 
 export interface FcpExportTaskRecord {
   readonly kind: FcpExportTaskKind;
@@ -29,15 +48,29 @@ export interface FcpExportTaskRecord {
   readonly progress: FcpExportProgress;
   readonly result?: FcpExportResult | undefined;
   readonly error?: FcpExportError | undefined;
-  readonly missing: FcpExportPreviewOutput['missing'];
-  readonly approximations: FcpExportPreviewOutput['approximations'];
+  readonly missing: ReadonlyArray<EditorExportItem>;
+  readonly approximations: ReadonlyArray<EditorExportItem>;
   readonly createdAt: string;
+}
+
+export function exportStartKey(kind: FcpExportTaskKind, projectId: string): string {
+  return `${kind}:${projectId}`;
 }
 
 export function isFcpExportHistoryRow(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   const row = value as {mode?: unknown; kind?: unknown};
   return row.mode === FCP_EXPORT_TASK_KIND || row.kind === FCP_EXPORT_TASK_KIND;
+}
+
+export function isPremiereExportHistoryRow(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as {mode?: unknown; kind?: unknown};
+  return row.mode === PREMIERE_EXPORT_TASK_KIND || row.kind === PREMIERE_EXPORT_TASK_KIND;
+}
+
+export function isEditorExportHistoryRow(value: unknown): boolean {
+  return isFcpExportHistoryRow(value) || isPremiereExportHistoryRow(value);
 }
 
 /** Adopt only the public records from this project's durable task history.
@@ -47,22 +80,26 @@ export function isFcpExportHistoryRow(value: unknown): boolean {
 export function mergeFcpExportHistory(
   previous: readonly FcpExportTaskRecord[], projectId: string, rows: readonly unknown[],
 ): FcpExportTaskRecord[] {
-  const tasks = new Map(previous.map(task => [task.exportId, task]));
-  const pending = new Map(previous.filter(task => task.projectId === projectId && task.startUncertain)
-    .map(task => [task.requestId, task]));
+  const tasks = new Map(previous.map(task => [`${task.kind}:${task.exportId}`, task]));
+  const pending = new Map(previous.filter(task => task.projectId === projectId && task.startUncertain && task.requestId)
+    .map(task => [`${task.kind}:${task.requestId}`, task]));
   for (const value of rows) {
-    if (!isFcpExportHistoryRow(value)) continue;
-    const parsed = fcpxmlExportTaskSchema.safeParse(value);
-    if (!parsed.success || parsed.data.projectId !== projectId) continue;
+    const parsed = isFcpExportHistoryRow(value)
+      ? fcpxmlExportTaskSchema.safeParse(value)
+      : isPremiereExportHistoryRow(value)
+        ? premiereExportTaskSchema.safeParse(value)
+        : null;
+    if (!parsed || !parsed.success || parsed.data.projectId !== projectId) continue;
     const row = parsed.data;
-    const attempt = pending.get(row.requestId);
-    const local = attempt ?? tasks.get(row.id);
-    if (attempt) tasks.delete(attempt.exportId);
-    tasks.set(row.id, local ? applyFcpTaskUpdate({
-      ...local, exportId: row.id, name: row.title, requestId: row.requestId,
+    const attempt = pending.get(`${row.kind}:${row.requestId}`);
+    const key = `${row.kind}:${row.id}`;
+    const local = attempt ?? tasks.get(key);
+    if (attempt) tasks.delete(`${attempt.kind}:${attempt.exportId}`);
+    tasks.set(key, local ? applyFcpTaskUpdate({
+      ...local, kind: row.kind, exportId: row.id, name: row.title, requestId: row.requestId,
       ...(attempt && {status: 'running', startUncertain: false, awaitingCompletion: true, error: undefined}),
     }, row) : {
-      kind: FCP_EXPORT_TASK_KIND, exportId: row.id, projectId, name: row.title, requestId: row.requestId,
+      kind: row.kind, exportId: row.id, projectId, name: row.title, requestId: row.requestId,
       status: row.status, progress: row.progress, awaitingCompletion: row.status === 'running',
       missing: [], approximations: [], createdAt: row.createdAt,
     });
@@ -75,10 +112,10 @@ export function needsFcpTaskStatus(task: FcpExportTaskRecord): boolean {
 }
 
 export function mergeFcpStartReceipt(previous: readonly FcpExportTaskRecord[], receipt: FcpExportTaskRecord): FcpExportTaskRecord[] {
-  const saved = previous.find(task => task.exportId === receipt.exportId && task.projectId === receipt.projectId);
+  const saved = previous.find(task => task.kind === receipt.kind && task.exportId === receipt.exportId && task.projectId === receipt.projectId);
   const task = saved ? {...receipt, ...saved, awaitingCompletion: true, startInput: receipt.startInput,
     displayPath: receipt.displayPath, missing: receipt.missing, approximations: receipt.approximations} : receipt;
-  return [task, ...previous.filter(item => item.projectId !== receipt.projectId || (
+  return [task, ...previous.filter(item => item.projectId !== receipt.projectId || item.kind !== receipt.kind || (
     item.exportId !== receipt.exportId && !(item.startUncertain && item.requestId === receipt.requestId)
   ))];
 }
@@ -133,8 +170,19 @@ export function formatFcpFps(fps: number): string {
   return Number.isInteger(fps) ? String(fps) : Number(fps.toFixed(2)).toString();
 }
 
-export function fcpBundleFileName(name: string): string {
+export function formatFcpErrorFrames(frames: number): string {
+  if (!Number.isFinite(frames) || frames <= 0) return '0';
+  if (Number.isInteger(frames)) return String(frames);
+  if (frames < 0.01) return Number(frames.toFixed(3)).toString();
+  return Number(frames.toFixed(2)).toString();
+}
+
+export function fcpBundleFileName(name: string, kind: FcpExportTaskKind = FCP_EXPORT_TASK_KIND): string {
   const trimmed = name.trim();
+  if (kind === PREMIERE_EXPORT_TASK_KIND) {
+    if (!trimmed) return 'Premiere';
+    return / Premiere(?: (?:[2-9]|[1-9][0-9]+))?$/iu.test(trimmed) ? trimmed : `${trimmed} Premiere`;
+  }
   if (!trimmed) return '.fcpxmld';
   return trimmed.toLowerCase().endsWith('.fcpxmld') ? trimmed : `${trimmed}.fcpxmld`;
 }
@@ -149,12 +197,13 @@ export function fcpProgressPercent(progress: FcpExportProgress): number {
   return 0;
 }
 
-export function fcpItemLabelMessage(item: FcpItem): DisplayMessage {
+export function fcpItemLabelMessage(item: EditorExportItem): DisplayMessage {
   switch (item.code) {
     case 'LUT': return message('fcpExport.item.LUT');
     case 'PLACEHOLDER': return message('fcpExport.item.PLACEHOLDER');
     case 'MEDIA_MISSING': return message('fcpExport.item.MEDIA_MISSING');
     case 'UNSUPPORTED_MEDIA': return message('fcpExport.item.UNSUPPORTED_MEDIA');
+    case 'SUBTITLES': return message('fcpExport.item.SUBTITLES');
     case 'TRANSITION':
       return item.values?.from && item.values?.to
         ? message('fcpExport.item.TRANSITION', {from: item.values.from, to: item.values.to})
@@ -166,10 +215,25 @@ export function fcpItemLabelMessage(item: FcpItem): DisplayMessage {
     case 'MUTE': return message('fcpExport.item.MUTE');
     case 'SEPARATE_SOUND': return message('fcpExport.item.SEPARATE_SOUND');
     case 'TRANSFORM': return message('fcpExport.item.TRANSFORM');
+    case 'SPEED': {
+      const from = item.values?.from?.trim();
+      const to = item.values?.to?.trim();
+      const speedTitle = translate('zh-Hans', 'fcpExport.item.SPEED');
+      if (from && to && from !== speedTitle) {
+        return message('fcpExport.item.SPEED_CHANGE', {from, to});
+      }
+      if (to) {
+        return message('fcpExport.item.SPEED_HANDLING', {handling: to});
+      }
+      if (from && from !== speedTitle) {
+        return message('fcpExport.item.SPEED_HANDLING', {handling: from});
+      }
+      return message('fcpExport.item.SPEED');
+    }
   }
 }
 
-export function fcpItemAffectedText(item: FcpItem, locale: Locale): string {
+export function fcpItemAffectedText(item: EditorExportItem, locale: Locale): string {
   const separator = translate(locale, 'fcpExport.clips.separator');
   const names = item.clips.map(clip => clip.name.trim()).filter(Boolean);
   const count = item.clips.length;
@@ -181,10 +245,24 @@ export function fcpItemAffectedText(item: FcpItem, locale: Locale): string {
     if (names.length > 0) return names.join(separator);
     return count > 0 ? translate(locale, 'fcpExport.clips.clips', {count}) : '';
   }
+  if (item.code === 'SPEED') {
+    const clipsText = names.length > 0
+      ? names.join(separator)
+      : count > 0
+        ? translate(locale, 'fcpExport.clips.clips', {count})
+        : '';
+    if (typeof item.values?.maxErrorFrames === 'number' && Number.isFinite(item.values.maxErrorFrames)) {
+      const maxErrorFrames = formatFcpErrorFrames(item.values.maxErrorFrames);
+      return clipsText
+        ? translate(locale, 'fcpExport.item.speedMaxErrorWithClips', {maxErrorFrames, clips: clipsText})
+        : translate(locale, 'fcpExport.item.speedMaxError', {maxErrorFrames});
+    }
+    return clipsText;
+  }
   if (item.code === 'TRANSITION') {
     return count > 0 ? translate(locale, 'fcpExport.clips.places', {count}) : '';
   }
-  if (item.code === 'SUBTITLE_STYLE') {
+  if (item.code === 'SUBTITLE_STYLE' || item.code === 'SUBTITLES') {
     return count > 0 ? translate(locale, 'fcpExport.clips.cues', {count}) : '';
   }
   if (count === 0) return '';
@@ -195,8 +273,7 @@ export function fcpItemAffectedText(item: FcpItem, locale: Locale): string {
   return translate(locale, 'fcpExport.clips.clips', {count});
 }
 
-export function fcpItemTooltipText(item: FcpItem, locale: Locale): string | undefined {
-  if (item.clips.length === 0) return undefined;
+export function fcpItemTooltipText(item: EditorExportItem, locale: Locale): string | undefined {
   const separator = translate(locale, 'fcpExport.clips.separator');
   const parts = item.clips.map(clip => {
     const label = clip.trackLabel?.trim();
@@ -204,7 +281,14 @@ export function fcpItemTooltipText(item: FcpItem, locale: Locale): string | unde
     if (label && name) return `${label} · ${name}`;
     return name || label || clip.id;
   });
-  return parts.join(separator);
+  const clipsText = parts.join(separator);
+  if (item.code === 'SPEED' && typeof item.values?.maxErrorFrames === 'number' && Number.isFinite(item.values.maxErrorFrames)) {
+    const maxErrorFrames = formatFcpErrorFrames(item.values.maxErrorFrames);
+    return clipsText
+      ? translate(locale, 'fcpExport.item.speedMaxErrorWithClips', {maxErrorFrames, clips: clipsText})
+      : translate(locale, 'fcpExport.item.speedMaxError', {maxErrorFrames});
+  }
+  return clipsText || undefined;
 }
 
 export function fcpErrorMessage(error: FcpExportError | null | undefined): DisplayMessage {
