@@ -936,7 +936,12 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
   if (operation.kind === 'track') {
     const edit = operation.edit;
     const target = 'clipId' in edit ? context.timeline.clips.find(item => item.id === edit.clipId) : undefined;
-    if (target?.timing && (edit.kind === 'trim' || edit.kind === 'split')) {
+    // Still images have no timing map. Format 6 can split them on an auxiliary
+    // track using the existing effect and anchor projection with source frame 0.
+    const stillOverlaySplit = edit.kind === 'split' && context.formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION &&
+      target?.assetId && target.trackId !== context.timeline.mainTrack.trackId &&
+      assetKindOf(context.assets.get(target.assetId) ?? {}) === 'image';
+    if (target && (target.timing || stillOverlaySplit) && (edit.kind === 'trim' || edit.kind === 'split')) {
       try {
         if (edit.kind === 'trim' && edit.sourceInFrame !== undefined && edit.sourceInFrame !== target.sourceInFrame) {
           return failure('INVALID_WINDOW', [target.id]);
@@ -947,7 +952,11 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
         if (edit.kind === 'split' && context.timeline.clips.some(clip => clip.id === edit.rightClipId)) {
           return failure('DUPLICATE_CLIP', [edit.rightClipId]);
         }
-        const pieces = edit.kind === 'split' ? splitSequenceClip(target, context.timeline, edit.offsetFrames, edit.rightClipId)
+        if (stillOverlaySplit && edit.kind === 'split' && (edit.rightSourceInFrame ?? 0) !== 0) {
+          return failure('SOURCE_BOUNDS', [target.id]);
+        }
+        const pieces = edit.kind === 'split' ? splitSequenceClip(target, context.timeline, edit.offsetFrames, edit.rightClipId,
+          stillOverlaySplit ? 0 : undefined)
           : [trimTimedSequenceClip(target, context.timeline, edit.durationFrames)];
         const rows = new Map(pieces.map(clip => [clip.id, clip]));
         if (target.trackId !== context.timeline.mainTrack.trackId) {
