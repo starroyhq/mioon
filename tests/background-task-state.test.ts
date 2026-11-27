@@ -9,6 +9,8 @@ import {createProjectBackgroundState, pauseUnavailableBackgroundTask,markBackgro
 import {markBackgroundTaskChanged, subscribeBackgroundTaskChanges} from '../packages/business/src/background-task-events.ts';
 import type {BackgroundTaskRef} from '../packages/business/src/background-task-events.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/domains/sequence.ts';
+import {FCPXML_EXPORT_TASK_KIND, fcpxmlExportTaskSchema} from '../packages/contracts/src/project-registry.ts';
+import {discloseFcpExportTask, isFcpExportTaskRecord} from '../packages/business/src/fcpxml-export-task.ts';
 
 function fixture(t: TestContext, initialise = true, format6 = false) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-background-state-')), directory = path.join(root, 'project');
@@ -125,6 +127,59 @@ test('initial admission does not let more than 513 ordinary cancelled rows hide 
   });
   const state = createProjectBackgroundState(f.store);
   assert.deepEqual(state.snapshot().map(task => task.taskId), [active.id]);
+});
+
+test('FCPXML exports hold the existing export lease through running progress and release it on every terminal outcome', t => {
+  const f = fixture(t);
+  const kind = FCPXML_EXPORT_TASK_KIND, progress = {files: 0, totalFiles: 2, bytes: 0, totalBytes: 8};
+  const states = ['done', 'failed', 'cancelled'] as const;
+  for (const status of states) {
+    const row = {id: randomUUID(), projectId: f.store.projectId, kind, mode: kind, revision: 1, status: 'running', progress};
+    f.store.tx(() => {
+      f.store.put('exports', row);
+      assert.equal(f.state!.snapshot().some(item => item.taskId === row.id), false, 'running state appears after commit');
+    });
+    const projection = () => f.state!.snapshot().find(item => item.taskId === row.id);
+    assert.deepEqual(projection(), {kind: 'export', taskId: row.id, classification: 'running', keepAlive: true, reason: null, taskRevision: 1});
+    f.store.put('exports', {...row, revision: 2, progress: {...progress, files: 1, bytes: 4}});
+    assert.equal(projection()?.taskRevision, 2);
+    f.store.put('exports', {...row, revision: 3, status});
+    assert.deepEqual(projection(), {kind: 'export', taskId: row.id, classification: 'terminal', keepAlive: false, reason: null, taskRevision: 3});
+  }
+});
+
+test('FCPXML terminal rows do not occupy the bounded recoverable index on reopen', t => {
+  const f = fixture(t, false), kind = FCPXML_EXPORT_TASK_KIND;
+  const row = {projectId: f.store.projectId, kind, mode: kind, revision: 2, status: 'done'};
+  const activeId = randomUUID(), brokenId = randomUUID();
+  f.store.tx(() => {
+    for (let index = 0; index < 513; index++) f.store.put('exports', {...row, id: randomUUID()});
+    f.store.put('exports', {...row, id: activeId, status: 'running'});
+    f.store.put('exports', {...row, id: brokenId, status: 'running', kind: undefined});
+  });
+  const snapshot = createProjectBackgroundState(f.store).snapshot();
+  assert.equal(snapshot.length, 2);
+  assert.equal(snapshot.find(task => task.taskId === activeId)?.keepAlive, true);
+  assert.deepEqual(snapshot.find(task => task.taskId === brokenId), {kind: 'export', taskId: brokenId,
+    classification: 'waiting_user', keepAlive: false, reason: 'BACKGROUND_TASK_INVALID', taskRevision: 2});
+});
+
+test('FCPXML task disclosure validates ownership and exposes only normalized task center fields', () => {
+  const at = '2026-01-01T00:00:00.000Z';
+  const kind = FCPXML_EXPORT_TASK_KIND, projectId = randomUUID(), id = randomUUID();
+  const visible = {kind, mode: kind, projectId, id, title: 'Final edit', requestId: randomUUID(), status: 'done',
+    progress: {files: 2, totalFiles: 2, bytes: 8, totalBytes: 8}, revision: 3, createdAt: at, updatedAt: at};
+  const stored = {...visible, requestHash: 'private-fingerprint', publication: {bundlePath: '/private/synthetic/test.fcpxmld'},
+    result: {displayPath: '/private/synthetic'}, destination: {token: 'synthetic-private-token'}};
+  const disclosed = discloseFcpExportTask(stored, {id, projectId});
+  assert.deepEqual(disclosed, visible);
+  assert.equal(fcpxmlExportTaskSchema.safeParse(disclosed).success, true);
+  assert.equal(fcpxmlExportTaskSchema.safeParse(stored).success, false);
+  assert.equal(discloseFcpExportTask({mode: 'timeline'}), null);
+  assert.equal(isFcpExportTaskRecord({...stored, mode: 'timeline'}), true);
+  assert.throws(() => discloseFcpExportTask({...stored, mode: 'timeline'}), {code: 'EXPORT_FAILED'});
+  assert.throws(() => discloseFcpExportTask(stored, {id: randomUUID(), projectId}), {code: 'EXPORT_FAILED'});
+  assert.throws(() => discloseFcpExportTask({...stored, progress: {...visible.progress, bytes: 9}}), {code: 'EXPORT_FAILED'});
 });
 
 test('initial excess unfinished identities refuse rather than silently presenting a partial or empty snapshot', t => {

@@ -14,6 +14,8 @@ import {presentationLocale, localizeHelp, localizeToolDescription} from '../pack
 import {operationMessages} from '../packages/i18n/src/catalogs/operations.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const round2Operations = ['export.cancel', 'export.activity.get', 'export.output.get', 'workspace.settings.get', 'workspace.settings.set', 'task.disposition.list', 'task.disposition.markFailed', 'task.disposition.archiveCompleted'] as const;
+const fcpOperations = ['export.fcpxml.preview', 'export.fcpxml.start', 'export.fcpxml.get', 'export.fcpxml.cancel'] as const;
+const premiereOperations = ['export.premiere.preview', 'export.premiere.start', 'export.premiere.get', 'export.premiere.cancel'] as const;
 const retiredOperations = ['workspace.backup.status', 'workspace.backup.list', 'workspace.backup.create', 'workspace.backup.restore.stage', 'workspace.backup.inspect', 'workspace.restore.inspect'] as const;
 const cleanEnv = (): Record<string, string | undefined> => Object.fromEntries(Object.entries(testEnv()).filter(([key]) => !key.startsWith('MIOON_')));
 interface CliResult { status: number | null; stdout: string; stderr: string; json: Record<string, unknown> }
@@ -93,6 +95,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('clip.audio.export.get') + 1, 0,
     'timeline.preview.media', 'timeline.processing.list', 'timeline.processing.inspect', 'timeline.processing.wait', 'timeline.processing.retry',
     'timeline.processing.cancel', 'timeline.processing.cache.get', 'timeline.processing.cache.clear');
+  expectedOperations.splice(expectedOperations.indexOf('timeline.processing.cache.clear') + 1, 0, ...fcpOperations, ...premiereOperations);
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');
   expectedOperations.splice(expectedOperations.indexOf('asset.disposition.set') + 1, 0, 'asset.annotation.list', 'asset.annotation.set');
@@ -124,7 +127,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
     assert.equal(cli(['--locale',locale,'--version']).stdout,version);
     const discovered=cli(['--locale',locale,'schema']);
     assert.equal(discovered.status,0);assert.equal(discovered.stderr,'');
-    assert.deepEqual(discovered.json.data,discoverSchema({}),'Presentation locale must preserve every public operation schema and effects, including the twelve new operations');
+    assert.deepEqual(discovered.json.data,discoverSchema({}),'Presentation locale must preserve every public operation schema and effect');
     const invalid=cli(['--locale',locale,'--unknown']);
     assert.equal(invalid.stdout,bad);
     assert.equal(invalid.stderr,`VALIDATION_ERROR: ${translate(locale,'cli.error.unsupportedOption')}\n`);
@@ -148,7 +151,7 @@ test('MCP offline list/instructions translate while schemas, effects and call en
     }
     const call=await localized.request('tools/call',{name:'mioon_schema',arguments:{operation:'project.create'}});
     assert.deepEqual(call.result,schemaResult.result);
-    for(const operation of round2Operations){
+    for(const operation of [...round2Operations,...fcpOperations,...premiereOperations]){
       const described=await localized.request('tools/call',{name:'mioon_schema',arguments:{operation}});
       assert.equal(described.result.isError,false);
       assert.deepEqual(described.result.structuredContent,{ok:true,data:discoverSchema({operation})});

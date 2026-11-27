@@ -52,7 +52,10 @@ import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../pr
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskLocale} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
-import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
+import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_EDITOR_EXPORT_START_PARAMETERS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
+import {MIO_EDITOR_EXPORT_DESCRIPTIONS,MIO_EDITOR_EXPORT_OPERATIONS,isMioEditorExportOperation,isMioEditorExportStart,isMioEditorExportGet,mioEditorExportLabel,mioEditorExportStartSchema} from './task-editor-export-v2.ts';
+import {discloseEditorExportTask} from '../fcpxml-export-task.ts';
+import {fcpDisplayPath} from '../fcp-export-plan.ts';
 import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,agentTaskToolSupportsGroupLoad,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
 import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
@@ -114,6 +117,8 @@ const readOperations=[
  'sequence.inspect','sequence.generation-inputs.get','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
  'timeline.processing.list','timeline.processing.inspect','timeline.processing.wait','timeline.processing.cache.get','timeline.preview.media',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
+ 'export.fcpxml.preview','export.fcpxml.get',
+ 'export.premiere.preview','export.premiere.get',
 ] as const;
 const reversibleOperations=[
  'project.rename','project.notes.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','subject.binding.set','asset.range.set','asset.disposition.set','asset.annotation.set',
@@ -135,14 +140,16 @@ const irreversibleOperations=[
  'frame.extract','scene.shots.create','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render','previs.create',
  // FR-G «save clip sound» publishes a new project asset; its local task record
  // and portable source provenance remain reviewable after the step.
- 'clip.audio.export',
+ 'clip.audio.export','export.fcpxml.start','export.fcpxml.cancel',
+ 'export.premiere.start','export.premiere.cancel',
  'timeline.processing.retry','timeline.processing.cancel','timeline.processing.cache.clear',
 ] as const;
 const paidOperations=['generation.submit','image.generate','subject.variants.retry'] as const;
 const parityConfirmOperations=new Set<string>([
  'scene.cuts.save','scene.shots.undo','scene.task.cancel','subject.variants.undo','previs.thumbnail.set','project.version.save',
  'frame.task.cancelQueued','image.task.cancelQueued','task.disposition.archiveCompleted','subject.variants.retry',
- 'clip.audio.export',
+ 'clip.audio.export','export.fcpxml.start','export.fcpxml.cancel',
+ 'export.premiere.start','export.premiere.cancel',
 ]);
 const forbiddenOperations=[
  'workspace.settings.get','workspace.settings.set',
@@ -195,6 +202,7 @@ interface TaskInputSchema {
  parse(input:unknown):unknown;
 }
 function toolInputSchema(operation:string,frameTransaction=false):TaskInputSchema{
+ if(isMioEditorExportStart(operation))return mioEditorExportStartSchema;
  if(frameTransaction&&(operation==='previs.thumbnail.get'||operation==='previs.thumbnail.set'))return previsThumbnailPublicSchemas[operation];
  return frameTransaction&&operation===FRAME_SET?timelineFrameSetSchema:
   Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:publicOperationSchemas[operation as keyof typeof publicOperationSchemas];
@@ -205,6 +213,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  for(const candidate of [{...source,projectId,requestId},{...source,projectId},{...source,requestId},source]){
   const result=schema.safeParse(candidate);if(result.success&&object(result.data))return result.data;
  }
+ if(isMioEditorExportStart(operation))throw new AppError('VALIDATION_ERROR',mioEditorExportLabel(operation)+' 导出仅接受当前项目的导出文件夹',400);
  if(Object.hasOwn(schemas,operation)&&!(frameTransaction&&(operation===FRAME_SET||operation.startsWith('previs.thumbnail.'))))return parse(operation as OperationName,source) as Value;
  throw new AppError('VALIDATION_ERROR','工具输入字段无效',400);
 }
@@ -318,7 +327,9 @@ function snapshot(store:Store,projectId:string):Snapshot{
  const insert=(kind:string,id:string,table:string,value:Value):void=>{result[key(kind,id)]={kind,id,table,value:structuredClone(value),revision:readRevision(store,projectId,kind,id)};};
  const project=store.get('projects',projectId);if(object(project))insert('project',projectId,'projects',project);
  for(const [table,kind] of Object.entries(rowTables))for(const row of store.db.prepare(`SELECT id,data FROM ${table} WHERE projectId=?`).all(projectId)){
-  const value:unknown=JSON.parse(String(row.data));if(!object(value)||value.id!==row.id||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','项目记录无法验证');insert(kind,String(row.id),table,value);
+  const value:unknown=JSON.parse(String(row.data));if(!object(value)||value.id!==row.id||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','项目记录无法验证');
+  const visible=table==='exports'?discloseEditorExportTask(value,{id:String(row.id),projectId}):null;
+  insert(kind,String(row.id),table,visible??value);
  }
  for(const [table,descriptor] of Object.entries(extraTables)){
   if(!hasStoreTable(store.db,table))continue;
@@ -602,13 +613,23 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
  return projectResult(value);
 }
 
+function editorExportToolResult(value:unknown,projectDir:string):AgentTaskJson{
+ if(object(value)&&object(value.result)){
+  const {bundleName,displayPath}=value.result;
+  const inProject=typeof bundleName==='string'&&bundleName===path.basename(bundleName)&&
+   displayPath===fcpDisplayPath(path.join(projectDir,'导出',bundleName));
+  if(!inProject)return projectResult({...value,result:{...value.result,displayPath:'[项目外路径已隐藏]'}});
+ }
+ return projectResult(value);
+}
+
 const previsWrite=(operation:string):boolean=>operation==='previs.create'||operation==='previs.scene.set';
  // Mio's previs tools explain axes and units and leave host-owned scene fields out.
  const previsTools:Readonly<Record<string,{description:string;parameters?:unknown}>>={
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export'&&!isTimelineProcessingOperation(operation)).map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export'&&!isTimelineProcessingOperation(operation)&&!isMioEditorExportOperation(operation)).map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -677,6 +698,12 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false,timelinePr
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_generation_inputs_get',operation:'sequence.generation-inputs.get',description:`只读查看一个镜头在当前生成服务下的实际生成输入：模式、每条引用线的角色/来源/顺序/主体版本、服务不支持的原因、主图和用到几项；最多 ${SEQUENCE_GENERATION_INPUT_LIMITS.entries} 条。connectionId/configurationRevision/modelEntryId 必须三个一起给，省略表示还没选服务。不写项目、任务、回执或历史。`,parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.generation-inputs.get'],risk:'read_only',receipt:'observation',recovery:'read the projection again after the board or service selection changes',undo:'unavailable'});
+  for(const operation of MIO_EDITOR_EXPORT_OPERATIONS){
+   const risk=tierByOperation.get(operation)!;
+   definitions.push({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:MIO_EDITOR_EXPORT_DESCRIPTIONS[operation],
+    parameters:isMioEditorExportStart(operation)?AGENT_TASK_EDITOR_EXPORT_START_PARAMETERS:AGENT_TASK_TOOL_SCHEMAS[operation],
+    risk,receipt:risk==='read_only'?'observation':'durable task step',recovery:'observe the same export; never duplicate an unknown export',undo:'unavailable'});
+  }
   // C+A: the format-5 directory no longer lists legacy entries that the gate
   // rejects. The reviewed unavailable table stays for parity and UI reasons.
   for(let index=definitions.length-1;index>=0;index--)if(FORMAT5_UNAVAILABLE_OPERATIONS[definitions[index]!.operation]!==undefined)definitions.splice(index,1);
@@ -991,6 +1018,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    return {projectId,operation,input:args,risk,targets,referencedTargets,before:{},
     ...(risk==='read_only'?{}:{processingProof:processingApprovalProof(projectId,args.taskId)})};
   }
+ if(isMioEditorExportOperation(operation)&&(!format5||!isProjectStore(store)||store.projectId!==projectId))fail('AGENT_TASK_TOOL_FORBIDDEN',mioEditorExportLabel(operation)+' 导出只用于当前格式 5 项目');
  if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input,locale,canvasRequester?.stepId,retainedSpeedPlan);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   if(operation==='asset.import'){
@@ -1227,6 +1255,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
     fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次查询');
    return {result:projectResult(result),changes:[],recorded:false};
   }
+  if(isMioEditorExportOperation(prepared.operation)&&(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId))fail('AGENT_TASK_TOOL_FORBIDDEN',mioEditorExportLabel(prepared.operation)+' 导出只用于当前格式 5 项目');
   if(prepared.sequence){
    if(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
    const sequence=prepared.sequence;
@@ -1491,7 +1520,8 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
     }else if(prepared.operation==='timeline.format.get'){
      if(!isTimelineFormatReadResponse(value,input))fail('AGENT_TASK_INVALID_TOOL_RESULT','画框读取不属于当前项目');
      result=projectResult(value);
-    }else result=prepared.frameTransaction||previsWrite(prepared.operation)||hasGenerationAspectSource(prepared)?taskResult(prepared,value,context.requestId):projectResult(value);
+    }else if(isMioEditorExportGet(prepared.operation))result=editorExportToolResult(value,storeDirectories(store).projectDir);
+    else result=prepared.frameTransaction||previsWrite(prepared.operation)||hasGenerationAspectSource(prepared)?taskResult(prepared,value,context.requestId):projectResult(value);
     return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
  }
@@ -1531,6 +1561,10 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   const value=services.handlers[operation]!(args as never);if(!object(value)||typeof value.then==='function')fail('AGENT_TASK_INVALID_TARGET','任务无法验证');
   if(value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   const state=value.status??value.state;
+  if(input.kind==='export'&&state==='done'){
+   const editorTask=discloseEditorExportTask(value,{id:input.id,projectId});
+   if(editorTask)return projectResult(editorTask);
+  }
   // An interrupted scene task saved nothing and can simply be run again; a
   // storyboard whose result could not be saved also left no shots.
   if(input.kind==='scene')return ['succeeded','failed','cancelled','cancelled_before_start','interrupted','local_result_error','undone'].includes(String(state))?projectResult(value):null;

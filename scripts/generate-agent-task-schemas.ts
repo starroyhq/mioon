@@ -9,6 +9,7 @@ import {mioCanvasCopySchemas} from '../packages/contracts/src/mio-canvas-copy.ts
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
 import {publicOperationSchemas} from '../packages/contracts/src/public-operations.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
+import {mioEditorExportStartSchema} from '../packages/business/src/agent/task-editor-export-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 // Reuse the client's installed converter only at generation time. Public
@@ -54,11 +55,13 @@ const framedThumbnails=Object.fromEntries((['previs.thumbnail.get','previs.thumb
  if(operation==='previs.thumbnail.get')((projected.properties as Record<string,Record<string,unknown>>).slots).maxItems=1;
  return [operation,{...projected,required:[...(Array.isArray(projected.required)?projected.required:[]),'framePresetId']}];
 }));
+const editorExportStart=projectAgentTaskToolSchema(zodToJsonSchema(mioEditorExportStartSchema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}));
 const generated=
  '// Generated with node scripts/generate-agent-task-schemas.ts.\n'+
  '// Shared runtime schemas remain authoritative; host supplies project identity and replay keys.\n'+
  `export const AGENT_TASK_TOOL_SCHEMA_HASH=${JSON.stringify(hash)};\n`+
  'export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(entries,null,1)+';\n'+
+ 'export const AGENT_TASK_EDITOR_EXPORT_START_PARAMETERS:unknown='+JSON.stringify(editorExportStart,null,1)+';\n'+
  'export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown='+JSON.stringify(thumbnailRead,null,1)+';\n'+
  'export const AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(framedThumbnails,null,1)+';\n';
 const target=new URL('../packages/business/src/agent/task-tool-schemas-v2.ts',import.meta.url);
