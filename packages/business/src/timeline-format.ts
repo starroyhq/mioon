@@ -6,6 +6,10 @@ import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts
 import {readWrappedTimelineReceipt} from './timeline-retained-receipts.ts';
 import {canonicalFormatValue,formatRequestHash,readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {executingTimelineFormatTask} from './timeline-format-task-context.ts';
+import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
+import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
+import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
 import type {TimelineRecoveryBoundary,TimelineRecoveryInput} from './timeline-recovery.ts';
@@ -56,10 +60,18 @@ export function walkTimelineFormatHistory(db: DatabaseSync,projectId: string,tim
  for(const [index,entry] of history.entries()){
   if(!timeline||!uuid(entry.id)||entry.projectId!==projectId||entry.position!==index+1||!(TIMELINE_HISTORY_OPERATIONS as readonly unknown[]).includes(entry.operation)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
  }
- if(timeline){
-  const restored=(frame: TimelineRecord,snapshot: unknown,requireFormat: boolean): TimelineRecord=>{
-   const saved=restoreTimelineEditableSnapshot(frame,snapshot,requireFormat);
-   if(!isTimelineRecord(saved,{projectId}))invalidTimeline();
+ if(timeline&&history.length){
+  const schema=timelineStorageSchema(db),formatVersion=timelineStorageFormat(db,schema);
+  const nativeHistory=isSequenceProjectFormat(formatVersion)&&history.some(entry=>entry.operation==='project.version.restore');
+  const nativeOwner=nativeHistory?readFormat5TimelineRecord(db,schema):null;
+  const restored=(frame: TimelineRecord,snapshot: unknown,operation: unknown): TimelineRecord=>{
+   const saved=restoreTimelineEditableSnapshot(frame,snapshot,operation==='timeline.format.set');
+   // Named restores preserve native clip and cue fields in the local snapshot.
+   // Its editable payload omits the main-track identity held by the timeline.
+   if(nativeHistory&&operation==='project.version.restore'){
+    if(!nativeOwner||nativeOwner.id!==saved.id||
+      getFormat5TimelineIssue({...saved,mainTrack:nativeOwner.mainTrack},{projectId,formatVersion}))invalidTimeline();
+   }else if(!isTimelineRecord(saved,{projectId}))invalidTimeline();
    return saved;
   };
   const before=(entry: Record<string,unknown>): unknown=>{
@@ -73,17 +85,15 @@ export function walkTimelineFormatHistory(db: DatabaseSync,projectId: string,tim
   let frame=timeline;
   for(let index=position-1;index>=0;index--){
    const entry=history[index]!;
-   const requireFormat=entry.operation==='timeline.format.set';
-   const after=restored(frame,parse(entry.afterSnapshot),requireFormat);
-   frame=restored(after,before(entry),requireFormat);
+   const after=restored(frame,parse(entry.afterSnapshot),entry.operation);
+   frame=restored(after,before(entry),entry.operation);
    visit?.(after,index+1,'after');visit?.(frame,index+1,'before');
   }
   frame=timeline;
   for(let index=position;index<history.length;index++){
    const entry=history[index]!;
-   const requireFormat=entry.operation==='timeline.format.set';
-   const previous=restored(frame,before(entry),requireFormat);
-   frame=restored(previous,parse(entry.afterSnapshot),requireFormat);
+   const previous=restored(frame,before(entry),entry.operation);
+   frame=restored(previous,parse(entry.afterSnapshot),entry.operation);
    visit?.(previous,index+1,'before');visit?.(frame,index+1,'after');
   }
  }
