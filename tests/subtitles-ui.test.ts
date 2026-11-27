@@ -71,6 +71,24 @@ test('selection and explicit discard preserve existing saved text and reject a r
   h.controller.edit('text', 'stale', first); assert.equal((h.controller.getState().draft)!.text, '第二条');
 });
 
+test('an explicit no-op accepts a matching refreshed subtitle without a failure or success notice', async () => {
+  const h = fixture({submit: async () => {
+    const refreshed = timeline({revision: 9});
+    refreshed.subtitles.cues[0]!.text = '另一会话已保存';
+    h.set({timeline: refreshed});
+    return {status: 'not_applied', error: {code: 'SEQUENCE_EDIT_NOOP'}};
+  }});
+  h.controller.select(cueId);
+  h.controller.edit('text', '另一会话已保存');
+  assert.equal(await h.controller.save(), null);
+  const state = h.controller.getState();
+  assert.equal(state.baseRevision, 9);
+  assert.equal(state.dirty, false);
+  assert.equal(state.conflict, false);
+  assert.equal(state.errorMessage, null);
+  assert.equal(state.uncertain, null);
+});
+
 test('edits during a fresh ACK survive with the acknowledged CAS revision', async () => {
   const hold = deferred(), h = fixture({ submit: () => hold.promise });
   h.controller.select(cueId); h.controller.edit('text', 'submitted'); const saving = h.controller.save();

@@ -848,6 +848,9 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   if(!format5||!isProjectStore(store))fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
   const before=snapshot(store,projectId);
   const targets:AgentTaskTarget[]=[];
+  // Sequence endpoints share a board ID space, but shot and node revisions
+  // are tracked under their storage kinds.
+  const boardTargetKind=(id:string)=>before[key('shot',id)]?'shot':'node';
   const add=(kind:string,id:unknown,missing?:{code:string;reason?:string})=>{
    if(typeof id!=='string')return;
    const found=before[key(kind,id)];
@@ -870,7 +873,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const missingNode=action.kind==='connect'||action.kind==='delete-node'?{code:'MISSING_NODE'}:undefined;
    if('clipId' in action)add('timeline_clip',action.clipId,missingClip);
    if('beforeClipId' in action&&action.beforeClipId)add('timeline_clip',action.beforeClipId,missingClip);
-   if('fromId' in action){add('node',action.fromId,missingNode);add('node',action.toId,missingNode);}
+   if('fromId' in action){add(boardTargetKind(action.fromId),action.fromId,missingNode);add(boardTargetKind(action.toId),action.toId,missingNode);}
    if('nodeId' in action)add('node',action.nodeId,missingNode);
    if(action.kind==='board-shot-update')add('shot',action.shotId);
    if(action.kind==='board-node-update')add('node',action.nodeId);

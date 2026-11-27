@@ -63,8 +63,10 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
     secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_SEQUENCE_ERRORS'},
   });
   const rounds: AgentTaskToolCall[][] = [];
+  let lastModelBody = '';
   const gateway: TaskGateway = async function* (request) {
     request.beforeSubmit?.();
+    lastModelBody = request.body;
     const actions = rounds.shift() ?? [];
     yield {type: 'done', output: output(protocol, actions, actions.length ? '' : 'Synthetic sequence task finished')};
   };
@@ -106,12 +108,15 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
     dataBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   }));
   const assetId = textField(imported, 'id');
-  const timeline = (await read('project.get')).timeline as Format5Timeline;
+  const project = await read('project.get');
+  const timeline = project.timeline as Format5Timeline;
   const track = timeline.tracks.find(row => row.id === timeline.mainTrack.trackId);
   const overlay = timeline.tracks.find(row => row.name === 'Overlay');
   const clip = timeline.clips.find(row => row.id === firstTimeline.clips[0]!.id);
   assert.ok(clip?.sequenceSource && track && overlay);
   const fromId = timeline.mainTrack.sequenceNodeId, toId = clip.sequenceSource.nodeId;
+  assert.ok(Array.isArray(project.shots) && project.shots.some(shot => object(shot).id === toId));
+  assert.ok(Array.isArray(project.nodes) && project.nodes.some(node => object(node).id === fromId));
   const missingClipId = randomUUID(), missingNodeId = randomUUID(), missingAssetId = randomUUID(), missingTrackId = randomUUID();
   const split = (clipId: string, offsetFrames: number) => ({
     intents: [sequenceSyncIntent({kind: 'clip-split', clipId, offsetFrames, rightClipId: randomUUID()})],
@@ -129,12 +134,14 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
   const missingTrack = insert(assetId, missingTrackId, 0, 'INVALID_TRACK_TARGET', [missingTrackId], 'TRACK_NOT_FOUND');
   const missingClip: FailureCase = {operation: 'sequence.action.edit', action: {kind: 'split', clipId: missingClipId, offsetFrames: 1},
     preview: split(missingClipId, 1), code: 'CLIP_NOT_FOUND', ids: [missingClipId]};
-  const missingNode: FailureCase = {operation: 'sequence.action.edit', action: {kind: 'connect', fromId, toId: missingNodeId},
-    preview: board({kind: 'connect', fromId, toId: missingNodeId}), code: 'MISSING_NODE'};
+  const missingNode: FailureCase = {operation: 'sequence.action.edit', action: {kind: 'connect', fromId: toId, toId: missingNodeId},
+    preview: board({kind: 'connect', fromId: toId, toId: missingNodeId}), code: 'MISSING_NODE', ids: [missingNodeId]};
   const noop: FailureCase = {operation: 'sequence.timeline.edit', action: {kind: 'track-update', ...trackUpdate},
     preview: trackPreview, code: 'SEQUENCE_EDIT_NOOP', ids: [track.id]};
   const duplicateEdge: FailureCase = {operation: 'sequence.action.edit', action: {kind: 'connect', fromId, toId},
-    preview: board({kind: 'connect', fromId, toId}), code: 'DUPLICATE_EDGE'};
+    preview: board({kind: 'connect', fromId, toId}), code: 'DUPLICATE_EDGE', ids: [fromId, toId]};
+  const filmMustStart: FailureCase = {operation: 'sequence.action.edit', action: {kind: 'connect', fromId: toId, toId: fromId},
+    preview: board({kind: 'connect', fromId: toId, toId: fromId}), code: 'FILM_MUST_START', ids: [toId, fromId]};
   const attempts: FailureCase[] = [
     {operation: 'sequence.action.edit', action: {kind: 'split', clipId: clip.id, offsetFrames: clip.durationFrames},
       preview: split(clip.id, clip.durationFrames), code: 'INVALID_SPLIT', ids: [clip.id]},
@@ -147,8 +154,7 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
     missingAnchor,
     duplicateEdge,
     missingNode,
-    {operation: 'sequence.action.edit', action: {kind: 'connect', fromId: toId, toId: fromId},
-      preview: board({kind: 'connect', fromId: toId, toId: fromId}), code: 'FILM_MUST_START'},
+    filmMustStart,
     {operation: 'sequence.action.edit', action: {kind: 'delete-node', nodeId: fromId},
       preview: board({kind: 'delete', nodeId: fromId}), code: 'ACTIVE_FILM_REMOVED', ids: [fromId]},
     noop,
@@ -244,6 +250,23 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
     assertFailure(error, noop);
     assertDetails(object(error.details), noop);
   }
+  const noopInput = {projectId, ...noop.action};
+  await assert.rejects(run(process.execPath, ['apps/cli/src/index.ts', 'sequence', 'timeline', 'edit',
+    '--locale', 'en', '--input', JSON.stringify(noopInput)], {cwd: repo, env, encoding: 'utf8', timeout: 30_000}), error => {
+    const result = object(error);
+    assert.equal(result.code, 3);
+    const body = object(JSON.parse(textField(result, 'stdout')));
+    assert.equal(body.ok, false);
+    const failure = object(body.error);
+    assertFailure(failure, noop, 'en');
+    assertDetails(object(failure.details), noop);
+    return true;
+  });
+  const noopMcp = await mcp.callTool({name: 'sequence_timeline_edit', arguments: noopInput}, undefined, {timeout: 15_000});
+  assert.equal(noopMcp.isError, true);
+  const noopMcpError = object(object(noopMcp.structuredContent).error);
+  assertFailure(noopMcpError, noop, 'en');
+  assertDetails(object(noopMcpError.details), noop);
 
   // Board planning also supports a durable not-applied receipt instead of an
   // HTTP rejection. Its wire presentation is localized when that receipt is replayed.
@@ -278,7 +301,7 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
   await application('agent.authorization.grant', {requestId: randomUUID(), expectedRevision: grant.revision,
     expectedSettingsRevision: target.settingsRevision, destination: target.destination, model: target.model, scope: 'project_agent'});
   const prefix = projectApiPath(projectId, 'agent', 'tasks', 'v2');
-  for (const item of [missingAnchor, missingAsset, missingTrack, missingClip, missingNode]) {
+  for (const item of [missingAnchor, missingAsset, missingTrack, missingClip, duplicateEdge, missingNode, filmMustStart]) {
     const tool = item.operation === 'sequence.timeline.edit' ? 'mioon_sequence_timeline_edit' : 'mioon_sequence_edit';
     rounds.splice(0, rounds.length, [call('mioon_tools_load', {names: [tool]})], [call(tool, item.action)]);
     const submitted = agentTaskSnapshotSchema.parse(success(await request(prefix, {requestId: randomUUID(),
@@ -292,12 +315,37 @@ test('Format 5 shares actionable sequence failures across preview, CLI, MCP and 
         const toolError = object(object(step.result).error);
         assertFailure(toolError, item, 'en');
         assertDetails(toolError, item);
+        if (item === missingNode) assert.deepEqual(toolError.ids, [missingNodeId]);
         assert.deepEqual(state.changes, []);
         break;
       }
       assert.ok(Date.now() < deadline, `Mio did not report ${item.code}: ${state.run.status}`);
       await delay(20);
     }
+  }
+  const noopTool = 'mioon_sequence_timeline_edit';
+  rounds.splice(0, rounds.length, [call('mioon_tools_load', {names: [noopTool]})], [call(noopTool, noop.action)]);
+  const noopRun = agentTaskSnapshotSchema.parse(success(await request(prefix, {requestId: randomUUID(),
+    text: 'Apply the current track name', locale: 'en', expectedSettingsRevision: target.settingsRevision})));
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const state = agentTaskSnapshotSchema.parse(success(await request(`${prefix}/${noopRun.run.id}`)));
+    if (state.run.status === 'completed') {
+      const step = state.steps.find(candidate => candidate.toolCall?.name === noopTool);
+      assert.equal(step?.status, 'completed');
+      assert.equal(step.error, undefined);
+      const outcome = object(step.result);
+      assertFailure(outcome, noop, 'en');
+      assertDetails(outcome, noop);
+      assert.equal(outcome.status, 'not_applied');
+      assert.equal(outcome.mutationOutcome, 'not_applied');
+      assert.match(lastModelBody, /SEQUENCE_EDIT_NOOP/u);
+      assert.deepEqual(state.changes, []);
+      break;
+    }
+    assert.ok(Date.now() < deadline && !['failed', 'awaiting_approval', 'paused'].includes(state.run.status),
+      `Mio no-op did not complete: ${state.run.status}`);
+    await delay(20);
   }
   assert.deepEqual(await snapshot(), before);
 });

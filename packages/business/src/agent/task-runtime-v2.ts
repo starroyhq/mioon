@@ -405,12 +405,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     };
     try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
   }
-  /** A proven domain admission rejection lets the run continue. Persist the
-   * dispatch prevention and the model-facing result in the same transaction. */
-  function rejectNotApplied(runId:string,stepId:string,error:{code:string;message:string;ids?:readonly string[];reason?:string;mutationOutcome?:'not_applied'}):AgentTaskStep {
+  /** Persist the proven lack of a mutation and its model-facing result in the
+   * same transaction. A satisfied sequence edit can complete the tool step. */
+  function settleNotApplied(runId:string,stepId:string,outcome:{code:string;message:string;ids?:readonly string[];reason?:string;mutationOutcome?:'not_applied'}):AgentTaskStep {
     const apply=():AgentTaskStep=>{
       if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
-      return journal.updateStep(runId,stepId,{status:'rejected',result:{error:json(error)},error:{code:error.code,message:error.message}});
+      if(outcome.code==='SEQUENCE_EDIT_NOOP')
+        return journal.updateStep(runId,stepId,{status:'completed',result:json({...outcome,status:'not_applied'})});
+      return journal.updateStep(runId,stepId,{status:'rejected',result:{error:json(outcome)},error:{code:outcome.code,message:outcome.message}});
     };
     try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
   }
@@ -645,16 +647,17 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }
       }
       if(failure==='REVISION_CONFLICT'&&(current.status==='intent'||current.status==='dispatch_started')&&record(error)&&record(error.details)&&error.details.mutationOutcome==='not_applied')
-        return rejectNotApplied(runId,step.id,{code:failure,message:revisionConflictInstructions[taskResponseLocale(journal.run(runId).context)]});
+        return settleNotApplied(runId,step.id,{code:failure,message:revisionConflictInstructions[taskResponseLocale(journal.run(runId).context)]});
       const aspectRejection=prepared?.operation==='generation.submit'&&['PROJECT_ASPECT_CHANGED','PROJECT_ASPECT_UNSUPPORTED','GENERATION_ASPECT_UNSUPPORTED'].includes(failure);
       if(current.status==='dispatch_started'&&prepared&&aspectRejection){
         const feedback=agentTaskGenerationAspectFeedback({operation:prepared.operation,projectId:prepared.projectId,input:{...prepared.input,requestId:step.id},error});
-        if(feedback)return rejectNotApplied(runId,step.id,feedback);
+        if(feedback)return settleNotApplied(runId,step.id,feedback);
       }
-      if(error instanceof SequenceEditCommitRejection&&current.status==='dispatch_started'){
+      if(error instanceof SequenceEditCommitRejection&&current.status==='dispatch_started'||
+        failure==='SEQUENCE_EDIT_NOOP'&&error instanceof MioSequencePreviewRejection&&current.status==='intent'){
         const evidence=sequenceEditFailureEvidence(failure,error.details);
         const message=translateSequenceEditDiagnostic(taskResponseLocale(journal.run(runId).context),failure,error.details)??error.message;
-        return rejectNotApplied(runId,step.id,{code:failure,message,...evidence,mutationOutcome:'not_applied'});
+        return settleNotApplied(runId,step.id,{code:failure,message,...evidence,mutationOutcome:'not_applied'});
       }
       const uncertain=current.status==='dispatch_started'&&(aspectRejection||!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
       if(uncertain&&prepared?.risk!=='read_only'){
