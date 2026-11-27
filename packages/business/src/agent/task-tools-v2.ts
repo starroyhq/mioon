@@ -6,6 +6,7 @@ import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
 import {mioAssetImportInputSchema} from '../../../contracts/src/mio-asset-import.ts';
 import {publicOperationSchemas} from '../../../contracts/src/public-operations.ts';
 import {isTimelineProcessingOperation,timelineProcessingResponseSchemas,timelineProcessingSchemas} from '../../../contracts/src/timeline-processing.ts';
+import {isPreviewMediaForClip} from '../../../contracts/src/timeline-preview-media.ts';
 import {subjectVariantSnapshotSchema,SUBJECT_VARIANT_LIMITS} from '../../../contracts/src/subject-variants.ts';
 import {createProjectVersions} from '../project-versions/service.ts';
 import {readTimelineHeaderStorage,readTimelineStorage} from '../project-file/timeline-storage.ts';
@@ -111,7 +112,7 @@ const readOperations=[
  'scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
  'sequence.inspect','sequence.generation-inputs.get','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
- 'timeline.processing.list','timeline.processing.inspect','timeline.processing.wait','timeline.processing.cache.get',
+ 'timeline.processing.list','timeline.processing.inspect','timeline.processing.wait','timeline.processing.cache.get','timeline.preview.media',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
 ] as const;
 const reversibleOperations=[
@@ -1227,7 +1228,10 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    const parsed=timelineProcessingResponseSchemas[processingOperation].safeParse(output);
    if(!parsed.success)fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理没有返回可信的任务摘要');
    const result=parsed.data;
-   if(('item' in result&&result.item.taskId!==input.taskId)||('taskId' in result&&result.taskId!==input.taskId))fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次任务');
+   if('item' in result&&result.item.taskId!==input.taskId||
+      'taskId' in result&& !('mode' in result)&&result.taskId!==input.taskId||
+      'mode' in result&&!isPreviewMediaForClip(result,prepared.projectId,String(input.clipId)))
+    fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次查询');
    return {result:projectResult(result),changes:[],recorded:false};
   }
   if(prepared.sequence){

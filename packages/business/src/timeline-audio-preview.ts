@@ -1,4 +1,4 @@
-import {assertTimelineSpeedRenderable, isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
+import {isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import type {MediaLocator} from './asset-reference-record.ts';
@@ -6,8 +6,11 @@ import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AUDIO_PREVIEW_LIMITS, audioPreviewPlanInputSchema, audioPreviewSourceInputSchema,
   buildAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
-import type {AudioPreviewPlan, AudioPreviewPlanInput, AudioPreviewSourceDescriptor} from '@mioon/contracts/timeline-audio-preview';
+import type {AudioPreviewPlan, AudioPreviewPlanInput, AudioPreviewSourceDescriptor, AudioPreviewTimedClip} from '@mioon/contracts/timeline-audio-preview';
 import type {TimelineAudioPreviewDecoder, TimelineAudioPreviewDecodedPcm} from './timeline-audio-preview-decoder.ts';
+import type {CompiledTimelineSpeedExportClip} from '../../contracts/src/timeline-speed-export.ts';
+import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import {readAudioPreviewTimings, renderAudioPreviewSpeedWindow} from './timeline-audio-preview-speed.ts';
 
 const LIMITS = AUDIO_PREVIEW_LIMITS;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -70,6 +73,8 @@ export interface TimelineAudioPreviewRuntime {
   validateSource(root: string, asset: TimelineAudioPreviewManagedAsset, options: {maxBytes: number}): {file: string; info: TimelineAudioPreviewFileIdentity};
   hash(root: string, asset: TimelineAudioPreviewManagedAsset, options: TimelineAudioPreviewHashOptions): Promise<unknown>;
   decode: TimelineAudioPreviewDecoder;
+  speedPreview?: boolean;
+  reverseProxy?: TimelineReverseProxyPort;
   terminate(signal: AbortSignal): Promise<readonly {status: string}[]>;
   waitForClose(signal: AbortSignal): Promise<readonly {status: string}[]>;
   boundedShutdown(work: Promise<unknown>, code: string): Promise<unknown>;
@@ -82,7 +87,18 @@ export interface TimelineAudioPreviewConsumeContext {
    * after each awaited transport boundary. A partial body is never playable. */
   readonly beforeEffect: () => void;
 }
-interface Current {readonly plan: AudioPreviewPlan; readonly identity: string; readonly assets: ReadonlyMap<string, TimelineAudioPreviewManagedAsset>}
+interface TimedSource {
+  readonly timing: CompiledTimelineSpeedExportClip;
+  readonly trackKind: 'video' | 'audio';
+  readonly mimeType: string;
+}
+interface Current {
+  readonly plan: AudioPreviewPlan;
+  readonly identity: string;
+  readonly assets: ReadonlyMap<string, TimelineAudioPreviewManagedAsset>;
+  readonly timedSources: ReadonlyMap<string, TimedSource>;
+}
+type PreviewPcm = Pick<TimelineAudioPreviewDecodedPcm, 'pcm' | 'sampleRate' | 'sampleFrames' | 'channels'>;
 interface Entry {readonly controller: AbortController; readonly signal: AbortSignal; task: Promise<unknown>}
 interface Admission {active: Entry | null; stopped: boolean; shutdownFailure: unknown}
 // Native database identity, not an easily cloned store wrapper. No queue/cache.
@@ -130,7 +146,8 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     if (!plainData(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets) || raw.assets.length > 100) unavailable();
     const timeline = raw.timeline;
     if (!Array.isArray(timeline.tracks) || timeline.tracks.length > 12 || !Array.isArray(timeline.clips) || timeline.clips.length > 100) unavailable();
-    assertTimelineSpeedRenderable(timeline);
+    const timings = readAudioPreviewTimings(timeline, runtime.speedPreview === true);
+    const timingHints = new Map<string, AudioPreviewTimedClip>();
     const tracks = timeline.tracks.map((track: unknown) => {
       if (!object(track)) return unavailable();
       return {id: track.id, kind: track.kind, orderIndex: track.orderIndex, hidden: track.hidden, muted: track.muted};
@@ -138,8 +155,13 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     const clips = timeline.clips.map((clip: unknown) => {
       if (!object(clip)) return unavailable();
       if (Object.hasOwn(clip, 'volumeEnvelope') && clip.volumeEnvelope !== null) throw fault('AUDIO_PREVIEW_VOLUME_ENVELOPE_UNSUPPORTED');
-      // Do not silently audition a corrupt saved speed/effect the renderer rejects.
+      // Reject alternate saved effect fields outside the admitted timing profile.
       if (['transition', 'transitions', 'effects', 'speed', 'rate', 'opacity', 'blendMode'].some(key => Object.hasOwn(clip, key))) unavailable();
+      if (typeof clip.id === 'string' && typeof clip.sourceSpanFrames === 'number') {
+        const timed = timings.get(clip.id);
+        if (timed) timingHints.set(clip.id, {sourceSpanFrames: clip.sourceSpanFrames,
+          timingHash: hashText(JSON.stringify(timed.timing)), silent: timed.timing.profile === 'timeline-freeze-v1'});
+      }
       return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame,
         durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
         ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
@@ -156,8 +178,18 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     });
     const projected = {timeline: {id: timeline.id, projectId: timeline.projectId, revision: timeline.revision, fps: timeline.fps,
       durationFrames: timeline.durationFrames, tracks, clips}, assets};
-    const plan = freeze(buildAudioPreviewPlan(input, projected, hashText));
-    return {plan, assets: managed, identity: hashText(JSON.stringify(raw))};
+    const plan = freeze(buildAudioPreviewPlan(input, projected, hashText, timingHints));
+    const timedSources = new Map<string, TimedSource>();
+    for (const source of plan.sources) {
+      const timing = timings.get(source.clipId);
+      if (!timing) continue;
+      const voice = plan.voices.find(voice => voice.clipId === source.clipId);
+      const trackKind = tracks.find(track => track.id === voice?.trackId)?.kind;
+      const mimeType = assets.find(asset => asset.id === source.assetId)?.mimeType;
+      if ((trackKind !== 'audio' && trackKind !== 'video') || typeof mimeType !== 'string') return unavailable();
+      timedSources.set(source.clipId, {timing, trackKind, mimeType});
+    }
+    return {plan, assets: managed, timedSources, identity: hashText(JSON.stringify(raw))};
   }
   const stop = (): void => {state.stopped = true; state.active?.controller.abort();};
   ownerSignal?.addEventListener('abort', stop, {once: true});
@@ -193,7 +225,7 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     /** Trusted in-process registration before source effects. This promise is
      * independent of public observer cancellation and rejects cleanup doubt. */
     onResourceSettlement?: (settlement: Promise<void>) => void;
-    consume: (decoded: TimelineAudioPreviewDecodedPcm, context: TimelineAudioPreviewConsumeContext) => Promise<T>}): Promise<T> {
+    consume: (decoded: PreviewPcm, context: TimelineAudioPreviewConsumeContext) => Promise<T>}): Promise<T> {
     runtime.assertOrdinaryWorkspace();
     if (!plainData(rawInput, 4096)) throw fault('VALIDATION_ERROR', 400);
     const parsed = audioPreviewSourceInputSchema.safeParse(rawInput);
@@ -253,14 +285,27 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       if (!fileIdentity(file.info) || file.info.size !== asset.sizeBytes) throw fault('AUDIO_PREVIEW_STALE');
       expected = Object.freeze({dev: file.info.dev, ino: file.info.ino, size: file.info.size, mtimeMs: file.info.mtimeMs, ctimeMs: file.info.ctimeMs});
       const first = await hash(); fence();
-      const decoded = await runtime.decode(first.file, {sourceInFrame: source.sourceInFrame, frameCount: source.durationFrames, segments: source.decodeSegments}, {signal, beforeEffect: fence, remainingMs});
+      let decoded: PreviewPcm;
+      const timed = initial.timedSources.get(source.clipId);
+      if (timed) {
+        const pcm = await renderAudioPreviewSpeedWindow(timed.timing, source.sourceInFrame, source.sourceInFrame + source.durationFrames,
+          {projectId: input.projectId, timelineId: input.timelineId, file: first.file,
+            trackKind: timed.trackKind, asset: {id: source.assetId, sha256: source.sourceHash, mimeType: timed.mimeType}},
+          {signal, beforeEffect: fence, reverseProxy: runtime.reverseProxy});
+        decoded = {pcm, sampleRate: 48000, channels: 2, sampleFrames: source.sampleFrames};
+      } else {
+        const original = await runtime.decode(first.file, {sourceInFrame: source.sourceInFrame, frameCount: source.durationFrames,
+          segments: source.decodeSegments}, {signal, beforeEffect: fence, remainingMs});
+        fence();
+        if (!object(original) || !object(original.source) || original.source.sizeBytes !== source.sourceBytes ||
+            typeof original.source.durationSeconds !== 'number' || !Number.isFinite(original.source.durationSeconds) ||
+            original.source.durationSeconds <= 0 || original.source.durationSeconds > LIMITS.sourceSeconds ||
+            source.sourceInFrame + source.durationFrames > Math.floor(original.source.durationSeconds * 30 + 1e-7)) throw fault('AUDIO_PREVIEW_INVALID_PCM');
+        decoded = original;
+      }
       fence();
       if (!object(decoded) || !Buffer.isBuffer(decoded.pcm) || decoded.sampleRate !== 48000 || decoded.channels !== 2 ||
-          decoded.sampleFrames !== source.sampleFrames || decoded.pcm.byteLength !== source.pcmBytes ||
-          !object(decoded.source) || decoded.source.sizeBytes !== source.sourceBytes ||
-          typeof decoded.source.durationSeconds !== 'number' || !Number.isFinite(decoded.source.durationSeconds) ||
-          decoded.source.durationSeconds <= 0 || decoded.source.durationSeconds > LIMITS.sourceSeconds ||
-          source.sourceInFrame + source.durationFrames > Math.floor(decoded.source.durationSeconds * 30 + 1e-7)) throw fault('AUDIO_PREVIEW_INVALID_PCM');
+          decoded.sampleFrames !== source.sampleFrames || decoded.pcm.byteLength !== source.pcmBytes) throw fault('AUDIO_PREVIEW_INVALID_PCM');
       for (let offset = 0; offset < decoded.pcm.byteLength; offset += 4) {
         if (offset % (64 * 1024) === 0) fence();
         if (!Number.isFinite(decoded.pcm.readFloatLE(offset))) throw fault('AUDIO_PREVIEW_INVALID_PCM');
@@ -320,6 +365,7 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       if (timedOut) throw fault('AUDIO_PREVIEW_TIMEOUT', 503);
       // Keep public failures opaque; neither decoder stderr nor local paths leak.
       if(code==='PROJECT_STORE_UNVERIFIED')throw fault('AUDIO_PREVIEW_OWNER_REQUIRED',403);
+      if(code==='SPEED_PROCESSING_NOT_READY')throw fault(code);
       if (code?.startsWith('AUDIO_PREVIEW_') || code === 'OPERATION_CANCELLED') throw fault(code, code === 'AUDIO_PREVIEW_OWNER_REQUIRED' ? 403 : 409);
       if (code?.startsWith('MANAGED_') || code?.startsWith('MEDIA_')) throw fault('AUDIO_PREVIEW_STALE');
       throw fault('AUDIO_PREVIEW_DECODE_FAILED');

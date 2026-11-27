@@ -75,23 +75,46 @@ export async function withTimelineReverseProxy<T>(snapshot: SpeedExportSnapshotC
   if (!port || !proof) notReady(item.clipId, proof?.taskId);
   checkMediaEffect(options.beforeEffect, options.signal);
   const request = requestFor(snapshot, item, asset);
+  return withReverseProxyLease(request, port, proof, options, consume);
+}
+
+/** Audition uses the same verified lossless PCM lease as export. It resolves
+ * the current saved task independently of the export's frozen snapshot. */
+export async function withTimelineReverseAudio<T>(request: TimelineReverseProxyRequest, port: TimelineReverseProxyPort | undefined,
+  options: {signal?: AbortSignal; beforeEffect?: () => void},
+  consume: (audio: NonNullable<TimelineReverseProxyLease['audio']>, fence: () => void) => Promise<T>): Promise<T> {
+  checkMediaEffect(options.beforeEffect, options.signal);
+  const lookup = port?.lookup(request);
+  if (!port || !lookup || !uuid.test(lookup.taskId) || !lookup.readySha256 || !sha256.test(lookup.readySha256)) {
+    notReady(request.clipId, lookup?.taskId);
+  }
+  return withReverseProxyLease(request, port, {taskId: lookup.taskId, sha256: lookup.readySha256}, options, (lease, fence) => {
+    if (!lease.audio) notReady(request.clipId, lookup.taskId);
+    return consume(lease.audio, fence);
+  });
+}
+
+async function withReverseProxyLease<T>(request: TimelineReverseProxyRequest, port: TimelineReverseProxyPort,
+  proof: TimelineSpeedExportProxy, options: {signal?: AbortSignal; beforeEffect?: () => void},
+  consume: (lease: TimelineReverseProxyLease, fence: () => void) => Promise<T>): Promise<T> {
+  checkMediaEffect(options.beforeEffect, options.signal);
   const lease = await port.acquire(request, proof, options);
   if (!lease) {
     checkMediaEffect(options.beforeEffect, options.signal);
-    notReady(item.clipId, proof.taskId);
+    notReady(request.clipId, proof.taskId);
   }
   const fence = (): void => {
     checkMediaEffect(options.beforeEffect, options.signal);
-    if (!lease.verify()) notReady(item.clipId, proof.taskId);
+    if (!lease.verify()) notReady(request.clipId, proof.taskId);
   };
   let deferRelease = false;
   try {
     if (lease.proof.taskId !== proof.taskId || lease.proof.sha256 !== proof.sha256 ||
-        (item.video.length > 0 && !lease.video) || (request.needsAudio && !lease.audio)) notReady(item.clipId, proof.taskId);
+        (request.pictureWindows.length > 0 && !lease.video) || (request.needsAudio && !lease.audio)) notReady(request.clipId, proof.taskId);
     if (request.audioWindow && lease.audio) {
       const {fromSample, toSample} = lease.audio.clock;
       if (!Number.isSafeInteger(fromSample) || !Number.isSafeInteger(toSample) || fromSample < 0 || toSample <= fromSample ||
-          fromSample > request.audioWindow.fromSample || toSample < request.audioWindow.toSample) notReady(item.clipId, proof.taskId);
+          fromSample > request.audioWindow.fromSample || toSample < request.audioWindow.toSample) notReady(request.clipId, proof.taskId);
     }
     fence();
     const result = await consume(lease, fence);
@@ -102,7 +125,7 @@ export async function withTimelineReverseProxy<T>(snapshot: SpeedExportSnapshotC
       hasUnconfirmedMediaProcesses({signal: options.signal});
     const details = (error as {details?: {reason?: string; audioReason?: string}})?.details;
     if (!deferRelease && (details?.reason === 'REVERSE_PROXY_COVERAGE' || details?.audioReason === 'REVERSE_PCM_WINDOW')) {
-      notReady(item.clipId, proof.taskId);
+      notReady(request.clipId, proof.taskId);
     }
     throw error;
   } finally {
