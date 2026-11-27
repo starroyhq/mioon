@@ -231,11 +231,12 @@ function timebase(value: TimeMapTimebase): TimeMapResult<Rat> {
 
 const LN2 = 0.6931471805599453;
 const LN10 = 2.302585092994046;
-const EXP_RECIPROCAL_FACTORIAL = Object.freeze([
+// Keep the private coefficients as packed numeric elements for the hot integration loop.
+const EXP_RECIPROCAL_FACTORIAL = [
   1, 1 / 2, 1 / 6, 1 / 24, 1 / 120, 1 / 720, 1 / 5040, 1 / 40320, 1 / 362880, 1 / 3628800,
   1 / 39916800, 1 / 479001600, 1 / 6227020800, 1 / 87178291200, 1 / 1307674368000,
   1 / 20922789888000,
-]);
+] as const;
 /** Deterministic `exp(x)`: range reduction by ln 2 plus a fixed Maclaurin series.
  * Only + - * /, Math.round and powers of two are used. Math.round has exact
  * specification semantics, and scaling by a power of two is exact, so Node and
@@ -249,7 +250,8 @@ function detExp(x: number): number {
   const low = (x - hi) - k * LN2;
   const remainder = hi + low;
   let term = 1, result = 1;
-  for (const reciprocal of EXP_RECIPROCAL_FACTORIAL) {
+  for (let index = 0; index < EXP_RECIPROCAL_FACTORIAL.length; index++) {
+    const reciprocal = EXP_RECIPROCAL_FACTORIAL[index]!;
     term *= remainder;
     result += term * reciprocal;
   }
