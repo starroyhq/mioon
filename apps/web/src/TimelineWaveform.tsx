@@ -38,7 +38,8 @@ export default function TimelineWaveform({ window: range, entry }: {window?: Wav
   if (!range) return null;
   const status = renderMessage(waveformStatusMessage(entry));
   // Crop to actual decoded time without rescaling the requested bin spacing.
-  const width = entry?.status === 'ready' ? waveformCoverageWidth(range, entry.decodedSampleFrames) : range.width;
+  // Speed-projected peaks are already mapped onto output columns with null gaps.
+  const width = entry?.status === 'ready' ? (entry.outputDomain ? range.width : waveformCoverageWidth(range, entry.decodedSampleFrames)) : range.width;
   return <span className={`timeline-waveform ${entry?.status === 'ready' ? 'is-ready' : 'is-pending'}`} style={{ left: range.left, width }} data-testid={`timeline-waveform-${range.clipId}`} data-waveform-status={entry?.status || 'missing'} aria-hidden="true" title={status}>
     {entry?.status === 'ready' ? <svg style={{ width: range.width }} viewBox={`0 0 ${Math.max(1, entry.peaks?.length ?? 1)} 20`} preserveAspectRatio="none" focusable="false"><path d={waveformPath(entry.peaks)} /></svg> : <span className="timeline-waveform-placeholder">{status}</span>}
   </span>;

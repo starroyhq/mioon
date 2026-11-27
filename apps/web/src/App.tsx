@@ -210,6 +210,28 @@ import CopyMoveConfirmDialog from './edit-ui/CopyMoveConfirmDialog.tsx';
 import type {EditUiCopyMoveRequest} from './edit-ui/CopyMoveConfirmDialog.tsx';
 import EditUiNoticeBar, {EditUiUnknownBar} from './edit-ui/EditUiNotice.tsx';
 import TimelineClipContextMenu from './TimelineClipContextMenu.tsx';
+import ClipSpeedSection from './speed-ui/ClipSpeedSection.tsx';
+import {buildSpeedProcessingTaskCenterEntries} from './speed-ui/SpeedProcessingTaskCard.tsx';
+import {buildSpeedProcessingOverviewItems, buildTimelineClipSpeedViews} from './speed-ui/speed-presentation.ts';
+import {
+  DEFAULT_FREEZE_DURATION_FRAMES,
+  buildClipSpeedIntent,
+  buildFreezeFrameIntent,
+  canFreezeClipAtPlayhead,
+  clipSupportsSpeed,
+  processingItemActive,
+  selectClipProcessingItem,
+  settingFromClip,
+  speedPreviewErrorKey,
+  timelineSpeedEnabled,
+} from './speed-ui/speed-model.ts';
+import {useSpeedProcessing} from './speed-ui/use-speed-processing.ts';
+import type {ClipTiming, SequenceEditSpeedIntent, SpeedSetting} from '../../../packages/contracts/src/timeline-speed.ts';
+import './speed-preview/speed-preview.css';
+import SpeedClipThumbnailStrip from './speed-preview/SpeedClipThumbnailStrip.tsx';
+import {buildClipSpeedPreviewBinding, buildSpeedWaveformWindow, projectSpeedClipWaveformEntry} from './speed-preview/speed-preview-model.ts';
+import {useSpeedPreviewMedia} from './speed-preview/use-speed-preview-media.ts';
+import {useSpeedPreviewAudio} from './speed-preview/use-speed-preview-audio.ts';
 import ClipAudioTaskToast from './ClipAudioTaskToast.tsx';
 import type {ClipAudioToastTarget} from './ClipAudioTaskToast.tsx';
 import {clipContextMenuPlan} from './clip-sound-state.ts';
@@ -264,7 +286,6 @@ import { sceneTime } from './scene-cuts.ts';
 import AssetSceneSummary from './AssetSceneSummary.tsx';
 import { sceneOverviewItems } from './scene-task-views.ts';
 import { sceneTaskCenterEntries } from './SceneTaskCard.tsx';
-import { speedProcessingOverviewItems, speedProcessingTaskViews, useSpeedProcessingTasks } from './timeline-processing-tasks.ts';
 import { useSourceRange } from './use-source-range.ts';
 import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.ts';
 import { Media, nodeTypes } from './Nodes.tsx';
@@ -359,14 +380,14 @@ export interface AppTimelineClip {
   id: string; trackId: string; assetId: string; name: string; startFrame: number; durationFrames: number;
   sourceInFrame: number; rect: {x: number; y: number; width: number; height: number}; gain: number;
   fadeInFrames?: number; fadeOutFrames?: number; colour?: unknown; audioRole?: unknown; volumeEnvelope?: unknown;
-  versionId?: string; shotId?: string; jobId?: string; [key: string]: unknown;
+  versionId?: string; shotId?: string; jobId?: string; timing?: ClipTiming | null; [key: string]: unknown;
 }
 export interface AppTimelineTrack {id: string; name: string; kind: 'video' | 'audio'; orderIndex: number; hidden: boolean; muted: boolean; [key: string]: unknown}
 export interface AppTimelineCue {id: string; text?: string; startFrame: number; durationFrames: number; [key: string]: unknown}
 export interface AppTimeline {
   id: string; projectId: string; revision: number; fps: number; width: number; height: number;
   tracks: AppTimelineTrack[]; clips: AppTimelineClip[]; durationFrames: number; createdAt: string; updatedAt: string;
-  capabilities?: {speed: boolean};
+  capabilities?: {speed?: boolean; [key: string]: unknown} | null;
   subtitles?: {cues: AppTimelineCue[]; [key: string]: unknown} | null; [key: string]: unknown;
 }
 export interface AppData {
@@ -2461,6 +2482,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [format5NoticeActionId, setFormat5NoticeActionId] = useState<string | null>(null);
   // Format-5 clip context menu anchor and the «save clip sound» task card.
   const [clipContextMenu, setClipContextMenu] = useState<{clipId: string; x: number; y: number} | null>(null);
+  const [requestedInspectorGroup, setRequestedInspectorGroup] = useState<{key: string; version: number; clipId: string} | null>(null);
   const [clipAudioToast, setClipAudioToast] = useState<ClipAudioToastTarget | null>(null);
   // A commit whose response was lost keeps one exact envelope; both format-5
   // sessions share this state so the workspace has a single unconfirmed edit.
@@ -2473,6 +2495,20 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const format5LostDeps = () => ({lost: format5LostRef.current!});
   const format5EditProjection = useMemo(() => format5 ? format5Projection(timeline, data.shots, data.versions) : null,
     [format5, timeline, data.shots, data.versions]);
+  const speedEnabled = timelineSpeedEnabled(timeline);
+  const speedProcessing = useSpeedProcessing({
+    projectId: workbenchReady && timeline?.projectId === currentProject.current &&
+      timeline.projectId === data.project?.id ? timeline.projectId : null,
+    timeline: timeline as never,
+    online,
+    authenticated: auth === true,
+    rpc,
+    onError: error => notify(readableError(error), 'error'),
+  });
+  const clipSpeedViews = useMemo(
+    () => buildTimelineClipSpeedViews(timeline as never, speedProcessing.items, t as never),
+    [timeline, speedProcessing.items, t],
+  );
   // UI-B2 board mounting: `project.get` supplies the saved rows, the unified
   // RPC supplies the one session and the sync/archive projection. The board and
   // the workbench share exactly one history, so this session never keeps a
@@ -3799,6 +3835,70 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return format5RunPayload({propertiesIntent: {side: 'timeline', operation: {kind: 'clip-properties',
       edits: [{clipId, patch: {muted}}]}}}, null);
   }
+  /** Speed UI (F3/F5): run a `speedIntent` through `sequence.preview` + `sequence.commit`. */
+  async function format5RunSpeedIntent(intent: SequenceEditSpeedIntent, notice: EditUiNotice | null): Promise<unknown> {
+    if (!timelineSpeedEnabled(dataRef.current.timeline) || format5SessionBusy) return null;
+    setFormat5SessionBusy(true);
+    try {
+      const result = await format5Session().runPayload({speedIntent: intent});
+      if (!result.ok) {
+        notifyFormat5CommandFailure(result, speedPreviewErrorKey);
+        return null;
+      }
+      clearFormat5ConflictToast();
+      if (notice) {setFormat5Notice(notice); setFormat5NoticeActionId(result.actionId);}
+      await refresh(currentProject.current);
+      await format5RefreshHistory();
+      speedProcessing.refresh();
+      return result;
+    } finally {setFormat5SessionBusy(false);}
+  }
+  async function format5SetClipSpeed(clipId: string, setting: SpeedSetting): Promise<unknown> {
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
+    if (!clip) return null;
+    return format5RunSpeedIntent(
+      buildClipSpeedIntent(clipId, setting),
+      {id: `format5-speed-${Date.now()}`, message: t('speed.notice.updated', {name: format5ClipName(clipId)})},
+    );
+  }
+  async function format5ToggleClipReverse(clipId: string): Promise<unknown> {
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
+    if (!clip) return null;
+    const current = settingFromClip(clip);
+    const next: SpeedSetting = {...current, direction: current.direction === 'reverse' ? 'forward' : 'reverse'};
+    return format5RunSpeedIntent(
+      buildClipSpeedIntent(clipId, next),
+      {id: `format5-reverse-${Date.now()}`, message: t('speed.notice.reversed', {name: format5ClipName(clipId)})},
+    );
+  }
+  async function format5FreezeTimelineClip(clipId: string): Promise<unknown> {
+    const timelineNow = dataRef.current.timeline;
+    const clip = timelineNow?.clips.find(item => item.id === clipId);
+    if (!timelineNow || !clip) return null;
+    const asset = dataRef.current.assets.find(item => item.id === clip.assetId);
+    const track = timelineNow.tracks.find(item => item.id === clip.trackId);
+    const liveFrame = playbackClock.getSnapshot() ?? effectivePlayhead;
+    if (!canFreezeClipAtPlayhead(clip, asset, track?.kind, liveFrame)) {
+      notify(t('speed.error.FREEZE_PLAYHEAD_OUTSIDE'), 'error');
+      return null;
+    }
+    return format5RunSpeedIntent(
+      buildFreezeFrameIntent(clipId, liveFrame, DEFAULT_FREEZE_DURATION_FRAMES),
+      {id: `format5-freeze-${Date.now()}`, message: t('speed.freeze.notice', {name: format5ClipName(clipId)})},
+    );
+  }
+  function openClipSpeedInInspector(clipId: string): void {
+    void selectClip(clipId);
+    setPropertiesPage('inspector');
+    setRightDockTab('properties');
+    setPanelOpen('inspector', true, 'editing');
+    setRequestedInspectorGroup(current => ({key: 'speed', clipId, version: (current?.version ?? 0) + 1}));
+  }
+  async function format5CopyClipAsNewShot(clipId: string): Promise<unknown> {
+    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
+    if (!clip || !format5 || format5SessionBusy) return null;
+    return format5RunPolicy(format5PasteClipCommand(clipId, clip.startFrame + clip.durationFrames) as never);
+  }
   /** Separate the clip's sound: one intent, one undo step (mute + anchored
    * sound-only clip + optional new audio track are expanded by the server). */
   async function format5SeparateClipSound(clipId: string): Promise<unknown> {
@@ -3837,6 +3937,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return result;
   }
   function openClipContextMenu(clipId: string, point: {readonly x: number; readonly y: number}): void {
+    void selectClip(clipId, true, {preservePlayhead: true});
     setClipContextMenu({clipId, x: point.x, y: point.y});
   }
   /** One bounded retry of the retained format-5 envelope, then the normal
@@ -3960,7 +4061,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
     return result;
   }
-  async function selectClip(id: string, showPreview = true): Promise<void> {
+  async function selectClip(id: string, showPreview = true, options?: {preservePlayhead?: boolean}): Promise<void> {
     if (clipDraftRef.current?.hasPendingComposition()) return;
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current!.timeline?.id, timelineRevision = dataRef.current!.timeline?.revision;
     const canDiscard = (): boolean => Boolean(isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current!.timeline?.id && timelineRevision === dataRef.current!.timeline?.revision && dataRef.current!.timeline?.clips.some(clip => clip.id === id));
@@ -3972,7 +4073,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // its new epoch before another popup binds to the previous render's scope.
     setNavigationPresentation(value => value + 1);
     leaveReferencePage();
-    updateView('editing', { selectedClipId: id, quickAssetId: null, playhead: clip.startFrame, ...(showPreview ? { previewKind: 'source' } : {}) });
+    updateView('editing', { selectedClipId: id, quickAssetId: null, ...(options?.preservePlayhead ? {} : { playhead: clip.startFrame }), ...(showPreview ? { previewKind: 'source' } : {}) });
     updateView('activeMode', 'editing'); setMobilePanel('canvas');
   }
   async function addTimelineAsset(assetId: string, trackId?: string | null, startFrame?: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
@@ -4514,6 +4615,96 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const agentTimelineBlockedReason = renderCoreMessage('zh-Hans', agentTimelineBlockedDescriptor);
   const chosenVersion = data.versions.find(v => v.id === chosenShot?.selectedVersionId);
   const sourceAsset = data.assets.find(a => a.id === (quickAssetId || chosenClip?.assetId));
+  const activeSourceClip = quickAssetId ? null : chosenClip ?? null;
+  const speedPreviewActive = Boolean(
+    speedEnabled
+    && workbenchReady
+    && workspaceMode === 'editing'
+    && previewKind === 'source'
+    && panelVisible('canvas')
+    && activeSourceClip
+    && sourceAsset
+    && projectMedia.canRead(sourceAsset)
+    && !previewAsset
+    && !comparisonId,
+  );
+  const speedPreviewMedia = useSpeedPreviewMedia({
+    projectId: data.project?.id ?? null,
+    timeline: timeline as never,
+    clip: activeSourceClip as never,
+    asset: sourceAsset as never,
+    active: speedPreviewActive,
+    online,
+    authenticated: auth === true,
+    processingItems: speedProcessing.items,
+    rpc,
+  });
+  const speedPreviewAudioContext = useCallback((): TimelineAudioPreviewContext => {
+    const workspaceScope = editorSession.current, saved = dataRef.current!.timeline, editing = viewRef.current!.editing;
+    const readable = timelineAudioMediaReadable(saved, dataRef.current!.assets, projectMedia.canRead);
+    const activeClip = editing.quickAssetId ? null : saved?.clips.find(item => item.id === editing.selectedClipId) ?? null;
+    const timingKey = (activeClip as {timing?: unknown} | null)?.timing ? JSON.stringify((activeClip as {timing?: unknown}).timing) : 'none';
+    const baseIdentity = timelineAudioPreviewSourceIdentity(saved, dataRef.current!.assets);
+    return {
+      scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}:speed`,
+      executionScope: `${navigationEpoch.current}:${viewRef.current!.activeMode}:${editing.previewKind}:${editing.selectedClipId}:${editing.quickAssetId}:${timingKey}`,
+      projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
+      timelineId: saved?.id || null,
+      revision: saved?.revision || null,
+      durationFrames: saved?.durationFrames || 0,
+      sourceIdentity: baseIdentity ? `${baseIdentity}:timing:${timingKey}` : '',
+      connected: readable && projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
+      visible: workbenchReady && workspaceMode === 'editing' && previewKind === 'source' && panelVisible('canvas') && !previewAsset && !comparisonIdRef.current && Boolean(activeClip),
+      hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty || Boolean(clipDraftRef.current?.getState().candidate),
+    };
+  }, [workbenchReady, workspaceMode, previewKind, previewAsset, online, auth, loading, clipDirty, subtitleDirty, formatDirty]);
+  const speedPreviewAudio = useSpeedPreviewAudio({
+    enabled: speedPreviewActive,
+    context: speedPreviewAudioContext(),
+    getContext: speedPreviewAudioContext,
+    readPlan: (input, options) => rpc('timeline.audioPreview.plan', input, options as never),
+    readContinuousPlan: (input, options) => rpc('timeline.audioPreview.continuousPlan', input, options as never),
+  });
+  const clipSpeedPreview = useMemo(
+    () => speedEnabled && activeSourceClip && sourceAsset && previewKind === 'source' && projectMedia.canRead(sourceAsset)
+      ? buildClipSpeedPreviewBinding({
+          timeline: timeline as never,
+          clip: activeSourceClip as never,
+          asset: sourceAsset as never,
+          sourceUrl: assetUrl(sourceAsset),
+          fps: timeline?.fps || 30,
+          media: speedPreviewMedia.media,
+          processingItems: speedProcessing.items,
+          t: t as never,
+          onRetryTask: taskId => { void speedProcessing.retry(taskId).then(() => speedPreviewMedia.refresh()); },
+          onPlaybackStateChange: state => speedPreviewAudio.syncPlayback(state),
+        })
+      : null,
+    [speedEnabled, timeline, activeSourceClip, sourceAsset, previewKind, speedPreviewMedia.media, speedPreviewMedia.refresh, speedProcessing.items, speedProcessing.retry, speedPreviewAudio.syncPlayback, t, projectMedia.state.status],
+  );
+  const speedWaveformWindowForClip = useMemo(
+    () => speedEnabled
+      ? (clip: {readonly id: string; readonly assetId: string; readonly trackId: string; readonly startFrame: number; readonly durationFrames: number; readonly sourceInFrame?: number}, pixelsPerFrame: number, leftFrame: number, rightFrame: number) =>
+          buildSpeedWaveformWindow(clip as never, timeline?.fps || 30, pixelsPerFrame, leftFrame, rightFrame)
+      : undefined,
+    [speedEnabled, timeline?.fps],
+  );
+  const speedProjectClipWaveform = useMemo(
+    () => speedEnabled
+      ? (clip: AppTimelineClip, window: Parameters<typeof projectSpeedClipWaveformEntry>[2], entry: Parameters<typeof projectSpeedClipWaveformEntry>[3]) =>
+          projectSpeedClipWaveformEntry(clip as never, timeline?.fps || 30, window, entry)
+      : undefined,
+    [speedEnabled, timeline?.fps],
+  );
+  const speedRenderClipThumbnail = useMemo(
+    () => speedEnabled
+      ? (clip: AppTimelineClip, asset: AppAsset, widthPx: number, fps: number) =>
+          (clip as {timing?: unknown}).timing
+            ? <SpeedClipThumbnailStrip clip={clip as never} asset={asset as never} fps={fps} widthPx={widthPx} />
+            : null
+      : undefined,
+    [speedEnabled],
+  );
   const clipSource = (chosenClip && sourceForAsset(data, chosenClip.assetId)) as {asset: AppAsset; version: {id: string; number: number}; shot: {id: string; title: string} | null; node: {id: string} | null} | null;
   const rangeAsset = workspaceMode === 'editing' && quickAssetId ? sourceAsset : null;
   const rangeSelectionKey = `${currentProject.current}:${projectEpoch.current}:${workspaceMode}:${quickAssetId || ''}:${inspectorEpoch}`;
@@ -4557,11 +4748,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onRetry: (task: SceneShotsTask) => { void retryStoryboard(task); },
     onView: (task: SceneShotsTask) => { setShowTasks(false); void showStoryboard(task.id); } };
   const sceneTasks = scenes.state.tasks;
-  const processingProjectId = workbenchReady && online && timeline?.capabilities?.speed === true &&
-    timeline.projectId === currentProject.current && timeline.projectId === data.project?.id ? timeline.projectId : null;
-  const processingItems = useSpeedProcessingTasks({projectId: processingProjectId,
-    scope: JSON.stringify([editorSession.current, projectEpoch.current]), revision: timeline?.revision, read: rpc});
-  const processingTasks = speedProcessingTaskViews(processingItems, timeline?.clips ?? [], t);
   const sceneSummary = (asset: AppAsset | null | undefined) => asset ? <AssetSceneSummary asset={asset} state={scenes.state} controller={scenes.controller} onOpen={() => openSceneDetection(asset, false)} /> : null;
   const storyboardTask = storyboardBatch && storyboardBatch.projectId === data.project?.id ? sceneTasks.find((task): task is SceneShotsTask => task.id === storyboardBatch.taskId && task.kind === 'shots') ?? null : null;
   const storyboardShown = Boolean(storyboardTask?.state === 'succeeded' && workspaceMode === 'canvas');
@@ -4700,9 +4886,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // while they are queued/running.
   const clipAudioExports = data.exports.filter(item => item.mode === 'clip-audio');
   const activeClipAudioCount = clipAudioExports.filter(item => ['queued', 'running'].includes(item.status)).length;
-  const runningTaskCount = activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length +
-    processingTasks.filter(task => task.active).length;
-  const taskCount = runningTaskCount + activePending.length + activeTasks.length;
+  const activeSpeedProcessingCount = speedEnabled ? speedProcessing.items.filter(processingItemActive).length : 0;
+  const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activeSpeedProcessingCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
   const orderedExports = [...data.exports].filter(item => item.mode !== 'clip-audio').sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
   const saveIsDirty=Boolean(inspectorDirty||formatDirty||annotations.state?.dirtyCount);
@@ -5402,7 +5587,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         ...activeTasks.filter(item=>!item.acknowledged).map(item=>({id:`local:${item.id}`,label:t('shell.tasks'),status:renderMessage(statusDescriptor(item.status)),phase:'attention',tone:'warning'})),
         ...activePending.map(item=>({id:`pending:${item.origin||'legacy'}:${item.key}`,label:t('shell.tasks'),status:t('redesign.tasks.unknownHint'),phase:'attention',tone:'warning'})),
         ...sceneOverviewItems(sceneTasks, sceneTaskContext),
-        ...speedProcessingOverviewItems(processingTasks),
+        ...buildSpeedProcessingOverviewItems({
+          enabled: speedEnabled,
+          items: speedProcessing.items,
+          clipNameFor: clipId => format5ClipName(clipId),
+          t: t as never,
+          onCancel: taskId => { void speedProcessing.cancel(taskId); },
+          onRetry: taskId => { void speedProcessing.retry(taskId); },
+        }),
       ] as never} onOpenTasks={id => { openTasks(undefined, id); }} />
       <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" onClick={event => openGlobalSettings('agent', event?.nativeEvent)}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={event => openGlobalSettings('general', event?.nativeEvent)}><WorkbenchIcon name="settings" size={16} /></Button>
@@ -5458,7 +5650,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       {(!data.project || !nodes.length) && !loading && <CanvasEmptyState hasProject={Boolean(data.project)} onAddShot={addShot} onCreateProject={() => setShowCreate(true)} onCreateStructure={addStructure} structureBusy={Boolean(busy.structure)} onImportReference={() => fileInput.current?.click()} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
       {loading && <div className="canvas-loading"><span className="spinner" />{t('projects.opening')}</div>}
       <div className="canvas-controls"><WorkbenchTooltip content={t('shell.zoomOutCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomOut')} onClick={() => flow.zoomOut({ duration: 150 })}><Icon name="minus" size={16} /></Button></WorkbenchTooltip><span>{zoom}%</span><WorkbenchTooltip content={t('shell.zoomInCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomIn')} onClick={() => flow.zoomIn({ duration: 150 })}><Icon name="plus" size={16} /></Button></WorkbenchTooltip><i /><WorkbenchTooltip content={t('shell.fitCanvasHint')}><Button variant="ghost" className="icon-button" aria-label={t('shell.fitCanvas')} data-testid="fit-canvas" onClick={() => flow.fitView({ padding: flowFitPadding(canvasFitPadding(0.18)), duration: 350, maxZoom: 1 })}><Icon name="zoom" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`icon-button ${miniMap ? 'active' : ''}`} aria-label={t('shell.showMinimap')} aria-pressed={miniMap} onClick={() => setMiniMap(!miniMap)}><Icon name="grid" size={16} /></Button></div>
-      </>}</div> : <div className="preview-tab-panel"><Preview aspectFrame={aspectFrame} onRegisterMenuPlayback={registerMenuPlayback} onMenuStateChange={refreshMenuState} onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={(kind: string) => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob as never} pendingJob={latestRender as never} playhead={playhead} onSeek={setPlayhead} playbackClock={playbackClock} onPlaybackCommit={settlePlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame: number, scope?: string | null) => (sourceRanges.controller as unknown as {position(frame: number, scope?: string | null): void}).position(frame, scope)} onCaptureFrame={((() => (frameExtraction.controller as unknown as {capture(): unknown}).capture()) as never)} captureBusy={frameCaptureBusy(frameExtraction.state)} onDetectScenes={!sourceAsset || !projectSessionReady() || !online || auth !== true || loading ? undefined : () => { if (sourceAsset) openSceneDetection(sourceAsset as AppAsset, true); }} sceneDetectIssue={sourceAsset ? sceneSourceIssueMessage(sourceAsset as never) : null} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} canSeed={format5 ? false : Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={format5 ? undefined : () => mutateTimeline('timeline.seed', {}, timeline?.revision)} transformBox={clipTransformBox()} /></div>}</div>
+      </>}</div> : <div className="preview-tab-panel"><Preview aspectFrame={aspectFrame} onRegisterMenuPlayback={registerMenuPlayback} onMenuStateChange={refreshMenuState} onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={(kind: string) => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob as never} pendingJob={latestRender as never} playhead={playhead} onSeek={setPlayhead} playbackClock={playbackClock} onPlaybackCommit={settlePlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame: number, scope?: string | null) => (sourceRanges.controller as unknown as {position(frame: number, scope?: string | null): void}).position(frame, scope)} onCaptureFrame={((() => (frameExtraction.controller as unknown as {capture(): unknown}).capture()) as never)} captureBusy={frameCaptureBusy(frameExtraction.state)} onDetectScenes={!sourceAsset || !projectSessionReady() || !online || auth !== true || loading ? undefined : () => { if (sourceAsset) openSceneDetection(sourceAsset as AppAsset, true); }} sceneDetectIssue={sourceAsset ? sceneSourceIssueMessage(sourceAsset as never) : null} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} canSeed={format5 ? false : Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={format5 ? undefined : () => mutateTimeline('timeline.seed', {}, timeline?.revision)} speedPreview={clipSpeedPreview} transformBox={clipTransformBox()} /></div>}</div>
     {workspaceMode === 'canvas' && !format5 && <StoryboardStrip scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} open={sequenceOpen} onOpenChange={setSequenceOpen} shots={sortedShots as never[]} versions={data.versions} selectedId={selectedId || null} selectedIds={canvasEditingEnabled ? canvasSelectedIds : undefined} reordering={Boolean(busy.reorder)} assetDragType={ASSET_DRAG} onSelect={async shotId => { if (!await inspect(shotId)) return; flow.fitView({ nodes: [{ id: shotId }], padding: flowFitPadding(canvasFitPadding(.1)), duration: 250, maxZoom: 1 }); }} onReorder={reorder} onAddShot={addShot} timelineStatuses={shotStatuses} append={timeline ? { count: appendCandidates.length, disabledReason: !projectSessionReady() || !online || auth !== true || loading ? t('timeline.history.offline') : null, busy: timelineBusy, onAppend: () => { void appendShotsToTimeline(); } } : undefined} onViewInEditing={shotId => { void viewShotInEditing(shotId); }} renderThumbnail={shot => <Media version={data.versions.find(version => version.id === shot.selectedVersionId)} asset={data.assets.find(asset => asset.id === (shot as {referenceAssetIds?: string[]}).referenceAssetIds?.[0])} />} />}
     {canvasEditingEnabled && canvasEditing.toast && <CanvasEditToast kind={canvasEditing.toast.kind} count={canvasEditing.toast.count}
       placement={workspaceMode} undoConflict={canvasEditing.history?.undoConflict} canUndo={canvasEditing.canUndoToast} onUndo={() => { void canvasEditing.undoToast(); }} onClose={canvasEditing.dismissToast} />}
@@ -5544,10 +5736,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onRevealOnBoard={() => format5RevealGenerationShot(editingGenerateShot.id)}
       rpc={(operation, input) => rpc(operation, input)}
       onDialogueApplied={() => { const project = currentProject.current; if (!project) return;
-        void refresh(project); void format5RefreshHistory(); void format5LoadBoard(); }} />: displayedClipInspector ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={displayedClipInspector.projectId} targets={[{kind:'timeline_clip',id:displayedClipInspector.clip.id,revision:displayedClipInspector.timeline.revision ?? 0}]} canRelease={() => !clipDraftRef.current?.hasUnsaved() && !clipDraftRef.current?.hasPendingComposition() && !clipDraftRef.current?.getState().candidate && !clipDraftRef.current?.getState().businessPending && !clipDirty} onDiscard={()=>{const controller=clipDraftRef.current;if(!controller)return;const token=controller.capture();if(token.clipId===displayedClipInspector.clip.id)return controller.discard(token);}}><TimelineInspector key={displayedClipInspector.key} format5={format5 && !clipInspectorRetained} onToggleClipMute={clipInspectorRetained ? undefined : (clipId => { void format5ToggleClipMute(clipId, !(displayedClipInspector?.clip.muted === true)); })} onSeparateSound={clipInspectorRetained ? undefined : (clipId => { void format5SeparateClipSound(clipId); })} onSaveClipAudio={clipInspectorRetained ? undefined : (clipId => { void saveClipAudioAsset(clipId); })} sequence={format5 && displayedClipInspector ? format5InspectorSequence(timeline, data.shots, data.versions, displayedClipInspector.clip.id, {onRevealShot: () => { void format5RevealShot(displayedClipInspector.clip.id); }, onVersionChoice: choice => { void format5ChooseVersion(displayedClipInspector.clip.id, choice); }}) : null} crossfadeCandidates={clipInspectorRetained ? undefined : timelineCrossfadeCandidates(displayedClipInspector.timeline.clips, data.assets, displayedClipInspector.clip.id, new Set(trackLocksRef.current[currentProject.current || ''] || []))} onCrossfade={clipInspectorRetained ? undefined : crossfadeTimelineClips} onSetTransform={clipInspectorRetained ? undefined : setTimelineClipTransform} transformFrame={clipTransformFrame(displayedClipInspector.clip, playhead)} transitionContext={clipTransitionContext()} onSetTransition={clipInspectorRetained ? undefined : setTimelineClipTransition} loudnessContext={clipLoudnessContext as never} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={(clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot?.title} · V${clipSource.version.number}` : clipSource?.asset?.name) as string | undefined} replacementContext={format5 ? undefined : clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id) as never} onReplaceSource={format5 ? undefined : replaceTimelineClipSource as never} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ collaboration: displayedClipInspector.collaboration, scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId,   audioRoleEditable, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true,  }} draftConnected={!clipInspectorRetained && online && auth === true && !loading && !nativeLeaseRevoked.current} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={((clipId: string, patch: Record<string, unknown>, revision: number, draftOptions: unknown) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: (draftOptions as {canExecute?: () => boolean} | undefined)?.canExecute })) as never} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={format5 ? undefined : async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onSplit={splitTimelineClip} splitDisabled={format5 ? !format5SplitState?.canSplit : !splitState.canSplit || clipInspectorRetained} onShowAsset={() => { if (!clipInspectorRetained && displayedClipInspector.projectId && displayedClipInspector.clip.assetId) void revealImageAsset(displayedClipInspector.clip.assetId, displayedClipInspector.projectId); }} onDirtyChange={setClipDirty} busy={timelineBusy||lockedTrackIds.has(displayedClipInspector.clip.trackId)} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /></AgentEditingBoundary> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary autoAcquire workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={subtitles.state?.projectId} targets={subtitles.state?.cueId ? [{kind:'timeline_subtitle',id:subtitles.state.cueId,revision:subtitles.state.baseRevision ?? 0}] : subtitles.state?.projectId ? [{kind:'timeline',id:subtitles.state.projectId,revision:subtitles.state.baseRevision ?? 0}] : []} canRelease={() => !subtitlesRef.current?.controller.hasUnsaved() && !subtitlesRef.current?.controller.getState().uncertain} onDiscard={()=>subtitles.controller.discardDraft(subtitles.state?.scope)}><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob as never} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane><AgentDockPane id="properties-format-pane" visible={data.projectFormatVersion !== 4 && propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={timelineFormat.state?.projectId} targets={timelineFormat.state?.projectId ? [{kind:'timeline',id:timelineFormat.state.projectId,revision:timelineFormat.state.base?.timelineRevision ?? 0}] : []} canRelease={() => !timelineFormatRef.current?.controller.hasUnsaved() && !timelineFormatRef.current?.controller.getState().uncertain} onDiscard={()=>timelineFormat.controller.discardDraft(timelineFormat.state?.scope)}><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{<AgentWorkspace isAdmissionAllowed={()=>!nativeLeaseRevoked.current && !projectEntryIdentityRef.current!.getState().identityBlocked} onReviewProjectRules={showProjectRules} workspaceScope={editorSession.current||'unverified'} onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} timelineFps={timeline?.fps} targetName={(kind,id) => { if(kind==='shot')return data.shots.find(item=>item.id===id)?.title; if(kind==='node')return data.nodes.find(item=>item.id===id)?.label; if(kind==='asset')return data.assets.find(item=>item.id===id)?.name; if(kind==='timeline_track')return timeline?.tracks.find(item=>item.id===id)?.name; if(kind==='timeline_subtitle')return timeline?.subtitles?.cues.find(item=>item.id===id)?.text; if(kind==='timeline_clip'){const clip=timeline?.clips.find(item=>item.id===id);return data.assets.find(item=>item.id===clip?.assetId)?.name;} return undefined; }} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason as never} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor as never} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={(projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }} onTaskApplied={(projectId, snapshot, landed = []) => { if (currentProject.current === projectId) { const fresh = changeMarks.accept(snapshot, landed); const epoch = projectEpoch.current; void refresh(projectId).then(next => { if (next && currentProject.current === projectId && projectEpoch.current === epoch) changeMarks.show(fresh); }); } }} onTaskOpenRequests={selectedId => openAgentRequests(selectedId)} onTaskLocate={change => { void locateTaskChange(change); }} onMioFollowFocus={receiveMioFollowFocus} onMioFollowLocate={locateMioFollowTarget} mioFollowTargetExists={mioFollowTargetExists} taskReveal={taskReveal} shotNumber={id => { const index = sortedShots.findIndex(shot => shot.id === id); return index < 0 ? undefined : index + 1; }} onTaskReview={(projectId, entries) => { if (currentProject.current === projectId) reviewMarks.show(entries); }} onTaskReviewLocate={entry => { void locateReviewIssue(entry); }} reviewReveal={reviewReveal} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane></CollapsibleContent></Collapsible>
+        void refresh(project); void format5RefreshHistory(); void format5LoadBoard(); }} />: displayedClipInspector ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={displayedClipInspector.projectId} targets={[{kind:'timeline_clip',id:displayedClipInspector.clip.id,revision:displayedClipInspector.timeline.revision ?? 0}]} canRelease={() => !clipDraftRef.current?.hasUnsaved() && !clipDraftRef.current?.hasPendingComposition() && !clipDraftRef.current?.getState().candidate && !clipDraftRef.current?.getState().businessPending && !clipDirty} onDiscard={()=>{const controller=clipDraftRef.current;if(!controller)return;const token=controller.capture();if(token.clipId===displayedClipInspector.clip.id)return controller.discard(token);}}><TimelineInspector key={displayedClipInspector.key} format5={format5 && !clipInspectorRetained} requestedOpenGroup={speedEnabled ? requestedInspectorGroup : null} speedSection={speedEnabled && !clipInspectorRetained && clipSupportsSpeed(displayedClipInspector.clip as never, displayedClipInspector.asset as never) ? <ClipSpeedSection clip={displayedClipInspector.clip as never} fps={displayedClipInspector.timeline.fps || 30} playhead={effectivePlayhead} disabled={Boolean(timelineBusy || format5SessionBusy || lockedTrackIds.has(displayedClipInspector.clip.trackId) || !online || auth !== true || loading)} processing={selectClipProcessingItem(speedProcessing.items, displayedClipInspector.clip.id)} processingBusy={Boolean(selectClipProcessingItem(speedProcessing.items, displayedClipInspector.clip.id) && speedProcessing.busyTaskIds.has(selectClipProcessingItem(speedProcessing.items, displayedClipInspector.clip.id)!.taskId))} onCommitSpeed={setting => format5SetClipSpeed(displayedClipInspector.clip.id, setting)} onRetryProcessing={taskId => { void speedProcessing.retry(taskId); }} /> : undefined} onToggleClipMute={clipInspectorRetained ? undefined : (clipId => { void format5ToggleClipMute(clipId, !(displayedClipInspector?.clip.muted === true)); })} onSeparateSound={clipInspectorRetained ? undefined : (clipId => { void format5SeparateClipSound(clipId); })} onSaveClipAudio={clipInspectorRetained ? undefined : (clipId => { void saveClipAudioAsset(clipId); })} sequence={format5 && displayedClipInspector ? format5InspectorSequence(timeline, data.shots, data.versions, displayedClipInspector.clip.id, {onRevealShot: () => { void format5RevealShot(displayedClipInspector.clip.id); }, onVersionChoice: choice => { void format5ChooseVersion(displayedClipInspector.clip.id, choice); }}) : null} crossfadeCandidates={clipInspectorRetained ? undefined : timelineCrossfadeCandidates(displayedClipInspector.timeline.clips, data.assets, displayedClipInspector.clip.id, new Set(trackLocksRef.current[currentProject.current || ''] || []))} onCrossfade={clipInspectorRetained ? undefined : crossfadeTimelineClips} onSetTransform={clipInspectorRetained ? undefined : setTimelineClipTransform} transformFrame={clipTransformFrame(displayedClipInspector.clip, playhead)} transitionContext={clipTransitionContext()} onSetTransition={clipInspectorRetained ? undefined : setTimelineClipTransition} loudnessContext={clipLoudnessContext as never} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={(clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot?.title} · V${clipSource.version.number}` : clipSource?.asset?.name) as string | undefined} replacementContext={format5 ? undefined : clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id) as never} onReplaceSource={format5 ? undefined : replaceTimelineClipSource as never} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ collaboration: displayedClipInspector.collaboration, scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId,   audioRoleEditable, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true,  }} draftConnected={!clipInspectorRetained && online && auth === true && !loading && !nativeLeaseRevoked.current} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={((clipId: string, patch: Record<string, unknown>, revision: number, draftOptions: unknown) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: (draftOptions as {canExecute?: () => boolean} | undefined)?.canExecute })) as never} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={format5 ? undefined : async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onSplit={splitTimelineClip} splitDisabled={format5 ? !format5SplitState?.canSplit : !splitState.canSplit || clipInspectorRetained} onShowAsset={() => { if (!clipInspectorRetained && displayedClipInspector.projectId && displayedClipInspector.clip.assetId) void revealImageAsset(displayedClipInspector.clip.assetId, displayedClipInspector.projectId); }} onDirtyChange={setClipDirty} busy={timelineBusy||lockedTrackIds.has(displayedClipInspector.clip.trackId)} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /></AgentEditingBoundary> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary autoAcquire workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={subtitles.state?.projectId} targets={subtitles.state?.cueId ? [{kind:'timeline_subtitle',id:subtitles.state.cueId,revision:subtitles.state.baseRevision ?? 0}] : subtitles.state?.projectId ? [{kind:'timeline',id:subtitles.state.projectId,revision:subtitles.state.baseRevision ?? 0}] : []} canRelease={() => !subtitlesRef.current?.controller.hasUnsaved() && !subtitlesRef.current?.controller.getState().uncertain} onDiscard={()=>subtitles.controller.discardDraft(subtitles.state?.scope)}><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob as never} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane><AgentDockPane id="properties-format-pane" visible={data.projectFormatVersion !== 4 && propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={timelineFormat.state?.projectId} targets={timelineFormat.state?.projectId ? [{kind:'timeline',id:timelineFormat.state.projectId,revision:timelineFormat.state.base?.timelineRevision ?? 0}] : []} canRelease={() => !timelineFormatRef.current?.controller.hasUnsaved() && !timelineFormatRef.current?.controller.getState().uncertain} onDiscard={()=>timelineFormat.controller.discardDraft(timelineFormat.state?.scope)}><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{<AgentWorkspace isAdmissionAllowed={()=>!nativeLeaseRevoked.current && !projectEntryIdentityRef.current!.getState().identityBlocked} onReviewProjectRules={showProjectRules} workspaceScope={editorSession.current||'unverified'} onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} timelineFps={timeline?.fps} targetName={(kind,id) => { if(kind==='shot')return data.shots.find(item=>item.id===id)?.title; if(kind==='node')return data.nodes.find(item=>item.id===id)?.label; if(kind==='asset')return data.assets.find(item=>item.id===id)?.name; if(kind==='timeline_track')return timeline?.tracks.find(item=>item.id===id)?.name; if(kind==='timeline_subtitle')return timeline?.subtitles?.cues.find(item=>item.id===id)?.text; if(kind==='timeline_clip'){const clip=timeline?.clips.find(item=>item.id===id);return data.assets.find(item=>item.id===clip?.assetId)?.name;} return undefined; }} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason as never} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor as never} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={(projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }} onTaskApplied={(projectId, snapshot, landed = []) => { if (currentProject.current === projectId) { const fresh = changeMarks.accept(snapshot, landed); const epoch = projectEpoch.current; void refresh(projectId).then(next => { if (next && currentProject.current === projectId && projectEpoch.current === epoch) changeMarks.show(fresh); }); } }} onTaskOpenRequests={selectedId => openAgentRequests(selectedId)} onTaskLocate={change => { void locateTaskChange(change); }} onMioFollowFocus={receiveMioFollowFocus} onMioFollowLocate={locateMioFollowTarget} mioFollowTargetExists={mioFollowTargetExists} taskReveal={taskReveal} shotNumber={id => { const index = sortedShots.findIndex(shot => shot.id === id); return index < 0 ? undefined : index + 1; }} onTaskReview={(projectId, entries) => { if (currentProject.current === projectId) reviewMarks.show(entries); }} onTaskReviewLocate={entry => { void locateReviewIssue(entry); }} reviewReveal={reviewReveal} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane></CollapsibleContent></Collapsible>
     {panelOverlay === 'inspector' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-inspector" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('inspector', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>
-    {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={timelineContainerVisible} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline onClipContextMenu={openClipContextMenu} onRegisterMenuRemoval={registerMenuRemoval} onMenuStateChange={refreshMenuState} lockedTrackIds={lockedTrackIds} onToggleTrackLock={id=>{const projectId=currentProject.current;if(!projectId||loading||!timeline?.tracks.some(track=>track.id===id))return;setTrackLocks(previous=>{const ids=new Set(previous[projectId]||[]);if(ids.has(id))ids.delete(id);else ids.add(id);return {...previous,[projectId]:[...ids]};});}} staleClips={staleClips} notice={sourceBanner} editUiProjection={format5EditProjection} dialogueCues={format5 ? format5DialogueCues.marks : null} conflictClipIds={toast?.conflictIds?.length ? new Set(toast.conflictIds) : null} onPreviewDropConflict={format5 ? previewFormat5DropConflict : undefined}  key={data.project.id} viewState={view.editing as never} onViewStateChange={(patch: Record<string, unknown>, options?: unknown) => { if (data.project?.id === currentProject.current && viewRef.current!.activeMode === 'editing') updateView('editing', patch, options as {passive?: boolean}); }} timeline={timeline} historyState={format5HistoryState} onHistory={changeTimelineHistory} splitState={format5 ? format5SplitState! : splitState} getSplitStateAt={format5 ? getFormat5SplitStateAt : getSplitStateAt} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={(cueId: string) => openSubtitle(cueId)} onAddSubtitle={(frame: number) => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddTransition={addTimelineTransition} transitionAddBlocked={clipDirty || clipCompositionPending ? msg('clip.transition.saveFirst') : null} onAddAsset={addTimelineAsset as never} onAdmitClipDrag={clipId => { if (agentEditingTargetActive(currentProject.current || '', 'timeline_clip', clipId)) return true; void acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return true; }} onMoveClip={moveTimelineClip as never} removalBlocked={clipDirty || subtitleDirty || formatDirty || timelinePending || !online || loading || auth !== true} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={format5 ? undefined : async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onTrackAdd={addTimelineTrack} onTrackUpdate={updateTimelineTrack} onSeed={format5 ? undefined : () => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onPasteClipboard={format5 ? () => { void format5PasteTimelineClip(); } : undefined} clipboardPasteAvailable={format5ClipboardReady} onGenerateInTimeline={format5 ? format5PlaceGeneration : undefined} onSeek={seekTimelineSound} playhead={effectivePlayhead} playbackClock={playbackClock} presentationVisible={timelineContainerVisible} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={toggleTimelinePanel} busy={timelineBusy || format5SessionBusy} canSeed={format5 ? false : Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{format5 && <EditUiNoticeBar notice={format5Notice} onUndo={() => { void format5UndoNotice(); }} onDismiss={() => setFormat5Notice(null)} />}{format5 && <CopyMoveConfirmDialog request={format5CopyRequest} onConfirm={() => { void format5ConfirmCopy(); }} onCancel={format5CancelCopy} />}{format5 && clipContextMenu && (() => {
+    {workspaceMode === 'editing' && data.project && !loading && <><PanelBoundary name="timeline" visible={timelineContainerVisible} scope={`${currentProject.current}:editing`} fallbackFocus={panelFallback('timeline')}>{resizeHandle('timeline', 'timelineHeight')}<Timeline onClipContextMenu={openClipContextMenu} onRegisterMenuRemoval={registerMenuRemoval} onMenuStateChange={refreshMenuState} lockedTrackIds={lockedTrackIds} onToggleTrackLock={id=>{const projectId=currentProject.current;if(!projectId||loading||!timeline?.tracks.some(track=>track.id===id))return;setTrackLocks(previous=>{const ids=new Set(previous[projectId]||[]);if(ids.has(id))ids.delete(id);else ids.add(id);return {...previous,[projectId]:[...ids]};});}} staleClips={staleClips} notice={sourceBanner} editUiProjection={format5EditProjection} dialogueCues={format5 ? format5DialogueCues.marks : null} conflictClipIds={toast?.conflictIds?.length ? new Set(toast.conflictIds) : null} onPreviewDropConflict={format5 ? previewFormat5DropConflict : undefined} clipSpeedViews={clipSpeedViews} renderClipThumbnail={speedRenderClipThumbnail} waveformWindowForClip={speedWaveformWindowForClip} projectClipWaveform={speedProjectClipWaveform}  key={data.project.id} viewState={view.editing as never} onViewStateChange={(patch: Record<string, unknown>, options?: unknown) => { if (data.project?.id === currentProject.current && viewRef.current!.activeMode === 'editing') updateView('editing', patch, options as {passive?: boolean}); }} timeline={timeline} historyState={format5HistoryState} onHistory={changeTimelineHistory} splitState={format5 ? format5SplitState! : splitState} getSplitStateAt={format5 ? getFormat5SplitStateAt : getSplitStateAt} onSplit={splitTimelineClip} assets={data.assets} selectedClipId={propertiesPage === 'subtitle' ? null : selectedClipId} selectedCueId={propertiesPage === 'subtitle' ? subtitles.state?.cueId : null} onSelectSubtitle={(cueId: string) => openSubtitle(cueId)} onAddSubtitle={(frame: number) => openSubtitle(null, frame)} subtitleBlocked={!subtitles.state?.connected} onSelectClip={selectClip} onAddTransition={addTimelineTransition} transitionAddBlocked={clipDirty || clipCompositionPending ? msg('clip.transition.saveFirst') : null} onAddAsset={addTimelineAsset as never} onAdmitClipDrag={clipId => { if (agentEditingTargetActive(currentProject.current || '', 'timeline_clip', clipId)) return true; void acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return true; }} onMoveClip={moveTimelineClip as never} removalBlocked={clipDirty || subtitleDirty || formatDirty || timelinePending || !online || loading || auth !== true} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={format5 ? undefined : async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onTrackAdd={addTimelineTrack} onTrackUpdate={updateTimelineTrack} onSeed={format5 ? undefined : () => mutateTimeline('timeline.seed', {}, timeline?.revision)} onRender={renderTimeline} onPasteClipboard={format5 ? () => { void format5PasteTimelineClip(); } : undefined} clipboardPasteAvailable={format5ClipboardReady} onGenerateInTimeline={format5 ? format5PlaceGeneration : undefined} onSeek={seekTimelineSound} playhead={effectivePlayhead} playbackClock={playbackClock} presentationVisible={timelineContainerVisible} visible={panelVisible('timeline')} collapsed={timelineCollapsed} onCollapse={toggleTimelinePanel} busy={timelineBusy || format5SessionBusy} canSeed={format5 ? false : Boolean(sortedShots.length && selectedCount === sortedShots.length)} renderJob={latestRender} /></PanelBoundary>{(format5 || speedEnabled) && <EditUiNoticeBar notice={format5Notice} onUndo={() => { void format5UndoNotice(); }} onDismiss={() => setFormat5Notice(null)} />}{format5 && <CopyMoveConfirmDialog request={format5CopyRequest} onConfirm={() => { void format5ConfirmCopy(); }} onCancel={format5CancelCopy} />}{(format5 || speedEnabled) && clipContextMenu && (() => {
         const clip = timeline?.clips.find(item => item.id === clipContextMenu.clipId);
         if (!clip) return null;
         const asset = data.assets.find(item => item.id === clip.assetId);
@@ -5557,8 +5749,18 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         const clipMain = (clip as {trackId?: string; sequenceSource?: {kind?: string}});
         const generateAround = format5 && clipMain.trackId === (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId
           && clipMain.sequenceSource?.kind === 'shot';
+        const liveFrame = playbackClock.getSnapshot() ?? effectivePlayhead;
+        const speedMenu = speedEnabled ? {
+          showSpeedActions: clipSupportsSpeed(clip as never, asset as never),
+          reversed: settingFromClip(clip as never).direction === 'reverse',
+          canFreeze: canFreezeClipAtPlayhead(clip as never, asset as never, track?.kind, liveFrame),
+          onOpenSpeed: (id: string) => openClipSpeedInInspector(id),
+          onToggleReverse: (id: string) => { void format5ToggleClipReverse(id); },
+          onFreeze: (id: string) => { void format5FreezeTimelineClip(id); },
+          onCopyAsNewShot: (id: string) => { void format5CopyClipAsNewShot(id); },
+        } : null;
         return <TimelineClipContextMenu anchor={clipContextMenu} plan={plan} canSplit={canSplit}
-          busy={format5SessionBusy} onSplit={() => { void splitTimelineClip(); }}
+          busy={format5SessionBusy} speedMenu={speedMenu} onSplit={() => { void splitTimelineClip(); }}
           {...(generateAround ? {
             onGenerateBefore: () => { void format5GenerateAroundClip(clip.id, 'before'); },
             onGenerateAfter: () => { void format5GenerateAroundClip(clip.id, 'after'); },
@@ -5589,7 +5791,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
     />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
-    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} processing={processingTasks} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={runningTaskCount} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
+    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + activeSpeedProcessingCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} speedProcessing={buildSpeedProcessingTaskCenterEntries({ enabled: speedEnabled, items: speedProcessing.items, busyTaskIds: speedProcessing.busyTaskIds, clipNameFor: clipId => format5ClipName(clipId), t: t as never, onRetry: taskId => { void speedProcessing.retry(taskId); }, onCancel: taskId => { void speedProcessing.cancel(taskId); } })} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {!nativeWindow && showCreate && <CreateProject newProjectFormatVersion={projectEntryIdentityRef.current!.getState().snapshot?.newProjectFormatVersion} onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}
