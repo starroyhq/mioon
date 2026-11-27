@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="7d59140d6aa01f4b7bd01bce20220df73744d3791e7b1b6ba25d011e781256f9";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="2a5314e32a32a637e91b6da43f8706a6e0e0e4dbfc9be0aac33deafd06de004f";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -2831,29 +2831,56 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "const": "timeline"
      },
      "operation": {
-      "type": "object",
-      "properties": {
-       "kind": {
-        "type": "string",
-        "const": "timeline-format"
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "timeline-format"
+         },
+         "presetId": {
+          "type": "string",
+          "enum": [
+           "portrait_1080",
+           "landscape_1080",
+           "square_1080",
+           "portrait_720",
+           "landscape_720",
+           "square_720"
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "presetId"
+        ],
+        "additionalProperties": false
        },
-       "presetId": {
-        "type": "string",
-        "enum": [
-         "portrait_1080",
-         "landscape_1080",
-         "square_1080",
-         "portrait_720",
-         "landscape_720",
-         "square_720"
-        ]
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "timeline-fps"
+         },
+         "fps": {
+          "type": "number",
+          "enum": [
+           24,
+           25,
+           30,
+           60
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "fps"
+        ],
+        "additionalProperties": false
        }
-      },
-      "required": [
-       "kind",
-       "presetId"
-      ],
-      "additionalProperties": false
+      ]
      }
     },
     "required": [
@@ -5038,29 +5065,56 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "const": "timeline"
        },
        "operation": {
-        "type": "object",
-        "properties": {
-         "kind": {
-          "type": "string",
-          "const": "timeline-format"
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-format"
+           },
+           "presetId": {
+            "type": "string",
+            "enum": [
+             "portrait_1080",
+             "landscape_1080",
+             "square_1080",
+             "portrait_720",
+             "landscape_720",
+             "square_720"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "presetId"
+          ],
+          "additionalProperties": false
          },
-         "presetId": {
-          "type": "string",
-          "enum": [
-           "portrait_1080",
-           "landscape_1080",
-           "square_1080",
-           "portrait_720",
-           "landscape_720",
-           "square_720"
-          ]
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-fps"
+           },
+           "fps": {
+            "type": "number",
+            "enum": [
+             24,
+             25,
+             30,
+             60
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "fps"
+          ],
+          "additionalProperties": false
          }
-        },
-        "required": [
-         "kind",
-         "presetId"
-        ],
-        "additionalProperties": false
+        ]
        }
       },
       "required": [
@@ -7597,6 +7651,29 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "fps-set"
+     },
+     "fps": {
+      "type": "number",
+      "enum": [
+       24,
+       25,
+       30,
+       60
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "fps"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "split-at-scenes"
      },
      "assetId": {
@@ -9836,29 +9913,56 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "const": "timeline"
        },
        "operation": {
-        "type": "object",
-        "properties": {
-         "kind": {
-          "type": "string",
-          "const": "timeline-format"
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-format"
+           },
+           "presetId": {
+            "type": "string",
+            "enum": [
+             "portrait_1080",
+             "landscape_1080",
+             "square_1080",
+             "portrait_720",
+             "landscape_720",
+             "square_720"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "presetId"
+          ],
+          "additionalProperties": false
          },
-         "presetId": {
-          "type": "string",
-          "enum": [
-           "portrait_1080",
-           "landscape_1080",
-           "square_1080",
-           "portrait_720",
-           "landscape_720",
-           "square_720"
-          ]
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-fps"
+           },
+           "fps": {
+            "type": "number",
+            "enum": [
+             24,
+             25,
+             30,
+             60
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "fps"
+          ],
+          "additionalProperties": false
          }
-        },
-        "required": [
-         "kind",
-         "presetId"
-        ],
-        "additionalProperties": false
+        ]
        }
       },
       "required": [
@@ -19250,6 +19354,29 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "presetId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "fps-set"
+     },
+     "fps": {
+      "type": "number",
+      "enum": [
+       24,
+       25,
+       30,
+       60
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "fps"
     ],
     "additionalProperties": false
    },

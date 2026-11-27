@@ -2,11 +2,12 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import type {ProjectVersionDifference, ProjectVersionDifferenceReasonCode} from '../../../contracts/src/project-version-operations.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
+import {TIMELINE_FPS_READER_FEATURE} from '../../../contracts/src/project-reader-requirements.ts';
 import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {readProjectContentStamp} from '../project-file/content-stamp.ts';
-import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION, type ProjectFileFormat} from '../project-file/schema/databases.ts';
 import {canonicalJson, FORMAT5_TIMELINE_TABLES, primaryKeys, readSnapshotProjectFormat, rowKey, snapshotCellValue, snapshotTablesFor, tableColumns, validateProjectDocument} from './document.ts';
 import type {ProjectDocument, SnapshotRow, SnapshotTable} from './document.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from '../timeline-receipt-project.ts';
@@ -215,6 +216,17 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
   const format = readSnapshotProjectFormat(store.db);
   if (saved.projectFormatVersion !== format || current.projectFormatVersion !== format)
     fail('PROJECT_VERSION_SNAPSHOT_INVALID', '版本预览必须使用当前项目的格式。');
+  const format6Dev = format === FORMAT6_PROJECT_SCHEMA_VERSION && process.env.MIOON_FORMAT6_DEV === '1';
+  if (format6Dev) {
+    const currentTimeline = documentRows(current, 'timelines')[0], savedTimeline = documentRows(saved, 'timelines')[0];
+    if (currentTimeline && savedTimeline) {
+      const currentFps = data(currentTimeline).fps, savedFps = data(savedTimeline).fps;
+      if (currentFps !== savedFps) {
+        fail('TIMELINE_FORMAT_LOCKED', '不能恢复到使用其他时间线帧率的命名版本。',
+          {reason: 'PROJECT_VERSION_CLOCK_MISMATCH', currentFps, savedFps});
+      }
+    }
+  }
   const empty = options.executionDomain === 'empty';
   const touched = empty ? new Set<string>() : mioTargets(store, saved, mioChangeRowid, versionCreatedAt);
   const differences = new Map<string, ProjectVersionDifference>(), predicted = new Map<Table, Map<string, SnapshotRow>>();
@@ -227,6 +239,13 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       if (key.length > 4096) fail('PROJECT_VERSION_PREVIEW_LIMIT', '对象标识超过预览上限，未截断标识。');
       const before = now.get(key), original = old.get(key), identity = token(table, key);
       let after = original, keptLocation = false;
+      if (format6Dev && table === 'projects' && before && after) {
+        const currentFeatures = data(before).requiredReaderFeatures;
+        // A saved 30 fps version may predate a clock edit that is still in history.
+        if (Array.isArray(currentFeatures) && currentFeatures.includes(TIMELINE_FPS_READER_FEATURE)) {
+          after = {...after, data: canonicalJson({...data(after), requiredReaderFeatures: currentFeatures})};
+        }
+      }
       if (table === 'assets' && before && after) {
         const value = data(before), previous = data(after);
         if (mediaReferenceSchema.safeParse(value.reference).success && Number.isSafeInteger(value.referenceRevision) && Number(value.referenceRevision) >= 1) {

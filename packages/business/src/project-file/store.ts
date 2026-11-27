@@ -8,7 +8,9 @@ import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './schema/databases.ts';
-import {assertProjectReaderRequirements} from './reader-requirements.ts';
+import {assertProjectReaderRequirements, readProjectReaderState} from './reader-requirements.ts';
+import {TIMELINE_FPS_READER_FEATURE} from '../../../contracts/src/project-reader-requirements.ts';
+import {isTimelineFps, type TimelineFps} from '../../../contracts/src/timeline-fps.ts';
 import {fenceFormat5ProjectContent} from './format5-content.ts';
 import {putFormat5TimelineInside, readFormat5TimelineRecord} from './format5-timeline.ts';
 import {readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
@@ -34,6 +36,70 @@ export function isProjectStore(value: unknown): value is ProjectStore {
   return isProjectDatabase(connection.db) && store.db === connection.db && store.root === connection.projectDir
     && store.projectId === connection.projectId && store.projectFile === connection.projectFile && store.projectDir === connection.projectDir
     && store.localDir === connection.localDir && store.cacheDir === connection.cacheDir && store.tempDir === connection.tempDir;
+}
+
+type TimelineFpsChangeMode = 'edit' | 'history';
+const timelineFpsWrites = new WeakMap<ProjectStore, {from: TimelineFps; to?: TimelineFps}>();
+
+type TimelineFpsLockReason = 'TIMELINE_NOT_EMPTY' | 'TIMELINE_CONTENT_PREVIOUSLY_EXISTS' | 'FROZEN_TIMELINE_OUTPUT';
+function timelineFpsLocked(reason: TimelineFpsLockReason): never {
+  const message = reason === 'TIMELINE_NOT_EMPTY' ? '有片段或字幕的时间线不能修改帧率。'
+    : reason === 'FROZEN_TIMELINE_OUTPUT' ? '已有使用当前帧率的导出记录，不能修改帧率。' : '时间线曾经放入片段或字幕，帧率已经固定。';
+  throw new AppError('TIMELINE_FPS_LOCKED', message, 409, {reason});
+}
+
+function hasTimelineContent(store: ProjectStore): boolean {
+  return !!store.db.prepare(`SELECT 1 FROM project.timeline_clips WHERE projectId=?
+    UNION ALL SELECT 1 FROM project.timeline_cues WHERE projectId=? LIMIT 1`).get(store.projectId, store.projectId);
+}
+
+export function format6TimelineFpsChangeBlock(store: ProjectStore, mode: TimelineFpsChangeMode): TimelineFpsLockReason | 'FORMAT_REQUIRED' | undefined {
+  if (process.env.MIOON_FORMAT6_DEV !== '1' || store.db.prepare('PRAGMA project.user_version').get()?.user_version !== FORMAT6_PROJECT_SCHEMA_VERSION) {
+    return 'FORMAT_REQUIRED';
+  }
+  if (hasTimelineContent(store)) return 'TIMELINE_NOT_EMPTY';
+  // Clip and cue revision rows survive normal removal and undo.
+  if (mode === 'edit' && store.db.prepare(`SELECT 1 FROM project.agent_task_target_revisions_v2
+    WHERE projectId=? AND kind IN ('timeline_clip','timeline_subtitle') LIMIT 1`).get(store.projectId)) {
+    return 'TIMELINE_CONTENT_PREVIOUSLY_EXISTS';
+  }
+  // History may pass through the empty pre-content state. Retained exports
+  // and their replay receipts still reference the clock in effect at acceptance.
+  if (store.db.prepare(`SELECT 1 FROM main.exports
+    WHERE projectId=? AND CASE WHEN json_valid(data) THEN json_extract(data,'$.mode') END IN ('timeline','clip-audio')
+    UNION ALL SELECT 1 FROM main.timeline_requests
+    WHERE CASE WHEN json_valid(response) THEN json_extract(response,'$.mode') END='timeline'
+      AND CASE WHEN json_valid(response) THEN json_extract(response,'$.projectId') END=? LIMIT 1`).get(store.projectId, store.projectId)) {
+    return 'FROZEN_TIMELINE_OUTPUT';
+  }
+}
+
+export function assertFormat6TimelineFpsEditable(store: ProjectStore, mode: TimelineFpsChangeMode = 'edit'): void {
+  const reason = format6TimelineFpsChangeBlock(store, mode);
+  if (reason === 'FORMAT_REQUIRED') {
+    throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '修改帧率只适用于启用开发开关的格式 6 项目。', 409, {reason});
+  }
+  if (reason) timelineFpsLocked(reason);
+}
+
+/** The sequence edit/history path owns the only clock transition after creation. */
+export function setEmptyFormat6TimelineFpsInside(store: ProjectStore, fps: TimelineFps, mode: TimelineFpsChangeMode): number {
+  assertFormat6TimelineFpsEditable(store, mode);
+  const write = timelineFpsWrites.get(store);
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  if (!write || write.to !== undefined || !timeline || timeline.fps !== write.from || !isTimelineFps(fps) || fps === timeline.fps) {
+    throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '时间线帧率变更无效。', 409);
+  }
+  const reader = readProjectReaderState(store.db, 'project', FORMAT6_PROJECT_SCHEMA_VERSION);
+  if (fps !== 30 && reader && !reader.features.includes(TIMELINE_FPS_READER_FEATURE)) {
+    const project = store.get('projects', store.projectId);
+    if (!project) throw new AppError('PROJECT_INVALID', '项目缺少元数据。', 422, {database: 'project', reason: 'metadata'});
+    store.put('projects', {...project, requiredReaderFeatures: [...reader.features, TIMELINE_FPS_READER_FEATURE]});
+  }
+  const revision = timeline.revision + 1;
+  store.put('timelines', {...timeline, fps, revision, updatedAt: new Date().toISOString()});
+  write.to = fps;
+  return revision;
 }
 
 /** Narrow metadata assertion over this exact kernel capability. A copied
@@ -228,7 +294,8 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     let result!: T;
     try {
       const formatBefore = database.prepare('PRAGMA project.user_version').get()?.user_version;
-      const fpsBefore = typeof formatBefore === 'number' ? assertProjectReaderRequirements(database, 'project', formatBefore) : undefined;
+      const readerBefore = typeof formatBefore === 'number' ? readProjectReaderState(database, 'project', formatBefore) : undefined;
+      if (readerBefore?.fps !== undefined) timelineFpsWrites.set(store, {from: readerBefore.fps});
       const format5Content = isSequenceProjectFormat(formatBefore) ? readProjectContentStamp(database) : undefined;
       const schemaBefore = format5Content ? database.prepare('PRAGMA project.schema_version').get()?.schema_version : undefined;
       for (const fence of transactionFences.get(database) ?? []) fence();
@@ -237,10 +304,17 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
         if (isPromise(result)) Promise.resolve(result).catch(() => {});
         throw new TypeError('Transactions require a synchronous result');
       }
-      if (formatBefore === FORMAT6_PROJECT_SCHEMA_VERSION) {
-        const fpsAfter = assertProjectReaderRequirements(database, 'project', formatBefore);
-        if (fpsBefore !== undefined && fpsAfter !== fpsBefore) {
-          throw new AppError('TIMELINE_FORMAT_LOCKED', '项目帧率只能在创建时选择。', 409);
+      if (readerBefore) {
+        const readerAfter = readProjectReaderState(database, 'project', FORMAT6_PROJECT_SCHEMA_VERSION)!;
+        const write = timelineFpsWrites.get(store);
+        if (write && readerAfter.fps !== (write.to ?? write.from)) {
+          throw new AppError('TIMELINE_FORMAT_LOCKED', '项目帧率只能在空时间线的帧率操作中修改。', 409);
+        }
+        if (write?.to !== undefined && hasTimelineContent(store)) timelineFpsLocked('TIMELINE_NOT_EMPTY');
+        // A 30 fps header can still have non-30 fps history or receipts.
+        if (readerBefore.features.includes(TIMELINE_FPS_READER_FEATURE) &&
+            !readerAfter.features.includes(TIMELINE_FPS_READER_FEATURE)) {
+          throw new AppError('TIMELINE_FORMAT_LOCKED', '项目仍需支持时间线帧率的读取器。', 409);
         }
       }
       for (const observer of transactionObservers.get(database) ?? []) observer(result);
@@ -259,6 +333,8 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
       try { if (database.isTransaction) database.exec('ROLLBACK'); }
       finally { discardBackgroundTaskChanges(database); }
       throw error;
+    } finally {
+      timelineFpsWrites.delete(store);
     }
     // App-library indexing follows the actual project COMMIT. Its failure is
     // uncertain acknowledgement, never evidence that the domain rolled back.

@@ -195,8 +195,11 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     assert.ok(sequenceEditUtf8Bytes(name) <= SEQUENCE_EDIT_LIMITS.operationBytes);
   }
   assert.equal(samples.length + subjectSamples.length + previsSamples.length + referenceSamples.length
-    + trackSamples.length + soundSamples.length + 5, SEQUENCE_EDIT_OPERATIONS.length);
+    + trackSamples.length + soundSamples.length + 6, SEQUENCE_EDIT_OPERATIONS.length);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.format.set'), true);
+  assert.equal(SEQUENCE_EDIT_OPERATIONS.filter(operation => operation === 'timeline.fps.set').length, 1);
+  assert.equal(sequenceEditEnvelopeOperationName({...envelope(), intents: [], formatIntent: {side: 'timeline',
+    operation: {kind: 'timeline-fps', fps: 25}}}), 'timeline.fps.set');
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.placeholder'), true);
   assert.equal((SEQUENCE_EDIT_OPERATIONS as readonly string[]).includes('timeline.generate.resize'), true);
   assert.equal(sequenceEditEnvelopeOperationName({...envelope(), intents: [], speedIntent: {side: 'timeline',

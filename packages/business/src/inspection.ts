@@ -1,5 +1,7 @@
 import {projectExportObservation} from './project-export-observation.ts';
 import {clipAudioSourceSchema} from '../../contracts/src/clip-audio-export.ts';
+import {assetVideoFrameRateSchema} from '../../contracts/src/asset-video-frame-rate.ts';
+import {projectAssetFrameRateView} from './project-asset-frame-rate.ts';
 import {readPrevisOutputSource} from './previs-output-ownership.ts';
 import {isPublishedProjectOutput} from './project-output-publication.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
@@ -409,8 +411,14 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     }
     function assetDto(asset: InspectionRecord): Record<string, unknown> {
       validateAsset(asset);
+      const visible = projectAssetFrameRateView(db, asset);
       return {id: asset.id, name: string(asset.name, 200), mimeType: enumValue(asset.mimeType, ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4']),
-        ...optional(asset, {width: value => number(value, 0, 100000, true), height: value => number(value, 0, 100000, true), duration: value => number(value, 0, 864000),
+        ...optional(visible, {width: value => number(value, 0, 100000, true), height: value => number(value, 0, 100000, true), duration: value => number(value, 0, 864000),
+          videoFrameRate: value => {
+            const rate = assetVideoFrameRateSchema.nullable().safeParse(value);
+            if (!rate.success) unavailable();
+            return rate.data;
+          },
           hasAudio: boolean, hasVideo: boolean, provenance: value => enumValue(value, ['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame', SCENE_KEYFRAME_PROVENANCE, 'clip-audio']), createdAt: timestamp})};
     }
     function shotDto(shot: InspectionRecord): Record<string, unknown> {

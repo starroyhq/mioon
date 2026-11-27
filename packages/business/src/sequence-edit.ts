@@ -44,7 +44,7 @@ import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5JsonRows} from './project-file/format5-content.ts';
 import {bumpFormat5ContentStampInside, readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
-import type {ProjectStore} from './project-file/store.ts';
+import {format6TimelineFpsChangeBlock, setEmptyFormat6TimelineFpsInside, type ProjectStore} from './project-file/store.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
 import {canonicalJson} from './project-versions/document.ts';
 
@@ -1374,8 +1374,13 @@ export function applySequenceEditHistoryInside(store: ProjectStore, direction: '
   if (!boardDeltaMatches(store, source.board) || !timelineDeltaMatches(store, source.timeline)) {
     fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后画板或主轨已经变化，不能直接撤回。', [request.actionId]);
   }
-  applyBoardDelta(store, apply.board, 'restore');
-  const timelineResult = applySequenceEditTimelineDelta(store, apply.timeline);
+  let timelineRevision: number;
+  if (entry.operation === 'timeline.fps.set') {
+    timelineRevision = applyTimelineFpsHistoryDeltaInside(store, source, apply);
+  } else {
+    applyBoardDelta(store, apply.board, 'restore');
+    timelineRevision = applySequenceEditTimelineDelta(store, apply.timeline).timelineRevision;
+  }
   const baselineResult = applySequenceEditBaselineDelta(store, apply.timeline.baseline);
   const draft: SequenceEditReceiptDraft = {
     version: 1, requestId: request.requestId, inputDigest, projectId: store.projectId,
@@ -1383,9 +1388,33 @@ export function applySequenceEditHistoryInside(store: ProjectStore, direction: '
     originSide: entry.operation.startsWith('timeline.') ? 'timeline' : 'board', status: 'applied',
     affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
     contentRevision: contentStamp(store).contentSequence,
-    timelineRevision: timelineResult.timelineRevision, syncRevision: baselineResult.syncRevision,
+    timelineRevision, syncRevision: baselineResult.syncRevision,
   };
   return moveSequenceEditHistoryCursor(store, command, draft);
+}
+
+function timelineFpsHistoryHeaderMatches(store: ProjectStore, delta: SequenceEditTimelineDelta): boolean {
+  const expected = delta.header;
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  return !!timeline && expected?.kind === 'set' && timeline.fps === expected.value.fps &&
+    timeline.width === expected.value.width && timeline.height === expected.value.height;
+}
+
+/** An FPS entry owns one header-only patch in each direction. */
+function applyTimelineFpsHistoryDeltaInside(store: ProjectStore, source: SequenceEditStateDelta, target: SequenceEditStateDelta): number {
+  const {header: before} = source.timeline, {header: after} = target.timeline;
+  const isHeaderOnly = ({board, timeline}: SequenceEditStateDelta): boolean =>
+    !board.writes.length && !board.removals.length && !timeline.clips.length && !timeline.cues.length &&
+    !timeline.removedClipIds.length && !timeline.removedCueIds.length && timeline.tracks === undefined &&
+    timeline.subtitles === undefined && timeline.baseline.kind === 'unchanged';
+  if (before?.kind !== 'set' || after?.kind !== 'set' || !isHeaderOnly(source) || !isHeaderOnly(target) ||
+      before.value.width !== after.value.width || before.value.height !== after.value.height || before.value.fps === after.value.fps) {
+    fail('SEQUENCE_EDIT_PATCH_INVALID', '时间线帧率历史无效。');
+  }
+  if (!timelineFpsHistoryHeaderMatches(store, source.timeline)) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后的时间线规格已经变化，不能直接撤回。');
+  }
+  return setEmptyFormat6TimelineFpsInside(store, after.value.fps, 'history');
 }
 
 // ---------------------------------------------------------------------------
@@ -1420,8 +1449,13 @@ export function readSequenceEditHistory(store: ProjectStore, requestedOrigin: 'u
   const undoEntry = nearest('undo'), redoEntry = nearest('redo');
   const undoBlockedBy = undoEntry && undoEntry.position !== current ? (globalUndo?.origin ?? null) : null;
   const redoBlockedBy = redoEntry && redoEntry.position !== current + 1 ? (globalRedo?.origin ?? null) : null;
-  const stale = (entry: SequenceEditHistoryEntry | null, patch: SequenceEditStateDelta | null): boolean =>
-    !!entry && !!patch && (!boardDeltaMatches(store, patch.board) || !timelineDeltaMatches(store, patch.timeline));
+  const stale = (entry: SequenceEditHistoryEntry | null, patch: SequenceEditStateDelta | null): boolean => {
+    if (!entry || !patch) return false;
+    if (entry.operation === 'timeline.fps.set') {
+      return !timelineFpsHistoryHeaderMatches(store, patch.timeline) || !!format6TimelineFpsChangeBlock(store, 'history');
+    }
+    return !boardDeltaMatches(store, patch.board) || !timelineDeltaMatches(store, patch.timeline);
+  };
   const undoConflict = !!undoBlockedBy || stale(undoEntry, undoEntry?.afterPatch ?? null);
   const redoConflict = !!redoBlockedBy || stale(redoEntry, redoEntry?.beforePatch ?? null);
   const action = (entry: SequenceEditHistoryEntry | null) => entry

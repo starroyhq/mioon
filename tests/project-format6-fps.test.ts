@@ -10,6 +10,10 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createProjectBackup, openProjectBackup} from '../packages/business/src/project-file/backup.ts';
 import {inspectProjectFormatReadOnly} from '../packages/business/src/project-file/connection.ts';
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
@@ -181,6 +185,94 @@ test('with the flag off and in older project formats, the create path stays at 3
   }
 });
 
+test('empty project clock uses one confirmed sequence action across HTTP, CLI and MCP', async t => {
+  const {root, rpc} = fixture(t, true);
+  const server = await startServer({dataDir: root, port: 0, token, localDraftChannel: 'development', projectFormatForTest: undefined});
+  const mcp = new Client({name: 'empty-project-clock', version: '1.0.0'});
+  try {
+    const {projectId} = await server.projectEntries.create({name: 'First material clock'});
+    const route = projectRpcPath(projectId);
+    const call = async (operation: string, input: Record<string, unknown> = {}) => {
+      const response = await rpc(server.url, operation, {projectId, ...input}, route);
+      assert.equal(response.status, 200, JSON.stringify(response.result));
+      return response.result.data;
+    };
+    const env = transportEnv(server.url);
+    const initial = await call('timeline.format.get');
+    assert.equal(initial.fps, 30);
+    const firstRequest = {requestId: randomUUID(), formatIntent: {side: 'timeline', operation: {kind: 'timeline-fps', fps: 24}}};
+    const forged = await rpc(server.url, 'sequence.preview', {projectId, ...firstRequest, origin: 'mio'}, route);
+    assert.equal(forged.status, 409);
+    assert.equal(forged.result.error.code, 'SEQUENCE_EDIT_CONTRACT_INVALID');
+    const first = await call('sequence.preview', firstRequest);
+    assert.equal((await call('timeline.format.get')).fps, 30);
+    const committed = await call('sequence.commit', {envelope: first.envelope, expectedPlanDigest: first.planDigest});
+    assert.equal(committed.operation, 'timeline.fps.set');
+    assert.equal((await call('timeline.format.get')).fps, 24);
+
+    const cliPreview = await runCli(env, ['sequence', 'timeline', 'edit'], {projectId, kind: 'fps-set', fps: 25});
+    assert.equal(cliPreview.ok, true);
+    assert.deepEqual(cliPreview.data.envelope.formatIntent, {side: 'timeline', operation: {kind: 'timeline-fps', fps: 25}});
+    assert.equal((await call('timeline.format.get')).fps, 24);
+    const input = {projectId, envelope: cliPreview.data.envelope, expectedPlanDigest: cliPreview.data.planDigest};
+    await mcp.connect(new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], env, stderr: 'pipe'}));
+    const message = await mcp.callTool({name: 'sequence_action_commit', arguments: input});
+    const result = message.structuredContent as {ok?: unknown; data?: SequenceEditReceipt} | undefined;
+    assert.equal(result?.ok, true, JSON.stringify(result));
+    assert.ok(result?.data);
+    const receipt = result.data;
+    assert.equal(receipt.status, 'applied');
+    assert.equal(receipt.operation, 'timeline.fps.set');
+    assert.equal((await call('timeline.format.get')).fps, 25);
+    const replay = await runCli(env, ['sequence', 'action', 'commit'], input);
+    assert.equal(replay.ok, true);
+    assert.deepEqual(replay.data, receipt);
+
+    const undo = await call('sequence.undo', {requestId: randomUUID(), actionId: receipt.actionId,
+      expected: {position: receipt.history.position, revision: receipt.history.revision}});
+    assert.equal(undo.status, 'applied');
+    assert.equal((await call('timeline.format.get')).fps, 24);
+    await call('sequence.redo', {requestId: randomUUID(), actionId: receipt.actionId,
+      expected: {position: undo.history.position, revision: undo.history.revision}});
+    assert.equal((await call('timeline.format.get')).fps, 25);
+  } finally {await mcp.close(); await server.close();}
+});
+
+test('Mio loads the empty clock action, uses its approval path and can undo it', async t => {
+  const {root} = fixture(t, true);
+  const server = await startServer({dataDir: root, port: 0, token, localDraftChannel: 'development', projectFormatForTest: undefined});
+  const entry = await (async () => {
+    try {return await server.projectEntries.create({name: 'Mio clock'});}
+    finally {await server.close();}
+  })();
+  const locate = (id: string) => projectLocation(serverAppDirectories(root), id);
+  const store = openProjectStore({...format6, projectFile: entry.projectFile, locate});
+  const library = openAppLibrary({dataDir: path.join(root, 'mio-fixture-app')});
+  const services = createServices(store, new Map(), {application: createProjectServiceApplication(library, undefined, {}), env: {}});
+  const tools = createAgentTaskTools({store, services});
+  const projectId = store.projectId;
+  const runId = randomUUID();
+  const execute = (prepared: Parameters<typeof tools.execute>[0]) => {
+    const stepId = randomUUID();
+    return tools.execute(prepared, {runId, stepId, requestId: stepId, beforeEffect() {}, recordInside() {}});
+  };
+  try {
+    const tool = tools.list().find(item => item.name === 'mioon_sequence_timeline_edit');
+    assert.ok(tool);
+    assert.match(JSON.stringify(tool.parameters), /"const":"fps-set"/);
+    const planned = tools.prepare({projectId, operation: tool.name, input: {kind: 'fps-set', fps: 60}});
+    assert.equal(planned.forceApproval, true);
+    assert.deepEqual(planned.targets.map(target => target.kind), ['timeline']);
+    assert.equal(readFormat5TimelineRecord(store.db, 'project')?.fps, 30);
+    const applied = await execute(planned);
+    assert.match(JSON.stringify(applied.result), /"status":"applied"/);
+    assert.equal(readFormat5TimelineRecord(store.db, 'project')?.fps, 60);
+    const undo = tools.prepare({projectId, operation: 'mioon_sequence_undo', input: {}});
+    const reverted = await execute(undo);
+    assert.match(JSON.stringify(reverted.result), /"status":"applied"/);
+    assert.equal(readFormat5TimelineRecord(store.db, 'project')?.fps, 30);
+  } finally {tools.dispose(); await services.drain(); store.close(); library.close();}
+});
 
 test('CLI and MCP can confirm and reread a format-6 export while project metadata reads its exact receipt', async t => {
   const {root, rpc} = fixture(t, true);

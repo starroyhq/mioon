@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {assetVideoFrameRateSchema} from './asset-video-frame-rate.ts';
 import {clipAudioSourceSchema} from './clip-audio-export.ts';
 import {projectIdSchema, projectMediaPath} from './project-file.ts';
 import {projectOutputPublicationProofSchema} from './project-output-publication.ts';
@@ -42,6 +43,7 @@ const metadata = {
   height: z.number().int().nonnegative().max(100000).optional(),
   duration: z.number().finite().nonnegative().nullable().optional(),
   hasAudio: z.boolean().optional(), hasVideo: z.boolean().optional(),
+  videoFrameRate: assetVideoFrameRateSchema.nullable().optional(),
   provenance: z.enum(['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame', 'scene-keyframe', 'clip-audio']).optional(),
   createdAt: z.string().datetime().optional(),
 };
@@ -132,7 +134,7 @@ const mediaRead = {readOnly:true,idempotent:true,destructive:false,openWorld:fal
 export const assetMediaEffects = Object.freeze({
   'asset.media.status.list': Object.freeze({...mediaRead,notes:'Reads bounded local reference metadata/status; no permission confirmation or provider call.'}),
   'asset.media.location.list': Object.freeze({...mediaRead,notes:'Reads bounded location categories only; no paths, directory tokens, permission grants or writes.'}),
-  'asset.media.prepare': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,notes:'Hashes admitted media and CAS-pins its full hash; no paid work or permission grant.'}),
+  'asset.media.prepare': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,localProcess:true,notes:'Hashes admitted media and CAS-pins its full hash. May probe unavailable source frame-rate metadata in development format 6. No paid work or permission grant.'}),
   'asset.media.relink.preview': Object.freeze({...mediaRead,readOnly:false,idempotent:false,fileWrite:true,notes:'Examines an admitted candidate and writes a private preview token; never changes an asset or grants directory access.'}),
   'asset.media.relink.apply': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,fileWrite:true,destructive:true,notes:'CAS-updates an asset reference to the same full content under an exact request key.'}),
   'asset.media.acceptChanged': Object.freeze({...mediaRead,readOnly:false,databaseWrite:true,fileWrite:true,notes:'Creates a new asset ID for explicit changed-content acceptance; preserves the old identity/history.'}),

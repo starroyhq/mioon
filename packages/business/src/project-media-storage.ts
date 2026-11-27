@@ -127,7 +127,7 @@ export async function admitProjectAssetSource(root: string, assetId: string, opt
 /** Prepare outside SQLite, then CAS the exact stored locator. Completing a
  * lazy full hash does not change referenceRevision or a cache fingerprint. */
 export async function prepareProjectAssetFullHash(root: string, assetId: string,
-  options: {signal?: AbortSignal; beforeEffect?: () => void; maxBytes?: number; onBytes?: (bytes: number) => void} = {}): Promise<Record<string, unknown>> {
+  options: {signal?: AbortSignal; beforeEffect?: () => void; maxBytes?: number; onBytes?: (bytes: number) => void; expectedFile?: string} = {}): Promise<Record<string, unknown>> {
   const store = registeredProjectStore(root), references = registeredProjectAssetReferences(root);
   if (!store || !references) throw new TypeError('Hash preparation requires the exact live project owner');
   if (store.db.isTransaction) throw new TypeError('Hash preparation must run outside SQLite transactions');
@@ -135,6 +135,7 @@ export async function prepareProjectAssetFullHash(root: string, assetId: string,
   if (!row) throw mediaUnavailableError('MEDIA_MISSING', assetId, 'not-found');
   if (typeof row.data !== 'string') throw mediaUnavailableError('MEDIA_CHANGED', assetId, 'content');
   const prepared = await references.prepareFullHash(assetId, options);
+  if (options.expectedFile !== undefined && prepared.file !== options.expectedFile) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
   const beforeCommit = (): void => {
     options.signal?.throwIfAborted(); options.beforeEffect?.();
     if (registeredProjectStore(root) !== store) throw new TypeError('The project owner is no longer live');

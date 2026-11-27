@@ -44,7 +44,8 @@ function read<T>(query: () => T): T | undefined {
 
 /** The project row is the stable format-6 reader declaration. It is checked
  * before the exact schema manifest or any feature-dependent validation. */
-export function assertProjectReaderRequirements(db: Pick<DatabaseSync, 'prepare'>, schema: ProjectSchema, formatVersion: number): TimelineFps | undefined {
+export function readProjectReaderState(db: Pick<DatabaseSync, 'prepare'>, schema: ProjectSchema, formatVersion: number):
+  {readonly fps: TimelineFps | undefined; readonly features: readonly string[]} | undefined {
   if (formatVersion !== FORMAT6_PROJECT_SCHEMA_VERSION) return;
   const row = read(() => db.prepare(`SELECT p.data FROM ${schema}.projects p
     JOIN ${schema}.project_file f ON p.id=f.projectId LIMIT 1`).get());
@@ -56,7 +57,11 @@ export function assertProjectReaderRequirements(db: Pick<DatabaseSync, 'prepare'
   const features = requirements(projectData);
   const timeline = read(() => db.prepare(`SELECT CASE WHEN json_valid(data)
     THEN json_extract(data,'$.fps') END AS fps FROM ${schema}.timelines LIMIT 1`).get());
-  if (timeline) return assertTimelineRate(timeline.fps, features);
+  return {fps: timeline ? assertTimelineRate(timeline.fps, features) : undefined, features};
+}
+
+export function assertProjectReaderRequirements(db: Pick<DatabaseSync, 'prepare'>, schema: ProjectSchema, formatVersion: number): TimelineFps | undefined {
+  return readProjectReaderState(db, schema, formatVersion)?.fps;
 }
 
 export function assertHeldProjectReaderRequirements({db}: {readonly db: Pick<DatabaseSync, 'prepare'>}): void {

@@ -6,13 +6,13 @@
  * The whole change (header + layout rows) travels in one history-13 patch.
  */
 import {AppError} from '../../contracts/src/app-error.ts';
-import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
+import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {CLIP_LAYOUT_PROFILE} from '../../contracts/src/timeline-clip-layout.ts';
 import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitle-profile.ts';
 import {FORMAT5_LIMITS, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
-import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
+import {isTimelineFps, type TimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {findSequenceEditReceipt, prepareSequenceEditHistory, sequenceEditInputDigest,
@@ -25,7 +25,7 @@ import type {
   SequenceEditStateDelta, SequenceEditSubtitleProfileChange, SequenceEditTimelineDelta,
 } from '../../contracts/src/sequence-edit.ts';
 import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
-import type {ProjectStore} from './project-file/store.ts';
+import {assertFormat6TimelineFpsEditable, setEmptyFormat6TimelineFpsInside, type ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, unknown>;
 const isFormat5 = (store: ProjectStore): boolean => {
@@ -37,7 +37,7 @@ const clipTargetRevision = (store: ProjectStore, clipId: string): number => {
     WHERE projectId=? AND kind='timeline_clip' AND targetId=?`).get(store.projectId, clipId) as Row | undefined;
   return row && Number.isSafeInteger(row.revision) ? Math.max(1, Number(row.revision)) : 1;
 };
-const failure = (code: SequenceEditErrorCode, ids: readonly string[] = []): {ok: false; code: string; ids: readonly string[]} => ({ok: false, code, ids});
+const failure = (code: SequenceEditErrorCode): SequenceEditPreviewFailure => ({ok: false, code, ids: []});
 const unchangedTimeline = (): Omit<SequenceEditTimelineDelta, 'clips' | 'header'> => ({
   cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged'},
 });
@@ -59,6 +59,17 @@ export interface TimelineFormatPlan {
 /** Pure plan against one live record. Throws SEQUENCE_EDIT_NOOP for the same
  * preset, and returns the header + frozen-layout clip rows to write. */
 export function planTimelineFormat(store: ProjectStore, timeline: Format5Timeline, intent: SequenceEditFormatIntent): TimelineFormatPlan {
+  if (intent.operation.kind === 'timeline-fps') {
+    assertFormat6TimelineFpsEditable(store);
+    if (!isTimelineFps(timeline.fps)) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '当前时间线帧率无效。', 409);
+    if (timeline.fps === intent.operation.fps) throw new AppError('SEQUENCE_EDIT_NOOP', '时间线已使用此帧率。', 409);
+    const fpsDelta = (fps: TimelineFps): SequenceEditStateDelta => ({
+      board: {writes: [], removals: []},
+      timeline: {...unchangedTimeline(), clips: [], header: {kind: 'set', value: {fps, width: timeline.width, height: timeline.height}}},
+    });
+    const after = fpsDelta(intent.operation.fps);
+    return {before: fpsDelta(timeline.fps), after, changedClipIds: [], header: after.timeline.header};
+  }
   const formatVersion = timelineStorageFormat(store.db, 'project');
   const current = timelineOutputPreset(timeline, {allowProjectFps: true});
   const next = timelineOutputPreset(intent.operation.presetId);
@@ -126,8 +137,9 @@ export function buildTimelineFormatEnvelope(store: ProjectStore, intent: Sequenc
 export interface TimelineFormatPreview {readonly envelope: SequenceEditEnvelope; readonly planDigest: string;
   readonly warnings: readonly {code: string}[]}
 export function previewTimelineFormat(store: ProjectStore, input: {requestId: string; actionId?: string;
-  origin?: 'user' | 'mio'; formatIntent: SequenceEditFormatIntent}): TimelineFormatPreview | {ok: false; code: string; ids: readonly string[]} {
-  if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+  origin?: 'user' | 'mio'; formatIntent: SequenceEditFormatIntent}): TimelineFormatPreview | SequenceEditPreviewFailure {
+  if (!isFormat5(store)) return input.formatIntent.operation.kind === 'timeline-fps'
+    ? {...failure('SEQUENCE_EDIT_CONTRACT_INVALID'), reason: 'FORMAT_REQUIRED'} : failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   try {
     const state = prepareSequenceEditHistory(store).state;
     const envelope = buildTimelineFormatEnvelope(store, input.formatIntent, {requestId: input.requestId,
@@ -142,8 +154,9 @@ export function previewTimelineFormat(store: ProjectStore, input: {requestId: st
 
 export function runTimelineFormatSync(store: ProjectStore, envelope: SequenceEditEnvelope): {
   readonly ok: true; readonly actionId: string; readonly operation: string; readonly patch: unknown; readonly receipt: unknown;
-} | {readonly ok: false; readonly code: string; readonly ids: readonly string[]} {
-  if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+} | SequenceEditPreviewFailure {
+  if (!isFormat5(store)) return envelope.formatIntent?.operation.kind === 'timeline-fps'
+    ? {...failure('SEQUENCE_EDIT_CONTRACT_INVALID'), reason: 'FORMAT_REQUIRED'} : failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   const intent = envelope.formatIntent;
   if (!intent || envelope.intents.length !== 0) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   return store.tx(() => {
@@ -166,10 +179,19 @@ export function runTimelineFormatSync(store: ProjectStore, envelope: SequenceEdi
     let plan: TimelineFormatPlan;
     try { plan = planTimelineFormat(store, record, intent); }
     catch (error) {
-      if (error instanceof AppError) { const code = error.code as SequenceEditErrorCode; writeSequenceEditFailure(store, envelope, code); return failure(code); }
+      if (error instanceof AppError) {
+        const code = error.code as SequenceEditErrorCode;
+        // Preserve the structure and message on an FPS rejection. Legacy
+        // format failures still return their original failure receipt.
+        if (intent.operation.kind === 'timeline-fps') throw error;
+        writeSequenceEditFailure(store, envelope, code);
+        return failure(code);
+      }
       throw error;
     }
-    const applied = applySequenceEditTimelineDelta(store, plan.after.timeline);
+    const timelineRevision = intent.operation.kind === 'timeline-fps'
+      ? setEmptyFormat6TimelineFpsInside(store, intent.operation.fps, 'edit')
+      : applySequenceEditTimelineDelta(store, plan.after.timeline).timelineRevision;
     const affected = {
       nodes: 0, edges: 0,
       mainTrackClips: plan.changedClipIds.filter(id => record.clips.some(clip => clip.id === id && clip.trackId === record.mainTrack.trackId)).length,
@@ -181,7 +203,7 @@ export function runTimelineFormatSync(store: ProjectStore, envelope: SequenceEdi
       projectId: store.projectId, actionId: envelope.actionId,
       operation: sequenceEditEnvelopeOperationName(envelope), originSide: envelope.originSide, status: 'applied',
       affected, contentRevision: readProjectContentStamp(store.db).contentSequence,
-      timelineRevision: applied.timelineRevision, syncRevision: Number(sync?.revision ?? 1),
+      timelineRevision, syncRevision: Number(sync?.revision ?? 1),
     };
     const patch = {version: SEQUENCE_EDIT_CONTRACT_VERSION, before: plan.before, after: plan.after};
     const stored = writeSequenceEditAction(store, {envelope, patch, receipt});

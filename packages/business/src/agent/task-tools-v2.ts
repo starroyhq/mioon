@@ -628,7 +628,7 @@ import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.
 const format6TimelineParameters=AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'] as {anyOf: readonly (Value & {properties: Value & {kind: {const: string}}})[]};
 // The public schema describes both formats. Keep the old model tool wire shape
 // for legacy projects when selecting the appropriate view of that schema.
-const format5TimelineParameters={...format6TimelineParameters,anyOf:format6TimelineParameters.anyOf.map(branch=>{
+const format5TimelineParameters={...format6TimelineParameters,anyOf:format6TimelineParameters.anyOf.filter(branch=>branch.properties.kind.const!=='fps-set').map(branch=>{
  if(branch.properties.kind.const!=='insert-asset')return branch;
  const {assetRange:_assetRange,...properties}=branch.properties;
  return {...branch,properties};
@@ -659,7 +659,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false,format6Dev
   {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_subject_edit',operation:'sequence.tool.subject',description:'按需加载的格式 5 主体动作：主体绑定创建/跟随锁定/断开/恢复、主体卡建卡/删卡。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.subject'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_previs_edit',operation:'sequence.tool.previs',description:'按需加载的格式 5 预演动作：预演节点新建、预演场景保存（人偶/道具可带主体）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.previs'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
-  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、素材入轨、分离声音、在剪辑里生成（生成每次费用确认）。已启用变速的格式 6 项目支持片段变速和定格。'+(format6Development?'剪辑的帧号按 timeline.inspect 返回的项目 fps 换算。素材入轨可选 assetRange，使用 asset.range.get 返回的独立 30 fps 素材帧号。':'')+'服务器预览 envelope 后按审批提交。',parameters:format6Development?format6TimelineParameters:format5TimelineParameters,risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、素材入轨、分离声音、在剪辑里生成（生成每次费用确认）。已启用变速的格式 6 项目支持片段变速和定格。'+(format6Development?'剪辑的帧号按 timeline.inspect 返回的项目 fps 换算。素材入轨可选 assetRange，使用 asset.range.get 返回的独立 30 fps 素材帧号。首次添加片段或字幕前可用 fps-set 选择 24、25、30 或 60 fps。':'')+'服务器预览 envelope 后按审批提交。',parameters:format6Development?format6TimelineParameters:format5TimelineParameters,risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_clip_edit',operation:'sequence.tool.clip',description:'按需加载的格式 5 片段属性动作：变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称及兼容素材替换。主轨镜头替换需指定该镜头拥有或已采纳的版本。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.clip'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   // FR-G: one format-5 clip's current sound becomes a new project audio asset.
@@ -891,6 +891,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='clip-properties')for(const edit of action.edits)add('timeline_clip',edit.clipId);
    if(action.kind==='replace-source')add('asset',action.assetId);
    if(action.kind==='dialogue')add('shot',action.shotId);
+   if(action.kind==='fps-set')add('timeline',projectId);
    if(action.kind==='board-layout-move')for(const move of action.moves)add(before[key('shot',move.nodeId)]?'shot':'node',move.nodeId);
    if(action.kind==='subtitles')for(const edit of action.edits)if(edit.kind!=='add')add('timeline_subtitle',edit.cueId);
    if(action.kind==='subject-binding'){
@@ -937,7 +938,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','replace-source','dialogue',
-    'format-set','split-at-scenes','insert-asset','separate-sound','subtitles','board-root-create','board-shot-append','board-layout-move',
+    'format-set','fps-set','split-at-scenes','insert-asset','separate-sound','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
     'subject-card-create','subject-card-delete','previs-create','generate','clip-speed','freeze-frame'].includes(action.kind);
