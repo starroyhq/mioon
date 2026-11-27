@@ -1,0 +1,599 @@
+/* Speed UI (Section 22: constant speed, curve speed, timeline badges, freeze,
+   and background processing status). All selectors are scoped so timelines
+   without `capabilities.speed === true` stay visually identical. */
+
+/* Fix chevron rotation when InspectorGroup renders headerAction inside heading-row. */
+.edit-inspector-group.is-open > .edit-inspector-group-heading-row > .edit-inspector-group-heading > svg {
+  transform: rotate(90deg);
+}
+
+/* Group header segmented control (常规 / 曲线). */
+.speed-mode-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-input);
+}
+
+.speed-mode-segmented > button {
+  height: 22px;
+  min-height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: calc(var(--wb-radius-control) - 2px);
+  background: transparent;
+  color: var(--wb-soft);
+  font-size: var(--wb-text-caption);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.speed-mode-segmented > button.is-active {
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 28%);
+}
+
+.speed-mode-segmented > button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.speed-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.speed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.speed-row-label {
+  flex: none;
+  min-width: 52px;
+  color: var(--wb-soft);
+  font-size: var(--wb-text-label);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.speed-row-label-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.speed-row-label-group > .speed-row-label {
+  min-width: 0;
+}
+
+.speed-info-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted);
+  cursor: help;
+  flex: none;
+}
+
+.speed-info-trigger:hover,
+.speed-info-trigger:focus-visible {
+  color: var(--wb-text);
+}
+
+.speed-row-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.speed-row-control [data-slot="select-trigger"] {
+  width: 100%;
+}
+
+/* Constant rate slider + aligned log ticks + numeric box. */
+.speed-rate-row {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.speed-rate-row > .speed-row-label {
+  min-width: 34px;
+  line-height: var(--wb-control);
+}
+
+.speed-slider-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.speed-slider-track-wrap {
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+.dock-workbench .edit-clip-inspector input.speed-rate-slider {
+  width: 100%;
+  height: 4px;
+  min-height: 4px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(
+    to right,
+    var(--wb-accent) 0%,
+    var(--wb-accent) var(--speed-fill, 50%),
+    var(--wb-line-strong) var(--speed-fill, 50%),
+    var(--wb-line-strong) 100%
+  );
+  cursor: pointer;
+}
+
+.dock-workbench .edit-clip-inspector input.speed-rate-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--wb-accent);
+  border: 1.5px solid var(--wb-panel);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 50%);
+}
+
+.dock-workbench .edit-clip-inspector input.speed-rate-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--wb-accent);
+  border: 1.5px solid var(--wb-panel);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 50%);
+}
+
+.speed-slider-ticks {
+  position: relative;
+  height: 14px;
+  margin: 0 2px;
+}
+
+.speed-slider-ticks > span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: 8.5px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.speed-slider-ticks > span:first-child {
+  transform: translateX(0);
+}
+
+.speed-slider-ticks > span:nth-child(5) {
+  transform: translateX(-70%);
+}
+
+.speed-slider-ticks > span:last-child {
+  transform: translateX(-100%);
+}
+
+.speed-rate-input-wrap {
+  position: relative;
+  flex: none;
+  width: 58px;
+}
+
+.dock-workbench .edit-clip-inspector .speed-rate-input-wrap input {
+  width: 100%;
+  padding-right: 18px;
+  text-align: right;
+  font-family: var(--wb-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-rate-suffix {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-caption);
+  pointer-events: none;
+}
+
+/* Curve mode: 4x2 preset grid + SVG editor. */
+.speed-curve-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.speed-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.speed-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 3px 5px;
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-input);
+  color: var(--wb-soft);
+  font-size: 10px;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.speed-preset-card:hover:not(:disabled) {
+  border-color: var(--wb-line-strong);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+}
+
+.speed-preset-card.is-selected {
+  border: 1.5px solid var(--wb-accent);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+}
+
+.speed-preset-card > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speed-preset-thumb {
+  width: 100%;
+  max-width: 52px;
+  height: 22px;
+  display: block;
+}
+
+.speed-preset-baseline {
+  stroke: var(--wb-line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.speed-preset-curve {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.speed-curve-editor-box {
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-input);
+  overflow: hidden;
+}
+
+.speed-curve-svg {
+  display: block;
+  width: 100%;
+  height: 132px;
+  user-select: none;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.speed-curve-svg.is-dragging {
+  cursor: grabbing;
+}
+
+.speed-curve-grid {
+  stroke: var(--wb-line-subtle);
+  stroke-width: 1;
+}
+
+.speed-curve-grid-1x {
+  stroke: var(--wb-line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.speed-curve-axis-label {
+  fill: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: 9px;
+  text-anchor: end;
+}
+
+.speed-curve-playhead {
+  stroke: #56cfe1;
+  stroke-width: 1.25;
+  pointer-events: none;
+}
+
+.speed-curve-path {
+  fill: none;
+  stroke: var(--wb-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.speed-curve-point {
+  cursor: grab;
+  outline: none;
+}
+
+.speed-curve-point-hit {
+  fill: transparent;
+}
+
+.speed-curve-point-dot {
+  fill: var(--wb-input);
+  stroke: var(--wb-accent);
+  stroke-width: 2;
+}
+
+.speed-curve-point.is-selected .speed-curve-point-dot {
+  fill: var(--wb-accent);
+  stroke: var(--wb-accent);
+}
+
+.speed-curve-point:focus-visible .speed-curve-point-dot {
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 3px rgb(255 255 255 / 60%));
+}
+
+/* Duration, toggles, reset, validation error. */
+.speed-duration-values {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.speed-duration-current {
+  color: var(--wb-text);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-duration-original {
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-caption);
+  white-space: nowrap;
+}
+
+.speed-switch-row {
+  min-height: 24px;
+}
+
+.speed-reset-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.speed-reset-button {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 6px !important;
+  gap: 5px;
+  color: var(--wb-soft) !important;
+  font-size: var(--wb-text-caption) !important;
+}
+
+.speed-reset-button:hover:not(:disabled) {
+  color: var(--wb-text) !important;
+}
+
+.speed-local-error {
+  margin: 0;
+  color: var(--wb-danger);
+  font-size: var(--wb-text-caption);
+  line-height: 1.4;
+}
+
+/* Inspector processing & failure footer (22-05). */
+.speed-inspector-processing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--wb-line-subtle);
+}
+
+.speed-inspector-processing-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--wb-text-caption);
+  color: var(--wb-soft);
+}
+
+.speed-inspector-processing-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speed-inspector-processing-percent {
+  flex: none;
+  font-family: var(--wb-font-mono);
+  color: var(--wb-text);
+}
+
+.speed-inspector-progress-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--wb-line);
+  overflow: hidden;
+}
+
+.speed-inspector-progress-track > span {
+  display: block;
+  height: 100%;
+  background: var(--wb-accent);
+  transition: width 0.2s linear;
+}
+
+.speed-inspector-failed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--wb-line-subtle);
+}
+
+.speed-inspector-failed-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--wb-danger);
+  font-size: var(--wb-text-caption);
+  line-height: 1.35;
+}
+
+.speed-inspector-failed-text > svg {
+  flex: none;
+}
+
+.speed-inspector-retry {
+  flex: none;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 8px !important;
+  gap: 4px;
+  font-size: var(--wb-text-caption) !important;
+}
+
+.speed-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--wb-muted);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: speed-spin 0.8s linear infinite;
+}
+
+@keyframes speed-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Timeline clip speed badges, freeze icon, and processing overlay (22-03, 22-04, 22-05). */
+.clip-speed-badge {
+  color: inherit;
+  opacity: 0.82;
+  font-weight: 400;
+}
+
+.clip-freeze-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  color: #7cc4fa;
+  vertical-align: -1px;
+}
+
+.clip-processing-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(to top, rgb(11 12 14 / 88%), rgb(11 12 14 / 45%));
+  pointer-events: none;
+}
+
+.clip-processing-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 4px;
+  color: var(--wb-text);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clip-processing-bar {
+  height: 2px;
+  background: rgb(255 255 255 / 16%);
+}
+
+.clip-processing-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--wb-accent);
+  transition: width 0.2s linear;
+}
+
+.speed-task-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wb-soft);
+}
+
+.speed-task-icon.is-failed {
+  color: var(--wb-danger);
+}
+
+.speed-task-failure {
+  color: var(--wb-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speed-spinner {
+    animation: none;
+  }
+  .speed-inspector-progress-track > span,
+  .clip-processing-bar > span {
+    transition: none;
+  }
+}
