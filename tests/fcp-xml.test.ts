@@ -3,10 +3,16 @@ import {spawnSync} from 'node:child_process';
 import test from 'node:test';
 import {pathToFileURL} from 'node:url';
 import {testEnv} from './helpers/test-env.ts';
+import {compileEditorExportSpeed} from '../packages/business/src/editor-export-speed.ts';
+import type {EditorExportSpeed} from '../packages/business/src/editor-export-speed.ts';
 import {serializeFcpXml, type FcpXmlAsset} from '../packages/business/src/fcp-xml.ts';
 import {getFormat5TimelineIssue, type Format5Clip, type Format5Timeline} from '../packages/contracts/src/project-format5.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {CLIP_TRANSITION_KINDS, CLIP_TRANSITION_PROFILE, type ClipTransitionKind} from '../packages/contracts/src/timeline-clip-transition.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
+import {compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields, timeMapPlanFrames, timeMapPlanInfo,
+  timeMapSourceAtOutputFrame, timeMapTailInverse, trimTimeMap, type TimeMapResult, type TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
+import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import type {TimelineTrackRecord} from '../packages/contracts/src/timeline-replacement.ts';
@@ -172,13 +178,213 @@ test('supports an audio-only stack and long clips without optional transform or 
   assert.match(serializeFcpXml(input), /name="Clip 61" offset="0s" start="5\/30s" duration="18003\/30s"\/>/u);
 });
 
+function readMap<T>(result: TimeMapResult<T>): T {
+  assert.ok(result.ok, JSON.stringify(result));
+  return result.value;
+}
+
+const speedClock = {fpsNumerator: 30, fpsDenominator: 1};
+const sourceEdge = (frame: number) => ({kind: 'rational' as const, numerator: String(frame), denominator: '1'});
+const constant = (numerator: number, denominator: number): TimeMapSpeed => ({kind: 'constant', rate: {numerator, denominator}});
+
+test('writes the same bytes for an explicitly restored 1x clip without changing its transition or connections', () => {
+  const input = fixture();
+  const legacy = serializeFcpXml(input);
+  const opening = input.timeline.clips.find(value => value.id === id(10))!;
+  const basis = {profile: 'timeline-speed-v1' as const, sourceFps: speedClock, outputFps: speedClock,
+    sourceRange: {start: sourceEdge(opening.sourceInFrame), end: sourceEdge(opening.sourceInFrame + opening.durationFrames)},
+    speed: constant(1, 1)};
+  const plan = initialTimeMap(readMap(compileTimeMap(basis)));
+  const {loTime, hiTime, outputWindow} = readMap(timeMapPlanInfo(plan));
+  opening.sourceSpanFrames = opening.durationFrames;
+  opening.timing = {profile: 'timeline-speed-v1', basis, view: {direction: 'forward', loTime, hiTime}, outputWindow,
+    pitchShift: false, interpolation: 'off'};
+  const asset = input.assets.get(opening.assetId!)!;
+  input.assets.set(asset.id, {...asset, sourceFps: 60});
+  assert.equal(serializeFcpXml({...input, speed: new Map()}), legacy);
+});
+
+function motion(n: number, startFrame: number, speed: TimeMapSpeed, direction: 'forward' | 'reverse',
+  pitchShift: boolean, interpolation: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>['interpolation'],
+  window?: {from: number; to: number}): Format5Clip {
+  const basis = {profile: 'timeline-speed-v1' as const, sourceFps: speedClock, outputFps: speedClock,
+    sourceRange: {start: sourceEdge(13), end: sourceEdge(61)}, speed};
+  const full = initialTimeMap(readMap(compileTimeMap(basis)), direction);
+  const plan = window ? readMap(trimTimeMap(full, window.from, window.to)) : full;
+  const {loTime, hiTime, outputWindow} = readMap(timeMapPlanInfo(plan));
+  const draft = clip(n, main, startFrame, plan.durationFrames);
+  return {...draft, ...readMap(projectTimeMapToCurrentClipFields(draft, plan)),
+    timing: {profile: 'timeline-speed-v1', basis, view: {direction, loTime, hiTime}, outputWindow, pitchShift, interpolation}};
+}
+
+function timedFixture() {
+  const input = fixture();
+  const overlayImage = input.assets.get(id(202))!;
+  const source = asset(201, {sourceFps: 30, durationFrames: 70});
+  const highRate = asset(206, {sourceFps: 60, durationFrames: 70});
+  const ntscRate = asset(208, {sourceFps: 30_000, sourceFpsDenominator: 1001, durationFrames: 70});
+  const forward = motion(80, 0, constant(3, 2), 'forward', true, 'off', {from: 3, to: 21});
+  const reverse = motion(81, 18, constant(3, 1), 'reverse', false, 'off', {from: 1, to: 15});
+  reverse.transitionIn = transition('wipeLeft');
+  reverse.volumeEnvelope = {profileId: VOLUME_ENVELOPE_PROFILE, points: [{frame: 0, multiplier: 0.2}, {frame: 8, multiplier: 1}]};
+  const freeze = clip(82, main, 32, 12, {sourceInFrame: 17, sourceSpanFrames: 1,
+    timing: {profile: 'timeline-freeze-v1', sourceFrame: 17, sourceVersionId: null, sourceSha256: 'a'.repeat(64)}});
+  const curve = motion(83, 44, {kind: 'curve', presetId: 'custom', interpolation: 'log-pchip-v1',
+    points: [{sourceFrame: 13, rate: {numerator: 1, denominator: 2}},
+      {sourceFrame: 37, rate: {numerator: 5, denominator: 8}},
+      {sourceFrame: 61, rate: {numerator: 3, denominator: 4}}]}, 'forward', false, 'blend');
+  const optical = motion(84, end(curve), constant(1, 2), 'forward', true, 'optical', {from: 1, to: 19});
+  const native = {...motion(85, end(optical), constant(1, 2), 'reverse', true, 'off', {from: 3, to: 31}), assetId: highRate.id};
+  const ntsc = {...motion(87, end(native), constant(1, 2), 'forward', true, 'off', {from: 2, to: 30}), assetId: ntscRate.id};
+  const attached = clip(86, video, reverse.startFrame + 5, 6, {sourceInFrame: 0, assetId: overlayImage.id,
+    anchor: {clipId: reverse.id, offsetFrames: 5}});
+  const timeline = {...input.timeline, durationFrames: end(ntsc), clips: [forward, reverse, freeze, curve, optical, native, ntsc, attached],
+    subtitles: {profileId: TIMELINE_SUBTITLE_PROFILE_ID,
+      cues: [{id: id(73), text: 'Caption over retimed clip', startFrame: 20, durationFrames: 5, anchor: {clipId: reverse.id, offsetFrames: 2}}]}};
+  const assets = new Map([source, highRate, ntscRate, overlayImage].map(value => [value.id, value]));
+  const speed = new Map<string, EditorExportSpeed>();
+  for (const timedClip of timeline.clips.filter(value => value.timing)) {
+    const source = assets.get(timedClip.assetId!)!;
+    const fps = source.sourceFps!, fpsDenominator = source.sourceFpsDenominator ?? 1;
+    const compiled = compileEditorExportSpeed(timedClip, timeline,
+      {fps, fpsDenominator, frameCount: Math.floor(source.durationFrames * fps / (timeline.fps * fpsDenominator))});
+    assert.ok(compiled, timedClip.name);
+    speed.set(timedClip.id, compiled);
+  }
+  return {...input, timeline, assets, speed, forward, reverse, freeze, curve, optical, native, ntsc};
+}
+
+function end(value: Format5Clip): number {
+  return value.startFrame + value.durationFrames;
+}
+
+function fraction(time: string): {numerator: bigint; denominator: bigint} {
+  const match = /^(\d+)(?:\/(\d+))?s$/u.exec(time);
+  assert.ok(match, time);
+  return {numerator: BigInt(match[1]!), denominator: BigInt(match[2] ?? 1)};
+}
+
+const timePointPrecision = 1_000_000n;
+
+function parseTimeMap(xml: string, clip: Format5Clip) {
+  const map = new RegExp(`<asset-clip[^>]* name="${clip.name}"[^>]*><timeMap frameSampling="([^"]+)" preservesPitch="([01])">([^<]*(?:<timept[^>]+/>)+)</timeMap>`, 'u').exec(xml);
+  assert.ok(map, clip.name);
+  const points = Array.from(map[3]!.matchAll(/<timept time="([^"]+)" value="([^"]+)" interp="linear"\/>/gu), match => {
+    const time = fraction(match[1]!);
+    const numerator = time.numerator * 30n * timePointPrecision;
+    assert.equal(numerator % time.denominator, 0n, 'output timepoints are on the written time grid');
+    return {output: numerator / time.denominator, sourceTime: fraction(match[2]!)};
+  });
+  assert.equal(points[0]?.output, 0n);
+  assert.equal(points.at(-1)?.output, BigInt(clip.durationFrames) * timePointPrecision);
+  assert.ok(points.every((point, index) => index === 0 || point.output > points[index - 1]!.output));
+  return {sampling: map[1], pitch: map[2], points};
+}
+
+function interpolateTimeMap({points}: ReturnType<typeof parseTimeMap>, output: number): ReturnType<typeof fraction> {
+  const tick = BigInt(Math.round(output * Number(timePointPrecision)));
+  const last = points.at(-1)!;
+  if (tick === last.output) return last.sourceTime;
+  const rightIndex = points.findIndex(point => point.output > tick);
+  assert.ok(rightIndex > 0);
+  const left = points[rightIndex - 1]!, right = points[rightIndex]!;
+  const l = left.sourceTime, r = right.sourceTime;
+  return {numerator: (right.output - tick) * l.numerator * r.denominator +
+    (tick - left.output) * r.numerator * l.denominator,
+    denominator: (right.output - left.output) * l.denominator * r.denominator};
+}
+
+test('uses FCPXML retiming to preserve shared constant, trimmed reverse, hold and native CFR frames', () => {
+  const input = timedFixture();
+  const {timeline, forward, reverse, freeze, native, ntsc, assets} = input;
+  const xml = serializeFcpXml(input);
+  for (const clip of [forward, reverse, freeze]) {
+    const plan = readMap(compileClipTimeMap(clip, timeline));
+    const graph = parseTimeMap(xml, clip);
+    assert.equal(graph.sampling, 'floor');
+    for (const [output, expected] of readMap(timeMapPlanFrames(plan)).entries()) {
+      const point = interpolateTimeMap(graph, output);
+      assert.equal(Number(point.numerator * 30n / point.denominator), expected, `${clip.name} frame ${output}`);
+    }
+  }
+  assert.equal(parseTimeMap(xml, forward).pitch, '0');
+  assert.equal(parseTimeMap(xml, reverse).pitch, '1');
+  assert.match(xml, /<asset-clip[^>]+name="Clip 82"[^>]+srcEnable="video"><timeMap/u);
+  assert.doesNotMatch(xml, /<transition\b/u, 'transition cannot consume a missing retime handle');
+
+  for (const clip of [native, ntsc]) {
+    const asset = assets.get(clip.assetId!)!;
+    const fps = BigInt(asset.sourceFps!), fpsDenominator = BigInt(asset.sourceFpsDenominator ?? 1);
+    const duration = `${fpsDenominator}/${fps}s`;
+    const sourceId = new RegExp(`<format id="(r\\d+)" [^>]*frameDuration="${duration}"`, 'u').exec(xml)?.[1];
+    assert.ok(sourceId, duration);
+    assert.ok(xml.includes(`name="${asset.name}" start="0s" duration="70/30s" hasVideo="1" hasAudio="1" format="${sourceId}"`));
+    const view = readMap(compileClipTimeMap(clip, timeline));
+    const nativeMap = parseTimeMap(xml, clip);
+    for (let output = 0; output < clip.durationFrames; output++) {
+      const {source} = readMap(timeMapSourceAtOutputFrame(view, output));
+      assert.equal(source.kind, 'exact');
+      const numerator = BigInt(source.numerator) * fps;
+      const denominator = BigInt(source.denominator) * 30n * fpsDenominator;
+      // The reverse shared resolver treats the source boundary as exclusive.
+      const expected = Number((numerator - (view.direction === 'reverse' ? 1n : 0n)) / denominator);
+      const point = interpolateTimeMap(nativeMap, output);
+      assert.equal(Number(point.numerator * fps / (point.denominator * fpsDenominator)), expected, `${duration} source frame ${output}`);
+    }
+  }
+});
+
+test('maps sampling policy and bounds curve error while anchoring clip-relative edits in output time', () => {
+  const input = timedFixture();
+  const xml = serializeFcpXml(input);
+  const {curve, optical, timeline} = input;
+  const graph = parseTimeMap(xml, curve);
+  assert.equal(graph.sampling, 'frame-blending');
+  assert.equal(graph.pitch, '0', 'Mioon always shifts pitch for a nonconstant curve');
+  assert.ok(graph.points.length > 2);
+  assert.ok(graph.points.some(point => point.output % timePointPrecision !== 0n));
+  const map = readMap(compileClipTimeMap(curve, timeline));
+  let observedError = 0;
+  for (let tick = 0; tick <= curve.durationFrames * 100; tick++) {
+    const {position} = readMap(timeMapTailInverse(map, {
+      numerator: String(tick + 100 * map.outputWindow.fromFrame), denominator: '100',
+    }, {tailInverse: 'latest'}));
+    const ideal = position.kind === 'exact' ? Number(position.numerator) / Number(position.denominator) : position.value;
+    const graphPoint = interpolateTimeMap(graph, tick / 100);
+    const mapped = 30 * Number(graphPoint.numerator) / Number(graphPoint.denominator);
+    observedError = Math.max(observedError, Math.abs(mapped - ideal));
+  }
+  assert.ok(observedError <= input.speed.get(curve.id)!.maxErrorFrames + 1e-10, `unreported curve error ${observedError}`);
+  assert.equal(parseTimeMap(xml, optical).sampling, 'optical-flow');
+  assert.match(xml, /<clip name="Clip 81" offset="18\/30s" start="0s" duration="14\/30s">/u);
+  assert.match(xml, /<keyframe time="8\/30s" value="0dB"/u);
+  assert.match(xml, /name="Clip 86" lane="1" offset="5\/30s" start="0s"/u);
+  assert.match(xml, /<caption lane="3" offset="2\/30s" duration="5\/30s"[^>]*><text>Caption over retimed clip/u);
+});
+
+test('keeps an unrepresentable clip at its timeline length and uses a gap when the plain source would overrun', () => {
+  const input = timedFixture();
+  input.speed.delete(input.optical.id);
+  const {native, timeline, assets} = input;
+  const short = asset(207, {durationFrames: 4});
+  input.speed.delete(native.id);
+  assets.set(short.id, short);
+  timeline.clips = timeline.clips.map(value => value.id === native.id ? {...value, assetId: short.id} : value);
+  const xml = serializeFcpXml(input);
+  assert.match(xml, /<asset-clip[^>]+name="Clip 84"[^>]+duration="18\/30s"\/>/u);
+  assert.match(xml, /<gap name="Clip 85"[^>]+duration="28\/30s">/u);
+  assert.doesNotMatch(xml, /207\.mov/u);
+});
+
 test('validates the representative sequence against the locally supplied Apple FCPXML 1.13 DTD', {
   skip: process.env.MIOON_FCPXML_DTD ? false : 'Set MIOON_FCPXML_DTD to the local FCPXML 1.13 DTD to run validation',
 }, () => {
   const dtd = process.env.MIOON_FCPXML_DTD!;
-  const tool = spawnSync('xmllint', ['--noout', '--nonet', '--dtdvalid', pathToFileURL(dtd).href, '-'], {
-    input: serializeFcpXml(fixture()), encoding: 'utf8', env: testEnv(),
-  });
-  assert.ifError(tool.error);
-  assert.equal(tool.status, 0, tool.stderr);
+  for (const input of [fixture(), timedFixture()]) {
+    const tool = spawnSync('xmllint', ['--noout', '--nonet', '--dtdvalid', pathToFileURL(dtd).href, '-'], {
+      input: serializeFcpXml(input), encoding: 'utf8', env: testEnv(),
+    });
+    assert.ifError(tool.error);
+    assert.equal(tool.status, 0, tool.stderr);
+  }
 });

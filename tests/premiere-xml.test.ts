@@ -3,12 +3,17 @@ import {spawnSync} from 'node:child_process';
 import test from 'node:test';
 import {pathToFileURL} from 'node:url';
 import type {FcpXmlAsset} from '../packages/business/src/fcp-xml.ts';
-import {serializePremiereXml} from '../packages/business/src/premiere-xml.ts';
+import {compileEditorExportSpeed, type EditorExportSpeed} from '../packages/business/src/editor-export-speed.ts';
+import {premiereTransitionCuts, serializePremiereXml} from '../packages/business/src/premiere-xml.ts';
 import {getFormat5TimelineIssue, type Format5Clip, type Format5Timeline} from '../packages/contracts/src/project-format5.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {CLIP_TRANSITION_KINDS, CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
 import {timelineCrossfadeEnvelopes} from '../packages/contracts/src/timeline-crossfade.ts';
 import type {TimelineTrackRecord} from '../packages/contracts/src/timeline-replacement.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
+import type {SpeedInterpolation} from '../packages/contracts/src/timeline-speed.ts';
+import {compileTimeMap, initialTimeMap, instantiateSpeedPreset, timeMapPlanFrames, timeMapPlanInfo, timeMapSourceAtOutputFrame} from '../packages/contracts/src/timeline-time-map.ts';
+import type {TimeMapResult, TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {testEnv} from './helpers/test-env.ts';
@@ -188,16 +193,177 @@ test('extends a still for a transition and keeps long clips without optional eff
   assert.match(xml, /<transitionitem>.*?<start>17998<\/start><end>18005<\/end>/u);
 });
 
+function valueOf<T>(result: TimeMapResult<T>): T {
+  assert.ok(result.ok, JSON.stringify(result));
+  return result.value;
+}
+
+const clock = {fpsNumerator: 30, fpsDenominator: 1};
+const constant = (numerator: number, denominator = 1): TimeMapSpeed => ({kind: 'constant', rate: {numerator, denominator}});
+const boundary = (frame: number) => ({kind: 'rational' as const, numerator: String(frame), denominator: '1'});
+
+function speedClip(n: number, at: number, speed: TimeMapSpeed, direction: 'forward' | 'reverse',
+  interpolation: SpeedInterpolation, end = 31, lane = main): Format5Clip {
+  const basis = {profile: 'timeline-speed-v1' as const, speed, sourceFps: clock, outputFps: clock,
+    sourceRange: {start: boundary(7), end: boundary(end)}};
+  const plan = initialTimeMap(valueOf(compileTimeMap(basis)), direction);
+  const {loTime, hiTime} = valueOf(timeMapPlanInfo(plan));
+  return clip(n, lane, at, plan.durationFrames, {sourceInFrame: 7, sourceSpanFrames: end - 7,
+    timing: {profile: basis.profile, basis, view: {direction, loTime, hiTime}, outputWindow: plan.outputWindow,
+      interpolation, pitchShift: false}});
+}
+
+function speedFixture() {
+  const input = fixture();
+  const transitionIn = {kind: 'dissolve', profileId: CLIP_TRANSITION_PROFILE, durationFrames: 4};
+  const forward = speedClip(80, 1, constant(3, 2), 'forward', 'off');
+  const reverse = {...speedClip(81, forward.startFrame + forward.durationFrames, constant(3, 2), 'reverse', 'off'), transitionIn};
+  const tail = speedClip(82, 50, constant(2), 'forward', 'off', 32);
+  const curve = speedClip(83, 72, valueOf(instantiateSpeedPreset('slowMiddle', 7, 48)), 'forward', 'blend', 48);
+  const optical = speedClip(84, 185, constant(1, 2), 'forward', 'optical');
+  const held = clip(85, main, 242, 19, {sourceInFrame: 23, sourceSpanFrames: 1, muted: true,
+    timing: {profile: 'timeline-freeze-v1', sourceFrame: 23, sourceVersionId: null, sourceSha256: 'a'.repeat(64)}});
+  const plain = clip(86, main, 264, 6, {sourceInFrame: 22});
+  const audioCurve = speedClip(87, 72, valueOf(instantiateSpeedPreset('slowMiddle', 7, 48)), 'forward', 'off', 48, dialogue);
+  input.timeline.clips = [forward, reverse, tail, curve, optical, held, plain, audioCurve];
+  delete input.timeline.subtitles;
+  const speed = new Map<string, EditorExportSpeed>();
+  for (const item of input.timeline.clips) {
+    if (!item.timing) continue;
+    const mapping = compileEditorExportSpeed(item, input.timeline);
+    assert.ok(mapping, item.name);
+    speed.set(item.id, mapping);
+  }
+  return {...input, speed};
+}
+
+function readGraph(item: string) {
+  const effect = item.match(/<effect><name>Time Remap<\/name>.*?<\/effect>/u)?.[0];
+  assert.ok(effect);
+  const read = (id: string) => {
+    const match = new RegExp('<parameter><parameterid>' + id + '</parameterid>(.*?)</parameter>', 'u').exec(effect!);
+    assert.ok(match, id);
+    return match[1]!;
+  };
+  const scalar = (id: string) => read(id).match(/<value>([^<]+)<\/value>/u)?.[1];
+  const graph = read('graphdict');
+  const keyframes = [...graph.matchAll(/<keyframe><when>(\d+)<\/when><value>([-.\d]+)<\/value>(.*?)<\/keyframe>/gu)]
+    .map(([, when, value, flags]) => ({when: Number(when), value: Number(value), flags}));
+  assert.ok(keyframes.length >= 2);
+  assert.equal(keyframes[0]!.flags, '<speedkfin>TRUE</speedkfin>');
+  assert.equal(keyframes.at(-1)!.flags, '<speedkfout>TRUE</speedkfout>');
+  return {keyframes, variable: scalar('variablespeed') === '1', reverse: scalar('reverse') === 'TRUE',
+    speed: Number(scalar('speed')), blending: scalar('frameblending') === 'TRUE'};
+}
+
+function interpolateGraph(graph: ReturnType<typeof readGraph>, at: number): number {
+  const index = graph.keyframes.findIndex(keyframe => keyframe.when > at);
+  assert.ok(index > 0);
+  const left = graph.keyframes[index - 1]!, right = graph.keyframes[index]!;
+  // XMEML reverses only constant graph coordinates into one-based frames.
+  const basis = graph.reverse && !graph.variable ? 1_000_000 : 0;
+  const span = right.when - left.when;
+  const offset = at - left.when;
+  return ((Math.round(left.value * 1e6) - basis) * (span - offset) +
+    (Math.round(right.value * 1e6) - basis) * offset) / (span * 1e6);
+}
+
+test('XMEML retimes forward and reverse trims with exact shared ordinals and a separate source duration', () => {
+  const input = speedFixture(), xml = serializePremiereXml(input);
+  for (const n of [80, 81, 82]) {
+    const item = input.timeline.clips.find(value => value.id === id(n))!;
+    const video = clipXml(xml, n, 'video'), audio = clipXml(xml, n, 'audio');
+    const graph = readGraph(video);
+    if (n === 82) {
+      assert.equal(graph.variable, true, 'the bounded final frame requires more than one graph segment');
+      assert.match(audio, /<enabled>FALSE<\/enabled>/u);
+      assert.doesNotMatch(audio, /<effectid>timeremap<\/effectid>/u);
+    } else {
+      assert.deepEqual(readGraph(audio), graph, 'a two-point constant speed retains the matching audio graph');
+    }
+    assert.equal(graph.reverse, n === 81);
+    assert.equal(graph.blending, false);
+    assert.equal(graph.keyframes[0]!.when, 0);
+    assert.equal(graph.keyframes.at(-1)!.when, item.durationFrames);
+    assert.equal(graph.speed, n === 82 ? 200 : 150);
+    assert.match(video, new RegExp('<duration>' + item.durationFrames + '</duration>.*?<start>' + item.startFrame +
+      '</start><end>' + (item.startFrame + item.durationFrames) + '</end><in>0</in><out>' + item.durationFrames + '</out>', 'u'));
+    const plan = valueOf(compileClipTimeMap(item, input.timeline));
+    const shared = Array.from(valueOf(timeMapPlanFrames(plan)));
+    assert.deepEqual(Array.from({length: item.durationFrames}, (_, at) => Math.floor(interpolateGraph(graph, at))), shared);
+  }
+  assert.doesNotMatch(xml, /<transitionitem>/u);
+  assert.deepEqual([...premiereTransitionCuts(input.timeline, input.assets, input.speed)], []);
+  assert.match(xml, /<file id="file-1">.*?<duration>720<\/duration>/u);
+  assert.match(clipXml(xml, 86, 'video'), /<in>22<\/in><out>28<\/out>/u);
+});
+
+test('XMEML writes bounded curve points and blending, preserves optics fallback placement, and keeps holds silent', () => {
+  const input = speedFixture(), xml = serializePremiereXml(input);
+  const curved = input.timeline.clips.find(item => item.id === id(83))!;
+  const graph = readGraph(clipXml(xml, 83, 'video'));
+  const plan = valueOf(compileClipTimeMap(curved, input.timeline));
+  assert.equal(graph.variable, true);
+  assert.equal(graph.blending, true);
+  assert.ok(graph.keyframes.length > 2);
+  assert.equal(graph.keyframes.at(-1)!.when, curved.durationFrames);
+  const max = input.speed.get(curved.id)!.maxErrorFrames;
+  for (let at = 0; at < curved.durationFrames; at++) {
+    const {source} = valueOf(timeMapSourceAtOutputFrame(plan, at));
+    const expected = source.kind === 'numeric' ? source.value : Number(source.numerator) / Number(source.denominator);
+    assert.ok(Math.abs(interpolateGraph(graph, at) - expected) <= max + 1e-6, 'curve sampling bound at frame ' + at);
+  }
+  for (const n of [83, 87]) {
+    const audio = clipXml(xml, n, 'audio');
+    assert.match(audio, /<enabled>FALSE<\/enabled>/u);
+    assert.doesNotMatch(audio, /<effectid>timeremap<\/effectid>/u);
+  }
+  const optical = readGraph(clipXml(xml, 84, 'video'));
+  assert.equal(optical.blending, false);
+  assert.equal(optical.speed, 50);
+  const frozen = clipXml(xml, 85, 'video');
+  assert.match(frozen, /<duration>19<\/duration>.*?<start>242<\/start><end>261<\/end><in>0<\/in><out>19<\/out><stillframe>TRUE<\/stillframe><stillframeoffset>23<\/stillframeoffset>/u);
+  assert.doesNotMatch(frozen, /<effectid>timeremap<\/effectid>|<link>/u);
+  assert.doesNotMatch(xml, new RegExp('audio-' + id(85), 'u'));
+});
+
+test('a missing speed graph preserves a valid source range and otherwise its timeline slot', () => {
+  const input = speedFixture();
+  input.speed.delete(id(80));
+  input.speed.delete(id(82));
+  const dropped = input.timeline.clips.find(item => item.id === id(82))!;
+  dropped.sourceInFrame = 715;
+  const xml = serializePremiereXml(input);
+  assert.match(clipXml(xml, 80, 'video'), /<start>1<\/start><end>17<\/end><in>7<\/in><out>23<\/out>/u);
+  assert.doesNotMatch(clipXml(xml, 80, 'video'), /<effectid>timeremap<\/effectid>/u);
+  assert.doesNotMatch(xml, new RegExp(id(82), 'u'));
+  assert.match(clipXml(xml, 83, 'video'), /<start>72<\/start>/u);
+  const untimed = fixture();
+  const expected = serializePremiereXml(untimed);
+  assert.equal(serializePremiereXml({...untimed, speed: new Map()}), expected);
+  const original = untimed.timeline.clips.find(item => item.id === id(11))!;
+  const basis = {profile: 'timeline-speed-v1' as const, speed: constant(1), sourceFps: clock, outputFps: clock,
+    sourceRange: {start: boundary(original.sourceInFrame), end: boundary(original.sourceInFrame + original.durationFrames)}};
+  const identity = initialTimeMap(valueOf(compileTimeMap(basis)));
+  const {loTime, hiTime} = valueOf(timeMapPlanInfo(identity));
+  original.timing = {profile: basis.profile, basis, view: {direction: 'forward', loTime, hiTime},
+    outputWindow: identity.outputWindow, interpolation: 'off', pitchShift: false};
+  assert.equal(compileEditorExportSpeed(original, untimed.timeline), null);
+  assert.equal(serializePremiereXml(untimed), expected, 'explicit 1× identity retains the existing transition and exact bytes');
+});
+
 test('generates well-formed XML and accepts a local Apple XMEML v5 DTD for validation', t => {
   const dtd = process.env.MIOON_PREMIERE_XMEML_DTD;
   const args = dtd ? ['--dtdvalid', pathToFileURL(dtd).href] : [];
-  const check = spawnSync('xmllint', ['--noout', '--nonet', ...args, '-'], {
-    input: serializePremiereXml(fixture()), encoding: 'utf8', env: testEnv(),
-  });
-  if ((check.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT' && !dtd) {
-    t.skip('xmllint is not installed');
-    return;
+  for (const input of [fixture(), speedFixture()]) {
+    const check = spawnSync('xmllint', ['--noout', '--nonet', ...args, '-'], {
+      input: serializePremiereXml(input), encoding: 'utf8', env: testEnv(),
+    });
+    if ((check.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT' && !dtd) {
+      t.skip('xmllint is not installed');
+      return;
+    }
+    assert.ifError(check.error);
+    assert.equal(check.status, 0, check.stderr);
   }
-  assert.ifError(check.error);
-  assert.equal(check.status, 0, check.stderr);
 });

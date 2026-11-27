@@ -3,6 +3,8 @@ import {clipTransitionSides, isClipTransition, type ClipTransition, type ClipTra
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import type {Format5Anchor, Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {TimelineTrackRecord} from '../../contracts/src/timeline-replacement.ts';
+import {editorExportHasOriginalPicture} from './editor-export-source-clock.ts';
+import {hasEditorExportSpeed, type EditorExportSpeed} from './editor-export-speed.ts';
 
 export interface FcpXmlAsset {
   readonly id: string;
@@ -16,6 +18,9 @@ export interface FcpXmlAsset {
   readonly audioChannels?: number;
   readonly audioRate?: number;
   readonly isStill?: boolean;
+  readonly sourcePictureFrames?: number;
+  readonly sourceFps?: number;
+  readonly sourceFpsDenominator?: number;
 }
 
 type Attribute = string | number | undefined;
@@ -42,6 +47,22 @@ function element(name: string, attributes: Attributes = {}, body = ''): string {
 
 function frameTime(frames: number): string {
   return frames % fps === 0 ? `${frames / fps}s` : `${frames}/${fps}s`;
+}
+
+const retimeSampling = {off: 'floor', blend: 'frame-blending', optical: 'optical-flow'} as const;
+
+function retimeTime(frame: number): string {
+  const unitsPerFrame = 1_000_000;
+  return Number.isInteger(frame) ? frameTime(frame) : `${Math.round(frame * unitsPerFrame)}/${fps * unitsPerFrame}s`;
+}
+
+function timeMapXml(speed: EditorExportSpeed): string {
+  const points = speed.points.map(({outputFrame, sourceFrame}) => element('timept', {
+    time: retimeTime(outputFrame),
+    value: retimeTime(sourceFrame),
+    interp: 'linear',
+  })).join('');
+  return element('timeMap', {frameSampling: retimeSampling[speed.interpolation], preservesPitch: speed.pitchShift ? 0 : 1}, points);
 }
 
 const decimal = (value: number): string => String(Number(value.toFixed(6)));
@@ -83,8 +104,11 @@ export function fcpxmlTransitions(timeline: Format5Timeline, assets: ReadonlyMap
     const previous = previousByTrack.get(clip.trackId);
     previousByTrack.set(clip.trackId, clip);
     const transition = clip.transitionIn;
+    // Retime maps currently cover the visible output only. FCP transitions
+    // can ask for material outside that range, including across a hold.
     if (previous && endFrame(previous) === clip.startFrame && hasResource(previous) && hasResource(clip) &&
-        transition && isClipTransition(transition)) cuts.set(clip.id, transition);
+        transition && isClipTransition(transition) &&
+        !hasEditorExportSpeed(previous, timeline.fps) && !hasEditorExportSpeed(clip, timeline.fps)) cuts.set(clip.id, transition);
   }
   return cuts;
 }
@@ -184,13 +208,14 @@ function gapXml(start: number, duration: number, children: string, clip?: Format
   return element('gap', {name: clip?.name ?? 'Gap', start: '0s', offset: frameTime(start), duration: frameTime(duration)}, children + marker);
 }
 
-function buildPrimary(clips: readonly Format5Clip[], timeline: Format5Timeline, resources: ReadonlyMap<string, AssetResource>): PrimaryItem[] {
+function buildPrimary(clips: readonly Format5Clip[], timeline: Format5Timeline,
+  clipOrigin: (clip: Format5Clip) => number): PrimaryItem[] {
   let offset = 0;
   const primary: PrimaryItem[] = [];
   for (const clip of clips) {
     if (offset < clip.startFrame) primary.push({startFrame: offset, durationFrames: clip.startFrame - offset, sourceInFrame: 0, connected: []});
-    const sourceInFrame = clip.assetId && resources.has(clip.assetId) ? clip.sourceInFrame : 0;
-    primary.push({clip, startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceInFrame, connected: []});
+    primary.push({clip, startFrame: clip.startFrame, durationFrames: clip.durationFrames,
+      sourceInFrame: clipOrigin(clip), connected: []});
     offset = endFrame(clip);
   }
   if (offset < timeline.durationFrames) primary.push({startFrame: offset, durationFrames: timeline.durationFrames - offset, sourceInFrame: 0, connected: []});
@@ -208,65 +233,93 @@ function renderAsset(resource: AssetResource): string {
   }, element('media-rep', {kind: 'original-media', src: asset.fileUrl}));
 }
 
-export function serializeFcpXml({timeline, projectName, assets}: {
+export function serializeFcpXml({timeline, projectName, assets, speed}: {
   readonly timeline: Format5Timeline;
   readonly projectName: string;
   readonly assets: ReadonlyMap<string, FcpXmlAsset>;
+  readonly speed?: ReadonlyMap<string, EditorExportSpeed>;
 }): string {
   if (timeline.fps !== fps) throw new RangeError('FCPXML export requires the Format 5 30 fps timebase');
   const tracks = [...timeline.tracks].sort((a, b) => a.orderIndex - b.orderIndex);
   const clips = [...timeline.clips].sort(compareTime);
   const mainId = timeline.mainTrack.trackId;
-  const mainTrack = tracks.find(track => track.id === mainId);
+  const tracksById = new Map(tracks.map(track => [track.id, track]));
+  const mainTrack = tracksById.get(mainId);
   if (!mainTrack) throw new RangeError('FCPXML export requires a primary video track');
 
   const formats = new Map<string, string>();
   const resourceXml: string[] = [];
   let nextId = 1;
-  const formatId = (width: number, height: number, noRate = false): string => {
-    const key = [width, height, noRate].join(':');
+  const formatId = (width: number, height: number, noRate = false, frameDuration = frameTime(1)): string => {
+    const key = [width, height, noRate, frameDuration].join(':');
     const existing = formats.get(key);
     if (existing) return existing;
     const id = `r${nextId++}`;
     formats.set(key, id);
     resourceXml.push(element('format', {
       id, name: noRate ? 'FFVideoFormatRateUndefined' : undefined, width: width || undefined, height: height || undefined,
-      frameDuration: noRate ? undefined : frameTime(1), colorSpace: noRate ? undefined : rec709,
+      frameDuration: noRate ? undefined : frameDuration, colorSpace: noRate ? undefined : rec709,
     }));
     return id;
   };
   const sequenceFormat = formatId(timeline.width, timeline.height);
   const byFile = new Map<string, AssetResource>(), resources = new Map<string, AssetResource>();
+  const retimed = new Set(clips.filter(clip => hasEditorExportSpeed(clip, timeline.fps)).map(clip => clip.id));
+  const speedFor = (clip: Format5Clip) => retimed.has(clip.id) ? speed?.get(clip.id) : undefined;
+  const sourceFrameDurationByFile = new Map<string, string>();
+  for (const clip of clips) {
+    const asset = retimed.has(clip.id) && clip.assetId ? assets.get(clip.assetId) : undefined;
+    if (asset?.sourceFps !== undefined) {
+      sourceFrameDurationByFile.set(asset.fileUrl, `${asset.sourceFpsDenominator ?? 1}/${asset.sourceFps}s`);
+    }
+  }
+  const present = (clip: Format5Clip, asset: FcpXmlAsset) => !retimed.has(clip.id) || speedFor(clip) ||
+    editorExportHasOriginalPicture(clip, asset, clip.soundOnly === true || tracksById.get(clip.trackId)?.kind === 'audio');
   for (const clip of clips) {
     if (clip.sourceState === 'placeholder' || !clip.assetId) continue;
     const asset = assets.get(clip.assetId);
-    if (!asset) continue;
+    if (!asset || !present(clip, asset)) continue;
     let resource = byFile.get(asset.fileUrl);
     if (!resource) {
-      const format = asset.hasVideo ? formatId(asset.width ?? timeline.width, asset.height ?? timeline.height, asset.isStill) : formatId(0, 0, true);
+      const format = asset.hasVideo
+        ? formatId(asset.width ?? timeline.width, asset.height ?? timeline.height, asset.isStill, sourceFrameDurationByFile.get(asset.fileUrl))
+        : formatId(0, 0, true);
       resource = {id: `r${nextId++}`, format, asset, usedFrames: 0};
       byFile.set(asset.fileUrl, resource);
     }
-    resource.usedFrames = Math.max(resource.usedFrames, clip.sourceInFrame + clip.durationFrames);
+    resource.usedFrames = Math.max(resource.usedFrames, speedFor(clip)?.sourceEndFrame ?? clip.sourceInFrame + clip.durationFrames);
     resources.set(clip.assetId, resource);
   }
   for (const resource of byFile.values()) resourceXml.push(renderAsset(resource));
-  const getResource = (clip: Format5Clip): AssetResource | undefined =>
-    clip.assetId && clip.sourceState === 'ready' ? resources.get(clip.assetId) : undefined;
+  const getResource = (clip: Format5Clip): AssetResource | undefined => {
+    const resource = clip.assetId && clip.sourceState === 'ready' ? resources.get(clip.assetId) : undefined;
+    const asset = clip.assetId ? assets.get(clip.assetId) : undefined;
+    return resource && asset && present(clip, asset) ? resource : undefined;
+  };
 
   function clipXml(clip: Format5Clip, track: TimelineTrackRecord, offset: number, lane?: number, children = ''): string {
     const resource = getResource(clip);
     if (!resource) return gapXml(offset, clip.durationFrames, children, clip);
     const {asset} = resource;
     const audioOnly = clip.soundOnly || track.kind === 'audio';
-    const picture = !audioOnly && asset.hasVideo ? pictureAdjustments(clip, asset, track, timeline) : '';
-    const audio = asset.hasAudio ? audioAdjustments(clip, track) : '';
-    return element('asset-clip', {
+    const retiming = speedFor(clip);
+    const freeze = clip.timing?.profile === 'timeline-freeze-v1';
+    const local = retiming ? {...clip, sourceInFrame: 0} : clip;
+    const picture = !audioOnly && asset.hasVideo ? pictureAdjustments(local, asset, track, timeline) : '';
+    const audio = !freeze && asset.hasAudio ? audioAdjustments(local, track) : '';
+    const attributes = {
       ref: resource.id, name: clip.name, lane, offset: frameTime(offset),
-      start: frameTime(clip.sourceInFrame), duration: frameTime(clip.durationFrames),
-      srcEnable: audioOnly ? 'audio' : undefined,
-      audioRole: asset.hasAudio ? audioRole(clip.audioRole) : undefined,
-    }, picture + audio + children);
+      start: frameTime(local.sourceInFrame), duration: frameTime(clip.durationFrames),
+      srcEnable: freeze ? 'video' : audioOnly ? 'audio' : undefined,
+      audioRole: !freeze && asset.hasAudio ? audioRole(clip.audioRole) : undefined,
+    };
+    if (!retiming) return element('asset-clip', attributes, picture + audio + children);
+    const timeMap = timeMapXml(retiming);
+    if (!children && !picture && !audio) return element('asset-clip', attributes, timeMap);
+    // A timeMap also retimes its own connected offsets. Keep connections
+    // and clip-relative effects on a parent with the unchanged output clock.
+    return element('clip', {name: clip.name, lane, offset: attributes.offset, start: '0s', duration: attributes.duration},
+      picture + audio + element('asset-clip', {...attributes, lane: undefined, offset: '0s'}, timeMap) + children);
   }
 
   const effectIds = new Map<Effect, string>();
@@ -287,7 +340,8 @@ export function serializeFcpXml({timeline, projectName, assets}: {
       parameters?.map(attributes => element('param', attributes)).join('')));
   }
 
-  const primary = buildPrimary(clips.filter(clip => clip.trackId === mainId), timeline, resources);
+  const primary = buildPrimary(clips.filter(clip => clip.trackId === mainId), timeline,
+    clip => speedFor(clip) || !getResource(clip) ? 0 : clip.sourceInFrame);
   const primaryById = new Map(primary.flatMap(item => item.clip ? [[item.clip.id, item] as const] : []));
   function attach(item: {startFrame: number; anchor?: Format5Anchor}, lane: number, makeXml: (offset: number) => string): void {
     const owner = (item.anchor ? primaryById.get(item.anchor.clipId) : undefined)

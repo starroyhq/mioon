@@ -13,6 +13,7 @@ import {assertAgentTaskJobEffect, assertTaskEffectOrigin, bindAgentTaskJobInside
 import {editorExportDisplayPath, editorExportFileIdentity, EditorExportFailure, editorExportMissingMarkdown, editorExportSafeName, editorExportSourceIdentity, editorExportXmlAssets} from './fcp-export-plan.ts';
 import type {EditorExportPlan, EditorExportPlanInput, EditorExportPreview, EditorMediaCopy, EditorExportSource} from './fcp-export-plan.ts';
 import type {FcpXmlAsset} from './fcp-xml.ts';
+import type {EditorExportSpeed} from './editor-export-speed.ts';
 import {discloseEditorExportTask, editorExportTaskSql} from './fcpxml-export-task.ts';
 import type {EditorExportTask, EditorExportTaskKind} from './fcpxml-export-task.ts';
 import {createProjectAssetReferenceServices} from './project-asset-references.ts';
@@ -158,7 +159,8 @@ export interface EditorExportTarget<Preview extends EditorExportPreview> {
   xmlName(title: string): string;
   manifestFormat: Readonly<Record<string, string>>;
   plan(input: EditorExportPlanInput): Promise<EditorExportPlan<Preview>>;
-  serialize(input: {timeline: Format5Timeline; projectName: string; assets: ReadonlyMap<string, FcpXmlAsset>}): string;
+  serialize(input: {timeline: Format5Timeline; projectName: string; assets: ReadonlyMap<string, FcpXmlAsset>;
+    speed?: ReadonlyMap<string, EditorExportSpeed>}): string;
 }
 
 export function createEditorExportServices<Preview extends EditorExportPreview>(
@@ -183,7 +185,7 @@ export function createEditorExportServices<Preview extends EditorExportPreview>(
   };
   function scope(id: string): void {
     if (id !== projectId) throw missing();
-    if (!isFormat5Project(store)) throw new AppError('UNKNOWN_OPERATION', target.appName + ' 导出仅适用于格式 5 项目。', 404);
+    if (!isFormat5Project(store)) throw new AppError('UNKNOWN_OPERATION', target.appName + ' 导出仅适用于格式 5 和格式 6 项目。', 404);
   }
   function timelineBasis() {
     const timeline = readFormat5TimelineRecord(db, 'project');
@@ -326,7 +328,7 @@ export function createEditorExportServices<Preview extends EditorExportPreview>(
       const xmlName = target.xmlName(row.title);
       const written = write('missing.md', editorExportMissingMarkdown(plan.preview, target.appName))
         + write('manifest.json', JSON.stringify(manifest, null, 2) + '\n')
-        + write(xmlName, target.serialize({timeline: basis.timeline, projectName: row.title, assets}));
+        + write(xmlName, target.serialize({timeline: basis.timeline, projectName: row.title, assets, speed: plan.speed}));
       const result = {bundleName: path.basename(bundle.path), displayPath: editorExportDisplayPath(bundle.path),
         bytes: written + row.progress.totalBytes, missingCount: plan.preview.missing.length};
       const xml = inspect(path.join(bundle.path, xmlName), 'file');
