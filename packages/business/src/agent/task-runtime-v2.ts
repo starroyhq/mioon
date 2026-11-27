@@ -5,6 +5,7 @@ import {setTimeout as waitDelay} from 'node:timers/promises';
 import {AppError,deriveAgentEndpoint} from '@mioon/contracts';
 import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskQuestionSchema,agentTaskSendSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
+import {sequenceEditDialogueConflictSchema} from '../../../contracts/src/sequence-edit.ts';
 import type { Store } from '../store-contract.ts';
 import {GENERATION_SERVICE_UNAVAILABLE} from '../provider-registry.ts';
 import {mioTable} from './mio-table-layout.ts';
@@ -652,9 +653,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
       }
-      const message=current.status==='intent'&&error instanceof MioSequencePreviewRejection
-        ?error.message:'工具未完成，请检查参数或可用性。';
+      const previewError=current.status==='intent'&&error instanceof MioSequencePreviewRejection?error:undefined;
+      const message=previewError?.message??'工具未完成，请检查参数或可用性。';
       const toolError={code:failure,message};
+      if(failure==='SEQUENCE_EDIT_DIALOGUE_CONFLICT'&&previewError&&record(previewError.details)){
+        const conflict=sequenceEditDialogueConflictSchema.safeParse(previewError.details.dialogueConflict);
+        if(conflict.success)return journal.updateStep(runId,step.id,{status:'failed',
+          result:{error:{...toolError,details:{dialogueConflict:json(conflict.data)}}},error:toolError});
+      }
       return journal.updateStep(runId,step.id,{status:'failed',result:{error:toolError},error:toolError});
     }
   }

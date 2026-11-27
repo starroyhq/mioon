@@ -110,12 +110,6 @@ function runSync(store: ProjectStore, command: SequenceSyncCommand): Record<stri
   assert.ok(result.ok !== false, `sync failed: ${result.code}`);
   return result;
 }
-function attemptSync(store: ProjectStore, command: SequenceSyncCommand): {code: string; ids: string[]} {
-  const preview = previewSequenceSync(store, command, {requestId: requestId()});
-  assert.equal('envelope' in preview, false, 'sync preview unexpectedly succeeded');
-  const failure = preview as {code: string; ids: readonly string[]};
-  return {code: failure.code, ids: [...failure.ids]};
-}
 function undo(store: ProjectStore): void {
   const history = createSequenceEditing(store).call('sequence.history.get', {projectId}) as Record<string, any>;
   assert.ok(history.undo, 'there must be an undo step');
@@ -594,7 +588,7 @@ test('in-place copy projects fresh dialogue cues and preserves source cues and v
   }
 });
 
-test('in-place copy rejects a blocked dialogue projection without creating the copy or moving subtitles', t => {
+test('in-place copy identifies the saved subtitle and missing dialogue space without writing', t => {
   const store = fixture(t);
   commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
     {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
@@ -602,19 +596,41 @@ test('in-place copy rejects a blocked dialogue projection without creating the c
   store.tx(() => {
     const record = timeline(store);
     // An unattached cue keeps its absolute frames over the copy's proposed span.
-    record.subtitles!.cues.push({id: id(31), text: '占满', startFrame: 60, durationFrames: 60, anchor: null});
+    record.subtitles!.cues.push({id: id(31), text: '挡住这里的一行很长的字幕需要省略', startFrame: 60, durationFrames: 59, anchor: null});
     store.put('timelines', record);
   });
   const beforeTimeline = timeline(store);
   const beforeShots = store.list('shots', projectId);
   const beforeHistory = createSequenceEditing(store).call('sequence.history.get', {projectId});
   const copyNodeId = id(94);
-  const failure = attemptSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,
-    newClipId: id(93), copyNodeId});
-  assert.deepEqual(failure, {code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT', ids: [copyNodeId]});
+  const failure = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,
+    newClipId: id(93), copyNodeId}, {requestId: requestId()});
+  assert.ok('ok' in failure && failure.ok === false);
+  assert.equal(failure.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.deepEqual(failure.ids, [copyNodeId]);
+  assert.deepEqual(failure.dialogueConflict, {
+    blockers: [{cueId: id(31), startFrame: 60, endFrame: 119, textExcerpt: '挡住这里的一行很长的字幕…'}],
+    blockerCount: 1, requiredFrames: 2, availableFrames: 1,
+  });
+  assert.equal(failure.message,
+    '副本的台词放不进去。这段时间已有字幕「挡住这里的一行很长的字幕…」。至少需要 2 帧，这段时间只剩 1 帧。先挪开或删掉挡住的字幕再复制。');
   assert.deepEqual(timeline(store), beforeTimeline);
   assert.deepEqual(store.list('shots', projectId), beforeShots);
   assert.deepEqual(createSequenceEditing(store).call('sequence.history.get', {projectId}), beforeHistory);
+});
+
+test('in-place copy of a one-frame split explains the missing space without inventing a subtitle blocker', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  runSync(store, {kind: 'clip-split', clipId: clipA, offsetFrames: 1, rightClipId: id(92)});
+  const failure = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,
+    newClipId: id(93), copyNodeId: id(94)}, {requestId: requestId()});
+  assert.ok('ok' in failure && failure.ok === false);
+  assert.equal(failure.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.deepEqual(failure.dialogueConflict, {blockers: [], blockerCount: 0, requiredFrames: 2, availableFrames: 1});
+  assert.match(failure.message ?? '', /延长片段或减少台词再复制/);
 });
 
 test('in-place copy rejects a non-main-track source without creating history or storing a receipt', t => {

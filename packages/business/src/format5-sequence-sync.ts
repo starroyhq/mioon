@@ -41,6 +41,7 @@ import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/boar
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
 import {format5SyncBaselineSchema, format5TimelineHeader} from '../../contracts/src/project-format5.ts';
 import {copyFormat5ShotDialogue, format5ShotDialogue, projectFormat5DialogueCues} from './format5-dialogue-projection.ts';
+import {dialogueConflictMessage} from './format5-sequence-preview-errors.ts';
 import type {Format5DialogueProjectedShot, Format5DialogueProjectionResult} from './format5-dialogue-projection.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
@@ -1076,7 +1077,9 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
       previousCues: new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const)),
       liveShotIds: new Set(plan.after.board.nodes.map(node => node.id).filter(nodeId => mergedShots.has(nodeId))),
     });
-    if (projection.ok === false) return {ok: false, code: projection.code as SequenceEditErrorCode, ids: projection.ids};
+    if (projection.ok === false) {
+      return {...projection, message: dialogueConflictMessage(projection.dialogueConflict, Boolean(clipCopy))};
+    }
     cues = projection.cues as Format5Cue[];
   }
   const clipEnds = clips.map(clip => clip.startFrame + clip.durationFrames);
@@ -1970,7 +1973,10 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     if ('ok' in board && board.ok === false) return writeFailure(store, envelope, board.code);
     const boardEntities = board as BoardPlanEntities;
     const projected = patchMainTimeline(context, successful, boardEntities.extraShots);
-    if (projected.ok === false) return writeFailure(store, envelope, projected.code);
+    if (projected.ok === false) {
+      writeSequenceEditFailure(store, envelope, projected.code);
+      return projected;
+    }
     const projection = projected.projection;
     let nextTimeline = projection.timeline;
     const sceneData = sceneCuts.length && sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'split-at-scenes'

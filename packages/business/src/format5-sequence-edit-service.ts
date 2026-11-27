@@ -351,8 +351,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
       return result.receipt;
     }
     if (envelope.dialogueIntent) {
-      const result = runDialogueAction(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 台词没有完成。', 409, {ids: result.ids});
+      const result = runDialogueAction(store, envelope);
+      if (result.ok === false) throw new AppError(result.code, result.message ?? '格式 5 台词没有完成。', 409,
+        {ids: result.ids, ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
       return result.receipt;
     }
     if (envelope.trackIntent) {
@@ -371,8 +372,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
       return result.receipt;
     }
     if (envelope.subjectIntent || envelope.referenceIntent || envelope.previsIntent || intents.some(timelineIntent)) {
-      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});
+      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest});
+      if (result.ok === false) throw new AppError(result.code, result.message ?? '格式 5 同步没有完成。', 409,
+        {ids: result.ids, ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
       return result.receipt;
     }
     if (intents.some(boardIntent)) {
