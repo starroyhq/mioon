@@ -1,6 +1,6 @@
 import {AppError} from '../../contracts/src/app-error.ts';
 import {SPEED_MAPPING_INVALID, TIMELINE_SPEED_EXPORT_MESSAGES} from '../../contracts/src/timeline-speed-export.ts';
-import {timeMapTailInverse, type CompiledTimeMap, type TimeMapCurvePoint, type TimeMapSpeedRate} from '../../contracts/src/timeline-time-map.ts';
+import {timeMapAudioInverse, type CompiledTimeMap, type TimeMapCurvePoint, type TimeMapSpeedRate} from '../../contracts/src/timeline-time-map.ts';
 
 export const speedAudioSamplesPerFrame = 1_600;
 const minimumBlockSize = 64;
@@ -13,8 +13,8 @@ export const invalidSpeedAudio = (reason: string): AppError =>
 
 interface SourceAnchor {readonly sample: number; readonly error: number}
 function invert(plan: CompiledTimeMap, sampleNumerator: number, sampleDenominator = 1): SourceAnchor {
-  const result = timeMapTailInverse(plan, {numerator: String(sampleNumerator),
-    denominator: String(sampleDenominator * speedAudioSamplesPerFrame)}, {tailInverse: 'latest'});
+  const result = timeMapAudioInverse(plan, {numerator: String(sampleNumerator),
+    denominator: String(sampleDenominator * speedAudioSamplesPerFrame)}, phaseToleranceSamples / (2 * speedAudioSamplesPerFrame));
   if (!result.ok) throw invalidSpeedAudio(result.code);
   if (result.value.tail) throw invalidSpeedAudio('SAMPLE_IN_MOTION_TAIL');
   const {position} = result.value;
