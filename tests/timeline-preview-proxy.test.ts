@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {mkdtemp, readFile, readdir, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -7,18 +8,20 @@ import test from 'node:test';
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {hasUnconfirmedMediaProcesses, onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createProcessingCache} from '../packages/business/src/timeline-processing/cache.ts';
-import {PREVIEW_PROXY_PROFILE, preparePreviewProxy, renderPreviewProxy} from '../packages/business/src/timeline-processing/preview.ts';
-import type {PreviewProxyInput} from '../packages/business/src/timeline-processing/preview.ts';
+import {timelinePreviewProcessingRenderer} from '../packages/business/src/timeline-processing/preview.ts';
+import {TIMELINE_PREVIEW_CACHE_PROFILE} from '../packages/business/src/timeline-processing/preview-port.ts';
+import type {PreviewProcessingInput} from '../packages/business/src/timeline-processing/preview-port.ts';
 import {compileTimeMap, initialTimeMap, instantiateSpeedPreset, timeMapPlanFrames, timeMapSourceAtOutputFrame} from '../packages/contracts/src/timeline-time-map.ts';
 import type {TimeMapResult, TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
 import {speedProcessingItemSchema} from '../packages/contracts/src/timeline-processing.ts';
-import {processingProxyResultSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
+import {PROCESSING_REVERSE_PROXY_PROFILE, processingProxyResultSchema, processingStageMarkerSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 
 const clock = {fpsNumerator: 30, fpsDenominator: 1};
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const rate = (numerator: number, denominator: number): TimeMapSpeed => ({kind: 'constant', rate: {numerator, denominator}});
 const edge = (frame: number) => ({kind: 'rational' as const, numerator: String(frame), denominator: '1'});
 const authority = (signal = new AbortController().signal) => ({signal, beforeEffect() {}});
+const renderer = timelinePreviewProcessingRenderer;
 function unwrap<T>(result: TimeMapResult<T>): T {assert.ok(result.ok, JSON.stringify(result)); return result.value;}
 
 async function fixture(t: test.TestContext, {frames = 24, width = 24, height = 16, vfr = false} = {}) {
@@ -33,21 +36,31 @@ async function fixture(t: test.TestContext, {frames = 24, width = 24, height = 1
   const sourceSha256 = sha(await readFile(source));
   const projectId = randomUUID();
   const cache = createProcessingCache(root);
-  const makeInput = (speed: TimeMapSpeed, direction: 'forward' | 'reverse', interpolation: PreviewProxyInput['interpolation'],
-    end = frames, start = 0): PreviewProxyInput => ({
+  const makeInput = (speed: TimeMapSpeed, direction: 'forward' | 'reverse', interpolation: PreviewProcessingInput['interpolation'],
+    end = frames, start = 0): PreviewProcessingInput => ({
     source: {path: source}, sourceSha256, interpolation,
     plan: initialTimeMap(unwrap(compileTimeMap({profile: 'timeline-speed-v1', speed, sourceFps: clock, outputFps: clock,
       sourceRange: {start: edge(start), end: edge(end)}})), direction),
   });
-  async function render(input: PreviewProxyInput) {
+  function createStage(bytes: number, beforeEffect: () => void) {
+    return cache.stage(projectId, sha(Buffer.from(randomUUID())), bytes, beforeEffect,
+      {taskId: randomUUID(), requestId: randomUUID()});
+  }
+  async function render(input: PreviewProcessingInput, observe?: (percent: number, directory: string) => void) {
     const options = authority();
-    const prepared = await preparePreviewProxy(input, options);
-    const stage = cache.stage(projectId, sha(Buffer.from(randomUUID())), prepared.reservationBytes, options.beforeEffect);
-    const result = await renderPreviewProxy(input, prepared, {...options, stagingDirectory: stage.directory});
-    assert.equal(result.profileId, PREVIEW_PROXY_PROFILE);
+    const prepared = await renderer.prepare(input, options);
+    const stage = createStage(prepared.reservationBytes, options.beforeEffect);
+    assert.ok(stage.writer);
+    const result = await renderer.render(input, prepared, {...options, stagingDirectory: stage.directory,
+      writer: stage.writer, ...(observe ? {onProgress: percent => observe(percent, stage.directory)} : {})});
+    assert.equal(result.profileId, TIMELINE_PREVIEW_CACHE_PROFILE);
     assert.equal(result.frameCount, input.plan.durationFrames);
     assert.equal(result.sampleCount, 0);
-    assert.equal(processingProxyResultSchema.safeParse(result).success, false, 'preview cannot be certified as a lossless export proxy');
+    assert.deepEqual(processingProxyResultSchema.parse(result), result);
+    assert.equal(processingProxyResultSchema.safeParse({...result, profileId: PROCESSING_REVERSE_PROXY_PROFILE}).success, false,
+      'preview cannot be certified as a lossless export proxy');
+    assert.deepEqual(JSON.parse(await readFile(path.join(stage.directory, 'clock.json'), 'utf8')),
+      {...prepared.profile, frameCount: result.frameCount});
     assert.deepEqual((await readdir(stage.directory)).sort(), ['clock.json', 'preview.mp4']);
     for (const file of result.files) {
       const bytes = await readFile(path.join(stage.directory, file.fileName));
@@ -56,7 +69,7 @@ async function fixture(t: test.TestContext, {frames = 24, width = 24, height = 1
     }
     return {prepared, stage, result, file: path.join(stage.directory, 'preview.mp4')};
   }
-  return {cache, makeInput, projectId, render, root};
+  return {cache, makeInput, projectId, render, root, createStage};
 }
 
 async function readLevels(file: string, width: number, height: number, frames: number): Promise<number[]> {
@@ -137,6 +150,29 @@ test('preview scales to 960 and optical waiting uses the exact off-mode frames',
   }
 });
 
+test('SP-P publishes preview clock and media only after the owned encoder exits', async t => {
+  const {cache, makeInput, projectId, render} = await fixture(t, {frames: 4});
+  let writerPid: number | null = null;
+  const {prepared, stage, result} = await render(makeInput(rate(1, 2), 'forward', 'off'), (percent, directory) => {
+    if (percent <= 45 || percent >= 100) return;
+    const {ownership} = processingStageMarkerSchema.parse(JSON.parse(readFileSync(`${directory}.owner.json`, 'utf8')));
+    assert.equal(ownership.writers.length, 1);
+    assert.ok(ownership.writers[0]?.pid);
+    writerPid = ownership.writers[0].pid;
+  });
+  assert.ok(writerPid);
+  const entry = stage.publish(result);
+  const clockEvidence = cache.lookupWithClock(projectId, entry.cacheKey, TIMELINE_PREVIEW_CACHE_PROFILE);
+  assert.ok(clockEvidence);
+  assert.deepEqual(JSON.parse(clockEvidence.clock.toString('utf8')), {...prepared.profile, frameCount: result.frameCount});
+  const lease = await cache.acquire(projectId, entry.cacheKey, TIMELINE_PREVIEW_CACHE_PROFILE,
+    {expectedDigest: clockEvidence.digest});
+  assert.ok(lease);
+  try {lease.verify();}
+  finally {lease.release();}
+  await assert.rejects(readFile(`${stage.directory}.owner.json`), {code: 'ENOENT'});
+});
+
 test('blend without the shared phase processor is rejected before any preview staging', async t => {
   const {cache, makeInput, projectId, render, root} = await fixture(t, {frames: 4});
   let started = 0;
@@ -152,15 +188,16 @@ test('blend without the shared phase processor is rejected before any preview st
 });
 
 test('an aborted preview attempt stops its child before the SP-P staging owner discards files', async t => {
-  const {cache, makeInput, projectId} = await fixture(t);
+  const {cache, makeInput, projectId, createStage} = await fixture(t);
   const controller = new AbortController(), options = authority(controller.signal);
   const input = makeInput(rate(1, 2), 'reverse', 'off');
-  const prepared = await preparePreviewProxy(input, options);
-  const stage = cache.stage(projectId, sha(Buffer.from('preview attempt')), prepared.reservationBytes, options.beforeEffect);
+  const prepared = await renderer.prepare(input, options);
+  const stage = createStage(prepared.reservationBytes, options.beforeEffect);
+  assert.ok(stage.writer);
   let spawned = 0;
   const unobserve = onMediaProcess(event => {if (event.type === 'started') spawned++;});
   try {
-    await assert.rejects(renderPreviewProxy(input, prepared, {...options, stagingDirectory: stage.directory, onProgress(value) {
+    await assert.rejects(renderer.render(input, prepared, {...options, writer: stage.writer, stagingDirectory: stage.directory, onProgress(value) {
       if (value > 45) controller.abort();
     }}), {code: 'MEDIA_CANCELLED'});
   } finally {unobserve();}
@@ -168,6 +205,7 @@ test('an aborted preview attempt stops its child before the SP-P staging owner d
   assert.equal(hasUnconfirmedMediaProcesses({signal: options.signal}), false);
   stage.discard();
   await assert.rejects(readdir(stage.directory), {code: 'ENOENT'});
+  await assert.rejects(readFile(`${stage.directory}.owner.json`), {code: 'ENOENT'});
   assert.equal(cache.stats(projectId).usedBytes, 0);
 });
 

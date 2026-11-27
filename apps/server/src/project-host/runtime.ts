@@ -1,8 +1,9 @@
 import {handleMioRulesHttp} from '../mio-rules-http.ts';
 import {AppError} from '@mioon/contracts';
-import {TIMELINE_PREVIEW_MEDIA_QUERY} from '@mioon/contracts/timeline-preview-media';
+import {parseTimelinePreviewMediaQuery, TIMELINE_PREVIEW_MEDIA_QUERY} from '@mioon/contracts/timeline-preview-media';
 import {isTimelineRenderRecordFor} from '@mioon/business/timeline-record-format';
 import path from 'node:path';
+import {lstat} from 'node:fs/promises';
 import {admitProjectAssetSource, registeredProjectAssetReferences, validatedProjectAssetSource, resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
 import {readTimelineDeliveryDownload, readTimelineExportPreviewMedia, timelineDeliveryResponseHeaders, timelineExportPreviewResponseHeaders} from '@mioon/business/timeline-delivery-read';
@@ -15,6 +16,8 @@ import {createProjectVersions} from '@mioon/business/project-versions/service';
 import {installProjectVersionCapture} from '@mioon/business/project-versions/capture';
 import {captureDailyProjectVersion} from '@mioon/business/project-versions/daily';
 import {readSnapshotProjectFormat} from '../../../../packages/business/src/project-versions/document.ts';
+import {readTimelinePreviewClip} from '../../../../packages/business/src/timeline-preview-media.ts';
+import {timelinePreviewProcessingRenderer} from '../../../../packages/business/src/timeline-processing/preview.ts';
 import {isProjectVersionOperation, isProjectVersionResponse, projectVersionSchemas} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput, ProjectVersionRestoreInput} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {IncomingMessage, ServerResponse} from 'node:http';
@@ -22,6 +25,7 @@ import type {ServerOptions} from '../index.ts';
 import type {ApplicationRuntime} from '../application-runtime.ts';
 import {body, field, json} from '../http-json.ts';
 import {createFileResponses} from '../file-response.ts';
+import {sendTimelinePreviewProxyMedia} from '../timeline-preview-proxy-media.ts';
 import {createVersionComparisonMediaHttp} from '../version-comparison-media.ts';
 import {createProjectDeletionGate} from '../project-deletion-gate.ts';
 import {composeProjectRuntime, ProjectRuntimeCleanupError} from '../project-runtime.ts';
@@ -76,6 +80,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
       application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       processingCacheDirectory: context.directories.cacheDir,
+      timelinePreviewRenderer: timelinePreviewProcessingRenderer,
       privateMediaDirectories: [context.directories.dataDir, context.directories.cacheDir, context.directories.tempDir],
       agentSettings: app.agentSettings, settings: app.settings, deferBackgroundRecovery: true});
   } catch (error) {
@@ -194,10 +199,42 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       return true;
     }
     if (route.kind === 'media' && ['GET', 'HEAD'].includes(req.method ?? '')) {
-      // A proxy URL must resolve to its exact cache lease. Until the preview
-      // producer is attached, it must not fall through to the original asset.
       if (local.searchParams.has(TIMELINE_PREVIEW_MEDIA_QUERY)) {
-        throw new AppError('NOT_FOUND', '找不到该变速预览。', 404);
+        const unavailable = () => new AppError('NOT_FOUND', '找不到该变速预览。', 404);
+        const binding = parseTimelinePreviewMediaQuery(local.searchParams);
+        const preview = project.services.timelineProcessing?.preview;
+        if (!binding || !preview || !project.services.timelineProcessingEnabled) throw unavailable();
+        const {clipId, taskId, digest} = binding;
+        const readDuration = () => {
+          signal.throwIfAborted();
+          let clip: ReturnType<typeof readTimelinePreviewClip>;
+          try {clip = readTimelinePreviewClip(store, {projectId, clipId});} catch {throw unavailable();}
+          if (clip.assetId !== route.assetId || clip.timing?.profile !== 'timeline-speed-v1' || clip.timing.interpolation === 'blend') {
+            throw unavailable();
+          }
+          return clip.durationFrames;
+        };
+        const durationFrames = readDuration();
+        // SP-P binds the task to current timing and source. The host also
+        // binds the asset in the URL to the live clip on every lease check.
+        const beforeEffect = () => {if (readDuration() !== durationFrames) throw unavailable();};
+        const lease = await preview.acquire({projectId, clipId, taskId, sha256: digest}, {signal, beforeEffect});
+        if (!lease) throw unavailable();
+        const revalidate = () => {if (!lease.verify()) throw unavailable();};
+        let info: Awaited<ReturnType<typeof lstat>>;
+        try {
+          if (lease.proof.projectId !== projectId || lease.proof.clipId !== clipId || lease.proof.taskId !== taskId ||
+              lease.proof.sha256 !== digest || lease.durationFrames !== durationFrames) throw unavailable();
+          revalidate();
+          info = await lstat(lease.file);
+          revalidate();
+          if (!info.isFile() || info.nlink !== 1) throw unavailable();
+        } catch {
+          lease.release();
+          throw unavailable();
+        }
+        await sendTimelinePreviewProxyMedia({req, res, files, signal, lease: {file: lease.file, info, revalidate, release: lease.release}});
+        return true;
       }
       const preview = local.searchParams.has('preview'), named = local.searchParams.has('exportId');
       const guards = {isTimelineRenderRecord: (value: unknown, input: Readonly<Record<string, unknown>>) =>

@@ -261,5 +261,6 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
     ]},
     direction: 'forward', pitchShift: false, interpolation: 'off',
   }});
-  assert.equal(errorCode(await rpc('timeline.preview.media', previewInput)), 'SPEED_PROCESSING_UNAVAILABLE');
+  const proxy = data(await rpc<PreviewMedia>('timeline.preview.media', previewInput));
+  assert.equal(proxy.mode, 'proxy');
 });

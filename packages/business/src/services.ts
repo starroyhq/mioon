@@ -272,7 +272,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,reverseProxy,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,reverseProxy:suppliedReverseProxy,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
  assertProjectStore(inputStore);
  const store = inputStore;
  const backgroundTasks=createProjectBackgroundState(store);
@@ -292,6 +292,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...processingOptions, ...(ownerSignal ? {ownerSignal} : {}),
   beforeEffect: () => {assertApplicationMutationAllowed(); assertMutationAllowed?.();},
  }) : undefined;
+ const reverseProxy = suppliedReverseProxy ?? processing?.reverseProxy;
  const configurationHandlers={
   'workspace.settings.get':()=>configuration.get(),
   'workspace.settings.set':(input:never)=>{assertApplicationMutationAllowed();return configuration.set(input);},
@@ -1130,7 +1131,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
      'timeline.preview.media': (value: {projectId: string; clipId: string}) => {
       if (!processing.enabled() || !isProjectStore(store)) throw new AppError('SPEED_PROCESSING_UNAVAILABLE', '当前项目的变速预览不可用。', 409);
       approved?.();
-      return readTimelinePreviewMedia(store, value);
+      return readTimelinePreviewMedia(store, value, processing.preview);
      },
      'timeline.processing.list': processing.list,
      'timeline.processing.inspect': processing.inspect,
