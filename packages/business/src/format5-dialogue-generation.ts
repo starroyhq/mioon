@@ -21,7 +21,7 @@ import type {SequenceGenerationDialogueView} from '../../contracts/src/sequence-
 import {videoInputProfile} from '../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
 import type {ProjectStore} from './project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 
 type Row = Record<string, unknown>;
 
@@ -84,7 +84,7 @@ export interface Format5DialogueFreeze {
 }
 
 export function format5DialogueGeneration(store: ProjectStore): boolean {
-  return Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  return isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 }
 
 function readShot(store: ProjectStore, shotId: string): {data: Row; revision: number} {

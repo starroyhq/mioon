@@ -1,6 +1,5 @@
 import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
-import {FORMAT5_TIMELINE_FORMAT} from '../../contracts/src/timeline-replacement.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {projectRetainedTimelineReceipt} from './timeline-retained-receipts.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {captureOpacityTimelineRecord, captureOpacityTimelineIntent} from '../../contracts/src/timeline-opacity-persistence.ts';
@@ -25,7 +24,7 @@ const families = [
   ['timeline_requests', ['response']], ['edit_tasks', ['input']], ['exports', ['data']],
 ] as const;
 const forbiddenKeys = new Set(['opacityEnvelopeProfile', 'opacityEnvelopeProcessingProfile', 'opacityEnvelopeSha256']);
-const FORMAT5_ONLY_CLIP_KEYS = new Set(['sourceState', 'anchor', 'sequenceSource', 'segmentGroupId', 'dialogueRef', 'versionMode']);
+const FORMAT5_ONLY_CLIP_KEYS = new Set(['sourceState', 'anchor', 'sequenceSource', 'segmentGroupId', 'dialogueRef', 'versionMode', 'timing', 'sourceSpanFrames']);
 function invalid(): never {throw Object.assign(new Error('Workspace opacity evidence is invalid.'), {code: 'WORKSPACE_OPACITY_INVALID'});}
 function containsOpacity(value: unknown): boolean {
   const pending = [{value, depth: 0}]; let nodes = 0, found = false;
@@ -53,7 +52,8 @@ function projectRecord(record: Value): Value {
 
 export function validateTimelineOpacityRows(db: DatabaseSync): void {
   const storageSchema = timelineStorageSchema(db);
-  const format5 = timelineStorageFormat(db, storageSchema) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  const storageFormat = timelineStorageFormat(db, storageSchema);
+  const format5 = isSequenceProjectFormat(storageFormat);
   const projections = new Map<string, string>();
   const names = new Set<unknown>();
   const relevant = new Set<string>(['projects', 'assets', ...families.map(([table]) => table)]);
@@ -130,7 +130,7 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
       for (const row of db.prepare(query).iterate()) {
         if (++cells > 80000 || typeof row.value !== 'string' || row.valid !== 1 || row.duplicates !== 0 || (bytes += Buffer.byteLength(row.value)) > 128 * 1024 * 1024) invalid();
         let parsed: unknown; try {parsed = JSON.parse(row.value);} catch {invalid();}
-        if(table==='timeline_requests')parsed=projectRetainedTimelineReceipt(parsed,row.identity,format5?FORMAT5_TIMELINE_FORMAT:4);
+        if(table==='timeline_requests')parsed=projectRetainedTimelineReceipt(parsed,row.identity,format5?storageFormat:4);
         if (format5) {
           // Format 5 stores native clip/cue rows and only a header in
           // `timelines.data`. The legacy record validators below expect legacy

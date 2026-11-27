@@ -10,7 +10,7 @@ import {agentTaskExplicitTargets} from './agent/task-tools-v2.ts';
 import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {pendingPrevisPublications} from './previs-publication.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {assertProjectStore} from './store-runtime.ts';
 
@@ -156,7 +156,7 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
     const owners = assetVersionOwners.all(assetId);
     if (owners.length === 1 && typeof owners[0]?.id === 'string') return versionOwners.get(owners[0].id);
   }
-  const format5 = Number(db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  const format5 = isSequenceProjectFormat(Number(db.prepare('PRAGMA project.user_version').get()?.user_version));
   const clipIds = new Set<string>();
   let impactClips = 0;
   if (format5) {
@@ -270,7 +270,7 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
   // block even if a different document's edit owner has gone away.
   const related = new Set(keys);
   for (const id of clipIds) related.add(identityKey({kind: 'timeline_clip', id}));
-  if (Number(db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION) {
+  if (isSequenceProjectFormat(Number(db.prepare('PRAGMA project.user_version').get()?.user_version))) {
     includeFormat5SequenceDependencies(store, related, evidence);
   }
   function touches(target: Identity): boolean {
@@ -371,7 +371,7 @@ export interface SequenceDependencyComponent {
   readonly clipIds: readonly string[];
 }
 export function readSequenceDependencyComponent(store: ProjectStore, targets: readonly Identity[]): SequenceDependencyComponent {
-  if (Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) !== FORMAT5_PROJECT_SCHEMA_VERSION) {
+  if (!isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version))) {
     return {nodeIds: [], edgeIds: [], clipIds: []};
   }
   const {db, projectId} = store;

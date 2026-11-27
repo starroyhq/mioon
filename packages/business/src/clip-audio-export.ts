@@ -20,7 +20,8 @@ import {
   CLIP_AUDIO_EXPORT_MODE, clipAudioExportRecordSchema, clipAudioExportSchemas,
 } from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord, ClipAudioExportRequest} from '../../contracts/src/clip-audio-export.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
@@ -37,7 +38,7 @@ import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
 type Row = Record<string, unknown>;
 const now = (): string => new Date().toISOString();
 const isFormat5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  isSequenceProjectFormat(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
 const uuid = (value: unknown): value is string => typeof value === 'string' &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value);
 const sha256 = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
@@ -63,6 +64,7 @@ export function freezeClipAudioSource(store: ProjectStore, clipId: string): Froz
   if (!timeline) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
   const clip = timeline.clips.find(item => item.id === clipId);
   if (!clip) throw new AppError('NOT_FOUND', '片段不存在', 404, {clipId});
+  assertTimelineSpeedRenderable({fps: timeline.fps, clips: [clip]});
   const track = timeline.tracks.find(item => item.id === clip.trackId);
   if (!track || track.kind !== 'video') invalid('只有画面轨片段可以另存声音', {clipId});
   if (clip.sourceState !== 'ready') invalid('占位片段没有可另存的声音', {clipId});

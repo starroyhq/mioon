@@ -4,9 +4,10 @@ import {publicValue} from '../../../../packages/contracts/src/index.ts';
 import type {RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import type {ProjectEntryCreateInput} from '../../../../packages/contracts/src/project-entry-native.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/index.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {applyFormat5ConversionInside} from '../../../../packages/business/src/project-file/format5-conversion-store.ts';
 import {prepareTrustedFormat5Conversion} from '../../../../packages/business/src/project-file/format5-upgrade.ts';
+import {upgradeProject5To6Inside} from '../../../../packages/business/src/project-file/schema/format6-upgrade.ts';
 import type {Format4Options, ProjectFileFormat} from '../../../../packages/business/src/project-file/index.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
@@ -32,23 +33,26 @@ export function createInitializedProject({manager, registry, directories, identi
     let entry = await manager.create({name: input.name,
       ...(input.parentDir === undefined ? {} : {parentDir: input.parentDir}),
       ...(input.projectFile === undefined ? {} : {projectFile: input.projectFile})},
-      {format: targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT4_PROJECT_SCHEMA_VERSION : targetFormat});
+      {format: isSequenceProjectFormat(targetFormat) ? FORMAT4_PROJECT_SCHEMA_VERSION : targetFormat});
     let initialized = false;
     try {
       assertProjectFile(entry.projectFile);
-      const openProfile = format4 ?? (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION ? {} : undefined);
+      const openProfile = format4 ?? (isSequenceProjectFormat(targetFormat) ? {} : undefined);
       const store = openProjectStore({projectFile: entry.projectFile,
         locate: id => projectLocation(directories, id), checkCopy: registry.checkCopy, ...(openProfile === undefined ? {} : {format4: openProfile})});
       try {
         ensureProjectRow(store, {name: input.name,
           ...(input.description === undefined ? {} : {description: input.description}),
           ...(input.timelinePresetId === undefined ? {} : {timelinePresetId: input.timelinePresetId})});
-        if (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION && Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) !== FORMAT5_PROJECT_SCHEMA_VERSION) {
+        if (isSequenceProjectFormat(targetFormat)) {
           // A new project starts on the released kernel so the preset timeline
           // exists, then joins format 5 through the reviewed conversion. No
           // user confirmation is needed: the file was created by this request.
           const prepared = prepareTrustedFormat5Conversion(store);
-          store.tx(() => { applyFormat5ConversionInside(store, prepared); });
+          store.tx(() => {
+            applyFormat5ConversionInside(store, prepared);
+            if (targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION) upgradeProject5To6Inside(store.db, 'project');
+          });
           const fileIdentity = identity(entry.projectFile);
           if (!fileIdentity) throw new Error('The new project file has no file identity');
           registry.upsert({...entry, fileIdentity});

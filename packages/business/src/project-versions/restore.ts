@@ -7,7 +7,7 @@ import type {TimelineRecord} from '../timeline-inputs.ts';
 import {canonicalJson, FORMAT5_TIMELINE_TABLES, primaryKeys, rowKey, snapshotCellValue, snapshotTablesFor, tableColumns} from './document.ts';
 import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow, SnapshotTable} from './document.ts';
 import {restorePlanCurrent,planSubjectRestoreRevisions,PROJECT_VERSION_RESTORE_MAX_SUBJECT_STEPS} from './preview.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from '../project-file/schema/databases.ts';
 import type {RestorePlan,SubjectRestoreRevision} from './preview.ts';
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
@@ -46,7 +46,7 @@ function updateSubjectInside(store:ProjectStore,id:SnapshotRow[string],steps:rea
 function desiredTimeline(document: ProjectDocument, format: ProjectDocument['projectFormatVersion']): TimelineRecord | null {
   const header = document.tables.timelines?.[0];
   if (!header) return null;
-  if (format !== FORMAT5_PROJECT_SCHEMA_VERSION) return JSON.parse(String(header.data)) as TimelineRecord;
+  if (!isSequenceProjectFormat(format)) return JSON.parse(String(header.data)) as TimelineRecord;
   const {clips: _clips, subtitles: _cues, ...rest} = JSON.parse(String(header.data)) as Record<string, unknown>;
   const decode = (table: 'timeline_clips' | 'timeline_cues') =>
     (document.tables[table] ?? []).map(row => JSON.parse(String(row.data)) as unknown);
@@ -62,7 +62,7 @@ function desiredTimeline(document: ProjectDocument, format: ProjectDocument['pro
 function restoreTimelineDomain(store: ProjectStore, document: ProjectDocument, format: ProjectDocument['projectFormatVersion'],
   current: ProjectDocument, options: {requestId: string; now: string}): void {
   const desired = desiredTimeline(document, format);
-  if (format !== FORMAT5_PROJECT_SCHEMA_VERSION) {
+  if (!isSequenceProjectFormat(format)) {
     restoreProjectTimelineInside(store, desired, options);
     return;
   }
@@ -94,7 +94,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
   if (new Date(now).toISOString() !== now) throw new TypeError('A restore timestamp must be an ISO instant');
   const tables = snapshotTablesFor(format);
   const order = insertOrder.filter(table => (tables as readonly string[]).includes(table));
-  const timelineDomain: readonly SnapshotTable[] = format === FORMAT5_PROJECT_SCHEMA_VERSION
+  const timelineDomain: readonly SnapshotTable[] = isSequenceProjectFormat(format)
     ? ['timelines', 'sequence_sync_state', ...FORMAT5_TIMELINE_TABLES] : ['timelines'];
   const indexes = new Map([...order, ...timelineDomain].map(table => [table, {
     current: new Map(documentRows(current, table).map(row => [rowKey(table,row,format),row])),

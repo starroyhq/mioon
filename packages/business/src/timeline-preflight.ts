@@ -14,9 +14,10 @@ import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subt
 import {inspectSubtitleRenderer} from './subtitle-renderer-capability.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
+import {unreadyTimelineSpeedClips, SPEED_RENDER_NOT_READY, SPEED_RENDER_NOT_READY_MESSAGE} from '../../contracts/src/timeline-speed-render.ts';
 import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {readFormat5RenderProjection} from './format5-timeline-render.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -37,6 +38,7 @@ interface PreflightAttempt {controller: AbortController;task: Promise<unknown>|n
 
 const messages: Readonly<Record<string,string>>=Object.freeze({
  ...TIMELINE_COLOUR_PREFLIGHT_MESSAGES,
+ [SPEED_RENDER_NOT_READY]:SPEED_RENDER_NOT_READY_MESSAGE,
  EXPORT_RANGE_BOUNDS:'The export range must fit inside the saved timeline and contain at least one 30fps frame; the end is exclusive.',
  SUBTITLE_RESOURCE_UNAVAILABLE:'The bundled subtitle font is missing or does not match this rendering profile.',
  SUBTITLE_RENDERER_UNAVAILABLE:'This FFmpeg build lacks the drawtext options required for subtitles. Select a build with libfreetype and libharfbuzz.',
@@ -83,6 +85,7 @@ function classify(error: unknown): [string,string]{
  if(failure.code==='MANAGED_SOURCE_INVALID')return ['blocked','PREFLIGHT_SOURCE_INVALID'];
  if(failure.code==='MANAGED_SOURCE_CHANGED')return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
  if(failure.code==='PREFLIGHT_STALE')return ['stale','PREFLIGHT_STALE'];
+ if(failure.code===SPEED_RENDER_NOT_READY)return ['blocked',SPEED_RENDER_NOT_READY];
  if(failure.code==='TIMELINE_SOURCE_UNAVAILABLE')return ['blocked','TIMELINE_SOURCE_UNAVAILABLE'];
  if(failure.code==='INVALID_TIMELINE_SNAPSHOT')return ['blocked','INVALID_TIMELINE_SNAPSHOT'];
  return ['blocked','PREFLIGHT_MEDIA_INVALID'];
@@ -95,7 +98,7 @@ function classify(error: unknown): [string,string]{
  */
 export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
-  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+  if(isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
    const projection=readFormat5RenderProjection(store as never);
    if(!projection)return {timeline:null,snapshot:null};
    return {timeline:projection.legacy,snapshot:freezeTimelineSnapshot(projection.legacy,projection.assets,input.exportSettings,input) as TimelinePreflightSnapshot};
@@ -120,11 +123,16 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
   // Format 5 placeholders and pending too-short follow versions block the exact
   // export range before any media hashing or probe work.
-  if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+  if(isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
    const format5Timeline=readFormat5TimelineRecord(store.db,'project');
    if(format5Timeline){
     report.timelineId=format5Timeline.id;report.timelineRevision=format5Timeline.revision;
     if(format5Timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
+    const speedClips=unreadyTimelineSpeedClips(format5Timeline);
+    if(speedClips.length){
+     report.issues=speedClips.slice(0,EXPORT_PREFLIGHT_LIMITS.issues).map(clipId=>({...issue(SPEED_RENDER_NOT_READY),clipId}));
+     return report;
+    }
     const requestedRange=object(input.exportRange)?{startFrame:Number(input.exportRange.startFrame),endFrame:Number(input.exportRange.endFrame)}:null;
     const blockers=format5ExportBlockersFromTimeline(store.db,format5Timeline,requestedRange);
     if(blockers.length){

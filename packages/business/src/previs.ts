@@ -12,7 +12,7 @@ import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumb
 import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {ownsStoreLock} from './store-runtime.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readTimelineHeaderStorage} from './project-file/timeline-storage.ts';
 import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 
@@ -161,9 +161,9 @@ function thumbnailFrame(db: DatabaseSync,projectId: string): string {
 }
 const format4=(db: DatabaseSync): boolean=>{
  const version=db.prepare('PRAGMA project.user_version').get()?.user_version;
- return version===FORMAT4_PROJECT_SCHEMA_VERSION||version===FORMAT5_PROJECT_SCHEMA_VERSION;
+ return version===FORMAT4_PROJECT_SCHEMA_VERSION||isSequenceProjectFormat(version);
 };
-const format5=(db: DatabaseSync): boolean=>db.prepare('PRAGMA project.user_version').get()?.user_version===FORMAT5_PROJECT_SCHEMA_VERSION;
+const format5=(db: DatabaseSync): boolean=>isSequenceProjectFormat(Number(db.prepare('PRAGMA project.user_version').get()?.user_version));
 /** Format 5 writes previs scenes through the unified sequence entry; the legacy
  * receipt writer refuses them instead of writing outside history-13. Format 3/4
  * keeps accepting the same fields as before. */

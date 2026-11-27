@@ -11,9 +11,9 @@ export const projectFormatUpgradePreviewSchema = z.object({
   projectId: projectIdSchema,
   contentSequence: revision,
   contentToken: z.string().regex(/^[0-9a-f]{32}$/u),
-  projectVersion: z.union([z.literal(3), z.literal(4)]),
+  projectVersion: z.union([z.literal(3), z.literal(4), z.literal(5)]),
   historyVersion: version.nullable(),
-  targetProjectVersion: z.union([z.literal(4), z.literal(5)]),
+  targetProjectVersion: z.union([z.literal(4), z.literal(5), z.literal(6)]),
   targetHistoryVersion: version,
 }).strict().superRefine((value, context) => {
   const expectedHistory = value.targetProjectVersion === 4 ? 12 : 13;
@@ -23,7 +23,8 @@ export const projectFormatUpgradePreviewSchema = z.object({
   if (value.projectVersion >= value.targetProjectVersion) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'An upgrade must advance the project format', path: ['targetProjectVersion']});
   }
-  if (value.historyVersion !== null && value.historyVersion >= expectedHistory) {
+  if (value.projectVersion === 5 && value.historyVersion !== null && value.historyVersion !== expectedHistory ||
+      value.projectVersion !== 5 && value.historyVersion !== null && value.historyVersion >= expectedHistory) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'An upgrade must advance the history format', path: ['historyVersion']});
   }
 });
@@ -45,7 +46,7 @@ export const projectFormatReadOnlyViewSchema = z.object({
   projectId: projectIdSchema,
   name: text,
   description: z.string().max(2000),
-  projectVersion: z.union([z.literal(3), z.literal(4)]),
+  projectVersion: z.union([z.literal(3), z.literal(4), z.literal(5)]),
   shots: z.array(z.object({id: projectIdSchema, title: text, orderIndex: revision, duration: z.number().nonnegative(), versionCount: revision}).strict()).max(count),
   nodes: z.array(z.object({id: projectIdSchema, label: text, type: z.enum(['text', 'image', 'video', 'audio', 'previs'])}).strict()).max(count),
   timeline: z.object({
