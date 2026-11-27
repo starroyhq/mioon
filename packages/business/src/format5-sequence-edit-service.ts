@@ -93,7 +93,7 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
   if (operation.kind === 'sync-board') return {kind: 'sync-board', ...(operation.newClipIds ? {newClipIds: operation.newClipIds} : {})};
   if (operation.kind === 'board-version') return {kind: 'board-version', nodeId: operation.nodeId, versionId: operation.version?.id ?? null};
   if (operation.kind !== 'track') return null;
-  const edit: any = operation.edit;
+  const edit = operation.edit;
   switch (edit.kind) {
     case 'add': return {kind: 'clip-add', clip: {id: edit.clip.id, nodeId: edit.clip.nodeId,
         segmentGroupId: edit.clip.splitGroupId ?? edit.clip.id, startFrame: edit.clip.startFrame,
@@ -106,6 +106,8 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
     case 'insert-asset': return {kind: 'insert-asset', assetId: edit.assetId, trackId: edit.trackId,
       startFrame: edit.startFrame};
     case 'paste-clip': return {kind: 'paste-clip', clipId: edit.clipId, startFrame: edit.startFrame};
+    case 'copy-as-new-shot': return {kind: 'clip-copy-as-new-shot', clipId: edit.clipId,
+      newClipId: edit.newClipId, copyNodeId: edit.copyNodeId};
     case 'split-at-scenes': return {kind: 'clip-split-scenes', assetId: edit.assetId, resultId: edit.resultId};
     case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
       rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};

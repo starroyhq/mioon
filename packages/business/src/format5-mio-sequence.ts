@@ -6,7 +6,7 @@
  * envelope, allocation, receipt or raw generated id. External actions share
  * the preview and commit implementation with user-origin history.
  */
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {MioSequencePreviewRejection} from './format5-sequence-preview-errors.ts';
@@ -46,7 +46,15 @@ const versionOf = (store: ProjectStore, nodeId: string): string | null => {
   try { const value = JSON.parse(shot.data); return typeof value.selectedVersionId === 'string' ? value.selectedVersionId : null; }
   catch { return null; }
 };
-function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: {mainTrack?: {trackId?: string}}): ReturnType<typeof sequenceSyncIntent> {
+function copyIdentity(projectId: string, requestId: string, role: 'clip' | 'shot'): string {
+  const bytes = createHash('sha256').update(JSON.stringify(['sequence.copy-as-new-shot', projectId, requestId, role]))
+    .digest().subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  return [bytes.subarray(0, 4), bytes.subarray(4, 6), bytes.subarray(6, 8), bytes.subarray(8, 10), bytes.subarray(10)]
+    .map(part => part.toString('hex')).join('-');
+}
+function trackCommand(store: ProjectStore, action: MioSequenceAction, requestId: string): ReturnType<typeof sequenceSyncIntent> {
   switch (action.kind) {
     case 'split-at-scenes': return sequenceSyncIntent({kind: 'clip-split-scenes',
       assetId: action.assetId, resultId: action.resultId});
@@ -56,6 +64,8 @@ function trackCommand(store: ProjectStore, action: MioSequenceAction, timeline: 
       offsetFrames: action.offsetFrames, rightClipId: randomUUID()});
     case 'copy-move': return sequenceSyncIntent({kind: 'clip-move', clipId: action.clipId,
       beforeClipId: action.beforeClipId, copyNodeId: randomUUID()});
+    case 'copy-as-new-shot': return sequenceSyncIntent({kind: 'clip-copy-as-new-shot', clipId: action.clipId,
+      newClipId: copyIdentity(store.projectId, requestId, 'clip'), copyNodeId: copyIdentity(store.projectId, requestId, 'shot')});
     case 'set-mode': {
       const clip = clipRow(store, action.clipId);
       const nodeId = String((clip as Row).sequenceSource?.nodeId ?? '');
@@ -243,7 +253,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
     'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
     assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
-  else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
+  else if (['reorder', 'remove', 'split', 'copy-move', 'copy-as-new-shot', 'set-mode', 'split-at-scenes'].includes(action.kind))
+    request.intents = [trackCommand(store, action, requestId)];
   else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
     placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',
     // The confirmed action places and submits in one commit using the frozen request id.

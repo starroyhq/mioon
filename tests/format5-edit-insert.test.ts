@@ -2,8 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
-import {format5CopiedDialogueLineId} from '../packages/business/src/format5-dialogue-projection.ts';
-import {createEditUiWireFixture} from './helpers/edit-ui-wire-fixture.ts';
+import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+import {sequencePreviewResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
+import {sequenceEditReceiptSchema} from '../packages/contracts/src/sequence-edit.ts';
+import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
+import {format5CopiedDialogueLineId, format5DialogueCueId} from '../packages/business/src/format5-dialogue-projection.ts';
+import {adoptFormat5GeneratedVersionInside} from '../packages/business/src/format5-sequence-sync.ts';
+import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
+import {createEditUiWireFixture, WIRE_IDS} from './helpers/edit-ui-wire-fixture.ts';
 
 type Row = Record<string, any>;
 
@@ -208,4 +214,173 @@ test('copying a main-track media clip allocates a new media node and node identi
   const view = await call('sequence.history.get', {projectId: f.projectId});
   await call('sequence.undo', {projectId: f.projectId, requestId: `undo-${crypto.randomUUID()}`,
     actionId: view.undo.actionId, expected: {position: view.position, revision: view.revision}});
+});
+
+function copyAsNewShotRequest(projectId: string, clipId: string,
+  newClipId: string = crypto.randomUUID(), copyNodeId: string = crypto.randomUUID()) {
+  return {projectId, requestId: `copy-shot-${crypto.randomUUID()}`,
+    intents: [sequenceSyncIntent({kind: 'clip-copy-as-new-shot', clipId, newClipId, copyNodeId})]};
+}
+
+async function previewCopyAsNewShot(services: Awaited<ReturnType<typeof createEditUiWireFixture>>['services'],
+  request: ReturnType<typeof copyAsNewShotRequest>) {
+  const result = await services.call('sequence.preview', request);
+  const preview = sequencePreviewResponseSchema.safeParse(result);
+  assert.ok(preview.success, JSON.stringify(result));
+  return preview.data;
+}
+
+test('copy as new shot previews a split piece, preserves the full clip and undoes in one action', async t => {
+  const {store, services, library, projectId} = await createEditUiWireFixture();
+  t.after(() => {store.close(); library.close();});
+  const {clipA, clipA2, clipB, shotA, shotB, imageClip, video2, assetB, versionA} = WIRE_IDS;
+  const timeline = (): Format5Timeline => store.get('timelines', WIRE_IDS.timeline) as Format5Timeline;
+  const shot = (id: string) => store.get('shots', id) as Row;
+  const initial = timeline();
+  const original = initial.clips.find(clip => clip.id === clipA)!;
+  const source: Format5Clip = {...original, sourceInFrame: 5, gain: 0.6, muted: true,
+    fadeInFrames: 2, fadeOutFrames: 3, rect: {...original.rect, x: 10, y: 20, width: 690, height: 1240},
+    transform: {profileId: 'mioon-clip-transform-v1', keyframes: [{frame: 0, x: 10, y: 12, scale: 1.2}],
+      rotation: 5, crop: {left: 0.05, top: 0, right: 0.05, bottom: 0}},
+    sequenceSource: {...original.sequenceSource!, kind: 'shot', versionMode: 'locked'}};
+  const overlay = (owner: string, startFrame: number): Format5Clip => ({id: crypto.randomUUID(),
+    trackId: video2, name: '叠加', startFrame, durationFrames: 5, sourceInFrame: 0,
+    rect: original.rect, gain: 1, assetId: assetB, sourceState: 'ready', anchor: {clipId: owner, offsetFrames: 8}});
+  const sourceOverlay = overlay(clipA, 8), followingOverlay = overlay(clipB, 68);
+  const line = shot(shotA).dialogue[0]!;
+  const dialogueCue = {id: format5DialogueCueId(initial.id, shotA, line.id), text: line.text,
+    startFrame: 2, durationFrames: 4, anchor: {clipId: clipA, offsetFrames: 2},
+    dialogueRef: {shotId: shotA, lineId: line.id}};
+  const sourceCue = {id: crypto.randomUUID(), text: '原片段字幕', startFrame: 12, durationFrames: 4,
+    anchor: {clipId: clipA, offsetFrames: 12}};
+  const followingCue = {id: crypto.randomUUID(), text: '后续字幕', startFrame: 75, durationFrames: 4,
+    anchor: {clipId: clipB, offsetFrames: 15}};
+  store.tx(() => {
+    store.put('shots', {...shot(shotA), position: {x: 250, y: 80}});
+    store.put('shots', {...shot(shotB), title: '窗口剪影 副本'});
+    store.put('timelines', {...initial, clips: [source, ...initial.clips.filter(clip => clip.id !== clipA),
+      sourceOverlay, followingOverlay], subtitles: {profileId: 'bottom_cjk_v1', cues: [dialogueCue, sourceCue, followingCue]}});
+  });
+  const snapshot = () => {
+    const {revision: _revision, updatedAt: _updatedAt, ...content} = timeline();
+    return {timeline: content, ...Object.fromEntries(['shots', 'nodes', 'edges'].map(table =>
+      [table, (store.list(table, projectId) as Row[]).sort((left, right) => left.id.localeCompare(right.id))])),
+    adoptions: store.db.prepare('SELECT shotId,versionId FROM project.shot_version_adoptions ORDER BY shotId,versionId').all(),
+    baseline: store.db.prepare('SELECT baseline FROM project.sequence_sync_state').get()};
+  };
+  const counts = () => ({
+    cursor: store.db.prepare('SELECT count(*) AS count FROM main.editor_history_state').get()?.count,
+    entries: store.db.prepare('SELECT count(*) AS count FROM main.editor_history_entries').get()?.count,
+    receipts: store.db.prepare('SELECT count(*) AS count FROM main.editor_requests').get()?.count,
+  });
+  const revisions = () => ({
+    stamp: readProjectContentStamp(store.db),
+    timeline: timeline().revision,
+    sync: store.db.prepare('SELECT revision FROM project.sequence_sync_state').get()?.revision,
+  });
+  const before = snapshot();
+  const revisionsBefore = revisions();
+  assert.deepEqual(counts(), {cursor: 0, entries: 0, receipts: 0});
+  const newClipId = crypto.randomUUID(), copyNodeId = crypto.randomUUID();
+  const request = copyAsNewShotRequest(projectId, clipA, newClipId, copyNodeId);
+  const preview = await previewCopyAsNewShot(services, request);
+  assert.deepEqual(snapshot(), before);
+  assert.deepEqual(revisions(), revisionsBefore);
+  assert.deepEqual(counts(), {cursor: 1, entries: 0, receipts: 0});
+  const commit = {projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest};
+  const receipt = sequenceEditReceiptSchema.parse(await services.call('sequence.commit', commit));
+  assert.deepEqual([receipt.status, receipt.operation, receipt.history.position],
+    ['applied', 'timeline.clip.copy-as-new-shot', 1]);
+  const after = snapshot();
+  assert.deepEqual([shot(copyNodeId).title, shot(copyNodeId).position, shot(copyNodeId).selectedVersionId],
+    ['窗口剪影 副本', {x: 290, y: 120}, versionA]);
+  assert.deepEqual((store.list('edges', projectId) as Row[]).map(edge => [edge.source, edge.target])
+    .sort(([left], [right]) => left.localeCompare(right)),
+  [[WIRE_IDS.root, shotA], [shotA, copyNodeId], [copyNodeId, shotB], [shotB, WIRE_IDS.imageNode]]
+    .sort(([left], [right]) => left!.localeCompare(right!)));
+  const main = timeline().clips.filter(clip => clip.trackId === WIRE_IDS.video);
+  assert.deepEqual(main.map(clip => [clip.id, clip.startFrame]),
+    [[clipA, 0], [clipA2, 30], [newClipId, 60], [clipB, 90], [imageClip, 120]]);
+  const copy = main.find(clip => clip.id === newClipId)!;
+  assert.equal(copy.sequenceSource?.kind, 'shot');
+  assert.notEqual(copy.sequenceSource?.segmentGroupId, source.sequenceSource?.segmentGroupId);
+  // Compare the complete clip, so this assertion can also cover timing when
+  // this fixture is exercised with the format-6 data/operation support.
+  assert.deepEqual(copy, {...source, id: newClipId, startFrame: 60,
+    sequenceSource: {...source.sequenceSource, nodeId: copyNodeId, segmentGroupId: copy.sequenceSource!.segmentGroupId}});
+  assert.deepEqual(timeline().clips.filter(clip => clip.trackId === video2),
+    [sourceOverlay, {...followingOverlay, startFrame: 98}]);
+  assert.deepEqual(timeline().subtitles?.cues, [dialogueCue, sourceCue, {...followingCue, startFrame: 105}]);
+  assert.deepEqual(await services.call('sequence.commit', commit), receipt);
+  assert.deepEqual(counts(), {cursor: 1, entries: 1, receipts: 1});
+
+  const revisionsAfter = revisions();
+  for (const [clipId, newId, nodeId, code] of [
+    [sourceOverlay.id, crypto.randomUUID(), crypto.randomUUID(), 'INVALID_TRACK_TARGET'],
+    [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID(), 'CLIP_NOT_FOUND'],
+    [clipA, sourceOverlay.id, crypto.randomUUID(), 'DUPLICATE_CLIP'],
+    [clipA, crypto.randomUUID(), shotB, 'COPY_NODE_EXISTS'],
+  ] as const) {
+    const failure = await services.call('sequence.preview', copyAsNewShotRequest(projectId, clipId, newId, nodeId)) as Row;
+    assert.deepEqual([failure.ok, failure.code], [false, code], JSON.stringify(failure));
+    assert.deepEqual(snapshot(), after);
+    assert.deepEqual(revisions(), revisionsAfter);
+    assert.deepEqual(counts(), {cursor: 1, entries: 1, receipts: 1});
+  }
+
+  for (const [direction, expectedPosition, expectedContent] of [['undo', 0, before], ['redo', 1, after]] as const) {
+    const view = sequenceHistoryViewResponseSchema.parse(await services.call('sequence.history.get', {projectId}));
+    assert.equal(view[direction]?.actionId, receipt.actionId);
+    const result = sequenceEditReceiptSchema.parse(await services.call(`sequence.${direction}`, {projectId,
+      actionId: receipt.actionId, requestId: `copy-shot-${direction}-${crypto.randomUUID()}`,
+      expected: {position: view.position, revision: view.revision}}));
+    assert.equal(result.status, 'applied');
+    assert.equal(result.history.position, expectedPosition);
+    assert.deepEqual(snapshot(), expectedContent);
+    assert.equal(counts().entries, 1);
+  }
+});
+
+test('copy as new shot keeps an image source and isolates generation of a copied placeholder', async t => {
+  const {store, services, library, projectId} = await createEditUiWireFixture();
+  t.after(() => {store.close(); library.close();});
+  const timeline = (): Format5Timeline => store.get('timelines', WIRE_IDS.timeline) as Format5Timeline;
+  const sourceShot: Row = {...store.get('shots', WIRE_IDS.shotB) as Row, prompt: '雨后的街口'};
+  store.put('shots', sourceShot);
+  const copy = async (clipId: string) => {
+    const before = timeline().clips.find(clip => clip.id === clipId)!;
+    const newClipId = crypto.randomUUID(), copyNodeId = crypto.randomUUID();
+    const request = copyAsNewShotRequest(projectId, clipId, newClipId, copyNodeId);
+    const {envelope, planDigest} = await previewCopyAsNewShot(services, request);
+    const receipt = sequenceEditReceiptSchema.parse(await services.call('sequence.commit', {projectId, envelope,
+      expectedPlanDigest: planDigest}));
+    assert.equal(receipt.status, 'applied');
+    const copied = timeline().clips.find(clip => clip.id === newClipId)!;
+    assert.deepEqual([copied.sequenceSource?.nodeId, copied.startFrame, copied.assetId, copied.sourceState],
+      [copyNodeId, before.startFrame + before.durationFrames, before.assetId, before.sourceState]);
+    return {newClipId, copyNodeId};
+  };
+  const image = await copy(WIRE_IDS.imageClip);
+  assert.equal((store.get('nodes', image.copyNodeId) as Row).label, '图片 副本');
+  const placeholder = await copy(WIRE_IDS.clipB);
+  const generatedShotId = placeholder.copyNodeId;
+  const placeholderShot = store.get('shots', generatedShotId) as Row;
+  assert.deepEqual([placeholderShot.title, placeholderShot.prompt, placeholderShot.selectedVersionId],
+    ['占位镜头 副本', sourceShot.prompt, null]);
+  const original = timeline().clips.find(clip => clip.id === WIRE_IDS.clipB);
+  const job = {id: crypto.randomUUID(), projectId, shotId: generatedShotId, snapshot: {}};
+  const version = {id: crypto.randomUUID(), projectId, jobId: job.id, shotId: generatedShotId, number: 1,
+    assetId: WIRE_IDS.assetB, sha256: 'b'.repeat(64), createdAt: sourceShot.createdAt};
+  store.tx(() => {
+    store.put('jobs', {...job, status: 'succeeded', phase: 'done', providerId: 'mock', model: 'mock-motion-v1',
+      createdAt: sourceShot.createdAt, updatedAt: sourceShot.createdAt});
+    store.put('versions', version);
+    assert.equal(adoptFormat5GeneratedVersionInside(store, job, version), true);
+    store.put('shots', {...placeholderShot, selectedVersionId: version.id});
+  });
+  const ready = timeline().clips.find(clip => clip.id === placeholder.newClipId);
+  assert.deepEqual([ready?.sourceState, ready?.shotId, ready?.versionId], ['ready', generatedShotId, version.id]);
+  assert.deepEqual(timeline().clips.find(clip => clip.id === WIRE_IDS.clipB), original);
+  assert.equal((store.get('shots', generatedShotId) as Row).selectedVersionId, version.id);
+  assert.deepEqual(store.get('shots', WIRE_IDS.shotB), sourceShot);
 });
