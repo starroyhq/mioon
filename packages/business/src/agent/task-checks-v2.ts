@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {isClipAudioExportRecord,exportPreflightResponseSchema} from '@mioon/contracts';
 import {isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
-import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskChecksSchema,AGENT_TASK_CHECK_BASIS_LIMIT} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import type { Store } from '../store-contract.ts';
@@ -24,6 +24,8 @@ import {lstatSync} from 'node:fs';
 import {sameManagedFile} from '../managed-media.ts';
 import {discloseEditorExportTask} from '../fcpxml-export-task.ts';
 import {isMioEditorExportStart,mioEditorExportKind} from './task-editor-export-v2.ts';
+import {readTimelineStorage} from '../project-file/timeline-storage.ts';
+import {isFormat5Timeline} from '../../../contracts/src/project-format5.ts';
 
 type Value=Record<string,unknown>;
 type Target=AgentTaskCheck['target'];
@@ -58,9 +60,20 @@ function safeName(value:unknown,filename=false):string|undefined {
  let result='';for(const character of text){if(result.length+character.length>80)break;result+=character;}return result||undefined;
 }
 function decode(value:unknown):Value|undefined {if(typeof value!=='string')return;try{const parsed:unknown=JSON.parse(value);return object(parsed)?parsed:undefined;}catch{return;}}
-function row(store:Store,table:'jobs'|'exports'|'assets'|'shots'|'versions'|'timelines',projectId:string,id:string):Value|undefined {
- const record=store.db.prepare(`SELECT data FROM ${table} WHERE ${table==='timelines'?'projectId':'id'}=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304`).get(id,projectId);
- const value=decode(record?.data);return value&&value.projectId===projectId&&(table==='timelines'||value.id===id)?value:undefined;
+function row(store:Store,table:'jobs'|'exports'|'shots',projectId:string,id:string):Value|undefined {
+ const record=store.db.prepare(`SELECT data FROM ${table} WHERE id=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304`).get(id,projectId);
+ const value=decode(record?.data);return value&&value.projectId===projectId&&value.id===id?value:undefined;
+}
+function timelineObservation(store:Store,projectId:string):{timeline:Value; native:boolean}|undefined {
+ try {
+  const saved=readTimelineStorage(store.db,projectId,{maxBytes:4194304});
+  const timeline=saved?.timeline;
+  if(!saved||!object(timeline)||timeline.projectId!==projectId) return;
+  if(saved.format5&&!isFormat5Timeline(timeline,{projectId})) return;
+  return {timeline,native:saved.format5};
+ } catch(error) {
+  if(!object(error)||error.code!=='PROJECT_INVALID')throw error;
+ }
 }
 function stateResult(state:unknown):Pick<AgentTaskCheck,'status'|'reason'> {
  if(state==='succeeded')return {status:'passed'};
@@ -95,7 +108,10 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
  const basis=(target:Target,fallback=0):Basis=>[{kind:target.kind,id:target.id,revision:revision(target.kind,target.id,fallback)}];
  const related=(proof:Basis,targets:Array<{kind:Target['kind'];id:unknown}>):Basis=>{
   const result=new Map(proof.map(item=>[`${item.kind}:${item.id}`,item]));
-  for(const target of targets)if(uuid(target.id)&&!result.has(`${target.kind}:${target.id}`))result.set(`${target.kind}:${target.id}`,{kind:target.kind,id:target.id,revision:revision(target.kind,target.id)});
+  for(const target of targets){
+   if(result.size===AGENT_TASK_CHECK_BASIS_LIMIT)break;
+   if(uuid(target.id)&&!result.has(`${target.kind}:${target.id}`))result.set(`${target.kind}:${target.id}`,{kind:target.kind,id:target.id,revision:revision(target.kind,target.id)});
+  }
   return [...result.values()];
  };
  const add=(group:AgentTaskCheckGroup,type:AgentTaskCheck['type'],target:Target,proof:Basis,result:Pick<AgentTaskCheck,'status'|'reason'>,extra:Partial<Pick<AgentTaskCheck,'expected'|'current'|'progress'>>={}):void=>{
@@ -239,13 +255,18 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   }
  }
  const timelineChanged=snapshot.changes.some(change=>change.targets.some(target=>target.kind.startsWith('timeline')));
- const timeline=row(store,'timelines',projectId,projectId),timelineTarget:Target={kind:'timeline',id:uuid(timeline?.id)?timeline.id:projectId},timelineProof=basis(timelineTarget,integer(timeline?.revision)?timeline.revision:0);
+ const observed=timelineChanged||goals?.conditions.length?timelineObservation(store,projectId):undefined;
+ const timeline=observed?.timeline,timelineTarget:Target={kind:'timeline',id:uuid(timeline?.id)?timeline.id:projectId},timelineProof=basis(timelineTarget,integer(timeline?.revision)?timeline.revision:0);
  // Timeline aggregate revisions are stored under projectId, while the UI
  // locates the saved timeline by its own id. Keep the actual aggregate revision.
  if(timelineProof[0]&&integer(timeline?.revision))timelineProof[0].revision=timeline.revision;
  if(timelineChanged){
-  const clips=Array.isArray(timeline?.clips)?timeline.clips:[],tracks=Array.isArray(timeline?.tracks)?timeline.tracks:[];let missing=timeline?0:1;
-  const sourceProof=related(timelineProof,clips.flatMap(clip=>object(clip)?[{kind:'asset' as const,id:clip.assetId},{kind:'version' as const,id:clip.versionId},{kind:'job' as const,id:clip.jobId},{kind:'shot' as const,id:clip.shotId}]:[]));
+  const savedClips=Array.isArray(timeline?.clips)?timeline.clips:[],tracks=Array.isArray(timeline?.tracks)?timeline.tracks:[];let missing=timeline?0:1;
+  const clips=observed?.native?savedClips.filter(clip=>!object(clip)||clip.sourceState!=='placeholder'||clip.assetId!==null):savedClips;
+  const targets=clips.flatMap(clip=>object(clip)?[{kind:'asset' as const,id:clip.assetId},{kind:'version' as const,id:clip.versionId},{kind:'job' as const,id:clip.jobId},{kind:'shot' as const,id:clip.shotId}]:[]);
+  // Native timelines can fill the proof budget. Keep every direct asset
+  // identity ahead of optional lineage while checking each placement below.
+  const sourceProof=related(timelineProof,observed?.native?[...targets.filter(value=>value.kind==='asset'),...targets.filter(value=>value.kind!=='asset')]:targets);
   for(const clip of clips){if(!object(clip)||!tracks.some(track=>object(track)&&track.id===clip.trackId)){missing++;continue;}try{graph.clipSource(clip);}catch(error){if(!knownObservationFailure(error))throw error;missing++;}}
   add('timeline','timeline_references',timelineTarget,sourceProof,missing?reason('failed','REFERENCES_UNAVAILABLE',{missingCount:missing}):{status:'passed'},{current:{referenceCount:clips.length,missingCount:missing}});
   // Media hashing and ffprobe can take seconds. Ordinary status reads only
@@ -256,7 +277,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
    const input={projectId,expectedRevision:timeline.revision};let report:ReturnType<typeof exportPreflightResponseSchema.safeParse>|undefined;
    try{report=exportPreflightResponseSchema.safeParse(await preflight(input,{signal}));}catch(error){signal?.throwIfAborted();if(!knownObservationFailure(error))throw error;/* Known local media refusal leaves the read available. */}
    signal?.throwIfAborted();
-   const latest=row(store,'timelines',projectId,projectId);
+   const latest=timelineObservation(store,projectId)?.timeline;
    if(!report?.success||report.data.projectId!==projectId||report.data.expectedRevision!==input.expectedRevision)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
    else if(report.data.status==='stale'||!isDeepStrictEqual(latest,timeline)||report.data.timelineId!==timeline.id||report.data.timelineRevision!==input.expectedRevision)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_STALE'));
    else{
@@ -274,7 +295,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   // Reuse this read's H3 observations. No lazy timeline.get(), workers or
   // alternate export/publication validation are introduced for requirements.
   const exists=!!store.db.prepare('SELECT 1 FROM timelines WHERE projectId=?').get(projectId);
-  const valid=timeline&&isTimelineRecordFor(store.db,timeline,{projectId});
+  const valid=timeline&&(observed?.native||isTimelineRecordFor(store.db,timeline,{projectId}));
   let values:AgentTaskCheckValues={};
   if(valid)values={...geometry(timeline),durationFrames:Number(timeline.durationFrames)};
   else if(!exists)values={...freezeStoryboardOutputGeometry(store.db,projectId),durationFrames:0};

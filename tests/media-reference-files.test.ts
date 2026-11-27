@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash, randomBytes} from 'node:crypto';
 import {
-  appendFileSync, chmodSync, closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync,
+  appendFileSync, chmodSync, closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, renameSync, rmSync,
   symlinkSync, truncateSync, utimesSync, writeFileSync, writeSync,
 } from 'node:fs';
 import type {BigIntStats} from 'node:fs';
@@ -215,7 +215,7 @@ function recording(base: MediaFileSystem = NODE_MEDIA_FILE_SYSTEM): {readonly fi
   }}};
 }
 /** Bigint stats with some fields replaced; the prototype keeps isFile() and the like. */
-const restat = (stats: BigIntStats, fields: Partial<Record<'dev' | 'mtimeNs', bigint>>): BigIntStats =>
+const restat = (stats: BigIntStats, fields: Partial<Pick<BigIntStats, 'dev' | 'mtimeNs' | 'ctimeNs'>>): BigIntStats =>
   Object.assign(Object.create(Object.getPrototypeOf(stats) as object) as BigIntStats, stats, fields);
 const statusOf = (result: MediaStatusResult): readonly [string, string] => [result.status, result.reason];
 
@@ -539,6 +539,61 @@ test('a file that changes while it is read is MEDIA_CHANGED_DURING_READ', async 
   await assert.rejects(referenceForFile(access({fileSystem: changing}), file), {code: 'MEDIA_CHANGED_DURING_READ'});
   await assert.rejects(computeFullSha256(access({fileSystem: changing}), reference), {code: 'MEDIA_CHANGED_DURING_READ'});
   await assert.rejects(readMediaBytes(access({fileSystem: changing}), reference, {maxBytes: reference.sizeBytes}), {code: 'MEDIA_CHANGED_DURING_READ'});
+});
+
+test('a hash bound to an admitted source refuses a redirected locator or a replaced inode', async t => {
+  const base = NODE_MEDIA_FILE_SYSTEM;
+  let redirect: {from: string; to: string} | undefined;
+  const {project, opened, access} = layout(t, {
+    ...base,
+    realpath: file => base.realpath(redirect?.from === file ? redirect.to : file),
+  });
+  const file = path.join(project, 'admitted.mp4'), replacement = path.join(project, 'replacement.mp4');
+  const content = writeMp4(file, 2 * MIB), changedByte = 100_000;
+  assert.ok(sampleRanges(content.length).every(({start, length}) => changedByte < start || changedByte >= start + length));
+  writeFileSync(replacement, content);
+  flipByte(replacement, changedByte);
+  utimesSync(file, EARLIER, EARLIER);
+  utimesSync(replacement, EARLIER, EARLIER);
+  const {reference} = await referenceForFile(access(), file);
+  const replacementReference = (await referenceForFile(access(), replacement)).reference;
+  assert.equal(reference.sampledSha256, replacementReference.sampledSha256);
+  const expectedSource = {file, stats: lstatSync(file, {bigint: true})};
+  assert.equal((await computeFullSha256(access(), reference, {expectedSource})).sha256, sha256(content));
+
+  // Simulate the locator settling on another path between admission and the
+  // full read. Equal size, modification time and samples do not pin its bytes.
+  redirect = {from: file, to: replacement};
+  assert.notEqual((await computeFullSha256(access(), reference)).sha256, sha256(content));
+  opened.length = 0;
+  await assert.rejects(computeFullSha256(access(), reference, {expectedSource}), {code: 'MEDIA_CHANGED_DURING_READ'});
+  assert.deepEqual(opened, []);
+
+  // The canonical name can stay the same while its file identity changes.
+  redirect = undefined;
+  renameSync(replacement, file);
+  await assert.rejects(computeFullSha256(access(), reference, {expectedSource}), {code: 'MEDIA_CHANGED_DURING_READ'});
+  assert.deepEqual(opened, []);
+});
+
+test('a hash bound to an admitted source refuses ctime drift on the actual descriptor', async t => {
+  const base = NODE_MEDIA_FILE_SYSTEM;
+  let hashRead = false;
+  const changing: MediaFileSystem = {...base, open: async file => {
+    const handle = await base.open(file);
+    return {...handle, stat: async () => {
+      const stats = await handle.stat();
+      return hashRead ? restat(stats, {ctimeNs: stats.ctimeNs + 1n}) : stats;
+    }};
+  }};
+  const {project, access} = layout(t);
+  const file = path.join(project, 'source.mp4');
+  writeMp4(file);
+  const {reference} = await referenceForFile(access(), file);
+  const expectedSource = {file, stats: lstatSync(file, {bigint: true})};
+  await assert.rejects(computeFullSha256(access({fileSystem: changing}), reference, {expectedSource,
+    onBytes: () => {hashRead = true;}}), {code: 'MEDIA_CHANGED_DURING_READ'});
+  assert.ok(hashRead, 'the descriptor changed after its bytes were read');
 });
 
 test('an open project keeps its locks: its file, its journal, links to them, super-journals and the test store are never opened', async t => {

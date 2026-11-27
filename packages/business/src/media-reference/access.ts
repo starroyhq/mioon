@@ -36,7 +36,7 @@ import {isInsideRealDirectory, parseLocalPath, referencePathForRealFile, resolve
 //    be read; whatever needs only lstat is still reported.
 // Only then is it opened (O_RDONLY | O_NOFOLLOW | O_NONBLOCK). The descriptor's
 // fstat must match the lstat of step 3 (device, file ID, size, modification
-// time) when it is opened, after the header is read and after the hashed bytes
+// and change times) when it is opened, after the header is read and after the hashed bytes
 // are read, or the read fails with MEDIA_CHANGED_DURING_READ; and the first
 // 1024 bytes must match the format of the extension before anything else is
 // read. A same-user swap to a hard link of a protected file between the lstat
@@ -187,8 +187,9 @@ export async function inspectTarget(prepared: PreparedAccess, file: string): Pro
   return {kind: 'media', file: real, stats, type, outside, readable: !outside || prepared.mayReadOutside(real)};
 }
 
-const sameFile = (now: BigIntStats, inspected: BigIntStats): boolean =>
-  now.isFile() && now.dev === inspected.dev && now.ino === inspected.ino && now.size === inspected.size && now.mtimeNs === inspected.mtimeNs;
+export const sameMediaFile = (now: BigIntStats, inspected: BigIntStats): boolean =>
+  now.isFile() && now.dev === inspected.dev && now.ino === inspected.ino && now.size === inspected.size &&
+  now.mtimeNs === inspected.mtimeNs && now.ctimeNs === inspected.ctimeNs;
 
 /** Opens an inspected file and runs `read` on it, checking the descriptor
  * against the inspection first. A refused open is MEDIA_MISSING (`no-access`);
@@ -225,7 +226,7 @@ export async function withMediaFile<T>(prepared: PreparedAccess, target: MediaTa
     };
     const verify = async (): Promise<void> => {
       checkpoint();
-      if (!sameFile(await handle.stat(), target.stats)) throw mediaReferenceError('MEDIA_CHANGED_DURING_READ');
+      if (!sameMediaFile(await handle.stat(), target.stats)) throw mediaReferenceError('MEDIA_CHANGED_DURING_READ');
       checkpoint();
     };
     await verify();
@@ -363,8 +364,12 @@ export async function admitMedia(access: MediaAccess, reference: MediaReference,
  * and the reference with it as `fullSha256`. A reference that already holds a
  * different full hash is MEDIA_CHANGED (`content`): bytes outside the samples
  * changed while size and modification time stayed. */
+export interface MediaHashSource {readonly file: string; readonly stats: BigIntStats}
+
 export async function computeFullSha256(access: MediaAccess, reference: MediaReference,
-  {signal, onBytes, beforeEffect, maxBytes}: MediaReadOptions & {onBytes?: (bytes: number) => void; maxBytes?: number} = {}): Promise<{sha256: string; reference: MediaReference}> {
+  {signal, onBytes, beforeEffect, maxBytes, expectedSource}: MediaReadOptions & {
+    onBytes?: (bytes: number) => void; maxBytes?: number; expectedSource?: MediaHashSource;
+  } = {}): Promise<{sha256: string; reference: MediaReference}> {
   assertByteLimit(maxBytes);
   signal?.throwIfAborted(); beforeEffect?.();
   const recorded = parseReference(reference);
@@ -372,6 +377,9 @@ export async function computeFullSha256(access: MediaAccess, reference: MediaRef
   const prepared = await prepareAccess(access);
   const evaluation = await evaluateReference(prepared, recorded, signal, beforeEffect);
   const target = admittedTarget(evaluation);
+  if (expectedSource && (target.file !== expectedSource.file || !sameMediaFile(target.stats, expectedSource.stats))) {
+    throw mediaReferenceError('MEDIA_CHANGED_DURING_READ');
+  }
   if (maxBytes !== undefined && Number(target.stats.size) > maxBytes) throw mediaReferenceError('MEDIA_REFERENCE_INVALID', {reason: 'size-limit'});
   const sha256 = await withMediaFile(prepared, target, async session => {
     const samples = await readSampledSha256(session, target, signal);

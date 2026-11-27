@@ -462,6 +462,34 @@ const uncheckedReport = (patch: Record<string, unknown> = {}): Record<string, un
   checks: { totalAssets: 0, checkedAssets: 0, bytesHashed: 0, fullDecode: false },
   issues: [{ code: 'PREFLIGHT_SNAPSHOT_BUDGET', severity: 'warning', message: 'Ownership graph budget reached.' }], ...patch });
 
+test('busy media check shows preparation and permits only an explicit retry', async () => {
+  const f = fixture();
+  const binding = (await f.ready()).binding;
+  const uncheckedIntent = (await f.ready(uncheckedReport())).uncheckedIntent;
+  const issues = [{code: 'PREFLIGHT_BUSY', severity: 'warning', message: 'Preparation in progress.'}];
+  for (const pending of [uncheckedReport({issues}), report({status: 'incomplete', issues})]) {
+    await f.ready(pending);
+    assert.equal(f.state().phase, 'preparing');
+    assert.equal(f.state().report.status, 'incomplete');
+    assert.equal(f.state().binding, null);
+    assert.equal(f.state().uncheckedIntent, null);
+    assert.equal(f.controller.takeExportBinding(binding), null);
+    assert.equal(f.controller.takeUncheckedExportIntent(uncheckedIntent), null);
+
+    const tree = renderPanel({state: f.state(), exportBusy: false});
+    assert.match(textOf(findNode(tree, 'export-check-result')), /素材还在准备/);
+    assert.match(textOf(findNode(tree, 'preflight-issues')), /请稍后重新检查/);
+    assert.equal(findNode(tree, 'preflight-check').props.disabled, false);
+    assert.equal(findNode(tree, 'preflight-export').props.disabled, true);
+    assert.ok(!nodes(tree).some(node => node.props['data-testid'] === 'preflight-export-unchecked'));
+  }
+  const originalInput = f.calls.at(-1)!.input;
+  await f.ready();
+  assert.deepEqual(f.calls.at(-1)!.input, originalInput);
+  assert.equal(f.state().phase, 'ready');
+  assert.ok(f.state().binding);
+});
+
 test('unchecked intent is distinct, one-use, cannot be forged, and never enters checked-binding path', async () => {
   const f = fixture(); await f.ready(uncheckedReport()); const intent = f.state().uncheckedIntent;
   assert.equal(f.state().binding, null); assert.equal(f.state().report.snapshotHash, null); assert.equal(Object.hasOwn(intent as object, 'preflightSnapshotHash'), false);
