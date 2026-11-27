@@ -73,20 +73,24 @@ test('extreme rates force continuous pitch shifting and only pad the remaining o
   }
 });
 
-test('changing curve uses the same PCM sample positions after split and trim', async t => {
+test('forward and reverse curves keep PCM bytes identical after split and trim', async t => {
   const frames = 43;
-  const remote = await fixture(t, frames, '0.1+0.03*sin(2*PI*440*t)|0.2+0.04*cos(2*PI*660*t)');
+  const expression = '0.1+0.03*sin(2*PI*440*t)|0.2+0.04*cos(2*PI*660*t)';
   const motion = unwrap(instantiateSpeedPreset('fastToSlow', 0, frames));
-  const {timing, plan} = mapping(motion, frames);
-  assert.equal(timelineSpeedAudioMode(timing), 'shift');
-  const whole = await remote.render(timing, plan);
-  const {left, right} = unwrap(splitTimeMap(plan, 1));
-  const independent = await Promise.all([left, right].map(part => remote.render({...timing, outputWindow: part.outputWindow}, part)));
-  assert.deepEqual(Buffer.concat(independent), whole);
+  for (const direction of ['forward', 'reverse'] as const) {
+    const remote = await fixture(t, frames, expression, direction === 'reverse');
+    const {timing, plan} = mapping(motion, frames, false, direction);
+    assert.equal(timelineSpeedAudioMode(timing), 'shift');
+    const whole = await remote.render(timing, plan);
+    const {left, right} = unwrap(splitTimeMap(plan, 1));
+    const first = await remote.render({...timing, outputWindow: left.outputWindow}, left);
+    const second = await remote.render({...timing, outputWindow: right.outputWindow}, right);
+    assert.deepEqual(Buffer.concat([first, second]), whole, direction);
 
-  const interior = unwrap(trimTimeMap(plan, 5, 12));
-  assert.deepEqual(await remote.render({...timing, outputWindow: interior.outputWindow}, interior),
-    whole.subarray(5 * bytesPerFrame, 12 * bytesPerFrame));
+    const interior = unwrap(trimTimeMap(plan, 5, 12));
+    assert.deepEqual(await remote.render({...timing, outputWindow: interior.outputWindow}, interior),
+      whole.subarray(5 * bytesPerFrame, 12 * bytesPerFrame), direction);
+  }
 });
 
 test('curves in the 2x–4x band resample continuously even with pitchShift disabled', async t => {
@@ -158,47 +162,56 @@ test('long curves keep the inverse phase bound in both ends and interior blocks'
   }
 });
 
-test('every output sample of a forward log-linear curve stays within 0.01 source samples of the analytic inverse', () => {
+test('every forward and reverse output sample stays within 0.01 source samples of the analytic curve inverse', () => {
   const frames = 19;
   for (const [first, last] of [[{numerator: 1, denominator: 4}, {numerator: 3, denominator: 1}],
     [{numerator: 4, denominator: 1}, {numerator: 1, denominator: 5}]] as const) {
     const curve = {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom', points: [
       {sourceFrame: 0, rate: first}, {sourceFrame: frames, rate: last},
     ]} as const;
-    const {plan} = mapping(curve, frames);
     const initial = first.numerator / first.denominator;
     const slope = Math.log((last.numerator / last.denominator) / initial) / frames;
     // Two log-PCHIP knots lie on a straight line. Its reciprocal rate has
     // a closed-form integral and inverse independent of the Simpson solver.
-    const motionSamples = Math.ceil(-Math.expm1(-slope * frames) / (initial * slope) * samplesPerFrame);
-    const samplePosition = createSpeedAudioSourceClock(plan, motionSamples, undefined, curve.points);
-    let worst = 0;
-    for (let sample = 0; sample < motionSamples; sample++) {
-      const expected = -Math.log1p(-slope * initial * sample / samplesPerFrame) / slope * samplesPerFrame;
-      worst = Math.max(worst, Math.abs(samplePosition(sample) - expected));
+    const duration = -Math.expm1(-slope * frames) / (initial * slope);
+    const motionSamples = Math.ceil(duration * samplesPerFrame);
+    for (const direction of ['forward', 'reverse'] as const) {
+      const {plan} = mapping(curve, frames, false, direction);
+      const samplePosition = createSpeedAudioSourceClock(plan, motionSamples, undefined, curve.points);
+      let worst = 0;
+      for (let sample = 0; sample < motionSamples; sample++) {
+        const elapsed = sample / samplesPerFrame;
+        const fromStart = direction === 'forward' ? elapsed : duration - elapsed;
+        const expected = -Math.log1p(-slope * initial * fromStart) / slope * samplesPerFrame;
+        worst = Math.max(worst, Math.abs(samplePosition(sample) - expected));
+      }
+      assert.ok(worst <= 0.01, `${direction} maximum deviation was ${worst} source samples`);
     }
-    assert.ok(worst <= 0.01, `maximum deviation was ${worst} source samples`);
   }
 });
 
-test('reverse curves retain the existing sample inverse and forward seeks retain the absolute phase grid', () => {
+test('curve inversion preserves exact endpoints and tails and both directions retain the absolute grid after seeks', () => {
   const preset = unwrap(instantiateSpeedPreset('slowMiddle', 0, 41));
   assert.equal(preset.kind, 'curve');
-  const reverse = mapping(preset, 41, false, 'reverse').plan;
-  for (const numerator of ['0', '15731', '53333', '96000', '154000']) {
-    const position = {numerator, denominator: '1600'};
-    assert.deepEqual(timeMapAudioInverse(reverse, position, 0.01 / samplesPerFrame),
-      timeMapTailInverse(reverse, position, {tailInverse: 'latest'}));
-  }
-  const forward = mapping(preset, 41).plan;
-  const window = unwrap(trimTimeMap(forward, 26, 89));
-  const length = timeMapRootInfo(forward.root).rootLength;
-  assert.equal(length.kind, 'numeric');
-  const motionSamples = Math.ceil(length.value * samplesPerFrame);
-  const whole = createSpeedAudioSourceClock(forward, motionSamples, undefined, preset.points);
-  const seek = createSpeedAudioSourceClock(window, motionSamples, undefined, preset.points);
-  for (let sample = 26 * samplesPerFrame; sample < 89 * samplesPerFrame; sample += 17) {
-    assert.equal(seek(sample), whole(sample), `source phase after seek at output sample ${sample}`);
+  for (const direction of ['forward', 'reverse'] as const) {
+    const {plan} = mapping(preset, 41, false, direction);
+    const window = unwrap(trimTimeMap(plan, 26, 89));
+    const length = timeMapRootInfo(plan.root).rootLength;
+    assert.equal(length.kind, 'numeric');
+    for (const [frame, tail] of [[0, false], [Math.ceil(length.value) + 1, true]] as const) {
+      const position = {numerator: String(frame), denominator: '1'};
+      const expected = unwrap(timeMapTailInverse(plan, position, {tailInverse: 'latest'}));
+      assert.equal(expected.tail, tail);
+      const actual = unwrap(timeMapAudioInverse(plan, position, 0.01 / samplesPerFrame));
+      assert.equal(actual.tail, expected.tail);
+      assert.deepEqual(actual.position, expected.position);
+    }
+    const motionSamples = Math.ceil(length.value * samplesPerFrame);
+    const whole = createSpeedAudioSourceClock(plan, motionSamples, undefined, preset.points);
+    const seek = createSpeedAudioSourceClock(window, motionSamples, undefined, preset.points);
+    for (let sample = 26 * samplesPerFrame; sample < 89 * samplesPerFrame; sample += 17) {
+      assert.equal(seek(sample), whole(sample), `${direction} source phase after seek at output sample ${sample}`);
+    }
   }
 });
 
