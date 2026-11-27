@@ -102,7 +102,7 @@ test('states and error codes are the agreed strings', () => {
   assert.deepEqual(MEDIA_PATH_FORMS, ['relative', 'absolute']);
   assert.deepEqual(MEDIA_STATUSES, ['online', 'missing', 'changed']);
   assert.deepEqual(PROJECT_VERSION_TRIGGERS, ['manual', 'mio-turn', 'bulk-change', 'restore', 'daily-open']);
-  assert.deepEqual(BACKGROUND_TASK_KINDS, ['job', 'export', 'edit_task', 'image_task', 'frame_task', 'scene_task', 'subject_variant_batch']);
+  assert.deepEqual(BACKGROUND_TASK_KINDS, ['job', 'export', 'edit_task', 'image_task', 'frame_task', 'scene_task', 'subject_variant_batch', 'timeline-processing']);
 });
 
 test('project URLs are built from canonical IDs and parse back unchanged', () => {

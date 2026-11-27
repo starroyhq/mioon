@@ -74,6 +74,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   try {
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
       application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
+      processingCacheDirectory: context.directories.cacheDir,
       privateMediaDirectories: [context.directories.dataDir, context.directories.cacheDir, context.directories.tempDir],
       agentSettings: app.agentSettings, settings: app.settings, deferBackgroundRecovery: true});
   } catch (error) {

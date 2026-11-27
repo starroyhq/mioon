@@ -439,6 +439,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(prepared.canvas&&(!record(step.data)||step.data.canvasProof!==prepared.canvas.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if(prepared.sequence?.speedPlan&&(!record(step.data)||!isDeepStrictEqual(step.data.speedPlan,prepared.sequence.speedPlan)))
       throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+    if(prepared.processingProof&&(!record(step.data)||step.data.processingProof!==prepared.processingProof))
+      throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     journal.assertTargets(run.projectId,prepared.targets);
   }
@@ -569,12 +571,16 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         conflicts=prepared.targets;
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
+      if(record(step.data)&&typeof step.data.processingProof==='string'&&step.data.processingProof!==prepared.processingProof){
+        conflicts=prepared.targets;
+        throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+      }
       const canvasEvidence=canvas?{canvasProof:canvas.proof,...(canvas.input.operation==='archive'?{canvasArchiveImpact:json({
         ...canvas.impact,shotIds:canvas.impact.shots.map(shot=>shot.id),selected:canvas.input.targets,
       })}:{})}:{};
       const speedEvidence:Record<string,AgentTaskJson>=speedPlan?
         {speedPlan:json(speedPlan),speedImpact:json(prepared.sequence?.summary?.speed)}:{};
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...canvasEvidence,...speedEvidence}});
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...(prepared.processingProof?{processingProof:prepared.processingProof}:{}),...canvasEvidence,...speedEvidence}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       const serviceIssue=toolset().generationServiceIssue(prepared);
@@ -1088,6 +1094,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         else if(step.toolCall?.name==='mioon_task_wait'&&request.resolution==='accept_result'){
           const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,locale:taskResponseLocale(run.context)}),result=toolset().recoverWait(prepared);
           if(result===null)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'completed',result});
+        }else if(step.toolCall?.name==='mioon_timeline_processing_retry'&&request.resolution==='accept_result'){
+          const proof=toolset().recoverProcessingRetry({projectId,runId,stepId:step.id});
+          if(proof?.outcome!=='applied')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+          journal.updateStep(runId,step.id,{status:'completed',result:proof.result});
         }else if(step.toolCall&&request.resolution==='discard'){
           if(step.toolCall.name===AGENT_TASK_TOOLS_LOAD_NAME){
             const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;

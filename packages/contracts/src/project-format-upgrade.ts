@@ -16,14 +16,14 @@ export const projectFormatUpgradePreviewSchema = z.object({
   targetProjectVersion: z.union([z.literal(4), z.literal(5), z.literal(6)]),
   targetHistoryVersion: version,
 }).strict().superRefine((value, context) => {
-  const expectedHistory = value.targetProjectVersion === 4 ? 12 : 13;
+  const expectedHistory = {4: 12, 5: 13, 6: 14}[value.targetProjectVersion];
   if (value.targetHistoryVersion !== expectedHistory) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'Target project and history versions must pair', path: ['targetHistoryVersion']});
   }
   if (value.projectVersion >= value.targetProjectVersion) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'An upgrade must advance the project format', path: ['targetProjectVersion']});
   }
-  if (value.projectVersion === 5 && value.historyVersion !== null && value.historyVersion !== expectedHistory ||
+  if (value.projectVersion === 5 && value.historyVersion !== null && value.historyVersion !== 13 ||
       value.projectVersion !== 5 && value.historyVersion !== null && value.historyVersion >= expectedHistory) {
     context.addIssue({code: z.ZodIssueCode.custom, message: 'An upgrade must advance the history format', path: ['historyVersion']});
   }

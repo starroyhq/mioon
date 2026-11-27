@@ -145,15 +145,17 @@ test('a new library is built from the current application-state SQL and the B1 t
   assert.deepEqual(library.db.prepare('PRAGMA main.foreign_key_list(workspace_preferences)').all(), []);
   assert.equal(APP_LIBRARY_STATEMENTS.some(sql => /REFERENCES/u.test(sql)), false);
 
-  // Retain both historical profile digests; v3 adds only typed user rules.
+  // Retain the historical profile digests independently of current DDL.
   assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(1))).digest('hex'),
     'f7aa62f54c5e09ffb405b8efe8369f3445e32758526b5e30484ad542e58f7de9');
   assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(2))).digest('hex'),
     '7c99f8946a65136c55068d877d91645be595280c5e2ec65ef0d47d5465b1c95d');
   assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(3))).digest('hex'),
     '8a037a9700be47380961f35fa2fae5c3880766f6d8349d80888e169708c9433c');
-  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(4))).digest('hex'),
     '2ed1111e2e87865ef3f400f2615393b52040e6679d60632a30afa9d60baa37eb');
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+    '6b6298bfb634714bfcbfa3f128dc77577164c1abdc15fa2804d1cf7fbea33c62');
 });
 
 test('the library is reopened with its records and checked again on every open', t => {

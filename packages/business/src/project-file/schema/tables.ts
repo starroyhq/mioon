@@ -6,6 +6,7 @@
  * for supported history upgrades and the legacy workspace until S7-B2.
  * `schema_version` exists in all three databases and is defined in databases.ts. */
 import {FORMAT5_CONTENT_TABLES_ADDED, FORMAT5_EDITOR_HISTORY_TABLES, FORMAT5_HISTORY_SCHEMA_VERSION, isSequenceProjectFormat} from './domains/sequence.ts';
+import {FORMAT6_HISTORY_SCHEMA_VERSION, TIMELINE_PROCESSING_HISTORY_TABLES} from './domains/timeline-processing.ts';
 import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION} from './domains/canvas.ts';
 
 export type TablePlacement = 'project' | 'history' | 'cache' | 'app' | 'removed';
@@ -63,9 +64,12 @@ const INITIAL_CANVAS_HISTORY_TABLES = ['canvas_requests', 'canvas_history_entrie
 export const CANVAS_HISTORY_TABLES = [...INITIAL_CANVAS_HISTORY_TABLES, 'canvas_receipt_window'] as const;
 const FORMAT4_HISTORY_TABLES = Object.freeze([...HISTORY_TABLES, ...CANVAS_HISTORY_TABLES]);
 const INITIAL_FORMAT4_HISTORY_TABLES = Object.freeze([...HISTORY_TABLES, ...INITIAL_CANVAS_HISTORY_TABLES]);
+const FORMAT5_HISTORY_TABLES = Object.freeze([...FORMAT4_HISTORY_TABLES, ...FORMAT5_EDITOR_HISTORY_TABLES]);
+const FORMAT6_HISTORY_TABLES = Object.freeze([...FORMAT5_HISTORY_TABLES, ...TIMELINE_PROCESSING_HISTORY_TABLES]);
 
 export function historyTablesForVersion(version: number): readonly string[] {
-  if (version === FORMAT5_HISTORY_SCHEMA_VERSION) return Object.freeze([...FORMAT4_HISTORY_TABLES, ...FORMAT5_EDITOR_HISTORY_TABLES]);
+  if (version === FORMAT6_HISTORY_SCHEMA_VERSION) return FORMAT6_HISTORY_TABLES;
+  if (version === FORMAT5_HISTORY_SCHEMA_VERSION) return FORMAT5_HISTORY_TABLES;
   if (version === FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION) return INITIAL_FORMAT4_HISTORY_TABLES;
   return version === FORMAT4_HISTORY_SCHEMA_VERSION ? FORMAT4_HISTORY_TABLES : HISTORY_TABLES;
 }
