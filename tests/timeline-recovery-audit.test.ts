@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {TypedServices} from './helpers/strict-service-responses.ts';
 interface AuditInput {requestId:string;expectedRevision:number;projectId?:string;[key:string]:unknown}
@@ -91,7 +92,7 @@ async function appHarness(port:AuditPort, {revision = 7, refreshedRevision = 9, 
   const state:{epoch:number;ids:number;notices:{message:string;type:unknown}[];refreshes:unknown[];jobs:boolean;recoveredFormats:AuditTask[];recoveredSubtitles:AuditTask[]} = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false, recoveredFormats:[], recoveredSubtitles:[]};
   const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: projectId}]));
   assert.ok(await identity.discover());
-  const scope = { projectEntryIdentityRef: {current: identity}, msg, renderCoreMessage: renderMessage, application: null, trackLocksRef:{current:{}}, touchesLockedTrack, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
+  const scope = { isSequenceTimelineFormat, projectEntryIdentityRef: {current: identity}, msg, renderCoreMessage: renderMessage, application: null, trackLocksRef:{current:{}}, touchesLockedTrack, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }),
     timelineFormatRef:{current:{controller:{recovered:(task?: unknown)=>state.recoveredFormats.push(((copy(task)) as unknown as Parameters<typeof state.recoveredFormats.push>[0]))}}}, subtitlesRef:{current:{controller:{recovered:(task?: unknown)=>state.recoveredSubtitles.push(((copy(task)) as unknown as Parameters<typeof state.recoveredSubtitles.push>[0]))}}},
     currentProject, dataRef, tasksRef:{current:port}, requestCounter:{current:0}, timelineHistoryState,

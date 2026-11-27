@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -156,7 +157,7 @@ function createShortcutHarness(chain: ChainWorld, options: {
       'nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'canvasShortcutInText',
       'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead',
       'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'format5HistoryState',
-      'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip',
+      'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip', 'isSequenceTimelineFormat',
       `${keyCode}\nreturn onKeyDown;`,
     )(
       null,
@@ -181,6 +182,7 @@ function createShortcutHarness(chain: ChainWorld, options: {
       {current: null},
       () => {},
       () => {},
+      isSequenceTimelineFormat,
     ) as (event: Record<string, unknown>) => void;
 
     const event = {

@@ -28,7 +28,8 @@ export interface ProjectBackgroundState {
 type Row = Record<string, unknown>;
 const PROJECT_LIMIT = 512;
 const tables = {job: 'jobs', export: 'exports', edit_task: 'edit_tasks', image_task: 'image_tasks',
-  frame_task: 'frame_tasks', scene_task: 'scene_tasks', subject_variant_batch: 'subject_variant_batches'} as const;
+  frame_task: 'frame_tasks', scene_task: 'scene_tasks', subject_variant_batch: 'subject_variant_batches',
+  'timeline-processing': 'timeline_processing_tasks'} as const;
 interface FileIdentity {readonly dev: bigint; readonly ino: bigint; readonly birthtimeNs: bigint}
 const instances = new WeakMap<DatabaseSync, {store: ProjectStore; project: FileIdentity; directory: FileIdentity; state: ProjectBackgroundState; pause(ref: BackgroundTaskRef, reason: string): void}>();
 const key = (ref: BackgroundTaskRef): string => `${ref.kind}:${ref.taskId}`;
@@ -91,6 +92,9 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
   }
   const cache = new Map<string, TaskProjection>(), paused = new Map<string, string>();
   const listeners = new Set<(tasks: readonly TaskProjection[]) => void>();
+  // The optional projection reads derived records only after the exact
+  // format-6 history has been opened by the project owner.
+  const hasTimelineProcessing = Boolean(db.prepare("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name='timeline_processing_tasks'").get());
   let disposed = false;
   const projection = (ref: BackgroundTaskRef, classification: TaskProjection['classification'], keepAlive: boolean,
     reason: string | null, taskRevision: unknown): TaskProjection => Object.freeze({...ref, classification, keepAlive, reason, taskRevision: revision(taskRevision)});
@@ -113,7 +117,10 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
     : kind === 'subject_variant_batch' ? 'id,projectId,state,revision'
       : kind === 'edit_task' ? 'id,projectId,status,revision,errorCode'
         : kind === 'image_task' ? 'id,projectId,state,revision,errorCode,requestId,stagedReceipt IS NOT NULL AS receipt'
-          : kind === 'frame_task' || kind === 'scene_task' ? 'id,projectId,state,revision,errorCode,stagedReceipt IS NOT NULL AS receipt' : '';
+          : kind === 'timeline-processing' ? 'id,projectId,state,revision,errorCode'
+            : 'id,projectId,state,revision,errorCode,stagedReceipt IS NOT NULL AS receipt';
+  const rowFor = (ref: BackgroundTaskRef): Row | undefined => ref.kind === 'timeline-processing' && !hasTimelineProcessing
+    ? undefined : db.prepare(`SELECT ${columns(ref.kind)} FROM ${tables[ref.kind]} WHERE id=? LIMIT 1`).get(ref.taskId);
   function effectReason(ref: BackgroundTaskRef): string | null {
     const kind = ref.kind === 'job' ? 'job' : ref.kind === 'export' ? 'export' : ref.kind === 'image_task' ? 'image'
       : ref.kind === 'frame_task' ? 'frame' : ref.kind === 'scene_task' ? 'scene' : null;
@@ -164,6 +171,9 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
       if (state === 'applied' || state === 'not_applied') return result('terminal', false);
       return state === 'dispatching' ? result('running', true) : state === 'unknown' ? result('remote_unknown', false, 'EDIT_TASK_OUTCOME_UNKNOWN')
         : result('waiting_user', false, state === 'prepared' ? 'EDIT_TASK_PREPARED' : 'BACKGROUND_TASK_INVALID');
+    } else if (ref.kind === 'timeline-processing') {
+      if (['ready', 'failed', 'cancelled'].includes(state)) return result('terminal', false);
+      return ['queued', 'running'].includes(state) ? result('running', true) : result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
     } else if (ref.kind === 'subject_variant_batch') {
       if (state === 'undone') return result('terminal', false);
       if (state !== 'active') return result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
@@ -206,13 +216,13 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
   function read(ref: BackgroundTaskRef): TaskProjection {
     const blocked = paused.get(key(ref));
     if (blocked) return projection(ref, 'waiting_user', false, blocked, cache.get(key(ref))?.taskRevision);
-    return classify(ref, db.prepare(`SELECT ${columns(ref.kind)} FROM ${tables[ref.kind]} WHERE id=? LIMIT 1`).get(ref.taskId));
+    return classify(ref, rowFor(ref));
   }
   const snapshot = (): readonly TaskProjection[] => Object.freeze([...cache.values()]);
   const preview = (refs: readonly BackgroundTaskRef[]): readonly TaskProjection[] => {
     const candidates = new Map(cache);
     for (const ref of refs) {
-      const row = db.prepare(`SELECT ${columns(ref.kind)} FROM ${tables[ref.kind]} WHERE id=? LIMIT 1`).get(ref.taskId);
+      const row = rowFor(ref);
       // The raw autocommit put has not inserted a new identity yet. Reserve a
       // possible pending identity, without pretending it was already accepted.
       const value = !row && !db.isTransaction ? projection(ref, 'waiting_user', false, 'BACKGROUND_TASK_ADMISSION_PENDING', 0) : classify(ref, row);
@@ -247,12 +257,14 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
     if (changed) notify();
   };
   for (const [kind, table] of Object.entries(tables) as [BackgroundTaskKind, string][]) {
+    if (kind === 'timeline-processing' && !hasTimelineProcessing) continue;
     const unfinished = kind === 'job' ? `CASE WHEN json_valid(data) THEN
       COALESCE(json_extract(data,'$.status'),'invalid') NOT IN ('succeeded','failed','cancelled') OR
       (json_extract(data,'$.status')='cancelled' AND json_extract(data,'$.cancelScope')='local_only' AND
         (json_extract(data,'$.providerJobId') IS NOT NULL OR COALESCE(json_extract(data,'$.submissionCount'),0)>0)) ELSE 1 END`
       : kind === 'export' ? "COALESCE(CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END,'invalid') NOT IN ('succeeded','failed','cancelled')"
         : kind === 'edit_task' ? "status NOT IN ('applied','not_applied')"
+          : kind === 'timeline-processing' ? "state NOT IN ('ready','failed','cancelled')"
           : kind === 'subject_variant_batch' ? `state='active' AND EXISTS(SELECT 1 FROM subject_variant_items i LEFT JOIN image_tasks t
             ON t.requestId=i.imageRequestId AND t.projectId=i.projectId WHERE i.batchId=subject_variant_batches.id AND i.projectId=subject_variant_batches.projectId
             AND i.versionId IS NULL AND (t.id IS NULL OR t.state NOT IN ('failed','cancelled_before_dispatch')))`

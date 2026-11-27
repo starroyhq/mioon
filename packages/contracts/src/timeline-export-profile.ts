@@ -4,6 +4,7 @@ import {isTimelineAudioRoleSnapshot} from './timeline-audio-role.ts';
 import {isTimelineColourPlanSnapshot} from './timeline-colour.ts';
 import {isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
 import {isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
+import {isTimelineSpeedExportReason,isTimelineSpeedExportSnapshot,SPEED_PROCESSING_NOT_READY,TIMELINE_SPEED_EXPORT_MESSAGES} from './timeline-speed-export.ts';
 import {z} from 'zod';
 import {timelineOutputPreset} from './timeline-format.ts';
 import {TIMELINE_OUTPUT_MAX_EDGE,TIMELINE_OUTPUT_PRESETS,isTimelineDeliveryGeometry,timelineDeliveryGeometry} from './timeline-output-geometry.ts';
@@ -63,7 +64,7 @@ export function isTimelineExportDelivery(delivery: unknown,timeline: unknown,exp
 // Passing an exportSettings key (including undefined) binds its exact presence.
 // Workers omit that option and validate the frozen deterministic profile alone.
 export function isTimelineExportSnapshot(snapshot: unknown, options: unknown = {}): boolean {
- if(!object(snapshot)||!isVolumeEnvelopeProcessingSnapshot(snapshot)||!isTimelineAudioRoleSnapshot(snapshot)||!isTimelineColourPlanSnapshot(snapshot)||!isTimelineDeliveryNameSnapshot(snapshot,options as {purpose?: unknown; input?: unknown})||!isTimelineExportRangeSnapshot(snapshot,options as {purpose?: unknown; input?: unknown}))return false;
+ if(!object(snapshot)||!isVolumeEnvelopeProcessingSnapshot(snapshot)||!isTimelineAudioRoleSnapshot(snapshot)||!isTimelineColourPlanSnapshot(snapshot)||!isTimelineDeliveryNameSnapshot(snapshot,options as {purpose?: unknown; input?: unknown})||!isTimelineExportRangeSnapshot(snapshot,options as {purpose?: unknown; input?: unknown})||!isTimelineSpeedExportSnapshot(snapshot,options as {purpose?: unknown}))return false;
  const record = snapshot as Rec, settings = options as Rec;
  const present=Object.hasOwn(record,'delivery');
  if(Object.hasOwn(settings,'exportSettings')&&(settings.exportSettings!==undefined)!==present)return false;
@@ -82,12 +83,17 @@ export const timelineExportCapabilityResultSchema=z.object({status:z.enum(['avai
 export const timelineExportCapabilitySchemas=Object.freeze({
  'timeline.export.capabilities':z.object({projectId:z.string().uuid(),expectedRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),exportSettings:timelineExportSettingsSchema}).strict(),
 });
-const issueCode=z.enum([...TIMELINE_EXPORT_CAPABILITY_CODES,'TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE','PLACEHOLDER_CLIP','VERSION_TOO_SHORT'] as unknown as [string, ...string[]]);
+const blockedIssueCodes=['TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE',
+ 'PLACEHOLDER_CLIP','VERSION_TOO_SHORT',...Object.keys(TIMELINE_SPEED_EXPORT_MESSAGES)];
+const issueCode=z.enum([...TIMELINE_EXPORT_CAPABILITY_CODES,...blockedIssueCodes] as [string, ...string[]]);
+const capabilityIssueSchema=z.object({code:issueCode,message:z.string().min(1).max(240),clipId:z.string().uuid().optional(),taskId:z.string().uuid().optional()})
+ .strict().refine(issue=>(!Object.hasOwn(issue,'clipId')||isTimelineSpeedExportReason(issue.code)&&issue.clipId!==undefined)&&
+  (!Object.hasOwn(issue,'taskId')||issue.code===SPEED_PROCESSING_NOT_READY&&issue.taskId!==undefined));
 export const timelineExportCapabilitiesResponseSchema=z.object({
  projectId:z.string().uuid(),timelineId:z.string().uuid().nullable(),timelineRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable(),
  expectedRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),exportSettings:timelineExportSettingsSchema,delivery:timelineExportDeliverySchema.nullable(),
  checkedAt:z.string().datetime(),status:z.enum(['available','unavailable','incomplete','stale','blocked']),
- issues:z.array(z.object({code:issueCode,message:z.string().min(1).max(240)}).strict()).max(1),
+ issues:z.array(capabilityIssueSchema).max(1),
 }).strict().superRefine((value,context)=>{
  const fail=()=>context.addIssue({code:'custom',message:'Invalid project-bound capability report'});
  if((value.timelineId===null)!==(value.timelineRevision===null))fail();
@@ -99,7 +105,8 @@ export const timelineExportCapabilitiesResponseSchema=z.object({
  if(['available','unavailable','incomplete'].includes(value.status)){
   if(!value.delivery||value.timelineId===null||value.timelineRevision!==value.expectedRevision)fail();
   if(value.status==='available'?value.issues.length!==0:value.issues.length!==1||!timelineExportCapabilityResultSchema.safeParse({status:value.status,code:value.issues[0]?.code}).success)fail();
- }else if(value.issues.length!==1||!['TIMELINE_MISSING','INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE','EXPORT_CAPABILITY_STALE','PLACEHOLDER_CLIP','VERSION_TOO_SHORT'].includes(value.issues[0]?.code))fail();
+ }else if(value.issues.length!==1||!blockedIssueCodes.includes(value.issues[0]?.code)||
+     isTimelineSpeedExportReason(value.issues[0]?.code)&&value.status!=='blocked')fail();
 });
 export type TimelineExportCapabilitiesResponse = z.infer<typeof timelineExportCapabilitiesResponseSchema>;
 export function isTimelineExportCapabilitiesResponse(value: unknown, input?: unknown): boolean {

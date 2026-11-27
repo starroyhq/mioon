@@ -1,5 +1,9 @@
 import {mioTable} from './agent/mio-table-layout.ts';
 import {createProjectBackgroundState} from './background-task-state.ts';
+import {createTimelineProcessingService} from './timeline-processing/service.ts';
+import type {ProcessingServiceOptions} from './timeline-processing/service.ts';
+import {isTimelineProcessingOperation, timelineProcessingSchemas, timelineProcessingResponseSchemas} from '../../contracts/src/timeline-processing.ts';
+import {readTimelinePreviewMedia} from './timeline-preview-media.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -33,7 +37,9 @@ import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts'
 import {readFormat5AudioProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
-import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {createProjectAudioSnapshotStamp, createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-decoder.ts';
 import {createTimelineAudioPreviewCoordinator} from './timeline-audio-preview-coordinator.ts';
 import {validateTimeline} from './timeline-inputs.ts';
@@ -69,6 +75,7 @@ import {createTimelineServices} from './timeline.ts';
 import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
+import {assertSequenceSpeedMedia} from './format5-sequence-sync.ts';
 import {previewMioSequenceAction,commitMioSequenceAction} from './format5-mio-sequence.ts';
 import {sequenceEditFailureMessage} from './format5-sequence-preview-errors.ts';
 import {mioSequenceEditSchemas} from '../../contracts/src/mio-sequence.ts';
@@ -80,6 +87,8 @@ import type {Format5LegacyGenerationService} from './format5-reference-inputs.ts
 import {assertFormat5DialogueSubmittable,freezeFormat5Dialogue,planFormat5DialogueGeneration} from './format5-dialogue-generation.ts';
 import {createSequenceInspectionService} from './format5-sequence-inspection.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
+import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
 import {createExportSamplePeakDecoder} from './export-sample-peak-decoder.ts';
 import {createExportLoudnessServices} from './export-loudness.ts';
@@ -141,6 +150,7 @@ export interface ServiceApplicationPorts {
 }
 export interface CreateServicesOptions {
  deferBackgroundRecovery?: boolean;
+ processing?: Pick<ProcessingServiceOptions, 'enabled' | 'cache' | 'scheduler' | 'previewRenderer'>;
  application?: ServiceApplicationPorts;
  videoSettings?: VideoGenerationSettings;
  videoFetch?: typeof fetch;
@@ -152,7 +162,9 @@ export interface CreateServicesOptions {
  imageOptions?: Parameters<typeof createImageServices>[1];
  frameOptions?: Parameters<typeof createFrameServices>[1];
  sceneOptions?: Parameters<typeof createSceneServices>[1];
- exportOptions?: Parameters<typeof createTimelineExportAdmissionServices>[1];
+ exportOptions?: Omit<NonNullable<Parameters<typeof createTimelineExportAdmissionServices>[1]>, 'reverseProxy' | 'opticalProxy'>;
+ /** Optional trusted port for service fixtures. */
+ reverseProxy?: TimelineReverseProxyPort;
  agentAuthorizations?: AgentAuthorizations | null;
  readRecentOpened?: ()=>Readonly<Record<string,string>>;
  assertMutationAllowed?: ()=>void;
@@ -170,6 +182,8 @@ type GenerationResultProvider=Pick<Provider,'capabilities'|'poll'|'download'> & 
 /** Ordinary backend surface returned by createServices. */
 export interface OrdinaryServices {
  activateBackground: ()=>void;
+ readonly timelineProcessingEnabled: boolean;
+ readonly timelineProcessing?: Pick<ReturnType<typeof createTimelineProcessingService>, 'preview' | 'reverseProxy'>;
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
@@ -186,6 +200,8 @@ export interface OrdinaryServices {
  createGenerationJobInside: (input: GenerationSubmitInput)=>unknown;
  assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
+ reverseProxy?: TimelineReverseProxyPort;
+ opticalProxy?: TimelineOpticalProxyPort;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
  resolveGenerationProvider?: (job: JobRecord)=>Provider|undefined;
@@ -260,7 +276,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,reverseProxy: injectedReverseProxy,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
  assertProjectStore(inputStore);
  const store = inputStore;
  const backgroundTasks=createProjectBackgroundState(store);
@@ -276,6 +292,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const sequenceEditing = isProjectStore(store) ? createSequenceEditing(store) : undefined;
  const configuration=application.configuration;
  const assertApplicationMutationAllowed=()=>application.assertMutationAllowed();
+ const processing = isProjectStore(store) && processingOptions ? createTimelineProcessingService(store, {
+  ...processingOptions, ...(ownerSignal ? {ownerSignal} : {}),
+  beforeEffect: () => {assertApplicationMutationAllowed(); assertMutationAllowed?.();},
+ }) : undefined;
+ const reverseProxy = processing?.reverseProxy ?? injectedReverseProxy;
+ const opticalProxy = processing?.opticalProxy;
  const configurationHandlers={
   'workspace.settings.get':()=>configuration.get(),
   'workspace.settings.set':(input:never)=>{assertApplicationMutationAllowed();return configuration.set(input);},
@@ -663,7 +685,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  };
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>createGenerationJobInside(input,retrySnapshot,retryOfJobId,referenceBasis,outputLocale));
- const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash});
+ const exportAdmission=createTimelineExportAdmissionServices(store,{...exportOptions,signal:ownerSignal,hash,reverseProxy,opticalProxy});
  // The UI sequence service intentionally has no generation-submit port: the
   // timeline placement only adds the placeholder and opens the panel; the panel's
   // Generate button goes through the reviewed board generation path. Mio's
@@ -676,17 +698,26 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     const {projectId:_address,...action}=input;
     return {projectId,action};
   };
-  const previewSequenceAction=(operation: keyof typeof mioSequenceEditSchemas)=>(input: ServiceRow)=>{
+  const sequenceMediaOptions=({signal}: ServiceHandlerContext)=>({signal:signal??undefined,
+    beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}});
+  const previewSequenceAction=(operation: keyof typeof mioSequenceEditSchemas)=>async(input: ServiceRow, context: ServiceHandlerContext={})=>{
     const {projectId,action}=sequenceActionInput(input);
     const parsed=mioSequenceEditSchemas[operation].safeParse(action);
     if(!parsed.success)throw new AppError('VALIDATION_ERROR','序列动作参数无效，请按 schema 使用列出的动作和目标字段。',400);
     const plan=previewMioSequenceAction(store as ProjectStore,projectId,randomUUID(),parsed.data as MioSequenceAction,{origin:'user'});
+    const fence=await assertSequenceSpeedMedia(store as ProjectStore,plan.envelope,sequenceMediaOptions(context),plan.planDigest);
+    fence?.();
     return {projectId,envelope:plan.envelope,planDigest:plan.planDigest,summary:plan.summary};
   };
+  const assertExternalSpeedOrigin=(envelope: unknown):void=>{
+    if(property(envelope,'speedIntent')&&property(envelope,'origin')==='mio'){
+      throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID','外部变速编辑必须从用户动作提交。',409);
+    }
+  };
  const sequenceInspection=createSequenceInspectionService(store);
- const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
+ const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,reverseProxy,opticalProxy,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
- const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin});
+ const preflight=createTimelinePreflightServices(store,{signal:ownerSignal,beforeEffect:assertTaskEffectOrigin,reverseProxy,opticalProxy});
  const samplePeak=createExportSamplePeakServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,
   ownsLock:()=>ownsStoreLock(store),isTimelineRenderRecord:(value: unknown, input: Readonly<Record<string, unknown>>) => isTimelineRenderRecordFor(db,value,input),
@@ -734,11 +765,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const loudnessApply=createTimelineLoudnessApplyServices({
   measurement:mixLoudness as unknown as Parameters<typeof createTimelineLoudnessApplyServices>[0]['measurement'],transactions:timeline.createLoudnessApplyTransactions(assertLoudnessApplyAvailable),assertAvailable:assertLoudnessApplyAvailable,
  });
- const readSavedAudioTimeline=(projectId: string)=>{
+ const speedAudioPreview=isProjectStore(store)&&timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION;
+ const readSavedAudioTimeline=(projectId: string, previewSpeed=false)=>{
   // Audio readers must not use the render projection: a format-5 placeholder
   // has no source, but it must not make every other clip unreadable.
   if(isProjectStore(store)&&isFormat5Project(store)){
-   const projection=readFormat5AudioProjection(store);
+   const projection=readFormat5AudioProjection(store,{previewSpeed});
    return projection?{timeline:projection.legacy,assets:[...projection.assets.values()]}:null;
   }
   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
@@ -749,14 +781,16 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  };
  const audioPreviewV1=createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
-  readSavedTimeline:readSavedAudioTimeline,
-  validateSource:validateManagedSource,hash:verifiedManagedHash,
+  readSavedTimeline:(projectId: string)=>readSavedAudioTimeline(projectId,speedAudioPreview),
+  validateSource:validateManagedSource,hash:verifiedManagedHash,speedPreview:speedAudioPreview,reverseProxy,
   decode:createTimelineAudioPreviewDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const continuousAudio=createTimelineAudioContinuousServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
-  readSavedTimeline:readSavedAudioTimeline,validateSource:validateManagedSource,hash:verifiedManagedHash,
+  readSavedTimeline:(projectId: string)=>readSavedAudioTimeline(projectId,speedAudioPreview),
+  ...(speedAudioPreview ? {readSnapshotStamp:createProjectAudioSnapshotStamp(db)} : {}),
+  validateSource:validateManagedSource,hash:verifiedManagedHash,speedPreview:speedAudioPreview,reverseProxy,
   decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
  }});
  const audioPreview=createTimelineAudioPreviewCoordinator(audioPreviewV1 as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[0],continuousAudio as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[1],AppError);
@@ -787,7 +821,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Registered after images: finished variant images become subject versions in
  // the image service's publishing transaction.
  const subjectVariants=createSubjectVariantServices(store,{deferRecovery:deferBackgroundRecovery,mockAllowed});
- const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();backgroundTasks.refresh();};
+ const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();processing?.activate();backgroundTasks.refresh();};
  const previs=createPrevisServices(store,{now});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
@@ -843,7 +877,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...sequenceInspection.handlers,
   'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
-  'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
+  'sequence.preview':(input: ServiceRow,context: ServiceHandlerContext={})=>{
+    assertExternalSpeedOrigin(input);
+    return sequenceEdit.previewForProperties((input.speedIntent?{...input,origin:'user'}:input) as never,
+      sequenceMediaOptions(context));
+  },
   'sequence.action.edit':previewSequenceAction('sequence.tool.edit'),
   'sequence.board.edit':previewSequenceAction('sequence.tool.board'),
   'sequence.reference.edit':previewSequenceAction('sequence.tool.reference'),
@@ -851,18 +889,29 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'sequence.previs.edit':previewSequenceAction('sequence.tool.previs'),
   'sequence.timeline.edit':previewSequenceAction('sequence.tool.timeline'),
   'sequence.clip.edit':previewSequenceAction('sequence.tool.clip'),
-  'sequence.action.commit':(input: ServiceRow)=>{
+  'sequence.action.commit':async(input: ServiceRow,context: ServiceHandlerContext={})=>{
     if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
     const projectId=stringValue(input.projectId);
     if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
     const envelope=input.envelope as {projectId?:unknown};
     if(!envelope||envelope.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与序列动作不一致。',409);
+    assertExternalSpeedOrigin(envelope);
     const plan={envelope:input.envelope,planDigest:stringValue(input.expectedPlanDigest),summary:{action:'commit',affected:[],counts:{nodes:0,edges:0,clips:0,other:0},warnings:0}} as MioSequencePlan;
+    const fence=await assertSequenceSpeedMedia(store,plan.envelope,sequenceMediaOptions(context),plan.planDigest);
+    fence?.();
     const receipt=commitMioSequenceAction(store,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
     const message=receipt.status==='not_applied'&&receipt.code?sequenceEditFailureMessage(receipt.code,receipt.failure?.reason):undefined;
     return message?{...receipt,message}:receipt;
   },
-  'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
+  'sequence.commit':async(input: ServiceRow,context: ServiceHandlerContext={})=>{
+    assertExternalSpeedOrigin(input.envelope);
+    if(isProjectStore(store)&&input.projectId===store.projectId){
+      const fence=await assertSequenceSpeedMedia(store,input.envelope as Parameters<typeof assertSequenceSpeedMedia>[1],
+        sequenceMediaOptions(context),stringValue(input.expectedPlanDigest));
+      fence?.();
+    }
+    return sequenceEdit.commit(input as never);
+  },
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
   'sequence.generation-inputs.get':(input: ServiceRow)=>{
    if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
@@ -903,7 +952,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'project.list':()=>list('projects').map(currentProjectRecord).sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
   'project.get':(input: ServiceRow)=>tx(()=>{
    const projectId=stringValue(input.projectId) as string,project=currentProjectRecord(required('projects',projectId));
-   const currentTimeline=timeline.ensure(projectId),timelineHistory=timeline.history(projectId);
+   const currentTimeline=timeline.read(projectId),timelineHistory=timeline.history(projectId);
    const contents=['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>{
     if(t==='exports')return [t,exportValues(projectId).sort((a,b)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))];
     const values=t==='shots'||t==='nodes'||t==='edges'?liveCanvas(t,projectId):list(t,projectId);
@@ -1093,6 +1142,28 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const signal: AbortSignal|undefined=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):(ownerSignal||callSignal)??undefined;
   checkpoint(signal);
   const operation: Promise<unknown>=(async()=>{
+   if (isTimelineProcessingOperation(op)) {
+    if (!processing) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
+    const parsed = timelineProcessingSchemas[op].safeParse(input);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', '变速任务参数无效。', 400);
+    const approved = typeof context.beforeEffect === 'function' ? context.beforeEffect as () => void : undefined;
+    const result = await ({
+     'timeline.preview.media': (value: {projectId: string; clipId: string}) => {
+      if (!processing.enabled() || !isProjectStore(store)) throw new AppError('SPEED_PROCESSING_UNAVAILABLE', '当前项目的变速预览不可用。', 409);
+      approved?.();
+      return readTimelinePreviewMedia(store, value, processing.preview);
+     },
+     'timeline.processing.list': processing.list,
+     'timeline.processing.inspect': processing.inspect,
+     'timeline.processing.wait': (value: never) => processing.wait(value, signal),
+     'timeline.processing.retry': (value: never) => processing.retry(value, approved),
+     'timeline.processing.cancel': (value: never) => processing.cancel(value, approved),
+     'timeline.processing.cache.get': processing.cacheGet,
+     'timeline.processing.cache.clear': (value: never) => processing.cacheClear(value, approved),
+    } as const)[op](parsed.data as never);
+    checkpoint(signal);
+    return timelineProcessingResponseSchemas[op].parse(result);
+   }
    if (isSequenceEditingOperation(op)) {
     if (!sequenceEditing) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
     const authorize = (): void => { checkpoint(signal); assertApplicationMutationAllowed(); assertMutationAllowed?.(); };
@@ -1126,11 +1197,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
  const removeProjectMedia=registerProjectMediaStore(store,application?{outsidePaths:application.outsidePaths}:{});
  const removeOutputAdmission=isProjectStore(store)?registerProjectOutputAdmission(store,()=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();}):()=>{};
+ if (!deferBackgroundRecovery) processing?.activate();
  const drain=async(): Promise<void>=>{
   removeJobStopper();removeExportStopper();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
+  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain(), ...(processing ? [processing.close()] : [])];
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;
@@ -1204,5 +1276,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},
+  ...(processing ? {timelineProcessing: {preview: processing.preview, reverseProxy: processing.reverseProxy}} : {}),
+  ...(reverseProxy ? {reverseProxy} : {}), ...(opticalProxy ? {opticalProxy} : {}),
+  compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

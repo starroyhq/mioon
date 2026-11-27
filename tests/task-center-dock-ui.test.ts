@@ -16,7 +16,12 @@ import * as submissions from '../apps/web/src/submissions.ts';
 import * as mutations from '../apps/web/src/mutation-submissions.ts';
 import * as editTasks from '../apps/web/src/edit-task-client.ts';
 import * as references from '../apps/web/src/reference-connections.ts';
+import * as speedModel from '../apps/web/src/speed-ui/speed-model.ts';
+import * as speedPresentation from '../apps/web/src/speed-ui/speed-presentation.ts';
 import type { Locale } from '../packages/i18n/src/types.ts';
+import type { SpeedProcessingItem } from '../packages/contracts/src/timeline-speed.ts';
+
+type BuildSpeedTaskEntries = typeof import('../apps/web/src/speed-ui/SpeedProcessingTaskCard.tsx').buildSpeedProcessingTaskCenterEntries;
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (file: string) => readFileSync(path.join(root, 'apps/web/src', file), 'utf8');
@@ -75,12 +80,56 @@ test('actual TaskCenter renders an inline named dock with keyboard-scrollable bo
   assert.match(rendered.hidden, /exact-original-request-2/);
 });
 
+test('TaskCenter lists speed processing with the existing status filters and opens a task by its ID', () => {
+  const h = harness();
+  const {t} = createI18nTestContext();
+  const items = [
+    {taskId: id(70), clipId: id(20), kind: 'reverse', status: 'running', progress: 42},
+    {taskId: id(71), clipId: id(21), kind: 'optical', status: 'failed', reason: 'PROCESSING_FAILED'},
+    {taskId: id(72), clipId: id(22), kind: 'preview', status: 'ready'},
+  ] satisfies SpeedProcessingItem[];
+  const actions: Array<[string, string]> = [];
+  const speedProcessing = h.buildSpeedTaskEntries({enabled: true, items, busyTaskIds: new Set(), t,
+    clipNameFor: clipId => `Clip ${clipId}`, onRetry: taskId => actions.push(['retry', taskId]), onCancel: taskId => actions.push(['cancel', taskId])});
+  const [running, failed, ready] = items.map(item => `speed:${item.taskId}`);
+  const props = {activeCount: 1, speedProcessing, selectedTaskId: failed};
+  let tree = h.render(props);
+  const selectedId = () => text(nodes(find(tree, 'task-detail-summary')).find(node => node.type === 'code'));
+  for (const key of [running, failed, ready]) assert.ok(find(tree, `task-select-${key}`));
+  assert.equal(find(tree, `task-select-${failed}`)!.props['aria-pressed'], true);
+  assert.equal(selectedId(), id(71));
+  const details = (key: string) => nodes(tree).find(node => node.props['data-task-detail-key'] === key);
+  assert.equal(details(failed)!.props.hidden, false);
+  assert.equal(text(find(details(failed), `speed-task-reason-${id(71)}`)), t('speed.processing.reason.PROCESSING_FAILED'));
+  assert.deepEqual(actions, []);
+  find(details(failed), `speed-task-retry-${id(71)}`)!.props.onClick();
+  find(tree, 'task-filter-active')!.props.onClick();
+  tree = h.render(props);
+  assert.equal(find(tree, `task-select-${running}`)!.props['aria-pressed'], true);
+  assert.equal(find(tree, `task-select-${failed}`), undefined);
+  assert.equal(find(tree, `task-select-${ready}`), undefined);
+  assert.equal(details(running)!.props.hidden, false);
+  assert.equal(selectedId(), id(70));
+  assert.ok(nodes(details(running)).some(node => node.type === 'WorkbenchProgress' && node.props.value === 42));
+  find(details(running), `speed-task-cancel-${id(70)}`)!.props.onClick();
+  find(tree, 'task-filter-finished')!.props.onClick();
+  tree = h.render(props);
+  assert.equal(find(tree, `task-select-${running}`), undefined);
+  assert.ok(find(tree, `task-select-${failed}`));
+  find(tree, `task-select-${ready}`)!.props.onClick();
+  tree = h.render(props);
+  assert.equal(details(ready)!.props.hidden, false);
+  assert.equal(selectedId(), id(72));
+  assert.deepEqual(actions, [['retry', id(71)], ['cancel', id(70)]]);
+  h.unmount();
+});
+
 // Render the real TaskCenter, TSX hook/shell, durable and pending cards. Hook
 // slots model commit/cleanup so retained handlers can be invoked after hiding.
 function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {
   const modules = new Map<string, Record<string, (props: unknown) => RootTree>>(), slots: unknown[] = [], calls: [string, ...unknown[]][] = [];
   let cursor = 0, effects: number[] = [];
-  const h = { visible: true, current: true, scope: 'project:1:tasks', captureCalls: 0, calls } as {visible: boolean; current: boolean; scope: string; captureCalls: number; calls: typeof calls; render(patch?: Record<string, unknown>): RootTree; unmount(): void};
+  const h = { visible: true, current: true, scope: 'project:1:tasks', captureCalls: 0, calls } as {visible: boolean; current: boolean; scope: string; captureCalls: number; calls: typeof calls; render(patch?: Record<string, unknown>): RootTree; buildSpeedTaskEntries: BuildSpeedTaskEntries; unmount(): void};
   const forbidden = () => assert.fail('Rendering/interaction must use supplied callbacks, not storage or network');
   const storage = new Proxy({}, { get: forbidden, set: forbidden });
   const react = {
@@ -94,16 +143,18 @@ function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {
     if (modules.has(file)) return modules.get(file)!;
     const module = { exports: {} as Record<string, (props: unknown) => RootTree> };
     const resolve = (name: string) => {
-    const i18nDependency = creationTestDependency(name, languageStore); if (i18nDependency) return i18nDependency;
+      const i18nDependency = creationTestDependency(name === '../i18n/I18nProvider.tsx' ? './i18n/I18nProvider.tsx' : name, languageStore); if (i18nDependency) return i18nDependency;
       if (name === 'react') return react;
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './WorkspaceControls.tsx') return { WorkbenchTooltip: 'WorkbenchTooltip' };
       if (name === './TaskWorkspace.css') return {};
       if (['./TaskWorkspace.tsx', './PendingSubmission.tsx', './RecoveryStorageDetails.tsx', './TaskRenderList.tsx'].includes(name)) return load(name.slice(2));
+      if (name === './speed-model.ts') return speedModel;
+      if (name === './speed-presentation.ts') return speedPresentation;
       const business = { '@mioon/contracts': contracts, './api.ts': api, './submissions.ts': submissions, './mutation-submissions.ts': mutations, './edit-task-client.ts': editTasks, './reference-connections.ts': references };
       if (business[name as keyof typeof business]) return business[name as keyof typeof business];
       if (['./icons.tsx', './SubjectVideoSummary.tsx'].includes(name)) return { __esModule: true, default: name };
-      const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/workbench-tooltip': ['WorkbenchTooltip'] };
+      const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/workbench-icons': ['CircleAlert', 'Film', 'Rewind', 'RotateCcw', 'Sparkles', 'X'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/workbench-tooltip': ['WorkbenchTooltip'] };
       if (primitives[name as keyof typeof primitives]) return Object.fromEntries(primitives[name as keyof typeof primitives].map(key => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);
     };
@@ -111,6 +162,7 @@ function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {
     modules.set(file, module.exports); return module.exports;
   }
   const Component = load('TaskCenter.tsx').default;
+  h.buildSpeedTaskEntries = options => (load('speed-ui/SpeedProcessingTaskCard.tsx').buildSpeedProcessingTaskCenterEntries as unknown as BuildSpeedTaskEntries)(options);
   const callbacks = Object.fromEntries(['run', 'retryGeneration', 'onInspectJob', 'onRecover', 'onReload', 'onAdopt', 'setReconcileIds'].map(name => [name, (...args: unknown[]) => calls.push([name, ...args])]));
   h.render = (patch: Record<string, unknown> = {}) => {
     cursor = 0; effects = [];

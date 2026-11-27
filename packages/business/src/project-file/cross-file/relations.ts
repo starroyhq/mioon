@@ -94,6 +94,11 @@ export const FORMAT5_CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object
     parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false,
   })),
 ]);
+export const FORMAT6_CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object.freeze([
+  ...FORMAT5_CROSS_FILE_RELATIONS,
+  {index: 82, child: {schema: 'main', table: 'timeline_processing_tasks', columns: ['projectId'], nullable: [false]},
+    parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false},
+]);
 export const DROPPED_CONTENT_KEYS: readonly DroppedContentKey[] = Object.freeze([
   {child: {table: "image_groups", columns: ["activeTaskId","id","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: true},
   {child: {table: "image_versions", columns: ["taskId","groupId","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: false},

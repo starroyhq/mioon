@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {sequenceEditSpeedIntentSchema, type SequenceEditSpeedIntent} from './timeline-speed.ts';
+import {TIMELINE_TIME_MAP_ERROR_CODES} from './timeline-time-map.ts';
 import {FORMAT5_LIMITS, FORMAT5_STORAGE_ERROR_CODES, format5AnchorSchema, format5DialogueRefSchema, format5SubjectBindingSchema, format5SyncBaselineSchema} from './project-format5.ts';
 import {getTimelineSubtitleTextIssue} from './timeline-subtitles.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
@@ -102,6 +104,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
   'timeline.clip.copy-as-new-shot',
   'timeline.clip.splitAtScenes', 'timeline.clip.separateSound', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
+  'timeline.clip.setSpeed', 'timeline.clip.freeze',
   'timeline.generate.placeholder', 'timeline.generate.resize',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
   'subject.card.create', 'subject.card.delete',
@@ -525,7 +528,9 @@ export function sequenceEditTrackOperationName(operation: SequenceEditTrackOpera
 }
 
 export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnvelope, 'intents' | 'subjectIntent' |
-  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent' | 'soundIntent' | 'generateIntent'>): string {  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
+  'propertiesIntent' | 'subtitlesIntent' | 'trackIntent' | 'referenceIntent' | 'dialogueIntent' | 'previsIntent' | 'formatIntent' | 'soundIntent' | 'generateIntent' | 'speedIntent'>): string {
+  if (envelope.speedIntent) return envelope.speedIntent.operation.kind === 'clip-speed' ? 'timeline.clip.setSpeed' : 'timeline.clip.freeze';
+  if (envelope.subjectIntent) return sequenceEditSubjectOperationName(envelope.subjectIntent.operation);
   if (envelope.referenceIntent) return sequenceEditReferenceOperationName(envelope.referenceIntent.operation);
   if (envelope.trackIntent) return sequenceEditTrackOperationName(envelope.trackIntent.operation);
   if (envelope.soundIntent) return 'timeline.clip.separateSound';
@@ -679,6 +684,7 @@ export interface SequenceEditEnvelope {
   readonly soundIntent?: SequenceEditSeparateSoundIntent;
   /** GE-a generation placement/resize; exactly one intent family is present. */
   readonly generateIntent?: SequenceEditGenerateIntent;
+  readonly speedIntent?: SequenceEditSpeedIntent;
   readonly baseline: SequenceEditBaseline;
   readonly impact: SequenceEditImpact;
   readonly allocation: SequenceEditAllocation;
@@ -738,6 +744,7 @@ const allocationSchema = z.object({
   duplicate(value.splitClips.map(item => item.rightClipId), 'split right clip');
   duplicate(value.edges.map(item => item.id), 'edge');
 });
+export {allocationSchema as sequenceEditAllocationSchema};
 export const copyAsNewShotTrackEditSchema = z.object({
   kind: z.literal('copy-as-new-shot'), clipId: uuidSchema, newClipId: uuidSchema, copyNodeId: uuidSchema,
 }).strict();
@@ -1024,6 +1031,7 @@ export const sequenceEditEnvelopeSchema = z.object({
   soundIntent: soundIntentSchema.optional(),
   formatIntent: formatIntentSchema.optional(),
   generateIntent: generateIntentSchema.optional(),
+  speedIntent: sequenceEditSpeedIntentSchema.optional(),
   baseline: baselineSchema, impact: impactSchema, allocation: allocationSchema,
 }).strict().superRefine((value, context) => {
   const hasSubject = value.subjectIntent !== undefined;
@@ -1036,9 +1044,16 @@ export const sequenceEditEnvelopeSchema = z.object({
   const hasSound = value.soundIntent !== undefined;
   const hasFormat = value.formatIntent !== undefined;
   const hasGenerate = value.generateIntent !== undefined;
-  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat, hasSound, hasGenerate].filter(Boolean).length
+  const families = [hasSubject, hasReference, hasProperties, hasSubtitles, hasDialogue, hasTrack, hasPrevis, hasFormat, hasSound, hasGenerate, value.speedIntent !== undefined].filter(Boolean).length
     + (value.intents.length > 0 ? 1 : 0);
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, message: 'An action carries exactly one intent family'});
+  if (value.speedIntent) {
+    const clipIds = [...value.impact.mainTrackClipIds, ...value.impact.otherTrackItemIds];
+    if (value.originSide !== 'timeline' || !clipIds.includes(value.speedIntent.operation.clipId)) {
+      context.addIssue({code: z.ZodIssueCode.custom, message: 'A speed action is timeline-origin and lists the edited clip'});
+    }
+    return;
+  }
   if (hasSubtitles) {
     if (value.originSide !== 'timeline') context.addIssue({code: z.ZodIssueCode.custom, message: 'A subtitle action is timeline-origin'});
     const edited = value.subtitlesIntent!.operation.edits.flatMap(edit => edit.kind === 'add' ? [edit.cue.id] : [edit.cueId]);
@@ -1692,7 +1707,8 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', 'SEQUENCE_EDIT_PREVIS_INVALID', 'SEQUENCE_EDIT_SUBTITLE_INVALID',
   'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID', 'SEQUENCE_EDIT_DIALOGUE_INVALID',
   'SEQUENCE_EDIT_DIALOGUE_CONFLICT', 'SEQUENCE_EDIT_SOUND_INVALID', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
-  'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_GENERATION_INVALID',] as const);
+  'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_GENERATION_INVALID',
+  'SPEED_NOT_SUPPORTED', 'SPEED_SOURCE_NOT_READY', 'INTERPOLATION_UNAVAILABLE', 'UNSUPPORTED_FORMAT', ...TIMELINE_TIME_MAP_ERROR_CODES] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
 export type SequenceEditErrorCode = Format5ErrorCode | SequenceEditPlanFailureCode | SequenceEditNewErrorCode;

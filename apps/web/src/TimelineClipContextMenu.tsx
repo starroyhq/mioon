@@ -1,17 +1,21 @@
-/** Timeline clip context menu (0.3.0 items only).
- *
- * Order follows the confirmed design: the 0.4.0 speed group is not rendered;
- * `切开` comes first, the sound group (separate sound / mute or unmute / save as
- * audio asset) sits in the middle, and the generate group owned by a later card
- * keeps a structural insert point. No disabled placeholder items are shown.
- */
+/** Timeline clip context menu. The speed group precedes the shared split,
+ * copy, sound and generate actions when the speed capability is available. */
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
-import {AudioLines, Copy, Download, Scissors, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
+import {AudioLines, Check, Copy, Download, Gauge, Rewind, Scissors, Snowflake, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import type {ClipContextMenuPlan} from './clip-sound-state.ts';
 
 export interface TimelineClipMenuAnchor {readonly clipId: string; readonly x: number; readonly y: number}
+
+export interface TimelineClipSpeedMenu {
+  readonly showSpeedActions: boolean;
+  readonly reversed: boolean;
+  readonly canFreeze: boolean;
+  readonly onOpenSpeed: (clipId: string) => unknown;
+  readonly onToggleReverse: (clipId: string) => unknown;
+  readonly onFreeze: (clipId: string) => unknown;
+}
 
 export interface TimelineClipContextMenuProps {
   readonly anchor: TimelineClipMenuAnchor | null;
@@ -24,6 +28,8 @@ export interface TimelineClipContextMenuProps {
   readonly onToggleMute: (clipId: string) => unknown;
   readonly onSeparate: (clipId: string) => unknown;
   readonly onSaveAudio: (clipId: string) => unknown;
+  /** Speed menu entries (22-03); absent whenever `capabilities.speed !== true`. */
+  readonly speedMenu?: TimelineClipSpeedMenu | null;
   /** GE-b: present only for a main-track format-5 shot clip. */
   readonly onGenerateBefore?: (clipId: string) => unknown;
   readonly onGenerateAfter?: (clipId: string) => unknown;
@@ -33,7 +39,7 @@ export interface TimelineClipContextMenuProps {
 /** Focusable item list; arrow keys wrap, Escape closes and returns focus to the
  * clip button that opened it. */
 export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, onSplit, onCopyAsNewShot, onToggleMute,
-  onSeparate, onSaveAudio, onGenerateBefore, onGenerateAfter, onClose}: TimelineClipContextMenuProps): React.ReactElement | null {
+  onSeparate, onSaveAudio, speedMenu = null, onGenerateBefore, onGenerateAfter, onClose}: TimelineClipContextMenuProps): React.ReactElement | null {
   const {t} = useI18n();
   const menu = useRef<HTMLDivElement | null>(null);
   const items = useRef<HTMLButtonElement[]>([]);
@@ -95,6 +101,18 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
   let index = 0;
   return <div ref={menu} className="timeline-clip-menu" data-testid="clip-context-menu" role="menu"
     aria-label={t('clipSound.clipMenu')} style={position ?? {left: anchor.x, top: anchor.y}}>
+    {speedMenu?.showSpeedActions && <>
+      <div data-slot="speed-group" data-testid="clip-menu-speed-group" role="group">
+        {item(index++, 'clip-menu-speed', t('speed.menu.speed'), <Gauge size={16} />,
+          () => speedMenu.onOpenSpeed(anchor.clipId), !busy)}
+        {item(index++, 'clip-menu-reverse', t('speed.menu.reverse'),
+          speedMenu.reversed ? <Check size={16} /> : <Rewind size={16} />,
+          () => speedMenu.onToggleReverse(anchor.clipId), !busy)}
+        {item(index++, 'clip-menu-freeze', t('speed.menu.freeze'), <Snowflake size={16} />,
+          () => speedMenu.onFreeze(anchor.clipId), speedMenu.canFreeze && !busy)}
+      </div>
+      <div className="timeline-clip-menu-separator" role="separator" />
+    </>}
     {item(index++, 'clip-menu-split', t('clipSound.split'), <Scissors size={16} />,
       () => onSplit(anchor.clipId), canSplit && !busy)}
     {onCopyAsNewShot && item(index++, 'clip-menu-copy-new-shot', t('editUi.menu.copyAsNewShot'), <Copy size={16} />,

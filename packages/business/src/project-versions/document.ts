@@ -4,10 +4,12 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION,
+  isSequenceProjectFormat, PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
 import {CANVAS_ARCHIVE_COLUMNS, CANVAS_ARCHIVE_TABLES} from '../project-file/schema/domains/canvas.ts';
 import {isTimelineGeometryProfileAllowed} from '../project-file/schema/format4-geometry.ts';
+import {assertFormat5TimelineRows} from '../project-file/format5-timeline.ts';
 import {PROJECT_SNAPSHOT_MAX_RAW_BYTES} from './limits.ts';
 import {FORMAT_2_SNAPSHOT_TABLE_SQL, FORMAT_1_COPY_TABLE_SQL} from './format-2.ts';
 
@@ -27,7 +29,7 @@ export const FORMAT5_SNAPSHOT_TABLES = Object.freeze([...PROJECT_SNAPSHOT_TABLES
   'shot_version_adoptions', 'sequence_sync_state', ...FORMAT5_TIMELINE_TABLES] as const);
 export type SnapshotTable = typeof FORMAT5_SNAPSHOT_TABLES[number];
 export const snapshotTablesFor = (format: ProjectFileFormat | 1 | 2): readonly SnapshotTable[] =>
-  format === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_SNAPSHOT_TABLES : PROJECT_SNAPSHOT_TABLES;
+  isSequenceProjectFormat(format) ? FORMAT5_SNAPSHOT_TABLES : PROJECT_SNAPSHOT_TABLES;
 export const PROJECT_SNAPSHOT_EXCLUSIONS = Object.freeze({
   schema_version: 'Kernel format evidence; never restore an old format number.',
   project_file: 'Project identity and current content stamp; never rewind them.',
@@ -94,7 +96,7 @@ function profile(format: DocumentFormat) {
   return value;
 }
 const isProjectFormat = (version: unknown): version is ProjectFileFormat =>
-  version === 3 || version === FORMAT4_PROJECT_SCHEMA_VERSION || version === FORMAT5_PROJECT_SCHEMA_VERSION;
+  version === PROJECT_FILE_SCHEMA_VERSION || version === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(version);
 export function readSnapshotProjectFormat(db: DatabaseSync): ProjectFileFormat {
   const rows = db.prepare('SELECT version FROM project.schema_version').all();
   if (rows.length !== 1 || !isProjectFormat(rows[0].version)) throw snapshotInvalid('project-format');
@@ -224,6 +226,8 @@ function validateRows(table: SnapshotTable | 'agent_task_target_revisions_v2', r
         if (table === 'timelines' && column.name === 'data' && format === FORMAT4_PROJECT_SCHEMA_VERSION && !isTimelineGeometryProfileAllowed(parsed, format)) {
           throw snapshotInvalid('timeline-geometry');
         }
+        if (table === 'timeline_clips' && column.name === 'data' && format === FORMAT5_PROJECT_SCHEMA_VERSION &&
+            object(parsed) && (Object.hasOwn(parsed, 'timing') || Object.hasOwn(parsed, 'sourceSpanFrames'))) throw snapshotInvalid('timeline-timing');
       }
     }
     const key = canonicalJson(shape.primaryKeys.map(column => row[column]));
@@ -255,6 +259,10 @@ function validateDocument<Format extends DocumentFormat>(input: unknown, format:
       for (const row of rows as readonly SnapshotRow[]) insert.run(...columns.map(column => snapshotCellValue(row[column])));
     }
     if (db.prepare('PRAGMA foreign_key_check').get()) throw snapshotInvalid('foreign-key');
+    if (format === FORMAT6_PROJECT_SCHEMA_VERSION) {
+      db.exec(`PRAGMA user_version=${FORMAT6_PROJECT_SCHEMA_VERSION}`);
+      try {assertFormat5TimelineRows(db, 'main');} catch {throw snapshotInvalid('timeline-timing');}
+    }
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw snapshotInvalid('row-constraint');
@@ -292,9 +300,11 @@ export function decodeSupportedProjectDocument(input: unknown, target?: ProjectF
   const source = object(input) && input.projectFormatVersion === 2 ? validateDocument(input, 2) : validateProjectDocument(input);
   const format = target ?? (source.projectFormatVersion === 2 ? 3 : source.projectFormatVersion);
   if (source.projectFormatVersion === format) return source as ProjectDocument;
-  if (source.projectFormatVersion === FORMAT5_PROJECT_SCHEMA_VERSION || format === FORMAT5_PROJECT_SCHEMA_VERSION) {
-    // Format 5 snapshots require the same format on both sides; adapting an
-    // older payload is a conversion decision, not a version-restore decision.
+  if (source.projectFormatVersion === FORMAT5_PROJECT_SCHEMA_VERSION && format === FORMAT6_PROJECT_SCHEMA_VERSION) {
+    // Format 5 and 6 share the same rows. The absent timing remains implicit.
+    return validateProjectDocument({...source, projectFormatVersion: format});
+  }
+  if (isSequenceProjectFormat(source.projectFormatVersion) || isSequenceProjectFormat(format)) {
     throw new AppError('PROJECT_VERSION_SNAPSHOT_UNSUPPORTED', '当前项目格式无法恢复此版本。', 422,
       {projectFormatVersion: source.projectFormatVersion, snapshotProfileVersion: source.snapshotProfileVersion});
   }

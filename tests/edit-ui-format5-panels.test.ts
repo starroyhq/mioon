@@ -10,12 +10,30 @@ import {
 import {Format5EditSession} from '../apps/web/src/edit-ui/session.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import type {SubtitleIntent} from '../apps/web/src/subtitle-state.ts';
+import {lenientFunction, stripSourceTypes} from './helpers/eval-source.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const clip = (id: string, patch: Record<string, unknown> = {}) => ({id, trackId: 'main', startFrame: 0, durationFrames: 30,
   sourceInFrame: 0, name: id, gain: 1, fadeInFrames: 0, fadeOutFrames: 0, ...patch});
 const main = 'main';
 const clips = [clip('a'), clip('b', {startFrame: 30}), clip('c', {startFrame: 60}), clip('x', {trackId: 'other'})];
+
+test('opening the clip menu intentionally keeps the playhead regardless of the speed capability', () => {
+  const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+  const begin = app.indexOf('  function openClipContextMenu(');
+  const end = app.indexOf('\n  /**', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const source = stripSourceTypes(app.slice(begin, end), {loader: 'tsx'});
+  for (const speedEnabled of [false, true]) {
+    const selected: unknown[] = [], menus: unknown[] = [];
+    const open = lenientFunction('speedEnabled', 'selectClip', 'setClipContextMenu', source + ';return openClipContextMenu;')(
+      speedEnabled, (...args: unknown[]) => selected.push(args), (value: unknown) => menus.push(value));
+    assert.ok(typeof open === 'function');
+    open('a', {x: 20, y: 30});
+    assert.deepEqual(selected, [['a', true, {preservePlayhead: true}]]);
+    assert.deepEqual(menus, [{clipId: 'a', x: 20, y: 30}]);
+  }
+});
 
 test('one inspector patch splits into changed FR-A properties and TS structural edits', () => {
   const current = clip('a', {volumeEnvelope: null});
@@ -123,7 +141,7 @@ test('rejected shared actions map to one reason and expose affected ids', () => 
 test('format-5 clip selection passes a loudness provider backed by a real context', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.ok(app.includes('loudnessContext={clipLoudnessContext as never}'));
-  assert.doesNotMatch(app, /if \(dataRef\.current\?\.projectFormatVersion === 5\) return undefined;/u);
+  assert.doesNotMatch(app, /if \((?:dataRef\.current\?\.projectFormatVersion === 5|isSequenceTimelineFormat\(dataRef\.current\?\.projectFormatVersion\))\) return undefined;/u);
   // The provider still has to build the saved identity rather than returning a
   // bare execution scope, so the observation card never dereferences undefined.
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef\.current!\.assets, editing\.selectedClipId\)/u);

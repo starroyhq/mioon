@@ -129,6 +129,54 @@ export const operationMessages = {
     "en": "Read one clip-audio save task's record and local progress without starting, cancelling or retrying it",
     "ja": "この音声素材保存タスクの記録とローカル進捗を読み取り専用で取得します。タスクの開始、キャンセル、再試行は行いません"
   },
+  "operation.timeline.preview.media": {
+    "zh-Hans": "读取当前项目片段的预览速率或代理状态",
+    "zh-Hant": "讀取目前專案片段的預覽速率或代理檔狀態",
+    "en": "Read the playback rate or preview proxy status for a clip in the current project",
+    "ja": "現在のプロジェクトのクリップのプレビュー速度またはプロキシの状態を取得します"
+  },
+  "operation.timeline.processing.list": {
+    "zh-Hans": "查询当前项目的变速处理任务摘要",
+    "zh-Hant": "查詢目前專案的變速處理任務摘要",
+    "en": "List speed processing task summaries for the current project",
+    "ja": "現在のプロジェクトの速度変更処理タスクの概要を一覧表示します"
+  },
+  "operation.timeline.processing.inspect": {
+    "zh-Hans": "查询当前项目中指定变速任务的状态、进度和失败原因",
+    "zh-Hant": "查詢目前專案中指定變速任務的狀態、進度和失敗原因",
+    "en": "Read the status, progress and failure reason of a speed processing task in the current project",
+    "ja": "現在のプロジェクトで指定した速度変更処理タスクの状態、進捗、失敗理由を確認します"
+  },
+  "operation.timeline.processing.wait": {
+    "zh-Hans": "等待当前项目中指定变速任务结束或到达时限。中止等待只结束本次查询",
+    "zh-Hant": "等待目前專案中指定變速任務結束或到達時限。中止等待只結束本次查詢",
+    "en": "Wait for a speed processing task in the current project to finish or reach the time limit. Interrupting the wait ends only this observation",
+    "ja": "現在のプロジェクトの速度変更処理タスクが終了するか、制限時間に達するまで待ちます。中断の対象はこの待機だけです"
+  },
+  "operation.timeline.processing.retry": {
+    "zh-Hans": "用新的请求 ID 重试当前项目中指定的变速任务。复用该请求 ID 可查询同一个受理结果",
+    "zh-Hant": "用新的請求 ID 重試目前專案中指定的變速任務。重用該請求 ID 可查詢同一個受理結果",
+    "en": "Retry a speed processing task in the current project with a new request ID. Reuse that ID to recover the same acceptance",
+    "ja": "新しいリクエスト ID で現在のプロジェクトの速度変更処理タスクを再試行します。同じ ID で元の受け付け結果を確認できます"
+  },
+  "operation.timeline.processing.cancel": {
+    "zh-Hans": "取消当前项目中指定的变速任务，确认工作进程退出后清理本次暂存文件",
+    "zh-Hant": "取消目前專案中指定的變速任務，確認工作程序結束後清除本次暫存檔案",
+    "en": "Cancel a speed processing task in the current project and clean its staging files after confirming the worker has stopped",
+    "ja": "現在のプロジェクトで指定した速度変更処理タスクをキャンセルし、処理プロセスの終了を確認してから一時ファイルを片付けます"
+  },
+  "operation.timeline.processing.cache.get": {
+    "zh-Hans": "查询当前项目的变速代理占用量和缓存额度",
+    "zh-Hant": "查詢目前專案的變速代理檔占用量和快取額度",
+    "en": "Read the current project's speed proxy usage and the cache limit",
+    "ja": "現在のプロジェクトの速度変更用プロキシの使用容量とキャッシュ上限を確認します"
+  },
+  "operation.timeline.processing.cache.clear": {
+    "zh-Hans": "清理当前项目中未被片段或任务占用的变速代理",
+    "zh-Hant": "清除目前專案中未被片段或任務使用的變速代理檔",
+    "en": "Clear unused speed proxies in the current project",
+    "ja": "現在のプロジェクトでクリップやタスクが使用していない速度変更用プロキシを削除します"
+  },
   "operation.workspace.settings.get": {
     "zh-Hans": "读取旧版工作区设置客户端的兼容响应和修订号",
     "zh-Hant": "讀取舊版工作區設定用戶端的相容回應和修訂版號",

@@ -1,0 +1,103 @@
+/* Speed Preview (SP-V): preview processing/failed overlay & timeline thumbnail strip.
+   Scoped so timelines with `capabilities.speed !== true` stay visually identical. */
+
+.preview-speed-overlay {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--wb-line-strong);
+  border-radius: var(--wb-radius-card);
+  background: rgb(11 12 14 / 86%);
+  backdrop-filter: blur(8px);
+  color: var(--wb-text);
+  font-size: var(--wb-text-caption);
+  pointer-events: auto;
+}
+
+.preview-speed-overlay.is-failed {
+  border-color: color-mix(in srgb, var(--wb-danger) 55%, var(--wb-line));
+}
+
+.preview-speed-overlay-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.preview-speed-overlay-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.preview-speed-overlay-row > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-speed-overlay.is-failed .preview-speed-overlay-row {
+  color: var(--wb-danger);
+}
+
+.preview-speed-overlay-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 16%);
+  overflow: hidden;
+}
+
+.preview-speed-overlay-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--wb-accent);
+  transition: width 0.2s linear;
+}
+
+.preview-speed-overlay-retry {
+  flex: none;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 9px !important;
+  gap: 5px;
+  font-size: var(--wb-text-caption) !important;
+}
+
+/* Shared-time-map timeline thumbnail filmstrip (clipped cleanly behind clip text). */
+.clip-speed-thumbnail-strip {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.42;
+}
+
+.clip-speed-thumbnail-tile {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.clip-speed-thumbnail-tile.is-empty {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-speed-overlay-bar > span {
+    transition: none;
+  }
+}

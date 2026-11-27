@@ -1,3 +1,4 @@
+import {isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import type {MediaLocator} from './asset-reference-record.ts';
@@ -17,6 +18,10 @@ import type {TimelineCompositionSegment} from '../../contracts/src/timeline-segm
 import type {TimelineAudioPreviewFileIdentity, TimelineAudioPreviewManagedAsset, TimelineAudioPreviewHashOptions} from './timeline-audio-preview.ts';
 import type {TimelineAudioPreviewSourceProbe} from './timeline-audio-preview-decoder.ts';
 import type {ContinuousDecoder, ContinuousDecodeCursor} from './timeline-audio-continuous-decoder.ts';
+import type {CompiledTimelineSpeedExportClip} from '../../contracts/src/timeline-speed-export.ts';
+import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import {readAudioPreviewTimings, renderAudioPreviewSpeedWindow} from './timeline-audio-preview-speed.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 
 type Snapshot = ContinuousAudioSnapshot;
 type Clip = Snapshot['timeline']['clips'][number];
@@ -60,15 +65,20 @@ export interface ContinuousAudioRuntime {
   assertOrdinaryWorkspace(): void;
   ownsLock(): boolean;
   readSavedTimeline(projectId: string): unknown;
+  /** Optional evidence for every persisted input to readSavedTimeline. */
+  readSnapshotStamp?: () => string | undefined;
   validateSource(root: string, asset: TimelineAudioPreviewManagedAsset, options: {maxBytes: number}): {file: string; info: TimelineAudioPreviewFileIdentity};
   hash(root: string, asset: TimelineAudioPreviewManagedAsset, options: TimelineAudioPreviewHashOptions): Promise<unknown>;
   decoder: ContinuousDecoder;
+  speedPreview?: boolean;
+  reverseProxy?: TimelineReverseProxyPort;
   boundedShutdown(work: Promise<unknown>, code: string): Promise<unknown>;
   telemetry?: (event: Readonly<Record<string, number | string>>) => void;
 }
 interface Current {
   plan: ContinuousAudioPlan; snapshot: Snapshot; assets: Map<string, TimelineAudioPreviewManagedAsset>;
   segments: readonly TimelineCompositionSegment[]; voices: Clip[]; envelopeClips: Clip[];
+  timings: ReadonlyMap<string, CompiledTimelineSpeedExportClip>;
 }
 interface Verified {
   file: string; info: TimelineAudioPreviewFileIdentity; asset: TimelineAudioPreviewManagedAsset;
@@ -78,12 +88,39 @@ interface Cursor {key: string; reader: ContinuousDecodeCursor; nextFrame: number
 interface Attempt {controller: AbortController; task: Promise<unknown>; token: object; releasePending?: () => void}
 interface Session {
   id: string; initial: Current; controller: AbortController; timer: ReturnType<typeof setTimeout>;
+  snapshotStamp?: string;
   generation: number; requestedGeneration: number; sequence: number; nextFrame: number; cancelled: boolean; workFrames: number; generationWorkFrames: number;
   hashBytes: number; hashes: Map<string, Verified>; cursors: Map<string, Cursor>;
   active?: Attempt; pending?: Attempt; latest?: object; closing?: Promise<void>; failure?: unknown;
 }
 interface Admission {session?: Session; stopped: boolean; failure?: unknown; retired: Set<string>}
 const admissions = new WeakMap<DatabaseSync, Admission>();
+
+/** The hosted format-6 audio projection reads only the attached project DB.
+ * data_version sees commits on other connections and total_changes sees this
+ * connection's writes. The format and schema cookies cover DDL/PRAGMA changes.
+ * A transaction can expose an older read view or provisional rows. Only reuse
+ * evidence from autocommit reads of this same connection. */
+export function createProjectAudioSnapshotStamp(db: DatabaseSync): () => string | undefined {
+  const data = db.prepare('PRAGMA project.data_version');
+  const schema = db.prepare('PRAGMA project.schema_version');
+  const format = db.prepare('PRAGMA project.user_version');
+  const local = db.prepare('SELECT CAST(total_changes() AS TEXT) AS changes');
+  return () => {
+    if (db.isTransaction) return undefined;
+    try {
+      if (format.get()?.user_version !== FORMAT6_PROJECT_SCHEMA_VERSION) return undefined;
+      const cookie = schema.get()?.schema_version;
+      const changes = local.get()?.changes;
+      const version = data.get()?.data_version;
+      if (typeof version !== 'number' || typeof cookie !== 'number' || typeof changes !== 'string') return undefined;
+      return `${version}:${cookie}:${changes}`;
+    } catch {
+      // A failed stamp is never evidence. Let the regular read report its error.
+      return undefined;
+    }
+  };
+}
 /** This conservative bound includes twelve source-read allocations, a 1 MiB
  * callback backing store plus 2 MiB paused-pipe allowance per cursor, six mixed
  * block copies across server/transport/renderer, and 2 MiB transport reserve.
@@ -125,10 +162,12 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
   function current(input: ContinuousAudioPlanInput): Current {
     available();
     let raw: unknown;
-    try {raw = runtime.readSavedTimeline(input.projectId);} catch {throw fail('AUDIO_PREVIEW_UNAVAILABLE', 404);}
+    try {raw = runtime.readSavedTimeline(input.projectId);} catch (error) {if (isTimelineSpeedRenderError(error)) throw error; throw fail('AUDIO_PREVIEW_UNAVAILABLE', 404);}
     if (!plain(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
     const saved = raw.timeline, managed = new Map<string, TimelineAudioPreviewManagedAsset>();
     if (!Array.isArray(saved.tracks) || !Array.isArray(saved.clips)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
+    const timings = readAudioPreviewTimings(saved, runtime.speedPreview === true);
+    const sourceSpans = new Map<string, number>();
     let envelopeProfile: ReturnType<typeof volumeEnvelopeSnapshotFields>;
     try {
       volumeEnvelopeReadSnapshot(raw);
@@ -142,6 +181,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       }),
       clips: saved.clips.map((clip: unknown) => {
         if (!object(clip) || ['transition', 'transitions', 'effects', 'speed', 'rate', 'opacity', 'blendMode'].some(key => Object.hasOwn(clip, key))) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
+        if (typeof clip.id === 'string' && typeof clip.sourceSpanFrames === 'number' && timings.has(clip.id)) sourceSpans.set(clip.id, clip.sourceSpanFrames);
         return {id: clip.id, trackId: clip.trackId, assetId: clip.assetId, startFrame: clip.startFrame, durationFrames: clip.durationFrames,
           sourceInFrame: clip.sourceInFrame, gain: clip.gain, ...volumeEnvelopeField(clip),
           ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
@@ -174,7 +214,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       if (track.kind === 'audio' ? (soundOnly ? !video || asset.hasAudio !== true : !audio) : soundOnly || audio)
         throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if (image ? asset.hasAudio === true || clip.sourceInFrame !== 0 : typeof asset.hasAudio !== 'boolean' || asset.duration === null ||
-          asset.duration <= 0 || clip.sourceInFrame + clip.durationFrames > Math.floor(asset.duration * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
+          asset.duration <= 0 || clip.sourceInFrame + (sourceSpans.get(clip.id) ?? clip.durationFrames) > Math.floor(asset.duration * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > clip.durationFrames ||
           ((clip.fadeInFrames ?? 0) > 0 || (clip.fadeOutFrames ?? 0) > 0) && asset.hasAudio !== true && clip.volumeEnvelope == null) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       const list = byTrack.get(clip.trackId) ?? []; list.push(clip); byTrack.set(clip.trackId, list);
@@ -183,7 +223,8 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
         if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         envelopeClips.push(clip);
       }
-      if (!track.muted && clip.muted !== true && clip.gain !== 0 && asset.hasAudio === true) {
+      if (!track.muted && clip.muted !== true && clip.gain !== 0 && asset.hasAudio === true &&
+          timings.get(clip.id)?.timing.profile !== 'timeline-freeze-v1') {
         if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         voices.push(clip);
       }
@@ -201,7 +242,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     }
     if (hashBytes > LIMITS.hashReadBytes) throw fail('AUDIO_PREVIEW_HASH_LIMIT');
     if (workFrames > LIMITS.decodeWorkFrames || runs > LIMITS.decodeSegments) throw fail('AUDIO_PREVIEW_BUDGET');
-    const snapshotHash = hash(canonical(snapshot));
+    const snapshotHash = hash(canonical(timings.size ? {snapshot, timings: [...timings].map(([id, value]) => [id, value.timing])} : snapshot));
     const plan: ContinuousAudioPlan = {...volumeEnvelopeSnapshotFields(timeline), schemaVersion: 2, status: 'planned', profileId: CONTINUOUS_AUDIO_PROFILE,
       projectId: input.projectId, timelineId: input.timelineId, timelineRevision: input.expectedRevision,
       startFrame: input.startFrame, durationFrames: timeline.durationFrames, blockFrames: 60, sampleRate: 48000,
@@ -212,17 +253,26 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     // later clip head when both intersect a block, regardless of UUID order.
     voices.sort((a, b) => tracks.get(a.trackId)!.orderIndex - tracks.get(b.trackId)!.orderIndex ||
       a.startFrame - b.startFrame || a.id.localeCompare(b.id));
-    return {plan, snapshot, assets: managed, segments, voices, envelopeClips};
+    return {plan, snapshot, assets: managed, segments, voices, envelopeClips, timings};
   }
   const inputOf = (input: ContinuousAudioBlockInput): ContinuousAudioPlanInput => ({projectId: input.projectId, timelineId: input.timelineId,
     expectedRevision: input.expectedRevision, startFrame: input.startFrame});
+  function readFencedSnapshot(input: ContinuousAudioPlanInput, stamp: string | undefined) {
+    const latest = current(input);
+    return {latest, stamp: stamp !== undefined && runtime.readSnapshotStamp?.() === stamp ? stamp : undefined};
+  }
   const fenceSession = (session: Session, signal?: AbortSignal): void => {
     available();
     if (session.failure) throw session.failure;
     if (session.controller.signal.aborted || signal?.aborted || session.closing) throw fail('OPERATION_CANCELLED', 503);
-    const latest = current({projectId: session.initial.plan.projectId, timelineId: session.initial.plan.timelineId,
-      expectedRevision: session.initial.plan.timelineRevision, startFrame: session.initial.plan.startFrame});
-    if (latest.plan.planHash !== session.initial.plan.planHash || canonical([...latest.assets]) !== canonical([...session.initial.assets])) throw fail('AUDIO_PREVIEW_STALE');
+    const stamp = runtime.readSnapshotStamp?.();
+    if (stamp === undefined || stamp !== session.snapshotStamp) {
+      const {latest, stamp: checked} = readFencedSnapshot({projectId: session.initial.plan.projectId,
+        timelineId: session.initial.plan.timelineId, expectedRevision: session.initial.plan.timelineRevision,
+        startFrame: session.initial.plan.startFrame}, stamp);
+      if (latest.plan.planHash !== session.initial.plan.planHash || canonical([...latest.assets]) !== canonical([...session.initial.assets])) throw fail('AUDIO_PREVIEW_STALE');
+      session.snapshotStamp = checked;
+    }
     for (const verified of session.hashes.values()) {
       const actual = runtime.validateSource(store.root, verified.asset, {maxBytes: LIMITS.sourceBytes});
       if (!identity(actual.info) || actual.file !== verified.file || !sameFile(actual.info, verified.info)) throw fail('AUDIO_PREVIEW_STALE');
@@ -283,9 +333,15 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     joined.catch(() => {});
     try {return await joined;} finally {controller.abort();}
   }
-  async function verifiedAsset(session: Session, assetId: string, signal: AbortSignal): Promise<Verified> {
+  async function verifiedAsset(session: Session, assetId: string, signal: AbortSignal, needsProbe = true): Promise<Verified> {
     const existing = session.hashes.get(assetId);
-    if (existing) {fenceSession(session, signal); return existing;}
+    const probe = async (verified: Verified): Promise<void> => {
+      if (!needsProbe || verified.probe) return;
+      const result = await runtime.decoder.probe(verified.file, {signal, beforeEffect: () => fenceSession(session, signal)});
+      if (result.sizeBytes !== verified.asset.sizeBytes) throw fail('AUDIO_PREVIEW_STALE');
+      verified.probe = result;
+    };
+    if (existing) {fenceSession(session, signal); await probe(existing); return existing;}
     const asset = session.initial.assets.get(assetId);
     if (!asset) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
     const source = runtime.validateSource(store.root, asset, {maxBytes: LIMITS.sourceBytes});
@@ -294,8 +350,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     session.hashes.set(assetId, verified);
     try {
       await hashAsset(session, verified, signal);
-      verified.probe = await runtime.decoder.probe(verified.file, {signal, beforeEffect: () => fenceSession(session, signal)});
-      if (verified.probe.sizeBytes !== asset.sizeBytes) throw fail('AUDIO_PREVIEW_STALE');
+      await probe(verified);
       fenceSession(session, signal); return verified;
     } catch (error) {session.hashes.delete(assetId); throw error;}
   }
@@ -311,6 +366,23 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     if (session.hashBytes - before !== verified.asset.sizeBytes || !object(result) || result.sha256 !== verified.asset.sha256 ||
         result.file !== verified.file || result.sizeBytes !== verified.asset.sizeBytes || !identity(result.info) || !sameFile(result.info, verified.info)) throw fail('AUDIO_PREVIEW_STALE');
     runtime.telemetry?.({type: 'hash', bytes: session.hashBytes});
+  }
+  async function speedPart(session: Session, clip: Clip, timed: CompiledTimelineSpeedExportClip, from: number, to: number,
+    signal: AbortSignal): Promise<Buffer> {
+    const {snapshot} = session.initial;
+    const asset = snapshot.assets.find(source => source.id === clip.assetId)!;
+    const track = snapshot.timeline.tracks.find(track => track.id === clip.trackId)!;
+    const verified = await verifiedAsset(session, clip.assetId, signal, false);
+    const workFrames = to - from;
+    if (session.workFrames + workFrames > LIMITS.sessionDecodeWorkFrames ||
+        session.generationWorkFrames + workFrames > LIMITS.decodeWorkFrames) throw fail('AUDIO_PREVIEW_BUDGET');
+    session.workFrames += workFrames;
+    session.generationWorkFrames += workFrames;
+    const pcm = await renderAudioPreviewSpeedWindow(timed, from - clip.startFrame, to - clip.startFrame,
+      {projectId: snapshot.timeline.projectId, timelineId: snapshot.timeline.id, trackKind: track.kind, asset, file: verified.file},
+      {signal, beforeEffect: () => fenceSession(session, signal), reverseProxy: runtime.reverseProxy});
+    if (!verified.complete) {await hashAsset(session, verified, signal); verified.complete = true;}
+    return pcm;
   }
   async function sourcePart(session: Session, clip: Clip, segment: TimelineCompositionSegment, from: number, to: number, signal: AbortSignal): Promise<Buffer> {
     const key = `${clip.id}:${segment.beginFrame}:${segment.endFrame}`;
@@ -402,10 +474,11 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     let session = admission.session;
     if (!session) {
       if (admission.retired.has(input.sessionId)) throw fail('AUDIO_PREVIEW_STALE');
-      const initial = current(inputOf(input)); if (initial.plan.planHash !== input.planHash) throw fail('AUDIO_PREVIEW_STALE');
+      const {latest: initial, stamp: snapshotStamp} = readFencedSnapshot(inputOf(input), runtime.readSnapshotStamp?.());
+      if (initial.plan.planHash !== input.planHash) throw fail('AUDIO_PREVIEW_STALE');
       if (input.blockStartFrame >= initial.plan.durationFrames) throw fail('AUDIO_PREVIEW_RANGE_BOUNDS');
       const controller = new AbortController();
-      session = {id: input.sessionId, initial, controller, timer: setTimeout(() => {}, LIMITS.sessionTimeoutMs), generation: input.generation, requestedGeneration: input.generation, sequence: 0,
+      session = {id: input.sessionId, initial, snapshotStamp, controller, timer: setTimeout(() => {}, LIMITS.sessionTimeoutMs), generation: input.generation, requestedGeneration: input.generation, sequence: 0,
         nextFrame: input.blockStartFrame, cancelled: false, workFrames: 0, generationWorkFrames: 0, hashBytes: 0, hashes: new Map(), cursors: new Map()};
       clearTimeout(session.timer);
       const created = session;
@@ -473,6 +546,12 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
         for (const clip of owned.initial.voices) {
           const from = Math.max(startFrame, clip.startFrame), to = Math.min(endFrame, clip.startFrame + clip.durationFrames);
           if (from >= to) continue;
+          const timed = owned.initial.timings.get(clip.id);
+          if (timed) {
+            const source = await speedPart(owned, clip, timed, from, to, signal);
+            beforeEffect(); mixPart(pcm, source, clip, from, to, startFrame);
+            continue;
+          }
           for (const segment of owned.initial.segments) {
             if (segment.beginFrame < clip.startFrame || segment.endFrame > clip.startFrame + clip.durationFrames) continue;
             const begin = Math.max(from, segment.beginFrame), end = Math.min(to, segment.endFrame);
@@ -493,6 +572,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
         await closeCursors(owned);
         if (uncertainty(error)) {owned.failure = error; admission.failure = error;}
         if (object(error) && typeof error.code === 'string' && (/^(?:VOLUME_ENVELOPE_|AUDIO_PREVIEW_|OPERATION_CANCELLED|RESTORE_|WORKSPACE_)/u.test(error.code))) throw error;
+        if (object(error) && error.code === 'SPEED_PROCESSING_NOT_READY') throw fail(error.code);
         if (uncertainty(error)) throw error;
         throw fail(signal.aborted ? 'OPERATION_CANCELLED' : 'AUDIO_PREVIEW_DECODE_FAILED');
       } finally {

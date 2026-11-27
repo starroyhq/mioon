@@ -11,7 +11,12 @@ import { activeJob, assetUrl, versionUrl, mediaUrl } from '../apps/web/src/api.t
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
+import * as speedRender from '../packages/contracts/src/timeline-speed-render.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
+import {buildClipSpeedPreviewBinding} from '../apps/web/src/speed-preview/speed-preview-model.ts';
+import * as speedModel from '../apps/web/src/speed-ui/speed-model.ts';
+import type {UseSpeedProcessingResult} from '../apps/web/src/speed-ui/use-speed-processing.ts';
+import {timelineProcessingResponseSchemas} from '../packages/contracts/src/timeline-processing.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import {generationParameters, providerStatus} from '../apps/web/src/generation-settings.ts';
@@ -19,7 +24,7 @@ import {generationParameters, providerStatus} from '../apps/web/src/generation-s
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
 // or browser playback coverage; browser acceptance covers the integrated UI.
-const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx'].map(file => [file,
+const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx', 'speed-ui/use-speed-processing.ts'].map(file => [file,
   transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs', sourcefile: file }).code,
 ]));
 const noop = () => {};
@@ -55,12 +60,22 @@ function createHarness(file: string, exportName = 'default') {
     slots[index] = { dependencies, cleanup: previous?.cleanup, callback, kind };
     (kind === 'layout' ? layouts : effects).push(index);
   }
+  function memoValue(factory: () => unknown, dependencies: readonly unknown[]) {
+    const index = cursor++, previous = slots[index];
+    if (previous && dependencies.length === previous.dependencies?.length &&
+        dependencies.every((value, i) => Object.is(value, previous.dependencies![i]))) return previous.value;
+    const value = factory();
+    slots[index] = {dependencies, value};
+    return value;
+  }
   const react = {
     createElement(type: string, props: Partial<UiProps>|null, ...children: unknown[]) { return { type, props: { ...props, children: children.length === 1 ? children[0] : children } }; },
     createContext(value: unknown) { return { defaultValue: value, Provider: 'VisibilityProvider' }; },
     useContext(context: { defaultValue: unknown; }) { return h.ancestorVisible ?? context.defaultValue; },
     useRef(value: unknown) { const index = cursor++; return slots[index] ||= { current: value }; },
     useState(value: () => unknown) { const index = cursor++; slots[index] ||= { value: typeof value === 'function' ? value() : value }; return [slots[index].value, (next: (arg0: unknown) => unknown) => { slots[index].value = typeof next === 'function' ? next(slots[index].value) : next; }]; },
+    useMemo: memoValue,
+    useCallback: (callback: unknown, dependencies: readonly unknown[]) => memoValue(() => callback, dependencies),
     useEffect: (callback: ()=>void|(()=>void), dependencies: unknown[]) => effect('effect', callback, dependencies),
     useLayoutEffect: (callback: ()=>void|(()=>void), dependencies: unknown[]) => effect('layout', callback, dependencies),
     memo: (component: unknown) => component,
@@ -93,6 +108,9 @@ function createHarness(file: string, exportName = 'default') {
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
     './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
+    './speed-model.ts': speedModel,
+    '../../../../packages/contracts/src/timeline-processing.ts': {timelineProcessingResponseSchemas},
+    '../../../packages/contracts/src/timeline-speed-render.ts': speedRender,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
     './source-range-state.ts': sourceRanges,
@@ -173,6 +191,36 @@ const inspectorProps = (patch?: Record<string,unknown>) => ({
   ...patch,
 });
 
+test('speed preview ignores ready processing rows from a previous timeline revision', async t => {
+  const h = createHarness('speed-ui/use-speed-processing.ts', 'useSpeedProcessing');
+  t.after(() => h.unmount());
+  const requests: ((value: unknown) => void)[] = [];
+  const clip = {id: secondRenderAssetId, timing: {profile: 'timeline-speed-v1', view: {direction: 'forward'},
+    basis: {speed: {kind: 'constant'}}, interpolation: 'optical'}};
+  const timeline = {capabilities: {speed: true}, clips: [clip], revision: 1};
+  const props = {projectId: renderProjectId, online: true, authenticated: true,
+    rpc: () => new Promise(resolve => requests.push(resolve))};
+  const render = (revision: number, passive = true) =>
+    h.render({...props, timeline: {...timeline, revision}}, {passive}) as unknown as UseSpeedProcessingResult;
+
+  render(1);
+  assert.equal(requests.length, 1);
+  const old = {taskId: firstRenderAssetId, clipId: clip.id, kind: 'optical', status: 'ready'};
+  requests[0]!({items: [old]});
+  await Promise.resolve();
+  assert.deepEqual(render(1).previewItems, [old]);
+
+  const changed = render(2, false);
+  assert.deepEqual(changed.items, [old]);
+  assert.deepEqual(changed.previewItems, []);
+  h.flushPassive();
+  assert.equal(requests.length, 2);
+  const next = {...old, taskId: renderProjectId, status: 'queued'};
+  requests[1]!({items: [next]});
+  await Promise.resolve();
+  assert.deepEqual(render(2).previewItems, [next]);
+});
+
 test('visibility defaults to visible and nested visible panels cannot override a hidden ancestor', () => {
   const h = createHarness('workspace-visibility.tsx', 'WorkspaceVisibilityProvider');
   assert.equal(h.render({ children: 'content' }).props.value, true);
@@ -225,6 +273,29 @@ for (const kind of ['video', 'audio'] as const) {
   });
 }
 
+test('retimed clip preview never binds the original video or an old timeline render', () => {
+  const h = createHarness('Preview.tsx');
+  const timing = {profile: 'timeline-freeze-v1', sourceFrame: 0, sourceVersionId: null, sourceSha256: 'a'.repeat(64)};
+  const clip = {id: 'clip-one', sourceInFrame: 0, startFrame: 0, durationFrames: 60, timing};
+  const timeline = {id: 'timeline-one', projectId: renderProjectId, fps: 30, width: 1920, height: 1080,
+    revision: 2, durationFrames: 60, clips: [clip]};
+  const job = {id: 'render-one', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded',
+    url: '/render', timelineRevision: 1};
+  for (const kind of ['source', 'timeline']) {
+    h.render(previewProps({kind, clip, timeline, job}));
+    assert.equal(h.mediaNode(), undefined);
+    assert.ok(h.nodes().some(node => node.props['data-error-code'] === 'SPEED_RENDER_NOT_READY'));
+  }
+  h.render(previewProps({kind: 'source', clip: null, timeline, job}));
+  assert.ok(h.mediaNode(), 'standalone source playback has its own explicit source coordinates');
+  const currentRender = {...job, timelineRevision: timeline.revision, snapshot: {timeline}};
+  h.render(previewProps({kind: 'timeline', clip, timeline, job: currentRender}));
+  assert.equal(h.mediaNode(), undefined, 'matching revision alone is not a speed-render result');
+  h.render(previewProps({kind: 'timeline', clip, timeline, job: {...currentRender,
+    snapshot: {...currentRender.snapshot, speedExport: {profileId: 'timeline-speed-export-v1'}}}}));
+  assert.ok(h.mediaNode(), 'a current speed-render result can be played');
+});
+
 for (const kind of ['source', 'timeline'] as const) {
   test(`${kind} Preview cannot publish late playback or native-seek events while hidden`, () => {
     const h = createHarness('Preview.tsx'), seeks: unknown[] = [], props = previewProps({
@@ -254,6 +325,53 @@ test('Preview applies a changed playhead deferred while hidden, without publishi
   h.mediaNode().props.onSeeked({ currentTarget: element }); assert.deepEqual(seeks, []);
   element.currentTime = 6;
   h.mediaNode().props.onSeeked({ currentTarget: element }); assert.deepEqual(seeks, [210]);
+});
+
+test('0.1×, 0.25× and 0.5× preview seek on heard PCM sample boundaries', async () => {
+  const samplesPerFrame = 1600;
+  const maxSampleError = 2 * samplesPerFrame;
+  for (const denominator of [10, 4, 2]) {
+    const h = createHarness('Preview.tsx');
+    const startFrame = 300, sourceInFrame = 40, durationFrames = 120 * denominator;
+    const clip = {id: 'clip-one', trackId: 'track-one', startFrame, sourceInFrame, durationFrames,
+      timing: {profile: 'timeline-speed-v1', basis: {profile: 'timeline-speed-v1',
+        sourceFps: {fpsNumerator: 30, fpsDenominator: 1}, outputFps: {fpsNumerator: 30, fpsDenominator: 1},
+        sourceRange: {start: {kind: 'rational', numerator: '40', denominator: '1'}, end: {kind: 'rational', numerator: '160', denominator: '1'}},
+        speed: {kind: 'constant', rate: {numerator: 1, denominator}}},
+        view: {direction: 'forward', loTime: {anchor: 'start', offsetOutputFrames: 0}, hiTime: {anchor: 'end', offsetOutputFrames: 0}},
+        outputWindow: {fromFrame: 0, toFrame: durationFrames}, pitchShift: true, interpolation: 'off'}} as const;
+    const timeline = {id: 'timeline', revision: 1, fps: 30, durationFrames: startFrame + durationFrames,
+      capabilities: {speed: true}};
+    const playhead = startFrame + 30 * denominator;
+    let sample = playhead * samplesPerFrame;
+    const speedPreview = buildClipSpeedPreviewBinding({timeline, clip, asset: asset(), sourceUrl: '/preview-source',
+      media: null, fps: 30, processingItems: [], t: createI18nTestContext('zh-Hans').t,
+      onPlaybackStateChange: async state => state.playing ? () => sample : undefined});
+    assert.ok(speedPreview?.frameDrivenPlayback, `1/${denominator}× uses the shared audio clock`);
+    h.render(previewProps({timeline, clip, speedPreview, playhead}));
+    const element = h.mediaNode().props.ref.current;
+    const controls = h.nodes().find(node => node.type === 'PreviewPlaybackControls')?.props.customPlayback as
+      {toggle(): void;isPlaying(): boolean};
+    assert.ok(controls);
+    controls.toggle();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(controls.isPlaying(), true);
+    assert.equal(element.paused, true);
+    for (let frame = 1; frame <= 4; frame++) {
+      const transition = (playhead + frame * denominator) * samplesPerFrame;
+      sample = transition - 1;
+      h.flushFrames();
+      assert.equal(Math.floor(element.currentTime * 30), sourceInFrame + 30 + frame - 1);
+      sample = transition + samplesPerFrame / 2;
+      h.flushFrames();
+      const displayed = Math.floor(element.currentTime * 30);
+      const expected = sourceInFrame + Math.floor((sample / samplesPerFrame - startFrame) / denominator);
+      assert.equal(displayed, expected, 'The source frame matches the PCM position of the same animation tick');
+      assert.ok(Math.abs(sample - (startFrame + (displayed - sourceInFrame) * denominator) * samplesPerFrame) <= maxSampleError,
+        'Capture the transition within two output frames (3200 samples at 48 kHz)');
+    }
+    h.unmount();
+  }
 });
 
 test('replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source', () => {

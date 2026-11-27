@@ -1,7 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
 import {CONVERTED_TEMP_TRIGGERS} from './converted-triggers.ts';
-import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT5_CROSS_FILE_RELATIONS} from './relations.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT5_CROSS_FILE_RELATIONS, FORMAT6_CROSS_FILE_RELATIONS} from './relations.ts';
 import type {CrossFileRelation} from './relations.ts';
 import {installRestoreScopeFunction} from './restore-admission.ts';
 
@@ -60,13 +60,14 @@ const triggerStatements = (relations: readonly CrossFileRelation[]): readonly st
 const STATEMENTS = triggerStatements(CROSS_FILE_RELATIONS);
 const FORMAT4_STATEMENTS = triggerStatements(FORMAT4_CROSS_FILE_RELATIONS);
 const FORMAT5_STATEMENTS = triggerStatements(FORMAT5_CROSS_FILE_RELATIONS);
-type TriggerProfile = boolean | 3 | 4 | 5;
+const FORMAT6_STATEMENTS = triggerStatements(FORMAT6_CROSS_FILE_RELATIONS);
+type TriggerProfile = boolean | 3 | 4 | 5 | 6;
 
 /** Every connection-level trigger of the kernel in creation order: the format-72
  * triggers that cross files, four per cross-file relation, then the
  * content-sequence copy. */
 export function crossFileTriggerStatements(format4: TriggerProfile = false): readonly string[] {
-  return format4 === 5 ? FORMAT5_STATEMENTS : format4 === true || format4 === 4 ? FORMAT4_STATEMENTS : STATEMENTS;
+  return format4 === 6 ? FORMAT6_STATEMENTS : format4 === 5 ? FORMAT5_STATEMENTS : format4 === true || format4 === 4 ? FORMAT4_STATEMENTS : STATEMENTS;
 }
 
 const CREATE_TEMP_TRIGGER = /^CREATE TEMP TRIGGER (\w+) /;
@@ -79,7 +80,9 @@ const storedTriggers = (statements: readonly string[]): ReadonlyMap<string, stri
 const EXPECTED = storedTriggers(STATEMENTS);
 const EXPECTED_FORMAT4 = storedTriggers(FORMAT4_STATEMENTS);
 const EXPECTED_FORMAT5 = storedTriggers(FORMAT5_STATEMENTS);
-const expectedForProfile = (profile: TriggerProfile): ReadonlyMap<string, string> => profile === 5 ? EXPECTED_FORMAT5 : profile === true || profile === 4 ? EXPECTED_FORMAT4 : EXPECTED;
+const EXPECTED_FORMAT6 = storedTriggers(FORMAT6_STATEMENTS);
+const expectedForProfile = (profile: TriggerProfile): ReadonlyMap<string, string> =>
+  profile === 6 ? EXPECTED_FORMAT6 : profile === 5 ? EXPECTED_FORMAT5 : profile === true || profile === 4 ? EXPECTED_FORMAT4 : EXPECTED;
 const SAVEPOINT = 'project_file_triggers';
 const DATABASES = [PROJECT_DATABASE_NAMES.history, PROJECT_DATABASE_NAMES.project, PROJECT_DATABASE_NAMES.cache] as const;
 

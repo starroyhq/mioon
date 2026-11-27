@@ -28,12 +28,14 @@ import {createLocalDeliverySchemas} from '../packages/contracts/src/local-delive
 import {createLocalShotTextSchemas} from '../packages/contracts/src/local-shot-text.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
+import type {ProcessingInputWithClip} from '../packages/contracts/src/timeline-processing-storage.ts';
 
 const now = '2026-11-04T00:00:00.000Z', hash = 'a'.repeat(64);
-function fixture(t: TestContext, createAsset = true, ownedProjectId?: string, candidate = false) {
+function fixture(t: TestContext, createAsset = true, ownedProjectId?: string, candidate: boolean | 6 = false) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-import-dependencies-')), projectDir = path.join(root, 'project');
   mkdirSync(projectDir);
-  const store = createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), ...(ownedProjectId ? {projectId: ownedProjectId} : {}), ...(candidate ? {format4: {}} : {}),
+  const profile = candidate === 6 ? {allowFormat6: true as const, targetFormat: 6 as const} : candidate ? {format4: {}} : {};
+  const store = createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), ...(ownedProjectId ? {projectId: ownedProjectId} : {}), ...profile,
     locate: () => ({localDir: path.join(root, 'local'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const projectId = store.projectId, assetId = randomUUID();
   store.put('projects', {id: projectId, name: 'Dependencies', description: '', revision: 1, createdAt: now, updatedAt: now});
@@ -483,6 +485,32 @@ for (const [name, body, reason] of [
 test('unknown kernel tables fail closed', t => {
   const f = fixture(t); f.store.db.exec('CREATE TABLE project.future_media_links(id TEXT)');
   assert.deepEqual(f.read(), {status: 'unproven', reason: 'unsupported'});
+});
+
+test('outstanding format 6 processing uses its frozen asset even after the clip is gone', t => {
+  const f = fixture(t, true, undefined, 6), taskId = randomUUID();
+  const frozen: ProcessingInputWithClip = {clipId: randomUUID(), frozen: {version: 1, kind: 'reverse', timelineId: randomUUID(),
+    assetId: f.assetId, sourceIdentity: hash, sourceSha256: hash, media: 'video', mapHash: 'a'.repeat(16),
+    sourceWindow: {startFrame: 0, endFrame: 1, frameCount: 1, direction: 'reverse', outputFromFrame: 0, outputToFrame: 1},
+    sourceFps: {fpsNumerator: 30, fpsDenominator: 1}, recipe: hash}};
+  f.store.db.prepare(`INSERT INTO main.timeline_processing_tasks(id,projectId,demandKey,kind,state,revision,requestId,input,updatedAt)
+    VALUES(?,?,?,'reverse','queued',1,?,?,?)`).run(taskId, f.projectId, hash, randomUUID(), JSON.stringify(frozen), now);
+  const blocked = {status: 'referenced', source: 'main.timeline_processing_tasks.input'};
+  assert.deepEqual(f.read(), blocked);
+  f.store.db.exec("UPDATE main.timeline_processing_tasks SET state='running'");
+  assert.deepEqual(f.store.tx(() => readMioProjectImportDependenciesInside(f.store, f.assetId)), blocked);
+  f.store.db.exec("UPDATE main.timeline_processing_tasks SET state='failed'");
+  f.store.db.prepare('INSERT INTO main.timeline_processing_retries(requestId,taskId) VALUES(?,?)').run(randomUUID(), taskId);
+  // Native history can now prove absence in format 6. A terminal attempt
+  // and its retry receipt cannot read the source without a current demand.
+  assert.deepEqual(f.read(), {status: 'clear'});
+});
+
+test('an unrecognized active processing input cannot prove asset absence', t => {
+  const f = fixture(t, true, undefined, 6);
+  f.store.db.prepare(`INSERT INTO main.timeline_processing_tasks(id,projectId,demandKey,kind,state,revision,requestId,input,updatedAt)
+    VALUES(?,?,?,'reverse','running',1,?,'{}',?)`).run(randomUUID(), f.projectId, hash, randomUUID(), now);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'});
 });
 
 test('damaged and unknown live Mio compensation records cannot prove absence', t => {

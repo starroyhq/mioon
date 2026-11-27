@@ -19,7 +19,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError, sourceFrameCount} from '@mioon/contracts';
 import type {
-  SequenceEditAffectedCounts, SequenceEditBaselineChange, SequenceEditBoardDelta, SequenceEditBoardEntity,
+  SequenceEditAffectedCounts, SequenceEditAllocation, SequenceEditBaselineChange, SequenceEditBoardDelta, SequenceEditBoardEntity,
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditHistoryAction,
   SequenceEditHistoryCommand, SequenceEditHistoryView, SequenceEditImpact, SequenceEditPatch, SequenceEditPlan,
   SequenceEditReceipt, SequenceEditStateDelta, SequenceEditSubtitleProfileChange, SequenceEditTimelineCommit,
@@ -40,7 +40,13 @@ import type {ChainSyncChange, ChainSyncChanges, ChainSyncOperation, ChainSyncPla
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncVersion} from '../../contracts/src/chain-main-track.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
-import {format5SyncBaselineSchema, format5TimelineHeader} from '../../contracts/src/project-format5.ts';
+import {format5SyncBaselineSchema, format5TimelineHeader, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
+import type {SequenceEditSpeedIntent} from '../../contracts/src/timeline-speed.ts';
+import {compileClipTimeMap} from '../../contracts/src/timeline-clip-timing.ts';
+import {timeMapPlanFrames} from '../../contracts/src/timeline-time-map.ts';
+import {planSpeedTimeline, splitSequenceClip, trimTimedSequenceClip} from './format6-sequence-speed.ts';
+import {validateSpeedTransitions} from './format6-transition-fit.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {copyFormat5ShotDialogue, format5ShotDialogue, projectFormat5DialogueCues} from './format5-dialogue-projection.ts';
 import type {Format5DialogueProjectedShot, Format5DialogueProjectionResult} from './format5-dialogue-projection.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
@@ -51,6 +57,15 @@ import {
 } from './project-file/format5-timeline.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
+import {assertProjectStore} from './store-runtime.ts';
+import {checkpoint} from './operation-lifecycle.ts';
+import {EXPORT_PREFLIGHT_LIMITS} from '../../contracts/src/export-preflight.ts';
+import {inspectSpeedVideoInterpolation} from './timeline-speed-export-video.ts';
+import {speedTimelineTransitionRegions} from './timeline-speed-export-admission.ts';
+import {speedInterpolationWindows, speedPictureWindows} from './timeline-speed-export-plan.ts';
+import {transitionPictureRange} from './timeline-transition-filter.ts';
+import {probeTimelineSource, readOwnedTimelineAsset} from './timeline-sources.ts';
+import {sameManagedFile, validateManagedSource, verifiedManagedHash} from './managed-media.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, patchFromEntry, prepareSequenceEditHistory,
@@ -63,8 +78,8 @@ const object = (value: unknown): value is Row => value !== null && typeof value 
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
 const isUuid = (value: unknown): value is string => typeof value === 'string' && uuidPattern.test(value);
 const now = (): string => new Date().toISOString();
-const format5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === 5;
+const projectFormat = (store: ProjectStore): number => Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
+const format5 = (store: ProjectStore): boolean => isSequenceProjectFormat(projectFormat(store));
 const failure = (code: SequenceEditErrorCode, ids: readonly string[] = [], reason?: string): SequenceEditTransactionFailure =>
   ({ok: false, code, ids, ...(reason ? {reason} : {})});
 const emptyDelta = (): SequenceEditStateDelta => ({board: {writes: [], removals: []},
@@ -313,15 +328,30 @@ function mergeChanges(target: ChainSyncChanges, source: ChainSyncChanges): void 
     (target[key] as ChainSyncChange<unknown>[]).push(...(source[key] as ChainSyncChange<unknown>[]));
   }
 }
-function sceneAllowedCuts(clip: {sourceInFrame: number; durationFrames: number; fadeInFrames?: number; fadeOutFrames?: number},
-  cuts: readonly number[]): number[] {
-  const inside = cuts.filter(frame => frame > clip.sourceInFrame && frame < clip.sourceInFrame + clip.durationFrames)
-    .sort((left, right) => left - right);
-  const fadeIn = Number(clip.fadeInFrames ?? 0), fadeOut = Number(clip.fadeOutFrames ?? 0);
-  return inside.filter(frame => frame - clip.sourceInFrame >= fadeIn
-    && frame - clip.sourceInFrame <= clip.durationFrames - fadeOut);
+interface SceneCut {readonly sourceFrame: number; readonly offsetFrames: number}
+function clipSceneCuts(clip: Format5Clip, timeline: Format5Timeline, cuts: readonly number[]): SceneCut[] {
+  if (!clip.timing) return cuts.map(sourceFrame => ({sourceFrame, offsetFrames: sourceFrame - clip.sourceInFrame}))
+    .filter(cut => cut.offsetFrames > 0 && cut.offsetFrames < clip.durationFrames)
+    .sort((left, right) => left.offsetFrames - right.offsetFrames);
+  if (clip.timing.profile === 'timeline-freeze-v1') return [];
+  const plan = compileClipTimeMap(clip, timeline);
+  const frames = plan.ok ? timeMapPlanFrames(plan.value) : plan;
+  if (!frames.ok) throw new AppError(frames.code, frames.detail, 409, {ids: [clip.id]});
+  const vector = frames.value;
+  const reverse = clip.timing.view.direction === 'reverse';
+  const byOffset = new Map<number, SceneCut>();
+  for (const sourceFrame of cuts) {
+    let lo = 0, hi = vector.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (reverse ? vector[mid]! >= sourceFrame : vector[mid]! < sourceFrame) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0 && lo < vector.length && !byOffset.has(lo)) byOffset.set(lo, {sourceFrame, offsetFrames: lo});
+  }
+  return [...byOffset.values()].sort((left, right) => left.offsetFrames - right.offsetFrames);
 }
-interface SceneSplitTarget {readonly clip: Format5Clip; readonly allowed: readonly number[];
+interface SceneSplitTarget {readonly clip: Format5Clip; readonly allowed: readonly SceneCut[];
   readonly fadeCutFrames: readonly number[]}
 interface SceneTargetSet {readonly targets: readonly SceneSplitTarget[];
   readonly skipped: readonly {clipId: string; reason: 'NO_CUT_IN_RANGE' | 'FADE_BOUNDS'; cutFrames?: readonly number[]}[]}
@@ -331,13 +361,11 @@ function sceneSplitTargets(timeline: Format5Timeline, cuts: readonly number[], a
   const targets: SceneSplitTarget[] = [], skipped: {clipId: string; reason: 'NO_CUT_IN_RANGE' | 'FADE_BOUNDS';
     cutFrames?: readonly number[]}[] = [];
   for (const clip of timeline.clips.filter(item => item.assetId === assetId)) {
-    const inside = cuts.filter(frame => frame > clip.sourceInFrame && frame < clip.sourceInFrame + clip.durationFrames)
-      .sort((left, right) => left - right);
+    const inside = clipSceneCuts(clip, timeline, cuts);
     if (!inside.length) { skipped.push({clipId: clip.id, reason: 'NO_CUT_IN_RANGE'}); continue; }
     const fadeIn = Number(clip.fadeInFrames ?? 0), fadeOut = Number(clip.fadeOutFrames ?? 0);
-    const allowed = inside.filter(frame => frame - clip.sourceInFrame >= fadeIn
-      && frame - clip.sourceInFrame <= clip.durationFrames - fadeOut);
-    const fadeCutFrames = inside.filter(frame => !allowed.includes(frame));
+    const allowed = inside.filter(cut => cut.offsetFrames >= fadeIn && cut.offsetFrames <= clip.durationFrames - fadeOut);
+    const fadeCutFrames = inside.filter(cut => !allowed.includes(cut)).map(cut => cut.sourceFrame);
     if (!allowed.length) { skipped.push({clipId: clip.id, reason: 'FADE_BOUNDS', cutFrames: fadeCutFrames}); continue; }
     targets.push({clip, allowed, fadeCutFrames});
   }
@@ -370,25 +398,35 @@ function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
   let state = saState(context), targetIndex = 0;
   const changes: ChainSyncChanges = {nodes: [], edges: [], media: [], clips: [], anchored: []};
   const warnings: ChainSyncWarning[] = [];
+  const timed = new Map<string, Format5Clip>();
   for (const target of targets.targets) {
     const own = byTarget[targetIndex++]!;
     if (target.clip.trackId !== context.timeline.mainTrack.trackId) continue;
-    let current = target.clip.id, index = 0;
+    let current = target.clip.id, index = 0, previousOffset = 0;
     for (const cut of target.allowed) {
       const pair = own[index++]!;
       if (pair.clipId !== current) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [current]);
       const currentClip = state.clips.find(item => item.id === current);
       if (!currentClip) return failure('CLIP_NOT_FOUND', [current]);
+      const offsetFrames = cut.offsetFrames - previousOffset;
+      const source = timed.get(current) ?? target.clip;
+      const projections = source.timing ? splitSequenceClip(source, context.timeline, offsetFrames, pair.rightClipId) : [];
+      for (const clip of projections) timed.set(clip.id, clip);
+      const projected = new Map(projections.map(clip => [clip.id, {sourceInFrame: clip.sourceInFrame,
+        ...(clip.sourceSpanFrames === undefined ? {} : {sourceSpanFrames: clip.sourceSpanFrames})}]));
       const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
-        offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}});
+        offsetFrames, rightClipId: pair.rightClipId, rightSourceInFrame: cut.sourceFrame}}, projected);
       if (plan.ok === false) return planFailure(plan);
       mergeChanges(changes, plan.changes);
       warnings.push(...plan.warnings);
       state = plan.after;
       current = pair.rightClipId;
+      previousOffset = cut.offsetFrames;
     }
   }
-  return {ok: true, after: state, changes, warnings, issues: []};
+  const plan: SequenceEditPlan = {ok: true, after: state, changes, warnings, issues: []};
+  if (timed.size > 0) timedClipRows.set(plan, timed);
+  return plan;
 }
 /** Split every other-track clip in the already main-track-patched timeline. */
 function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncContext, envelope: SequenceEditEnvelope,
@@ -402,7 +440,7 @@ function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncCont
   const clips = [...timeline.clips];
   const split = targetSet.targets.map((target, index) => ({clipId: target.clip.id,
     clipIds: [target.clip.id, ...byTarget[index]!.map(pair => pair.rightClipId)],
-    cutFrames: [...target.allowed], fadeCutFrames: [...target.fadeCutFrames]}));
+    cutFrames: target.allowed.map(cut => cut.sourceFrame), fadeCutFrames: [...target.fadeCutFrames]}));
   let pairIndex = 0;
   for (const target of targetSet.targets) {
     const own = byTarget[pairIndex++]!;
@@ -410,15 +448,23 @@ function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncCont
     let index = clips.findIndex(clip => clip.id === target.clip.id);
     if (index < 0) continue;
     let piece = clips[index]!;
-    let pairCursor = 0;
+    let pairCursor = 0, previousOffset = 0;
     for (const cut of target.allowed) {
-      const leftDuration = cut - piece.sourceInFrame;
+      const leftDuration = cut.offsetFrames - previousOffset;
+      previousOffset = cut.offsetFrames;
       const rightStart = piece.startFrame + leftDuration;
       const owner = clips.find(clip => clip.trackId === timeline.mainTrack.trackId
         && clip.startFrame <= rightStart && rightStart < clip.startFrame + clip.durationFrames);
       const rightDuration = piece.durationFrames - leftDuration;
+      if (piece.timing) {
+        const [left, right] = splitSequenceClip(piece, timeline, leftDuration, own[pairCursor++]!.rightClipId);
+        right.anchor = owner ? {clipId: owner.id, offsetFrames: rightStart - owner.startFrame} : null;
+        clips.splice(index++, 1, left, right);
+        piece = right;
+        continue;
+      }
       const right = {...piece, id: own[pairCursor++]!.rightClipId,
-        startFrame: rightStart, durationFrames: rightDuration, sourceInFrame: cut,
+        startFrame: rightStart, durationFrames: rightDuration, sourceInFrame: cut.sourceFrame,
         ...(Object.hasOwn(piece, 'fadeInFrames') ? {fadeInFrames: 0} : {}),
         ...(Object.hasOwn(piece, 'fadeOutFrames')
           ? {fadeOutFrames: Math.min(Number(piece.fadeOutFrames), rightDuration)} : {}),
@@ -613,22 +659,30 @@ function insertClipTitle(pairs: Map<string, string>, clipId: string, title: stri
   pairs.set(clipId, title);
   return pairs;
 }
+const timedClipRows = new WeakMap<SequenceEditPlan, ReadonlyMap<string, Format5Clip>>();
+
 function planMainInsert(context: SyncContext, input: {
   readonly nodeId: string; readonly clipId: string; readonly beforeClipId: string | null;
   readonly kind: 'shot' | 'image' | 'video'; readonly media: ChainSyncMedia; readonly nodeRow?: Row;
   readonly durationFrames: number; readonly sourceInFrame: number; readonly versionId: string | null;
   readonly title: string; readonly shotRow?: Row; readonly adoptionRow?: Row;
+  readonly timedSource?: Format5Clip;
 }): SequenceEditPlan | SequenceEditTransactionFailure {
   if (context.board.nodes.some(node => node.id === input.nodeId) || context.media.some(item => item.nodeId === input.nodeId))
     return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [input.nodeId]);
   const planningState = {board: {nodes: [...context.board.nodes, {id: input.nodeId, kind: input.kind}], edges: context.board.edges},
     filmId: context.rootNodeId, media: [...context.media, input.media], clips: context.clips, anchored: context.anchored};
   const edit: TrackSyncEdit = {kind: 'add', clip: {id: input.clipId, nodeId: input.nodeId,
-    versionId: input.versionId, versionLocked: false, startFrame: 0, durationFrames: input.durationFrames,
-    sourceInFrame: input.sourceInFrame, splitGroupId: input.clipId}, beforeClipId: input.beforeClipId,
+    versionId: input.versionId, versionLocked: input.timedSource?.timing?.profile === 'timeline-freeze-v1',
+    startFrame: 0, durationFrames: input.durationFrames, sourceInFrame: input.sourceInFrame, splitGroupId: input.clipId,
+    ...(input.timedSource?.sourceSpanFrames === undefined ? {} : {sourceSpanFrames: input.timedSource.sourceSpanFrames})}, beforeClipId: input.beforeClipId,
     media: input.media, nodeKind: input.kind};
   const plan = planChainSync(planningState, {kind: 'track', edit});
   if (!plan.ok) return failure(plan.code as SequenceEditErrorCode, 'id' in plan && typeof plan.id === 'string' ? [plan.id] : []);
+  if (input.timedSource) {
+    const {transitionIn: _incoming, ...source} = input.timedSource;
+    timedClipRows.set(plan, new Map([[input.clipId, {...source, id: input.clipId}]]));
+  }
   const shotRows = new Map<string, Row>(); if (input.shotRow) shotRows.set(input.nodeId, input.shotRow);
   const adoptionRows = new Map<string, Row>();
   if (input.adoptionRow) adoptionRows.set(String(input.adoptionRow.id), input.adoptionRow);
@@ -645,6 +699,23 @@ function planOverlayInsert(context: SyncContext, clip: Format5Clip, owner: Forma
     changes: {nodes: [], edges: [], media: [], clips: [], anchored: [{before: null, after: anchored}]}} as unknown as SequenceEditPlan;
   return attachMetadata(plan, {nodeRows: new Map(), shotRows: new Map(), adoptionRows: new Map(),
     nodeKinds: new Map(), clipNames: new Map(), extraOtherClips: [clip]});
+}
+
+function planTimedOtherTrackEdit(context: SyncContext, original: Format5Clip, replacements: readonly Format5Clip[]): SequenceEditPlan {
+  const state = saState(context);
+  const before = state.anchored.find(item => item.id === original.id) ?? null;
+  const mapped = replacements.map(clip => format5AnchoredItem({
+    id: clip.id, startFrame: clip.startFrame, anchor: clip.anchor ?? null,
+  }));
+  const retained = mapped.find(item => item.id === original.id) ?? null;
+  const inserted = mapped.filter(item => item.id !== original.id);
+  const plan: SequenceEditPlan = {ok: true, issues: [], warnings: [],
+    after: {...state, anchored: [...state.anchored.filter(item => item.id !== original.id), ...mapped]},
+    changes: {nodes: [], edges: [], media: [], clips: [],
+      anchored: [{before, after: retained}, ...inserted.map(after => ({before: null, after}))]}};
+  timedClipRows.set(plan, new Map(replacements.map(clip => [clip.id, clip])));
+  return attachMetadata(plan, {nodeRows: new Map(), shotRows: new Map(), adoptionRows: new Map(),
+    nodeKinds: new Map(), clipNames: new Map(), extraOtherClips: replacements.filter(item => item.id !== original.id)});
 }
 function overlayClipForAsset(context: SyncContext, asset: Row, kind: 'image' | 'video' | 'audio', clipId: string,
   trackId: string, startFrame: number, durationFrames: number, owner: Format5Clip): Format5Clip {
@@ -685,6 +756,10 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
     const media = context.media.find(item => item.nodeId === sourceNodeId);
     if (!media) return failure('MISSING_MEDIA', [sourceNodeId]);
     const copied = context.shots.get(sourceNodeId);
+    if (source.timing && (edit.clip.durationFrames !== source.durationFrames || edit.clip.sourceInFrame !== source.sourceInFrame)) {
+      return failure('SEQUENCE_EDIT_PATCH_INVALID', [source.id]);
+    }
+    const timedSource = source.timing ? {timedSource: source} : {};
     if (node.kind === 'shot') {
       if (!copied) return failure('INVALID_MEDIA', [sourceNodeId]);
       const selected = source.versionId ?? null;
@@ -695,12 +770,13 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
       const adoptionRow = version === undefined ? undefined : {id: randomUUID(), projectId: context.projectId,
         shotId: edit.clip.nodeId, versionId: selected!, createdAt: now()};
       const mediaCopy = {nodeId: edit.clip.nodeId, selectedVersion: selected === null ? null
-        : (media.selectedVersion === null ? null : {id: media.selectedVersion.id, sourceFrames: media.selectedVersion.sourceFrames}),
+        : source.timing ? {id: selected, sourceFrames: sourceFrameCount(context.assets.get(source.assetId!)?.duration)}
+          : (media.selectedVersion === null ? null : {id: media.selectedVersion.id, sourceFrames: media.selectedVersion.sourceFrames}),
         durationFrames: media.durationFrames};
       return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
         kind: 'shot', media: mediaCopy, shotRow, ...(adoptionRow ? {adoptionRow} : {}),
         durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
-        versionId: selected, title: typeof copied.title === 'string' ? copied.title : 'Clip'});
+        versionId: selected, title: typeof copied.title === 'string' ? copied.title : 'Clip', ...timedSource});
     }
     const nodeRow = context.nodeRows.get(sourceNodeId);
     if (!nodeRow) return failure('INVALID_MEDIA', [sourceNodeId]);
@@ -709,7 +785,7 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
     return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
       kind: node.kind as 'image' | 'video', media: mediaCopy, nodeRow: {...nodeRow, id: edit.clip.nodeId},
       durationFrames: edit.clip.durationFrames, sourceInFrame: edit.clip.sourceInFrame,
-      versionId: edit.clip.versionId, title: assetName(context.assets.get(String(media.selectedVersion?.id)) ?? {}, 'Clip')});
+      versionId: edit.clip.versionId, title: assetName(context.assets.get(String(media.selectedVersion?.id)) ?? {}, 'Clip'), ...timedSource});
   }
   return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [edit.clip.nodeId]);
 }
@@ -726,11 +802,17 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
     const source = context.timeline.clips.find(item => item.id === edit.copyFromClipId);
     if (!source || source.trackId === mainTrackId || !source.assetId) return failure('CLIP_NOT_FOUND', [edit.copyFromClipId]);
     const {sequenceSource: _source, ...sourceBase} = source;
+    if (source.timing) {
+      if (edit.durationFrames !== source.durationFrames || edit.sourceInFrame !== source.sourceInFrame) {
+        return failure('SEQUENCE_EDIT_PATCH_INVALID', [source.id]);
+      }
+      delete sourceBase.transitionIn;
+    }
     clip = {...sourceBase, id: edit.clipId, trackId: edit.trackId, startFrame: edit.startFrame,
       durationFrames: edit.durationFrames, sourceInFrame: edit.sourceInFrame,
       anchor: {clipId: owner.id, offsetFrames: edit.startFrame - owner.startFrame}};
     if (source.sourceState === 'placeholder') return failure('INVALID_MEDIA', [source.id]);
-    if (track.kind === 'audio' && !String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
+    if (track.kind === 'audio' && !String(context.assets.get(source.assetId)?.mimeType).startsWith(source.soundOnly ? 'video/' : 'audio/'))
       return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
     if (track.kind === 'video' && String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
       return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
@@ -856,7 +938,56 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
       const rejected = copyAsNewShotInputFailure(context, edit);
       if (rejected) return rejected;
     }
+    const target = 'clipId' in edit ? context.timeline.clips.find(item => item.id === edit.clipId) : undefined;
+    if (target?.timing && (edit.kind === 'trim' || edit.kind === 'split')) {
+      try {
+        if (edit.kind === 'trim' && edit.sourceInFrame !== undefined && edit.sourceInFrame !== target.sourceInFrame) {
+          return failure('INVALID_WINDOW', [target.id]);
+        }
+        if (edit.kind === 'split' && (edit.offsetFrames < 1 || edit.offsetFrames >= target.durationFrames)) {
+          return failure('INVALID_SPLIT', [target.id]);
+        }
+        if (edit.kind === 'split' && context.timeline.clips.some(clip => clip.id === edit.rightClipId)) {
+          return failure('DUPLICATE_CLIP', [edit.rightClipId]);
+        }
+        const pieces = edit.kind === 'split' ? splitSequenceClip(target, context.timeline, edit.offsetFrames, edit.rightClipId)
+          : [trimTimedSequenceClip(target, context.timeline, edit.durationFrames)];
+        const rows = new Map(pieces.map(clip => [clip.id, clip]));
+        if (target.trackId !== context.timeline.mainTrack.trackId) {
+          const anchored = pieces.map(piece => {
+            if (!target.anchor) return {...piece, anchor: null};
+            const owner = context.timeline.clips.find(clip => clip.id === target.anchor!.clipId);
+            const offsetFrames = piece.startFrame - (owner?.startFrame ?? piece.startFrame);
+            return {...piece, anchor: owner && offsetFrames >= 0 && offsetFrames < owner.durationFrames
+              ? {clipId: owner.id, offsetFrames} : null};
+          });
+          return planTimedOtherTrackEdit(context, target, anchored);
+        }
+        const projections = new Map(pieces.map(clip => [clip.id, {sourceInFrame: clip.sourceInFrame,
+          ...(clip.sourceSpanFrames === undefined ? {} : {sourceSpanFrames: clip.sourceSpanFrames})}]));
+        const planned = planChainSync(state, {kind: 'track', edit}, projections);
+        if (planned.ok) timedClipRows.set(planned, rows);
+        return checked(planned);
+      } catch (error) {
+        if (!(error instanceof AppError) || !isSequenceEditErrorCode(error.code)) throw error;
+        return failure(error.code, [target.id]);
+      }
+    }
+    if (target?.timing && target.trackId !== context.timeline.mainTrack.trackId) {
+      if (edit.kind === 'remove') return planTimedOtherTrackEdit(context, target, []);
+      if (edit.kind === 'move-off-track') {
+        const track = context.timeline.tracks.find(item => item.id === edit.trackId);
+        const oldTrack = context.timeline.tracks.find(item => item.id === target.trackId);
+        if (!track || track.id === context.timeline.mainTrack.trackId || track.kind !== oldTrack?.kind) {
+          return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+        }
+        const owner = ownerAt(context, edit.startFrame);
+        const anchor = owner ? {clipId: owner.id, offsetFrames: edit.startFrame - owner.startFrame} : null;
+        return planTimedOtherTrackEdit(context, target, [{...target, trackId: edit.trackId, startFrame: edit.startFrame, anchor}]);
+      }
+    }
     if (edit.kind === 'version') {
+      if (target?.timing?.profile === 'timeline-freeze-v1') return failure('SPEED_NOT_SUPPORTED', [target.id]);
       const clip = context.clips.find(item => item.id === edit.clipId);
       if (!clip) return failure('CLIP_NOT_FOUND', [edit.clipId]);
       const versionId = edit.version?.id ?? null;
@@ -982,24 +1113,31 @@ function subtitleProfileOf(timeline: Format5Timeline,
  * (plan §2.3); a cue whose shot leaves the main track keeps its absolute frame.
  */
 function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
-  extraShots: ReadonlyMap<string, Row> = new Map()): MainTrackProjectionOutcome {
+  extraShots: ReadonlyMap<string, Row> = new Map(), speedTimeline?: Format5Timeline): MainTrackProjectionOutcome {
   const existing = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
   const mainTrackId = context.timeline.mainTrack.trackId;
   const planNodes = new Map(plan.after.board.nodes.map(node => [node.id, node]));
-  const copiedNodes = new Set(plan.copiedNode ? [plan.copiedNode.toNodeId] : []);
   const meta = metadataOf(plan);
+  const timed = timedClipRows.get(plan);
+  const copiedNodes = new Set(plan.copiedNode ? [plan.copiedNode.toNodeId] : []);
+  if (timed && meta) {
+    for (const clip of plan.after.clips) {
+      if (timed.has(clip.id) && meta.shotRows.has(clip.nodeId)) copiedNodes.add(clip.nodeId);
+    }
+  }
   const clipCopy = plan.copiedNode?.clipCopy;
-  const mainClips = plan.after.clips.map(clip => {
-    if (!clipCopy) return nextMainClip(context, clip, existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes);
-    const isCopy = clip.id === clipCopy.toClipId;
-    const source = existing.get(isCopy ? clipCopy.fromClipId : clip.id)!;
-    if (!isCopy) return {...source, startFrame: clip.startFrame};
-    // Keep all persisted clip properties, including future properties that do
-    // not affect the planner. Start and group follow the new timeline position.
-    return {...source, id: clip.id, startFrame: clip.startFrame,
-      sequenceSource: {...source.sequenceSource!, nodeId: clip.nodeId, segmentGroupId: clip.id},
-      ...(source.sourceState === 'placeholder' && source.shotId !== undefined ? {shotId: clip.nodeId} : {})};
-  });
+  const mainClips = speedTimeline?.clips.filter(clip => clip.trackId === mainTrackId)
+    ?? plan.after.clips.map(clip => {
+      if (!clipCopy) return nextMainClip(context, clip, timed?.get(clip.id) ?? existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes);
+      const isCopy = clip.id === clipCopy.toClipId;
+      const source = existing.get(isCopy ? clipCopy.fromClipId : clip.id)!;
+      if (!isCopy) return {...source, startFrame: clip.startFrame};
+      // Keep saved properties such as timing and applied lineage. Start and
+      // group follow the new timeline position.
+      return {...source, id: clip.id, startFrame: clip.startFrame,
+        sequenceSource: {...source.sequenceSource!, nodeId: clip.nodeId, segmentGroupId: clip.id},
+        ...(source.sourceState === 'placeholder' && source.shotId !== undefined ? {shotId: clip.nodeId} : {})};
+    });
   if (meta) for (const clip of mainClips) {const name = meta.clipNames.get(clip.id); if (name) clip.name = name;}
   // GE-b: a generation placeholder is named after the shot it creates. The new
   // shot is not in `context.shots` yet while the plan is projected, so the
@@ -1020,11 +1158,12 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
   const clips: Format5Clip[] = [...mainClips];
   const generatedOther = generatedShotMeta.get(plan)?.otherClip;
   if (generatedOther) clips.push(generatedOther);
-  for (const clip of context.timeline.clips) {
+  for (const clip of (speedTimeline ?? context.timeline).clips) {
     if (clip.trackId === mainTrackId || removedAnchored.has(clip.id)) continue;
     const item = anchored.get(clip.id);
-    const startFrame = item?.startFrame ?? clip.startFrame;
-    clips.push({...clip, startFrame, anchor: item ? anchorForOwner(item, ownerSegments) ?? null : clip.anchor ?? null});
+    const projectedClip = timed?.get(clip.id) ?? clip;
+    const startFrame = item?.startFrame ?? projectedClip.startFrame;
+    clips.push({...projectedClip, startFrame, anchor: item ? anchorForOwner(item, ownerSegments) ?? null : projectedClip.anchor ?? null});
   }
   // A segment moved off the main track keeps its content but becomes an
   // other-track item with an explicit anchor.
@@ -1039,7 +1178,7 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
       anchor: item ? anchorForOwner(item, ownerSegments) : null});
   }
   // Anchors that no longer resolve detach in place; the absolute frame is kept.
-  const movedCues: Format5Cue[] = (context.timeline.subtitles?.cues ?? []).map(cue => {
+  const movedCues: Format5Cue[] = ((speedTimeline ?? context.timeline).subtitles?.cues ?? []).map(cue => {
     const item = anchored.get(cue.id);
     if (!item) return cue;
     const startFrame = item.startFrame;
@@ -1586,16 +1725,14 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
     ...(header ? {fps: header.fps, width: header.width, height: header.height} : {}),
     tracks: delta.tracks ? [...delta.tracks] : current.tracks,
     clips: [...clips.values()], subtitles: subtitleProfile ? {...subtitleProfile, cues: [...cues.values()]} : undefined};
-  // Validate the rows against the header the patch asks for: an undo restores
-  // the old header together with clips that intentionally have no layout, and a
-  // track-adding action must validate its new clip against that same header.
-  const planHeader = {...(header ?? {}), ...(delta.tracks ? {tracks: delta.tracks} : {})};
-  const planState = (header || delta.tracks) && state.header
-    ? {...state, header: {...state.header, raw: JSON.stringify({...JSON.parse(state.header.raw), ...planHeader})}}
+  // Validate the delta against the same geometry, tracks and duration that
+  // will be committed with it. Ripple can move a cue past the old end frame.
+  const headerRaw = JSON.stringify(format5TimelineHeader(next));
+  const planState = state.header
+    ? {...state, header: {...state.header, raw: headerRaw}}
     : state;
   const update = planFormat5TimelineEntityUpdate(planState, {clips: delta.clips, cues: delta.cues,
     removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
-  const headerRaw = JSON.stringify(format5TimelineHeader(next));
   const headerChanged = state.header?.raw !== headerRaw;
   const rowChanges = update.changed || update.clipDeletes.length > 0 || update.cueDeletes.length > 0;
   const changed = rowChanges || headerChanged;
@@ -1938,12 +2075,267 @@ function receiptDraft(envelope: SequenceEditEnvelope, inputDigest: string, recei
   };
 }
 
+function speedAllocation(context: SyncContext, intent: SequenceEditSpeedIntent,
+  offered?: Partial<SequenceEditAllocation>): SequenceEditAllocation {
+  const allocation: SequenceEditAllocation = {clips: [], nodes: [], splitClips: [], edges: []};
+  const op = intent.operation;
+  if (op.kind !== 'freeze-frame') return allocation;
+  const clip = context.timeline.clips.find(item => item.id === op.clipId);
+  if (!clip) return allocation;
+  const nodeId = clip.sequenceSource?.nodeId ?? clip.id;
+  return {...allocation, clips: [{nodeId, clipId: offered?.clips?.find(item => item.nodeId === nodeId)?.clipId ?? randomUUID()}],
+    splitClips: op.atFrame > clip.startFrame ? [{clipId: clip.id,
+      rightClipId: offered?.splitClips?.find(item => item.clipId === clip.id)?.rightClipId ?? randomUUID()}] : []};
+}
+
+function prepareSpeedEdit(store: ProjectStore, context: SyncContext, intent: SequenceEditSpeedIntent,
+  allocation: SequenceEditAllocation) {
+  const candidate = planSpeedTimeline(context.timeline, intent.operation, id => context.assets.get(id), allocation);
+  const previous = new Map(context.timeline.clips.map(clip => [clip.id, clip]));
+  const previousCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue]));
+  const mainTrackId = context.timeline.mainTrack.trackId;
+  const changedClipIds = candidate.timeline.clips.filter(clip => !sameJson(previous.get(clip.id), clip)).map(clip => clip.id);
+  const mainChanged = changedClipIds.some(id => candidate.timeline.clips.some(clip => clip.id === id && clip.trackId === mainTrackId));
+  const state = saState(context);
+  const plan: SequenceEditPlan = {ok: true, warnings: [], issues: [],
+    after: {...state, clips: format5MainTrackClips(candidate.timeline),
+      anchored: [...candidate.timeline.clips.filter(clip => clip.trackId !== mainTrackId),
+        ...candidate.timeline.subtitles?.cues ?? []].map(item =>
+        format5AnchoredItem({id: item.id, startFrame: item.startFrame, anchor: item.anchor ?? null}))},
+    changes: {nodes: [], edges: [], media: [], clips: [], anchored: []}};
+  const projected: MainTrackProjectionOutcome = mainChanged
+    ? patchMainTimeline(context, plan, undefined, candidate.timeline)
+    : {ok: true, projection: {timeline: candidate.timeline, changedCueIds: [], removedCueIds: [], subtitles: {kind: 'unchanged'}}};
+  if (!projected.ok) {
+    const code = projected.code === 'SEQUENCE_EDIT_DIALOGUE_CONFLICT' ? 'SEQUENCE_EDIT_ANCHOR_CONFLICT' : projected.code;
+    throw new AppError(code, '变速后无法安排挂靠项目。', 409, {ids: projected.ids});
+  }
+  const projection = projected.projection;
+  const timeline = {...projection.timeline};
+  if (timeline.subtitles === undefined) delete timeline.subtitles;
+  const anchorIssue = validateAnchoredTimeline(timeline);
+  if (anchorIssue) throw new AppError('SEQUENCE_EDIT_ANCHOR_CONFLICT', '变速后轨道或字幕会重叠。', 409, {ids: anchorIssue.ids});
+  validateSpeedTransitions(timeline, context.timeline, id => context.assets.get(id));
+  const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId, formatVersion: FORMAT6_PROJECT_SCHEMA_VERSION});
+  if (issue) throw new AppError(issue.code, issue.message, 409, {ids: issue.ids});
+  const baseline = mainChanged ? buildBaseline(context, timeline, new Map()) : context.baseline;
+  const emptyBoard: SequenceEditBoardDelta = {writes: [], removals: []};
+  const patch = timelineDeltaPair(context, timeline, plan, {before: emptyBoard, after: emptyBoard}, baseline, changedClipIds, projection);
+  const impact: SequenceEditImpact = {nodeIds: [], edgeIds: [],
+    mainTrackClipIds: patch.after.timeline.clips.filter(item => item.trackId === mainTrackId).map(item => item.id),
+    otherTrackItemIds: patch.after.timeline.clips.filter(item => item.trackId !== mainTrackId).map(item => item.id),
+    subtitleCueIds: [...new Set([...patch.after.timeline.cues.map(cue => cue.id), ...patch.after.timeline.removedCueIds])].sort()};
+  const revision = store.db.prepare('SELECT revision FROM project.agent_task_target_revisions_v2 WHERE kind=? AND targetId=?');
+  const targets = [...impact.mainTrackClipIds, ...impact.otherTrackItemIds].filter(id => previous.has(id))
+    .map(id => ({kind: 'clip' as const, id, revision: Number(revision.get('timeline_clip', id)?.revision ?? 1)}));
+  const cueTargets = impact.subtitleCueIds.filter(id => previousCues.has(id))
+    .map(id => ({kind: 'cue' as const, id, revision: Number(revision.get('timeline_cue', id)?.revision ?? 1)}));
+  const movedClipIds = patch.after.timeline.clips.filter(clip => {
+    const before = previous.get(clip.id);
+    return before && before.startFrame !== clip.startFrame;
+  }).map(clip => clip.id).sort();
+  const changedAnchorIds = [...patch.after.timeline.clips, ...patch.after.timeline.cues].filter(item => {
+    const before = previous.get(item.id) ?? previousCues.get(item.id);
+    return before && (!sameJson(before.anchor, item.anchor)
+      || (before.anchor !== null && before.anchor !== undefined && before.startFrame !== item.startFrame));
+  }).map(item => item.id).sort();
+  return {patch, timeline, impact, targets: [...targets, ...cueTargets],
+    summary: {durationFrames: candidate.durationFrames, movedClipIds, changedAnchorIds}};
+}
+
+export function sequenceSpeedImpact(store: ProjectStore, envelope: SequenceEditEnvelope) {
+  if (!envelope.speedIntent || projectFormat(store) !== FORMAT6_PROJECT_SCHEMA_VERSION) {
+    throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '项目未启用变速编辑。', 409);
+  }
+  return prepareSpeedEdit(store, readSyncContext(store), envelope.speedIntent, envelope.allocation).summary;
+}
+
+interface SpeedPreviewInput {
+  readonly requestId: string;
+  readonly actionId?: string;
+  readonly origin?: 'user' | 'mio';
+  readonly speedIntent: SequenceEditSpeedIntent;
+  readonly allocation?: Partial<SequenceEditAllocation>;
+}
+interface SpeedPreviewMediaCheck { readonly signal?: AbortSignal; readonly beforeEffect?: () => void }
+type SpeedPreviewResult = SequenceSyncPreview | SequenceEditTransactionFailure;
+
+export function previewSequenceSpeed(store: ProjectStore, input: SpeedPreviewInput): SpeedPreviewResult {
+  if (projectFormat(store) !== FORMAT6_PROJECT_SCHEMA_VERSION) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+  return store.tx(() => {
+    try {
+      const context = readSyncContext(store);
+      const allocation = speedAllocation(context, input.speedIntent, input.allocation);
+      const {impact, targets} = prepareSpeedEdit(store, context, input.speedIntent, allocation);
+      const {state} = prepareSequenceEditHistory(store);
+      const envelope: SequenceEditEnvelope = {contractVersion: 1, projectId: store.projectId, epoch: state.epoch,
+        actionId: input.actionId ?? randomUUID(), requestId: input.requestId, originSide: 'timeline', filmId: context.rootNodeId,
+        ...(input.origin ? {origin: input.origin} : {}), intents: [], speedIntent: input.speedIntent, allocation, impact,
+        baseline: {contentRevision: readProjectContentStamp(store.db).contentSequence, timelineRevision: context.timeline.revision,
+          syncRevision: context.syncRevision, historyPosition: state.position, historyRevision: state.revision, targets}};
+      if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+      return {envelope, warnings: [], planDigest: sequenceEditInputDigest(envelope)};
+    } catch (error) {
+      if (!(error instanceof AppError) || !isSequenceEditErrorCode(error.code)) throw error;
+      return failure(error.code, (error.details as {ids?: readonly string[]} | undefined)?.ids);
+    }
+  });
+}
+
+function prepareCommittedSpeedEdit(store: ProjectStore, context: SyncContext, envelope: SequenceEditEnvelope,
+  intent: SequenceEditSpeedIntent): ReturnType<typeof prepareSpeedEdit> | SequenceEditTransactionFailure {
+  const state = prepareSequenceEditHistory(store).state;
+  if (envelope.epoch !== state.epoch || envelope.baseline.historyPosition !== state.position ||
+      envelope.baseline.historyRevision !== state.revision) return failure('SEQUENCE_EDIT_HISTORY_CONFLICT');
+  const expectedAllocation = speedAllocation(context, intent, envelope.allocation);
+  if (!sameJson(expectedAllocation, envelope.allocation)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+  const prepared = prepareSpeedEdit(store, context, intent, envelope.allocation);
+  if (!sameJson(prepared.targets, envelope.baseline.targets) || !sameJson(prepared.impact, envelope.impact)) {
+    return failure('SEQUENCE_EDIT_PATCH_INVALID');
+  }
+  return prepared;
+}
+
+function speedMediaError(code: SequenceEditErrorCode, ids: readonly string[] = []): AppError {
+  return new AppError(code, '无法应用片段的补帧设置。', 409, {ids});
+}
+
+/** Validate the exact planned edit on the owned source's decoded clock.
+ * Probing happens outside SQLite transactions. The caller runs the returned
+ * fence synchronously before publishing the preview or applying the edit. */
+export async function assertSequenceSpeedMedia(store: ProjectStore, envelope: SequenceEditEnvelope,
+  options: SpeedPreviewMediaCheck, expectedPlanDigest?: string): Promise<(() => void) | undefined> {
+  const intent = envelope?.speedIntent;
+  const operation = intent?.operation;
+  if (!intent || operation?.kind !== 'clip-speed' || operation.setting?.interpolation === 'off') return;
+  if (projectFormat(store) !== FORMAT6_PROJECT_SCHEMA_VERSION || !isSequenceEditEnvelope(envelope) ||
+      envelope.projectId !== store.projectId) throw speedMediaError('SEQUENCE_EDIT_CONTRACT_INVALID');
+  const digest = sequenceEditInputDigest(envelope);
+  const isReplay = (): boolean => {
+    const receipt = findSequenceEditReceipt(store, envelope.requestId);
+    if (!receipt) return false;
+    if (receipt.inputDigest !== digest) throw speedMediaError('SEQUENCE_EDIT_REQUEST_REUSED');
+    return true;
+  };
+  if (isReplay()) return;
+  if (expectedPlanDigest !== undefined && expectedPlanDigest !== digest) throw speedMediaError('SEQUENCE_EDIT_PATCH_INVALID');
+  const {clipId} = operation;
+  const media = store.tx(() => {
+    const context = readSyncContext(store);
+    if (envelope.filmId !== context.rootNodeId) throw speedMediaError('SEQUENCE_EDIT_CONTRACT_INVALID');
+    const revisionFailure = revisionMatches(store, envelope, context);
+    if (revisionFailure) throw speedMediaError(revisionFailure.code, revisionFailure.ids);
+    const prepared = prepareCommittedSpeedEdit(store, context, envelope, intent);
+    if ('ok' in prepared) throw speedMediaError(prepared.code, prepared.ids);
+    const timeline = {...prepared.timeline, clips: prepared.timeline.clips.map(clip => ({...clip, assetId: clip.assetId ?? ''}))};
+    const clip = timeline.clips.find(clip => clip.id === clipId);
+    if (clip?.timing?.profile !== 'timeline-speed-v1' || clip.timing.interpolation === 'off' || !clip.assetId ||
+        !timeline.tracks.some(track => track.id === clip.trackId && track.kind === 'video') ||
+        !context.assets.get(clip.assetId)?.mimeType?.startsWith('video/')) return;
+    const compiled = (item: typeof clip) => {
+      const plan = compileClipTimeMap(item, timeline);
+      if (!plan.ok) throw speedMediaError(plan.code, [item.id]);
+      return plan.value;
+    };
+    const plan = compiled(clip);
+    const clips = new Map(timeline.clips.map(item => [item.id, item]));
+    const assets = new Map([...context.assets].flatMap(([id, asset]) =>
+      typeof asset.mimeType === 'string' ? [[id, {mimeType: asset.mimeType, duration: asset.duration}] as const] : []));
+    const regions = speedTimelineTransitionRegions(timeline, assets, id => {
+      const item = clips.get(id);
+      return item?.timing ? {timing: item.timing, plan: compiled(item)} : undefined;
+    });
+    const picture = transitionPictureRange(clip, regions);
+    const windows = speedPictureWindows({...clip, timing: clip.timing}, plan, picture, picture,
+      sourceFrameCount(context.assets.get(clip.assetId)?.duration) ?? 0);
+    const plans = speedInterpolationWindows(clipId, windows).map(window => window.fullPlan);
+    return plans.length ? {assetId: clip.assetId, plans} : undefined;
+  });
+  if (!media) return;
+  const deadline = AbortSignal.timeout(EXPORT_PREFLIGHT_LIMITS.timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  const {projectId, projectDir, db} = store;
+  const beforeEffect = (): void => {
+    checkpoint(signal);
+    options.beforeEffect?.();
+    assertProjectStore(store);
+    if (db.isTransaction || readProjectContentStamp(db).contentSequence !== envelope.baseline.contentRevision) {
+      throw speedMediaError('SEQUENCE_EDIT_REVISION_CONFLICT', [clipId]);
+    }
+  };
+  const sourceFailure = (error: unknown): boolean => {
+    const code = (error as {code?: string})?.code;
+    return deadline.aborted || code?.startsWith('MANAGED_') === true || code?.startsWith('MEDIA_') === true ||
+      code === 'SPEED_SOURCE_UNSUPPORTED';
+  };
+  try {
+    beforeEffect();
+    const asset = readOwnedTimelineAsset(db, projectId, media.assetId);
+    if (!asset) throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+    const source = await verifiedManagedHash(projectDir, asset, {signal, beforeEffect, maxBytes: EXPORT_PREFLIGHT_LIMITS.sourceBytes});
+    const fence = (): void => {
+      beforeEffect();
+      const current = validateManagedSource(projectDir, asset);
+      if (current.file !== source.file || !sameManagedFile(current.info, source.info)) {
+        throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+      }
+    };
+    fence();
+    const probe = await probeTimelineSource(source.file, {signal, beforeEffect: fence});
+    fence();
+    if (!probe.hasVideo || probe.videoStreamIndex === null) throw speedMediaError('UNSUPPORTED_FORMAT', [clipId]);
+    try {
+      for (const plan of media.plans) {
+        await inspectSpeedVideoInterpolation({source: {path: source.file, videoStreamIndex: probe.videoStreamIndex},
+          plan, signal, beforeEffect: fence});
+      }
+    } catch (error) {
+      // A format or phase refusal must describe the same file as the plan.
+      if (error instanceof AppError && ['INTERPOLATION_UNAVAILABLE', 'UNSUPPORTED_FORMAT'].includes(error.code)) fence();
+      throw error;
+    }
+    return () => {
+      if (isReplay()) return;
+      try { fence(); }
+      catch (error) {
+        if (sourceFailure(error)) {
+          checkpoint(options.signal);
+          throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+        }
+        throw error;
+      }
+    };
+  } catch (error) {
+    checkpoint(options.signal);
+    if ((error as {terminationUnconfirmed?: unknown})?.terminationUnconfirmed === true) throw error;
+    if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_REVISION_CONFLICT' && isReplay()) return;
+    if (error instanceof AppError && isSequenceEditErrorCode(error.code)) throw speedMediaError(error.code, [clipId]);
+    if (sourceFailure(error)) throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+    throw error;
+  }
+}
+
+export async function previewSequenceSpeedWithMedia(store: ProjectStore, input: SpeedPreviewInput, options: SpeedPreviewMediaCheck): Promise<SpeedPreviewResult> {
+  const result = previewSequenceSpeed(store, input);
+  if (!('envelope' in result)) return result;
+  try {
+    const fence = await assertSequenceSpeedMedia(store, result.envelope, options, result.planDigest);
+    fence?.();
+    return result;
+  } catch (error) {
+    if (!(error instanceof AppError) || !isSequenceEditErrorCode(error.code)) throw error;
+    return failure(error.code, (error.details as {ids?: readonly string[]} | undefined)?.ids);
+  }
+}
+
 /** One shared transaction: replay, CAS, plan, write both halves, one history
  * action and the immutable receipt. Failures before the first write leave no
  * data or history row; a no-op stores a `not_applied` receipt only. */
 export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvelope,
-  options: {readonly expectedPlanDigest?: string; readonly afterApply?: () => void} = {}): SequenceSyncResult {
+  options: {readonly expectedPlanDigest?: string; readonly afterApply?: () => void;
+    readonly recordSpeedReceiptInside?: (receipt: SequenceEditReceipt) => void} = {}): SequenceSyncResult {
   if (!format5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+  if (envelope.speedIntent && projectFormat(store) !== FORMAT6_PROJECT_SCHEMA_VERSION) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (!isSequenceEditEnvelope(envelope)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   if (envelope.projectId !== store.projectId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   const inputDigest = sequenceEditInputDigest(envelope);
@@ -1952,7 +2344,11 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
   if (envelope.previsIntent) return runPrevisSync(store, envelope, inputDigest);
   return store.tx(() => {
     const replay = findSequenceEditReceipt(store, envelope.requestId);
-    if (replay) return replay.inputDigest === inputDigest ? replayResult(store, replay.receipt) : failure('SEQUENCE_EDIT_REQUEST_REUSED');
+    if (replay) {
+      if (replay.inputDigest !== inputDigest) return failure('SEQUENCE_EDIT_REQUEST_REUSED');
+      if (envelope.speedIntent && replay.receipt.status === 'applied') options.recordSpeedReceiptInside?.(replay.receipt);
+      return replayResult(store, replay.receipt);
+    }
     if (options.expectedPlanDigest !== undefined && options.expectedPlanDigest !== inputDigest) {
       return failure('SEQUENCE_EDIT_PATCH_INVALID');
     }
@@ -1960,6 +2356,21 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     if (envelope.filmId !== context.rootNodeId) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
     const revisionFailure = revisionMatches(store, envelope, context);
     if (revisionFailure) return revisionFailure;
+    if (envelope.speedIntent) {
+      const prepared = prepareCommittedSpeedEdit(store, context, envelope, envelope.speedIntent);
+      if ('ok' in prepared) return prepared;
+      const {patch} = prepared;
+      const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
+      const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
+      const receipt = receiptDraft(envelope, inputDigest, {
+        affected: affectedFromDelta(patch.after, context, context.timeline.mainTrack.trackId),
+        contentRevision: readProjectContentStamp(store.db).contentSequence, timelineRevision: timelineApply.timeline.revision,
+        syncRevision: baselineApply.revision,
+      });
+      const stored = writeSequenceEditAction(store, {envelope, patch, receipt});
+      options.recordSpeedReceiptInside?.(stored);
+      return {ok: true, actionId: envelope.actionId, operation: stored.operation, patch, receipt: stored};
+    }
     let sceneCuts: number[] = [];
     const sceneEdit = envelope.intents[0]?.operation;
     if (sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'split-at-scenes') {

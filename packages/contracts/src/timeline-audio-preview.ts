@@ -164,7 +164,7 @@ export type AudioPreviewSnapshot=z.infer<typeof snapshotSchema>;
 
 export type AudioPreviewPlanErrorCode='AUDIO_PREVIEW_INVALID_INPUT'|'AUDIO_PREVIEW_INVALID_SNAPSHOT'|
   'AUDIO_PREVIEW_REVISION_CONFLICT'|'AUDIO_PREVIEW_RANGE_BOUNDS'|'AUDIO_PREVIEW_SOURCE_LIMIT'|
-  'AUDIO_PREVIEW_MEMORY_LIMIT'|'AUDIO_PREVIEW_HASH_LIMIT'|'AUDIO_PREVIEW_AUDIO_UNKNOWN'|'AUDIO_PREVIEW_BUDGET';
+  'AUDIO_PREVIEW_MEMORY_LIMIT'|'AUDIO_PREVIEW_HASH_LIMIT'|'AUDIO_PREVIEW_AUDIO_UNKNOWN'|'AUDIO_PREVIEW_BUDGET'|'AUDIO_PREVIEW_UNAVAILABLE';
 function fail(code:AudioPreviewPlanErrorCode,message:string):never {
   throw Object.assign(new Error(message),{code});
 }
@@ -285,8 +285,15 @@ export function audioPreviewEnvelopeGainAtLocalSample(voice:AudioPreviewVoice,lo
 /** Pure and bounded. hashText must be a trusted synchronous SHA-256 adapter.
  * The business service separately owns restored-workspace, file, graph, and
  * cancellation guards. This function performs no reads, writes, or decoding. */
+export interface AudioPreviewTimedClip {
+  readonly timingHash: string;
+  readonly sourceSpanFrames: number;
+  readonly silent: boolean;
+}
+
 export function buildAudioPreviewPlan(
   rawInput:unknown,rawSnapshot:unknown,hashText:(text:string)=>string,
+  timedClips: ReadonlyMap<string, AudioPreviewTimedClip> = new Map(),
 ):AudioPreviewPlan {
   if(!boundedPlainData(rawInput))fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid preview input data.');
   const parsedInput=audioPreviewPlanInputSchema.safeParse(rawInput);
@@ -324,8 +331,9 @@ export function buildAudioPreviewPlan(
     const fadeIn=clip.fadeInFrames??0,fadeOut=clip.fadeOutFrames??0;
     if(fadeIn+fadeOut>clip.durationFrames||(fadeIn>0||fadeOut>0)&&asset.hasAudio!==true)
       fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Invalid saved audio fade.');
-    if(image?clip.sourceInFrame!==0:asset.duration===null||asset.duration<=0||
-        clip.sourceInFrame+clip.durationFrames>Math.floor(asset.duration*30+1e-6))
+    const timed=timedClips.get(clip.id);
+    if(image?clip.sourceInFrame!==0||Boolean(timed):asset.duration===null||asset.duration<=0||
+        clip.sourceInFrame+(timed?.sourceSpanFrames??clip.durationFrames)>Math.floor(asset.duration*30+1e-6))
       fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Saved clip exceeds the source range.');
     if(!byTrack.has(clip.trackId))byTrack.set(clip.trackId,[]);
     byTrack.get(clip.trackId)!.push(clip);
@@ -345,28 +353,38 @@ export function buildAudioPreviewPlan(
   const startFrame=input.startFrame,endFrame=Math.min(startFrame+600,timeline.durationFrames);
   const compositionSegments=timelineCompositionSegments(timeline);
   const sources:AudioPreviewSourceDescriptor[]=[],voices:AudioPreviewVoice[]=[],sourceMap=new Map<string,AudioPreviewSourceDescriptor>();
+  const wireIdentities=new Set<string>();
   const ordered=[...timeline.clips].sort((a,b)=>trackMap.get(a.trackId)!.orderIndex-trackMap.get(b.trackId)!.orderIndex||
     (a.id<b.id?-1:a.id>b.id?1:0));
   let retained=0,largest=0,hashReads=0,decodedSourceFrames=0,decodeSegments=0;
   for(const clip of ordered){
     const track=trackMap.get(clip.trackId)!,asset=assetMap.get(clip.assetId)!;
     const intersectionStartFrame=Math.max(startFrame,clip.startFrame),intersectionEndFrame=Math.min(endFrame,clip.startFrame+clip.durationFrames);
-    if(track.muted||clip.muted===true||clip.gain===0||asset.hasAudio!==true||intersectionStartFrame>=intersectionEndFrame)continue;
+    const timed=timedClips.get(clip.id);
+    if(track.muted||clip.muted===true||timed?.silent||clip.gain===0||asset.hasAudio!==true||intersectionStartFrame>=intersectionEndFrame)continue;
     if(asset.sizeBytes>AUDIO_PREVIEW_LIMITS.sourceBytes||asset.duration===null||asset.duration>AUDIO_PREVIEW_LIMITS.sourceSeconds)
       fail('AUDIO_PREVIEW_SOURCE_LIMIT','Preview source exceeds the input size or duration limit.');
-    const sourceInFrame=clip.sourceInFrame+intersectionStartFrame-clip.startFrame,durationFrames=intersectionEndFrame-intersectionStartFrame;
-    const segments:AudioPreviewDecodeSegment[]=[];
-    for(const segment of compositionSegments){
+    // Retimed PCM is already on the clip's output clock. Untimed PCM keeps
+    // its original source clock and composition decode boundaries.
+    const voiceSourceInFrame=timed?0:clip.sourceInFrame;
+    const sourceInFrame=voiceSourceInFrame+intersectionStartFrame-clip.startFrame,durationFrames=intersectionEndFrame-intersectionStartFrame;
+    const segments:AudioPreviewDecodeSegment[]=timed?[{sourceInFrame,frameCount:durationFrames,trimStartFrame:0,outputFrames:durationFrames}]:[];
+    for(const segment of timed?[]:compositionSegments){
       if(segment.beginFrame<clip.startFrame||segment.endFrame>clip.startFrame+clip.durationFrames)continue;
       const from=Math.max(startFrame,segment.beginFrame),to=Math.min(endFrame,segment.endFrame);
       if(from>=to)continue;
       segments.push({sourceInFrame:clip.sourceInFrame+segment.beginFrame-clip.startFrame,
         frameCount:segment.endFrame-segment.beginFrame,trimStartFrame:from-segment.beginFrame,outputFrames:to-from});
     }
-    const identity=sourceIdentity({assetId:asset.id,sourceHash:asset.sha256,sourceInFrame,durationFrames,
+    const physicalIdentity=sourceIdentity({assetId:asset.id,sourceHash:asset.sha256,sourceInFrame,durationFrames,
       profileId:AUDIO_PREVIEW_PROFILE,decodeSegments:segments});
+    const identity=timed?canonical([timed.timingHash,physicalIdentity]):physicalIdentity;
     let source=sourceMap.get(identity);
     if(!source){
+      // V1 requires each wire decode identity to be unique. Overlapping
+      // occurrences with different retimes must use the existing mixed lane.
+      if(wireIdentities.has(physicalIdentity))fail('AUDIO_PREVIEW_UNAVAILABLE','This saved mix needs continuous audio preview.');
+      wireIdentities.add(physicalIdentity);
       const sampleFrames=durationFrames*1600,pcmBytes=sampleFrames*8;
       source={sourceKey:checkedHash(identity),profileId:AUDIO_PREVIEW_PROFILE,clipId:clip.id,assetId:asset.id,
         sourceHash:asset.sha256,sourceInFrame,durationFrames,sampleFrames,pcmBytes,sourceBytes:asset.sizeBytes,decodeSegments:segments};
@@ -375,7 +393,7 @@ export function buildAudioPreviewPlan(
       decodedSourceFrames+=segments.reduce((sum,segment)=>sum+segment.frameCount+1,0);decodeSegments+=segments.length;
     }
     voices.push({clipId:clip.id,trackId:clip.trackId,sourceKey:source.sourceKey,startFrame:clip.startFrame,
-      durationFrames:clip.durationFrames,sourceInFrame:clip.sourceInFrame,gain:clip.gain,
+      durationFrames:clip.durationFrames,sourceInFrame:voiceSourceInFrame,gain:clip.gain,
       fadeInFrames:clip.fadeInFrames??0,fadeOutFrames:clip.fadeOutFrames??0,intersectionStartFrame,intersectionEndFrame});
   }
   const admittedBytes=2*retained+2*largest+AUDIO_PREVIEW_LIMITS.transportReserveBytes;

@@ -231,11 +231,12 @@ function timebase(value: TimeMapTimebase): TimeMapResult<Rat> {
 
 const LN2 = 0.6931471805599453;
 const LN10 = 2.302585092994046;
-const EXP_RECIPROCAL_FACTORIAL = Object.freeze([
+// Keep the private coefficients as packed numeric elements for the hot integration loop.
+const EXP_RECIPROCAL_FACTORIAL = [
   1, 1 / 2, 1 / 6, 1 / 24, 1 / 120, 1 / 720, 1 / 5040, 1 / 40320, 1 / 362880, 1 / 3628800,
   1 / 39916800, 1 / 479001600, 1 / 6227020800, 1 / 87178291200, 1 / 1307674368000,
   1 / 20922789888000,
-]);
+] as const;
 /** Deterministic `exp(x)`: range reduction by ln 2 plus a fixed Maclaurin series.
  * Only + - * /, Math.round and powers of two are used. Math.round has exact
  * specification semantics, and scaling by a power of two is exact, so Node and
@@ -249,7 +250,8 @@ function detExp(x: number): number {
   const low = (x - hi) - k * LN2;
   const remainder = hi + low;
   let term = 1, result = 1;
-  for (const reciprocal of EXP_RECIPROCAL_FACTORIAL) {
+  for (let index = 0; index < EXP_RECIPROCAL_FACTORIAL.length; index++) {
+    const reciprocal = EXP_RECIPROCAL_FACTORIAL[index]!;
     term *= remainder;
     result += term * reciprocal;
   }
@@ -808,6 +810,68 @@ export function initialTimeMap(root: CompiledTimeMapRoot, direction: 'forward' |
     direction, outputWindow: {fromFrame: 0, toFrame: state.durationFrames}});
 }
 
+/** Reopen a persisted view after checking it against its compiled root. */
+export function restoreTimeMap(root: CompiledTimeMapRoot, view: Omit<PlanState, 'root'>): TimeMapResult<CompiledTimeMap> {
+  const state = rootState(root);
+  const {loTime, hiTime, outputWindow: {fromFrame, toFrame}} = view;
+  const limit = state.durationFrames;
+  if (![loTime.offsetOutputFrames, hiTime.offsetOutputFrames].every(value => Number.isSafeInteger(value) && Math.abs(value) <= limit)
+      || !Number.isSafeInteger(fromFrame) || !Number.isSafeInteger(toFrame)
+      || fromFrame < 0 || fromFrame >= toFrame || toFrame > limit) {
+    return fail('INVALID_WINDOW', 'view and output window must use bounded integer offsets');
+  }
+  const lo = boundaryTimeValue(loTime), hi = boundaryTimeValue(hiTime);
+  if (timeValueLess(state, lo, clockTime(0)) || timeValueLess(state, {kind: 'rootEnd', offset: 0}, hi)
+      || !timeValueLess(state, timeShift(lo, toFrame - 1), hi)) {
+    return fail('INVALID_WINDOW', 'view or output window leaves its motion interval');
+  }
+  return done(makePlan(root, view));
+}
+
+/** The edit domain includes the full half-open output window, including motion
+ * after the last sampled frame start. Endpoints already in the basis stay exact. */
+export function timeMapSourceRangeForEdit(plan: CompiledTimeMap): TimeMapResult<TimeMapSourceRange> {
+  const state = rootState(plan.root);
+  const interval = planClockInterval(state, planState(plan));
+  function boundary(time: RootTimeValue, original: TimeMapSourceBoundary): TimeMapResult<TimeMapSourceBoundary> {
+    if ((time.kind === 'clock' && time.frames === 0) || (time.kind === 'rootEnd' && time.offset === 0)) {
+      return done(original);
+    }
+    const position = invertAtTime(state, time, CURVE_REFINEMENT_TOLERANCES.length - 1);
+    if (!position.ok) return position;
+    if (position.value.kind === 'exact') {
+      const {numerator, denominator} = position.value;
+      return done({kind: 'rational', numerator, denominator});
+    }
+    const projected = projectSourceBoundaryToQ64(position.value);
+    return projected.ok ? done(projected.value.boundary) : projected;
+  }
+  const start = boundary(interval.lo, plan.root.sourceRange.start);
+  if (!start.ok) return start;
+  const end = boundary(interval.hi, plan.root.sourceRange.end);
+  return end.ok ? done({start: start.value, end: end.value}) : end;
+}
+
+/** PCHIP is shape-preserving, so only the visible ends and interior control
+ * points can determine the minimum rate. */
+export function timeMapHasSlowMotion(plan: CompiledTimeMap): TimeMapResult<boolean> {
+  const state = rootState(plan.root);
+  if (state.rate) return done(ratCmp(state.rate, ratInt(1n)) < 0);
+  const curve = state.curve;
+  if (!curve) return done(false);
+  const interval = planClockInterval(state, planState(plan));
+  const start = invertAtTime(state, interval.lo, 0);
+  if (!start.ok) return start;
+  const end = invertAtTime(state, interval.hi, 0);
+  if (!end.ok) return end;
+  const toFrame = (position: ContinuousSourcePosition) => position.kind === 'numeric'
+    ? position.value : Number(position.numerator) / Number(position.denominator);
+  const lo = toFrame(start.value), hi = toFrame(end.value);
+  return done(curveRate(curve, lo) < 1 || curveRate(curve, hi) < 1 ||
+    state.basis.speed.kind === 'curve' && state.basis.speed.points.some(point =>
+      point.sourceFrame > lo && point.sourceFrame < hi && point.rate.numerator < point.rate.denominator));
+}
+
 /** Flips the traversal direction over the same visible clock interval. The
  * output length and the tail rule stay put; nothing is re-rounded. */
 export function reverseTimeMap(plan: CompiledTimeMap): CompiledTimeMap {
@@ -934,40 +998,35 @@ function invertCurve(state: RootState, targetIntegral: number, targetError: numb
   if (targetIntegral >= endAbsolute - targetError) {
     return done({value: endNumber, errorBound: Math.max(0, targetIntegral - endAbsolute) / Math.min(1, curveRate(curve, endNumber))});
   }
-  let seg = 0, low = 0, high = curve.xs.length - 2;
+  let low = 0, high = curve.xs.length - 2;
   while (low < high) {
     const middle = (low + high + 1) >> 1;
     if (curve.prefix[middle]! <= targetIntegral) low = middle; else high = middle - 1;
   }
-  seg = low;
+  const seg = low;
   const segmentStart = curve.xs[seg]!, segmentEnd = curve.xs[seg + 1]!;
   const spanIntegral = curve.prefix[seg + 1]! - curve.prefix[seg]!;
   let u = spanIntegral > 0 ? segmentStart + (targetIntegral - curve.prefix[seg]!) * (segmentEnd - segmentStart) / spanIntegral : segmentStart;
   u = clampNumber(u, segmentStart, segmentEnd);
-  let lastError = Number.POSITIVE_INFINITY;
-  for (let iteration = 0; iteration < 32; iteration++) {
-    const clamped = clampNumber(u, segmentStart, segmentEnd);
-    const estimate = integrateCurve(curve, segmentStart, clamped, tolerance, LOCAL_CELL_BUDGET);
+  let lowerSource = segmentStart, upperSource = segmentEnd;
+  for (let iteration = 0; iteration < 64; iteration++) {
+    const estimate = integrateCurve(curve, segmentStart, u, tolerance, LOCAL_CELL_BUDGET);
     if (!estimate) return fail('NUMERIC_BUDGET_EXCEEDED', 'curve inverse exceeded the local integration budget');
     const integral = curve.prefix[seg]! + estimate.value;
     const residual = integral - targetIntegral;
-    lastError = curve.prefixError[seg]! + estimate.errorBound + targetError + 8 * EPSILON * (Math.abs(integral) + 1);
-    if (Math.abs(residual) <= lastError) return done({value: clamped, errorBound: (lastError + Math.abs(residual)) / Math.max(0.1, curveIntegrand(curve, clamped)) + 8 * EPSILON * (Math.abs(clamped) + 1)});
-    const slope = curveIntegrand(curve, clamped);
+    const error = curve.prefixError[seg]! + estimate.errorBound + targetError + 8 * EPSILON * (Math.abs(integral) + 1);
+    const slope = curveIntegrand(curve, u);
+    if (Math.abs(residual) <= error) return done({value: u, errorBound: (error + Math.abs(residual)) / Math.max(0.1, slope) + 8 * EPSILON * (Math.abs(u) + 1)});
     if (!(slope > 0) || !Number.isFinite(slope)) break;
-    const step = residual / slope;
-    u = clamped - step;
-    if (u < segmentStart) {
-      if (seg === 0) return done({value: startNumber, errorBound: lastError / Math.max(0.1, slope) + 8 * EPSILON * (Math.abs(startNumber) + 1)});
-      seg--; u = curve.xs[seg + 1]!;
-    } else if (u > segmentEnd) {
-      if (seg >= curve.xs.length - 2) return done({value: endNumber, errorBound: lastError / Math.max(0.1, slope) + 8 * EPSILON * (Math.abs(endNumber) + 1)});
-      seg++; u = curve.xs[seg]!;
-    }
-    if (Math.abs(step) < 1e-15 * Math.max(1, Math.abs(clamped))) break;
+    if (residual > 0) upperSource = u; else lowerSource = u;
+    // A steep first or last segment can send an unconstrained Newton step
+    // past the domain even when the target is well inside that segment.
+    const newton = u - residual / slope;
+    const next = newton > lowerSource && newton < upperSource ? newton : lowerSource + (upperSource - lowerSource) / 2;
+    if (next === u) break;
+    u = next;
   }
-  const fallback = clampNumber(u, startNumber, endNumber);
-  return done({value: fallback, errorBound: (lastError + 1e-12) / Math.max(0.1, curveIntegrand(curve, fallback)) + 8 * EPSILON * (Math.abs(fallback) + 1)});
+  return fail('UNRESOLVED_BOUNDARY', 'curve inverse did not converge within its source bracket');
 }
 /** Decides the source frame for a continuous position with the direction rule. */
 function decideFramePosition(state: RootState, u: number, error: number, direction: 'forward' | 'reverse',
@@ -1063,6 +1122,9 @@ function marchCurveFrames(state: RootState, direction: 'forward' | 'reverse'): T
 
 function invertAtTime(state: RootState, value: RootTimeValue, level: number): TimeMapResult<ContinuousSourcePosition> {
   if (state.kind === 'freeze') return done({kind: 'exact', numerator: String(state.freezeFrame!), denominator: '1'});
+  const endpoint = value.kind === 'clock' && value.frames === 0 ? state.sourceStart
+    : value.kind === 'rootEnd' && value.offset === 0 ? state.sourceEnd : null;
+  if (endpoint) return done({kind: 'exact', numerator: String(endpoint.n), denominator: String(endpoint.d)});
   const time = timeNumber(state, value);
   const timeError = timeUncertainty(state, value);
   if (state.lengthExact !== null && state.rate !== null) {
@@ -1102,11 +1164,6 @@ function planTimeValue(state: PlanState, outputOffset: number): RootTimeValue {
   const global = state.outputWindow.fromFrame + outputOffset;
   return timeShift(boundaryTimeValue(state.direction === 'forward' ? state.loTime : state.hiTime), state.direction === 'forward' ? global : -global);
 }
-function planExtremeTimes(state: RootState, plan: PlanState): {readonly earlier: RootTimeValue; readonly later: RootTimeValue} {
-  const first = planTimeValue(plan, 0), last = planTimeValue(plan, plan.outputWindow.toFrame - plan.outputWindow.fromFrame - 1);
-  return timeNumber(state, first) <= timeNumber(state, last) ? {earlier: first, later: last} : {earlier: last, later: first};
-}
-
 // ---------------------------------------------------------------------------
 // Public describe/compile surface for plans.
 // ---------------------------------------------------------------------------
@@ -1152,33 +1209,47 @@ export function timeMapPlanFrames(plan: CompiledTimeMap): TimeMapResult<Int32Arr
   const frames = new Int32Array(plan.durationFrames);
   const first = planTimeValue(planInfo, 0);
   const needed: 'forward' | 'reverse' = first.kind === 'clock' ? 'forward' : 'reverse';
-  const vector = rootFrames(state, needed);
-  if (!vector.ok) return vector;
+  // A flipped sub-window can traverse the other direction on this grid.
+  // Only the grid matching the traversal uses the cached floor/ceil vector.
+  const vector = needed === plan.direction ? rootFrames(state, needed) : null;
+  if (vector && !vector.ok) return vector;
   for (let index = 0; index < frames.length; index++) {
     const time = planTimeValue(planInfo, index);
     const vectorIndex = time.kind === 'clock' ? time.frames : -time.offset;
-    if (time.kind !== first.kind || !Number.isSafeInteger(vectorIndex) || vectorIndex < 0 || vectorIndex >= vector.value.length) {
+    if (time.kind !== first.kind || !Number.isSafeInteger(vectorIndex)) {
       return fail('INVALID_WINDOW', 'view window leaves the compiled frame vector');
     }
-    frames[index] = vector.value[vectorIndex]!;
+    if (vector && vectorIndex >= 0 && vectorIndex < vector.value.length) {
+      frames[index] = vector.value[vectorIndex]!;
+    } else {
+      const forward = plan.direction === 'forward';
+      const sample = resolvePositionInteger(state, time, forward ? 'floor' : 'ceil');
+      if (!sample.ok) return sample;
+      frames[index] = clampFrame(state, forward ? sample.value : sample.value - 1);
+    }
   }
   return done(frames);
 }
-/** Continuous visible source interval (earlier→later clock times) and the strict
- * integer envelope `[floor(lo), ceil(hi))` used for decode/capacity checks. */
+/** The first and last displayed source positions and the decode sample window.
+ * Persisted clip capacity uses the full motion interval, including the time
+ * after the last displayed frame start. */
 export function timeMapVisibleSourceRange(plan: CompiledTimeMap): TimeMapResult<TimeMapVisibleSourceRange> {
   const state = rootState(plan.root), planInfo = planState(plan);
-  const extremes = planExtremeTimes(state, planInfo);
-  const forward = planInfo.direction === 'forward';
-  const startBoundary = resolvePositionInteger(state, extremes.earlier, forward ? 'floor' : 'ceil');
+  if (state.freezeFrame !== null) {
+    const position = {kind: 'exact' as const, numerator: String(state.freezeFrame), denominator: '1'};
+    return done({lo: position, hi: position, sourceWindow: {startFrame: state.freezeFrame, endFrame: state.freezeFrame + 1}});
+  }
+  const first = planTimeValue(planInfo, 0), last = planTimeValue(planInfo, plan.durationFrames - 1);
+  const {lo, hi} = timeValueLess(state, last, first) ? {lo: last, hi: first} : {lo: first, hi: last};
+  const forward = plan.direction === 'forward';
+  const startBoundary = resolvePositionInteger(state, lo, forward ? 'floor' : 'ceil');
   if (!startBoundary.ok) return startBoundary;
-  const endBoundary = resolvePositionInteger(state, extremes.later, forward ? 'floor' : 'ceil');
+  const endBoundary = resolvePositionInteger(state, hi, forward ? 'floor' : 'ceil');
   if (!endBoundary.ok) return endBoundary;
-  const low = invertAtTime(state, extremes.earlier, 0);
+  const low = invertAtTime(state, lo, 0);
   if (!low.ok) return low;
-  const high = invertAtTime(state, extremes.later, 0);
+  const high = invertAtTime(state, hi, 0);
   if (!high.ok) return high;
-  // Forward samples floor(position); reverse samples ceil(position)-1.
   const startFrame = Math.max(state.frameRange.start, forward ? startBoundary.value : startBoundary.value - 1);
   const endFrame = Math.min(state.frameRange.end + 1, forward ? endBoundary.value + 1 : endBoundary.value);
   if (endFrame <= startFrame) return fail('INVALID_WINDOW', 'visible source envelope is empty');
@@ -1220,6 +1291,97 @@ export function timeMapSourceAtOutputFrame(plan: CompiledTimeMap, outputFrame: n
   return done({outputFrame, source: continuous, sourceFrame: frame,
     nextSourceFrame: clampFrame(state, frame + nextOffset), phase, tail: false});
 }
+
+/** Read the continuous clock without rebuilding the off-mode frame vector for
+ * every sample. Timestamps are relative to the unsliced view origin so a trim
+ * can shift them by whole output frames after quantization. */
+export function timeMapInterpolationClock(plan: CompiledTimeMap): {
+  sample(outputFrame: number): TimeMapResult<{readonly source: ContinuousSourcePosition; readonly slow: boolean}>;
+  outputAtSource(sourceFrame: number): TimeMapResult<number>;
+} {
+  const view = planState(plan), state = rootState(plan.root);
+  const forward = plan.direction === 'forward';
+  const anchor = timeNumber(state, boundaryTimeValue(forward ? view.loTime : view.hiTime));
+  const start = numberFromRat(state.sourceStart), end = numberFromRat(state.sourceEnd);
+  const framesPerIntegral = numberFromRat(state.framesPerIntegral);
+  const cap = TIMELINE_TIME_MAP_LIMITS.maxRate;
+  const maximumRate = cap.numerator / cap.denominator / framesPerIntegral;
+  const curve = state.curve;
+  function curveClock(source: number): TimeMapResult<{value: number; errorBound: number}> {
+    if (source === start) return done({value: 0, errorBound: 0});
+    if (source === end) return done({value: state.lengthNumber, errorBound: state.lengthError});
+    const segment = curveSegment(curve!, source);
+    const cell = integrateCurveCell(curve!, segment, curve!.xs[segment]!, source,
+      CURVE_REFINEMENT_TOLERANCES.at(-1)!, LOCAL_CELL_BUDGET);
+    if (!cell) return fail('NUMERIC_BUDGET_EXCEEDED', 'interpolation clock exceeded the integration budget');
+    const prefix = curve!.prefix[segment]!;
+    const value = (prefix + cell.value - state.integralOrigin) * framesPerIntegral;
+    const errorBound = (curve!.prefixError[segment]! + cell.errorBound + state.integralOriginError +
+      12 * EPSILON * (Math.abs(prefix) + Math.abs(cell.value) + Math.abs(state.integralOrigin) + 1)) * framesPerIntegral;
+    return done({value, errorBound});
+  }
+  function invertForInterpolation(time: RootTimeValue): TimeMapResult<ContinuousSourcePosition> {
+    if (!curve || time.kind === 'clock' && time.frames === 0 || time.kind === 'rootEnd' && time.offset === 0) {
+      return invertAtTime(state, time, CURVE_REFINEMENT_TOLERANCES.length - 1);
+    }
+    const target = timeNumber(state, time), error = timeUncertainty(state, time);
+    let lo = start, hi = end;
+    let source = clampNumber(start + (end - start) * target / state.lengthNumber, start, end);
+    // Keep Newton inside a monotone bracket. A steep curve can otherwise
+    // overshoot the source extent even though its target lies inside it.
+    for (let step = 0; step < 64; step++) {
+      const estimate = curveClock(source);
+      if (!estimate.ok) return estimate;
+      const residual = estimate.value.value - target;
+      const uncertainty = estimate.value.errorBound + error;
+      const rounding = 8 * EPSILON * (Math.abs(source) + 1);
+      if (Math.abs(residual) <= uncertainty || hi - lo <= rounding) {
+        // PCHIP cannot exceed its admitted rate knots.
+        return done({kind: 'numeric', value: source,
+          errorBound: Math.min(hi - lo, (Math.abs(residual) + uncertainty) * maximumRate) + rounding});
+      }
+      if (residual > 0) hi = source;
+      else lo = source;
+      const next = source - residual * curveRate(curve, source) / framesPerIntegral;
+      source = next > lo && next < hi ? next : lo + (hi - lo) / 2;
+    }
+    return fail('NUMERIC_BUDGET_EXCEEDED', 'interpolation clock inverse did not converge');
+  }
+  const sample = (outputFrame: number): TimeMapResult<{readonly source: ContinuousSourcePosition; readonly slow: boolean}> => {
+    if (!Number.isSafeInteger(outputFrame) || outputFrame < 0 || outputFrame >= plan.durationFrames) {
+      return fail('INVALID_WINDOW', 'output frame outside the interpolation window');
+    }
+    const position = invertForInterpolation(planTimeValue(view, outputFrame));
+    if (!position.ok) return position;
+    const source = position.value;
+    if (!curve) return done({source, slow: state.kind === 'constant' && ratCmp(state.rate!, ratInt(1n)) < 0});
+    const center = source.kind === 'exact' ? Number(source.numerator) / Number(source.denominator) : source.value;
+    const error = source.kind === 'numeric' ? source.errorBound : 0;
+    const lo = clampNumber(center - error, start, end), hi = clampNumber(center + error, start, end);
+    // A shape-preserving segment cannot exceed the extrema at its ends.
+    // Where the numerical interval straddles 1x, the original sample is safe.
+    const slow = curveLogRate(curve, lo) < 0 && curveLogRate(curve, hi) < 0 &&
+      !curve.xs.some((point, index) => point > lo && point < hi && curve.ys[index]! >= 0);
+    return done({source, slow});
+  };
+  const outputAtSource = (sourceFrame: number): TimeMapResult<number> => {
+    if (!Number.isFinite(sourceFrame)) return fail('INVALID_REQUEST', 'interpolation source position must be finite');
+    if (state.kind === 'freeze') return fail('UNSUPPORTED_PROFILE', 'a freeze has no forward interpolation clock');
+    if (!curve) {
+      const absolute = (sourceFrame - start) * framesPerIntegral / numberFromRat(state.rate!);
+      return done(forward ? absolute - anchor : anchor - absolute);
+    }
+    const u = clampNumber(sourceFrame, start, end);
+    const estimate = curveClock(u);
+    if (!estimate.ok) return estimate;
+    let absolute = estimate.value.value;
+    // A physical frame can straddle a fractional root endpoint. Its timestamp
+    // extends at the endpoint rate while the visible output stays in the root.
+    if (u !== sourceFrame) absolute += (sourceFrame - u) * framesPerIntegral / curveRate(curve, u);
+    return done(forward ? absolute - anchor : anchor - absolute);
+  };
+  return {sample, outputAtSource};
+}
 /** Output frames whose displayed source frame equals `sourceFrame`. */
 export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: number): TimeMapResult<TimeMapOutputAtSource> {
   if (!Number.isSafeInteger(sourceFrame)) return fail('INVALID_REQUEST', 'source frame must be a safe integer');
@@ -1252,13 +1414,21 @@ export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: n
 // ---------------------------------------------------------------------------
 
 export interface TimeMapOutputPosition {readonly numerator: string; readonly denominator: string}
-function tailResult(plan: CompiledTimeMap, state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
+function tailResult(plan: CompiledTimeMap, _state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
   const visible = timeMapVisibleSourceRange(plan);
   if (!visible.ok) return visible;
   const latest = options.tailInverse === 'latest';
   const frame = latest ? visible.value.sourceWindow.endFrame - 1 : visible.value.sourceWindow.startFrame;
   return done({position: {kind: 'numeric', value: latest ? visible.value.sourceWindow.endFrame : visible.value.sourceWindow.startFrame, errorBound: 0},
     frame, tail: true});
+}
+function curveInverseTarget(state: RootState, base: RootTimeValue, signed: Rat) {
+  const integralPerFrame = 1 / numberFromRat(state.framesPerIntegral);
+  const rawNumber = timeNumber(state, base) + ratNumber(signed);
+  const rawError = timeUncertainty(state, base) + 8 * EPSILON * (Math.abs(rawNumber) + 1);
+  if (rawNumber - rawError > state.lengthNumber || rawNumber + rawError < 0) return null;
+  const integral = state.integralOrigin + rawNumber * integralPerFrame;
+  return {integral, error: rawError * integralPerFrame + 8 * EPSILON * (Math.abs(integral) + 1)};
 }
 /** Resolves an output clock position (in output frames from the view start) to a
  * source position. Positions beyond the motion range are the explicit tail hold
@@ -1284,19 +1454,123 @@ export function timeMapTailInverse(plan: CompiledTimeMap, position: TimeMapOutpu
     return done({position: {kind: 'exact', numerator: String(clamped.n), denominator: String(clamped.d)}, frame: clampFrame(state, frame),
       tail: false});
   }
-  const integralPerFrame = 1 / numberFromRat(state.framesPerIntegral);
-  const rawNumber = timeNumber(state, base) + ratNumber(signed);
-  const rawError = timeUncertainty(state, base) + 8 * EPSILON * (Math.abs(rawNumber) + 1);
-  if (rawNumber - rawError > state.lengthNumber) return tailResult(plan, state, options);
-  if (rawNumber + rawError < 0) return tailResult(plan, state, options);
-  const targetIntegral = state.integralOrigin + rawNumber * integralPerFrame;
-  const targetError = rawError * integralPerFrame + 8 * EPSILON * (Math.abs(targetIntegral) + 1);
+  const target = curveInverseTarget(state, base, signed);
+  if (!target) return tailResult(plan, state, options);
+  const {integral: targetIntegral, error: targetError} = target;
   const inverted = invertCurve(state, targetIntegral, targetError, CURVE_REFINEMENT_TOLERANCES.length - 1);
   if (!inverted.ok) return inverted;
   const decided = decideFramePosition(state, inverted.value.value, inverted.value.errorBound, planInfo.direction,
     level => invertCurve(state, targetIntegral, targetError, level));
   if (!decided.ok) return decided;
   return done({position: {kind: 'numeric', value: inverted.value.value, errorBound: inverted.value.errorBound}, frame: decided.value, tail: false});
+}
+
+// Curve audio repeatedly inverts nearby positions at sample resolution.
+// Keep one bounded, lazy prefix per control-point segment of the immutable root.
+const audioIntegrationCells = 64;
+const audioCellTolerance = 1e-12;
+interface AudioIntegralTable {
+  readonly positions: Float64Array;
+  readonly integrals: Float64Array;
+  readonly errors: Float64Array;
+}
+const audioIntegralTables = new WeakMap<RootState, Map<number, AudioIntegralTable | null>>();
+
+function audioIntegralTable(state: RootState, segment: number): AudioIntegralTable | null {
+  let tables = audioIntegralTables.get(state);
+  if (!tables) {tables = new Map(); audioIntegralTables.set(state, tables);}
+  const cached = tables.get(segment);
+  if (cached !== undefined) return cached;
+  const table = buildAudioIntegralTable(state.curve!, segment);
+  tables.set(segment, table);
+  return table;
+}
+
+function buildAudioIntegralTable(curve: CurveState, segment: number): AudioIntegralTable | null {
+  const positions = new Float64Array(audioIntegrationCells + 1), integrals = new Float64Array(positions.length), errors = new Float64Array(positions.length);
+  const begin = curve.xs[segment]!, end = curve.xs[segment + 1]!;
+  positions[0] = begin;
+  integrals[0] = curve.prefix[segment]!;
+  errors[0] = curve.prefixError[segment]!;
+  let budget = LOCAL_CELL_BUDGET;
+  for (let i = 1; i <= audioIntegrationCells; i++) {
+    const cellEnd = i === audioIntegrationCells ? end : begin + ((end - begin) * i) / audioIntegrationCells;
+    positions[i] = cellEnd;
+    const estimate = integrateCurveCell(curve, segment, positions[i - 1]!, cellEnd, audioCellTolerance / audioIntegrationCells, budget);
+    if (!estimate || estimate.value <= 0) return null;
+    budget -= estimate.cells;
+    integrals[i] = integrals[i - 1]! + estimate.value;
+    errors[i] = errors[i - 1]! + estimate.errorBound + 8 * EPSILON * (Math.abs(integrals[i]!) + 1);
+  }
+  return {positions, integrals, errors};
+}
+
+function audioIntegralInverse(state: RootState, target: number, targetError: number): {readonly value: number; readonly errorBound: number} | null {
+  if (target <= state.integralOrigin + targetError || target >= state.integralOrigin + state.integralTotal - targetError) {
+    return null;
+  }
+  const curve = state.curve!;
+  let low = 0, high = curve.xs.length - 2;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (curve.prefix[middle]! <= target) low = middle; else high = middle - 1;
+  }
+  const segment = low;
+  const table = audioIntegralTable(state, segment);
+  if (!table) return null;
+  low = 0;
+  high = audioIntegrationCells - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (table.integrals[middle]! <= target) low = middle; else high = middle - 1;
+  }
+  const cell = low, integral = table.integrals[cell]!, cellStart = table.positions[cell]!, cellEnd = table.positions[cell + 1]!;
+  let lowerSource = cellStart, upperSource = cellEnd;
+  const cellIntegral = table.integrals[cell + 1]! - integral;
+  if (!(cellIntegral > 0)) return null;
+  let u = clampNumber(cellStart + (target - integral) * (cellEnd - cellStart) / cellIntegral, lowerSource, upperSource);
+  for (let iteration = 0; iteration < 12; iteration++) {
+    const estimate = integrateCurveCell(curve, segment, cellStart, u, audioCellTolerance, LOCAL_CELL_BUDGET);
+    if (!estimate) break;
+    const atPosition = integral + estimate.value;
+    const residual = atPosition - target;
+    const error = table.errors[cell]! + estimate.errorBound + targetError + 8 * EPSILON * (Math.abs(atPosition) + 1);
+    if (Math.abs(residual) <= error) {
+      // The supported rate cap is 10. Bound conversion from integral to source
+      // distance with its reciprocal, leaving room for rate rounding.
+      const errorBound = (error + Math.abs(residual)) / (0.1 - 64 * EPSILON) + 8 * EPSILON * (Math.abs(u) + 1);
+      return {value: u, errorBound};
+    }
+    const slope = curveIntegrand(curve, u);
+    if (!(slope > 0) || !Number.isFinite(slope)) break;
+    if (residual > 0) upperSource = u; else lowerSource = u;
+    const newton = u - residual / slope;
+    const next = newton > lowerSource && newton < upperSource ? newton : lowerSource + (upperSource - lowerSource) / 2;
+    if (next === u) break;
+    u = next;
+  }
+  return null;
+}
+
+/** A source position for audio resampling. The prefix is eligible only within
+ * the caller's error limit in source frames. Other positions use the established inverse. */
+export function timeMapAudioInverse(plan: CompiledTimeMap, position: TimeMapOutputPosition, prefixErrorLimit: number):
+  TimeMapResult<{readonly position: ContinuousSourcePosition; readonly tail: boolean}> {
+  const exact = () => timeMapTailInverse(plan, position, {tailInverse: 'latest'});
+  const state = rootState(plan.root);
+  if (!state.curve || !Number.isFinite(prefixErrorLimit) || prefixErrorLimit <= 0) return exact();
+  let offset: Rat;
+  try { offset = ratNorm(BigInt(position.numerator), BigInt(position.denominator)); }
+  catch { return exact(); }
+  if (offset.n < 0n) return exact();
+  const {direction, loTime, hiTime} = planState(plan);
+  const base = boundaryTimeValue(direction === 'forward' ? loTime : hiTime);
+  const target = curveInverseTarget(state, base, direction === 'forward' ? offset : ratNeg(offset));
+  if (!target) return exact();
+  const inverted = audioIntegralInverse(state, target.integral, target.error);
+  if (!inverted || inverted.errorBound > prefixErrorLimit || inverted.value < numberFromRat(state.sourceStart) ||
+      inverted.value > numberFromRat(state.sourceEnd)) return exact();
+  return done({position: {kind: 'numeric', ...inverted}, tail: false});
 }
 
 // ---------------------------------------------------------------------------
@@ -1496,11 +1770,18 @@ export function timeMapBasisFromCurrentClip(clip: CurrentTimelineClipLike, timel
 }
 /** Projects the compiled source envelope onto the current clip fields. */
 export function projectTimeMapToCurrentClipFields(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<ClipFrameProjection> {
-  const range = timeMapVisibleSourceRange(plan);
-  if (!range.ok) return range;
-  const start = range.value.sourceWindow.startFrame;
-  const span = range.value.sourceWindow.endFrame - start;
-  return done({startFrame: clip.startFrame, durationFrames: plan.durationFrames, sourceInFrame: start, sourceSpanFrames: span});
+  const state = rootState(plan.root);
+  const output = {startFrame: clip.startFrame, durationFrames: plan.durationFrames};
+  if (state.freezeFrame !== null) return done({...output, sourceInFrame: state.freezeFrame, sourceSpanFrames: 1});
+  const interval = planClockInterval(state, planState(plan));
+  const start = resolvePositionInteger(state, interval.lo, 'floor');
+  if (!start.ok) return start;
+  const end = resolvePositionInteger(state, interval.hi, 'ceil');
+  if (!end.ok) return end;
+  const sourceInFrame = Math.max(state.frameRange.start, start.value);
+  const sourceSpanFrames = Math.min(state.frameRange.end + 1, end.value) - sourceInFrame;
+  if (sourceSpanFrames < 1) return fail('INVALID_WINDOW', 'visible source envelope is empty');
+  return done({...output, sourceInFrame, sourceSpanFrames});
 }
 /** Verifies that the current integer fields equal the compiled projection. */
 export function verifyCurrentClipTiming(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<{readonly projection: ClipFrameProjection; readonly matches: boolean}> {

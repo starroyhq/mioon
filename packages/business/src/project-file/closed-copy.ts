@@ -10,10 +10,10 @@ import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {readTimelineStorage} from './timeline-storage.ts';
 import {assertNoFormat4Restore,inspectProjectFileReadOnly,openClosedProjectSnapshotConnection} from './connection.ts';
-import type {Format4Options} from './connection.ts';
+import type {ProjectReadFormatOptions} from './connection.ts';
 import {isHotJournal,isSuperJournalInUse,superJournalsIn} from './journals.ts';
 import {projectFileError,isSqliteBusy,isSqliteCorrupt} from './errors.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_HISTORY_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID,PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_HISTORY_SCHEMA_VERSION,FORMAT5_PROJECT_SCHEMA_VERSION,FORMAT6_HISTORY_SCHEMA_VERSION,FORMAT6_PROJECT_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID,PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import {HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import {compareManifest,readSchemaManifest} from './schema/manifest-check.ts';
 import {historyManifestForVersion} from './schema/format-manifests.ts';
@@ -30,7 +30,7 @@ export interface CaptureClosedProjectSnapshotOptions {
  readonly directory:string;
  /** A signed template binds its prior byte verification to this exact generation. */
  readonly expectedProjectGeneration?:string;
- readonly format4?:Format4Options;
+ readonly format4?:ProjectReadFormatOptions;
  readonly assertMutationAllowed?:()=>void;
  /** Trusted crash/concurrency seam, never taken from an external request. */
  readonly onBoundary?:(boundary:'locked'|'project-copied'|'history-copied')=>void|Promise<void>;
@@ -65,7 +65,7 @@ export interface ClosedProjectTrashInspection {
 export interface InspectClosedProjectForTrashOptions {
  readonly projectFile:string;
  readonly historyFile:(projectId:string)=>string;
- readonly format4?:Format4Options;
+ readonly format4?:ProjectReadFormatOptions;
  readonly assertMutationAllowed?:()=>void;
 }
 const pragma=(db:DatabaseSync,name:string):unknown=>Object.values(db.prepare(`PRAGMA ${name}`).get()??{})[0];
@@ -97,19 +97,20 @@ function historyHeader(file:string,expected:BigIntStats):void {
   if(header[18]!==1||header[19]!==1)throw invalid('history');
  }finally{closeSync(fd);}
 }
-function validateHistory(db:DatabaseSync,schema:string,projectId:string,format4?:Format4Options):Omit<ClosedProjectTrashHistory,'hasBlockingMio'> {
+function validateHistory(db:DatabaseSync,schema:string,identity:ProjectBackupIdentity,format4?:ProjectReadFormatOptions):Omit<ClosedProjectTrashHistory,'hasBlockingMio'> {
  if(pragma(db,`${schema}.application_id`)!==HISTORY_APPLICATION_ID||pragma(db,`${schema}.journal_mode`)!=='delete'||pragma(db,`${schema}.encoding`)!=='UTF-8')throw invalid('history');
  const versions=db.prepare(`SELECT version FROM ${schema}.schema_version`).all();
  if(versions.length!==1||typeof versions[0].version!=='number')throw invalid('history');
  const version=versions[0].version;
- const maximum=format4?FORMAT4_HISTORY_SCHEMA_VERSION:FORMAT5_HISTORY_SCHEMA_VERSION;
+ const maximum=format4?.allowFormat6&&identity.formatVersion===FORMAT6_PROJECT_SCHEMA_VERSION?FORMAT6_HISTORY_SCHEMA_VERSION
+  :format4&&!format4.allowFormat6?FORMAT4_HISTORY_SCHEMA_VERSION:FORMAT5_HISTORY_SCHEMA_VERSION;
  if(version>maximum)throw projectFileError('PROJECT_FORMAT_NEWER',{database:'history',reason:'format-newer',formatVersion:version,supportedFormatVersion:maximum});
  const expected=historyManifestForVersion(version)??HISTORY_UPGRADES.find(item=>item.from.version===version)?.from;
  if(!expected)throw invalid('history');
  const diff=compareManifest(readSchemaManifest(db,schema),expected.entries);
  if(diff.changed.length||diff.missing.length||diff.unexpected.length)throw invalid('history');
  const states=db.prepare(`SELECT * FROM ${schema}.history_state`).all(),row=states[0];
- if(states.length!==1||row.singleton!==1||row.projectId!==projectId||!isProjectId(row.projectId))throw invalid('history','project-mismatch');
+ if(states.length!==1||row.singleton!==1||row.projectId!==identity.projectId||!isProjectId(row.projectId))throw invalid('history','project-mismatch');
  if(typeof row.seenContentSequence!=='number'||!Number.isSafeInteger(row.seenContentSequence)||row.seenContentSequence<0
   ||Object.hasOwn(row,'seenContentToken')&&row.seenContentToken!==null&&(typeof row.seenContentToken!=='string'||!/^[a-f0-9]{32}$/u.test(row.seenContentToken)))throw invalid('history','metadata');
  if(pragma(db,`${schema}.quick_check`)!=='ok')throw invalid('history');
@@ -188,7 +189,7 @@ export function inspectClosedProjectForTrash(options:InspectClosedProjectForTras
   if(project===null||typeof project!=='object'||Array.isArray(project)||!('id' in project)||project.id!==identity.projectId
    ||!('revision' in project)||typeof project.revision!=='number'||!Number.isSafeInteger(project.revision)||project.revision<1)throw invalid('project','metadata');
   let historyResult:ClosedProjectTrashHistory|null=null;
-  if(historyBefore){active='history';historyResult={...validateHistory(db,'history',identity.projectId,options.format4),hasBlockingMio:hasBlockingMioRun(db,identity.projectId,'history')};}
+  if(historyBefore){active='history';historyResult={...validateHistory(db,'history',identity,options.format4),hasBlockingMio:hasBlockingMioRun(db,identity.projectId,'history')};}
   assertNoFormat4Restore(path.dirname(history),identity.projectId);
   assertAllowed();
   checkTrashGeneration(projectFile,before,'project');if(historyBefore)checkTrashGeneration(history,historyBefore,'history');
@@ -225,7 +226,7 @@ export function previewClosedProjectFormatUpgrade(file: string, projectId: strin
   const db=connection.db;db.exec('BEGIN');
   const identity=readCopiedProjectIdentity(db,PROJECT_FILE_APPLICATION_ID,Number(before.size));
   if(identity.projectId!==projectId||!sameContentStamp(source,identity))throw invalid('project','metadata');
-  active='history';const historyVersion=history?validateHistory(db,'history',projectId).formatVersion:null;
+  active='history';const historyVersion=history?validateHistory(db,'history',identity).formatVersion:null;
   if(history&&stamp(lstatSync(historyFile,{bigint:true}))!==stamp(history))throw invalid('history','unusable');
   active='project';if(stamp(lstatSync(projectFile,{bigint:true}))!==stamp(before))throw invalid('project','unusable');
   db.exec('COMMIT');
@@ -240,29 +241,31 @@ export function previewClosedProjectFormatUpgrade(file: string, projectId: strin
  }finally{connection?.close();}
 }
 
-export function readClosedProjectForFormatUpgrade(file: string, projectId: string, expected?: ProjectFormatUpgradePreview): ProjectFormatReadOnlyView {
+export function readClosedProjectForFormatUpgrade(file: string, projectId: string, expected?: ProjectFormatUpgradePreview,
+  admitFormat5?: true): ProjectFormatReadOnlyView {
  const projectFile=path.resolve(file),limit=PROJECT_FORMAT_READ_ONLY_LIMITS.items;
  let connection:ReturnType<typeof openClosedProjectSnapshotConnection>|undefined;
  try{
   const before=metadata(projectFile,'project');journals(projectFile,'project');
-  // Format 4 is a released old format and has the same read-only preview
-  // semantics as format 3; format 5 is current and never belongs here.
-  const inspected=inspectProjectFileReadOnly(projectFile,{});
+  const inspected=inspectProjectFileReadOnly(projectFile,admitFormat5?undefined:{});
   if(inspected.projectId!==projectId||expected&&!sameContentStamp(inspected,expected))throw invalid('project','project-mismatch');
   connection=openClosedProjectSnapshotConnection({projectFile});
   const db=connection.db;db.exec('BEGIN');
   const identity=readCopiedProjectIdentity(db,PROJECT_FILE_APPLICATION_ID,Number(before.size));
   if(identity.projectId!==projectId
-    || identity.formatVersion!==PROJECT_FILE_SCHEMA_VERSION&&identity.formatVersion!==FORMAT4_PROJECT_SCHEMA_VERSION
+    || identity.formatVersion!==PROJECT_FILE_SCHEMA_VERSION&&identity.formatVersion!==FORMAT4_PROJECT_SCHEMA_VERSION&&
+        !(admitFormat5&&identity.formatVersion===FORMAT5_PROJECT_SCHEMA_VERSION)
     ||!sameContentStamp(inspected,identity))throw invalid('project','metadata');
   const project=db.prepare(`SELECT json_extract(data,'$.name') AS name,json_extract(data,'$.description') AS description FROM projects WHERE id=?`).get(projectId);
   if(!project)throw invalid('project','metadata');
   const versionCounts=db.prepare(`SELECT json_extract(data,'$.shotId') AS id,count(*) AS count FROM versions WHERE projectId=? GROUP BY 1`).all(projectId);
   const versions=new Map(versionCounts.map(row=>[row.id,row.count]));
+  const active = identity.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? ' AND archivedAt IS NULL' : '';
+  const visibleNodes = active ? " AND json_extract(data,'$.type') IN ('text','image','video','audio','previs')" : '';
   const shots=db.prepare(`SELECT id,json_extract(data,'$.title') AS title,json_extract(data,'$.orderIndex') AS orderIndex,
-     json_extract(data,'$.duration') AS duration FROM shots WHERE projectId=? ORDER BY orderIndex,id LIMIT ?`).all(projectId,limit+1);
+     json_extract(data,'$.duration') AS duration FROM shots WHERE projectId=?${active} ORDER BY orderIndex,id LIMIT ?`).all(projectId,limit+1);
   const nodes=db.prepare(`SELECT id,json_extract(data,'$.label') AS label,json_extract(data,'$.type') AS type
-     FROM nodes WHERE projectId=? ORDER BY id LIMIT ?`).all(projectId,limit+1);
+     FROM nodes WHERE projectId=?${active}${visibleNodes} ORDER BY id LIMIT ?`).all(projectId,limit+1);
   const timelineSnapshot=readTimelineStorage(db,projectId,{maxBytes:16*1024*1024});
   const display=(value:unknown, max:number=PROJECT_FORMAT_READ_ONLY_LIMITS.text)=>typeof value==='string'?value.slice(0,max).replace(/[\uD800-\uDBFF]$/u,''):'';
   const projectDescription=display(project.description,2000);
@@ -327,7 +330,7 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   const identity=readCopiedProjectIdentity(source,PROJECT_FILE_APPLICATION_ID,Number(before.size));
   if(identity.projectId!==inspected.projectId||identity.contentSequence!==inspected.contentSequence||identity.contentToken!==inspected.contentToken)throw invalid('project','metadata');
   if(historyBefore)active='history';
-  const historyIdentity=historyBefore?validateHistory(source,'history',identity.projectId,options.format4):null;
+  const historyIdentity=historyBefore?validateHistory(source,'history',identity,options.format4):null;
   assertNoFormat4Restore(path.dirname(history),identity.projectId);
   if(options.onBoundary)await options.onBoundary('locked');
   assertAllowed();
@@ -352,7 +355,7 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   if(historyFile&&historyIdentity){
    const copiedHistory=new DatabaseSync(historyFile,{readOnly:true,timeout:0,defensive:true});
    try{
-    const actualHistory=validateHistory(copiedHistory,'main',identity.projectId,options.format4);
+    const actualHistory=validateHistory(copiedHistory,'main',actual,options.format4);
     if(actualHistory.formatVersion!==historyIdentity.formatVersion||actualHistory.seenContentSequence!==historyIdentity.seenContentSequence
      ||actualHistory.seenContentToken!==historyIdentity.seenContentToken)throw invalid('history','metadata');
    }finally{copiedHistory.close();}
