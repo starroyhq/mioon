@@ -342,6 +342,11 @@ function comparableUndo(value:Value|undefined,saved:SnapshotEntry|undefined):Val
  return result;
 }
 type UndoDisposition=NonNullable<AgentTaskChange['undoDisposition']>;
+/** A direct sequence undo is a history receipt. Reapplying the action belongs
+ * to sequence.redo. Older journals may have saved the generic risk flag here. */
+export function isAgentTaskChangeReversible(change:Pick<AgentTaskChange,'operation'|'reversible'>):boolean {
+ return change.reversible&&change.operation!=='sequence.tool.undo';
+}
 const reversibleMetadata=new Set(['asset_range','asset_disposition','asset_annotation','subject_binding']);
 function defaultMetadataCompensation(kind:string,value:Value):Value|null{
  if(kind==='asset_range')return null;
@@ -362,7 +367,7 @@ function undoEntries(change:AgentTaskChange):Array<{before?:SnapshotEntry;after?
  return entries.length===change.targets.length&&new Set(entries.map(entry=>key((entry.after??entry.before)!.kind,(entry.after??entry.before)!.id))).size===entries.length?entries:null;
 }
 function undoDisposition(store:Store,change:AgentTaskChange,current:Snapshot,expected:AgentTaskTarget[],revision:(target:AgentTaskTarget)=>number,claimed:(target:AgentTaskTarget)=>boolean):UndoDisposition{
- if(change.status!=='applied'||!change.reversible)return 'retain';
+ if(change.status!=='applied'||!isAgentTaskChangeReversible(change))return 'retain';
  const entries=undoEntries(change);if(!entries||!frameDependenciesMatch(change,current,expected)||expected.some(claimed)||entries.some(entry=>archivedCanvasChange(store.db,entry)))return 'blocked';
  const unchanged=entries.every(entry=>{const identity=(entry.after??entry.before)!,found=current[key(identity.kind,identity.id)];return canonical(comparableUndo(found?.value,entry.after))===canonical(comparableUndo(entry.after?.value,entry.after));});
  if(expected.every(target=>revision(target)===target.revision))return unchanged?'undo':'blocked';
@@ -480,7 +485,8 @@ function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,en
  * its transaction; this projection never grants permission to undo. */
 export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentTaskChange[]):Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>{
  if(!changes.length)return new Map();
- const current=snapshot(store,projectId),revisions=new Map<string,number>(),chain=new Map<string,AgentTaskTarget>(),result=new Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>();let blocked=false;
+ const current=changes.some(change=>change.status==='applied'&&isAgentTaskChangeReversible(change))?snapshot(store,projectId):{};
+ const revisions=new Map<string,number>(),chain=new Map<string,AgentTaskTarget>(),result=new Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>();let blocked=false;
  const revision=(target:AgentTaskTarget):number=>revisions.get(key(target.kind,target.id))??readRevision(store,projectId,target.kind,target.id);
  assertProjectStore(store);
  const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(projectId,target.kind,target.id);
@@ -491,7 +497,7 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
   const modifiedAfter=visibleTargets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>
    ((isMioCanvasOperation(change.operation)||isMioCanvasCopyOperation(change.operation))?target.revision:target.revisionAfter));
   if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(key(target.kind,target.id),target);result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
-  if(change.status!=='applied'||!change.reversible){result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
+  if(change.status!=='applied'||!isAgentTaskChangeReversible(change)){result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
   const expected=agentTaskUndoTargets(change,chain);
   if((isMioCanvasOperation(change.operation)||isMioCanvasCopyOperation(change.operation))){
    let disposition:UndoDisposition='blocked';
@@ -571,7 +577,8 @@ function changes(prepared:PreparedAgentTaskTool,after:Snapshot,{backgroundGenera
  });if(!diff.length)return [];
  const build=(entries:typeof diff,operation:string,reversible:boolean):TaskChangeInput=>({projectId:prepared.projectId,operation,
   targets:entries.map(({before,after:next})=>({kind:(next??before)!.kind,id:(next??before)!.id,revision:next?.revision??before!.revision+1,revisionBefore:before?.revision??0,revisionAfter:next?.revision??before!.revision+1})),
-  before:json(entries.map(change=>change.before??null)),after:json(entries.map(change=>change.after??null)),undo:json(entries),reversible,summary:descriptions[operation]??operation});
+  before:json(entries.map(change=>change.before??null)),after:json(entries.map(change=>change.after??null)),undo:json(entries),
+  reversible:isAgentTaskChangeReversible({operation,reversible}),summary:descriptions[operation]??operation});
  const autoSelections=prepared.operation==='generation.submit'?diff.filter(entry=>entry.before?.kind==='shot'&&entry.after?.kind==='shot'&&entry.before.value.selectedVersionId!==entry.after.value.selectedVersionId):[];
  const remaining=diff.filter(entry=>!autoSelections.includes(entry)),jobUpdates=backgroundGeneration?remaining.filter(entry=>(entry.after??entry.before)?.kind==='job'):[];
  const outputs=remaining.filter(entry=>!jobUpdates.includes(entry));
@@ -1577,7 +1584,7 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    return {result:projectResult(value),changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
  }
  function undo(change:AgentTaskChange,context:AgentTaskUndoContext):{targets:AgentTaskTarget[];retained?:boolean}{
-  if(!change.reversible||change.status!=='applied'||!Array.isArray(change.undo))fail('AGENT_TASK_NOT_REVERSIBLE','此项变化不能撤销');
+  if(!isAgentTaskChangeReversible(change)||change.status!=='applied'||!Array.isArray(change.undo))fail('AGENT_TASK_NOT_REVERSIBLE','此项变化不能撤销');
   const undoEntries=change.undo;
   return store.tx(()=>{
    if((isMioCanvasOperation(change.operation)||isMioCanvasCopyOperation(change.operation))){
