@@ -1278,10 +1278,6 @@ function boardPlanEntities(context: SyncContext, plan: SequenceEditPlan, envelop
         selectedVersionId: copiedClip.versionId ?? null, createdAt: now(), updatedAt: now()}, toNodeId);
       if (clipCopy) {
         Object.assign(shot, copiedBoardPlacement(sourceShot), {title: `${nodeName(context, fromNodeId)} 副本`});
-        // Dialogue lines automatically project onto the clip as anchored
-        // subtitles. Omit them for an explicit copy so later sync also leaves
-        // the original subtitles attached to the original clip.
-        delete shot.dialogue;
       }
       extraShots.set(toNodeId, shot);
       writesAfter.push({kind: 'shot', id: toNodeId, data: shot});
