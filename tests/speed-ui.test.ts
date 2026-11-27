@@ -14,10 +14,9 @@ import {
 import {
   clipTimingSchema,
   sequenceEditSpeedIntentSchema,
-  speedProcessingItemSchema,
-  speedProcessingListResponseSchema,
   speedSettingSchema,
 } from '../packages/contracts/src/timeline-speed.ts';
+import {speedProcessingItemSchema, timelineProcessingResponseSchemas} from '../packages/contracts/src/timeline-processing.ts';
 import type {ClipTiming, SpeedProcessingItem, SpeedProcessingReason, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import {timelineSpeedMessages} from '../packages/i18n/src/catalogs/timeline-speed.ts';
@@ -112,6 +111,8 @@ function makeSpeedTiming(overrides: {
   };
 }
 
+const speedTestId = (value: number) => '60000000-0000-4000-8000-' + String(value).padStart(12, '0');
+
 test('contract schemas validate speed timing, freeze timing, intents, and processing items strictly', () => {
   const speedTiming = makeSpeedTiming({rate: {numerator: 1, denominator: 2}, direction: 'reverse', interpolation: 'optical'});
   assert.equal(clipTimingSchema.safeParse(speedTiming).success, true);
@@ -119,13 +120,13 @@ test('contract schemas validate speed timing, freeze timing, intents, and proces
   const freezeTiming: ClipTiming = {
     profile: 'timeline-freeze-v1',
     sourceFrame: 42,
-    sourceVersionId: 'v-1',
+    sourceVersionId: speedTestId(1),
     sourceSha256: 'a'.repeat(64),
   };
   assert.equal(clipTimingSchema.safeParse(freezeTiming).success, true);
   assert.equal(clipTimingSchema.safeParse({...freezeTiming, extra: 1}).success, false);
 
-  const speedIntent = buildClipSpeedIntent('clip-1', {
+  const speedIntent = buildClipSpeedIntent(speedTestId(2), {
     speed: {kind: 'constant', rate: {numerator: 1, denominator: 2}},
     direction: 'reverse',
     pitchShift: true,
@@ -133,7 +134,7 @@ test('contract schemas validate speed timing, freeze timing, intents, and proces
   });
   assert.equal(sequenceEditSpeedIntentSchema.safeParse(speedIntent).success, true);
 
-  const freezeIntent = buildFreezeFrameIntent('clip-1', 120);
+  const freezeIntent = buildFreezeFrameIntent(speedTestId(2), 120);
   assert.equal(sequenceEditSpeedIntentSchema.safeParse(freezeIntent).success, true);
   assert.equal(freezeIntent.operation.kind, 'freeze-frame');
   if (freezeIntent.operation.kind === 'freeze-frame') {
@@ -142,12 +143,12 @@ test('contract schemas validate speed timing, freeze timing, intents, and proces
 
   const processingList = {
     items: [
-      {taskId: 't1', clipId: 'clip-1', kind: 'reverse', status: 'running', progress: 42},
-      {taskId: 't2', clipId: 'clip-2', kind: 'optical', status: 'failed', reason: 'DISK_FULL'},
+      {taskId: speedTestId(3), clipId: speedTestId(2), kind: 'reverse', status: 'running', progress: 42},
+      {taskId: speedTestId(4), clipId: speedTestId(5), kind: 'optical', status: 'failed', reason: 'DISK_FULL'},
     ],
   };
-  assert.equal(speedProcessingListResponseSchema.safeParse(processingList).success, true);
-  assert.equal(speedProcessingItemSchema.safeParse({taskId: 't3', clipId: 'c', kind: 'optical', status: 'running', progress: 150}).success, false);
+  assert.equal(timelineProcessingResponseSchemas['timeline.processing.list'].safeParse(processingList).success, true);
+  assert.equal(speedProcessingItemSchema.safeParse({taskId: speedTestId(6), clipId: speedTestId(5), kind: 'optical', status: 'running', progress: 150}).success, false);
   assert.equal(speedSettingSchema.safeParse({speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}}, direction: 'forward', pitchShift: false, interpolation: 'off'}).success, true);
 });
 
@@ -459,7 +460,7 @@ test('A7/F6: processing poller polls every 2s while active, stops once ready/fai
   poller.start();
   assert.equal(responses.length, 1);
   // First response: running 42% -> schedules next poll in 2000ms
-  responses[0]!.resolve({items: [{taskId: 't1', clipId: 'c1', kind: 'reverse', status: 'running', progress: 42}]});
+  responses[0]!.resolve({items: [{taskId: speedTestId(7), clipId: speedTestId(8), kind: 'reverse', status: 'running', progress: 42}]});
   await Promise.resolve();
   assert.equal(snapshots.length, 1);
   assert.deepEqual(delays, [2000]);
@@ -470,7 +471,7 @@ test('A7/F6: processing poller polls every 2s while active, stops once ready/fai
   timers.delete(tid);
   timer.fn();
   assert.equal(responses.length, 2);
-  responses[1]!.resolve({items: [{taskId: 't1', clipId: 'c1', kind: 'reverse', status: 'failed', reason: 'DISK_FULL'}]});
+  responses[1]!.resolve({items: [{taskId: speedTestId(7), clipId: speedTestId(8), kind: 'reverse', status: 'failed', reason: 'DISK_FULL'}]});
   await Promise.resolve();
   assert.equal(snapshots.length, 2);
   assert.equal(timers.size, 0, 'polling must stop automatically when no task is queued or running');
@@ -480,7 +481,7 @@ test('A7/F6: processing poller polls every 2s while active, stops once ready/fai
   assert.equal(responses.length, 3);
   poller.dispose();
   assert.equal(responses[2]!.signal.aborted, true);
-  responses[2]!.resolve({items: [{taskId: 't1', clipId: 'c1', kind: 'reverse', status: 'running', progress: 99}]});
+  responses[2]!.resolve({items: [{taskId: speedTestId(7), clipId: speedTestId(8), kind: 'reverse', status: 'running', progress: 99}]});
   await Promise.resolve();
   assert.equal(snapshots.length, 2);
 });

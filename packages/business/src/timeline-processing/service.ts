@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {SCENE_DETECTION_PROFILE_ID} from '../../../contracts/src/scene-tasks.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {speedProcessingItemSchema, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '../../../contracts/src/timeline-processing.ts';
-import type {SpeedProcessingItem} from '../../../contracts/src/timeline-speed.ts';
+import type {SpeedProcessingItem, SpeedProcessingReason} from '../../../contracts/src/timeline-speed.ts';
 import {processingInputWithClipSchema as inputWithClipSchema, processingReasonSchema as reasons,
   processingRowSchema as rowSchema, processingResultSchema as resultSchema} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingInput, ProcessingInputWithClip, ProcessingTaskRow, ProcessingTaskState as TaskState,
@@ -46,7 +46,7 @@ const terminationUnconfirmed = (error: unknown) => Boolean(error && typeof error
   'terminationUnconfirmed' in error && error.terminationUnconfirmed);
 const errorCode = (error: unknown) => error && typeof error === 'object' && 'code' in error ? error.code : undefined;
 const sourceStatHash = (info: ManagedFileIdentity) => processingHash([info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs]);
-function reasonFor(error: unknown): StoredReason {
+function reasonFor(error: unknown): SpeedProcessingReason {
   const code = errorCode(error), direct = reasons.safeParse(code);
   if (code === 'INTERPOLATION_UNAVAILABLE') return code;
   if (direct.success) return direct.data;
@@ -59,7 +59,7 @@ const now = () => new Date().toISOString();
 // Format 6 history's v14 task table predates the detailed phase reason.
 // Keep its admitted column value and persist the more specific outcome in
 // the typed attempt envelope, alongside the frozen optical request.
-const storedReason = (reason: SpeedProcessingReason | null) => reason === 'INTERPOLATION_UNAVAILABLE' ? 'UNSUPPORTED_FORMAT' : reason;
+const storedReason = (reason: SpeedProcessingReason | null): StoredReason | null => reason === 'INTERPOLATION_UNAVAILABLE' ? 'UNSUPPORTED_FORMAT' : reason;
 function withOutcome(input: ProcessingInputWithClip, reason: SpeedProcessingReason | null): ProcessingInputWithClip {
   const {clipId, frozen} = input;
   return {clipId, frozen, ...(reason === 'INTERPOLATION_UNAVAILABLE' ? {outcomeReason: reason} : {})};
@@ -127,7 +127,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       ...(status === 'failed' ? {reason: task.input.outcomeReason ?? task.errorCode ?? 'PROCESSING_FAILED'} : {})});
   }
   function emit(): void {for (const listener of [...listeners]) listener();}
-  function update(task: Task, state: TaskState, patch: {progress?: number | null; error?: StoredReason | null; result?: TaskResult | null;
+  function update(task: Task, state: TaskState, patch: {progress?: number | null; error?: SpeedProcessingReason | null; result?: TaskResult | null;
     attempt?: {requestId: string; input: Task['input']}} = {}): Task {
     const {attempt, progress = null, error = null, result = task.result} = patch;
     const updatedAt = now(), input = withOutcome(attempt?.input ?? task.input, error), errorCode = storedReason(error);
@@ -143,7 +143,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
   function record(demand: ProcessingDemand): Task {
     const id = randomUUID(), requestId = randomUUID();
     const frozen = demand.input;
-    let reason = demand.unavailable, sourceStat: string | undefined;
+    let reason: SpeedProcessingReason | null = demand.unavailable, sourceStat: string | undefined;
     // A sampled reference alone cannot detect an in-place change between
     // enqueue and admission. Capture its metadata before freezing the input.
     if (!reason && !frozen.sourceSha256 && frozen.assetId) {
