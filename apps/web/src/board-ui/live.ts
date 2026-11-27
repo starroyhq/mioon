@@ -6,6 +6,8 @@
  */
 import {deriveFilmChains} from '../../../../packages/contracts/src/board-sequence.ts';
 import type {ChainReferenceRole} from '../../../../packages/contracts/src/board-sequence.ts';
+import {layoutCanvas} from '../../../../packages/contracts/src/canvas-tidy-layout.ts';
+import type {CanvasLayoutNode, CanvasLayoutShot} from '../../../../packages/contracts/src/canvas-tidy-layout.ts';
 import type {SequenceEditIntent, SubjectBindingOperation, SubjectCardOperation, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {projectBoardUi} from './projection.ts';
 import type {BoardGenerationStatus, BoardUiNode, BoardUiProjection} from './projection.ts';
@@ -67,10 +69,70 @@ export function shotDurationFrames(shot: Row, versions: readonly Row[], assets: 
   if (Number.isFinite(shot.duration) && Number(shot.duration) > 0) return Math.round(Number(shot.duration) * 30);
   return null;
 }
+function shotJobsNewestFirst(shotId: unknown, jobs: readonly Row[]): Row[] {
+  return jobs
+    .filter(job => job.shotId === shotId)
+    .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')));
+}
 export function shotStatus(shot: Row, versions: readonly Row[], jobs: readonly Row[]): BoardGenerationStatus {
-  if (jobs.some(job => job.shotId === shot.id && ACTIVE_JOB.has(String(job.status)))) return 'generating';
+  const shotJobs = shotJobsNewestFirst(shot.id, jobs);
+  if (shotJobs.some(job => ACTIVE_JOB.has(String(job.status)))) return 'generating';
   const selected = text(shot.selectedVersionId) ? versions.find(version => version.id === shot.selectedVersionId) : undefined;
+  const latest = shotJobs[0];
+  if (latest?.status === 'failed' && (!selected || !selected.createdAt || !latest.createdAt || String(latest.createdAt) >= String(selected.createdAt))) {
+    return 'failed';
+  }
   return selected ? 'ready' : 'pending';
+}
+
+const DEFAULT_BOARD_CARD_SIZES: Readonly<Record<BoardUiNode['kind'], {readonly width: number; readonly height: number}>> = {
+  film: {width: 148, height: 64},
+  shot: {width: 240, height: 205},
+  image: {width: 180, height: 172},
+  video: {width: 180, height: 172},
+  previs: {width: 180, height: 172},
+  subject: {width: 160, height: 140},
+  audio: {width: 160, height: 140},
+  text: {width: 200, height: 100},
+};
+
+/** Plan one deterministic tidy pass across the live format-5 board. Film roots
+ * and chain members lead the story row while references gather above their
+ * linked shots and floating items stay grouped below. */
+export function computeBoardTidyMoves(
+  board: BoardLive,
+  measuredSizes?: Readonly<Record<string, {readonly width: number; readonly height: number}>>,
+  selectedIds?: ReadonlySet<string>,
+): readonly {readonly nodeId: string; readonly x: number; readonly y: number}[] {
+  const chainOrder = new Map<string, number>();
+  let cursor = 0;
+  for (const film of board.projection.films) {
+    chainOrder.set(film.id, cursor++);
+    for (const item of film.items) {
+      if (!chainOrder.has(item.nodeId)) chainOrder.set(item.nodeId, cursor++);
+    }
+  }
+  const shots: CanvasLayoutShot[] = [];
+  const nodes: CanvasLayoutNode[] = [];
+  board.nodes.forEach((item, index) => {
+    const position = board.positions[item.id] ?? {x: (index % 4) * 290, y: Math.floor(index / 4) * 280};
+    const measured = measuredSizes?.[item.id];
+    const fallback = DEFAULT_BOARD_CARD_SIZES[item.kind];
+    const width = measured && Number.isFinite(measured.width) && measured.width > 0 ? measured.width : fallback.width;
+    const height = measured && Number.isFinite(measured.height) && measured.height > 0 ? measured.height : fallback.height;
+    const order = chainOrder.get(item.id);
+    if (order !== undefined) shots.push({id: item.id, orderIndex: order, position, width, height});
+    else if (item.kind === 'shot') shots.push({id: item.id, orderIndex: cursor++, position, width, height});
+    else nodes.push({id: item.id, type: item.kind, position, width, height});
+  });
+  const result = layoutCanvas({
+    shots,
+    nodes,
+    edges: board.edges.map(edge => ({source: edge.sourceId, target: edge.targetId, kind: edge.kind, role: edge.role})),
+    ...(selectedIds?.size ? {selectedIds} : {}),
+  });
+  if (result.status !== 'moved') return [];
+  return result.moves.map(move => ({nodeId: move.id, x: Math.round(move.position.x), y: Math.round(move.position.y)}));
 }
 
 /** Build the same UI-B1 cards/edges the static fixture uses, from persisted rows. */
@@ -100,9 +162,15 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const selected = text(shot.selectedVersionId) ? versions.find(version => version.id === shot.selectedVersionId) : undefined;
+    const shotVersions = versions.filter(version => version.shotId === id);
+    const activeJob = shotJobsNewestFirst(id, jobs).find(job => ACTIVE_JOB.has(String(job.status)));
+    const progress = activeJob && activeJob.progress !== undefined && activeJob.progress !== null && Number.isFinite(Number(activeJob.progress))
+      ? Math.max(0, Math.min(100, Math.round(Number(activeJob.progress)))) : null;
     nodes.push({id, kind: 'shot', name: text(shot.title) ?? 'Shot',
       aspectRatio: text(shot.aspectRatio), durationFrames: shotDurationFrames(shot, versions, assets, clipDuration(id)),
-      status: shotStatus(shot, versions, jobs), thumbnailUrl: assetThumb(selected?.assetId),
+      status: shotStatus(shot, versions, jobs), versionCount: shotVersions.length,
+      ...(progress !== null ? {generationProgress: progress} : {}),
+      thumbnailUrl: assetThumb(selected?.assetId),
       thumbnailKind: assetThumbKind(selected?.assetId)});
     const position = point(shot.position);
     if (position) positions[id] = position;

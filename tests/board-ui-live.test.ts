@@ -6,7 +6,7 @@ import {BoardUiSession} from '../apps/web/src/board-ui/live-session.ts';
 import {LostResponseState, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
 import {ApiError} from '../apps/web/src/api.ts';
 import type {RequestOutcome} from '../apps/web/src/request-outcome-client.ts';
-import {boardConnectIntent, boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent} from '../apps/web/src/board-ui/live.ts';
+import {boardConnectIntent, boardLayoutIntent, boardRootCreateIntent, boardShotAppendIntent, computeBoardTidyMoves} from '../apps/web/src/board-ui/live.ts';
 
 const id = (number: number): string => `60000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const projectId = id(1), root = id(2), shotA = id(3), shotB = id(4), image = id(5), text = id(6);
@@ -410,4 +410,36 @@ test('a preview refusal carries its bounded reason into the board outcome', asyn
   const outcome = await session.run(boardConnectIntent(shotA, shotB));
   assert.deepEqual(outcome, {ok: false, code: 'SEQUENCE_EDIT_REFERENCE_INVALID',
     reason: 'PREVIS_OUTPUT_REQUIRED', ids: []});
+});
+
+test('live projection surfaces failed latest generation status, progress, version count and deterministic tidy moves', () => {
+  const input = rows();
+  const board = projectLiveBoard({
+    ...input,
+    versions: [
+      {id: versionA, shotId: shotA, assetId: assetA, number: 1, createdAt: '2026-01-01T00:00:00.000Z'},
+      {id: id(21), shotId: shotA, assetId: assetA, number: 2, createdAt: '2026-01-01T00:01:00.000Z'},
+    ],
+    jobs: [
+      {id: id(50), shotId: shotB, status: 'running', progress: 64, createdAt: '2026-01-01T00:02:00.000Z'},
+      {id: id(51), shotId: shotA, status: 'failed', createdAt: '2026-01-01T00:03:00.000Z'},
+    ],
+  });
+  const a = board.nodes.find(node => node.id === shotA)!;
+  const b = board.nodes.find(node => node.id === shotB)!;
+  assert.equal(a.status, 'failed');
+  assert.equal(a.versionCount, 2);
+  assert.equal(b.status, 'generating');
+  assert.equal(b.generationProgress, 64);
+  assert.equal(b.versionCount, 0);
+
+  // Overlapping positions produce a deterministic single-batch tidy move list.
+  const messy = projectLiveBoard({
+    ...input,
+    shots: input.shots.map(shot => ({...shot, position: {x: 100, y: 100}})),
+    nodes: input.nodes.map(node => ({...node, position: {x: 100, y: 100}})),
+  });
+  const moves = computeBoardTidyMoves(messy);
+  assert.ok(moves.length >= 2, 'tidy resolves overlapping cards');
+  assert.ok(moves.every(move => Number.isInteger(move.x) && Number.isInteger(move.y)));
 });

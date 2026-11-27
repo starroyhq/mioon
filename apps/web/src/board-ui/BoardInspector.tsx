@@ -8,11 +8,14 @@
  * selections keep the UI-B2/SB/FR-C editors.
  */
 import React, {useEffect, useRef, useState} from 'react';
+import {WorkbenchBadge} from '@mioon/ui/components/workbench-controls';
+import {Check, CircleAlert, Film, Layers} from '@mioon/ui/components/workbench-icons';
 import type {ChainReferenceRole, ReferenceSourceKind} from '../../../../packages/contracts/src/board-sequence.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {canRetryGenerationFailure, formatBoardGenerationFailure, jobServiceDisplayName, providerDisplayName} from '../creation-i18n.ts';
 import {resolveBoardGenerationSelection} from '../generation-service-choices.ts';
 import type {GenerationProvider} from '../generation-settings.ts';
+import VersionCardPreview from '../VersionCardPreview.tsx';
 import {BoardFilmOverview} from './BoardFilmComponents.tsx';
 import type {BoardLive} from './live.ts';
 import type {BoardBinding, BoardMountView} from './live-session.ts';
@@ -42,6 +45,9 @@ export interface BoardInspectorProps {
   readonly versions: readonly Row[];
   readonly shots: readonly Row[];
   readonly nodes: readonly Row[];
+  readonly assets?: readonly Row[];
+  readonly thumbnailFor?: (assetId: string) => string | null;
+  readonly onOpenProperties?: () => void;
   readonly busy?: boolean;
   /** The right dock header tab for the canvas workspace. */
   readonly activeTab?: 'settings' | 'versions';
@@ -87,7 +93,7 @@ interface DeleteRequest {readonly nodeId: string; readonly subjectId: string}
 interface InputMenu {readonly key: string; readonly entry: SequenceGenerationInputEntryView}
 
 export default function BoardInspector(props: BoardInspectorProps): React.ReactElement {
-  const {t, formatNumber, renderMessage} = useI18n();
+  const {t, formatDate, formatNumber, renderMessage} = useI18n();
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const [confirm, setConfirm] = useState<DeleteRequest | null>(null);
   const [inputMenu, setInputMenu] = useState<InputMenu | null>(null);
@@ -416,6 +422,7 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
           aria-valuenow={Math.round(Number(runningJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(runningJob.progress) || 0)))}%`}}/></div>
       </section> : <>
         {failedJob && <section className="board-shot-failure" data-testid={`failed-version-${failedJob.id}`} role="alert">
+          <CircleAlert size={14} className="board-shot-failure-icon" aria-hidden="true"/>
           <span className="board-shot-failure-label" data-text-selectable>{formatBoardGenerationFailure(
             failedJob.error, jobServiceName(failedJob), t, renderMessage)}</span>
           {props.onRetryJob && canRetryGenerationFailure(failedJob.error) && <button type="button" className="board-shot-failure-retry" data-testid={`retry-failed-version-${failedJob.id}`}
@@ -455,18 +462,71 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       </section>
     </> : selected.kind === 'shot' ? <section className="board-inspector-selection" data-testid="board-inspector-selection">
       {shotTitleRow}
-      {props.activeTab === 'versions' ? <section data-testid="board-inspector-versions">
-        <h4>{t('boardUi.inspector.versions')}</h4>
-        <ul>
-          {shotVersions.map(version => <li key={version.id}>
-            <button type="button" data-testid={`board-inspector-version-${version.id}`} disabled={props.busy}
-              aria-pressed={version.id === shot?.selectedVersionId} onClick={() => props.onSelectVersion(selected.id, version.id)}>
-              {t('boardUi.versionNumber', {number: formatNumber(version.number ?? 0)})}
-            </button>
-          </li>)}
-          <li><button type="button" data-testid="board-inspector-no-version" disabled={props.busy}
-            onClick={() => props.onSelectVersion(selected.id, null)}>{t('boardUi.inspector.noVersion')}</button></li>
-        </ul>
+      {props.activeTab === 'versions' ? <section className="board-versions-panel" data-testid="board-inspector-versions">
+        <div className="board-versions-header">
+          <h4>{t('boardUi.inspector.versions')}</h4>
+          <button type="button" className="board-version-clear" data-testid="board-inspector-no-version" disabled={props.busy}
+            onClick={() => props.onSelectVersion(selected.id, null)}>{t('boardUi.inspector.noVersion')}</button>
+        </div>
+        {shotJobs.filter(job => job.status === 'failed').map(job => {
+          const retryBlocked = props.busy || jobAction !== null || shotJobs.some(child => child.retryOfJobId === job.id
+            && (isActiveJob(child) || child.status === 'submission_unknown'));
+          return <article className="board-version-card is-failure" key={job.id} data-testid={`failed-version-card-${job.id}`}>
+            <CircleAlert size={16} className="board-version-failure-icon" aria-hidden="true"/>
+            <div className="board-version-failure-body">
+              <strong>{t('redesign.board.failed')}</strong>
+              <span>{formatBoardGenerationFailure(job.error, jobServiceName(job), t, renderMessage)}</span>
+            </div>
+            {props.onRetryJob && canRetryGenerationFailure(job.error) && <button type="button" className="board-shot-failure-retry"
+              data-testid={`retry-failed-version-card-${job.id}`} disabled={retryBlocked}
+              onClick={() => {void retryGeneration(job);}}><Icon name="refresh" size={12}/>{t('redesign.board.retry')}</button>}
+          </article>;
+        })}
+        {shotVersions.length ? <ul className="board-versions-list">
+          {[...shotVersions].sort((left, right) => Number(right.number ?? 0) - Number(left.number ?? 0)).map(version => {
+            const isSelected = version.id === shot?.selectedVersionId;
+            const asset = typeof version.assetId === 'string' ? (props.assets ?? []).find(item => item.id === version.assetId) : undefined;
+            const thumbUrl = typeof version.assetId === 'string' && props.thumbnailFor ? props.thumbnailFor(version.assetId) : null;
+            const isImage = typeof asset?.mimeType === 'string' && asset.mimeType.startsWith('image/');
+            const providerLabel = version.isMock ? t('inspector.mock') : (typeof version.providerId === 'string' && version.providerId ? version.providerId : null);
+            const specParts = [
+              typeof version.model === 'string' ? version.model : typeof version.snapshot?.model === 'string' ? version.snapshot.model : null,
+              typeof version.snapshot?.aspectRatio === 'string' ? version.snapshot.aspectRatio : null,
+              Number.isFinite(Number(version.snapshot?.duration)) ? t('boardUi.secondsCompact', {seconds: formatNumber(Number(version.snapshot.duration), {maximumFractionDigits: 2})}) : null,
+            ].filter(Boolean);
+            const versionTitle = t('projects.version', {number: version.number ?? 0});
+            return <li key={version.id} className={`board-version-card${isSelected ? ' is-chosen' : ''}`} data-testid={`board-version-card-${version.id}`}>
+              <div className="board-version-preview">
+                {thumbUrl ? <VersionCardPreview sourceKey={`${version.id}:${version.assetId}`} title={versionTitle}
+                  renderMedia={controls => isImage
+                    ? <img className="media-content" src={thumbUrl} alt="" draggable={false}/>
+                    : <video className="media-content" src={thumbUrl} controls={controls} muted={!controls} playsInline preload="metadata"/>}/>
+                  : <div className="board-version-placeholder" aria-hidden="true"><Film size={18}/></div>}
+              </div>
+              <div className="board-version-body">
+                <div className="board-version-head">
+                  <strong className="board-version-number" aria-label={versionTitle}>{t('boardUi.versionNumber', {number: formatNumber(version.number ?? 0)})}</strong>
+                  {providerLabel && <WorkbenchBadge tone="neutral">{providerLabel}</WorkbenchBadge>}
+                  {isSelected && <span className="board-version-current"><Check size={12} aria-hidden="true"/>{t('inspector.selected')}</span>}
+                </div>
+                {specParts.length > 0 && <p className="board-version-specs">{specParts.join(' · ')}</p>}
+                {version.createdAt && <time className="board-version-time" dateTime={String(version.createdAt)}>
+                  {formatDate(String(version.createdAt), {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'})}
+                </time>}
+              </div>
+              <div className="board-version-footer">
+                <button type="button" className="board-version-select" data-testid={`board-inspector-version-${version.id}`}
+                  disabled={props.busy} aria-pressed={isSelected} onClick={() => props.onSelectVersion(selected.id, version.id)}>
+                  {isSelected ? <><Check size={12} aria-hidden="true"/>{t('inspector.selected')}</> : t('redesign.board.use')}
+                </button>
+              </div>
+            </li>;
+          })}
+        </ul> : <div className="board-versions-empty" data-testid="board-versions-empty">
+          <Layers size={24} aria-hidden="true"/>
+          <p>{t('inspector.noVersions')}</p>
+          {props.onOpenProperties && <button type="button" className="board-versions-start" onClick={props.onOpenProperties}>{t('inspector.start')}</button>}
+        </div>}
       </section> : shotProperties}
     </section> : <section className="board-inspector-selection" data-testid="board-inspector-selection">
       <h3>{selected.name}</h3>

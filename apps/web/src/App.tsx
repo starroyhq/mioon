@@ -2228,7 +2228,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const captured = context();
     const ownsSelection = () => importSession.current.active && selection === importSession.current.selection && isCurrent(captured);
     markBusy(projectId, 'import', true);
-    const firstVisual = dataRef.current.projectFormatVersion === 4 && !dataRef.current.assets.some(isAspectFrameVisual);
+    const firstVisual = (dataRef.current.projectFormatVersion === 4 || dataRef.current.projectFormatVersion === 5) && !dataRef.current.assets.some(isAspectFrameVisual);
     let importedVisual = false;
     const considerFirstVisual = (asset: unknown): void => {
       if (!firstVisual || importedVisual || !ownsSelection() || !isAspectFrameVisual(asset as AppAsset)) return;
@@ -2894,17 +2894,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return { scope: `${projectId}:${projectEpoch.current}`, projectId: projectSessionReady() && snapshot.project?.id === projectId ? projectId : null,
       projectRevision: snapshot.project?.revision, timelineId: snapshot.timeline?.id || null, timelineRevision: snapshot.timeline?.revision || 0,
       connected: workbenchReady && online && auth === true && !loading,
-      pending: !projectId || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
+      pending: !projectId || (snapshot.projectFormatVersion === 5 && (format5SessionBusy || format5BoardBusy)) || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
   async function saveTimelineFormat(intent: TimelineFormatIntent, frameOptions?: Pick<RunOptions, 'canExecute' | 'canRevealTasks' | 'errorMessage'>): Promise<{status: string; timeline?: unknown; error?: unknown}> {
     if (dataRef.current.projectFormatVersion === 5) {
       const presetId = (intent.input as {presetId?: unknown}).presetId;
       if (typeof presetId !== 'string') return {status: 'rejected'};
-      const result = await format5Session().format(presetId);
-      if (!result.ok) {notifyFormat5CommandFailure(result); return {status: 'rejected', error: result};}
-      clearFormat5ConflictToast();
-      await refresh(currentProject.current); await format5RefreshHistory();
-      return {status: 'applied', timeline: dataRef.current.timeline};
+      if (frameOptions?.canExecute && !frameOptions.canExecute(undefined as never)) return {status: 'rejected'};
+      setFormat5SessionBusy(true);
+      try {
+        const result = await format5Session().format(presetId);
+        if (!result.ok) {
+          if ('unconfirmed' in result && result.unconfirmed) return {status: 'unknown', error: result};
+          if (!frameOptions) notifyFormat5CommandFailure(result);
+          return {status: 'rejected', error: result};
+        }
+        clearFormat5ConflictToast();
+        await Promise.all([refresh(currentProject.current), format5RefreshHistory(), format5LoadBoard()]);
+        return {status: 'applied', timeline: dataRef.current.timeline};
+      } finally {setFormat5SessionBusy(false);}
     }
     const live = timelineFormatContext();
     if (intent.scope !== live.scope || intent.projectId !== live.projectId || !live.connected || live.pending || !isDurableEditOperation('timeline.format.set')) return { status: 'rejected' };
@@ -3432,17 +3440,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     playhead: frame, mode: workspaceMode });
   const format5SplitState = format5 ? getFormat5SplitStateAt(effectivePlayhead) : null;
   const frameChange = aspectChange && frame && aspectChange.scope === frame.scope && aspectChange.timelineId === frame.timelineId && aspectChange.revision === frame.revision ? aspectChange : null;
-  const frameUndoEntry = frameChange && aspectFrameUndoEntry(frameChange, frame, data.timelineHistory);
+  const aspectHistory = format5 ? format5HistorySource : data.timelineHistory;
+  const frameUndoEntry = frameChange && aspectFrameUndoEntry(frameChange, frame, aspectHistory);
   const frameSuggestion = aspectSuggestion && frame && aspectSuggestion.scope === frame.scope && aspectSuggestion.ratio !== frame.ratio ? aspectSuggestion : null;
   const aspectFrame: AspectFrameView | undefined = frame ? {
-    ratio: frame.ratio, shortEdge: frame.shortEdge, disabled: !online || Boolean(busy['timeline:mutation']),
+    ratio: frame.ratio, shortEdge: frame.shortEdge,
+    disabled: !online || Boolean(busy['timeline:mutation']) || (format5 && (format5SessionBusy || format5BoardBusy)),
     onSelect: ratio => void selectAspectFrame(frame, ratio),
     error: aspectError?.scope === frame.scope ? aspectError.message : null,
     changed: frameChange ? {
-      ...frameChange, undoDisabled: !historyState.canUndo || !frameUndoEntry || aspectFrameHasDrafts(),
+      ...frameChange,
+      undoDisabled: !(format5 ? format5HistoryState.canUndo : historyState.canUndo) || !frameUndoEntry || aspectFrameHasDrafts(),
       onDismiss: () => setAspectChange(null),
       onUndo: () => {
         if (!frameUndoEntry || aspectFrameHasDrafts()) return;
+        if (format5) {
+          if (frameUndoEntry !== aspectFrameUndoEntry(frameChange, readAspectFrame(), format5HistorySource)) return;
+          void format5ChangeHistory('undo').then(result => { if (result) setAspectChange(null); });
+          return;
+        }
         const canExecute = () => frameUndoEntry === aspectFrameUndoEntry(frameChange, readAspectFrame(), dataRef.current.timelineHistory) && !aspectFrameHasDrafts();
         if (canExecute()) void changeTimelineHistory('undo', frameChange.revision, canExecute);
       },
@@ -4081,6 +4097,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const start = startFrame ?? Math.max(0, ...timelineNow.clips.filter(clip => clip.trackId === target.id)
       .map(clip => clip.startFrame + clip.durationFrames));
     const before = new Set(timelineNow.clips.map(clip => clip.id));
+    const firstVisualPlacement = !timelineNow.clips.some(clip => isAspectFrameVisual(state.assets.find(item => item.id === clip.assetId)));
+    const aspectOwner = firstVisualPlacement ? readAspectFrame() : null;
     setFormat5SessionBusy(true);
     try {
       const result = await format5Session().run(format5InsertAssetCommand(assetId as string,
@@ -4090,6 +4108,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       setFormat5Notice({id: `format5-${Date.now()}`, message: t('editUi.notice.added', {name: asset.name})});
       setFormat5NoticeActionId(result.actionId);
       await refresh(currentProject.current);
+      if (firstVisualPlacement && aspectOwner && isAspectFrameVisual(asset)) queueAspectFrameSuggestion(assetId, aspectOwner, true);
       await format5RefreshHistory();
       const added = dataRef.current.timeline?.clips.find(clip => !before.has(clip.id) && clip.assetId === assetId);
       if (added) {setSelectedClipId(added.id); setPlayhead(added.startFrame); updateView('editing', {selectedClipId: added.id, playhead: added.startFrame, timelineCollapsed: false});}
@@ -5480,6 +5499,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
       <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{format5 && format5BoardProjection ? <BoardUiLive board={format5BoardProjection} activeFilmId={format5ActiveFilmId} history={format5History} mount={format5BoardMount} selectedNodeId={selectedId || null} onSelectNode={format5SelectBoardNode} onDelete={nodeId => { void format5BoardDeleteNode(nodeId); }} run={format5BoardRun} runReference={format5ReferenceRun} runSubject={format5BoardRunSubject} inputs={format5Inputs} onUndoNotice={format5BoardUndoNotice} onDismissNotice={() => {setFormat5Notice(null); setFormat5NoticeActionId(null);}} notice={format5Notice} reduceMotion={uiPreferences.reduceMotion} busy={format5BoardBusy || format5SessionBusy} showErrors={false}
           onAssetDrop={(assetId, position) => {void format5BoardAssetDrop(assetId, position);}} revealNodeId={format5RevealNodeId}
+          onAddImage={() => { const asset = dataRef.current.assets.find(item => item.mimeType.startsWith('image/')); if (asset) { void format5BoardAddAsset('image', asset); } else { notify(msg('assets.importImageFirst'), 'warning'); fileInput.current?.click(); } }}
+          onAddVideo={() => { const asset = dataRef.current.assets.find(item => item.mimeType.startsWith('video/')); if (asset) { void format5BoardAddAsset('video', asset); } else { notify(msg('assets.importVideoFirst'), 'warning'); fileInput.current?.click(); } }}
+          onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }}
+          onOpenVersions={nodeId => { void inspect(nodeId, 'versions', null, { reveal: true }); }}
           onAddPrevis={() => { void addPrevis(); }} addingPrevis={Boolean(busy['previs-create'])} previsDisabled={false}/> : <>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
         draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
@@ -5529,7 +5552,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <PanelBoundary name="inspector" className={panelOverlay === 'inspector' ? 'panel-overlay' : ''} visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><WorkbenchPanelHeader collapseLabel={t('shell.collapseInspector')} collapseTestId="toggle-inspector"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={false} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} />{rightDockTab === 'agent' && data.project ? <MioFollowControl focus={mioFollowFocus} visible={panelVisible('inspector')} canInteract={() => !nativeLeaseRevoked.current && !projectEntryIdentityRef.current!.getState().identityBlocked} onErrorChange={setMioFollowSaveError} /> : format5 && workspaceMode === 'canvas' && chosenShot ? <span className="workbench-panel-detail" data-testid="board-inspector-header-shot">{format5HeaderShotNumber ?? '01'} {chosenShot.title}</span> : null}</WorkbenchPanelHeader><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy={workspaceMode === "canvas" && tab === "versions" ? "right-dock-versions-tab" : "right-dock-properties-tab"} visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{subjectPanel ? <div className="inspector-container">{subjectPanel}</div> : workspaceMode === 'canvas' ? <div className="inspector-container">
     {format5 && format5BoardProjection ? <BoardInspector board={format5BoardProjection} activeFilmId={format5ActiveFilmId} mount={format5BoardMount}
-      selectedNodeId={selectedId || null} versions={data.versions} shots={data.shots} nodes={data.nodes} busy={format5BoardBusy}
+      selectedNodeId={selectedId || null} versions={data.versions} shots={data.shots} nodes={data.nodes} assets={data.assets}
+      thumbnailFor={format5ThumbnailFor} onOpenProperties={() => setTab('settings')} busy={format5BoardBusy}
       activeTab={workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'settings'}
       dialogueSubjects={format5DialogueSubjects}
       dialogueCueCount={selectedId ? format5DialogueCues.counts.get(selectedId) ?? 0 : 0}
