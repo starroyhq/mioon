@@ -8,7 +8,7 @@ export interface ObservedRpcService {
 /** Only an advisory read may be stopped by losing its HTTP observer. Never
  * propagate socket lifetime into mutation, generation or render cancellation. */
 export async function callObservedRpc(req: IncomingMessage, res: ServerResponse, services: ObservedRpcService, operation: string, input: unknown, context: Record<string, unknown> = {}): Promise<unknown> {
-  if (!['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness'].includes(operation)) return services.call(operation, input, context);
+  if (!['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.processing.wait'].includes(operation)) return services.call(operation, input, context);
   const effect = operationEffect(operation);
   // Explicit opt-in plus semantic guards: a later effect change cannot silently
   // attach client cancellation to business writes or external/paid work. Only

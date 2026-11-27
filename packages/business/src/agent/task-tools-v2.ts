@@ -5,6 +5,7 @@ import type {MioCanvasPreparation,MioCanvasRequester} from '../canvas-mio-editin
 import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
 import {mioAssetImportInputSchema} from '../../../contracts/src/mio-asset-import.ts';
 import {publicOperationSchemas} from '../../../contracts/src/public-operations.ts';
+import {isTimelineProcessingOperation,timelineProcessingResponseSchemas,timelineProcessingSchemas} from '../../../contracts/src/timeline-processing.ts';
 import {subjectVariantSnapshotSchema,SUBJECT_VARIANT_LIMITS} from '../../../contracts/src/subject-variants.ts';
 import {createProjectVersions} from '../project-versions/service.ts';
 import {readTimelineHeaderStorage,readTimelineStorage} from '../project-file/timeline-storage.ts';
@@ -22,7 +23,7 @@ import type {ProjectAssetImportPreparation,ProjectAssetImportCreationProof,Proje
 import {readMioProjectImportDependencies,readMioProjectImportDependenciesInside} from './mio-project-import-dependencies.ts';
 import {createMioProjectRules} from './mio-rules.ts';
 import type {MioProjectRules} from './mio-rules.ts';
-import {AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS,AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS,AGENT_TASK_FORMAT6_TOOLS_LOAD_PARAMETERS,AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
@@ -110,6 +111,7 @@ const readOperations=[
  'scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
  'sequence.inspect','sequence.generation-inputs.get','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
+ 'timeline.processing.list','timeline.processing.inspect','timeline.processing.wait','timeline.processing.cache.get',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
 ] as const;
 const reversibleOperations=[
@@ -133,6 +135,7 @@ const irreversibleOperations=[
  // FR-G «save clip sound» publishes a new project asset; its local task record
  // and portable source provenance remain reviewable after the step.
  'clip.audio.export',
+ 'timeline.processing.retry','timeline.processing.cancel','timeline.processing.cache.clear',
 ] as const;
 const paidOperations=['generation.submit','image.generate','subject.variants.retry'] as const;
 const parityConfirmOperations=new Set<string>([
@@ -239,6 +242,11 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  operation=taskToolOperation(operation);
  const references=new Map<string,Pick<AgentTaskTarget,'kind'|'id'>>();
  const add=(kind:string,value:unknown):void=>{if(typeof value==='string')references.set(`${kind}:${value}`,{kind,id:value});};
+ if(isTimelineProcessingOperation(operation)){
+  add('timeline_processing',input.taskId);
+  if(!operationEffect(operation).readOnly)add('timeline',projectId);
+  return [...references.values()];
+ }
  for(const [field,kind] of [['shotId','shot'],['targetShotId','shot'],['nodeId','node'],['sourceNodeId','node'],['edgeId','edge'],['jobId','job'],['assetId','asset'],['sourceAssetId','asset'],['versionId','version'],['exportId','export'],['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':operation.startsWith('scene.')?'scene_task':'image_task'],['groupId','image_group'],['lutId','lut']] as const)if(!(field==='versionId'&&operation.startsWith('project.version.')))add(kind,input[field]);
  // The journal identifies this project's timeline by projectId; the wire's
  // timelineId names the same aggregate without granting another project scope.
@@ -272,7 +280,7 @@ export interface MioSequencePreparation {readonly plan:MioSequencePlan|MioSequen
 /** Loadable sequence group operations share the one bounded expansion path. */
 const MIO_SEQUENCE_WRITE_OPERATIONS:ReadonlySet<string>=new Set<string>(MIO_SEQUENCE_GROUP_OPERATIONS);
 const isMioSequenceWriteOperation=(operation:string):boolean=>MIO_SEQUENCE_WRITE_OPERATIONS.has(operation);
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation;canvasCopy?:MioCanvasCopyPreparation;sequence?:MioSequencePreparation;generatedTargets?:{kind:string;id:string}[]}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation;canvasCopy?:MioCanvasCopyPreparation;sequence?:MioSequencePreparation;processingProof?:string;generatedTargets?:{kind:string;id:string}[]}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -606,7 +614,7 @@ const previsWrite=(operation:string):boolean=>operation==='previs.create'||opera
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export').map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export'&&!isTimelineProcessingOperation(operation)).map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -631,9 +639,18 @@ import type {SequenceEditAllocation,SequenceEditReceipt} from '../../../contract
 import {findSequenceEditReceipt,readSequenceEditHistoryEntry} from '../format5-editor-history.ts';
 import {readFrozenFormat5GenerationInputs} from '../format5-reference-inputs.ts';
 import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.ts';
-export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTaskToolDefinition[]=>{
+function timelineProcessingTools():AgentTaskToolDefinition[]{
+ return Object.keys(timelineProcessingResponseSchemas).map(operation=>{
+  const readOnly=operationEffect(operation).readOnly;
+  return {name:`mioon_${operation.replaceAll('.','_')}`,operation,description:descriptions[operation]!,parameters:AGENT_TASK_TOOL_SCHEMAS[operation],
+   risk:readOnly?'read_only':'local_irreversible',receipt:readOnly?'observation':'local processing intent',
+   recovery:'read the original task; never repeat an uncertain operation',undo:'unavailable'};
+ });
+}
+export const listAgentTaskTools=(frameTransaction=false,format5=false,timelineProcessing=false):AgentTaskToolDefinition[]=>{
+ const format6=format5&&timelineProcessing;
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
-  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
+  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:format6?AGENT_TASK_FORMAT6_TOOLS_LOAD_PARAMETERS:format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
   // The scene may name a subject per mannequin/prop only in a format-5
   // project; formats 3/4 keep the frozen reviewed tool shape (and fingerprints).
   if(format5&&tool.operation==='previs.scene.set')return {...tool,parameters:AGENT_TASK_FORMAT5_PREVIS_SCENE_PARAMETERS};
@@ -677,6 +694,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
  if(frameTransaction&&!format5)for(const operation of mioCanvasOperations){
   definitions.push({name:mioCanvasToolName(operation),operation,description:canvasToolDescriptions[operation],parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk:'local_reversible',receipt:'atomic task step and canvas change',recovery:'inspect the original task step; never repeat unknown execution',undo:'reverse only this canvas edit'});
  }
+ if(format6)definitions.push(...timelineProcessingTools());
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
@@ -705,8 +723,8 @@ function withoutMockGeneration(tool:AgentTaskToolDefinition):AgentTaskToolDefini
  return tool;
 }
 
-export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=false,frameTransaction=false,format5=false}:{diagnostic?:boolean;frameTransaction?:boolean;format5?:boolean}={}):AgentTaskToolDefinition[]{
- const tools=diagnostic?listDiagnosticAgentTaskTools():listAgentTaskTools(frameTransaction,format5);
+export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=false,frameTransaction=false,format5=false,timelineProcessing=false}:{diagnostic?:boolean;frameTransaction?:boolean;format5?:boolean;timelineProcessing?:boolean}={}):AgentTaskToolDefinition[]{
+ const tools=diagnostic?[...listDiagnosticAgentTaskTools(),...(format5&&timelineProcessing?timelineProcessingTools():[])]:listAgentTaskTools(frameTransaction,format5,timelineProcessing);
  return mockAllowed?tools:tools.map(withoutMockGeneration);
 }
 
@@ -714,11 +732,12 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  assertProjectStore(store);
  const frameProject=usesTimelineFrameTransaction(store.db);
  const format5=isFormat5Project(store);
+ const timelineProcessing=format5&&services.timelineProcessingEnabled;
  const canvasCopy=frameProject&&isProjectStore(store)?createMioCanvasCopy(store):null;
- const catalogProfile=format5?'format5':frameProject?'format4':'native';
+ const catalogProfile=timelineProcessing?'format6':format5?'format5':frameProject?'format4':'native';
  const {generationAvailability}=services;
- const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject,format5});
- const diagnosticList=()=>{const base=listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
+ const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject,format5,timelineProcessing});
+ const diagnosticList=()=>{const base=listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true,format5,timelineProcessing});
   if(!format5)return base;
   const sequenceOnly=listAgentTaskTools(false,true).filter(tool=>['sequence.tool.edit','sequence.tool.undo',
     ...MIO_SEQUENCE_GROUP_OPERATIONS.filter(operation=>operation!=='sequence.tool.edit'),
@@ -734,6 +753,15 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const testApplication=testProjectAppLibrary(store);
  const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
  const {db}=store;
+ function processingApprovalProof(projectId:string,taskId:unknown):string {
+  const header=readTimelineHeaderStorage(db,projectId)?.header;
+  const timelineRevision=object(header)&&typeof header.revision==='number'?header.revision:null;
+  const task=typeof taskId==='string'?db.prepare(
+   'SELECT requestId FROM main.timeline_processing_tasks WHERE id=? AND projectId=?'
+  ).get(taskId,projectId):null;
+  if(typeof taskId==='string'&&typeof task?.requestId!=='string')fail('AGENT_TASK_INVALID_TARGET','变速任务不属于当前项目');
+  return createHash('sha256').update(canonical({projectId,timelineRevision,taskId,attempt:task?.requestId??null})).digest('hex');
+ }
  const importRoot=storeDirectories(store).localDir,importDirectory='imports';
  const journal=injectedJournal??(policyStore?createMioProjectJournal(store,policyStore):createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}));
  // Mio reads back a previs node it created or saved the way it reads one, with framing.
@@ -954,6 +982,21 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  }
 function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester,locale,retainedSpeedPlan}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester;locale?:AgentTaskLocale;retainedSpeedPlan?:unknown}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
+  if(isTimelineProcessingOperation(operation)){
+   if(!timelineProcessing||!services.timelineProcessingEnabled||!isProjectStore(store)||projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','变速处理仅用于当前已启用的格式 6 项目');
+   if(!object(input))fail('VALIDATION_ERROR','变速处理参数无效');
+   rejectHostFields(input);
+   const {projectId:_projectId,requestId:_requestId,...args}=hydrateInput(operation,input,projectId,'00000000-0000-4000-8000-000000000000');
+   const risk=operationEffect(operation).readOnly?'read_only':'local_irreversible';
+   const references=agentTaskExplicitTargets(operation,args,projectId);
+   for(const reference of references)beforeTargetRead?.(reference);
+   // Mio's timeline target ledger tracks geometry. Also bind the actual
+   // edit revision and attempt identity without treating progress as an edit.
+   const targets=risk==='read_only'?[]:[{kind:'timeline',id:projectId,revision:readRevision(store,projectId,'timeline',projectId)}];
+   const referencedTargets=references.map(reference=>targets.find(target=>target.kind===reference.kind&&target.id===reference.id)??{...reference,revision:0});
+   return {projectId,operation,input:args,risk,targets,referencedTargets,before:{},
+    ...(risk==='read_only'?{}:{processingProof:processingApprovalProof(projectId,args.taskId)})};
+  }
  if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input,locale,canvasRequester?.stepId,retainedSpeedPlan);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   if(operation==='asset.import'){
@@ -1169,6 +1212,24 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   return projectImport.lookup(proof,context);
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
+  const processingOperation=prepared.operation;
+  if(isTimelineProcessingOperation(processingOperation)){
+   if(!timelineProcessing||!services.timelineProcessingEnabled||!isProjectStore(store)||prepared.projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','变速处理仅用于当前已启用的格式 6 项目');
+   const input=hydrateInput(processingOperation,prepared.input,prepared.projectId,context.requestId);
+   const beforeEffect=():void=>{
+    if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+    context.beforeEffect();
+    if(!operationEffect(processingOperation).readOnly&&prepared.processingProof!==processingApprovalProof(prepared.projectId,input.taskId))
+     fail('AGENT_TASK_TARGET_CHANGED','变速任务或时间线已变化，请重新读取');
+   };
+   beforeEffect();
+   const output=await services.call(processingOperation,input,{signal:context.signal,beforeEffect});
+   const parsed=timelineProcessingResponseSchemas[processingOperation].safeParse(output);
+   if(!parsed.success)fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理没有返回可信的任务摘要');
+   const result=parsed.data;
+   if(('item' in result&&result.item.taskId!==input.taskId)||('taskId' in result&&result.taskId!==input.taskId))fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次任务');
+   return {result:projectResult(result),changes:[],recorded:false};
+  }
   if(prepared.sequence){
    if(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
    const sequence=prepared.sequence;
@@ -1480,6 +1541,26 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   return ['succeeded','failed','cancelled','cancelled_before_dispatch','cancelled_before_start'].includes(String(state))?projectResult(value):null;
  }
  function recoverWait(prepared:PreparedAgentTaskTool):AgentTaskJson|null{if(prepared.operation!=='task.wait')fail('AGENT_TASK_INVALID_TOOL','此步骤不是等待任务');return readWaitResult(prepared.projectId,prepared.input);}
+ function recoverProcessingRetry(input:{projectId:string;runId:string;stepId:string}):
+  {outcome:'applied';result:{taskId:string}}|{outcome:'not_applied'}|null{
+  const run=journal.run(input.runId),step=journal.step(input.stepId),call=step.toolCall;
+  if(!timelineProcessing||!isProjectStore(store)||input.projectId!==store.projectId||
+   run.projectId!==input.projectId||step.runId!==run.id||step.status!=='unknown'||step.result!==undefined||
+   call?.name!=='mioon_timeline_processing_retry'||!object(call.arguments))return null;
+  const parsed=timelineProcessingSchemas['timeline.processing.retry'].safeParse({
+   ...call.arguments,projectId:input.projectId,requestId:step.id,
+  });
+  if(!parsed.success)return null;
+  const {projectId,taskId,requestId}=parsed.data;
+  // The retry is accepted in the same transaction as its keyed receipt.
+  // If the original task is missing, there may also be a retired receipt.
+  const row=db.prepare(`SELECT receipt.taskId FROM main.timeline_processing_tasks AS task
+   LEFT JOIN main.timeline_processing_retries AS receipt ON receipt.requestId=?
+   WHERE task.id=? AND task.projectId=?`).get(requestId,taskId,projectId);
+  if(!row)return null;
+  if(row.taskId===taskId)return {outcome:'applied',result:{taskId}};
+  return row.taskId===null?{outcome:'not_applied'}:null;
+ }
  function recoverLocalUnknown(input:{projectId:string;runId:string;stepId:string;requestId:string}):AgentTaskLocalRecovery|null{
   const run=journal.run(input.runId),step=journal.step(input.stepId);
   if(input.requestId!==step.id||run.projectId!==input.projectId||step.runId!==run.id||step.status!=='unknown'||step.result!==undefined||!step.toolCall)return null;
@@ -1490,6 +1571,8 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   const {operation}=tool;
   const tier=step.tier??prepare({projectId:input.projectId,operation,input:toolCall.arguments}).risk;
   if(tier==='read_only'&&tool.risk==='read_only'&&operation!=='task.wait')return {outcome:'not_applied',reason:'read_only'};
+  if(tier==='local_irreversible'&&operation==='timeline.processing.retry'&&recoverProcessingRetry(input)?.outcome==='not_applied')
+   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
   if(tier==='paid'&&tool.risk==='paid'){
    // Only a worker dispatching a queued job or image task reaches a provider, and dispatch records the step's cost.
    // Acceptance commits that record, its request receipt and the v2 job origin in one transaction; with none of
@@ -1655,6 +1738,6 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
 
- return {list,diagnosticList,generationServiceIssue,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{canvasCopy?.dispose();removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,diagnosticList,generationServiceIssue,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverProcessingRetry,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{canvasCopy?.dispose();removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

@@ -3,6 +3,7 @@ import type {AgentTaskLocale,AgentTaskStep} from '@mioon/contracts/agent-tasks-v
 import {MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL} from '../../../contracts/src/mio-project-media.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL} from '../../../contracts/src/mio-project-import.ts';
 import {mioCanvasOperations,mioCanvasOperationForTool,mioCanvasToolName} from '../../../contracts/src/mio-canvas.ts';
+import {timelineProcessingSchemas} from '../../../contracts/src/timeline-processing.ts';
 
 export const AGENT_TASK_TOOLS_LOAD_NAME='mioon_tools_load';
 export const AGENT_TASK_TOOLS_LOAD_OPERATION='tools.load';
@@ -117,7 +118,7 @@ function toolName(operation:string):string{
   return `mioon_${operation.replaceAll('.','_')}`;
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));
-export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4'|'format5';
+export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4'|'format5'|'format6';
 const format4GroupedTools=[...groupedTools,...mioCanvasCopyOperations.map(operation=>({group:'canvas' as const,operation,name:`mioon_${operation.replaceAll('.','_')}`})),...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
 const format5GroupedTools=[...groupedTools.filter(tool=>FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation]===undefined),
  {group:'core' as const,operation:'sequence.inspect',name:'mioon_sequence_inspect'},
@@ -134,18 +135,22 @@ const format5GroupedTools=[...groupedTools.filter(tool=>FORMAT5_UNAVAILABLE_OPER
  // FR-G: saving one clip's sound is an asset-producing local task, so it lives
  // with the asset tools and is exposed only in the format-5 catalog.
  {group:'assets' as const,operation:'clip.audio.export',name:'mioon_clip_audio_export'}];
+const format6GroupedTools=[...format5GroupedTools,
+ ...Object.keys(timelineProcessingSchemas).map(operation=>({group:'editing' as const,operation,name:toolName(operation)}))];
 export function agentTaskToolCatalogProfile(definitions:readonly {name:string}[]):AgentTaskToolCatalogProfile{
+ if(definitions.some(tool=>tool.name==='mioon_timeline_processing_list'))return 'format6';
  if(definitions.some(tool=>tool.name==='mioon_sequence_inspect'))return 'format5';
  if(definitions.some(tool=>mioCanvasOperationForTool(tool.name)))return 'format4';
  return definitions.some(tool=>tool.name==='mioon_project_notes_set')?'legacy':'native';
 }
 const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='asset.import'||tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION||tool.operation===MIO_PROJECT_FILE_IMPORT_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
-const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='format4'?format4GroupedTools:profile==='format5'?format5GroupedTools:profile==='legacy'?legacyGroupedTools:groupedTools;
+const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='format6'?format6GroupedTools:profile==='format4'?format4GroupedTools:profile==='format5'?format5GroupedTools:profile==='legacy'?legacyGroupedTools:groupedTools;
 export const AGENT_TASK_LOADABLE_TOOL_NAMES=Object.freeze(groupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 export const AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES=Object.freeze(legacyGroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 const format4LoadableNames=Object.freeze(format4GroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 const format5LoadableNames=Object.freeze(format5GroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
-const loadableNames=(profile:AgentTaskToolCatalogProfile)=>profile==='format4'?format4LoadableNames:profile==='format5'?format5LoadableNames:profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES:AGENT_TASK_LOADABLE_TOOL_NAMES;
+const format6LoadableNames=Object.freeze(format6GroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
+const loadableNames=(profile:AgentTaskToolCatalogProfile)=>profile==='format6'?format6LoadableNames:profile==='format4'?format4LoadableNames:profile==='format5'?format5LoadableNames:profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES:AGENT_TASK_LOADABLE_TOOL_NAMES;
 const toolNameLoadLimit=(profile:AgentTaskToolCatalogProfile)=>loadableNames(profile).length;
 export const agentTaskToolSupportsGroupLoad=(name:string):boolean=>name!==MIO_PROJECT_MEDIA_LIST_TOOL&&name!==MIO_PROJECT_FILE_IMPORT_TOOL&&!mioCanvasOperationForTool(name)&&!mioCanvasCopyOperations.some(operation=>toolName(operation)===name);
 export type AgentTaskToolLoadMode='names'|'groups';
@@ -174,6 +179,9 @@ export const AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS=Object.freeze({
 });
 export const AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS=Object.freeze({
  ...AGENT_TASK_TOOLS_LOAD_PARAMETERS,properties:{names:{...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names,items:{type:'string',enum:format5LoadableNames},maxItems:format5LoadableNames.length}},
+});
+export const AGENT_TASK_FORMAT6_TOOLS_LOAD_PARAMETERS=Object.freeze({
+ ...AGENT_TASK_TOOLS_LOAD_PARAMETERS,properties:{names:{...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names,items:{type:'string',enum:format6LoadableNames},maxItems:format6LoadableNames.length}},
 });
 export const AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS=Object.freeze({
   type:'object',properties:{names:{type:'array',items:{type:'string',enum:AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES},minItems:1,maxItems:AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.length}},required:['names'],additionalProperties:false,
