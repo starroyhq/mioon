@@ -159,7 +159,7 @@ static const sqlite3_io_methods io = {
 };
 static sqlite3_io_methods io_v1, io_v2;
 
-static int open_observed(sqlite3_vfs *vfs, sqlite3_filename filename, sqlite3_file *file, int flags, int *out_flags) {
+static int open_observed(sqlite3_vfs *vfs, const char *filename, sqlite3_file *file, int flags, int *out_flags) {
   (void)vfs;
   ProbeFile *probe = (ProbeFile *)file;
   probe->real = (sqlite3_file *)(probe + 1);
