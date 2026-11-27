@@ -185,7 +185,8 @@ async function firstDecodedSample(source: TimelineSpeedAudioSource, selector: st
   }
 }
 
-async function sourceClockOrigin(source: TimelineSpeedAudioSource, options: TimelineSpeedAudioOptions): Promise<number> {
+async function sourceClockOrigin(source: TimelineSpeedAudioSource, options: TimelineSpeedAudioOptions,
+  parallelCurveProbes: boolean): Promise<number> {
   // Reverse artifacts use the provider-verified PCM sample interval directly.
   if (source.reversed) {
     const raw = source.reversed.raw;
@@ -197,6 +198,17 @@ async function sourceClockOrigin(source: TimelineSpeedAudioSource, options: Time
   if (picture === undefined || picture === null) return firstDecodedSample(source, audio, 'audio', options);
   const video = String(picture);
   if (!/^(?:v:)?(?:0|[1-9]\d{0,4})$/u.test(video)) throw unverifiedSourceClock();
+  if (parallelCurveProbes) {
+    // Each independent probe holds its own media permit. Settle both before
+    // releasing ownership, even when one could not verify the sample clock.
+    const [pictureResult, soundResult] = await Promise.allSettled([
+      firstDecodedSample(source, video, 'video', options), firstDecodedSample(source, audio, 'audio', options),
+    ]);
+    if (soundResult.status === 'rejected' && soundResult.reason?.terminationUnconfirmed === true) throw soundResult.reason;
+    if (pictureResult.status === 'rejected') throw pictureResult.reason;
+    if (soundResult.status === 'rejected') throw soundResult.reason;
+    return pictureResult.value;
+  }
   const origin = await firstDecodedSample(source, video, 'video', options);
   await firstDecodedSample(source, audio, 'audio', options);
   return origin;
@@ -426,7 +438,8 @@ export async function prepareTimelineSpeedAudio(input: TimelineSpeedAudioInput, 
   if (!(motionSamples > 0)) throw invalid('EMPTY_VIEW_PCM');
   const from = plan.outputWindow.fromFrame * samplesPerFrame;
   const to = Math.max(from, Math.min(from + samples, motionSamples));
-  const origin = to === from ? 0 : await sourceClockOrigin(source, options);
+  const parallelCurveProbes = plan.direction === 'forward' && timing.basis.speed.kind === 'curve';
+  const origin = to === from ? 0 : await sourceClockOrigin(source, options, parallelCurveProbes);
   fence();
   let handle: FileHandle | undefined;
   let failed = false;
