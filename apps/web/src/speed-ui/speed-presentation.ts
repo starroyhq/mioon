@@ -16,6 +16,7 @@ import {
   timelineSpeedEnabled,
 } from './speed-model.ts';
 import type {SpeedClipLike, SpeedTimelineLike} from './speed-model.ts';
+import type {SpeedProcessingPollState} from './use-speed-processing.ts';
 
 type Translator = <K extends MessageKey>(key: K, ...args: MessageArguments<K>) => string;
 
@@ -29,6 +30,7 @@ export interface TimelineClipSpeedView {
   readonly processingPercent: number | null;
   readonly processingLabel: string;
   readonly processingFailed: boolean;
+  readonly processingUnknown?: boolean;
 }
 
 /** Builds per-clip display views for `Timeline.tsx`. Returns `null` when
@@ -37,6 +39,7 @@ export function buildTimelineClipSpeedViews(
   timeline: (SpeedTimelineLike & {readonly clips?: readonly SpeedClipLike[]}) | null | undefined,
   processingItems: readonly SpeedProcessingItem[],
   t: Translator,
+  pollState?: SpeedProcessingPollState,
 ): ReadonlyMap<string, TimelineClipSpeedView> | null {
   if (!timelineSpeedEnabled(timeline)) return null;
   const map = new Map<string, TimelineClipSpeedView>();
@@ -84,7 +87,10 @@ export function buildTimelineClipSpeedViews(
     const percent = processing?.status === 'running' && typeof processing.progress === 'number'
       ? Math.max(0, Math.min(100, Math.round(processing.progress)))
       : null;
+    const statusUnknown = active && pollState === 'unknown';
     const processingLabel = !active ? ''
+      : statusUnknown
+        ? t('speed.processing.statusUnknown')
       : percent !== null
         ? t('speed.processing.clipProgress', {percent})
         : t('speed.processing.clipQueued');
@@ -96,9 +102,10 @@ export function buildTimelineClipSpeedViews(
       badgeText: parts.length ? ` · ${parts.join(' · ')}` : '',
       reversed,
       processingActive: active,
-      processingPercent: active ? (percent ?? 0) : null,
+      processingPercent: active && !statusUnknown ? (percent ?? 0) : null,
       processingLabel,
       processingFailed: failed,
+      ...(statusUnknown ? {processingUnknown: true} : {}),
     });
   }
   return map;

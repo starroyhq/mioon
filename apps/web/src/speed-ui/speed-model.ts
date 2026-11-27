@@ -49,6 +49,16 @@ export const SPEED_SLIDER_TICKS = Object.freeze([0.1, 0.5, 1, 2, 5, 10] as const
 export const SPEED_SLIDER_RESOLUTION = 1000;
 export const DEFAULT_FREEZE_DURATION_FRAMES = 60;
 export const SPEED_PRESET_LIST: readonly TimeMapCurvePreset[] = TIMELINE_SPEED_PRESETS;
+export const CURVE_SVG_GEOMETRY = Object.freeze({
+  width: 264,
+  height: 128,
+  padLeft: 34,
+  padRight: 12,
+  padTop: 14,
+  padBottom: 14,
+  plotWidth: 218,
+  plotHeight: 100,
+});
 
 export interface SpeedTimelineLike {
   readonly fps?: number;
@@ -759,6 +769,169 @@ export function deleteCurveControlPoint(
   if (index <= 0 || index >= points.length - 1) return {ok: false, error: 'ENDPOINT_FIXED'};
   const next = points.filter((_, i) => i !== index);
   return {ok: true, points: next, selectedIndex: Math.min(index, next.length - 1)};
+}
+
+export interface CurveSvgRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface CurveSvgCtm {
+  readonly a: number;
+  readonly b: number;
+  readonly c: number;
+  readonly d: number;
+  readonly e: number;
+  readonly f: number;
+}
+
+/** Exact comparison between two curve point arrays (frame & rational rate). */
+export function curvePointsEqual(
+  a: readonly TimeMapCurvePoint[],
+  b: readonly TimeMapCurvePoint[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i]!;
+    const right = b[i]!;
+    if (left.sourceFrame !== right.sourceFrame) return false;
+    if (left.rate.numerator * right.rate.denominator !== right.rate.numerator * left.rate.denominator) return false;
+  }
+  return true;
+}
+
+/** Converts CSS client coordinates to SVG viewBox coordinates, honoring `getScreenCTM()`
+ * when present and falling back to SVG's default `preserveAspectRatio="xMidYMid meet"`
+ * letterbox mapping so horizontal padding never shifts source frames. */
+export function clientPointToCurveSvg(
+  clientX: number,
+  clientY: number,
+  rect: CurveSvgRect,
+  ctm?: CurveSvgCtm | null,
+): {readonly x: number; readonly y: number} | null {
+  if (ctm) {
+    const det = ctm.a * ctm.d - ctm.b * ctm.c;
+    if (Number.isFinite(det) && Math.abs(det) > 1e-9) {
+      const dx = clientX - ctm.e;
+      const dy = clientY - ctm.f;
+      return {
+        x: (ctm.d * dx - ctm.c * dy) / det,
+        y: (-ctm.b * dx + ctm.a * dy) / det,
+      };
+    }
+  }
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const scale = Math.min(rect.width / CURVE_SVG_GEOMETRY.width, rect.height / CURVE_SVG_GEOMETRY.height);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const offsetX = (rect.width - CURVE_SVG_GEOMETRY.width * scale) / 2;
+  const offsetY = (rect.height - CURVE_SVG_GEOMETRY.height * scale) / 2;
+  return {
+    x: (clientX - rect.left - offsetX) / scale,
+    y: (clientY - rect.top - offsetY) / scale,
+  };
+}
+
+/** Maps an SVG viewBox point inside the plot area to `(frame, rate)` for point insertion. */
+export function curveSvgPointToCoords(
+  svgPoint: {readonly x: number; readonly y: number},
+  curveStartFrame: number,
+  curveEndFrame: number,
+): {readonly frame: number; readonly rate: number} {
+  const curveSpan = Math.max(1, curveEndFrame - curveStartFrame);
+  const normX = clamp((svgPoint.x - CURVE_SVG_GEOMETRY.padLeft) / CURVE_SVG_GEOMETRY.plotWidth, 0, 1);
+  const normY = clamp(1 - (svgPoint.y - CURVE_SVG_GEOMETRY.padTop) / CURVE_SVG_GEOMETRY.plotHeight, 0, 1);
+  return {
+    frame: Math.round(curveStartFrame + normX * curveSpan),
+    rate: logNormToRate(normY),
+  };
+}
+
+/** Computes dragged control-point coordinates relative to the pointer-down anchor
+ * so a purely vertical drag preserves `startPoint.sourceFrame` without rounding drift
+ * and a purely horizontal drag preserves rate. */
+export function curveDragTargetCoords(
+  startPoint: TimeMapCurvePoint,
+  startSvg: {readonly x: number; readonly y: number},
+  currentSvg: {readonly x: number; readonly y: number},
+  curveStartFrame: number,
+  curveEndFrame: number,
+): {readonly frame: number; readonly rate: number} {
+  const curveSpan = Math.max(1, curveEndFrame - curveStartFrame);
+  const deltaSvgX = currentSvg.x - startSvg.x;
+  const deltaSvgY = currentSvg.y - startSvg.y;
+  const frame = Math.abs(deltaSvgX) < 1e-6
+    ? startPoint.sourceFrame
+    : clamp(
+        Math.round(startPoint.sourceFrame + (deltaSvgX / CURVE_SVG_GEOMETRY.plotWidth) * curveSpan),
+        curveStartFrame,
+        curveEndFrame,
+      );
+  const startRate = rateToNumber(startPoint.rate);
+  if (Math.abs(deltaSvgY) < 1e-6) {
+    return {frame, rate: startRate};
+  }
+  const startNormY = rateToLogNorm(startRate);
+  const nextNormY = clamp(startNormY - deltaSvgY / CURVE_SVG_GEOMETRY.plotHeight, 0, 1);
+  return {frame, rate: logNormToRate(nextNormY)};
+}
+
+/** Nudges a curve control point's rate by one keyboard step. Rejects locally with
+ * `INVALID_RATE` when already at the 0.1× floor (down) or 10× ceiling (up) so no
+ * preview/commit request is dispatched at the bounds. */
+export function nudgeCurveControlPointRate(
+  points: readonly TimeMapCurvePoint[],
+  index: number,
+  direction: 'up' | 'down',
+  coarse = false,
+): CurveEditResult {
+  if (index < 0 || index >= points.length) return {ok: false, error: 'POINT_ORDER'};
+  const current = points[index]!;
+  if (direction === 'up' && current.rate.numerator >= current.rate.denominator * 10) {
+    return {ok: false, error: 'INVALID_RATE'};
+  }
+  if (direction === 'down' && current.rate.numerator * 10 <= current.rate.denominator) {
+    return {ok: false, error: 'INVALID_RATE'};
+  }
+  const norm = rateToLogNorm(rateToNumber(current.rate));
+  const step = coarse ? 0.1 : 0.03;
+  const nextRate = logNormToRate(norm + (direction === 'up' ? step : -step));
+  const moved = moveCurveControlPoint(points, index, current.sourceFrame, nextRate);
+  if (!moved.ok) return moved;
+  if (curvePointsEqual(points, moved.points)) return {ok: false, error: 'INVALID_RATE'};
+  return moved;
+}
+
+/** Nudges a curve control point's source frame by one keyboard step. Reports
+ * `changed: false` when fixed (endpoint) or already clamped against a neighbor. */
+export function nudgeCurveControlPointFrame(
+  points: readonly TimeMapCurvePoint[],
+  index: number,
+  direction: 'left' | 'right',
+  coarse = false,
+): {readonly ok: true; readonly changed: boolean; readonly points: readonly TimeMapCurvePoint[]; readonly selectedIndex: number}
+ | {readonly ok: false; readonly error: CurveEditError} {
+  if (index < 0 || index >= points.length) return {ok: false, error: 'POINT_ORDER'};
+  if (index === 0 || index === points.length - 1) {
+    return {ok: true, changed: false, points, selectedIndex: index};
+  }
+  const current = points[index]!;
+  const span = Math.max(1, points[points.length - 1]!.sourceFrame - points[0]!.sourceFrame);
+  const step = Math.max(1, Math.round(span * (coarse ? 0.08 : 0.02)));
+  const moved = moveCurveControlPoint(
+    points,
+    index,
+    current.sourceFrame + (direction === 'right' ? step : -step),
+    rateToNumber(current.rate),
+  );
+  if (!moved.ok) return moved;
+  return {
+    ok: true,
+    changed: !curvePointsEqual(points, moved.points),
+    points: moved.points,
+    selectedIndex: moved.selectedIndex,
+  };
 }
 
 // ---------------------------------------------------------------------------

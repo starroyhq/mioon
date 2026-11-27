@@ -25,12 +25,17 @@ import {useI18n} from '../i18n/I18nProvider.tsx';
 import {useUiPreferences} from '../UiPreferencesProvider.tsx';
 import {displayTimelineFrame} from '../timeline-removal.ts';
 import {
+  CURVE_SVG_GEOMETRY,
   SPEED_MAX_RATE,
   SPEED_MIN_RATE,
   SPEED_PRESET_LIST,
   SPEED_SLIDER_RESOLUTION,
   SPEED_SLIDER_TICKS,
   addCurveControlPoint,
+  clientPointToCurveSvg,
+  curveDragTargetCoords,
+  curvePointsEqual,
+  curveSvgPointToCoords,
   defaultSpeedSetting,
   deleteCurveControlPoint,
   formatOriginalSeconds,
@@ -40,6 +45,8 @@ import {
   isDefaultSpeedSetting,
   logNormToRate,
   moveCurveControlPoint,
+  nudgeCurveControlPointFrame,
+  nudgeCurveControlPointRate,
   parseRateToRational,
   playheadSourceNormOnClip,
   previewLocalSpeedSetting,
@@ -55,6 +62,7 @@ import {
   speedProcessingCanRetry,
 } from './speed-model.ts';
 import type {CurveEditError, SpeedClipLike} from './speed-model.ts';
+import type {SpeedProcessingPollState} from './use-speed-processing.ts';
 import {speedProcessingActiveLabel, speedProcessingFailureSentence} from './speed-presentation.ts';
 import './speed-ui.css';
 
@@ -65,18 +73,19 @@ export interface ClipSpeedSectionProps {
   readonly disabled: boolean;
   readonly processing: SpeedProcessingItem | null;
   readonly processingBusy: boolean;
+  readonly processingPollState?: SpeedProcessingPollState;
   readonly onCommitSpeed: (setting: SpeedSetting) => Promise<unknown>;
   readonly onRetryProcessing: (taskId: string) => unknown;
+  readonly onRefreshProcessing?: () => void;
 }
 
-const CURVE_SVG_W = 264;
-const CURVE_SVG_H = 128;
-const CURVE_PAD_LEFT = 34;
-const CURVE_PAD_RIGHT = 12;
-const CURVE_PAD_TOP = 14;
-const CURVE_PAD_BOTTOM = 14;
-const CURVE_PLOT_W = CURVE_SVG_W - CURVE_PAD_LEFT - CURVE_PAD_RIGHT;
-const CURVE_PLOT_H = CURVE_SVG_H - CURVE_PAD_TOP - CURVE_PAD_BOTTOM;
+const CURVE_SVG_W = CURVE_SVG_GEOMETRY.width;
+const CURVE_SVG_H = CURVE_SVG_GEOMETRY.height;
+const CURVE_PAD_LEFT = CURVE_SVG_GEOMETRY.padLeft;
+const CURVE_PAD_RIGHT = CURVE_SVG_GEOMETRY.padRight;
+const CURVE_PAD_TOP = CURVE_SVG_GEOMETRY.padTop;
+const CURVE_PLOT_W = CURVE_SVG_GEOMETRY.plotWidth;
+const CURVE_PLOT_H = CURVE_SVG_GEOMETRY.plotHeight;
 
 function presetThumbnailPath(preset: TimeMapCurvePreset): string {
   const w = 52;
@@ -124,8 +133,10 @@ export default function ClipSpeedSection({
   disabled,
   processing,
   processingBusy,
+  processingPollState,
   onCommitSpeed,
   onRetryProcessing,
+  onRefreshProcessing,
 }: ClipSpeedSectionProps): React.ReactElement {
   const {t} = useI18n();
   const {preferences} = useUiPreferences();
@@ -320,19 +331,18 @@ export default function ClipSpeedSection({
     return CURVE_PAD_TOP + (1 - rateToLogNorm(rate)) * CURVE_PLOT_H;
   }
 
-  function clientToCurveCoords(clientX: number, clientY: number): {frame: number; rate: number} | null {
+  function clientToSvgPoint(clientX: number, clientY: number): {readonly x: number; readonly y: number} | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const svgX = ((clientX - rect.left) / rect.width) * CURVE_SVG_W;
-    const svgY = ((clientY - rect.top) / rect.height) * CURVE_SVG_H;
-    const normX = Math.max(0, Math.min(1, (svgX - CURVE_PAD_LEFT) / CURVE_PLOT_W));
-    const normY = Math.max(0, Math.min(1, 1 - (svgY - CURVE_PAD_TOP) / CURVE_PLOT_H));
-    return {
-      frame: Math.round(curveStartFrame + normX * curveSpan),
-      rate: logNormToRate(normY),
-    };
+    const rawCtm = typeof svg.getScreenCTM === 'function' ? svg.getScreenCTM() : null;
+    return clientPointToCurveSvg(clientX, clientY, rect, rawCtm);
+  }
+
+  function clientToCurveCoords(clientX: number, clientY: number): {frame: number; rate: number} | null {
+    const svgPoint = clientToSvgPoint(clientX, clientY);
+    if (!svgPoint) return null;
+    return curveSvgPointToCoords(svgPoint, curveStartFrame, curveEndFrame);
   }
 
   function applyCurvePoints(points: readonly TimeMapCurvePoint[], nextSelected: number, shouldCommit: boolean): void {
@@ -372,15 +382,37 @@ export default function ClipSpeedSection({
     setLocalError(null);
     event.currentTarget.focus();
 
+    const startSvg = clientToSvgPoint(event.clientX, event.clientY);
+    const initialSetting = draftRef.current;
+    const initialPoints = initialSetting.speed.kind === 'curve' ? initialSetting.speed.points : activeCurvePoints;
+    const startPoint = initialPoints[index];
+    if (!startSvg || !startPoint) {
+      setDraggingPointIndex(null);
+      return;
+    }
+
+    const startCurveFirst = initialPoints[0]!.sourceFrame;
+    const startCurveLast = initialPoints[initialPoints.length - 1]!.sourceFrame;
+    let movedAny = false;
+
     const onMove = (moveEvent: globalThis.PointerEvent) => {
-      const coords = clientToCurveCoords(moveEvent.clientX, moveEvent.clientY);
-      if (!coords) return;
-      const currentPts = draftRef.current.speed.kind === 'curve' ? draftRef.current.speed.points : activeCurvePoints;
-      const moved = moveCurveControlPoint(currentPts, index, coords.frame, coords.rate);
+      const currentSvg = clientToSvgPoint(moveEvent.clientX, moveEvent.clientY);
+      if (!currentSvg) return;
+      const target = curveDragTargetCoords(
+        startPoint,
+        startSvg,
+        currentSvg,
+        startCurveFirst,
+        startCurveLast,
+      );
+      const currentPts = draftRef.current.speed.kind === 'curve' ? draftRef.current.speed.points : initialPoints;
+      const moved = moveCurveControlPoint(currentPts, index, target.frame, target.rate);
       if (!moved.ok) {
         setLocalError(t(curveValidationMessageKey(moved.error) as never));
         return;
       }
+      if (curvePointsEqual(currentPts, moved.points)) return;
+      movedAny = true;
       applyCurvePoints(moved.points, moved.selectedIndex, false);
     };
 
@@ -389,6 +421,9 @@ export default function ClipSpeedSection({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
       setDraggingPointIndex(null);
+      if (!movedAny) return;
+      const finalPts = draftRef.current.speed.kind === 'curve' ? draftRef.current.speed.points : initialPoints;
+      if (initialSetting.speed.kind === 'curve' && curvePointsEqual(initialPoints, finalPts)) return;
       void commit(draftRef.current);
     };
 
@@ -413,11 +448,12 @@ export default function ClipSpeedSection({
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       event.preventDefault();
       event.stopPropagation();
-      const current = activeCurvePoints[index]!;
-      const norm = rateToLogNorm(rateToNumber(current.rate));
-      const step = event.shiftKey ? 0.1 : 0.03;
-      const nextRate = logNormToRate(norm + (event.key === 'ArrowUp' ? step : -step));
-      const moved = moveCurveControlPoint(activeCurvePoints, index, current.sourceFrame, nextRate);
+      const moved = nudgeCurveControlPointRate(
+        activeCurvePoints,
+        index,
+        event.key === 'ArrowUp' ? 'up' : 'down',
+        event.shiftKey,
+      );
       if (!moved.ok) {
         setLocalError(t(curveValidationMessageKey(moved.error) as never));
         return;
@@ -428,18 +464,17 @@ export default function ClipSpeedSection({
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
       event.stopPropagation();
-      const current = activeCurvePoints[index]!;
-      const step = Math.max(1, Math.round(curveSpan * (event.shiftKey ? 0.08 : 0.02)));
-      const moved = moveCurveControlPoint(
+      const moved = nudgeCurveControlPointFrame(
         activeCurvePoints,
         index,
-        current.sourceFrame + (event.key === 'ArrowRight' ? step : -step),
-        rateToNumber(current.rate),
+        event.key === 'ArrowRight' ? 'right' : 'left',
+        event.shiftKey,
       );
       if (!moved.ok) {
         setLocalError(t(curveValidationMessageKey(moved.error) as never));
         return;
       }
+      if (!moved.changed) return;
       applyCurvePoints(moved.points, moved.selectedIndex, true);
     }
   }
@@ -652,7 +687,7 @@ export default function ClipSpeedSection({
                   const isEndpoint = index === 0 || index === activeCurvePoints.length - 1;
                   return (
                     <g
-                      key={`${index}-${pt.sourceFrame}`}
+                      key={index}
                       className={`speed-curve-point ${selected ? 'is-selected' : ''} ${isEndpoint ? 'is-endpoint' : ''}`}
                       data-testid={`speed-curve-point-${index}`}
                       data-frame={pt.sourceFrame}
@@ -776,7 +811,30 @@ export default function ClipSpeedSection({
           </Button>
         </div>
 
-        {processingActive && processing && (
+        {processingActive && processing && processingPollState === 'unknown' && (
+          <div className="speed-inspector-failed" data-testid="speed-inspector-unknown" role="status">
+            <span className="speed-inspector-failed-text">
+              <CircleAlert size={14} aria-hidden="true" />
+              <span>{t('speed.processing.statusUnknown')}</span>
+            </span>
+            {onRefreshProcessing && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="speed-inspector-retry"
+                data-testid="speed-inspector-refresh"
+                disabled={disabled || processingBusy}
+                onClick={() => onRefreshProcessing()}
+              >
+                <RotateCcw size={12} />
+                {t('speed.processing.retry')}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {processingActive && processing && processingPollState !== 'unknown' && (
           <div className="speed-inspector-processing" data-testid="speed-inspector-processing" role="status">
             <div className="speed-inspector-processing-head">
               <span className="speed-spinner" aria-hidden="true" />
