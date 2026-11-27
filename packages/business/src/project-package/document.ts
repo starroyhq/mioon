@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat, PROJECT_FILE_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {statSync,createReadStream,renameSync,copyFileSync,unlinkSync,readFileSync,constants} from 'node:fs';
 import type { Store } from '../store-contract.ts';
@@ -55,7 +55,7 @@ export function collectProject(store:Store,projectId:string,options:ProjectPacka
  return store.tx(()=>{
   if (isProjectLayout(store.db)) {
    const version = store.db.prepare('SELECT version FROM project.schema_version').get()?.version;
-   if (version === FORMAT4_PROJECT_SCHEMA_VERSION || version === FORMAT5_PROJECT_SCHEMA_VERSION) {
+   if (version === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(version)) {
     throw projectPackageError('PROJECT_PACKAGE_NEWER_FORMAT', {projectFormatVersion: version, supportedProjectFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
    }
   }

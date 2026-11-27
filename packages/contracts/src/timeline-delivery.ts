@@ -51,14 +51,14 @@ export function timelineRenderDeliveryFields(snapshot: unknown): TimelineDeliver
 
 export function hasTimelineDeliveryIdentity(record: unknown): boolean {
   return object(record) && object(record.snapshot) &&
-    (own(record.snapshot, 'delivery') || own(record.snapshot, 'deliveryName') || own(record.snapshot, 'exportRange') || own(record.snapshot, 'colourPlan'));
+    (own(record.snapshot, 'delivery') || own(record.snapshot, 'deliveryName') || own(record.snapshot, 'exportRange') ||
+      own(record.snapshot, 'colourPlan') || own(record.snapshot, 'speedExport'));
 }
 
 // SQL only reports whether a bounded original receipt contains an optional
-// immutable field, including a colour-only render. Even a corrupt/null plan
-// must take the identity-checked path; colour is never reconstructed as an RPC
-// parameter. It never extracts or trusts that receipt's metadata here.
-export const TIMELINE_DELIVERY_RECEIPT_SQL = "COALESCE(json_type(response,'$.snapshot.delivery'),json_type(response,'$.snapshot.deliveryName'),json_type(response,'$.snapshot.exportRange'),json_type(response,'$.snapshot.colourPlan'))";
+// immutable field, including colour and speed plans. Even a corrupt/null plan
+// takes the identity-checked path. These plans come from the frozen snapshot.
+export const TIMELINE_DELIVERY_RECEIPT_SQL = "COALESCE(json_type(response,'$.snapshot.delivery'),json_type(response,'$.snapshot.deliveryName'),json_type(response,'$.snapshot.exportRange'),json_type(response,'$.snapshot.colourPlan'),json_type(response,'$.snapshot.speedExport'))";
 
 function boundedText(value: string, maxUnits: number, maxBytes: number): string {
   let result = '';

@@ -2,7 +2,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {TIMELINE_RESPONSE_BYTES} from '../../../../contracts/src/timeline-replacement.ts';
 import {FORMAT5_LIMITS} from '../../../../contracts/src/project-format5.ts';
 import {projectFileError} from '../errors.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './databases.ts';
 
 // On-disk discriminators frozen by G. K only registers the accepted storage
 // profiles. G/FT validate geometry and project it using the original basis.
@@ -16,7 +16,7 @@ const basis = (value: unknown): boolean => typeof value === 'string' && basisPre
 
 export function isTimelineGeometryProfileAllowed(value: unknown, formatVersion: number): boolean {
   if (!record(value)) return false;
-  const v2 = formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION || formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION;
+  const v2 = formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(formatVersion);
   if (Array.isArray(value.clips)) {
     for (const clip of value.clips) {
       if (!record(clip) || !Object.hasOwn(clip, 'layout')) continue;
@@ -35,7 +35,7 @@ export function isTimelineGeometryProfileAllowed(value: unknown, formatVersion: 
 }
 
 export function assertProjectTimelineGeometryProfile(db: DatabaseSync, schema: 'main' | 'project', formatVersion: number): void {
-  const maxBytes = formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_LIMITS.timelineBytes : TIMELINE_RESPONSE_BYTES;
+  const maxBytes = isSequenceProjectFormat(formatVersion) ? FORMAT5_LIMITS.timelineBytes : TIMELINE_RESPONSE_BYTES;
   const rows = db.prepare(`SELECT CASE WHEN length(CAST(data AS BLOB))<=${maxBytes} THEN data END AS data FROM ${schema}.timelines LIMIT 2`).all();
   const invalid = () => projectFileError('PROJECT_INVALID', {database: 'project', reason: 'metadata'});
   if (rows.length > 1) throw invalid();
@@ -43,7 +43,7 @@ export function assertProjectTimelineGeometryProfile(db: DatabaseSync, schema: '
     if (typeof row.data !== 'string') throw invalid();
     let decoded: unknown;
     try { decoded = JSON.parse(row.data); } catch { throw invalid(); }
-    if (formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    if (isSequenceProjectFormat(formatVersion)) {
       // Format 5 stores clips and cues as rows; the header keeps the geometry
       // profile and subtitle basis. Row grammar is checked by the format-5
       // content validator on the same opening path.

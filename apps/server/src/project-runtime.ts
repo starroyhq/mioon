@@ -30,6 +30,8 @@ import { isProjectStore } from '@mioon/business/project-file/index';
 import { createProjectPackageService } from '@mioon/business/project-package/service';
 import type { ServiceApplicationPorts } from '@mioon/business/services';
 import { readOwnedTimelineAsset } from '@mioon/business/timeline-sources';
+import {processingApplication} from '../../../packages/business/src/timeline-processing/scheduler.ts';
+import type {PreviewProcessingRenderer} from '../../../packages/business/src/timeline-processing/preview-port.ts';
 import { createUiPreferences } from '@mioon/business/ui-preferences';
 import { createVideoSettingsV2 } from '@mioon/business/video/settings-v2';
 import { createVideoSettingsV2File } from '@mioon/business/video/settings-v2-file';
@@ -100,6 +102,9 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   readonly serviceApplication?: ServiceApplicationPorts;
   /** Host-owned app data/cache/temp roots; never model or request input. */
   readonly privateMediaDirectories: readonly string[];
+  readonly processingCacheDirectory?: string;
+  /** SP-V supplies the trusted renderer when assembling a development host. */
+  readonly timelinePreviewRenderer?: PreviewProcessingRenderer;
   /** The host activates durable recovery after its open backup and S3 lease. */
   readonly deferBackgroundRecovery?: boolean;
   /** Borrowed app settings are closed by their owner, not this project. */
@@ -111,7 +116,7 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
  * factory until the host supplies its own context. */
 export async function composeProjectRuntime({store, shutdown, deletionGate, port, serverPort, listeningPort,
   agentSettings: suppliedAgentSettings, agentSecretCodecFactory, imageSecretCodec, videoSecretCodec, imageNetwork, comfyNetwork,
-  comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, settings, deferBackgroundRecovery = false,
+  comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, processingCacheDirectory, timelinePreviewRenderer, settings, deferBackgroundRecovery = false,
 }: ProjectRuntimeOptions) {
   const root = store.root, ordinaryStore = store;
   assertProjectStore(store);
@@ -178,7 +183,10 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = settings?.comfy ?? await createComfySettings({directory:path.join(appRoot,'comfy-settings'),privateRoot:appRoot,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),mockAllowed,signal: shutdown.signal,videoSettings,agentAuthorizations,deferBackgroundRecovery,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const processing = localDraftChannel === 'development' && process.env.MIOON_FORMAT6_DEV === '1'
+      ? {enabled: true, ...processingApplication(application.db, processingCacheDirectory ?? application.dataDir),
+        ...(timelinePreviewRenderer ? {previewRenderer: timelinePreviewRenderer} : {})} : undefined;
+    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),...(processing?{processing}:{}),mockAllowed,signal: shutdown.signal,videoSettings,agentAuthorizations,deferBackgroundRecovery,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();

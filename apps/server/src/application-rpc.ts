@@ -26,7 +26,7 @@ import type {ProjectDeleteInput} from '../../../packages/contracts/src/project-l
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
-export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, trash, createProject, readApplicationIdentity, withProjectRecords, format4}: {
+export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, trash, createProject, readApplicationIdentity, withProjectRecords, format4, allowFormat6}: {
   library: AppLibrary; app: ApplicationRuntime; manager: ProjectHostManager<HostedProject>; directories: AppDirectories; signal: AbortSignal;
   providerList: () => unknown; imageProfiles: (input: unknown) => unknown;
   refreshSummaries: () => void;
@@ -37,6 +37,7 @@ export function createApplicationRpc({library, app, manager, directories, signal
   readApplicationIdentity: () => LocalRecordsIdentity;
   withProjectRecords: Parameters<typeof createLocalRecordRpc>[0]['withProjectRecords'];
   format4?: Format4Options;
+  allowFormat6?: true;
 }) {
   const ports = createProjectServiceApplication(library, signal);
   const localRecords = createLocalRecordRpc({store: library.localRecords, readIdentity: readApplicationIdentity, assertMutationAllowed: ports.assertMutationAllowed, withProjectRecords});
@@ -95,7 +96,7 @@ export function createApplicationRpc({library, app, manager, directories, signal
         const id = input.projectId as string;
         if (!library.registry.get(id)) throw projectNotFound(id);
         return await manager.withExclusive(id, async registration => {
-          const store = openProjectStore({projectFile: registration.projectFile, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy, format4});
+          const store = openProjectStore({projectFile: registration.projectFile, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy, format4, allowFormat6});
           try {
             // Imported lazily so the app facade does not install legacy lifecycle DDL.
             const {mutateProjectRecord} = await import('../../../packages/business/src/project-record-mutations.ts');

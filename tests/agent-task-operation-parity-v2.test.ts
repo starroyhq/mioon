@@ -11,10 +11,8 @@ import {MCP_USER_ONLY_OPERATIONS,isMcpOperationAllowed} from '../apps/mcp/src/to
 
 const registries:readonly Readonly<Record<string,unknown>>[]=[schemas,publicOperationSchemas,canvasEditingSchemas,generationImageServiceSchemas,trustedAssetMediaSchemas];
 const backend=new Set(registries.flatMap(registry=>Object.keys(registry)));
-/** Format-5-only tools are real Mio tools inside format-5 projects, so the
- * backend audit evaluates the union of the native/format-4 and format-5
- * catalogs instead of treating a shared operation as uncovered. */
-const mioToolOperations=():Set<string>=>new Set([...listAgentTaskTools(true),...listAgentTaskTools(false,true)]
+/** Format-specific tools are audited in each catalog that can expose them. */
+const mioToolOperations=():Set<string>=>new Set([...listAgentTaskTools(true),...listAgentTaskTools(false,true),...listAgentTaskTools(false,true,true)]
   .map(tool=>tool.operation));
 function classify(operations:ReadonlySet<string>):string[]{
  const tools=mioToolOperations();

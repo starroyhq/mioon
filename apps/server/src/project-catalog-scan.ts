@@ -1,8 +1,9 @@
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
-import {inspectProjectFormatHeader, recoverProjectFile} from '@mioon/business/project-file/index';
-import type {Format4Options, ProjectFileRecovery} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, projectReadFormatOptions,
+  PROJECT_FILE_SCHEMA_VERSION, isSequenceProjectFormat, recoverProjectFile} from '@mioon/business/project-file/index';
+import type {ProjectFileRecovery} from '@mioon/business/project-file/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {PROJECT_INVALID_REASONS} from '../../../packages/contracts/src/project-file.ts';
@@ -33,8 +34,9 @@ export function catalogFileGeneration(info: BigIntStats): string {
  * a worker thread would release another thread's SQLite locks on the inode. */
 export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectCatalogScanResult {
   const {file, generation, birthtime, journalGeneration, checkHeader} = input;
-  const targetFormat = input.targetFormat ?? 3;
-  const format4: Format4Options | undefined = targetFormat === 4 ? {deferLegacyRecovery: true} : undefined;
+  const targetFormat = input.targetFormat ?? PROJECT_FILE_SCHEMA_VERSION;
+  const developmentProfile = targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION ? projectReadFormatOptions(targetFormat) : undefined;
+  const recoveryProfile = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {deferLegacyRecovery: true as const} : developmentProfile;
   const journal = file + '-journal';
   let changed = false;
   const failChanged = (): never => {
@@ -56,7 +58,7 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     assertProject(before);
     unmodified();
     try {
-      recovery = recoverProjectFile(file, format4, {project: assertProject, journal: assertJournal});
+      recovery = recoverProjectFile(file, recoveryProfile, {project: assertProject, journal: assertJournal});
     } catch (error) {
       if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') throw error;
       recovery = {state: 'invalid', reason: 'format-newer'};
@@ -75,7 +77,7 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     };
     let status: typeof formatStatuses[number];
     try {
-      const version = inspectProjectFormatHeader(file, undefined, assertHeader);
+      const version = inspectProjectFormatHeader(file, developmentProfile, assertHeader);
       status = version < targetFormat ? 'upgrade-required' : version === targetFormat ? 'current' : 'newer';
     } catch (error) {
       if (changed) return {recovery: 'changed'};
@@ -105,7 +107,8 @@ function isScanInput(value: unknown): value is ProjectCatalogScanInput {
     && typeof input.file === 'string' && input.file.length <= 4096 && !input.file.includes('\0') && path.isAbsolute(input.file) && path.resolve(input.file) === input.file
     && isGeneration(input.generation) && isBirthtime(input.birthtime)
     && (input.journalGeneration === null || isGeneration(input.journalGeneration)) && typeof input.checkHeader === 'boolean'
-    && (input.targetFormat === undefined || [3, 4, 5].includes(Number(input.targetFormat)));
+    && (input.targetFormat === undefined || input.targetFormat === PROJECT_FILE_SCHEMA_VERSION ||
+      input.targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(input.targetFormat));
 }
 
 export function isCatalogScanBatch(value: unknown): value is readonly ProjectCatalogScanInput[] {

@@ -20,7 +20,7 @@ import {
   buildDatabase, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
   PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, SCHEMA_VERSION_TABLE_SQL,
   FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION,
-  FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION,
+  FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION, historySchemaVersionForProject, isSequenceProjectFormat,
 } from './schema/databases.ts';
 import type {DatabaseKind, ProjectFileFormat} from './schema/databases.ts';
 import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
@@ -28,6 +28,7 @@ import type {SchemaManifest} from './schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from './schema/manifest.ts';
 import {historyManifestForVersion, projectManifestForVersion} from './schema/format-manifests.ts';
 import {addFormat4HistoryStructureInside, addFormat4ProjectStructureInside, addFormat4ReceiptExpiryInside, writeFormat4HistoryVersionInside, writeFormat4ProjectVersionInside} from './schema/format4-upgrade.ts';
+import {upgradeFormat6HistoryInside} from './schema/format6-upgrade.ts';
 import {FORMAT4_INITIAL_HISTORY_MANIFEST} from './schema/history-v11-manifest.ts';
 import {createFormat4UpgradeBackup, FORMAT4_RESTORE_ACTIVE} from './format4-backup.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
@@ -79,6 +80,7 @@ export interface OpenProjectConnectionOptions {
   readonly locate: (projectId: string) => ProjectLocation;
   readonly checkCopy?: ProjectCopyCheck;
   readonly format4?: Format4Options;
+  readonly allowFormat6?: true;
 }
 
 export interface Format4UpgradePreview extends ProjectIdentity {
@@ -97,7 +99,9 @@ export interface Format4Options {
 }
 
 /** Read-only admission never authorizes converting an older project. */
-export interface ProjectReadFormatOptions extends Format4Options {}
+export interface ProjectReadFormatOptions extends Format4Options {
+  readonly allowFormat6?: true;
+}
 
 export function assertNoFormat4Restore(localDir: string, projectId: string): void {
   if (lstatSync(path.join(localDir, FORMAT4_RESTORE_ACTIVE), {throwIfNoEntry: false})) {
@@ -321,15 +325,18 @@ function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, pr
 /** An older history is accepted only for one reviewed version/manifest pair.
  * This merely identifies the transition: no table is changed before the
  * project is attached, locked and checked for external content changes. */
-function checkHistoryStructure(db: DatabaseSync, projectId: string, candidate: boolean | typeof FORMAT5_PROJECT_SCHEMA_VERSION = false): HistoryUpgrade | undefined {
+function checkHistoryStructure(db: DatabaseSync, projectId: string, candidate: boolean | typeof FORMAT5_PROJECT_SCHEMA_VERSION | typeof FORMAT6_PROJECT_SCHEMA_VERSION = false): HistoryUpgrade | undefined {
   const definition = db.prepare(`SELECT sql FROM ${HISTORY}.sqlite_master WHERE type='table' AND name='schema_version'`).get();
   const version = definition?.sql === SCHEMA_VERSION_TABLE_SQL
     ? db.prepare(`SELECT max(version) AS version,count(*) AS count FROM ${HISTORY}.schema_version`).get()
     : undefined;
-  if (candidate === FORMAT5_PROJECT_SCHEMA_VERSION) {
-    checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(FORMAT5_HISTORY_SCHEMA_VERSION));
+  if (candidate === FORMAT5_PROJECT_SCHEMA_VERSION || candidate === FORMAT6_PROJECT_SCHEMA_VERSION) {
+    const targetVersion = historySchemaVersionForProject(candidate);
+    const upgrade = candidate === FORMAT6_PROJECT_SCHEMA_VERSION && version?.count === 1 && version.version === FORMAT5_HISTORY_SCHEMA_VERSION;
+    const from = historyManifestForVersion(upgrade ? FORMAT5_HISTORY_SCHEMA_VERSION : targetVersion)!;
+    checkStructure(db, HISTORY, 'history', projectId, from);
     try { assertEditorStorageCounters(db); } catch { throw invalid('history', 'metadata', projectId); }
-    return;
+    return upgrade ? {from, toVersion: targetVersion, apply: upgradeFormat6HistoryInside} : undefined;
   }
   if (candidate) {
     const current = historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION)!;
@@ -357,10 +364,10 @@ function checkProjectStructure(db: DatabaseSync, schema: string, format: Project
   const manifest = projectManifestForVersion(format);
   if (!manifest || pragmaValue(db, `${schema}.user_version`) !== format) throw invalid('project', 'schema-version', projectId);
   checkStructure(db, schema, 'project', projectId, manifest);
-  if (format === FORMAT4_PROJECT_SCHEMA_VERSION || format === FORMAT5_PROJECT_SCHEMA_VERSION) {
+  if (format === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(format)) {
     if (schema !== 'main' && schema !== 'project') throw new TypeError('Invalid project schema');
     assertProjectTimelineGeometryProfile(db, schema, format);
-    if (format === FORMAT5_PROJECT_SCHEMA_VERSION) assertFormat5ProjectContent(db, schema);
+    if (isSequenceProjectFormat(format)) assertFormat5ProjectContent(db, schema);
   }
 }
 
@@ -381,12 +388,16 @@ function checkProjectVersion(format: unknown, maximum: ProjectFileFormat): Proje
   if (typeof format === 'number' && format > maximum) {
     throw projectFileError('PROJECT_FORMAT_NEWER', {...describe('project','format-newer'),formatVersion:format,supportedFormatVersion:maximum});
   }
-  if (format !== PROJECT_FILE_SCHEMA_VERSION && format !== FORMAT4_PROJECT_SCHEMA_VERSION && format !== FORMAT5_PROJECT_SCHEMA_VERSION) throw invalid('project','schema-version');
+  if (format !== PROJECT_FILE_SCHEMA_VERSION && format !== FORMAT4_PROJECT_SCHEMA_VERSION && !isSequenceProjectFormat(format)) throw invalid('project','schema-version');
   return format;
 }
 
 const projectFormatMaximum = (profile?: ProjectReadFormatOptions): ProjectFileFormat =>
-  profile ? FORMAT4_PROJECT_SCHEMA_VERSION : FORMAT5_PROJECT_SCHEMA_VERSION;
+  profile?.allowFormat6 ? FORMAT6_PROJECT_SCHEMA_VERSION : profile ? FORMAT4_PROJECT_SCHEMA_VERSION : FORMAT5_PROJECT_SCHEMA_VERSION;
+
+export function projectReadFormatOptions(format: ProjectFileFormat | undefined, format4?: Format4Options): ProjectReadFormatOptions | undefined {
+  return format === FORMAT6_PROJECT_SCHEMA_VERSION ? {allowFormat6: true} : format4;
+}
 
 type AssertProjectFileObservation = (info: BigIntStats) => void;
 
@@ -603,6 +614,7 @@ export interface StagedProjectConnectionOptions {
   readonly expectedStamp: ContentStamp;
   readonly resolution?: {readonly requestId: string; readonly digest: string};
   readonly format4?: Format4Options;
+  readonly allowFormat6?: true;
 }
 function validateStagedHistory(db: DatabaseSync, options: StagedProjectConnectionOptions, current: ProjectIdentity): void {
   const records = db.prepare('SELECT requestId,digest,result FROM main.project_history_resolution').all();
@@ -621,7 +633,7 @@ function validateStagedHistory(db: DatabaseSync, options: StagedProjectConnectio
   for (const table of historyTablesForVersion(Number(historyVersion))) if (!versions.has(table) && db.prepare(`SELECT 1 FROM main."${table}" LIMIT 1`).get()) throw invalid('history','metadata',current.projectId);
   const counter = db.prepare('SELECT bytes,rows FROM main.mio_storage_counters').all();
   if (counter.length !== 1 || counter[0].bytes !== 0 || counter[0].rows !== 1) throw invalid('history','metadata',current.projectId);
-  if (historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION) {
+  if (historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION || historyVersion === FORMAT6_HISTORY_SCHEMA_VERSION) {
     assertEditorStorageCounters(db);
     const editor = db.prepare('SELECT historyEntries,historyBytes,receiptRows,receiptBytes FROM main.editor_storage_counters WHERE singleton=1').get()!;
     if (Object.values(editor).some(value => value !== 0)) throw invalid('history','metadata',current.projectId);
@@ -632,7 +644,7 @@ export function openStagedProjectConnection(options: StagedProjectConnectionOpti
   if (path.dirname(historyFile) !== localDir || !/^history\.staged-[a-f0-9-]{36}\.db$/u.test(path.basename(historyFile))
     || !Number.isSafeInteger(options.expectedStamp.contentSequence) || options.expectedStamp.contentSequence < 0 || !isContentToken(options.expectedStamp.contentToken)
     || options.resolution && (!isProjectId(options.resolution.requestId) || !/^[a-f0-9]{64}$/u.test(options.resolution.digest))) throw new TypeError('Invalid staged history identity');
-  return openConnection({projectFile:options.projectFile,locate:()=>options.location,format4:options.format4},{...options,historyFile});
+  return openConnection({projectFile:options.projectFile,locate:()=>options.location,format4:options.format4,allowFormat6:options.allowFormat6},{...options,historyFile});
 }
 
 interface AttachedDatabases {
@@ -731,10 +743,10 @@ export function withFormat4RestoreLocks<T>(inputs: readonly Format4RestoreLockIn
 
 /** Restore admits exact source profiles without opening the project as a
  * store. A manually restored v3 project may still have candidate local records. */
-export function inspectLockedFormat4RestoreSource(db: DatabaseSync, database: 'project' | 'history', projectId: string): ProjectFormatIdentity | null {
+export function inspectLockedFormat4RestoreSource(db: DatabaseSync, database: 'project' | 'history', projectId: string, allowFormat6?: true): ProjectFormatIdentity | null {
   if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid(database, 'encoding', projectId);
   if (database === 'project') {
-    const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), FORMAT5_PROJECT_SCHEMA_VERSION);
+    const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), allowFormat6 ? FORMAT6_PROJECT_SCHEMA_VERSION : FORMAT5_PROJECT_SCHEMA_VERSION);
     checkProjectStructure(db, 'main', formatVersion, projectId);
     const identity = readProjectIdentity(db, 'main');
     if (identity.projectId !== projectId) throw invalid(database, 'project-mismatch', projectId);
@@ -749,7 +761,7 @@ export function inspectLockedFormat4RestoreSource(db: DatabaseSync, database: 'p
     : undefined;
   if (!historyManifest) throw invalid(database, 'schema-version', projectId);
   checkStructure(db, 'main', 'history', projectId, historyManifest);
-  if (version === FORMAT5_HISTORY_SCHEMA_VERSION) {
+  if (version === FORMAT5_HISTORY_SCHEMA_VERSION || version === FORMAT6_HISTORY_SCHEMA_VERSION) {
     try { assertEditorStorageCounters(db); } catch { throw invalid('history', 'metadata', projectId); }
   }
   const row = db.prepare('SELECT projectId FROM main.history_state WHERE singleton=1').get();
@@ -791,7 +803,7 @@ function attachDatabases(
     let upgrade: HistoryUpgrade | undefined;
     if (!fresh) {
       if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid('history', 'encoding', projectId);
-      upgrade = checkHistoryStructure(db, projectId, identity.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_PROJECT_SCHEMA_VERSION : identity.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION);
+      upgrade = checkHistoryStructure(db, projectId, isSequenceProjectFormat(identity.formatVersion) ? identity.formatVersion : identity.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION);
       const states = db.prepare(`SELECT projectId,seenContentSequence FROM ${HISTORY}.history_state`).all();
       if (states.length !== 1 || typeof states[0].seenContentSequence !== 'number') throw invalid('history', 'metadata', projectId);
       if (states[0].projectId !== projectId) throw invalid('history', 'project-mismatch', projectId);
@@ -887,6 +899,18 @@ function attachDatabases(
       });
       observeUpgrade(db, format4, 'after-commit');
       verifySources();
+    } else if (upgrade && identity.formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION) {
+      // A diverged local history is kept verbatim for the existing archive/
+      // restore flow. It cannot acquire processing authority while diverged.
+      if (admission?.state === 'current' && !staged) inTransaction(db, () => {
+        verifySources();
+        upgrade.apply(db);
+        checkHistoryStructure(db, projectId, FORMAT6_PROJECT_SCHEMA_VERSION);
+        if (foreignKeyCheck(db).length !== 0) throw invalid('history', 'foreign-key', projectId);
+        const next = classifyHistoryStamp(db, false);
+        if (next.state !== 'current' || !sameContentStamp(next.file, current)) throw invalid('history', 'metadata', projectId);
+        verifySources();
+      });
     } else if (upgrade && useFormat4) {
       if (!admission) throw invalid('history', 'metadata', projectId);
       inTransaction(db, () => {
@@ -919,7 +943,7 @@ function attachDatabases(
       });
     } else if (fresh) {
       inTransaction(db, () => {
-        const historyVersion = identity.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_HISTORY_SCHEMA_VERSION : useFormat4 ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
+        const historyVersion = historySchemaVersionForProject(identity.formatVersion);
         buildDatabase(db, 'history', HISTORY, undefined, historyVersion);
         db.prepare(`INSERT INTO ${HISTORY}.history_state VALUES(1,?,?,?)`).run(projectId, current.contentSequence,current.contentToken);
         if (!staged) clearProjectProcessRevisions(db, projectId);
@@ -928,7 +952,7 @@ function attachDatabases(
       });
     }
     database = 'project';
-    if (identity.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    if (isSequenceProjectFormat(identity.formatVersion)) {
       try { assertEditorStorageCounters(db); } catch { throw invalid('history', 'metadata', projectId); }
     }
     if (pragmaValue(db, 'busy_timeout') !== 0) throw new Error('The busy timeout must be 0');
@@ -938,7 +962,8 @@ function attachDatabases(
     // Confirmation changes the execution history. Rebuildable references from
     // the old cache must not constrain the empty-domain restore preview.
     if (staged) inTransaction(db,()=>db.exec('DELETE FROM cache.previs_thumbnails; DELETE FROM cache.waveform_cache'));
-    installCrossFileTriggers(db, identity.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ? FORMAT5_PROJECT_SCHEMA_VERSION : useFormat4);
+    const processingHistory = db.prepare('SELECT version FROM main.schema_version').get()?.version === FORMAT6_HISTORY_SCHEMA_VERSION;
+    installCrossFileTriggers(db, processingHistory ? FORMAT6_PROJECT_SCHEMA_VERSION : isSequenceProjectFormat(identity.formatVersion) ? FORMAT5_PROJECT_SCHEMA_VERSION : useFormat4);
     if (historyAdmission.state === 'diverged') installDivergedWriteGuards(db);
     else {
       openProjectJournal(db);
@@ -954,7 +979,7 @@ function attachDatabases(
         });
         database = 'project';
       }
-      if (identity.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION && !staged && !db.prepare('SELECT 1 FROM main.editor_receipt_window WHERE singleton=1').get()) {
+      if (isSequenceProjectFormat(identity.formatVersion) && !staged && !db.prepare('SELECT 1 FROM main.editor_receipt_window WHERE singleton=1').get()) {
         database = 'history';
         inTransaction(db, () => {
           verifySources();
@@ -1026,7 +1051,7 @@ function movedAlone(projectFile: string, projectKey: string): boolean {
 export function openProjectConnection(options: OpenProjectConnectionOptions): ProjectConnection {
   return openConnection(options);
 }
-function openConnection({projectFile: requested, locate, checkCopy, format4}: OpenProjectConnectionOptions, staged?: StagedProjectConnectionOptions): ProjectConnection {
+function openConnection({projectFile: requested, locate, checkCopy, format4, allowFormat6}: OpenProjectConnectionOptions, staged?: StagedProjectConnectionOptions): ProjectConnection {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;
   try {
@@ -1039,7 +1064,7 @@ function openConnection({projectFile: requested, locate, checkCopy, format4}: Op
   const projectKey = identityOf(info, projectFile);
   const held = projectFileOwnerKind(projectKey);
   if (held !== undefined) throw held === 'project' ? projectFileError('PROJECT_LOCKED', describe('project', 'locked')) : invalid('project', 'not-a-project-file');
-  const readProfile = format4;
+  const readProfile = allowFormat6 ? {allowFormat6} : format4;
   if (staged) {
     const recovery = recoverProjectFile(projectFile, readProfile);
     if (recovery.state === 'invalid') throw invalid('project',recovery.reason);
