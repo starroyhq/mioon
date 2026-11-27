@@ -21,6 +21,7 @@ import {instantiateSpeedPreset, timeMapPlanFrames, TIMELINE_SPEED_PRESETS} from 
 import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
 import {PROJECT_READER_UPDATE_MESSAGE, PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
 import type {TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
+import {sequenceEditSpeedIntentSchema} from '../packages/contracts/src/timeline-speed.ts';
 import type {SequenceEditSpeedIntent, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
 import type {SequenceEditClipPropertiesPatch, SequenceEditHistoryView, SequenceEditReceipt} from '../packages/contracts/src/sequence-edit.ts';
 
@@ -504,7 +505,8 @@ test('a long retimed clip keeps effects when edited, replaced and separated', t 
 
 test('a held future format 6 project refuses patches, history and receipt replay without writes', t => {
   const store = fixture(t), db = store.db, projectId = store.projectId, api = editor(store);
-  const mioPlan = previewMioSequenceAction(store, projectId, randomUUID(), set(constant(1, 2)));
+  const {operation: mioOperation} = sequenceEditSpeedIntentSchema.parse({side: 'timeline', operation: set(constant(1, 2))});
+  const mioPlan = previewMioSequenceAction(store, projectId, randomUUID(), mioOperation);
   const mioReceipt = commitMioSequenceAction(store, mioPlan);
   assert.equal(mioReceipt.status, 'applied');
   const {receipt, replay} = api.apply(set(constant(2)));
