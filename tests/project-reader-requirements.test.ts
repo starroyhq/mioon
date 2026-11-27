@@ -15,6 +15,7 @@ import {createProjectStore, openProjectStore, registerProjectTransactionObserver
 import {
   PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE,
 } from '../packages/contracts/src/project-reader-requirements.ts';
+import {testEnv} from './helpers/test-env.ts';
 
 const format6 = {allowFormat6: true} as const;
 const at = '2026-01-01T00:00:00.000Z';
@@ -112,7 +113,7 @@ test('a format 6 rollback journal is inspected without replaying a committed fut
     const insert = db.prepare('INSERT INTO future_index(pad) VALUES(?)');
     for (let n = 0; n < 128; n++) insert.run('x'.repeat(4096));
     process.kill(process.pid, 'SIGKILL');
-  `, f.projectFile], {encoding: 'utf8', timeout: 20_000});
+  `, f.projectFile], {encoding: 'utf8', env: testEnv(), timeout: 20_000});
   assert.equal(child.error, undefined, child.stderr);
   const journal = f.projectFile + '-journal';
   assert.ok(isHotJournal(journal), child.stderr);

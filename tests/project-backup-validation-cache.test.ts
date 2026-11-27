@@ -5,38 +5,45 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {syncBuiltinESMExports} from 'node:module';
+import {DatabaseSync} from 'node:sqlite';
 import {createProjectBackups} from '../apps/server/src/project-host/backups.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createMemoryProjectRegistry, createProjectHostManager, projectLocation, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {openProjectBackup} from '../packages/business/src/project-file/backup.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, targetFormat?: typeof FORMAT6_PROJECT_SCHEMA_VERSION) {
   const root = fs.mkdtempSync(path.join(tmpdir(), 'project-backup-cache-'));
   const directories = serverAppDirectories(root), registry = createMemoryProjectRegistry();
   const validations: string[] = [];
-  const options = {directories, registry, identity: statProjectFileIdentity, assertProjectFile: createApplicationFileGuard(directories), onWarning: () => {},
+  const options = {directories, registry, targetFormat, identity: statProjectFileIdentity, assertProjectFile: createApplicationFileGuard(directories), onWarning: () => {},
     openBackup: (file: string) => {validations.push(file); return openProjectBackup(file);}};
   let backups = createProjectBackups(options);
-  const manager = createProjectHostManager({directories, registry, hooks: [{afterOpen: host => backups.hooks.afterOpen?.(host), beforeClose: host => backups.hooks.beforeClose?.(host)}],
+  const manager = createProjectHostManager({directories, registry, targetFormat, hooks: [{afterOpen: host => backups.hooks.afterOpen?.(host), beforeClose: host => backups.hooks.beforeClose?.(host)}],
     factory: async (): Promise<ProjectHostRuntime> => ({handle: async () => false, isBusy: () => false, interrupt: () => {}, drain: async () => {}, dispose: () => {}})});
   t.after(async () => {await manager.closeAll(); fs.rmSync(root, {recursive: true, force: true});});
   const project = await manager.create({name: 'Validation cache'}), projectId = project.projectId;
-  const store = openProjectStore({projectFile: project.projectFile, locate: id => projectLocation(directories, id)});
+  const allowFormat6 = targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION ? true : undefined;
+  const store = openProjectStore({projectFile: project.projectFile, allowFormat6, locate: id => projectLocation(directories, id)});
   try {ensureProjectRow(store, {name: 'Validation cache'});} finally {store.close();}
   const reopen = async () => {const lease = await manager.acquire(projectId, 'window'); lease.release(); await manager.close(projectId);};
-  for (let round = 0; round < 3; round++) {
+  const renameAndClose = async (name: string, beforeClose?: () => void) => {
     const lease = await manager.acquire(projectId, 'window');
     const row = lease.host.store.get('projects', projectId) as {id: string; name: string};
-    lease.host.store.put('projects', {...row, name: `Revision ${round}`});
-    lease.release(); await manager.close(projectId);
-  }
+    lease.host.store.put('projects', {...row, name});
+    lease.release();
+    beforeClose?.();
+    await manager.close(projectId);
+  };
+  for (let round = 0; round < 3; round++) await renameAndClose(`Revision ${round}`);
   const saved = await backups.list({projectId});
   assert.equal(saved.backups.length, 3);
   const fileFor = (backupId: string) => path.join(projectLocation(directories, projectId).localDir, 'backups', backupId, 'project.mioon');
-  return {root, directories, projectId, saved, fileFor, validations, reopen,
+  return {root, directories, projectId, saved, fileFor, validations, reopen, renameAndClose,
     get backups() {return backups;}, cold: () => {backups = createProjectBackups(options); validations.length = 0;}};
 }
 
@@ -71,6 +78,28 @@ test('latest-only dedup does not report an unchecked damaged older file as valid
   assert.notEqual(replacement.backupId, latest.backupId);
   assert.equal(replacement.contentSequence, latest.contentSequence, 'a broken cached latest copy cannot suppress a replacement');
   assert.equal(fs.existsSync(f.fileFor(latest.backupId)), false);
+});
+
+test('retention preserves an older future backup before writing the index, status, or a replacement', async t => {
+  const f = await fixture(t, FORMAT6_PROJECT_SCHEMA_VERSION);
+  const latest = f.fileFor(f.saved.backups[0]!.backupId), future = f.fileFor(f.saved.backups[2]!.backupId);
+  const root = path.dirname(path.dirname(future)), index = path.join(root, 'index.json'), status = path.join(root, 'status.json');
+  const db = new DatabaseSync(future);
+  try {
+    db.prepare("UPDATE projects SET data=json_set(data,'$.requiredReaderFeatures',json_array(?))").run(TIMELINE_FPS_READER_FEATURE);
+  } finally {db.close();}
+  const backupFiles = [index, ...f.saved.backups.map(entry => f.fileFor(entry.backupId))];
+  const initial = backupFiles.map(file => fs.readFileSync(file));
+  const entries = fs.readdirSync(root);
+  f.cold(); await f.reopen();
+  assert.deepEqual(f.validations, [latest], 'unchanged open does not use the older backup');
+  await assert.rejects(f.backups.inspect({projectId: f.projectId, backupId: f.saved.backups[2]!.backupId}), {code: PROJECT_READER_UPDATE_REQUIRED});
+  let beforeCapture: Buffer | undefined;
+  await f.renameAndClose('New revision', () => {beforeCapture = fs.readFileSync(status);});
+  assert.ok(beforeCapture);
+  assert.deepEqual(fs.readFileSync(status), beforeCapture);
+  assert.deepEqual(fs.readdirSync(root), entries);
+  assert.deepEqual(backupFiles.map(file => fs.readFileSync(file)), initial);
 });
 
 test('mtime, inode replacement and index identity changes invalidate a success cache', async t => {

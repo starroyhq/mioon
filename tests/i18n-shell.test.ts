@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { PROJECT_READER_UPDATE_REQUIRED } from '../packages/contracts/src/project-reader-requirements.ts';
 import * as i18nRuntime from '../packages/i18n/src/index.ts';
 import * as languagePreference from '../packages/i18n/src/preference.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
@@ -117,11 +118,12 @@ test('header actions and native settings remain reachable without locale or resi
 test('known workspace, storage and video recovery diagnostics retain actionable meaning without exposing raw server text', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('function readableError(error'), app.indexOf('function Modal('));
-  const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message) as (error: { code?: string; message?: string; displayMessage?: DisplayMessage }) => { key: MessageKey; displayMessage?: DisplayMessage };
+  const readableError = Function('msg', 'PROJECT_READER_UPDATE_REQUIRED', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message, PROJECT_READER_UPDATE_REQUIRED) as (error: { code?: string; message?: string; displayMessage?: DisplayMessage }) => { key: MessageKey; displayMessage?: DisplayMessage };
   const cases = {
     STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration',
     WORKSPACE_INTENT_ALREADY_PINNED: 'shell.error.workspacePinned',
     LAST_PROJECT_SCOPE_MISMATCH: 'shell.error.lastProjectScope',
+    [PROJECT_READER_UPDATE_REQUIRED]: 'projectFile.open.readerUpdate.body',
     VIDEO_TASK_NOT_FOUND: 'tasks.error.videoProviderCannotFindTask',
     VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT: 'tasks.error.videoReplacementCannotFindTask',
     VIDEO_REPLACEMENT_NOT_AUTHORIZED: 'tasks.error.videoReplacementNotAuthorized',

@@ -196,16 +196,19 @@ export function createProjectBackups({directories, registry, identity, assertPro
     try {
       if (targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION) assertHeldProjectReaderRequirements(host.store);
       const indexed = index(projectId);
-      // Identify future backups before an open or close changes any backup
-      // records. Validation of unchanged entries uses the generation cache.
-      const previous = validEntries(indexed);
+      const stamp=host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file WHERE singleton=1').get();
+      // An unchanged open or close only needs the latest valid copy. Older
+      // copies are checked before publishing a change that could remove them.
+      let latestIndex = 0;
+      while (latestIndex < indexed.length && !validEntry(indexed[latestIndex])) latestIndex++;
+      const latest = indexed[latestIndex];
+      const unchanged = latest && stamp && latest.contentSequence === stamp.contentSequence && latest.contentToken === stamp.contentToken;
+      const retained = indexed.slice(latestIndex);
+      if (!unchanged && targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION) validEntries(retained);
       current = {...readStatus(projectId), lastAttemptAt: current.lastAttemptAt, state: 'running', lastError: null};
       ensurePrivateDirectory(root, {create: true});
       saveStatus(current);
-      const stamp=host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file WHERE singleton=1').get();
-      const latest = previous[0], latestIndex = latest ? indexed.indexOf(latest) : indexed.length;
-      if (latest && stamp && latest.contentSequence === stamp.contentSequence && latest.contentToken===stamp.contentToken) {
-        const retained = indexed.slice(latestIndex);
+      if (unchanged) {
         if (latestIndex !== 0) durableWrite(root, 'index.json', {version: 2, projectId, backups: retained});
         // Confirm the committed index's directory before deleting any orphan.
         syncCopiedDirectory(root);
@@ -223,7 +226,7 @@ export function createProjectBackups({directories, registry, identity, assertPro
       const copied = await backup(host.store, path.join(pending, 'project.mioon'));
       if (copied.projectId !== projectId) throw failure('PROJECT_BACKUP_CHANGED', '备份项目身份不一致。');
       const entry: Entry = {...projectBackupSummarySchema.parse({backupId, projectId, contentSequence: copied.contentSequence,contentToken:copied.contentToken, createdAt: new Date().toISOString(), reason, sizeBytes: copied.sizeBytes}), sourceProjectDir: host.store.projectDir};
-      const next = [entry, ...validEntries(indexed.slice(latestIndex))].slice(0, 3);
+      const next = [entry, ...validEntries(retained)].slice(0, 3);
       // Publication of this index is the commit point. Never restore an older
       // index after removing its files, even when later cleanup fails.
       write(root, 'index.json', {version: 2, projectId, backups: next});
