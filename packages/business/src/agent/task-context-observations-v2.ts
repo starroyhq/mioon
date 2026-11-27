@@ -1,5 +1,7 @@
 import {canvasActiveCondition} from '../canvas-active.ts';
 import {hasStoreTable} from '../store-layout.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {timelineStorageFormat, timelineStorageSchema} from '../project-file/timeline-storage.ts';
 import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
 import type { Store } from '../store-contract.ts';
 import {PROJECT_NOTES_MAX_BYTES,projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
@@ -47,6 +49,12 @@ const backgroundTables=[
  * load media, start workers, or decode full task/request rows. Table existence
  * only accommodates older restored formats whose scene table does not exist. */
 export function collectTaskProjectOverview(store:Pick<Store,'db'>,projectId:string):TaskProjectOverview{
+  const schema=timelineStorageSchema(store.db);
+  const nativeTimeline=timelineStorageFormat(store.db,schema)>=FORMAT5_PROJECT_SCHEMA_VERSION;
+  // The native header stores geometry and tracks. Clip and cue counts can use
+  // the project/timeline indexes without decoding the entity JSON.
+  const clips=nativeTimeline?`(SELECT count(*) FROM ${schema}.timeline_clips c WHERE c.projectId=p.id AND c.timelineId=t.id)`:"json_array_length(t.data,'$.clips')";
+  const subtitles=nativeTimeline?`(SELECT count(*) FROM ${schema}.timeline_cues c WHERE c.projectId=p.id AND c.timelineId=t.id)`:"json_array_length(t.data,'$.subtitles.cues')";
   const tables=new Set(backgroundTables.filter(item=>hasStoreTable(store.db,item.table)).map(item=>item.table));
   const background=backgroundTables.filter(item=>tables.has(item.table)).map(item=>`(SELECT count(*) FROM ${item.table} b WHERE b.projectId=p.id AND ${item.state} NOT IN (${item.terminal}))`).join('+')||'0';
   const row=store.db.prepare(`WITH asset_counts AS (SELECT count(*) total,
@@ -55,7 +63,7 @@ export function collectTaskProjectOverview(store:Pick<Store,'db'>,projectId:stri
     sum(CASE WHEN lower(json_extract(data,'$.mimeType')) LIKE 'audio/%' THEN 1 ELSE 0 END) audio FROM assets WHERE projectId=?)
     SELECT CASE WHEN json_type(p.data,'$.name')='text' THEN p.data -> '$.name' END name,json_extract(t.data,'$.width') width,json_extract(t.data,'$.height') height,
     json_extract(t.data,'$.fps') fps,json_extract(t.data,'$.durationFrames') durationFrames,json_array_length(t.data,'$.tracks') tracks,
-    json_array_length(t.data,'$.clips') clips,json_array_length(t.data,'$.subtitles.cues') subtitles,
+    ${clips} clips,${subtitles} subtitles,
     (SELECT count(*) FROM shots s WHERE s.projectId=p.id AND ${canvasActiveCondition(store.db,'s')}) shots,a.total assets,a.image,a.video,a.audio,(${background}) pendingBackground
     FROM projects p LEFT JOIN timelines t ON t.projectId=p.id CROSS JOIN asset_counts a WHERE p.id=?`).get(projectId,projectId);
   if(!row)throw Object.assign(new Error('Project metadata is unavailable.'),{code:'AGENT_TASK_NOT_FOUND',status:404});
