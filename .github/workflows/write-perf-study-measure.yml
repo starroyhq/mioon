@@ -1,0 +1,62 @@
+name: Write performance study measurements
+
+on:
+  push:
+    branches: [howard/write-perf-study]
+    paths:
+      - '.github/workflows/write-perf-study-measure.yml'
+      - 'tests/fixtures/write-perf-study/durability*'
+      - 'scripts/write-perf-study/product.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996
+        with:
+          version: 11.25.0
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install frozen dependencies and verify SQLite headers
+        run: |
+          pnpm install --frozen-lockfile
+          if ! pkg-config --exists sqlite3; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libsqlite3-dev
+          fi
+      - name: Measure one writer at a time
+        shell: bash
+        run: |
+          result="$RUNNER_TEMP/write-perf-study-results"
+          mkdir -p "$result"
+          run_temp=$(mktemp -d "$RUNNER_TEMP/write-perf-study.XXXXXX")
+          trap 'rm -rf "$run_temp"' EXIT
+          export HOME="$run_temp/home" CFFIXED_USER_HOME="$run_temp/home" TMPDIR="$run_temp/tmp"
+          mkdir -m 700 "$HOME" "$TMPDIR"
+          {
+            git rev-parse HEAD
+            uname -srm
+            node --version
+            stat -f -c %T "$TMPDIR"
+            pkg-config --modversion sqlite3
+          } > "$result/environment.txt"
+          node tests/fixtures/write-perf-study/durability.mjs --benchmark --first-count=32 --steady-count=64 > "$result/durability.json" 2> "$result/durability.stderr"
+          node tests/fixtures/write-perf-study/durability.mjs --crash --repeats=2 > "$result/crash.json" 2> "$result/crash.stderr"
+          node scripts/write-perf-study/product.mjs --rounds=10 > "$result/product.json" 2> "$result/product.stderr"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: write-perf-study-linux
+          path: ${{ runner.temp }}/write-perf-study-results/
+          retention-days: 14
