@@ -230,7 +230,9 @@ async function format6SnapshotFixture(t: TestContext) {
     validateSource: (...args) => {calls.sourceChecks++; return validateManagedSource(...args);},
     hash: verifiedManagedHash,
     decoder: {
-      probe: async () => ({sizeBytes: bytes.length, durationSeconds: duration}),
+      probe: async () => ({streamIndex: 0, codecName: 'pcm_s16le', sampleRate, channels: 1, channelLayout: 'mono',
+        layoutOrigin: 'pcm-wav-channel-count', audioDurationSeconds: duration, durationSeconds: duration,
+        container: 'wav', sizeBytes: bytes.length}),
       open: () => ({done: Promise.resolve(), async read(samples) {
         calls.reads++;
         await beforeDecode?.();
