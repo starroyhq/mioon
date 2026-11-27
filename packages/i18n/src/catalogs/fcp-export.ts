@@ -1,6 +1,6 @@
 import type {MessageCatalog} from '../types.ts';
 
-/** Section 24: Export to Final Cut Pro (.fcpxmld). */
+/** Section 24: Export to Final Cut Pro (.fcpxmld) and Premiere Pro. */
 export const fcpExportMessages = {
   'fcpExport.menu.more': {
     'zh-Hans': '更多导出选项',
@@ -26,6 +26,12 @@ export const fcpExportMessages = {
     en: 'Export to Final Cut Pro…',
     ja: 'Final Cut Pro へ書き出し…',
   },
+  'fcpExport.menu.exportPremiere': {
+    'zh-Hans': '导出到 Premiere Pro…',
+    'zh-Hant': '匯出至 Premiere Pro…',
+    en: 'Export to Premiere Pro…',
+    ja: 'Premiere Pro へ書き出し…',
+  },
   'fcpExport.menu.exportHistory': {
     'zh-Hans': '导出记录',
     'zh-Hant': '匯出紀錄',
@@ -38,11 +44,23 @@ export const fcpExportMessages = {
     en: 'Export to Final Cut Pro',
     ja: 'Final Cut Pro へ書き出し',
   },
+  'fcpExport.premiere.title': {
+    'zh-Hans': '导出到 Premiere Pro',
+    'zh-Hant': '匯出至 Premiere Pro',
+    en: 'Export to Premiere Pro',
+    ja: 'Premiere Pro へ書き出し',
+  },
   'fcpExport.bundleSuffix': {
     'zh-Hans': '.fcpxmld',
     'zh-Hant': '.fcpxmld',
     en: '.fcpxmld',
     ja: '.fcpxmld',
+  },
+  'fcpExport.premiere.bundleSuffix': {
+    'zh-Hans': 'Premiere',
+    'zh-Hant': 'Premiere',
+    en: 'Premiere',
+    ja: 'Premiere',
   },
   'fcpExport.timelineSummary': {
     'zh-Hans': {
@@ -122,6 +140,12 @@ export const fcpExportMessages = {
     en: 'Open in Final Cut Pro',
     ja: 'Final Cut Pro で開く',
   },
+  'fcpExport.premiere.action.openInPremiere': {
+    'zh-Hans': '用 Premiere Pro 打开',
+    'zh-Hant': '用 Premiere Pro 開啟',
+    en: 'Open in Premiere Pro',
+    ja: 'Premiere Pro で開く',
+  },
   'fcpExport.action.changeLocation': {
     'zh-Hans': '换个位置…',
     'zh-Hant': '換個位置…',
@@ -187,6 +211,12 @@ export const fcpExportMessages = {
     'zh-Hant': '已匯出至 Final Cut Pro 套件',
     en: 'Exported Final Cut Pro bundle',
     ja: 'Final Cut Pro バンドルを書き出しました',
+  },
+  'fcpExport.premiere.done.toast': {
+    'zh-Hans': '已导出到 Premiere Pro 文件夹',
+    'zh-Hant': '已匯出至 Premiere Pro 資料夾',
+    en: 'Exported Premiere Pro folder',
+    ja: 'Premiere Pro フォルダを書き出しました',
   },
   'fcpExport.failed.title': {
     'zh-Hans': '导出失败',
@@ -326,6 +356,42 @@ export const fcpExportMessages = {
     en: 'Transform → Approximate parameters',
     ja: '変形 → 近似パラメータ',
   },
+  'fcpExport.item.SUBTITLES': {
+    'zh-Hans': '字幕',
+    'zh-Hant': '字幕',
+    en: 'Subtitles',
+    ja: '字幕',
+  },
+  'fcpExport.item.SPEED': {
+    'zh-Hans': '变速',
+    'zh-Hant': '變速',
+    en: 'Speed',
+    ja: '速度',
+  },
+  'fcpExport.item.SPEED_HANDLING': {
+    'zh-Hans': '变速 · {handling}',
+    'zh-Hant': '變速 · {handling}',
+    en: 'Speed · {handling}',
+    ja: '速度 · {handling}',
+  },
+  'fcpExport.item.SPEED_CHANGE': {
+    'zh-Hans': '变速 · {from} → {to}',
+    'zh-Hant': '變速 · {from} → {to}',
+    en: 'Speed · {from} → {to}',
+    ja: '速度 · {from} → {to}',
+  },
+  'fcpExport.item.speedMaxError': {
+    'zh-Hans': '最大偏差 {maxErrorFrames} 帧',
+    'zh-Hant': '最大偏差 {maxErrorFrames} 格',
+    en: 'Max error {maxErrorFrames} frames',
+    ja: '最大誤差 {maxErrorFrames} フレーム',
+  },
+  'fcpExport.item.speedMaxErrorWithClips': {
+    'zh-Hans': '最大偏差 {maxErrorFrames} 帧 · {clips}',
+    'zh-Hant': '最大偏差 {maxErrorFrames} 格 · {clips}',
+    en: 'Max error {maxErrorFrames} frames · {clips}',
+    ja: '最大誤差 {maxErrorFrames} フレーム · {clips}',
+  },
   'fcpExport.clips.separator': {
     'zh-Hans': '、',
     'zh-Hant': '、',
@@ -361,6 +427,12 @@ export const fcpExportMessages = {
     'zh-Hant': '匯出至 Final Cut Pro',
     en: 'Export to Final Cut Pro',
     ja: 'Final Cut Pro へ書き出し',
+  },
+  'fcpExport.premiere.task.group': {
+    'zh-Hans': '导出到 Premiere Pro',
+    'zh-Hant': '匯出至 Premiere Pro',
+    en: 'Export to Premiere Pro',
+    ja: 'Premiere Pro へ書き出し',
   },
   'fcpExport.task.running': {
     'zh-Hans': '导出中',

@@ -1,4 +1,4 @@
-import React, {useId, useState} from 'react';
+import React, {useEffect, useId, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {Input} from '@mioon/ui/components/input';
@@ -20,11 +20,9 @@ import {
   LoaderCircle,
   X,
 } from '@mioon/ui/components/workbench-icons';
-import type {
-  FcpExportDestination,
-  FcpExportPreviewOutput,
-  FcpItem,
-} from '../../../packages/contracts/src/fcp-export.ts';
+import {FCP_EXPORT_TASK_KIND} from '../../../packages/contracts/src/fcp-export.ts';
+import type {FcpExportDestination} from '../../../packages/contracts/src/fcp-export.ts';
+import {PREMIERE_EXPORT_TASK_KIND} from '../../../packages/contracts/src/premiere-export.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import Icon from './icons.tsx';
 import type {TaskOverviewItem} from './TaskPopover.tsx';
@@ -40,15 +38,21 @@ import {
   formatFcpDuration,
   formatFcpFps,
 } from './fcp-export-state.ts';
-import type {FcpExportTaskRecord} from './fcp-export-state.ts';
+import type {
+  EditorExportItem,
+  EditorExportPreviewOutput,
+  FcpExportTaskKind,
+  FcpExportTaskRecord,
+} from './fcp-export-state.ts';
 import './fcp-export.css';
 
 export type FcpExportDialogPhase = 'setup' | 'running' | 'done' | 'failed';
 
 export interface FcpExportDialogProps {
   readonly open: boolean;
+  readonly target?: FcpExportTaskKind;
   readonly phase: FcpExportDialogPhase;
-  readonly preview: FcpExportPreviewOutput | null;
+  readonly preview: EditorExportPreviewOutput | null;
   readonly previewLoading: boolean;
   readonly previewError: boolean;
   readonly name: string;
@@ -75,7 +79,7 @@ function FcpItemList({
   tone,
   testId,
 }: {
-  readonly items: readonly FcpItem[];
+  readonly items: readonly EditorExportItem[];
   readonly tone: 'warning' | 'info';
   readonly testId: string;
 }): React.ReactElement {
@@ -100,6 +104,7 @@ function FcpItemList({
 
 export default function FcpExportDialog({
   open,
+  target,
   phase,
   preview,
   previewLoading,
@@ -128,6 +133,13 @@ export default function FcpExportDialog({
   const [approximationsOpen, setApproximationsOpen] = useState(false);
   const [doneMissingOpen, setDoneMissingOpen] = useState(false);
 
+  const resolvedTarget = target ?? task?.kind ?? FCP_EXPORT_TASK_KIND;
+  const isPremiere = resolvedTarget === PREMIERE_EXPORT_TASK_KIND;
+  useEffect(() => {
+    setApproximationsOpen(false);
+    setDoneMissingOpen(false);
+  }, [resolvedTarget, task?.exportId]);
+
   const canStart = Boolean(preview && !previewLoading && !starting && name.trim().length > 0);
   const missingItems = preview?.missing ?? [];
   const approximationItems = preview?.approximations ?? [];
@@ -135,9 +147,9 @@ export default function FcpExportDialog({
 
   const progress = task?.progress ?? {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0};
   const percent = fcpProgressPercent(progress);
-  const runningName = fcpBundleFileName(task?.name ?? name);
+  const runningName = fcpBundleFileName(task?.name ?? name, resolvedTarget);
   const doneResult = task?.result;
-  const doneBundleName = doneResult ? fcpBundleFileName(doneResult.bundleName) : runningName;
+  const doneBundleName = doneResult ? fcpBundleFileName(doneResult.bundleName, resolvedTarget) : runningName;
 
   let body: React.ReactNode;
   let footer: React.ReactNode;
@@ -192,7 +204,9 @@ export default function FcpExportDialog({
               disabled={starting}
               onChange={event => onNameChange(event.target.value)}
             />
-            <span className="fcp-export-name-suffix" aria-hidden="true">{t('fcpExport.bundleSuffix')}</span>
+            <span className="fcp-export-name-suffix" aria-hidden="true">
+              {t(isPremiere ? 'fcpExport.premiere.bundleSuffix' : 'fcpExport.bundleSuffix')}
+            </span>
           </div>
         </div>
 
@@ -346,10 +360,10 @@ export default function FcpExportDialog({
       <WorkbenchButton
         type="button"
         variant="primary"
-        data-testid="fcp-export-open-fcp"
+        data-testid={isPremiere ? 'fcp-export-open-premiere' : 'fcp-export-open-fcp'}
         onClick={onOpenInFinalCut}
       >
-        {t('fcpExport.action.openInFcp')}
+        {t(isPremiere ? 'fcpExport.premiere.action.openInPremiere' : 'fcpExport.action.openInFcp')}
       </WorkbenchButton>
     </> : <WorkbenchButton
       type="button"
@@ -402,10 +416,11 @@ export default function FcpExportDialog({
     onOpenChange(next);
   }}>
     <WorkbenchDialogContent
-      title={t('fcpExport.title')}
+      title={t(isPremiere ? 'fcpExport.premiere.title' : 'fcpExport.title')}
       size="standard"
       className="fcp-export-dialog"
       data-testid="fcp-export-dialog"
+      data-target={isPremiere ? 'premiere' : 'fcp'}
       data-phase={phase}
       footer={footer}
     >
@@ -423,10 +438,11 @@ export interface FcpExportToastProps {
 export function FcpExportToast({task, onReveal, onDismiss}: FcpExportToastProps): React.ReactElement | null {
   const {t} = useI18n();
   if (!task || task.status !== 'done') return null;
-  return <WorkbenchToastRegion className="fcp-export-toasts" label={t('fcpExport.title')}>
-    <WorkbenchToast className="fcp-export-toast" tone="success" data-testid="fcp-export-done-toast" role="status">
+  const isPremiere = task.kind === PREMIERE_EXPORT_TASK_KIND;
+  return <WorkbenchToastRegion className="fcp-export-toasts" label={t(isPremiere ? 'fcpExport.premiere.title' : 'fcpExport.title')}>
+    <WorkbenchToast className="fcp-export-toast" tone="success" data-testid="fcp-export-done-toast" data-task-kind={task.kind} role="status">
       <span className="fcp-export-toast-icon" aria-hidden="true"><CircleCheck size={16} /></span>
-      <span className="fcp-export-toast-text">{t('fcpExport.done.toast')}</span>
+      <span className="fcp-export-toast-text">{t(isPremiere ? 'fcpExport.premiere.done.toast' : 'fcpExport.done.toast')}</span>
       <WorkbenchButton
         type="button"
         variant="secondary"
@@ -476,7 +492,7 @@ export function fcpExportTaskOverviewItems(
       const running = task.status === 'running';
       const percent = fcpProgressPercent(task.progress);
       return {
-        id: `fcpxml-export:${task.exportId}`,
+        id: `${task.kind}:${task.exportId}`,
         label: task.name,
         status: handlers.renderMessage(fcpTaskStatusMessage(task.status)),
         phase: running ? 'active' : 'attention',
@@ -510,13 +526,13 @@ export function fcpExportTaskCenterEntries(
     readonly onRetry: (task: FcpExportTaskRecord) => void;
   },
 ): FcpExportTaskCenterEntry[] {
-  const group = handlers.t('fcpExport.task.group');
   return tasks.map(task => {
     const running = task.status === 'running';
     const done = task.status === 'done';
     const failed = task.status === 'failed';
     const percent = fcpProgressPercent(task.progress);
-    const key = `fcpxml-export:${task.exportId}`;
+    const key = `${task.kind}:${task.exportId}`;
+    const group = handlers.t(task.kind === PREMIERE_EXPORT_TASK_KIND ? 'fcpExport.premiere.task.group' : 'fcpExport.task.group');
     return {
       key,
       label: task.name,
@@ -527,7 +543,7 @@ export function fcpExportTaskCenterEntries(
       detail: <div className="fcp-export-task-card" data-testid={`fcp-export-task-${task.exportId}`} data-task-kind={task.kind}>
         <div className="fcp-export-bundle-row">
           <Icon name="fcpExport" size={16} />
-          <span>{fcpBundleFileName(task.result?.bundleName ?? task.name)}</span>
+          <span>{fcpBundleFileName(task.result?.bundleName ?? task.name, task.kind)}</span>
         </div>
         {running && <div className="fcp-export-progress-block">
           <div className="fcp-export-progress-meta">
