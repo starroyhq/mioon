@@ -12,6 +12,7 @@ export interface UseTimelineWaveformsOptions {
   viewport: WaveformViewportRef;
   pixelsPerFrame: number;
   active: boolean;
+  windowForClip?: (clip: WaveformClip, pixelsPerFrame: number, leftFrame: number, rightFrame: number) => WaveformWindow | null;
 }
 export interface TimelineWaveformState {enabled: boolean; entries: Map<string, WaveformEntry>; retryable: boolean; projectId: string|null; windows: WaveformWindow[]; setEnabled(value: boolean): void; retry(): void}
 interface LatestWaveformConfiguration {
@@ -19,14 +20,15 @@ interface LatestWaveformConfiguration {
   assets: readonly WaveformAsset[];
   pixelsPerFrame: number;
   active: boolean;
+  windowForClip?: (clip: WaveformClip, pixelsPerFrame: number, leftFrame: number, rightFrame: number) => WaveformWindow | null;
 }
 
-export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFrame, active }: UseTimelineWaveformsOptions): TimelineWaveformState {
+export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFrame, active, windowForClip }: UseTimelineWaveformsOptions): TimelineWaveformState {
   const [state, setState] = useState<WaveformSnapshot|null>(null);
   const [windows, setWindows] = useState<WaveformWindow[]>([]);
   const controller = useRef<WaveformController|null>(null), latest = useRef<LatestWaveformConfiguration|null>(null), measureRef = useRef<(()=>void)|null>(null);
   if (!controller.current) controller.current = createWaveformController({ api: rpc });
-  latest.current = { timeline, assets, pixelsPerFrame, active };
+  latest.current = { timeline, assets, pixelsPerFrame, active, windowForClip };
   useLayoutEffect(() => {
     const manager = controller.current as WaveformController;
     manager.connect(setState);
@@ -53,7 +55,7 @@ export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFram
     measure();
     return () => { manager.disconnect(); observer.disconnect(); element?.removeEventListener('scroll', measure); document.removeEventListener('visibilitychange', measure); measureRef.current = null; };
   }, [viewport]);
-  useLayoutEffect(() => { measureRef.current?.(); }, [timeline, assets, pixelsPerFrame, active]);
+  useLayoutEffect(() => { measureRef.current?.(); }, [timeline, assets, pixelsPerFrame, active, windowForClip]);
   // Project check also makes the first render after navigation fail closed.
   return { ...(state ?? { projectId: null, enabled: false, active: false, entries: new Map<string,WaveformEntry>(), pending: 0, inFlight: false, autoLimitReached: false, retryable: false }), enabled: state?.projectId === timeline?.projectId && Boolean(state?.enabled), windows, setEnabled: value => controller.current?.setEnabled(value), retry: () => controller.current?.retryVisible() };
 }
