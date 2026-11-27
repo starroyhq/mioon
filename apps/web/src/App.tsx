@@ -3414,11 +3414,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   } as unknown as Parameters<typeof useTimelineLoudnessApply>[0]);
   timelineLoudnessApplyRef.current = timelineLoudnessApply;
   const effectivePlayhead = timelineAudioPreviewPosition(audioPreview, playhead);
-  const seekTimelineSound = (frame: number) => {
-    // Preserve legacy clip-menu position ownership outside format 6.
-    if (!speedEnabled) viewRef.current.editing.playhead = frame;
-    seekTimelineAudioPreview(audioPreview, frame, setPlayhead);
-  };
+  const seekTimelineSound = (frame: number) => {viewRef.current.editing.playhead = frame; seekTimelineAudioPreview(audioPreview, frame, setPlayhead);};
   function exportSamplePeakContext(): Record<string, unknown> {
     const workspaceScope = editorSession.current;
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
@@ -3939,7 +3935,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return result;
   }
   function openClipContextMenu(clipId: string, point: {readonly x: number; readonly y: number}): void {
-    void selectClip(clipId, true, {preservePlayhead: true});
+    void selectClip(clipId, true, {preservePlayhead: speedEnabled});
     setClipContextMenu({clipId, x: point.x, y: point.y});
   }
   /** One bounded retry of the retained format-5 envelope, then the normal

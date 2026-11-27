@@ -38,7 +38,7 @@ assert.ok(ownerStart >= 0 && ownerEnd > ownerStart);
 const block = app.slice(ownerStart, ownerEnd) + app.slice(start, hookEnd) + app.slice(positionStart, end);
 assert.match(block, /const audioPreview = useTimelineAudioPreview/);
 assert.match(block, /const effectivePlayhead = timelineAudioPreviewPosition/);
-assert.match(block, /const seekTimelineSound = \(frame: number\) => [\s\S]+seekTimelineAudioPreview\(audioPreview, frame, setPlayhead\)/);
+assert.match(block, /const seekTimelineSound = \(frame: number\) => \{viewRef\.current\.editing\.playhead = frame; seekTimelineAudioPreview/);
 assert.doesNotMatch(block, /useTimelineLoudnessApply|readTimelineLoudnessRecoveryScope/);
 
 function harness() {
@@ -46,7 +46,7 @@ function harness() {
     tracks: [{ id: id(3), kind: 'audio', orderIndex: 0, muted: true, hidden: false }],
     clips: [{ id: id(5), trackId: id(3), assetId: id(4), startFrame: 0, durationFrames: 900, sourceInFrame: 0, gain: 1 }] };
   const asset = { id: id(4), projectId: id(1), sha256: 'a'.repeat(64), sizeBytes: 1024, mimeType: 'audio/wav', duration: 30, hasAudio: true };
-  const calls: {rpc: {operation: string; input: AudioPreviewPlanInput; options: AudioPreviewReadOptions}[]; positions: number[]; priorPositions: number[]; contexts: MockContext[]; transports: MockTransport[]; order: string[]} = { rpc: [], positions: [], priorPositions: [], contexts: [], transports: [], order: [] };
+  const calls: {rpc: {operation: string; input: AudioPreviewPlanInput; options: AudioPreviewReadOptions}[]; positions: number[]; contexts: MockContext[]; transports: MockTransport[]; order: string[]} = { rpc: [], positions: [], contexts: [], transports: [], order: [] };
   let controller: ReturnType<typeof createTimelineAudioPreviewController> | undefined, latestOptions!: HookOptions;
   const env = {
     application: null, nativeAudioAdmission: null, mediaReadable: true, projectMedia: {canRead: (_asset: unknown): boolean => env.mediaReadable},
@@ -55,11 +55,11 @@ function harness() {
     dataRef: { current: { project: { id: id(1) }, timeline, assets: [asset] as (Partial<typeof asset> & Pick<typeof asset, 'id' | 'sha256'>)[] } },
     viewRef: { current: { activeMode: 'editing', editing: { previewKind: 'timeline', selectedClipId: null as string | null, quickAssetId: null as string | null, playhead: 30 } } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false,
-    workspaceMode: 'editing', previewKind: 'timeline', previewAsset: null as {id: string} | null, comparisonIdRef: { current: null as string | null }, comparisonPreviewPause: { current: null }, clipDirty: false, subtitleDirty: false, formatDirty: false, speedEnabled: false,
+    workspaceMode: 'editing', previewKind: 'timeline', previewAsset: null as {id: string} | null, comparisonIdRef: { current: null as string | null }, comparisonPreviewPause: { current: null }, clipDirty: false, subtitleDirty: false, formatDirty: false,
     clipDraftRef: { current: null as {getState(): {candidate: unknown}; save(): void; restore(): void; discard(): void} | null },
     canvasVisible: true, panelVisible: (name: string) => name === 'canvas' && env.canvasVisible,
     exportPreviewPause: { current: () => calls.order.push('export-pause') }, nativePreviewPause: { current: () => calls.order.push('native-pause') }, playhead: 30,
-    setPlayhead(frame: number) { calls.priorPositions.push(env.viewRef.current.editing.playhead); calls.positions.push(frame); env.viewRef.current.editing.playhead = frame; }, setAuth(value: boolean) { env.auth = value; },
+    setPlayhead(frame: number) { calls.positions.push(frame); env.viewRef.current.editing.playhead = frame; }, setAuth(value: boolean) { env.auth = value; },
     async rpc(operation: string, input: AudioPreviewPlanInput, options: AudioPreviewReadOptions) {
       calls.rpc.push({ operation, input, options });
       assert.equal(operation, 'timeline.audioPreview.plan');
@@ -95,16 +95,6 @@ function harness() {
   const initial = render();
   return { env, calls, render, initial, get controller() { return controller!; }, get options() { return latestOptions; } };
 }
-
-test('ordinary timeline seeks keep legacy menu position ownership while format 6 commits its playback clock', () => {
-  const f = harness();
-  f.initial.seekTimelineSound(80);
-  assert.deepEqual(f.calls.priorPositions, [80], 'Legacy applies the existing eager position');
-  f.env.speedEnabled = true;
-  f.render().seekTimelineSound(110);
-  assert.deepEqual(f.calls.priorPositions, [80, 80], 'Format 6 leaves the saved frame to the clock commit');
-  assert.deepEqual(f.calls.positions, [80, 110]);
-});
 
 test('actual App hook reads the current saved snapshot, supplies exact RPC options, and never prepares on render', async () => {
   const f = harness();
