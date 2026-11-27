@@ -27,8 +27,12 @@ import {subjectVariantSnapshotSchema, isSubjectVariantMutationResponse} from '..
 import {wanVideoInputSchema} from '../../../contracts/src/wan-video.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION} from '../../../contracts/src/mio-project-import.ts';
+import {FORMAT5_LIMITS, format5DialogueSchema, format5EdgeSchema, format5SequenceRootSchema, format5SubjectBindingSchema,
+  format5SubjectCardSchema, format5SyncBaselineSchema, getFormat5ClipIssue, getFormat5CueIssue, getFormat5TimelineHeaderIssue,
+  getFormat5TrackIssue, type Format5TimelineHeader} from '../../../contracts/src/project-format5.ts';
+import {sequenceEditHistoryEntrySchema, sequenceEditReceiptSchema} from '../../../contracts/src/sequence-edit.ts';
 import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {CANVAS_HISTORY_TABLES} from '../project-file/schema/tables.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
@@ -95,6 +99,7 @@ const dataFields = {
   exports: ['id', 'projectId', 'requestId', 'mode', 'purpose', 'timelineRevision', 'snapshot', 'status', 'assetId', 'url', 'error', 'createdAt',
     'updatedAt', 'orderedVersionIds', 'outputGeometry', 'audioCheck', 'revision', 'phase', 'progress'],
 } as const;
+const sequenceNodeFields = [...dataFields.nodes, 'name'];
 const snapshotFields = ['shotId', 'shotRevision', 'title', 'prompt', 'referenceAssetIds', 'lastFrameAssetId', 'referenceAssets', 'referenceAudios',
   'referenceConnections', 'referenceBindings', 'aspectRatio', 'duration', 'providerId', 'model', 'parameters', 'capabilities', 'inputProfileVersion',
   'inputProfileId', 'providerRegion', 'subjectReference', 'projectId', 'executionBinding', 'executionConnectionName', 'videoInput'];
@@ -112,6 +117,12 @@ const consumerCells = {
     local_clip_drafts: ['data']},
   cache: {},
 } as const;
+const sequenceProjectCells = {timeline_clips: ['data'], timeline_cues: ['data'], sequence_sync_state: ['baseline']} as const;
+// Adoptions only point to versions, whose rows and asset FKs are already
+// checked. These editor tables hold cursors, storage counters or a window.
+const sequenceMetadata = {project: ['shot_version_adoptions'],
+  main: ['editor_history_state', 'editor_storage_counters', 'editor_receipt_window']} as const;
+const sequenceHistoryCells = {editor_history_entries: ['beforePatch', 'afterPatch'], editor_requests: ['response']} as const;
 const singleAssetKeys = new Set(['assetId', 'sourceAssetId', 'lastFrameAssetId']);
 const manyAssetKeys = new Set(['referenceAssetIds', 'assetIds', 'exports']);
 const frozenAssetKeys = new Set(['referenceAssets', 'referenceAudios', 'assets']);
@@ -127,6 +138,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
   if (!uuid(assetId)) throw new TypeError('Import dependency proof requires an asset identity');
   const db = store.db, limits = MIO_PROJECT_IMPORT_DEPENDENCY_LIMITS, frameTransaction=usesTimelineFrameTransaction(db);
   let rows = 0, cells = 0, bytes = 0, nodes = 0;
+  let nativeSequence = false;
+  let nativeHeader: Format5TimelineHeader | undefined;
   const referenced = (source: string): never => {throw new Refusal({status: 'referenced', source});};
   const countRow = (): void => {if (++rows > limits.rows) deny('limit');};
   function tree(value: unknown, source: string, depth = 0): void {
@@ -201,7 +214,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     if (Object.hasOwn(value, 'projectId') && value.projectId !== store.projectId) deny('invalid');
     if (!Array.isArray(value.referenceAssetIds) || !Array.isArray(value.referenceAssets) || !uuid(value.shotId)) deny('invalid');
   }
-  function content(table: string, raw: unknown, source: string, rowId?: unknown, archivedShot = false): void {
+  function content(table: string, raw: unknown, source: string, rowId?: unknown, archivedShot = false,
+    native = nativeSequence): void {
     if (table === 'projects') {
       if (!object(raw) || raw.id !== store.projectId || !fields(raw, dataFields.projects)) deny('invalid');
     } else {owner(raw); if (!uuid(raw.id) || rowId !== undefined && raw.id !== rowId) deny('invalid');}
@@ -215,15 +229,28 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
         if (typeof raw.id !== 'string' || !isCanvasOrderAnchor(order, raw.id)) deny('invalid');
         value = shot;
       }
-      if (!isReferenceShotRecord(value, {projectId: store.projectId})) deny('invalid');
+      const {dialogue, ...core} = value;
+      if (native && Object.hasOwn(value, 'dialogue')) parseWith(format5DialogueSchema, dialogue);
+      // Native board append stores a sparse shot until generation settings
+      // are filled in. Defaults are for validating absence, never persisted.
+      const shot = native ? {prompt: '', referenceAssetIds: [], aspectRatio: '9:16', parameters: {}, ...core} : value;
+      if (!isReferenceShotRecord(shot, {projectId: store.projectId})) deny('invalid');
     } else if (table === 'timelines') {timeline(value, source); return;}
     else if (table === 'nodes') {
-      if (!fields(value, dataFields.nodes) || !['text', 'image', 'video', 'audio', 'asset', 'shot', 'previs'].includes(String(value.type))) deny('unsupported');
-      if (value.type === 'previs' && !isPrevisNodeRecord(value)) deny('invalid');
+      if (native && value.type === 'sequence_root') parseWith(format5SequenceRootSchema, value);
+      else if (native && value.type === 'subject_card') parseWith(format5SubjectCardSchema, value);
+      else {
+        if (!fields(value, native ? sequenceNodeFields : dataFields.nodes) ||
+          !['text', 'image', 'video', 'audio', 'asset', 'shot', 'previs'].includes(String(value.type))) deny('unsupported');
+        if (value.type === 'previs' && !isPrevisNodeRecord(value)) deny('invalid');
+      }
     } else if (table === 'edges') {
-      if (!fields(value, dataFields.edges)) deny('unsupported');
-      if (value.kind === 'reference' && !isReferenceEdgeRecord(value, {projectId: store.projectId})) deny('invalid');
-      if (!['reference', 'decorative'].includes(String(value.kind))) deny('unsupported');
+      if (native && value.kind !== 'decorative') parseWith(format5EdgeSchema, value);
+      else {
+        if (!fields(value, dataFields.edges)) deny('unsupported');
+        if (value.kind === 'reference' && !isReferenceEdgeRecord(value, {projectId: store.projectId})) deny('invalid');
+        if (!['reference', 'decorative'].includes(String(value.kind))) deny('unsupported');
+      }
     } else if (table === 'assets') {
       if (!fields(value, dataFields.assets)) deny('unsupported');
       const {url: _url, ...record} = value;
@@ -246,6 +273,63 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     else if (table === 'subject_versions') parseWith(subjectVersionResponseSchema, value);
     else if (!['projects', 'shots', 'nodes', 'edges', 'assets', 'versions', 'jobs', 'exports'].includes(table)) deny('unsupported');
     tree(value, source);
+  }
+  function sequenceHeader(value: unknown, id: unknown): Format5TimelineHeader {
+    if (!object(value) || value.id !== id || getFormat5TimelineHeaderIssue(value, {projectId: store.projectId})) deny('invalid');
+    return value as unknown as Format5TimelineHeader;
+  }
+  function sequenceClip(value: unknown, source: string, header: Format5TimelineHeader,
+    frame: {width: number; height: number; fps: number} = header, tracks = header.tracks): void {
+    if (!object(value)) deny('invalid');
+    const track = tracks.find(item => item.id === value.trackId);
+    if (!track || getFormat5ClipIssue(value, {...frame, trackKind: track.kind, main: track.id === header.mainTrack.trackId})) deny('invalid');
+    tree(value, source);
+  }
+  function sequenceCell(table: string, row: Value, value: unknown, source: string, header = nativeHeader): void {
+    if (!header || row.timelineId !== header.id || row.projectId !== store.projectId) deny('invalid');
+    if (table === 'sequence_sync_state') {
+      if (row.sequenceNodeId !== header.mainTrack.sequenceNodeId) deny('invalid');
+      parseWith(format5SyncBaselineSchema, value);
+      tree(value, source);
+      return;
+    }
+    if (!object(value) || value.id !== row.id) deny('invalid');
+    if (table === 'timeline_clips') {
+      // The SQL projection is read independently by timeline and commit
+      // checks. Both encodings must agree before either proves absence.
+      if (row.assetId !== value.assetId) deny('invalid');
+      sequenceClip(value, source, header);
+    }
+    else if (getFormat5CueIssue(value, header)) deny('invalid');
+  }
+  function sequenceHistory(row: Value, beforePatch: unknown, afterPatch: unknown): void {
+    const {actionId, projectId, epoch, position, operation, origin, createdAt} = row;
+    const entry = sequenceEditHistoryEntrySchema.safeParse({actionId, projectId, epoch, position, operation, origin, createdAt, beforePatch, afterPatch});
+    if (!entry.success || projectId !== store.projectId) deny('invalid');
+    for (const side of ['beforePatch', 'afterPatch'] as const) {
+      const source = `main.editor_history_entries.${side}`;
+      const {board, timeline: delta} = entry.data[side];
+      for (const entity of [...board.writes, ...board.removals]) {
+        const {data, id} = entity;
+        if (entity.kind === 'subject_binding') {
+          if (data.id !== id || data.projectId !== store.projectId) deny('invalid');
+          parseWith(format5SubjectBindingSchema, data);
+        } else if (entity.kind === 'adoption') {
+          if (data.id !== id || data.projectId !== store.projectId || !uuid(data.shotId) || !uuid(data.versionId) ||
+            !fields(data, ['id', 'projectId', 'shotId', 'versionId', 'createdAt'])) deny('unsupported');
+        } else content(`${entity.kind}s`, data, source, id, true);
+      }
+      if (delta.baseline.kind === 'set') tree(delta.baseline.value, source);
+      if (delta.tracks?.some(track => getFormat5TrackIssue(track))) deny('invalid');
+      for (const cue of delta.cues) if (getFormat5CueIssue(cue, {durationFrames: FORMAT5_LIMITS.durationFrames})) deny('invalid');
+      for (const clip of delta.clips) {
+        // Retained clips can be restored on either side of the cursor. If
+        // their old track or frame cannot be interpreted, refuse compensation.
+        if (!nativeHeader) deny('unsupported');
+        const frame = delta.header?.kind === 'set' ? delta.header.value : nativeHeader;
+        sequenceClip(clip, source, nativeHeader, frame, delta.tracks as Format5TimelineHeader['tracks'] | undefined);
+      }
+    }
   }
   function receipt(value: unknown, source: string, identity: unknown): void {
     if (frameTransaction && object(value) && TIMELINE_RECEIPT_WRAPPER_OPERATIONS.includes(value.operation as string)) {
@@ -318,9 +402,14 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     if (!target || target.projectId !== store.projectId) deny('invalid');
     const tables: {schema: 'main' | 'project' | 'cache'; table: string}[] = [];
     const historyVersion = db.prepare('SELECT version FROM main.schema_version').get()?.version;
+    nativeSequence = historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION;
+    const hasCanvasHistory = historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION || nativeSequence;
+    const inspected = nativeSequence ? {project: {...consumerCells.project, ...sequenceProjectCells},
+      main: {...consumerCells.main, ...sequenceHistoryCells}, cache: consumerCells.cache} : consumerCells;
     for (const schema of ['project', 'main', 'cache'] as const) {
-      const expected = new Set<string>([...ignored[schema], ...Object.keys(consumerCells[schema])]);
-      if (schema === 'main' && historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION) {
+      const knownMetadata = nativeSequence && schema !== 'cache' ? sequenceMetadata[schema] : [];
+      const expected = new Set<string>([...ignored[schema], ...knownMetadata, ...Object.keys(inspected[schema])]);
+      if (schema === 'main' && hasCanvasHistory) {
         for (const table of CANVAS_HISTORY_TABLES) expected.add(table);
         // Canvas entries change position, order and archive fields only. They
         // carry canvas IDs and dependency digests; the retained content rows
@@ -369,7 +458,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (schema !== 'project' || fk.to !== 'id' || typeof fk.from !== 'string' || fk.seq !== 0) deny('unsupported');
       if (db.prepare(`SELECT 1 FROM ${schema}.${quote(table)} WHERE ${quote(fk.from)} IS ? LIMIT 1`).get(assetId)) referenced(`${schema}.${table}.${fk.from}`);
     }
-    const relations = historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
+    const relations = hasCanvasHistory ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
     for (const relation of relations) {
       if (relation.parent.table !== 'assets') continue;
       const column = relation.child.columns[0];
@@ -378,25 +467,49 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
         referenced(`${relation.child.schema}.${relation.child.table}.${column}`);
     }
     let currentTimeline: TimelineRecord|null=null;
-    for (const schema of ['project', 'main'] as const) for (const [table, columns] of Object.entries(consumerCells[schema])) {
+    let hasNativeBaseline = false;
+    for (const schema of ['project', 'main'] as const) for (const [table, columns] of Object.entries(inspected[schema])) {
       const info = db.prepare(`PRAGMA ${schema}.table_info(${quote(table)})`).all(), columnNames = new Set(info.map(row => row.name));
       const metadata = ['id', 'projectId', 'operation', 'requestId', 'kind', 'runId', 'stepId',
         ...(table === 'local_clip_drafts' ? ['timelineId', 'clipId', 'revision'] : []),
-        ...(schema === 'project' && table === 'shots' && historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? ['archivedAt'] : [])].filter(key => columnNames.has(key));
+        ...(schema === 'project' && Object.hasOwn(sequenceProjectCells, table) ? ['timelineId', 'assetId', 'sequenceNodeId'] : []),
+        ...(table === 'editor_history_entries' ? ['actionId', 'epoch', 'position', 'origin', 'createdAt'] : []),
+        ...(schema === 'project' && table === 'shots' && hasCanvasHistory ? ['archivedAt'] : [])].filter(key => columnNames.has(key));
       const maximum = table === 'local_clip_drafts' ? LOCAL_DRAFT_LIMITS.rowBytes
+        : table === 'editor_requests' ? FORMAT5_LIMITS.receiptResponseBytes
         : (INSPECTION_ROW_LIMITS as Readonly<Record<string, number>>)[table] ?? limits.cellBytes;
       const select = columns.flatMap(column => [`CASE WHEN ${quote(column)} IS NULL THEN NULL WHEN typeof(${quote(column)})='text'
         AND length(CAST(${quote(column)} AS BLOB)) BETWEEN 1 AND ${maximum} THEN ${quote(column)} ELSE 0 END AS ${quote(column)}`]);
       for (const row of db.prepare(`SELECT ${[...metadata.map(quote), ...select].join(',')} FROM ${schema}.${quote(table)} LIMIT ${limits.rows + 1}`).iterate()) {
         countRow();
         if (columnNames.has('projectId') && row.projectId !== store.projectId) deny('invalid');
+        if (table === 'editor_history_entries') {
+          if (row.beforePatch === 0 || row.afterPatch === 0) deny('limit');
+          sequenceHistory(row, decode(row.beforePatch, 'main.editor_history_entries.beforePatch'),
+            decode(row.afterPatch, 'main.editor_history_entries.afterPatch'));
+          continue;
+        }
         let originalInput: unknown;
         for (const column of columns) {
           const source = `${schema}.${table}.${column}`;
           if (row[column] === null && ['stagedReceipt', 'outcome'].includes(column)) continue;
           if (row[column] === 0) deny('limit');
           const value = decode(row[column], source, maximum);
-          if (schema === 'project' && ['projects', 'assets', 'shots', 'nodes', 'edges', 'versions', 'timelines', 'subject_versions', 'image_versions'].includes(table)) {
+          if (schema === 'project' && table === 'timelines' && nativeSequence) {
+            if (nativeHeader) deny('invalid');
+            nativeHeader = sequenceHeader(value, row.id);
+            // Historical format-4 snapshots restore on top of a legacy frame,
+            // not a native timeline with a mainTrack field.
+            const {mainTrack: _mainTrack, subtitles: _subtitles, ...legacyFrame} = nativeHeader;
+            currentTimeline = {...legacyFrame, clips: []};
+          } else if (schema === 'project' && Object.hasOwn(sequenceProjectCells, table)) {
+            sequenceCell(table, row, value, source);
+            if (table === 'sequence_sync_state') hasNativeBaseline = true;
+          }
+          else if (table === 'editor_requests') {
+            const receipt = sequenceEditReceiptSchema.safeParse(value);
+            if (!receipt.success || receipt.data.projectId !== store.projectId) deny('invalid');
+          } else if (schema === 'project' && ['projects', 'assets', 'shots', 'nodes', 'edges', 'versions', 'timelines', 'subject_versions', 'image_versions'].includes(table)) {
             content(table, value, source, row.id, table === 'shots' && typeof row.archivedAt === 'string');
             // content() has already validated the full timeline here.
             if (table === 'timelines') currentTimeline = value as TimelineRecord;
@@ -464,6 +577,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
         }
       }
     }
+    if (nativeHeader && !hasNativeBaseline) deny('invalid');
     if (frameTransaction) walkTimelineFormatHistory(db, store.projectId, currentTimeline, (value, _position, side) => timeline(value, `main.timeline_history.${side}Snapshot`));
     const blobs = new Map<string, number>(); let compressedBytes = 0;
     for (const row of db.prepare(`SELECT v.projectId,v.contentSequence,v.blobHash,b.profile,b.codec,b.rawBytes,b.compressedBytes,
@@ -485,11 +599,24 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       // A recoverable content version retains the asset identity itself, even
       // when no currently visible clip or canvas node refers to it.
       if (document.tables.assets.some(asset => asset.id === assetId)) referenced('main.project_versions.assets');
+      const native = Object.hasOwn(document.tables, 'timeline_clips');
+      const headerRows = document.tables.timelines;
+      if (native && headerRows.length > 1) deny('invalid');
+      const header = native ? headerRows[0] : undefined;
+      const versionHeader = header ? sequenceHeader(decode(header.data, 'main.project_versions.timelines'), header.id) : undefined;
       for (const [table, saved] of Object.entries(document.tables)) for (const item of saved) {
         countRow();
+        const source = `main.project_versions.${table}`;
+        if (table === 'timelines' && native) continue;
+        if (Object.hasOwn(sequenceProjectCells, table)) {
+          if (!versionHeader) deny('invalid');
+          const raw = table === 'sequence_sync_state' ? item.baseline : item.data;
+          sequenceCell(table, item, decode(raw, source), source, versionHeader);
+          continue;
+        }
         if (typeof item.data === 'string') {
-          const archivedShot = table === 'shots' && document.projectFormatVersion === FORMAT4_PROJECT_SCHEMA_VERSION && typeof item.archivedAt === 'string';
-          content(table, decode(item.data, `main.project_versions.${table}`), `main.project_versions.${table}`, item.id, archivedShot);
+          const archivedShot = table === 'shots' && (native || document.projectFormatVersion === FORMAT4_PROJECT_SCHEMA_VERSION) && typeof item.archivedAt === 'string';
+          content(table, decode(item.data, source), source, item.id, archivedShot, native);
         }
       }
     }

@@ -37,7 +37,8 @@ const isUuid = (value: unknown): value is string => typeof value === 'string' &&
 function invalid(message: string, details: Row = {}): never {
   throw new AppError('SEQUENCE_EDIT_TRACK_INVALID', message, 409, details);
 }
-const failure = (code: string): {ok: false; code: string; ids: readonly string[]} => ({ok: false, code, ids: []});
+const failure = (code: string, ids: readonly string[] = []): {ok: false; code: string; ids: readonly string[]} =>
+  ({ok: false, code, ids});
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export interface TrackPlan {
@@ -155,7 +156,7 @@ export function previewTrack(store: ProjectStore, input: {readonly requestId: st
       actionId: input.actionId ?? randomUUID(), epoch: state.epoch, historyPosition: state.position,
       historyRevision: state.revision, ...(input.origin ? {origin: input.origin} : {})});
     const plan = planTrack(store, input.trackIntent);
-    if (!plan.changedTrackIds.length) return failure('SEQUENCE_EDIT_NOOP');
+    if (!plan.changedTrackIds.length) return failure('SEQUENCE_EDIT_NOOP', [input.trackIntent.operation.edit.trackId]);
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: []};
   } catch (error) {
     if (error instanceof AppError) return sequenceEditPreviewFailure(error);
@@ -174,7 +175,7 @@ export function runTrackSync(store: ProjectStore, envelope: SequenceEditEnvelope
     const inputDigest = sequenceEditInputDigest(envelope);
     if (replay) {
       if (replay.inputDigest !== inputDigest) return failure('SEQUENCE_EDIT_REQUEST_REUSED');
-      if (replay.receipt.status === 'not_applied') return failure(replay.receipt.code ?? 'SEQUENCE_EDIT_NOOP');
+      if (replay.receipt.status === 'not_applied') return failure(replay.receipt.code ?? 'SEQUENCE_EDIT_NOOP', replay.receipt.failure?.ids);
       return {ok: true, actionId: replay.receipt.actionId, operation: replay.receipt.operation, patch: null,
         receipt: replay.receipt};
     }
@@ -197,8 +198,9 @@ export function runTrackSync(store: ProjectStore, envelope: SequenceEditEnvelope
       throw error;
     }
     if (!plan.changedTrackIds.length) {
-      writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_NOOP');
-      return failure('SEQUENCE_EDIT_NOOP');
+      const ids = [intent.operation.edit.trackId];
+      writeSequenceEditFailure(store, envelope, 'SEQUENCE_EDIT_NOOP', {ids});
+      return failure('SEQUENCE_EDIT_NOOP', ids);
     }
     const applied = applySequenceEditTimelineDelta(store, plan.after.timeline);
     const affected: SequenceEditAffectedCounts = {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0,

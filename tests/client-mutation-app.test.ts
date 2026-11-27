@@ -14,6 +14,7 @@ import { prepareSubmission, prepareRequestReplay, readPending, clearPending, pen
 import { ApiError } from '../apps/web/src/api.ts';
 import { generationAspectError } from '../apps/web/src/generation-settings.ts';
 import { format5CommandErrorMessageKey, format5SceneSplitNotice } from '../apps/web/src/edit-ui/session.ts';
+import { isSequenceEditNoop, refreshOnSequenceEditNoop } from '../apps/web/src/edit-ui/lost-response.ts';
 import type { GenerationFrame } from '../apps/web/src/generation-settings.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const taskIntentModule = {exports:{} as {captureTaskWorkspaceIntent:typeof CapturedIntent}};
@@ -278,8 +279,10 @@ function format5LostHarness(retryResult: unknown) {
     setFormat5NoticeActionId: (id: string | null) => {calls.noticeActionId = id;},
     refresh: async () => {calls.refresh++; }, format5RefreshHistory: async () => {calls.history++; },
     format5LoadBoard: async () => {calls.board++; },
-    notify: (message: DisplayMessage | string, type: string) => calls.notices.push({message: renderCoreMessage('zh-Hans', message), type}),
-    format5CommandErrorMessageKey,
+    notifyFormat5CommandFailure: (result: {code?: string; reason?: string}) => {
+      if (!isSequenceEditNoop(result)) calls.notices.push({type: 'error',
+        message: translate('zh-Hans', format5CommandErrorMessageKey(result.code, result.reason) as never)});
+    },
   };
   return {calls,
     retry: compile(section('async function format5RetryUnconfirmed(', '/** Drop the retained envelope without writing or refreshing. */'),
@@ -306,11 +309,18 @@ test('actual format-5 retry entry reports one reason on a definite rejection and
   await rejected.retry();
   assert.equal(rejected.calls.refresh, 0);
   assert.equal(rejected.calls.notices.length, 1);
-  assert.match(rejected.calls.notices[0]!.message, /副轨或字幕会重叠/u);
+  assert.equal(rejected.calls.notices[0]!.message, translate('zh-Hans', 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT'));
+  const needsMain = format5LostHarness({ok: false, code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT', reason: 'MAIN_TRACK_CLIP_REQUIRED'});
+  await needsMain.retry();
+  assert.deepEqual(needsMain.calls.notices, [{type: 'error', message: translate('zh-Hans', 'editUi.error.SEQUENCE_EDIT_ANCHOR_MAIN_TRACK_REQUIRED')}]);
   const unconfirmed = format5LostHarness({ok: false, code: 'EDIT_RESULT_UNCONFIRMED', unconfirmed: true});
   await unconfirmed.retry();
   assert.deepEqual(unconfirmed.calls.notices, [], 'still-unknown retry only keeps the bar');
   assert.equal(unconfirmed.calls.refresh, 0);
+  const noop = format5LostHarness({ok: false, code: 'SEQUENCE_EDIT_NOOP'});
+  await noop.retry();
+  assert.deepEqual(noop.calls.notices, [], 'the no-op readback is silent');
+  assert.equal(noop.calls.notice, null, 'do not attach an undo notice to a no-op');
 });
 
 test('actual format-5 abandon entry drops the retained edit without any write', async () => {
@@ -325,7 +335,7 @@ test('actual format-5 action entry keeps one unconfirmed state and reports one r
   let outcome: unknown = {ok: false, code: 'EDIT_RESULT_UNCONFIRMED', unconfirmed: true};
   const notices: string[] = [];
   const scope = {
-    format5SessionBusy: false, setFormat5SessionBusy: () => {},
+    format5SessionBusy: false, setFormat5SessionBusy: () => {}, isSequenceEditNoop,
     format5Session: () => ({run: async () => outcome}),
     format5ClipName: () => '片段', format5NoticeMessage: () => null, format5CommandErrorMessageKey,
     setFormat5Notice: () => {}, setFormat5NoticeActionId: () => {},
@@ -344,6 +354,30 @@ test('actual format-5 action entry keeps one unconfirmed state and reports one r
   await runPolicy({kind: 'clip-split', clipId: 'clip-1'});
   assert.equal(notices.length, 1);
   assert.match(notices[0]!, /上一次编辑结果未确认/u);
+});
+
+test('actual format-5 RPC scope refreshes project, history and board while ignoring a departed no-op', async () => {
+  let owner = {projectId: 'project-a'};
+  let finish!: (value: unknown) => void;
+  const events: string[] = [];
+  const noop = {ok: false, code: 'SEQUENCE_EDIT_NOOP', ids: ['track']};
+  const wire = compile(section('function format5Rpc(', '  async function format5RefreshHistory('), 'format5Rpc', {
+    context: () => owner, isCurrent: (captured: typeof owner) => owner === captured, refreshOnSequenceEditNoop,
+    rpc: () => new Promise(resolve => {finish = resolve;}),
+    refresh: async (projectId: string) => {events.push(projectId);},
+    format5RefreshHistory: async () => {events.push('history');},
+    format5LoadBoard: async () => {events.push('board');},
+  });
+  const first = wire('sequence.preview', {});
+  finish(noop);
+  assert.equal(await first, noop);
+  assert.deepEqual(events, ['project-a', 'history', 'board']);
+
+  const second = wire('sequence.preview', {});
+  owner = {projectId: 'project-b'};
+  finish(noop);
+  assert.equal(await second, noop);
+  assert.deepEqual(events, ['project-a', 'history', 'board']);
 });
 
 // ---------------------------------------------------------------------------

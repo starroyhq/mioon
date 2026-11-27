@@ -7,7 +7,7 @@
  */
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
-import {AudioLines, Download, Scissors, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
+import {AudioLines, Copy, Download, Scissors, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import type {ClipContextMenuPlan} from './clip-sound-state.ts';
 
@@ -19,6 +19,8 @@ export interface TimelineClipContextMenuProps {
   readonly canSplit: boolean;
   readonly busy: boolean;
   readonly onSplit: (clipId: string) => unknown;
+  /** Present only for a main-track format-5 clip (21-11). */
+  readonly onCopyAsNewShot?: (clipId: string) => unknown;
   readonly onToggleMute: (clipId: string) => unknown;
   readonly onSeparate: (clipId: string) => unknown;
   readonly onSaveAudio: (clipId: string) => unknown;
@@ -30,7 +32,7 @@ export interface TimelineClipContextMenuProps {
 
 /** Focusable item list; arrow keys wrap, Escape closes and returns focus to the
  * clip button that opened it. */
-export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, onSplit, onToggleMute,
+export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, onSplit, onCopyAsNewShot, onToggleMute,
   onSeparate, onSaveAudio, onGenerateBefore, onGenerateAfter, onClose}: TimelineClipContextMenuProps): React.ReactElement | null {
   const {t} = useI18n();
   const menu = useRef<HTMLDivElement | null>(null);
@@ -95,6 +97,8 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
     aria-label={t('clipSound.clipMenu')} style={position ?? {left: anchor.x, top: anchor.y}}>
     {item(index++, 'clip-menu-split', t('clipSound.split'), <Scissors size={16} />,
       () => onSplit(anchor.clipId), canSplit && !busy)}
+    {onCopyAsNewShot && item(index++, 'clip-menu-copy-new-shot', t('editUi.menu.copyAsNewShot'), <Copy size={16} />,
+      () => onCopyAsNewShot(anchor.clipId), !busy)}
     {plan.sound && <>
       <div className="timeline-clip-menu-separator" role="separator" />
       <div data-slot="sound-group" data-testid="clip-menu-sound-group" role="group">

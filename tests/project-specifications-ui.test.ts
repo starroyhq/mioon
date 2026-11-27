@@ -148,6 +148,24 @@ test('save freezes both revisions and exact intent; double click never mints ano
   f.controller.choose('square_1080'); const second = f.controller.save(); assert.equal(f.submits[1].input.expectedRevision, 1); f.ack(1); await second;
 });
 
+test('a format no-op refreshes metadata and silently accepts the already-selected preset', async () => {
+  const f = fixture();
+  f.set({timelineId, timelineRevision: 1});
+  f.server({timelineId, timelineRevision: 1});
+  await f.ready();
+  assert.equal(f.controller.choose('landscape_1080'), true);
+  const saving = f.controller.save();
+  f.set({timelineId, timelineRevision: 3});
+  f.server({timelineId, timelineRevision: 3, presetId: 'landscape_1080', width: 1920, height: 1080});
+  f.responses[0]!.resolve!({status: 'not_applied', error: {code: 'SEQUENCE_EDIT_NOOP'}});
+  assert.equal(await saving, null);
+  assert.equal(f.state().base?.timelineRevision, 3);
+  assert.equal(f.state().dirty, false);
+  assert.equal(f.state().conflict, false);
+  assert.equal(f.state().errorMessage, null);
+  assert.equal(f.state().uncertain, null);
+});
+
 for (const later of ['square_1080', 'portrait_1080']) test(`late ACK does not erase later ${later} draft while the panel is hidden`, async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const saving = f.controller.save();
   f.controller.choose(later); f.controller.setVisible(false); f.ack(); await saving;

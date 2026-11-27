@@ -14,6 +14,8 @@ import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
 import type { AgentEditingProof } from './agent-editing-proof.ts';
 import type { ClipDraftKey, ClipDraftSource, ClipDraftRaw as LegacyClipDraftRaw, ClipDraftValue, ClipDraftWrite, ClipDraftDelete, ClipDraftEnvelope as WireEnvelope } from '../../../packages/contracts/src/local-drafts.ts';
 import type { ClipLayout } from '../../../packages/contracts/src/timeline-clip-layout.ts';
+import { isFormat5Timeline } from '../../../packages/contracts/src/project-format5.ts';
+import { isSequenceEditNoop } from './edit-ui/lost-response.ts';
 export type { ClipDraftKey, ClipDraftSource, ClipDraftWrite, ClipDraftDelete } from '../../../packages/contracts/src/local-drafts.ts';
 export type ClipDraftRaw = LegacyClipDraftRaw & RawOpacityEnvelopeFields;
 /** Unsent local form state. None of these methods executes a business request. */
@@ -96,8 +98,8 @@ export function clipDraftSource(clip: Record<string, unknown>, asset: Record<str
   return { assetId: String(clip.assetId), assetSha256: typeof asset?.sha256 === 'string' ? asset.sha256 : '',
     ...Object.fromEntries(['versionId', 'shotId', 'jobId'].filter(key => own(clip, key)).map(key => [key, clip[key]])) } as ClipDraftSource;
 }
-function acknowledged(value: unknown, context: ClipDraftContext, base: number, source: ClipDraftSource, patch: Record<string, unknown>, expectedRaw: ClipDraftRaw): Record<string, unknown> | null {
-  if (!object(value) || value.id !== context.timelineId || value.projectId !== context.projectId || value.revision !== base + 1 || !Array.isArray(value.clips)) return null;
+function acknowledged(value: unknown, context: ClipDraftContext, revision: number, source: ClipDraftSource, patch: Record<string, unknown>, expectedRaw: ClipDraftRaw): Record<string, unknown> | null {
+  if (!object(value) || value.id !== context.timelineId || value.projectId !== context.projectId || value.revision !== revision || !Array.isArray(value.clips)) return null;
   const saved: unknown = value.clips.find((item: unknown) => object(item) && item.id === context.clipId);
   const expectedEnvelope = validateRawVolumeEnvelope(expectedRaw, Number(patch.durationFrames));
   if (!expectedEnvelope.valid || !object(saved) || own(saved, 'volumeEnvelope') !== own(expectedEnvelope.fields, 'volumeEnvelope') || !sameClipDraftValue(saved.volumeEnvelope, expectedEnvelope.fields.volumeEnvelope)) return null;
@@ -368,9 +370,18 @@ export function createClipDraftController({ context: initial, client, validateTi
         const result = await onSave(original.clipId, patch, base, { canExecute });
         if (!belongs(owner)) return null;
         if (!result) { emit({ submitting: false, businessPending: false }); return null; }
-        const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch, expectedRaw) : null;
+        const noop = object(result) && result.status === 'not_applied' && isSequenceEditNoop(result);
+        const timeline = noop ? result.timeline : result;
+        const observed = noop && isFormat5Timeline(timeline, {projectId: original.projectId}) ? timeline : null;
+        const revision = observed?.revision ?? base + 1;
+        const saved = (noop ? observed && revision >= base : validateTimeline(timeline, original.projectId))
+          ? acknowledged(timeline, original, revision, source, patch, expectedRaw) : null;
+        if (noop && (!saved || context.timelineRevision > revision || !sameClipDraftValue(context.source, source) || localUnconfirmed)) {
+          emit({submitting: false, businessPending: false});
+          return null;
+        }
         if (!saved) throw recoveryDisplayError(Error('片段保存确认与原始输入不一致；本地草稿仍保留。'), displayMessage('recovery.clip.error.timelineAck'));
-        if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) {
+        if (context.timelineRevision > revision || !sameClipDraftValue(context.source, source)) {
           // The acknowledged save landed at base+1. A newer timeline revision can
           // be rebased onto only while this clip's latest saved value still equals
           // what the acknowledge wrote: otherwise another writer changed the same
@@ -378,7 +389,7 @@ export function createClipDraftController({ context: initial, client, validateTi
           // A changed source cannot be rebased because the draft was written for
           // the old source.
           const savedRaw = rawFor(saved), sourceUnchanged = sameClipDraftValue(context.source, source);
-          const canRebase = sourceUnchanged && context.timelineRevision > base + 1 &&
+          const canRebase = sourceUnchanged && context.timelineRevision > revision &&
             sameClipDraftValue(context.saved, savedRaw);
           emit({ submitting: false, businessPending: false, conflict: true, canRebase,
             rebaseSaved: canRebase ? copy(savedRaw) : null,
@@ -389,18 +400,25 @@ export function createClipDraftController({ context: initial, client, validateTi
         if (savedSerial !== serial) {
           // Acknowledged save of the original input: keep the newer in-memory input
           // and continue from the acknowledged revision instead of discarding it.
-          emit({ submitting: false, businessPending: false, conflict: false, canRebase: false, rebaseSaved: null, baseRevision: base + 1,
-            dirty: true, error: '原输入已保存；当前新输入尚未保存。', errorDisplay: displayMessage('recovery.clip.newerInput') });
+          emit({ submitting: false, businessPending: false, conflict: false, canRebase: false, rebaseSaved: null, baseRevision: revision,
+            dirty: true, ...(noop ? {} : {error: '原输入已保存；当前新输入尚未保存。', errorDisplay: displayMessage('recovery.clip.newerInput')}) });
           schedule();
           return result;
         }
         if (localUnconfirmed) { emit({ submitting: false, businessPending: false, conflict: true, error: '片段已保存到时间线，但本地草稿状态尚未确认。当前输入仍保留，请重新核对本地记录。', errorDisplay: displayMessage('recovery.clip.savedUnconfirmed') }); return result; }
         if (stored?.draft && envelope && sameClipDraftValue(stored, envelope)) {
           try { if (!await clearRecord(stored, owner)) {if (belongs(owner)) emit({submitting: false, businessPending: false, conflict: true});return result;} }
-          catch (error) { if (belongs(owner)) { emit({ submitting: false, businessPending: false, conflict: true }); pausePersistence(error, '片段已保存，但本地草稿清除未确认。', false, displayMessage('recovery.clip.clearUnconfirmed')); } return result; }
+          catch (error) {
+            if (belongs(owner)) {
+              emit({submitting: false, businessPending: false, conflict: true});
+              if (noop) pausePersistence(error);
+              else pausePersistence(error, '片段已保存，但本地草稿清除未确认。', false, displayMessage('recovery.clip.clearUnconfirmed'));
+            }
+            return result;
+          }
         }
         if (!belongs(owner) || savedSerial !== serial) { if (belongs(owner)) emit({ submitting: false, businessPending: false, conflict: true, canRebase: false, rebaseSaved: null }); return result; }
-        serial++; emit({ raw: rawFor(saved), dirty: false, baseRevision: base + 1, source, conflict: false, canRebase: false, rebaseSaved: null, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return result;
+        serial++; emit({ raw: rawFor(saved), dirty: false, baseRevision: revision, source, conflict: false, canRebase: false, rebaseSaved: null, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return noop ? null : result;
       } catch (error) { if (belongs(owner)) emit({ submitting: false, businessPending: false, error: message(error), errorDisplay: recoveryErrorMessage(error) }); return null; }
     },
     /** Keep the local draft and move its base to the latest observed revision,

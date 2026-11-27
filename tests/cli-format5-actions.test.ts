@@ -12,6 +12,7 @@ import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {BOARD_IDS, createBoardUiWireFixture} from './helpers/board-ui-wire-fixture.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {sequencePreviewFailureResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {Format5EditSession, format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
@@ -121,6 +122,144 @@ test('actual CLI and MCP format-5 actions share the editor undo and redo history
   assert.equal((await session.history())?.position, beforeMcpUndo.position - 1);
   const inspected = await cli(env, 'sequence', 'inspect', '--input', JSON.stringify({projectId}));
   assert.equal(typeof inspected.total, 'number');
+});
+
+test('actual CLI and MCP copy a main-track clip as a new shot through the same preview and commit', {timeout: 60_000}, async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-cli-copy-shot-'));
+  const server = await startServer({dataDir: root, port: 0, token: TOKEN,
+    localDraftChannel: 'development', projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION});
+  t.after(async () => { await server.close(); rmSync(root, {recursive: true, force: true}); });
+  const env = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: TOKEN};
+  const {id: projectId} = await cli(env, 'rpc', 'project.create', '--input', JSON.stringify({name: 'Copy shot fixture'}));
+  const rpc = async (operation: string, fields: Row = {}): Promise<Row> => {
+    const response = await fetch(server.url + projectRpcPath(projectId), {method: 'POST',
+      headers: {'content-type': 'application/json', authorization: `Bearer ${TOKEN}`},
+      body: JSON.stringify({operation, input: {projectId, ...fields}})});
+    return data(await response.text());
+  };
+  for (const action of [
+    {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}},
+    {kind: 'board-shot-append', name: 'Shot A'},
+    {kind: 'board-shot-append', name: 'Shot B'},
+    {kind: 'board-shot-append', name: 'Shot C'},
+  ]) {
+    const plan = await rpc('sequence.board.edit', action);
+    await rpc('sequence.action.commit', {envelope: plan.envelope, expectedPlanDigest: plan.planDigest});
+  }
+  const mcp = await connectMcp(t, env);
+  const {tools} = await mcp.listTools();
+  const schema = tools.find(tool => tool.name === 'sequence_clip_edit')?.inputSchema;
+  assert.ok(schema && JSON.stringify(schema).includes('"copy-as-new-shot"'));
+  const history = async () => sequenceHistoryViewResponseSchema.parse(await rpc('sequence.history.get'));
+  const before = await rpc('project.get');
+  const clips = before.timeline.clips as Row[];
+  const [original, follower] = clips.filter(clip => clip.trackId === before.timeline.mainTrack.trackId)
+    .sort((left, right) => left.startFrame - right.startFrame);
+  assert.ok(original && follower);
+  const input = {projectId, kind: 'copy-as-new-shot', clipId: original.id};
+  const snapshots: Row[] = [];
+  for (const surface of [
+    {plan: () => preview(env, ['sequence', 'clip', 'edit'], input),
+      apply: (plan: Row) => commit(env, projectId, plan)},
+    {plan: () => mcpAction(mcp, 'sequence_clip_edit', input),
+      apply: (plan: Row) => mcpAction(mcp, 'sequence_action_commit',
+        {projectId, envelope: plan.envelope, expectedPlanDigest: plan.planDigest})},
+  ]) {
+    const prior = await rpc('project.get');
+    const cursor = await history();
+    const plan = await surface.plan();
+    assert.equal(plan.envelope.origin, 'user');
+    const edit = plan.envelope.intents[0].operation.edit;
+    assert.equal(edit.kind, input.kind);
+    assert.equal(edit.clipId, original.id);
+    assert.deepEqual(await rpc('project.get'), prior);
+    assert.deepEqual(await history(), cursor);
+    const receipt = await surface.apply(plan);
+    assert.equal(receipt.status, 'applied');
+    assert.equal(receipt.operation, 'timeline.clip.copy-as-new-shot');
+    assert.deepEqual(await surface.apply(plan), receipt);
+    const after = await rpc('project.get');
+    const copiedShot = (after.shots as Row[]).find(shot => shot.id === edit.copyNodeId);
+    const copiedClip = (after.timeline.clips as Row[]).find(clip => clip.id === edit.newClipId);
+    const shifted = (after.timeline.clips as Row[]).find(clip => clip.id === follower.id);
+    assert.ok(copiedShot && copiedClip && shifted);
+    assert.equal(copiedClip.sequenceSource.nodeId, copiedShot.id);
+    assert.equal(copiedClip.startFrame, original.startFrame + original.durationFrames);
+    assert.equal(shifted.startFrame, follower.startFrame + original.durationFrames);
+    assert.equal(copiedShot.title, 'Shot A 副本');
+    snapshots.push({title: copiedShot.title, position: copiedShot.position, startFrame: copiedClip.startFrame,
+      durationFrames: copiedClip.durationFrames, sourceInFrame: copiedClip.sourceInFrame, sourceState: copiedClip.sourceState});
+    const latest = await history();
+    assert.equal(latest.position, cursor.position + 1);
+    assert.equal(latest.undo?.actionId, receipt.actionId);
+    const undone = await rpc('sequence.undo', {requestId: randomUUID(), actionId: receipt.actionId,
+      expected: {position: latest.position, revision: latest.revision}});
+    assert.equal(undone.status, 'applied');
+    const restored = await rpc('project.get');
+    assert.deepEqual(restored.timeline.clips, before.timeline.clips);
+    assert.deepEqual(restored.shots, before.shots);
+  }
+  assert.deepEqual(snapshots[0], snapshots[1]);
+
+  const edit = async (intent: Row) => {
+    const plan = await rpc('sequence.preview', {requestId: randomUUID(), ...intent});
+    assert.ok(plan.envelope, JSON.stringify(plan));
+    assert.equal((await rpc('sequence.commit', {envelope: plan.envelope, expectedPlanDigest: plan.planDigest})).status, 'applied');
+  };
+  const blockerText = '门外广播占满了这段字幕轨，请先安静。';
+  const originalShot = original.sequenceSource.nodeId, blockerShot = follower.sequenceSource.nodeId;
+  await edit({dialogueIntent: {side: 'board', operation: {kind: 'dialogue', edits: [
+    ...['请进。', '等等我。'].map(text => ({kind: 'add', shotId: originalShot, line: {id: randomUUID(), text}})),
+    {kind: 'add', shotId: blockerShot, line: {id: randomUUID(), text: blockerText}},
+  ]}}});
+  const linkedCue = ((await rpc('project.get')).timeline.subtitles.cues as Row[])
+    .find(cue => cue.dialogueRef?.shotId === blockerShot);
+  assert.ok(linkedCue);
+  // Removing the second shot leaves its subtitle at the proposed copy interval.
+  await edit({intents: [{side: 'board', operation: {kind: 'board', edit: {kind: 'delete', nodeId: blockerShot}}}]});
+  const blocked = await rpc('project.get');
+  const blocker = (blocked.timeline.subtitles.cues as Row[]).find(cue => cue.id === linkedCue.id);
+  assert.ok(blocker && blocker.anchor === null);
+  const cursor = await history();
+  const uiResult = sequencePreviewFailureResponseSchema.parse(await rpc('sequence.preview', {requestId: randomUUID(), intents: [{side: 'timeline',
+    operation: {kind: 'track', edit: {kind: input.kind, clipId: input.clipId, newClipId: randomUUID(),
+      copyNodeId: randomUUID()}}}]}));
+  assert.equal(uiResult.ok, false);
+  assert.equal(uiResult.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  const {dialogueConflict: conflict, message} = uiResult;
+  assert.ok(conflict && message);
+  assert.deepEqual([conflict.requiredFrames, conflict.availableFrames, conflict.blockerCount], [2, 0, 1]);
+  assert.equal(conflict.blockers.length, 1);
+  const [cue] = conflict.blockers;
+  assert.ok(cue);
+  assert.deepEqual([cue.cueId, cue.startFrame, cue.endFrame], [blocker.id, blocker.startFrame, blocker.startFrame + blocker.durationFrames]);
+  assert.ok(blockerText.startsWith(cue.textExcerpt.replace(/…$/u, '')) && cue.textExcerpt.length < blockerText.length);
+  assert.match(message, /副本的台词放不进去/u);
+  assert.ok(message.includes(cue.textExcerpt));
+  assert.match(message, /(?:挪开|移开).*删掉/u);
+
+  const assertExternalError = (value: Row) => {
+    assert.equal(value.ok, false);
+    assert.equal(value.error.code, uiResult.code);
+    assert.equal(value.error.message, uiResult.message);
+    assert.equal(value.error.retryable, false);
+    assert.deepEqual(value.error.details.dialogueConflict, conflict);
+  };
+  await assert.rejects(cliProcess(env, 'sequence', 'clip', 'edit', '--input', JSON.stringify(input)), error => {
+    const failure = error as {code: number; stdout: string; stderr: string};
+    assert.equal(failure.code, 3);
+    assertExternalError(JSON.parse(failure.stdout));
+    assert.ok(failure.stderr.includes(message));
+    return true;
+  });
+  const mcpFailure = await mcp.callTool({name: 'sequence_clip_edit', arguments: input}, undefined, {timeout: 15_000});
+  assert.equal(mcpFailure.isError, true);
+  assertExternalError(mcpFailure.structuredContent as Row);
+  const mcpText = (mcpFailure.content as Array<{type: string; text: string}>)[0];
+  assert.ok(mcpText?.type === 'text');
+  assertExternalError(JSON.parse(mcpText.text));
+  assert.deepEqual(await rpc('project.get'), blocked);
+  assert.deepEqual(await history(), cursor);
 });
 
 test('actual CLI and MCP replace format-5 main-track and overlay media while preserving clip edits', {timeout: 90_000}, async t => {
