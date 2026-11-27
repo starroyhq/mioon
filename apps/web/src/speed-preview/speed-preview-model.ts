@@ -7,18 +7,12 @@
  */
 import {
   TIMELINE_TIME_MAP_LIMITS,
-  compileFreezeTimeMap,
-  compileTimeMap,
-  initialTimeMap,
-  reverseTimeMap,
-  timeMapBasisFromCurrentClip,
   timeMapOutputAtSourceFrame,
   timeMapPlanFrames,
-  timeMapRootInfo,
   timeMapSourceAtOutputFrame,
   timeMapTailInverse,
-  trimTimeMap,
 } from '../../../../packages/contracts/src/timeline-time-map.ts';
+import {compileClipTimeMap} from '../../../../packages/contracts/src/timeline-clip-timing.ts';
 import type {
   CompiledTimeMap,
   ContinuousSourcePosition,
@@ -199,37 +193,6 @@ function boundaryToSampleNumber(position: TimeMapSourceBoundary | ContinuousSour
   return Number(BigInt(position.numerator) * BigInt(SAMPLES_PER_FRAME)) / Number(BigInt(position.denominator));
 }
 
-function reconstructSpeedPlan(timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>): TimeMapResult<CompiledTimeMap> {
-  const compiled = compileTimeMap(timing.basis);
-  if (!compiled.ok) return compiled;
-  const root = compiled.value;
-  const rootInfo = timeMapRootInfo(root);
-  const fullView = timing.view.loTime.anchor === 'start'
-    && timing.view.loTime.offsetOutputFrames === 0
-    && timing.view.hiTime.anchor === 'end'
-    && timing.view.hiTime.offsetOutputFrames === 0;
-  let plan = initialTimeMap(root, fullView ? timing.view.direction : 'forward');
-  if (!fullView) {
-    const lo = timing.view.loTime.anchor === 'start'
-      ? timing.view.loTime.offsetOutputFrames
-      : rootInfo.durationFrames + timing.view.loTime.offsetOutputFrames;
-    const hi = timing.view.hiTime.anchor === 'start'
-      ? timing.view.hiTime.offsetOutputFrames
-      : rootInfo.durationFrames + timing.view.hiTime.offsetOutputFrames;
-    const from = clamp(Math.trunc(lo), 0, Math.max(0, rootInfo.durationFrames - 1));
-    const to = clamp(Math.trunc(hi), from + 1, rootInfo.durationFrames);
-    const trimmed = trimTimeMap(plan, from, to);
-    if (!trimmed.ok) return trimmed;
-    plan = timing.view.direction === 'reverse' ? reverseTimeMap(trimmed.value) : trimmed.value;
-  }
-  const winFrom = clamp(timing.outputWindow.fromFrame, 0, Math.max(0, plan.durationFrames - 1));
-  const winTo = clamp(timing.outputWindow.toFrame, winFrom + 1, plan.durationFrames);
-  if (winFrom > 0 || winTo < plan.durationFrames) {
-    return trimTimeMap(plan, winFrom, winTo);
-  }
-  return {ok: true, value: plan};
-}
-
 const PLAN_CACHE_MAX = 64;
 const compiledPlanCache = new Map<string, TimeMapResult<CompiledTimeMap>>();
 
@@ -252,45 +215,20 @@ export function compileClipTimeMapForPreview(
     compiledPlanCache.set(key, cached);
     return cached;
   }
-  const result = compileClipTimeMapUncached(clip, safeFps);
+  const timing = clipTimingOf(clip);
+  const result = compileClipTimeMap({
+    id: clip.id,
+    startFrame: clip.startFrame,
+    durationFrames: Math.max(1, Math.trunc(clip.durationFrames)),
+    sourceInFrame: Math.max(0, Math.trunc(clip.sourceInFrame ?? 0)),
+    ...(timing ? {timing} : {}),
+  }, {fps: safeFps});
   compiledPlanCache.set(key, result);
   while (compiledPlanCache.size > PLAN_CACHE_MAX) {
     const oldest = compiledPlanCache.keys().next().value;
     if (oldest !== undefined) compiledPlanCache.delete(oldest);
   }
   return result;
-}
-
-function compileClipTimeMapUncached(
-  clip: SpeedClipLike,
-  safeFps: number,
-): TimeMapResult<CompiledTimeMap> {
-  const timing = clipTimingOf(clip);
-  if (timing?.profile === 'timeline-freeze-v1') {
-    const tb = {fpsNumerator: safeFps, fpsDenominator: 1};
-    const root = compileFreezeTimeMap({
-      sourceFrame: timing.sourceFrame,
-      durationFrames: Math.max(1, Math.trunc(clip.durationFrames)),
-      sourceFps: tb,
-      outputFps: tb,
-    });
-    return root.ok ? {ok: true, value: initialTimeMap(root.value)} : root;
-  }
-  if (timing?.profile === 'timeline-speed-v1') {
-    return reconstructSpeedPlan(timing);
-  }
-  const basis = timeMapBasisFromCurrentClip(
-    {
-      id: clip.id,
-      startFrame: clip.startFrame,
-      durationFrames: Math.max(1, Math.trunc(clip.durationFrames)),
-      sourceInFrame: Math.max(0, Math.trunc(clip.sourceInFrame ?? 0)),
-    },
-    {fps: safeFps},
-  );
-  if (!basis.ok) return basis;
-  const root = compileTimeMap(basis.value);
-  return root.ok ? {ok: true, value: initialTimeMap(root.value)} : root;
 }
 
 export interface ClipPreviewSourceSample {

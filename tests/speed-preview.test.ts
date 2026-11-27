@@ -37,6 +37,7 @@ import {
   timeMapSourceAtOutputFrame,
 } from '../packages/contracts/src/timeline-time-map.ts';
 import type {TimeMapBasis} from '../packages/contracts/src/timeline-time-map.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import {translate} from '../packages/i18n/src/index.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -375,6 +376,34 @@ test('timeline thumbnails sample the same reverse and curve frames as export and
   assert.equal(freezeSamples.length, 1);
   assert.equal(freezeSamples[0]?.sourceFrame, 42);
   assert.equal(freezeSamples[0]?.seekSeconds, 42.5 / 30);
+});
+
+test('thumbnails for a reversed curve with a trimmed fractional end preserve the export phase', () => {
+  const {timing, durationFrames} = makeCurveTiming({presetId: 'slowMiddle', sourceDurationFrames: 180, direction: 'reverse'});
+  assert.equal(timing.profile, 'timeline-speed-v1');
+  const trimEndFrames = 3;
+  const clip = {
+    id: CLIP_ID,
+    trackId: 'v1',
+    assetId: ASSET_ID,
+    startFrame: 37,
+    durationFrames: durationFrames - trimEndFrames,
+    sourceInFrame: 0,
+    timing: {
+      ...timing,
+      view: {...timing.view, hiTime: {anchor: 'end' as const, offsetOutputFrames: -trimEndFrames}},
+      outputWindow: {fromFrame: 0, toFrame: durationFrames - trimEndFrames},
+    },
+  };
+  const compiled = compileClipTimeMap(clip, {fps: 30});
+  assert.equal(compiled.ok, true);
+  const exportFrames = timeMapPlanFrames(compiled.value);
+  assert.equal(exportFrames.ok, true);
+
+  const samples = computeClipThumbnailSamples(clip, 30, 384);
+  assert.deepEqual(samples.map(sample => sample.outputOffsetFrames), [52, 158, 263, 369]);
+  assert.deepEqual(samples.map(sample => sample.sourceFrame), samples.map(sample => exportFrames.value[sample.outputOffsetFrames]));
+  assert.deepEqual(samples.slice(0, 2).map(sample => sample.sourceFrame), [136, 102]);
 });
 
 test('waveform window calculation and output-domain projection remap 0.5x, 2x, reverse, curve, freeze, and missing coverage', async () => {
