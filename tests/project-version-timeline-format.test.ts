@@ -12,15 +12,19 @@ import {projectVersionSaveResponseSchema,projectVersionPreviewResponseSchema,pro
 import {startServer,type InspectProject} from './helpers/test-server.ts';
 import type {TimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {TIMELINE_HISTORY_OPERATIONS} from '../packages/business/src/timeline-history-operations.ts';
-import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
 
 interface Reply {status:number;body:{ok:boolean;data?:unknown;error?:{code:string;details?:unknown}}}
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-async function fixture(t:TestContext,{preset=true}:{preset?:boolean}={}){
+async function fixture(t:TestContext,{preset=true,format6=false}:{preset?:boolean;format6?:boolean}={}){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-version-format-'));let inspect!:InspectProject;
- const server=await startServer({dataDir:root,port:0,comfyModule:'skip',projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION,inspectProject:received=>{inspect=received;}});
+ const boot=()=>startServer({dataDir:root,port:0,comfyModule:'skip',
+  projectFormatForTest:format6?undefined:PROJECT_FILE_SCHEMA_VERSION,
+  ...(format6?{localDraftChannel:'development' as const}:{}),inspectProject:received=>{inspect=received;}});
+ let server=await boot();
  t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});
  const request=async(operation:string,input:unknown,projectId?:string):Promise<Reply>=>{
   const response=await fetch(server.url+(projectId===undefined?'/api/rpc':projectRpcPath(projectId)),{method:'POST',
@@ -42,7 +46,8 @@ async function fixture(t:TestContext,{preset=true}:{preset?:boolean}={}){
   const input={projectId,versionId,requestId:randomUUID(),expectedContentSequence:preview.contentSequence,expectedContentToken:preview.contentToken,previewDigest:preview.previewDigest};
   return projectVersionRestoreResponseSchema.parse(await success('project.version.restore',input));
  };
- return {projectId,root,rpc,success,timeline,format,save,restore,request,inspect:()=>inspect};
+ const reopen=async()=>{await server.close();server=await boot();};
+ return {projectId,root,rpc,success,timeline,format,save,restore,request,inspect:()=>inspect,reopen};
 }
 
 test('restoring portrait version A after a landscape change returns readable history-locked portrait output',async t=>{
@@ -78,6 +83,59 @@ test('clip version restoration, undo and redo each retain readable output format
  const redone=await f.timeline('timeline.redo',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:undone.revision});
  assert.deepEqual(redone.clips.map(value=>[value.id,value.startFrame,value.durationFrames]),[[clip.id,0,90]]);
  const afterRedo=await f.format();assert.equal(afterRedo.presetId,'portrait_1080');assert.equal(afterRedo.eligible,false);assert.ok(afterRedo.blockedReasons.includes('HISTORY_PRESENT'));
+});
+
+test('format 6 named restore keeps native history readable after restart and sequence undo/redo',async t=>{
+ const prior=process.env.MIOON_FORMAT6_DEV;
+ process.env.MIOON_FORMAT6_DEV='1';
+ t.after(()=>{if(prior===undefined)delete process.env.MIOON_FORMAT6_DEV;else process.env.MIOON_FORMAT6_DEV=prior;});
+ const f=await fixture(t,{format6:true}),{projectId}=f;
+ const imported=await f.success('asset.import',{projectId,name:'Synthetic source.png',mimeType:'image/png',
+  dataBase64:png({width:16,height:16,rgba:false,pixel:()=>[255,0,0]}).toString('base64')});
+ assert.ok(object(imported)&&typeof imported.id==='string');
+ const commit=async(draft:unknown)=>{
+  assert.ok(object(draft)&&object(draft.envelope)&&typeof draft.planDigest==='string',JSON.stringify(draft));
+  const result=await f.success('sequence.commit',{projectId,envelope:draft.envelope,expectedPlanDigest:draft.planDigest});
+  assert.ok(object(result)&&result.status==='applied',JSON.stringify(result));
+ };
+ const setPreset=async(presetId:string)=>commit(await f.success('sequence.preview',{projectId,requestId:randomUUID(),
+  formatIntent:{side:'timeline',operation:{kind:'timeline-format',presetId}}}));
+ await commit(await f.success('sequence.timeline.edit',{projectId,kind:'insert-asset',assetId:imported.id,trackId:null,startFrame:0}));
+ const saved=await f.save();
+ await setPreset('landscape_1080');
+ assert.equal((await f.format()).presetId,'landscape_1080');
+ const restored=await f.restore(saved.version.id);
+ assert.ok(restored.appliedChanges.some(change=>change.table==='timeline_clips'));
+ const verify=async(presetId:string)=>{
+  const result=await f.format();assert.equal(result.presetId,presetId);assert.equal(result.fps,30);
+  const project=await f.success('project.get',{projectId});
+  assert.ok(object(project)&&object(project.timeline)&&Array.isArray(project.timeline.clips));
+  assert.equal(project.projectFormatVersion,FORMAT6_PROJECT_SCHEMA_VERSION);
+  assert.equal(project.timeline.clips.length,1);
+  assert.equal(project.timeline.revision,result.timelineRevision);
+ };
+ await verify('portrait_1080');
+ await f.reopen();
+ await verify('portrait_1080');
+ await setPreset('square_1080');
+ const history=async()=>sequenceHistoryViewResponseSchema.parse(await f.success('sequence.history.get',{projectId}));
+ const before=await history();assert.ok(before.undo);
+ await f.success('sequence.undo',{projectId,requestId:randomUUID(),actionId:before.undo.actionId,
+  expected:{position:before.position,revision:before.revision}});
+ await verify('portrait_1080');
+ const undone=await history();assert.ok(undone.redo);
+ await f.success('sequence.redo',{projectId,requestId:randomUUID(),actionId:undone.redo.actionId,
+  expected:{position:undone.position,revision:undone.revision}});
+ await verify('square_1080');
+ f.inspect()(projectId,db=>{
+  const row=db.prepare("SELECT id,afterSnapshot FROM main.timeline_history WHERE projectId=? AND operation='project.version.restore'").get(projectId)!;
+  const snapshot=JSON.parse(String(row.afterSnapshot));
+  snapshot.clips[0].sourceState='invalid';
+  injectFault(db,{name:'invalid native state',guard:'immutable_timeline_history',sql:'UPDATE main.timeline_history SET afterSnapshot=? WHERE id=?',
+   value:JSON.stringify(snapshot)},String(row.id));
+ });
+ const invalid=await f.rpc('timeline.format.get',{projectId});
+ assert.equal(invalid.status,409);assert.equal(invalid.body.error?.code,'INVALID_TIMELINE_SNAPSHOT');
 });
 
 test('a real format-only receipt pins its timeline owner when restoring a version saved without a timeline',async t=>{
