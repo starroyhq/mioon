@@ -9,6 +9,7 @@ import {
 import type { ChainSyncClip, ChainSyncMedia, ChainSyncVersion, ChainSyncWarning, MainTrackFailure } from './chain-main-track.ts';
 import { planTrackAnchors } from './chain-sync-analysis.ts';
 import type { TrackAnchoredItem, TrackAnchorSplit } from './chain-sync-analysis.ts';
+import type { SourceRange } from './source-range.ts';
 
 export { planChainMainTrack } from './chain-main-track.ts';
 export type { ChainSyncClip, ChainSyncMedia, ChainSyncVersion, ChainSyncWarning, MainTrackPlan } from './chain-main-track.ts';
@@ -32,7 +33,8 @@ export type TrackSyncEdit =
   /** ED: insert one asset or paste one copied clip. The minimal form carries the
    * user intent; the service expands it into `add`/`add-overlay` before planning
    * so the exact envelope (IDs and media) is what the UI confirms. */
-  | { readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number }
+  | { readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number;
+    readonly assetRange?: SourceRange }
   | { readonly kind: 'paste-clip'; readonly clipId: string; readonly startFrame: number }
   | { readonly kind: 'copy-as-new-shot'; readonly clipId: string; readonly newClipId: string; readonly copyNodeId: string }
   /** ED: add one clip to a non-main track, anchored below its owning main clip. */
