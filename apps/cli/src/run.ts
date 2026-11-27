@@ -105,7 +105,7 @@ export async function runCli(): Promise<void> {
       if(agent)data=await runAgentCommand(operation,input,options,{signal:abort.signal,redact:value=>{if(value)sensitive.push(value);}});
       else if(agentSchema){if(Object.keys(input).length)fail('schema does not accept input.');data=agentCommandHelp(words.slice(1).join('.'));}
       else {
-      const client = createClient();
+      const client = createClient({reportSubmissionRejections: true});
       const watch = ['job.watch', 'export.watch'].includes(operation), download = ['asset.download', 'export.download'].includes(operation);
       // Project files use dedicated management routes, not the RPC/MCP catalog.
       const projectPackage = ['project.export', 'project.import', 'project.duplicate'].includes(operation);
