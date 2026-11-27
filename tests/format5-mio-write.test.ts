@@ -17,6 +17,8 @@ import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
+import type {TaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import type {AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
@@ -136,6 +138,84 @@ const previsNode = (store: ProjectStore) => store.db.prepare(`SELECT id,data FRO
   .all(projectId).flatMap((row: any) => { try { return [{id: String(row.id), value: JSON.parse(String(row.data))}]; } catch { return []; } });
 
 const req=(n:number)=>`mt-write-request-${String(n).padStart(4,'0')}`;
+
+test('Mio sends native clip and cue counts frozen at the start of a format-5 run', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const addSubtitle = (text: string, startFrame: number) => {
+    const plan = previewMioSequenceAction(store, projectId, randomUUID(), {kind: 'subtitles',
+      edits: [{kind: 'add', cue: {text, startFrame, durationFrames: 10}}]}, {origin: 'user'});
+    assert.equal(commitMioSequenceAction(store, plan).status, 'applied');
+  };
+  const split = previewMioSequenceAction(store, projectId, randomUUID(),
+    {kind: 'split', clipId: clipA, offsetFrames: 10}, {origin: 'user'});
+  assert.equal(commitMioSequenceAction(store, split).status, 'applied');
+  addSubtitle('第一行', 0);
+  const rows = store.db.prepare(`SELECT json_type(data,'$.clips') AS headerClips,
+    json_type(data,'$.subtitles.cues') AS headerCues,
+    (SELECT count(*) FROM project.timeline_clips WHERE timelineId=t.id) AS clips,
+    (SELECT count(*) FROM project.timeline_cues WHERE timelineId=t.id) AS cues
+    FROM project.timelines t WHERE t.id=?`).get(timelineId);
+  assert.deepEqual({...rows}, {headerClips: null, headerCues: null, clips: 4, cues: 1});
+
+  const totalChanges = () => store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  const before = totalChanges();
+  store.db.exec('PRAGMA query_only=ON');
+  try {
+    const {clips, subtitles} = collectTaskProjectOverview(store, projectId).counts;
+    assert.deepEqual({clips, subtitles}, {clips: 4, subtitles: 1});
+    assert.equal(totalChanges(), before);
+  } finally {store.db.exec('PRAGMA query_only=OFF');}
+
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy);
+  const tools = createAgentTaskTools({store, services, journal});
+  const authorizations = createTestAuthorizations(store, settings);
+  const counts: {clips: number; subtitles: number}[] = [];
+  const gateway: TaskGateway = async function* (request): ReturnType<TaskGateway> {
+    request.beforeSubmit?.();
+    const {messages} = JSON.parse(request.body) as {messages: {content?: unknown}[]};
+    const notice = messages.map(message => message.content).find(content =>
+      typeof content === 'string' && content.includes('"kind":"mio.project.overview"'));
+    assert.ok(typeof notice === 'string');
+    const overview = JSON.parse(notice.slice(notice.indexOf('\n') + 1)) as {data: TaskProjectOverview};
+    const {clips, subtitles} = overview.data.counts;
+    counts.push({clips, subtitles});
+    if (counts.length === 1) {
+      addSubtitle('发送之后添加的一行', 45);
+      const call = {id: 'read_native_timeline', name: 'mioon_sequence_inspect', arguments: {}};
+      yield {type: 'done', output: {text: '', toolCalls: [call], providerOutput: {role: 'assistant',
+        content: null, tool_calls: [{id: call.id, type: 'function',
+          function: {name: call.name, arguments: JSON.stringify(call.arguments)}}]}}};
+      return;
+    }
+    const text = '已读取项目。';
+    yield {type: 'done', output: {text, toolCalls: [], providerOutput: {role: 'assistant', content: text}}};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, tools, agentSettings: settings,
+    authorizations, gateway, selfPort: () => 4318});
+  try {
+    await putTestAgentConfiguration(settings, {expectedRevision: 0,
+      configuration: defaultTestAgentConfiguration('chat_completions'),
+      secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_OVERVIEW'}});
+    await authorizeTestScope(authorizations, 'project_agent');
+    for (const text of ['读取第一次发送时的项目概览', '读取现在的项目概览']) {
+      const started = await runtime.send(projectId, {requestId: randomUUID(), text,
+        expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+      await runtime.drain();
+      const finished = runtime.get(projectId, started.run.id);
+      assert.equal(finished.run.status, 'completed',
+        JSON.stringify(finished.steps.map(({kind, status, error}) => ({kind, status, error}))));
+    }
+    assert.deepEqual(counts, [{clips: 4, subtitles: 1}, {clips: 4, subtitles: 1}, {clips: 4, subtitles: 2}]);
+  } finally {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  }
+});
 
 test('Mio reports a foreign unadopted source version without editing the project', async t => {
   const store = fixture(t, {withMioRuntime: true});
