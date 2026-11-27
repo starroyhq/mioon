@@ -3820,7 +3820,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!result.ok) {notifyFormat5CommandFailure(result); return null;}
     clearFormat5ConflictToast();
     setFormat5Notice(null);
-    await refresh(currentProject.current); await format5RefreshHistory();
+    await refresh(currentProject.current); await format5RefreshHistory(); await format5LoadBoard();
     return result;
   }
   /** Mute or unmute a clip's own sound as one saved properties action. */
@@ -3888,9 +3888,29 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setRequestedInspectorGroup(current => ({key: 'speed', clipId, version: (current?.version ?? 0) + 1}));
   }
   async function format5CopyClipAsNewShot(clipId: string): Promise<unknown> {
-    const clip = dataRef.current.timeline?.clips.find(item => item.id === clipId);
-    if (!clip || !format5 || format5SessionBusy) return null;
-    return format5RunPolicy(format5PasteClipCommand(clipId, clip.startFrame + clip.durationFrames) as never);
+    const timelineNow = dataRef.current.timeline;
+    const clip = timelineNow?.clips.find(item => item.id === clipId);
+    const mainTrackId = (timelineNow as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+    if (!clip || !format5 || format5SessionBusy || mainTrackId === null || clip.trackId !== mainTrackId) return null;
+    const clipName = format5ClipName(clipId);
+    const newClipId = crypto.randomUUID();
+    const copyNodeId = crypto.randomUUID();
+    setFormat5SessionBusy(true);
+    try {
+      const result = await format5Session().runPayload({
+        intents: [{side: 'timeline', operation: {kind: 'track', edit: {kind: 'copy-as-new-shot', clipId, newClipId, copyNodeId}}}],
+      });
+      if (!result.ok) { notifyFormat5CommandFailure(result); return null; }
+      clearFormat5ConflictToast();
+      setFormat5Notice({id: `format5-copy-shot-${Date.now()}`, message: t('editUi.notice.copiedAsNewShot', {name: clipName})});
+      setFormat5NoticeActionId(result.actionId);
+      await refresh(currentProject.current);
+      await format5RefreshHistory();
+      await format5LoadBoard();
+      const created = dataRef.current.timeline?.clips.find(item => item.id === newClipId);
+      if (created) { setSelectedClipId(created.id); setPlayhead(created.startFrame); }
+      return result;
+    } finally { setFormat5SessionBusy(false); }
   }
   /** Separate the clip's sound: one intent, one undo step (mute + anchored
    * sound-only clip + optional new audio track are expanded by the server). */
@@ -5650,8 +5670,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         const plan = clipContextMenuPlan({format5, clip: clip as never, asset: asset as never, track: track as never});
         const canSplit = Boolean(format5SplitState?.canSplit) && format5SplitState?.clipId === clip.id;
         const clipMain = (clip as {trackId?: string; sequenceSource?: {kind?: string}});
-        const generateAround = format5 && clipMain.trackId === (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId
-          && clipMain.sequenceSource?.kind === 'shot';
+        const mainTrackId = (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+        const isMainTrackClip = format5 && mainTrackId !== null && clipMain.trackId === mainTrackId;
+        const generateAround = isMainTrackClip && clipMain.sequenceSource?.kind === 'shot';
         const liveFrame = playbackClock.getSnapshot() ?? effectivePlayhead;
         const speedMenu = speedEnabled ? {
           showSpeedActions: clipSupportsSpeed(clip as never, asset as never),
@@ -5660,7 +5681,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           onOpenSpeed: (id: string) => openClipSpeedInInspector(id),
           onToggleReverse: (id: string) => { void format5ToggleClipReverse(id); },
           onFreeze: (id: string) => { void format5FreezeTimelineClip(id); },
-          onCopyAsNewShot: (id: string) => { void format5CopyClipAsNewShot(id); },
+          ...(isMainTrackClip ? {onCopyAsNewShot: (id: string) => { void format5CopyClipAsNewShot(id); }} : {}),
         } : null;
         return <TimelineClipContextMenu anchor={clipContextMenu} plan={plan} canSplit={canSplit}
           busy={format5SessionBusy} speedMenu={speedMenu} onSplit={() => { void splitTimelineClip(); }}

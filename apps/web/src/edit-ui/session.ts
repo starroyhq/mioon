@@ -268,7 +268,13 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
-    case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
+    case 'SEQUENCE_EDIT_PATCH_INVALID':
+    case 'DUPLICATE_CLIP':
+    case 'COPY_NODE_EXISTS':
+    case 'NODE_ALREADY_LINKED':
+    case 'SEQUENCE_EDIT_REQUEST_REUSED': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
+    case 'INVALID_TRACK_TARGET': return 'editUi.error.INVALID_TRACK_TARGET';
+    case 'CLIP_NOT_FOUND': return 'editUi.error.CLIP_NOT_FOUND';
     case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';

@@ -488,6 +488,16 @@ test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead 
   const views = buildTimelineClipSpeedViews({capabilities: {speed: true}, clips: [freezeClip]}, [], tZh);
   assert.equal(views?.get('f1')?.isFreeze, true);
   assert.equal(views?.get('f1')?.freezeTitle, '定格');
+
+  // Copy-as-new-shot uses the dedicated copy-as-new-shot intent (not paste-clip) and only on main-track clips
+  const appSrc = read('apps/web/src/App.tsx');
+  const copyStart = appSrc.indexOf('async function format5CopyClipAsNewShot(');
+  const copyEnd = appSrc.indexOf('async function format5SeparateClipSound(', copyStart);
+  assert.ok(copyStart > 0 && copyEnd > copyStart);
+  const copyBody = appSrc.slice(copyStart, copyEnd);
+  assert.ok(copyBody.includes("kind: 'copy-as-new-shot'"), 'format5CopyClipAsNewShot must dispatch copy-as-new-shot');
+  assert.equal(copyBody.includes('format5PasteClipCommand'), false, 'format5CopyClipAsNewShot must not fall back to paste-clip');
+  assert.ok(appSrc.includes('isMainTrackClip ? {onCopyAsNewShot:'), 'copy-as-new-shot menu entry is restricted to main-track clips');
 });
 
 test('A7/F6: processing poller polls every 2s while active, stops once ready/failed, and fences stale responses', async () => {
