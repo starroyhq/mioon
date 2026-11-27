@@ -260,10 +260,15 @@ export function serializeFcpXml({timeline, projectName, assets}: {
     const {asset} = resource;
     const audioOnly = clip.soundOnly || track.kind === 'audio';
     const picture = !audioOnly && asset.hasVideo ? pictureAdjustments(clip, asset, track, timeline) : '';
-    const audio = asset.hasAudio ? audioAdjustments(clip, track) : '';
-    return element('asset-clip', {
+    const placement = {
       ref: resource.id, name: clip.name, lane, offset: frameTime(offset),
       start: frameTime(clip.sourceInFrame), duration: frameTime(clip.durationFrames),
+    };
+    // FCP 13 imports frame-rate-less stills through the video element.
+    if (asset.isStill) return element('video', placement, picture + children);
+    const audio = asset.hasAudio ? audioAdjustments(clip, track) : '';
+    return element('asset-clip', {
+      ...placement,
       srcEnable: audioOnly ? 'audio' : undefined,
       audioRole: asset.hasAudio ? audioRole(clip.audioRole) : undefined,
     }, picture + audio + children);
