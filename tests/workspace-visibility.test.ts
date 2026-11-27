@@ -14,6 +14,9 @@ import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as speedRender from '../packages/contracts/src/timeline-speed-render.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import {buildClipSpeedPreviewBinding} from '../apps/web/src/speed-preview/speed-preview-model.ts';
+import * as speedModel from '../apps/web/src/speed-ui/speed-model.ts';
+import type {UseSpeedProcessingResult} from '../apps/web/src/speed-ui/use-speed-processing.ts';
+import {timelineProcessingResponseSchemas} from '../packages/contracts/src/timeline-processing.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import {generationParameters, providerStatus} from '../apps/web/src/generation-settings.ts';
@@ -21,7 +24,7 @@ import {generationParameters, providerStatus} from '../apps/web/src/generation-s
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
 // or browser playback coverage; browser acceptance covers the integrated UI.
-const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx'].map(file => [file,
+const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx', 'speed-ui/use-speed-processing.ts'].map(file => [file,
   transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs', sourcefile: file }).code,
 ]));
 const noop = () => {};
@@ -57,12 +60,22 @@ function createHarness(file: string, exportName = 'default') {
     slots[index] = { dependencies, cleanup: previous?.cleanup, callback, kind };
     (kind === 'layout' ? layouts : effects).push(index);
   }
+  function memoValue(factory: () => unknown, dependencies: readonly unknown[]) {
+    const index = cursor++, previous = slots[index];
+    if (previous && dependencies.length === previous.dependencies?.length &&
+        dependencies.every((value, i) => Object.is(value, previous.dependencies![i]))) return previous.value;
+    const value = factory();
+    slots[index] = {dependencies, value};
+    return value;
+  }
   const react = {
     createElement(type: string, props: Partial<UiProps>|null, ...children: unknown[]) { return { type, props: { ...props, children: children.length === 1 ? children[0] : children } }; },
     createContext(value: unknown) { return { defaultValue: value, Provider: 'VisibilityProvider' }; },
     useContext(context: { defaultValue: unknown; }) { return h.ancestorVisible ?? context.defaultValue; },
     useRef(value: unknown) { const index = cursor++; return slots[index] ||= { current: value }; },
     useState(value: () => unknown) { const index = cursor++; slots[index] ||= { value: typeof value === 'function' ? value() : value }; return [slots[index].value, (next: (arg0: unknown) => unknown) => { slots[index].value = typeof next === 'function' ? next(slots[index].value) : next; }]; },
+    useMemo: memoValue,
+    useCallback: (callback: unknown, dependencies: readonly unknown[]) => memoValue(() => callback, dependencies),
     useEffect: (callback: ()=>void|(()=>void), dependencies: unknown[]) => effect('effect', callback, dependencies),
     useLayoutEffect: (callback: ()=>void|(()=>void), dependencies: unknown[]) => effect('layout', callback, dependencies),
     memo: (component: unknown) => component,
@@ -95,6 +108,8 @@ function createHarness(file: string, exportName = 'default') {
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
     './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
+    './speed-model.ts': speedModel,
+    '../../../../packages/contracts/src/timeline-processing.ts': {timelineProcessingResponseSchemas},
     '../../../packages/contracts/src/timeline-speed-render.ts': speedRender,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
@@ -174,6 +189,36 @@ const inspectorProps = (patch?: Record<string,unknown>) => ({
   project: { id: 'project-one' }, assets: [], versions: [{ id: 'version-one', shotId: 'shot-one', number: 1, createdAt: '2026-10-09T12:00:00Z' }],
   jobs: [], providers: [], busy: {}, tab: 'versions', highlightedVersionId: 'version-one', onDirtyChange: noop,
   ...patch,
+});
+
+test('speed preview ignores ready processing rows from a previous timeline revision', async t => {
+  const h = createHarness('speed-ui/use-speed-processing.ts', 'useSpeedProcessing');
+  t.after(() => h.unmount());
+  const requests: ((value: unknown) => void)[] = [];
+  const clip = {id: secondRenderAssetId, timing: {profile: 'timeline-speed-v1', view: {direction: 'forward'},
+    basis: {speed: {kind: 'constant'}}, interpolation: 'optical'}};
+  const timeline = {capabilities: {speed: true}, clips: [clip], revision: 1};
+  const props = {projectId: renderProjectId, online: true, authenticated: true,
+    rpc: () => new Promise(resolve => requests.push(resolve))};
+  const render = (revision: number, passive = true) =>
+    h.render({...props, timeline: {...timeline, revision}}, {passive}) as unknown as UseSpeedProcessingResult;
+
+  render(1);
+  assert.equal(requests.length, 1);
+  const old = {taskId: firstRenderAssetId, clipId: clip.id, kind: 'optical', status: 'ready'};
+  requests[0]!({items: [old]});
+  await Promise.resolve();
+  assert.deepEqual(render(1).previewItems, [old]);
+
+  const changed = render(2, false);
+  assert.deepEqual(changed.items, [old]);
+  assert.deepEqual(changed.previewItems, []);
+  h.flushPassive();
+  assert.equal(requests.length, 2);
+  const next = {...old, taskId: renderProjectId, status: 'queued'};
+  requests[1]!({items: [next]});
+  await Promise.resolve();
+  assert.deepEqual(render(2).previewItems, [next]);
 });
 
 test('visibility defaults to visible and nested visible panels cannot override a hidden ancestor', () => {

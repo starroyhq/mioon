@@ -224,12 +224,15 @@ function makeRetryRequestId(): string {
 
 export interface UseSpeedProcessingResult {
   readonly items: readonly SpeedProcessingItem[];
+  readonly previewItems: readonly SpeedProcessingItem[];
   readonly busyTaskIds: ReadonlySet<string>;
   readonly pollState: SpeedProcessingPollState;
   readonly retry: (taskId: string) => Promise<void>;
   readonly cancel: (taskId: string) => Promise<void>;
   readonly refresh: () => void;
 }
+
+const EMPTY_ITEMS: readonly SpeedProcessingItem[] = [];
 
 export function useSpeedProcessing(options: {
   readonly projectId: string | null;
@@ -253,7 +256,10 @@ export function useSpeedProcessing(options: {
   }, [speedEnabled, timeline?.clips]);
 
   const shouldPoll = Boolean(active && speedEnabled && projectId && online && authenticated && clipTriggerKey);
-  const [items, setItems] = useState<readonly SpeedProcessingItem[]>([]);
+  const pollScope = useMemo(() => shouldPoll ? {} : null,
+    [shouldPoll, projectId, clipTriggerKey, timeline?.revision, scopeKey]);
+  const [snapshot, setSnapshot] = useState<{scope: object; items: readonly SpeedProcessingItem[]} | null>(null);
+  const items = snapshot?.items ?? EMPTY_ITEMS;
   const [pollState, setPollState] = useState<SpeedProcessingPollState>('idle');
   const [busyTaskIds, setBusyTaskIds] = useState<ReadonlySet<string>>(() => new Set());
   const pollerRef = useRef<SpeedProcessingController | null>(null);
@@ -263,17 +269,17 @@ export function useSpeedProcessing(options: {
   onErrorRef.current = onError;
 
   useEffect(() => {
-    if (!shouldPoll || !projectId) {
+    if (!pollScope || !projectId) {
       pollerRef.current?.dispose();
       pollerRef.current = null;
-      setItems([]);
+      setSnapshot(null);
       setPollState('idle');
       return;
     }
     const poller = createSpeedProcessingPoller({
       projectId,
       list: signal => rpcRef.current('timeline.processing.list', {projectId}, {signal}),
-      onItems: next => setItems(next),
+      onItems: next => setSnapshot({scope: pollScope, items: next}),
       onStateChange: nextState => setPollState(nextState),
     });
     pollerRef.current = poller;
@@ -282,7 +288,7 @@ export function useSpeedProcessing(options: {
       poller.dispose();
       if (pollerRef.current === poller) pollerRef.current = null;
     };
-  }, [shouldPoll, projectId, clipTriggerKey, timeline?.revision, scopeKey]);
+  }, [pollScope, projectId]);
 
   const retry = useCallback(async (taskId: string): Promise<void> => {
     if (!projectId || !speedEnabled) return;
@@ -326,5 +332,8 @@ export function useSpeedProcessing(options: {
     pollerRef.current?.refresh();
   }, []);
 
-  return {items, busyTaskIds, pollState, retry, cancel, refresh};
+  // A previous list can still populate the task center during a refresh, but
+  // it cannot attest that the current timeline's optical result is ready.
+  const previewItems = snapshot?.scope === pollScope ? items : EMPTY_ITEMS;
+  return {items, previewItems, busyTaskIds, pollState, retry, cancel, refresh};
 }

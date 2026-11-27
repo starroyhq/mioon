@@ -4724,7 +4724,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     active: speedPreviewActive,
     online,
     authenticated: auth === true,
-    processingItems: speedProcessing.items,
+    processingItems: speedProcessing.previewItems,
     rpc,
   });
   const speedPreviewAudioContext = useCallback((): TimelineAudioPreviewContext => {
@@ -4763,13 +4763,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           sourceUrl: assetUrl(sourceAsset),
           fps: timeline?.fps || 30,
           media: speedPreviewMedia.media,
-          processingItems: speedProcessing.items,
+          processingItems: speedProcessing.previewItems,
           t: t as never,
           onRetryTask: taskId => { void speedProcessing.retry(taskId).then(() => speedPreviewMedia.refresh()); },
           onPlaybackStateChange: state => speedPreviewAudio.syncPlayback(state),
         })
       : null,
-    [speedEnabled, timeline, activeSourceClip, sourceAsset, previewKind, speedPreviewMedia.media, speedPreviewMedia.refresh, speedProcessing.items, speedProcessing.retry, speedPreviewAudio.syncPlayback, t, projectMedia.state.status],
+    [speedEnabled, timeline, activeSourceClip, sourceAsset, previewKind, speedPreviewMedia.media, speedPreviewMedia.refresh, speedProcessing.previewItems, speedProcessing.retry, speedPreviewAudio.syncPlayback, t, projectMedia.state.status],
   );
   const speedWaveformWindowForClip = useMemo(
     () => speedEnabled
