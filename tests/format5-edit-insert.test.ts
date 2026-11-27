@@ -294,6 +294,9 @@ test('copy as new shot previews a split piece, preserves the full clip and undoe
   const after = snapshot();
   assert.deepEqual([shot(copyNodeId).title, shot(copyNodeId).position, shot(copyNodeId).selectedVersionId],
     ['窗口剪影 副本', {x: 290, y: 120}, versionA]);
+  const copiedLineId = format5CopiedDialogueLineId(copyNodeId, 0);
+  assert.notEqual(copiedLineId, line.id);
+  assert.deepEqual(shot(copyNodeId).dialogue, [{...line, id: copiedLineId}]);
   assert.deepEqual((store.list('edges', projectId) as Row[]).map(edge => [edge.source, edge.target])
     .sort(([left], [right]) => left.localeCompare(right)),
   [[WIRE_IDS.root, shotA], [shotA, copyNodeId], [copyNodeId, shotB], [shotB, WIRE_IDS.imageNode]]
@@ -310,7 +313,10 @@ test('copy as new shot previews a split piece, preserves the full clip and undoe
     sequenceSource: {...source.sequenceSource, nodeId: copyNodeId, segmentGroupId: copy.sequenceSource!.segmentGroupId}});
   assert.deepEqual(timeline().clips.filter(clip => clip.trackId === video2),
     [sourceOverlay, {...followingOverlay, startFrame: 98}]);
-  assert.deepEqual(timeline().subtitles?.cues, [dialogueCue, sourceCue, {...followingCue, startFrame: 105}]);
+  const copiedDialogueCue = {id: format5DialogueCueId(initial.id, copyNodeId, copiedLineId), text: line.text,
+    startFrame: 60, durationFrames: copy.durationFrames, anchor: {clipId: newClipId, offsetFrames: 0},
+    dialogueRef: {shotId: copyNodeId, lineId: copiedLineId}};
+  assert.deepEqual(timeline().subtitles?.cues, [dialogueCue, sourceCue, copiedDialogueCue, {...followingCue, startFrame: 105}]);
   assert.deepEqual(await services.call('sequence.commit', commit), receipt);
   assert.deepEqual(counts(), {cursor: 1, entries: 1, receipts: 1});
 

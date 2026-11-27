@@ -268,7 +268,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   const result = createFormat5SequenceEditService(store).preview(request);
   if ('ok' in result) {
     throw new MioSequencePreviewRejection(result.code, result.message ?? '格式 5 序列动作无法预览，请重新读取后再试。', 409,
-      {ids: result.ids, ...(result.reason ? {reason: result.reason} : {})});
+      {ids: result.ids, ...(result.reason ? {reason: result.reason} : {}),
+        ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
   }
   const {warnings} = result;
   if (action.kind === 'replace-source' && warnings.some(warning => warning.code === 'SOURCE_TOO_SHORT' && warning.clipId === action.clipId)) {

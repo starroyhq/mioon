@@ -12,6 +12,7 @@ import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {BOARD_IDS, createBoardUiWireFixture} from './helpers/board-ui-wire-fixture.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {sequencePreviewFailureResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {Format5EditSession, format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
@@ -140,6 +141,7 @@ test('actual CLI and MCP copy a main-track clip as a new shot through the same p
     {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}},
     {kind: 'board-shot-append', name: 'Shot A'},
     {kind: 'board-shot-append', name: 'Shot B'},
+    {kind: 'board-shot-append', name: 'Shot C'},
   ]) {
     const plan = await rpc('sequence.board.edit', action);
     await rpc('sequence.action.commit', {envelope: plan.envelope, expectedPlanDigest: plan.planDigest});
@@ -198,6 +200,66 @@ test('actual CLI and MCP copy a main-track clip as a new shot through the same p
     assert.deepEqual(restored.shots, before.shots);
   }
   assert.deepEqual(snapshots[0], snapshots[1]);
+
+  const edit = async (intent: Row) => {
+    const plan = await rpc('sequence.preview', {requestId: randomUUID(), ...intent});
+    assert.ok(plan.envelope, JSON.stringify(plan));
+    assert.equal((await rpc('sequence.commit', {envelope: plan.envelope, expectedPlanDigest: plan.planDigest})).status, 'applied');
+  };
+  const blockerText = '门外广播占满了这段字幕轨，请先安静。';
+  const originalShot = original.sequenceSource.nodeId, blockerShot = follower.sequenceSource.nodeId;
+  await edit({dialogueIntent: {side: 'board', operation: {kind: 'dialogue', edits: [
+    ...['请进。', '等等我。'].map(text => ({kind: 'add', shotId: originalShot, line: {id: randomUUID(), text}})),
+    {kind: 'add', shotId: blockerShot, line: {id: randomUUID(), text: blockerText}},
+  ]}}});
+  const linkedCue = ((await rpc('project.get')).timeline.subtitles.cues as Row[])
+    .find(cue => cue.dialogueRef?.shotId === blockerShot);
+  assert.ok(linkedCue);
+  // Removing the second shot leaves its subtitle at the proposed copy interval.
+  await edit({intents: [{side: 'board', operation: {kind: 'board', edit: {kind: 'delete', nodeId: blockerShot}}}]});
+  const blocked = await rpc('project.get');
+  const blocker = (blocked.timeline.subtitles.cues as Row[]).find(cue => cue.id === linkedCue.id);
+  assert.ok(blocker && blocker.anchor === null);
+  const cursor = await history();
+  const uiResult = sequencePreviewFailureResponseSchema.parse(await rpc('sequence.preview', {requestId: randomUUID(), intents: [{side: 'timeline',
+    operation: {kind: 'track', edit: {kind: input.kind, clipId: input.clipId, newClipId: randomUUID(),
+      copyNodeId: randomUUID()}}}]}));
+  assert.equal(uiResult.ok, false);
+  assert.equal(uiResult.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  const {dialogueConflict: conflict, message} = uiResult;
+  assert.ok(conflict && message);
+  assert.deepEqual([conflict.requiredFrames, conflict.availableFrames, conflict.blockerCount], [2, 0, 1]);
+  assert.equal(conflict.blockers.length, 1);
+  const [cue] = conflict.blockers;
+  assert.ok(cue);
+  assert.deepEqual([cue.cueId, cue.startFrame, cue.endFrame], [blocker.id, blocker.startFrame, blocker.startFrame + blocker.durationFrames]);
+  assert.ok(blockerText.startsWith(cue.textExcerpt.replace(/…$/u, '')) && cue.textExcerpt.length < blockerText.length);
+  assert.match(message, /副本的台词放不进去/u);
+  assert.ok(message.includes(cue.textExcerpt));
+  assert.match(message, /(?:挪开|移开).*删掉/u);
+
+  const assertExternalError = (value: Row) => {
+    assert.equal(value.ok, false);
+    assert.equal(value.error.code, uiResult.code);
+    assert.equal(value.error.message, uiResult.message);
+    assert.equal(value.error.retryable, false);
+    assert.deepEqual(value.error.details.dialogueConflict, conflict);
+  };
+  await assert.rejects(cliProcess(env, 'sequence', 'clip', 'edit', '--input', JSON.stringify(input)), error => {
+    const failure = error as {code: number; stdout: string; stderr: string};
+    assert.equal(failure.code, 3);
+    assertExternalError(JSON.parse(failure.stdout));
+    assert.ok(failure.stderr.includes(message));
+    return true;
+  });
+  const mcpFailure = await mcp.callTool({name: 'sequence_clip_edit', arguments: input}, undefined, {timeout: 15_000});
+  assert.equal(mcpFailure.isError, true);
+  assertExternalError(mcpFailure.structuredContent as Row);
+  const mcpText = (mcpFailure.content as Array<{type: string; text: string}>)[0];
+  assert.ok(mcpText?.type === 'text');
+  assertExternalError(JSON.parse(mcpText.text));
+  assert.deepEqual(await rpc('project.get'), blocked);
+  assert.deepEqual(await history(), cursor);
 });
 
 test('actual CLI and MCP replace format-5 main-track and overlay media while preserving clip edits', {timeout: 90_000}, async t => {

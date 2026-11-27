@@ -354,6 +354,66 @@ test('Mio waits for approval to copy a clip as a new shot and compensates it in 
   assert.equal(readSequenceEditHistory(store, 'mio').position, history.position - 1);
 });
 
+test('Mio reports the subtitle blocking a copy as a new shot before approval', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const blockerText = '门外广播占了字幕。';
+  const setup = (action: Parameters<typeof previewMioSequenceAction>[3]) =>
+    commitMioSequenceAction(store, previewMioSequenceAction(store, projectId, randomUUID(), action, {origin: 'user'}));
+  setup({kind: 'dialogue', shotId: shotA, edits: [{kind: 'add', text: '请进。'}, {kind: 'add', text: '等等我。'}]});
+  setup({kind: 'dialogue', shotId: shotB, edits: [{kind: 'add', text: blockerText}]});
+  const blocker = readFormat5TimelineRecord(store.db, 'project')?.subtitles?.cues.find(cue => cue.dialogueRef?.shotId === shotB);
+  assert.ok(blocker);
+  setup({kind: 'delete-node', nodeId: shotB});
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  const history = readSequenceEditHistory(store, 'mio');
+
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy);
+  const tools = createAgentTaskTools({store, services, journal});
+  const authorizations = createTestAuthorizations(store, settings);
+  const toolName = 'mioon_sequence_clip_edit';
+  const copy = call(toolName, {kind: 'copy-as-new-shot', clipId: clipA});
+  const rounds = [[call('mioon_tools_load', {names: [toolName]})], [copy]];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.();
+    yield {type: 'done', output: output('chat_completions', rounds.shift())};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, authorizations, gateway,
+    agentSettings: settings, selfPort: () => 4318, tools});
+  t.after(async () => {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  });
+  await putTestAgentConfiguration(settings, {expectedRevision: 0,
+    configuration: defaultTestAgentConfiguration('chat_completions'),
+    secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_COPY_SUBTITLE_CONFLICT'}});
+  await authorizeTestScope(authorizations, 'project_agent');
+  const started = await runtime.send(projectId, {requestId: randomUUID(), text: '把第一段复制成新镜头',
+    locale: 'zh-Hans', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+  await runtime.drain();
+  const snapshot = runtime.get(projectId, started.run.id);
+  const step = snapshot.steps.find(item => item.toolCall?.id === copy.id);
+  assert.ok(step?.error);
+  assert.equal(step.status, 'failed');
+  assert.equal(snapshot.run.status, 'failed');
+  assert.equal(step.error.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.match(step.error.message, /副本的台词放不进去/u);
+  assert.ok(step.error.message.includes(blockerText));
+  assert.match(step.error.message, /(?:挪开|移开).*删掉/u);
+  assert.deepEqual(step.result, {error: {...step.error, details: {dialogueConflict: {
+    requiredFrames: 2, availableFrames: 0, blockerCount: 1,
+    blockers: [{cueId: blocker.id, startFrame: blocker.startFrame,
+      endFrame: blocker.startFrame + blocker.durationFrames, textExcerpt: blockerText}],
+  }}}});
+  assert.deepEqual(snapshot.changes, []);
+  assert.deepEqual(readFormat5TimelineRecord(store.db, 'project'), timeline);
+  assert.deepEqual(readSequenceEditHistory(store, 'mio'), history);
+});
+
 test('D5: user undo sees the Mio stack as blocked and Mio undo cannot cross a user action', async t => {
   const store=fixture(t);
   const service=createFormat5SequenceEditService(store);

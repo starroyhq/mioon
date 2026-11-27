@@ -110,12 +110,6 @@ function runSync(store: ProjectStore, command: SequenceSyncCommand): Record<stri
   assert.ok(result.ok !== false, `sync failed: ${result.code}`);
   return result;
 }
-function attemptSync(store: ProjectStore, command: SequenceSyncCommand): {code: string; ids: string[]} {
-  const preview = previewSequenceSync(store, command, {requestId: requestId()});
-  assert.equal('envelope' in preview, false, 'sync preview unexpectedly succeeded');
-  const failure = preview as {code: string; ids: readonly string[]};
-  return {code: failure.code, ids: [...failure.ids]};
-}
 function undo(store: ProjectStore): void {
   const history = createSequenceEditing(store).call('sequence.history.get', {projectId}) as Record<string, any>;
   assert.ok(history.undo, 'there must be an undo step');
@@ -562,20 +556,29 @@ test('copying a shot generates new line ids and a uniquely owned cue', t => {
   assert.equal(new Set(keys).size, keys.length, 'a dialogue line is projected at most once per timeline');
 });
 
-test('in-place copy leaves projected subtitles on the source and preserves version ownership on subsequent sync', t => {
+test('in-place copy projects fresh dialogue cues and preserves source cues and version ownership on subsequent sync', t => {
   const store = fixture(t);
   commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
     {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
   ]}});
   const originalCues = cues(store);
+  const originalLines = shotDialogue(store, shotA);
   const copyClipId = id(93), copyNodeId = id(94);
   runSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA, newClipId: copyClipId, copyNodeId});
-  assert.deepEqual(shotDialogue(store, copyNodeId), []);
-  assert.deepEqual(cues(store), originalCues);
+  const copied = shotDialogue(store, copyNodeId);
+  assert.deepEqual(copied.map(line => line.text), originalLines.map(line => line.text));
+  assert.ok(copied.every(line => !originalLines.some(source => source.id === line.id)), 'copied lines get new ids');
+  const copiedCues = dialogueCues(store, copyNodeId);
+  assert.deepEqual(copiedCues.map(cue => [cue.dialogueRef!.lineId, cue.anchor?.clipId]),
+    copied.map(line => [line.id, copyClipId]));
+  assert.deepEqual(cues(store), [...originalCues, ...copiedCues]);
   const secondClipId = id(95), secondNodeId = id(96);
   runSync(store, {kind: 'clip-copy-as-new-shot', clipId: copyClipId, newClipId: secondClipId, copyNodeId: secondNodeId});
-  runSync(store, {kind: 'clip-trim', clipId: copyClipId, durationFrames: 50});
-  assert.deepEqual(cues(store), originalCues);
+  const secondCues = dialogueCues(store, secondNodeId);
+  assert.deepEqual(secondCues.map(cue => [cue.text, cue.anchor?.clipId]),
+    originalLines.map(line => [line.text, secondClipId]));
+  runSync(store, {kind: 'clip-trim', clipId: clipB, durationFrames: 20});
+  assert.deepEqual(cues(store), [...originalCues, ...copiedCues, ...secondCues]);
   const timeline = readFormat5TimelineRecord(store.db, 'project')!;
   for (const [clipId, nodeId] of [[copyClipId, copyNodeId], [secondClipId, secondNodeId]]) {
     const clip = timeline.clips.find(item => item.id === clipId)!;
@@ -583,6 +586,51 @@ test('in-place copy leaves projected subtitles on the source and preserves versi
     assert.equal(clip.shotId, shotA);
     assert.equal(clip.sequenceSource?.nodeId, nodeId);
   }
+});
+
+test('in-place copy identifies the saved subtitle and missing dialogue space without writing', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  store.tx(() => {
+    const record = timeline(store);
+    // An unattached cue keeps its absolute frames over the copy's proposed span.
+    record.subtitles!.cues.push({id: id(31), text: '挡住这里的一行很长的字幕需要省略', startFrame: 60, durationFrames: 59, anchor: null});
+    store.put('timelines', record);
+  });
+  const beforeTimeline = timeline(store);
+  const beforeShots = store.list('shots', projectId);
+  const beforeHistory = createSequenceEditing(store).call('sequence.history.get', {projectId});
+  const copyNodeId = id(94);
+  const failure = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,
+    newClipId: id(93), copyNodeId}, {requestId: requestId()});
+  assert.ok('ok' in failure && failure.ok === false);
+  assert.equal(failure.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.deepEqual(failure.ids, [copyNodeId]);
+  assert.deepEqual(failure.dialogueConflict, {
+    blockers: [{cueId: id(31), startFrame: 60, endFrame: 119, textExcerpt: '挡住这里的一行很长的字幕…'}],
+    blockerCount: 1, requiredFrames: 2, availableFrames: 1,
+  });
+  assert.equal(failure.message,
+    '副本的台词放不进去。这段时间已有字幕「挡住这里的一行很长的字幕…」。至少需要 2 帧，这段时间只剩 1 帧。先挪开或删掉挡住的字幕再复制。');
+  assert.deepEqual(timeline(store), beforeTimeline);
+  assert.deepEqual(store.list('shots', projectId), beforeShots);
+  assert.deepEqual(createSequenceEditing(store).call('sequence.history.get', {projectId}), beforeHistory);
+});
+
+test('in-place copy of a one-frame split explains the missing space without inventing a subtitle blocker', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  runSync(store, {kind: 'clip-split', clipId: clipA, offsetFrames: 1, rightClipId: id(92)});
+  const failure = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,
+    newClipId: id(93), copyNodeId: id(94)}, {requestId: requestId()});
+  assert.ok('ok' in failure && failure.ok === false);
+  assert.equal(failure.code, 'SEQUENCE_EDIT_DIALOGUE_CONFLICT');
+  assert.deepEqual(failure.dialogueConflict, {blockers: [], blockerCount: 0, requiredFrames: 2, availableFrames: 1});
+  assert.match(failure.message ?? '', /延长片段或减少台词再复制/);
 });
 
 test('in-place copy rejects a non-main-track source without creating history or storing a receipt', t => {

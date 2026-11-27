@@ -1359,6 +1359,17 @@ export const sequenceEditHistoryEntrySchema = z.object({
 /** `ok` plan for one envelope, produced by exactly one `planChainSync` call. */
 export type SequenceEditPlan = Extract<ChainSyncPlan, {readonly ok: true}>;
 
+export const SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT = 8;
+export const sequenceEditDialogueConflictSchema = z.object({
+  blockers: z.array(z.object({
+    cueId: uuidSchema, startFrame: sequenceSchema, endFrame: sequenceSchema, textExcerpt: z.string().max(25),
+  }).strict()).max(SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT),
+  blockerCount: sequenceSchema,
+  requiredFrames: sequenceSchema.positive(),
+  availableFrames: sequenceSchema,
+}).strict();
+export type SequenceEditDialogueConflict = z.infer<typeof sequenceEditDialogueConflictSchema>;
+
 export interface SequenceEditTransactionFailure {
   readonly ok: false;
   readonly code: SequenceEditErrorCode;
@@ -1366,6 +1377,7 @@ export interface SequenceEditTransactionFailure {
   /** Bounded validation reason for a user-facing explanation; no raw data. */
   readonly reason?: string;
   readonly message?: string;
+  readonly dialogueConflict?: SequenceEditDialogueConflict;
 }
 
 /** Input both transaction-internal entries receive. The coordinator reads the
