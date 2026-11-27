@@ -53,18 +53,37 @@ export type LostVerdict =
 
 export type LostRetryResult =
   | {readonly ok: true; readonly actionId: string | null}
-  | {readonly ok: false; readonly code: string; readonly unconfirmed?: true};
+  | {readonly ok: false; readonly code: string; readonly unconfirmed?: true; readonly reason?: string};
 
 export interface LostResponseOptions {
   readonly readOutcome?: (input: {readonly projectId: string; readonly requestId: string},
     options?: {readonly signal?: AbortSignal}) => Promise<RequestOutcome>;
   readonly readTimeoutMs?: number;
   readonly onChange?: (view: LostResponseView | null) => void;
+  readonly onNoop?: (projectId: string) => Promise<void>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const codeOf = (value: unknown): string | null => isRecord(value) && typeof value.code === 'string' && value.code ? value.code : null;
+
+export function isSequenceEditNoop(value: unknown): boolean {
+  return codeOf(value) === 'SEQUENCE_EDIT_NOOP' ||
+    (isRecord(value) && isRecord(value.receipt) && value.receipt.status === 'not_applied' && codeOf(value.receipt) === 'SEQUENCE_EDIT_NOOP');
+}
+
+/** Refresh a definite no-op without changing the result contract. The same
+ * readback handles preview refusals, commit receipts, and receipt recovery. */
+export async function refreshOnSequenceEditNoop<T>(request: Promise<T>, refresh: () => Promise<void>): Promise<T> {
+  let result: T;
+  try { result = await request; }
+  catch (error) {
+    if (isSequenceEditNoop(error) && classifyCommitFailure(error).kind === 'rejected') await refresh();
+    throw error;
+  }
+  if (isSequenceEditNoop(result)) await refresh();
+  return result;
+}
 
 export function extractSequenceErrorIds(error: unknown): readonly string[] | undefined {
   if (!isRecord(error)) return undefined;
@@ -73,6 +92,12 @@ export function extractSequenceErrorIds(error: unknown): readonly string[] | und
   if (!raw) return undefined;
   const ids = raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
   return ids.length ? ids : undefined;
+}
+
+export function extractSequenceErrorReason(error: unknown): string | undefined {
+  if (!isRecord(error)) return undefined;
+  const details = isRecord(error.details) ? error.details : error;
+  return typeof details.reason === 'string' && details.reason ? details.reason : undefined;
 }
 
 export function extractSequenceDialogueConflict(error: unknown): SequenceDialogueConflict | undefined {
@@ -105,9 +130,8 @@ export function classifyCommitFailure(error: unknown): CommitFailure {
     || (typeof status === 'number' && status >= 400 && status < 500 && definitive !== false);
   if (!rejected) return {kind: 'unknown'};
   const ids = extractSequenceErrorIds(error);
+  const reason = extractSequenceErrorReason(error);
   const dialogueConflict = extractSequenceDialogueConflict(error);
-  const details = isRecord(error) ? error.details : error instanceof ApiError ? error.details : undefined;
-  const reason = isRecord(details) && typeof details.reason === 'string' && details.reason ? details.reason : undefined;
   return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {}),
     ...(reason ? {reason} : {}), ...(dialogueConflict ? {dialogueConflict} : {})};
 }
@@ -116,7 +140,7 @@ export function classifyCommitFailure(error: unknown): CommitFailure {
  * receipt (`applied:false` without `status`) proves nothing. */
 export function verdictOfOutcome(outcome: RequestOutcome): LostVerdict {
   const operation = typeof outcome.operation === 'string' ? outcome.operation : null;
-  if (outcome.status === 'not_applied') return {kind: 'not_applied', code: outcome.code ?? 'SEQUENCE_EDIT_NOOP', operation};
+  if (outcome.status === 'not_applied') return {kind: 'not_applied', code: outcome.code ?? 'SEQUENCE_EDIT_PATCH_INVALID', operation};
   if (outcome.status === 'applied' || outcome.applied === true) return {kind: 'applied', operation};
   return {kind: 'unknown'};
 }
@@ -139,11 +163,13 @@ export class LostResponseState {
   private readonly readOutcome: LostResponseOptions['readOutcome'];
   private readonly readTimeoutMs: number;
   private readonly onChange: LostResponseOptions['onChange'];
+  private readonly onNoop: LostResponseOptions['onNoop'];
 
   constructor(options: LostResponseOptions = {}) {
     this.readOutcome = options.readOutcome;
     this.readTimeoutMs = options.readTimeoutMs ?? LOST_RESPONSE_READ_TIMEOUT_MS;
     this.onChange = options.onChange;
+    this.onNoop = options.onNoop;
   }
 
   get view(): LostResponseView | null {
@@ -171,16 +197,18 @@ export class LostResponseState {
   async reconcileOnce(current: () => boolean): Promise<LostVerdict> {
     const entry = this.entry;
     if (!entry || !this.readOutcome || !current()) return {kind: 'unknown'};
+    let verdict: LostVerdict;
     try {
       const outcome = await withReadTimeout(this.readOutcome({projectId: entry.projectId, requestId: entry.requestId}),
         this.readTimeoutMs);
       if (!current()) return {kind: 'unknown'};
-      const verdict = verdictOfOutcome(outcome);
-      if (verdict.kind !== 'unknown') this.clear();
-      return verdict;
+      verdict = verdictOfOutcome(outcome);
     } catch {
       return {kind: 'unknown'};
     }
+    if (verdict.kind !== 'unknown') this.clear();
+    if (verdict.kind === 'not_applied' && isSequenceEditNoop(verdict)) await this.onNoop?.(entry.projectId);
+    return verdict;
   }
 
   /** The bar's retry action: the committing session resends the retained
@@ -198,7 +226,7 @@ export class LostResponseState {
 export type ParsedSequenceCommit =
   | {readonly kind: 'success'; readonly actionId: string | null; readonly operation: string;
       readonly patch: unknown; readonly receipt?: SequenceEditReceipt}
-  | {readonly kind: 'failure'; readonly code: string; readonly ids?: readonly string[];
+  | {readonly kind: 'failure'; readonly code: string; readonly ids?: readonly string[]; readonly reason?: string;
       readonly dialogueConflict?: SequenceDialogueConflict}
   | {readonly kind: 'unknown'};
 
@@ -208,12 +236,20 @@ export type ParsedSequenceCommit =
 export function parseSequenceCommit(value: unknown): ParsedSequenceCommit {
   if (isRecord(value)) {
     if (value.ok === false) {
+      const reason = extractSequenceErrorReason(value);
       const dialogueConflict = extractSequenceDialogueConflict(value);
       return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-        ids: Array.isArray(value.ids) ? value.ids as string[] : undefined,
-        ...(dialogueConflict ? {dialogueConflict} : {})};
+        ids: extractSequenceErrorIds(value), ...(reason ? {reason} : {}), ...(dialogueConflict ? {dialogueConflict} : {})};
     }
     const receipt = isRecord(value.receipt) ? value.receipt : null;
+    const settled = receipt ?? value;
+    if (settled.status === 'not_applied') {
+      const evidence = isRecord(settled.failure) ? settled.failure : settled;
+      const reason = extractSequenceErrorReason(evidence);
+      const dialogueConflict = extractSequenceDialogueConflict(settled);
+      return {kind: 'failure', code: codeOf(settled) ?? 'SEQUENCE_EDIT_PATCH_INVALID',
+        ids: extractSequenceErrorIds(evidence), ...(reason ? {reason} : {}), ...(dialogueConflict ? {dialogueConflict} : {})};
+    }
     if (receipt) return {kind: 'success', actionId: String(value.actionId ?? receipt.actionId),
       operation: String(value.operation ?? receipt.operation), patch: value.patch,
       receipt: receipt as unknown as SequenceEditReceipt};
@@ -221,12 +257,6 @@ export function parseSequenceCommit(value: unknown): ParsedSequenceCommit {
       actionId: value.actionId === undefined ? null : String(value.actionId),
       operation: String(value.operation ?? 'sequence.edit'), patch: undefined,
       receipt: value as unknown as SequenceEditReceipt};
-    if (value.status === 'not_applied') {
-      const dialogueConflict = extractSequenceDialogueConflict(value);
-      return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_NOOP'),
-        ids: Array.isArray(value.ids) ? value.ids as string[] : undefined,
-        ...(dialogueConflict ? {dialogueConflict} : {})};
-    }
   }
   return {kind: 'unknown'};
 }

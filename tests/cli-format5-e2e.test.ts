@@ -124,7 +124,7 @@ test('real CLI format-5 flow: generate in editing, references, reorder, split, s
   assert.equal(mcpBody.ok, false);
   assert.deepEqual({code: mcpBody.error.code, message: mcpBody.error.message, reason: mcpBody.error.details.reason}, ownershipError);
   await assertCliRejection(['sequence', 'action', 'edit'], {projectId, kind: 'split', clipId: firstClip.id,
-    offsetFrames: firstClip.durationFrames}, {code: 'INVALID_SPLIT', message: '格式 5 序列动作无法预览，请重新读取后再试。'});
+    offsetFrames: firstClip.durationFrames}, {code: 'INVALID_SPLIT', message: '切开后两段都得至少留一帧，请把切点移到片段里面。'});
   assert.deepEqual((await read()).timeline, second.timeline);
   assert.deepEqual(await request('sequence.history.get', {projectId, origin: 'user'}), historyBeforeRejects);
   const reorder = await commit(env, projectId, await plan(env, ['sequence', 'action', 'edit'],
