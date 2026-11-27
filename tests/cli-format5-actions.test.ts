@@ -123,6 +123,83 @@ test('actual CLI and MCP format-5 actions share the editor undo and redo history
   assert.equal(typeof inspected.total, 'number');
 });
 
+test('actual CLI and MCP copy a main-track clip as a new shot through the same preview and commit', {timeout: 60_000}, async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-cli-copy-shot-'));
+  const server = await startServer({dataDir: root, port: 0, token: TOKEN,
+    localDraftChannel: 'development', projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION});
+  t.after(async () => { await server.close(); rmSync(root, {recursive: true, force: true}); });
+  const env = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: TOKEN};
+  const {id: projectId} = await cli(env, 'rpc', 'project.create', '--input', JSON.stringify({name: 'Copy shot fixture'}));
+  const rpc = async (operation: string, fields: Row = {}): Promise<Row> => {
+    const response = await fetch(server.url + projectRpcPath(projectId), {method: 'POST',
+      headers: {'content-type': 'application/json', authorization: `Bearer ${TOKEN}`},
+      body: JSON.stringify({operation, input: {projectId, ...fields}})});
+    return data(await response.text());
+  };
+  for (const action of [
+    {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}},
+    {kind: 'board-shot-append', name: 'Shot A'},
+    {kind: 'board-shot-append', name: 'Shot B'},
+  ]) {
+    const plan = await rpc('sequence.board.edit', action);
+    await rpc('sequence.action.commit', {envelope: plan.envelope, expectedPlanDigest: plan.planDigest});
+  }
+  const mcp = await connectMcp(t, env);
+  const {tools} = await mcp.listTools();
+  const schema = tools.find(tool => tool.name === 'sequence_clip_edit')?.inputSchema;
+  assert.ok(schema && JSON.stringify(schema).includes('"copy-as-new-shot"'));
+  const history = async () => sequenceHistoryViewResponseSchema.parse(await rpc('sequence.history.get'));
+  const before = await rpc('project.get');
+  const clips = before.timeline.clips as Row[];
+  const [original, follower] = clips.filter(clip => clip.trackId === before.timeline.mainTrack.trackId)
+    .sort((left, right) => left.startFrame - right.startFrame);
+  assert.ok(original && follower);
+  const input = {projectId, kind: 'copy-as-new-shot', clipId: original.id};
+  const snapshots: Row[] = [];
+  for (const surface of [
+    {plan: () => preview(env, ['sequence', 'clip', 'edit'], input),
+      apply: (plan: Row) => commit(env, projectId, plan)},
+    {plan: () => mcpAction(mcp, 'sequence_clip_edit', input),
+      apply: (plan: Row) => mcpAction(mcp, 'sequence_action_commit',
+        {projectId, envelope: plan.envelope, expectedPlanDigest: plan.planDigest})},
+  ]) {
+    const prior = await rpc('project.get');
+    const cursor = await history();
+    const plan = await surface.plan();
+    assert.equal(plan.envelope.origin, 'user');
+    const edit = plan.envelope.intents[0].operation.edit;
+    assert.equal(edit.kind, input.kind);
+    assert.equal(edit.clipId, original.id);
+    assert.deepEqual(await rpc('project.get'), prior);
+    assert.deepEqual(await history(), cursor);
+    const receipt = await surface.apply(plan);
+    assert.equal(receipt.status, 'applied');
+    assert.equal(receipt.operation, 'timeline.clip.copy-as-new-shot');
+    assert.deepEqual(await surface.apply(plan), receipt);
+    const after = await rpc('project.get');
+    const copiedShot = (after.shots as Row[]).find(shot => shot.id === edit.copyNodeId);
+    const copiedClip = (after.timeline.clips as Row[]).find(clip => clip.id === edit.newClipId);
+    const shifted = (after.timeline.clips as Row[]).find(clip => clip.id === follower.id);
+    assert.ok(copiedShot && copiedClip && shifted);
+    assert.equal(copiedClip.sequenceSource.nodeId, copiedShot.id);
+    assert.equal(copiedClip.startFrame, original.startFrame + original.durationFrames);
+    assert.equal(shifted.startFrame, follower.startFrame + original.durationFrames);
+    assert.equal(copiedShot.title, 'Shot A 副本');
+    snapshots.push({title: copiedShot.title, position: copiedShot.position, startFrame: copiedClip.startFrame,
+      durationFrames: copiedClip.durationFrames, sourceInFrame: copiedClip.sourceInFrame, sourceState: copiedClip.sourceState});
+    const latest = await history();
+    assert.equal(latest.position, cursor.position + 1);
+    assert.equal(latest.undo?.actionId, receipt.actionId);
+    const undone = await rpc('sequence.undo', {requestId: randomUUID(), actionId: receipt.actionId,
+      expected: {position: latest.position, revision: latest.revision}});
+    assert.equal(undone.status, 'applied');
+    const restored = await rpc('project.get');
+    assert.deepEqual(restored.timeline.clips, before.timeline.clips);
+    assert.deepEqual(restored.shots, before.shots);
+  }
+  assert.deepEqual(snapshots[0], snapshots[1]);
+});
+
 test('actual CLI and MCP replace format-5 main-track and overlay media while preserving clip edits', {timeout: 90_000}, async t => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-cli-replace-source-'));
   const server = await startServer({dataDir: path.join(root, 'app'), port: 0, token: TOKEN,

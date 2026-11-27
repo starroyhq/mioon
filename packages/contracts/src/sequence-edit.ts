@@ -100,6 +100,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
+  'timeline.clip.copy-as-new-shot',
   'timeline.clip.splitAtScenes', 'timeline.clip.separateSound', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
   'timeline.generate.placeholder', 'timeline.generate.resize',
   'subject.binding.create', 'subject.binding.set-mode', 'subject.binding.detach', 'subject.binding.restore',
@@ -502,6 +503,7 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
         case 'add': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'insert-asset': return 'timeline.clip.add';
         case 'paste-clip': return 'timeline.clip.paste';
+        case 'copy-as-new-shot': return 'timeline.clip.copy-as-new-shot';
         case 'add-overlay': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'split': return 'timeline.clip.split';
         case 'trim': return 'timeline.clip.trim';
@@ -736,6 +738,9 @@ const allocationSchema = z.object({
   duplicate(value.splitClips.map(item => item.rightClipId), 'split right clip');
   duplicate(value.edges.map(item => item.id), 'edge');
 });
+export const copyAsNewShotTrackEditSchema = z.object({
+  kind: z.literal('copy-as-new-shot'), clipId: uuidSchema, newClipId: uuidSchema, copyNodeId: uuidSchema,
+}).strict();
 const operationSchema = z.object({kind: z.enum(['board', 'sync-board', 'board-version', 'track',
   'board.root.create', 'board.shot.append', 'board.layout.move', 'board.node.create', 'board.shot.update',
   'board.node.update', 'board.restore', 'board.paste', 'board.duplicate'])}).passthrough();
@@ -743,6 +748,11 @@ const intentSchema = z.object({side: z.enum(SEQUENCE_EDIT_SIDES), operation: ope
   .superRefine((value, context) => {
     if (sequenceEditIntentSide(value.operation as unknown as Pick<ChainSyncOperation, 'kind'>) !== value.side) {
       context.addIssue({code: z.ZodIssueCode.custom, message: 'Intent side does not match its operation kind'});
+    }
+    const edit = value.operation.kind === 'track' ? value.operation.edit : undefined;
+    if (typeof edit === 'object' && edit !== null && 'kind' in edit && edit.kind === 'copy-as-new-shot'
+      && !copyAsNewShotTrackEditSchema.safeParse(edit).success) {
+      context.addIssue({code: z.ZodIssueCode.custom, path: ['operation', 'edit'], message: 'Invalid copy-as-new-shot edit'});
     }
   });
 

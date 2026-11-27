@@ -8,9 +8,10 @@ import type {ProjectStore} from '../packages/business/src/project-file/store.ts'
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {createSequenceEditing} from '../packages/business/src/sequence-edit.ts';
 import {previewSequenceSync, runSequenceSync} from '../packages/business/src/format5-sequence-sync.ts';
+import {sequenceEditInputDigest} from '../packages/business/src/format5-editor-history.ts';
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import type {Format5Cue, Format5Dialogue} from '../packages/contracts/src/project-format5.ts';
-import type {SequenceEditDialogueIntent} from '../packages/contracts/src/sequence-edit.ts';
+import type {SequenceEditDialogueIntent, SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
@@ -559,4 +560,47 @@ test('copying a shot generates new line ids and a uniquely owned cue', t => {
   assert.ok(copiedCues.every(cue => cue.dialogueRef!.shotId === newShot));
   const keys = cues(store).flatMap(cue => cue.dialogueRef ? [`${cue.dialogueRef.shotId}/${cue.dialogueRef.lineId}`] : []);
   assert.equal(new Set(keys).size, keys.length, 'a dialogue line is projected at most once per timeline');
+});
+
+test('in-place copy leaves projected subtitles on the source and preserves version ownership on subsequent sync', t => {
+  const store = fixture(t);
+  commitDialogue(store, {side: 'board', operation: {kind: 'dialogue', edits: [
+    {kind: 'update', shotId: shotA, lineId: line1, text: '第一句改'},
+  ]}});
+  const originalCues = cues(store);
+  const copyClipId = id(93), copyNodeId = id(94);
+  runSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA, newClipId: copyClipId, copyNodeId});
+  assert.deepEqual(shotDialogue(store, copyNodeId), []);
+  assert.deepEqual(cues(store), originalCues);
+  const secondClipId = id(95), secondNodeId = id(96);
+  runSync(store, {kind: 'clip-copy-as-new-shot', clipId: copyClipId, newClipId: secondClipId, copyNodeId: secondNodeId});
+  runSync(store, {kind: 'clip-trim', clipId: copyClipId, durationFrames: 50});
+  assert.deepEqual(cues(store), originalCues);
+  const timeline = readFormat5TimelineRecord(store.db, 'project')!;
+  for (const [clipId, nodeId] of [[copyClipId, copyNodeId], [secondClipId, secondNodeId]]) {
+    const clip = timeline.clips.find(item => item.id === clipId)!;
+    assert.equal(clip.versionId, versionA);
+    assert.equal(clip.shotId, shotA);
+    assert.equal(clip.sequenceSource?.nodeId, nodeId);
+  }
+});
+
+test('in-place copy rejects a non-main-track source without creating history or storing a receipt', t => {
+  const store = fixture(t);
+  const cursor = () => store.db.prepare('SELECT epoch,position,revision FROM main.editor_history_state').all();
+  assert.deepEqual(cursor(), []);
+  const result = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: audioClip,
+    newClipId: id(93), copyNodeId: id(94)}, {requestId: requestId()});
+  assert.deepEqual(result, {ok: false, code: 'INVALID_TRACK_TARGET', ids: [audioClip]});
+  assert.deepEqual(cursor(), []);
+
+  const valid = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,
+    newClipId: id(93), copyNodeId: id(94)}, {requestId: requestId()});
+  assert.ok('envelope' in valid);
+  const envelope: SequenceEditEnvelope = {...valid.envelope, intents: [{side: 'timeline', operation: {kind: 'track',
+    edit: {kind: 'copy-as-new-shot', clipId: audioClip, newClipId: id(93), copyNodeId: id(94)}}}]};
+  const before = cursor();
+  assert.deepEqual(runSequenceSync(store, envelope, {expectedPlanDigest: sequenceEditInputDigest(envelope)}), result);
+  assert.deepEqual(cursor(), before);
+  assert.deepEqual(store.db.prepare('SELECT requestId FROM main.editor_requests').all(), []);
 });

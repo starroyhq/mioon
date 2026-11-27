@@ -129,12 +129,12 @@ test('sequence.inspect is a registered read operation with one format-5 tool', (
   assert.deepEqual(actionKinds('sequence.tool.previs').sort(), ['previs-create', 'previs-scene-set']);
   assert.deepEqual(actionKinds('sequence.tool.timeline').sort(), ['dialogue', 'format-set', 'generate', 'insert-asset',
     'separate-sound', 'split-at-scenes', 'subtitles', 'track-add', 'track-update']);
-  assert.deepEqual(actionKinds('sequence.tool.clip'), ['clip-properties', 'replace-source']);
+  assert.deepEqual(actionKinds('sequence.tool.clip'), ['clip-properties', 'replace-source', 'copy-as-new-shot']);
   // Every bounded action lives in exactly one tool.
   const uniqueKinds = new Set(MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)));
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_GROUP_OPERATIONS.flatMap(operation => actionKinds(operation)).length);
   assert.equal(uniqueKinds.size, MIO_SEQUENCE_ACTION_COUNT);
-  assert.equal(uniqueKinds.size, 37);
+  assert.equal(uniqueKinds.size, 38);
   const groupTools = format5Tools.filter(item => item.operation.startsWith('sequence.tool.')
     && item.operation !== 'sequence.tool.edit' && item.operation !== 'sequence.tool.undo');
   assert.deepEqual(groupTools.map(item => item.name).sort(), ['mioon_sequence_board_edit',
