@@ -172,6 +172,11 @@ export function format5InsertAssetCommand(assetId: string, trackId: string | nul
 export function format5PasteClipCommand(clipId: string, startFrame: number): SequenceSyncCommand {
   return {kind: 'paste-clip', clipId, startFrame};
 }
+/** Copy one main-track clip into a new board shot and main-track clip right after
+ * its split group, using caller-allocated identities for deterministic replay. */
+export function format5CopyAsNewShotCommand(clipId: string, newClipId = uuid(), copyNodeId = uuid()): SequenceSyncCommand {
+  return {kind: 'clip-copy-as-new-shot', clipId, newClipId, copyNodeId};
+}
 /** The keyboard paste handler is registered once; take the playhead from the
  * live view rather than its render closure. A live playback frame wins when the
  * clock is running, otherwise the current editing playhead does. */
@@ -268,7 +273,13 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
-    case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
+    case 'SEQUENCE_EDIT_PATCH_INVALID':
+    case 'DUPLICATE_CLIP':
+    case 'COPY_NODE_EXISTS':
+    case 'NODE_ALREADY_LINKED':
+    case 'SEQUENCE_EDIT_REQUEST_REUSED': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
+    case 'INVALID_TRACK_TARGET': return 'editUi.error.INVALID_TRACK_TARGET';
+    case 'CLIP_NOT_FOUND': return 'editUi.error.CLIP_NOT_FOUND';
     case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';

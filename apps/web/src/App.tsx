@@ -218,7 +218,7 @@ import ShotDialogue from './ShotDialogue.tsx';
 import {format5AnchorConflictPresentation, format5ClipInspectorEdit, format5ClipPropertyEdit, format5ConflictIds, format5PanelErrorKey, format5PropertiesIntent, format5SubtitleEdit} from './edit-ui/format5-panel-edits.ts';
 import {LostResponseState} from './edit-ui/lost-response.ts';
 import type {LostResponseView} from './edit-ui/lost-response.ts';
-import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5EditUiTimeline, format5HistoryScope, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TimelineHistoryState, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
+import {Format5EditSession, format5BoardFailureMessageKey, format5CommandErrorMessageKey, format5CopyAsNewShotCommand, format5EditUiTimeline, format5HistoryScope, format5InsertAssetCommand, format5InspectorSequence, format5MoveCommand, format5MoveOffTrackCommand, format5PasteClipCommand, format5PasteStartFrame, format5PatchCommand, format5Projection, format5RemoveCommand, format5SceneSplitNotice, format5SplitCommand, format5TimelineHistoryState, format5TrimCommand, format5UserUndoBlocked, format5VersionCommand} from './edit-ui/session.ts';
 import {previewFormat5DragConflict} from './edit-ui/drag-conflict-preview.ts';
 import type {Format5DragPreviewTarget} from './edit-ui/drag-conflict-preview.ts';
 import type {SequenceHistoryView} from './edit-ui/session.ts';
@@ -3485,6 +3485,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     switch (command.kind) {
       case 'clip-remove': return {id, message: t('editUi.notice.removedFromMainTrack', {name: clipName})};
       case 'clip-split': return {id, message: t('editUi.notice.split', {name: clipName})};
+      case 'clip-copy-as-new-shot': return {id, message: t('editUi.notice.copiedAsNewShot', {name: clipName})};
       case 'clip-trim': return {id, message: t('editUi.notice.trimmed', {name: clipName})};
       case 'clip-move': return {id, message: t('editUi.notice.moved', {name: clipName})};
       case 'clip-move-off-track': {
@@ -3788,8 +3789,35 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!result.ok) {notifyFormat5CommandFailure(result); return null;}
     clearFormat5ConflictToast();
     setFormat5Notice(null);
-    await refresh(currentProject.current); await format5RefreshHistory();
+    await refresh(currentProject.current); await format5RefreshHistory(); await format5LoadBoard();
     return result;
+  }
+  /** Copy one main-track clip as a new board shot and main-track clip right after
+   * its split group, in one unified history step. */
+  async function format5CopyClipAsNewShot(clipId: string): Promise<unknown> {
+    const timelineNow = dataRef.current.timeline;
+    const clip = timelineNow?.clips.find(item => item.id === clipId);
+    const mainTrackId = (timelineNow as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+    if (!clip || !format5 || format5SessionBusy || mainTrackId === null || clip.trackId !== mainTrackId) return null;
+    const clipName = format5ClipName(clipId);
+    const command = format5CopyAsNewShotCommand(clipId);
+    const newClipId = command.kind === 'clip-copy-as-new-shot' ? command.newClipId : null;
+    setFormat5SessionBusy(true);
+    try {
+      const result = await format5Session().run(command as never);
+      if (!result.ok) { notifyFormat5CommandFailure(result); return null; }
+      clearFormat5ConflictToast();
+      const notice = format5NoticeMessage(command as never, clipName);
+      if (notice) { setFormat5Notice(notice); setFormat5NoticeActionId(result.actionId); }
+      await refresh(currentProject.current);
+      await format5RefreshHistory();
+      await format5LoadBoard();
+      if (newClipId) {
+        const created = dataRef.current.timeline?.clips.find(item => item.id === newClipId);
+        if (created) { setSelectedClipId(created.id); setPlayhead(created.startFrame); }
+      }
+      return result;
+    } finally { setFormat5SessionBusy(false); }
   }
   /** Mute or unmute a clip's own sound as one saved properties action. */
   async function format5ToggleClipMute(clipId: string, muted: boolean): Promise<unknown> {
@@ -5544,10 +5572,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         const plan = clipContextMenuPlan({format5, clip: clip as never, asset: asset as never, track: track as never});
         const canSplit = Boolean(format5SplitState?.canSplit) && format5SplitState?.clipId === clip.id;
         const clipMain = (clip as {trackId?: string; sequenceSource?: {kind?: string}});
-        const generateAround = format5 && clipMain.trackId === (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId
-          && clipMain.sequenceSource?.kind === 'shot';
+        const mainTrackId = (timeline as {mainTrack?: {trackId?: string}} | null)?.mainTrack?.trackId ?? null;
+        const isMainTrackClip = format5 && mainTrackId !== null && clipMain.trackId === mainTrackId;
+        const generateAround = isMainTrackClip && clipMain.sequenceSource?.kind === 'shot';
         return <TimelineClipContextMenu anchor={clipContextMenu} plan={plan} canSplit={canSplit}
           busy={format5SessionBusy} onSplit={() => { void splitTimelineClip(); }}
+          {...(isMainTrackClip ? {onCopyAsNewShot: id => { void format5CopyClipAsNewShot(id); }} : {})}
           {...(generateAround ? {
             onGenerateBefore: () => { void format5GenerateAroundClip(clip.id, 'before'); },
             onGenerateAfter: () => { void format5GenerateAroundClip(clip.id, 'after'); },
