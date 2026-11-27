@@ -30,6 +30,12 @@ test('workflow opens passively and latest check phase fences retained next handl
  tree=h.render({phase:'ready'});find(tree,'export-workflow-next').props.onClick();assert.equal(find(h.render(),'export-workflow').props['data-step'],3);
  assert.equal(find(h.render({phase:'stale'}),'export-workflow').props['data-step'],2);
 });
+test('media preparation keeps the check step and prevents advancing to delivery settings',()=>{
+ const h=harness({phase:'preparing'}),preparing=h.render();
+ assert.equal(find(preparing,'export-workflow-next').props.disabled,true);
+ assert.equal(find(preparing,'export-workflow').props['data-step'],1);
+ assert.equal(find(h.render({phase:'ready'}),'export-workflow-next').props.disabled,false);
+});
 test('retained sections become both hidden and inert outside their step',()=>{
  const h=harness();assert.equal(h.section(1,[2]).props.hidden,true);assert.equal(h.section(1,[2]).props.inert,true);assert.equal(h.section(2,[2]).props.hidden,false);assert.equal(h.section(2,[2]).props.children,'retained');
 });

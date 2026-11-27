@@ -25,7 +25,7 @@ import type {AgentTaskTools,PreparedAgentTaskTool} from './task-tools-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL,mioProjectFileImportResultSchema} from '../../../contracts/src/mio-project-import.ts';
 import type {ProjectAssetImportLookup} from '../referenced-asset-project-import.ts';
 import {isMioCanvasOperation} from '../../../contracts/src/mio-canvas.ts';
-import {agentTaskExplicitTargets,agentTaskChangeWasModified,agentTaskUndoTargets,projectAgentTaskUndo} from './task-tools-v2.ts';
+import {agentTaskExplicitTargets,agentTaskChangeWasModified,agentTaskUndoTargets,isAgentTaskChangeReversible,projectAgentTaskUndo} from './task-tools-v2.ts';
 import {agentTaskGenerationAspectFeedback} from './task-tool-errors-v2.ts';
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
@@ -272,7 +272,8 @@ function safeSnapshot(value:AgentTaskSnapshot,store:Store):AgentTaskSnapshot {
   copy.steps=copy.steps.map(step=>{const retry=scheduledProviderRetry(step);if(retry)step.providerRetryAttempt=retry.attempt;if(record(step.data)&&typeof step.data.goalRepairSourceModelStepId==='string')step.repair={sourceModelStepId:step.data.goalRepairSourceModelStepId};if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
   const undoPreview=projectAgentTaskUndo(store,value.run.projectId,value.changes);
   copy.changes=copy.changes.map(change=>{
-    Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);
+    Object.assign(change,undoPreview.get(change.id));
+    change.reversible=isAgentTaskChangeReversible(change);change.display=projectAgentTaskChangeDisplay(change);
     if(isMioCanvasOperation(change.operation)&&Array.isArray(change.after)){
       const affected=new Set(change.after.flatMap(row=>record(row)&&typeof row.kind==='string'&&typeof row.id==='string'?[row.kind+':'+row.id]:[]));
       change.targets=change.targets.filter(target=>affected.has(target.kind+':'+target.id));
@@ -1039,7 +1040,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const chain=new Map<string,AgentTaskTarget>(),retainedChangeIds:string[]=[];let importControlCompleted=false;
       try{for(const change of candidates){
         if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(`${target.kind}:${target.id}`,target);continue;}
-        if(change.status!=='applied'||!change.reversible||request.action==='undo_change'&&change.id!==request.changeId)continue;
+        if(change.status!=='applied'||!isAgentTaskChangeReversible(change)||request.action==='undo_change'&&change.id!==request.changeId)continue;
         // A saved compensation revision only bridges adjacent AI changes. It
         // must not jump across an intervening external edit, including ABA.
         const expectedTargets=agentTaskUndoTargets(change,chain);
@@ -1056,7 +1057,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(reverted.retained){retainedChangeIds.push(change.id);continue;}
         for(const target of reverted.targets)chain.set(`${target.kind}:${target.id}`,target);
       }}catch(error){journal.finishControl(request.requestId,{state:'blocked',code:code(error),...(retainedChangeIds.length?{retainedChangeIds}:{})});throw error;}
-      run=journal.run(runId);if(request.action==='undo_all'&&!journal.snapshot(runId).changes.some(change=>change.reversible&&change.status==='applied'))changeStatus(runId,'reverted');
+      run=journal.run(runId);if(request.action==='undo_all'&&!journal.snapshot(runId).changes.some(change=>change.status==='applied'&&isAgentTaskChangeReversible(change)))changeStatus(runId,'reverted');
       if(!importControlCompleted)journal.finishControl(request.requestId,{state:'completed',...(retainedChangeIds.length?{retainedChangeIds}:{})});
     }else journal.performControl(request,():AgentTaskJson=>{
       run=owned(projectId,runId);if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
