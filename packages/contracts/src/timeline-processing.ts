@@ -1,14 +1,12 @@
 import {z} from 'zod';
-import type {SpeedProcessingItem, SpeedProcessingReason} from './timeline-speed.ts';
+import {speedProcessingKindSchema, speedProcessingReasonSchema} from './timeline-speed.ts';
+import type {SpeedProcessingItem} from './timeline-speed.ts';
 
 const uuid = z.string().uuid();
 const project = {projectId: uuid};
 const task = {...project, taskId: uuid};
 const bytes = z.number().int().safe().nonnegative();
 const status = z.enum(['queued', 'running', 'failed', 'ready']);
-const reason = z.enum([
-  'SOURCE_UNAVAILABLE', 'DISK_FULL', 'CACHE_LIMIT', 'UNSUPPORTED_FORMAT', 'PROCESSING_FAILED',
-] satisfies [SpeedProcessingReason, ...SpeedProcessingReason[]]);
 
 export const TIMELINE_PROCESSING_WAIT_DEFAULT_MS = 30_000;
 export const TIMELINE_PROCESSING_WAIT_MAX_MS = 60_000;
@@ -16,10 +14,10 @@ export const TIMELINE_PROCESSING_WAIT_MAX_MS = 60_000;
 export const speedProcessingItemSchema = z.object({
   taskId: uuid,
   clipId: uuid,
-  kind: z.enum(['reverse', 'optical']),
+  kind: speedProcessingKindSchema,
   status,
   progress: z.number().finite().min(0).max(100).optional(),
-  reason: reason.optional(),
+  reason: speedProcessingReasonSchema.optional(),
 }).strict() satisfies z.ZodType<SpeedProcessingItem>;
 
 export const timelineProcessingSchemas = Object.freeze({

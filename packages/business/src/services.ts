@@ -143,7 +143,7 @@ export interface ServiceApplicationPorts {
 }
 export interface CreateServicesOptions {
  deferBackgroundRecovery?: boolean;
- processing?: Pick<ProcessingServiceOptions, 'enabled' | 'cache' | 'scheduler'>;
+ processing?: Pick<ProcessingServiceOptions, 'enabled' | 'cache' | 'scheduler' | 'previewRenderer'>;
  application?: ServiceApplicationPorts;
  videoSettings?: VideoGenerationSettings;
  videoFetch?: typeof fetch;
@@ -174,6 +174,7 @@ type GenerationResultProvider=Pick<Provider,'capabilities'|'poll'|'download'> & 
 export interface OrdinaryServices {
  activateBackground: ()=>void;
  readonly timelineProcessingEnabled: boolean;
+ readonly timelineProcessing?: Pick<ReturnType<typeof createTimelineProcessingService>, 'preview' | 'reverseProxy'>;
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
@@ -1240,5 +1241,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},
+  ...(processing ? {timelineProcessing: {preview: processing.preview, reverseProxy: processing.reverseProxy}} : {}),
+  compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

@@ -7,6 +7,8 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import test, {type TestContext} from 'node:test';
 import {PROJECT_HISTORY_FILE} from '../packages/contracts/src/project-file.ts';
+import {speedProcessingItemSchema} from '../packages/contracts/src/timeline-processing.ts';
+import {processingRowSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {captureClosedProjectSnapshot} from '../packages/business/src/project-file/closed-copy.ts';
 import {inspectProjectFormatReadOnly} from '../packages/business/src/project-file/connection.ts';
@@ -133,6 +135,14 @@ test('exact pre-processing format-6 history upgrades only its execution schema a
     assertHistorySchema(store.db, FORMAT6_HISTORY_SCHEMA_VERSION);
     assert.deepEqual(retained(store.db), before);
     assert.equal(store.db.prepare('SELECT count(*) AS count FROM timeline_processing_tasks').get()?.count, 0);
+    const previewId = randomUUID();
+    store.db.prepare(`INSERT INTO main.timeline_processing_tasks
+      (id,projectId,demandKey,kind,state,revision,requestId,input,errorCode,updatedAt)
+      VALUES (?,?,?,'preview','failed',1,?,'{}','INTERPOLATION_UNAVAILABLE',?)`)
+      .run(previewId, store.projectId, 'b'.repeat(64), randomUUID(), new Date().toISOString());
+    const row = processingRowSchema.parse(store.db.prepare('SELECT * FROM main.timeline_processing_tasks WHERE id=?').get(previewId));
+    assert.deepEqual(speedProcessingItemSchema.parse({taskId: previewId, clipId: randomUUID(), kind: row.kind,
+      status: row.state, reason: row.errorCode}).reason, 'INTERPOLATION_UNAVAILABLE');
   } finally {store.close();}
   assert.equal(digest(readFileSync(files.projectFile)), originalProject);
 });

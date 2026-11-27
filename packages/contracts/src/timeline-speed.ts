@@ -25,10 +25,13 @@ export interface SequenceEditSpeedIntent {
     | {kind: 'freeze-frame'; clipId: string; atFrame: number; durationFrames?: number};
 }
 
-export type SpeedProcessingReason =
-  'SOURCE_UNAVAILABLE' | 'DISK_FULL' | 'CACHE_LIMIT' | 'UNSUPPORTED_FORMAT' | 'PROCESSING_FAILED';
+export const speedProcessingReasonSchema = z.enum([
+  'SOURCE_UNAVAILABLE', 'DISK_FULL', 'CACHE_LIMIT', 'UNSUPPORTED_FORMAT', 'PROCESSING_FAILED', 'INTERPOLATION_UNAVAILABLE',
+]);
+export type SpeedProcessingReason = z.infer<typeof speedProcessingReasonSchema>;
+export const speedProcessingKindSchema = z.enum(['reverse', 'optical', 'preview']);
 export interface SpeedProcessingItem {
-  taskId: string; clipId: string; kind: 'reverse' | 'optical';
+  taskId: string; clipId: string; kind: z.infer<typeof speedProcessingKindSchema>;
   status: 'queued' | 'running' | 'failed' | 'ready';
   progress?: number;
   reason?: SpeedProcessingReason;

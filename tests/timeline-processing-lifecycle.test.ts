@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -15,7 +15,16 @@ import {createTimelineProcessingService} from '../packages/business/src/timeline
 import type {ProcessingServiceOptions} from '../packages/business/src/timeline-processing/service.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
-import {processingCacheReceiptSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
+import {processingCacheReceiptSchema, processingResultSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
+import {timeMapPlanInfo} from '../packages/contracts/src/timeline-time-map.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
+import {run} from '../packages/business/src/media-runtime.ts';
+import {ProcessingFailure} from '../packages/business/src/timeline-processing/cache.ts';
+import {timelineProcessingResponseSchemas} from '../packages/contracts/src/timeline-processing.ts';
+import {REVERSE_PROXY_COVERAGE_VERSION} from '../packages/business/src/timeline-processing/reverse-profile.ts';
+import {TIMELINE_PREVIEW_CACHE_PROFILE} from '../packages/business/src/timeline-processing/preview-port.ts';
+import type {PreviewProcessingRenderer} from '../packages/business/src/timeline-processing/preview-port.ts';
+import {reversePictureCoverage} from '../packages/business/src/timeline-processing/picture-coverage.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const sha = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
@@ -39,6 +48,7 @@ function silentWave(): Buffer {
 }
 const fakeEngine: NonNullable<ProcessingServiceOptions['engine']> = {
   prepare: async () => ({profile: {id: 'timeline-reverse-source-v1', buildSha256: sha('test build'), storage: 'matroska', video: null,
+    coverageVersion: REVERSE_PROXY_COVERAGE_VERSION,
     audio: {index: 0, codec: 'pcm_s16le', rate: 48000, channels: 1, layout: 'mono', firstMediaSample: 0}}, reservationBytes: 65536}),
   render: async (input, _prepared, {stagingDirectory, signal, beforeEffect}) => {
     signal?.throwIfAborted();
@@ -48,6 +58,26 @@ const fakeEngine: NonNullable<ProcessingServiceOptions['engine']> = {
       return {fileName: fileName!, bytes: Buffer.byteLength(bytes!), sha256: sha(bytes!)};
     });
     return {profileId: 'timeline-reverse-source-v1', mapHash: input.mapHash, files, frameCount: 0, sampleCount: 48000};
+  },
+};
+
+const fakePreview: PreviewProcessingRenderer = {
+  async prepare(input) {
+    const plan = timeMapPlanInfo(input.plan);
+    assert.ok(plan.ok);
+    return {profile: {profileId: TIMELINE_PREVIEW_CACHE_PROFILE, mapHash: plan.value.mapHash, sourceSha256: input.sourceSha256,
+      sourceStream: '0:v:0', buildSha256: sha('preview build'), width: 24, height: 24, fps: 30, effectiveInterpolation: 'off'},
+    reservationBytes: 65536};
+  },
+  async render(input, prepared, {stagingDirectory, beforeEffect}) {
+    beforeEffect();
+    const frameCount = input.plan.durationFrames;
+    const payloads = {'preview.mp4': 'preview fixture', 'clock.json': JSON.stringify({...prepared.profile, frameCount})};
+    const files = Object.entries(payloads).map(([fileName, contents]) => {
+      writeFileSync(path.join(stagingDirectory, fileName), contents, {mode: 0o600, flag: 'wx'});
+      return {fileName, bytes: Buffer.byteLength(contents), sha256: sha(contents)};
+    });
+    return {profileId: prepared.profile.profileId, mapHash: prepared.profile.mapHash, files, frameCount, sampleCount: 0};
   },
 };
 
@@ -61,7 +91,7 @@ async function until<T>(read: () => T | undefined): Promise<T> {
 
 async function fixture(t: test.TestContext, options: {enabled?: boolean; format?: 5 | 6;
   engine?: ProcessingServiceOptions['engine'] | 'real'; scheduler?: ProcessingServiceOptions['scheduler'];
-  cache?: Parameters<typeof createProcessingCache>[1]} = {}) {
+  cache?: Parameters<typeof createProcessingCache>[1]; video?: boolean; previewRenderer?: PreviewProcessingRenderer} = {}) {
   const parent = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-processing-lifecycle-'));
   const projectId = randomUUID(), projectFile = path.join(parent, 'project.mioon');
   const locate = () => ({localDir: path.join(parent, 'local'), cacheDir: path.join(parent, 'cache'), tempDir: path.join(parent, 'tmp')});
@@ -70,34 +100,41 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
   let unregister = registerProjectMediaStore(store);
   const cacheRoot = path.join(parent, 'global-cache');
   const scheduler = options.scheduler ?? createProcessingScheduler();
+  let previewRenderer = options.previewRenderer;
   const createService = () => createTimelineProcessingService(store, {
     enabled: options.enabled ?? true, scheduler, cache: createProcessingCache(cacheRoot, options.cache), beforeEffect: noEffect,
+    ...(previewRenderer ? {previewRenderer} : {}),
     ...(options.engine === 'real' ? {} : {engine: options.engine ?? fakeEngine}),
   });
   let processing = createService();
-  async function reopen() {
+  async function reopen(renderer = previewRenderer) {
     await processing.close(); unregister(); store.close();
     store = openProjectStore(opening);
     unregister = registerProjectMediaStore(store);
+    previewRenderer = renderer;
     processing = createService(); processing.activate();
   }
   t.after(async () => {await processing.close(); unregister(); store.close(); rmSync(parent, {recursive: true, force: true});});
   const assetId = randomUUID(), mainTrackId = randomUUID(), rootId = randomUUID();
-  const audioTrack = {id: randomUUID(), name: 'A1', kind: 'audio' as const, orderIndex: 1, hidden: false, muted: false};
+  const auxiliaryTrack = {id: randomUUID(), name: options.video ? 'V2' : 'A1', kind: options.video ? 'video' as const : 'audio' as const,
+    orderIndex: 1, hidden: false, muted: false};
   const media = path.join(parent, 'media'); mkdirSync(media, {mode: 0o700});
-  const file = path.join(media, 'processing-source.wav');
-  writeFileSync(file, silentWave(), {mode: 0o600});
+  const file = path.join(media, options.video ? 'processing-source.mp4' : 'processing-source.wav');
+  if (options.video) {
+    await run('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'color=s=24x24:r=30:d=2',
+      '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-n', file], {timeout: 30_000});
+  } else writeFileSync(file, silentWave(), {mode: 0o600});
   const source = await referenceForPublishedMedia(store, file);
-  const initialClip: Format5Clip = {id: randomUUID(), trackId: audioTrack.id, name: 'Audio', startFrame: 0, durationFrames: 30,
+  const initialClip: Format5Clip = {id: randomUUID(), trackId: auxiliaryTrack.id, name: 'Synthetic source', startFrame: 0, durationFrames: 30,
     sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId, sourceState: 'ready', anchor: null};
   const timeline: Format5Timeline = {id: randomUUID(), projectId, revision: 1, width: 720, height: 1280, fps: 30,
     durationFrames: 30, createdAt: at, updatedAt: at, mainTrack: {trackId: mainTrackId, sequenceNodeId: rootId},
-    tracks: [{id: mainTrackId, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}, audioTrack], clips: [initialClip]};
+    tracks: [{id: mainTrackId, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}, auxiliaryTrack], clips: [initialClip]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'Processing lifecycle', createdAt: at, updatedAt: at, revision: 1});
     store.put('nodes', {id: rootId, projectId, type: 'sequence_root', name: 'Timeline', position: {x: 0, y: 0}, createdAt: at});
-    store.put('assets', {id: assetId, projectId, name: 'processing-source.wav', mimeType: 'audio/wav', duration: 2, hasAudio: true,
-      width: null, height: null, createdAt: at, ...source});
+    store.put('assets', {id: assetId, projectId, name: path.basename(file), mimeType: options.video ? 'video/mp4' : 'audio/wav',
+      duration: 2, hasAudio: !options.video, width: options.video ? 24 : null, height: options.video ? 24 : null, createdAt: at, ...source});
     store.put('timelines', timeline);
     store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
       .run(timeline.id, projectId, rootId, 1, JSON.stringify({version: 1, board: [], track: []}));
@@ -111,7 +148,7 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
     assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
     return service.commit({projectId, envelope: reviewed.envelope, expectedPlanDigest: reviewed.planDigest});
   }
-  return {projectId, file, cacheRoot, assetId, direction, reopen,
+  return {projectId, file, cacheRoot, assetId, clipId: initialClip.id, direction, reopen,
     get processing() { return processing; }, get store() { return store; }};
 }
 
@@ -219,6 +256,30 @@ test('an owned committed source runs the real worker and reopens its verified ou
   }
   await f.reopen();
   assert.deepEqual(f.processing.inspect({projectId: f.projectId, taskId: task.taskId}), {item: result.item});
+  const timeline = readFormat5TimelineRecord(f.store.db, 'project')!;
+  const clip = timeline.clips.find(value => value.id === f.clipId)!;
+  const timeMap = compileClipTimeMap(clip, timeline);
+  assert.ok(timeMap.ok);
+  const plan = timeMapPlanInfo(timeMap.value);
+  assert.ok(plan.ok);
+  assert.ok(clip.timing?.profile === 'timeline-speed-v1');
+  const picture = reversePictureCoverage(timeMap.value, clip.timing, plan.value.sourceWindow, 60, 2, 0);
+  assert.equal(picture?.endFrame, plan.value.sourceWindow.endFrame + 2);
+  assert.equal(reversePictureCoverage(timeMap.value, clip.timing, plan.value.sourceWindow, 60, 0, 2), undefined);
+  const request = {projectId: f.projectId, timelineId: timeline.id, clipId: f.clipId, assetId: f.assetId,
+    sourceSha256: sha(readFileSync(f.file)), mapHash: plan.value.mapHash, media: 'audio' as const,
+    sourceFps: timeMap.value.root.sourceFps, sourceWindow: plan.value.sourceWindow, pictureWindows: [],
+    needsAudio: true, audioWindow: {fromSample: 0, toSample: 48_000}};
+  const proof = f.processing.reverseProxy.lookup(request);
+  assert.ok(proof?.readySha256);
+  assert.equal(proof.taskId, task.taskId);
+  const leased = await f.processing.reverseProxy.acquire(request, {taskId: proof.taskId, sha256: proof.readySha256}, {});
+  assert.ok(leased?.audio);
+  assert.deepEqual(leased.audio.clock, request.audioWindow);
+  f.direction('forward');
+  assert.equal(f.processing.reverseProxy.lookup(request), null);
+  assert.equal(leased.verify(), true, 'a frozen export retains its verified original attempt');
+  leased.release();
 });
 
 test('a stopped attempt reopens under its existing ID without starting another writer', async t => {
@@ -264,4 +325,102 @@ test('format 6 with the developer flag disabled creates no row or cache root', a
   const old = await fixture(t, {format: FORMAT5_PROJECT_SCHEMA_VERSION});
   assert.equal(old.processing.enabled(), false);
   assert.deepEqual(old.processing.list(old), {items: []});
+});
+
+test('preview submission runs only after a commit and leases are tied to the current clip and profile', async t => {
+  const f = await fixture(t, {video: true, previewRenderer: fakePreview});
+  assert.equal(f.processing.preview.lookup(f), null);
+  assert.deepEqual(f.processing.list(f), {items: []});
+  f.direction('reverse');
+  const previewTask = await until(() => f.processing.list(f).items.find(value => value.kind === 'preview'));
+  const reverseTask = await until(() => f.processing.list(f).items.find(value => value.kind === 'reverse'));
+  assert.notEqual(previewTask.taskId, reverseTask.taskId);
+  assert.equal((await f.processing.wait({...f, taskId: previewTask.taskId})).item.status, 'ready');
+  const found = f.processing.preview.lookup(f);
+  assert.ok(found?.ready);
+  assert.equal(found.ready.durationFrames, 30);
+  const {proof} = found.ready;
+  const lease = await f.processing.preview.acquire(proof);
+  assert.ok(lease);
+  assert.equal(lease.verify(), true);
+  assert.equal(path.basename(lease.file), 'preview.mp4');
+  assert.equal(await f.processing.preview.acquire({...proof, taskId: reverseTask.taskId}), null);
+  assert.equal(await f.processing.preview.acquire({...proof, projectId: randomUUID()}), null);
+  assert.equal(await f.processing.preview.acquire({...proof, clipId: randomUUID()}), null);
+  assert.equal(await f.processing.preview.acquire({...proof, sha256: sha('different')}), null);
+  f.direction('forward');
+  assert.equal(f.processing.preview.lookup(f), null);
+  assert.equal(lease.verify(), false);
+  assert.equal(await f.processing.preview.acquire(proof), null);
+  f.processing.cacheClear(f);
+  assert.equal(readFileSync(lease.file, 'utf8'), 'preview fixture');
+  lease.release();
+  assert.ok(f.processing.cacheClear(f).freedBytes > 0);
+});
+
+test('a host with a preview renderer submits missing tasks when it restores committed clips', async t => {
+  const f = await fixture(t, {video: true});
+  f.direction('reverse');
+  const reverse = await until(() => f.processing.list(f).items.find(value => value.kind === 'reverse'));
+  await f.processing.wait({...f, taskId: reverse.taskId});
+  assert.equal(f.processing.preview.lookup(f), null);
+  await f.reopen(fakePreview);
+  const preview = await until(() => f.processing.preview.lookup(f) ?? undefined);
+  assert.equal((await f.processing.wait({...f, taskId: preview.item.taskId})).item.status, 'ready');
+  assert.ok(f.processing.preview.lookup(f)?.ready);
+});
+
+test('the shared list, inspect and wait outcomes preserve the interpolation rejection', async t => {
+  const f = await fixture(t, {video: true, previewRenderer: {...fakePreview, async prepare() {
+    throw new ProcessingFailure('INTERPOLATION_UNAVAILABLE');
+  }}});
+  f.direction('reverse');
+  const preview = await until(() => f.processing.preview.lookup(f) ?? undefined);
+  const request = {projectId: f.projectId, taskId: preview.item.taskId};
+  const outcome = timelineProcessingResponseSchemas['timeline.processing.wait'].parse(await f.processing.wait(request));
+  assert.equal(outcome.item.kind, 'preview');
+  assert.equal(outcome.item.reason, 'INTERPOLATION_UNAVAILABLE');
+  const inspection = timelineProcessingResponseSchemas['timeline.processing.inspect'].parse(f.processing.inspect(request));
+  assert.deepEqual(inspection.item, outcome.item);
+  const listed = timelineProcessingResponseSchemas['timeline.processing.list'].parse(f.processing.list(f));
+  assert.deepEqual(listed.items.find(item => item.taskId === request.taskId), outcome.item);
+});
+
+test('reusing a ready demand refreshes LRU before the next cache admission', async t => {
+  const f = await fixture(t, {cache: {limitBytes: 65536 + 720}});
+  const root = path.join(f.cacheRoot, 'timeline-processing');
+  const ready = async (rate: number) => {
+    f.direction('reverse', rate);
+    const active = await until(() => f.processing.list(f).items[0]);
+    assert.equal((await f.processing.wait({...f, taskId: active.taskId})).item.status, 'ready');
+    const row = f.store.db.prepare('SELECT result FROM main.timeline_processing_tasks WHERE id=?').get(active.taskId);
+    const evidence = processingResultSchema.parse(JSON.parse(String(row?.result)));
+    return path.join(root, evidence.cacheKey);
+  };
+  const first = await ready(1), second = await ready(2);
+  utimesSync(first, 100, 100);
+  utimesSync(second, 200, 200);
+  assert.equal(await ready(1), first);
+  await until(() => statSync(first).mtimeMs > statSync(second).mtimeMs ? true : undefined);
+  f.direction('forward');
+  await delay(0);
+  await ready(3);
+  assert.equal(existsSync(first), true);
+  assert.equal(existsSync(second), false);
+});
+
+test('renewing an evicted completed demand regenerates under the same task and a new attempt', async t => {
+  const f = await fixture(t);
+  f.direction('reverse');
+  const target = await until(() => f.processing.list(f).items[0]);
+  const id = target.taskId;
+  assert.equal((await f.processing.wait({...f, taskId: id})).item.status, 'ready');
+  const query = f.store.db.prepare('SELECT requestId FROM main.timeline_processing_tasks WHERE id=?');
+  const previous = query.get(id)?.requestId;
+  f.direction('forward');
+  assert.ok(f.processing.cacheClear(f).freedBytes > 0);
+  f.direction('reverse');
+  await until(() => query.get(id)?.requestId !== previous ? true : undefined);
+  assert.equal(f.processing.list(f).items[0]?.taskId, id);
+  assert.equal((await f.processing.wait({...f, taskId: id})).item.status, 'ready');
 });
