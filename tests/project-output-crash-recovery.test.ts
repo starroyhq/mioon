@@ -11,7 +11,7 @@ import {createProjectFile,openProjectStore} from '../packages/business/src/proje
 import {registerProjectMediaStore} from '../packages/business/src/project-media-storage.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-publication.ts';
-import {publishProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
+import {publishProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered,setProjectOutputPublicationTestHooks,reconcileInterruptedExportPublication} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import {png,pngChunk} from './helpers/timeline-image-fixtures.ts';
 
@@ -41,6 +41,14 @@ for(const scenario of cases)test(`SIGKILL ${scenario.point} ${scenario.atomicExp
  const store=openProjectStore({projectFile,locate}),release=registerProjectMediaStore(store);dispose=()=>{release();store.close();};
  const committed=['after_database_commit','after_registered'].includes(scenario.point);assert.equal(store.list('assets',projectId).length,committed?1:0);
  const register=(output:PublishedProjectOutput):void=>{const {relativePath:_relative,...stored}=output;store.put('assets',{id:publication.assetId,projectId,name:'Crash output.png',mimeType:'image/png',width:64,height:64,...stored,provenance:scenario.atomicExport?'export':'generated',createdAt:'2026-11-03T00:00:00.000Z'});};
+ if(scenario.atomicExport&&scenario.point==='after_install'){
+  reconcileInterruptedExportPublication(store,publication.owner,publication.assetId);
+  const sourceChanged=Error('Frozen source changed while the project was closed');
+  await assert.rejects(publishProjectOutput(store,publication,{beforeEffect(){throw sourceChanged;}},register),sourceChanged);
+  assert.deepEqual(readdirSync(targetDir),[]);
+  assert.deepEqual(readdirSync(path.join(projectDir,'.mioon-export-staging')),[]);
+  assert.equal(store.list('assets',projectId).length,0);
+ }
  setProjectOutputPublicationTestHooks(store,{forceCopy:scenario.forceCopy});
  const output=await publishProjectOutput(store,publication,{},scenario.atomicExport?register:undefined);
  if(scenario.atomicExport){

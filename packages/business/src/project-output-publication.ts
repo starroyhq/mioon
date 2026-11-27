@@ -468,6 +468,30 @@ class ExportInstallUnresolved extends Error {
   constructor(cause: unknown) {super('The export installation outcome could not be reconciled.', {cause});}
 }
 export const isExportInstallUnresolved = (error: unknown): boolean => error instanceof ExportInstallUnresolved;
+function exportCopyPath(store: ProjectStore, receipt: Receipt): string {
+  return path.join(store.projectDir, '.mioon-export-staging',
+    receipt.proof.publicationId + '-' + receipt.attempt + '.' + extensions[receipt.proof.mimeType]);
+}
+/** Reconcile an interrupted local install before revalidating render sources.
+ * A source may have disappeared while the application was closed. */
+export function reconcileInterruptedExportPublication(store: ProjectStore, owner: ProjectOutputOwner, assetId: string): void {
+  const receipt = readReceipt(store, owner, assetId, {});
+  if (!receipt?.targetIdentity || receipt.proof.targetKind !== 'exports' || receipt.phase === 'registered') return;
+  checkReceiptDirectories(store, receipt, {});
+  const file = path.join(store.projectDir, receipt.proof.relativePath), working = exportCopyPath(store, receipt);
+  try {
+    const visible = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    if (visible && sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(visible)) && !committedExport(store, receipt.proof)) {
+      removeOwnedOutput(file, receipt.directoryIdentity, receipt.targetIdentity, 2n);
+    }
+  } catch (error) {throw new ExportInstallUnresolved(error);}
+  const candidate = lstatSync(working, {bigint: true, throwIfNoEntry: false});
+  if (candidate && sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(candidate))) {
+    const directory = path.dirname(working);
+    validateManagedDirectory(directory, {root: directory, private: true});
+    removeOwnedOutput(working, outputFileIdentity(lstatSync(directory, {bigint: true})), receipt.targetIdentity, 2n);
+  }
+}
 /** Use the verified hidden descriptor for sampling and the final name for
  * the locator. The atomic install keeps the same inode and modification time. */
 async function stagedExportReference(file: string, proof: ProjectOutputPublicationProof,
@@ -489,8 +513,7 @@ async function stagedExportReference(file: string, proof: ProjectOutputPublicati
 async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage: string, stageInfo: BigIntStats,
   options: ProjectOutputOptions, register?: RegisterExport): Promise<PublishedProjectOutput> {
   const {proof} = receipt, file = path.join(store.projectDir, proof.relativePath);
-  const directory = path.join(store.projectDir, '.mioon-export-staging');
-  const workingFile = path.join(directory, proof.publicationId + '-' + receipt.attempt + '.' + extensions[proof.mimeType]);
+  const workingFile = exportCopyPath(store, receipt), directory = path.dirname(workingFile);
   checkReceiptDirectories(store, receipt, options);
   ensurePrivateDirectory(directory, {create: true});
   const directoryInfo = lstatSync(directory, {bigint: true}), directoryIdentity = outputFileIdentity(directoryInfo);

@@ -43,7 +43,7 @@ import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
 import {adoptFormat5GeneratedVersionInside} from './format5-sequence-sync.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
-import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isExportInstallUnresolved} from './project-output-publication.ts';
+import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isExportInstallUnresolved,reconcileInterruptedExportPublication} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,discardCompletedExportArtifact,sealOutputArtifactStage} from './output-artifact-storage.ts';
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
@@ -616,6 +616,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}
+   if(writerOwner&&artifact)reconcileInterruptedExportPublication(writerOwner,outputOwner,artifact.assetId);
    if(!artifact){
    outputHandle=await open(part,'wx',writerOwner?0o600:0o666);outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
