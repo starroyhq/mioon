@@ -9,6 +9,7 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.clip.remove': message('timeline.history.clipRemove'),
   'timeline.clip.rippleRemove': message('timeline.history.clipRippleRemove'),
   'timeline.clip.split': message('timeline.history.clipSplit'),
+  'timeline.clip.copy-as-new-shot': message('timeline.history.clipCopyAsNewShot'),
   'timeline.subtitle.add': message('timeline.history.subtitleAdd'),
   'timeline.subtitle.update': message('timeline.history.subtitleUpdate'),
   'timeline.subtitle.remove': message('timeline.history.subtitleRemove'),

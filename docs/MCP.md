@@ -910,6 +910,8 @@ sequence_action_commit({"projectId":"PROJECT_UUID","envelope":{...},"expectedPla
 
 替换来源使用 `sequence_clip_edit({projectId, kind: "replace-source", clipId, assetId, versionId?})`，再按上面的流程确认。新素材须与原素材类型相同，并覆盖片段原有的入点和长度。固定媒体主轨片段的画板节点须独立使用。主轨镜头须提供该镜头拥有或已采纳、且素材匹配的 `versionId`，提交后片段锁定到该版本。
 
+复制成新镜头使用 `sequence_clip_edit({projectId, kind: "copy-as-new-shot", clipId})`，并用返回的信封和摘要确认。预览会分配新镜头和新片段的 ID，其他轨道的片段返回 `INVALID_TRACK_TARGET`。
+
 计划摘要不匹配时拒绝。外部 MCP 和 CLI 的动作以用户来源（`origin: 'user'`）提交，用户可在剪辑页按 ⌘Z（Windows/Linux 上为 Ctrl+Z）撤销。
 
 外部撤销和重做使用 `sequence_undo` 和 `sequence_redo`。先调用 `sequence_history_get`，确认对应的 `undoAvailable` 或 `redoAvailable` 后，读取当前的 `position`、`revision` 及 `undo.actionId` 或 `redo.actionId`。调用时传入 `expected: {position, revision}`、目标 `actionId`、`projectId` 和稳定的 `requestId`，沿用默认用户来源。动作或游标不匹配时返回 `SEQUENCE_EDIT_HISTORY_CONFLICT`，重新读取历史后再决定是否执行。响应丢失时，重放同一工具及原始完整输入可取回已保存的回执，避免重复移动游标。同一 `requestId` 的不同输入会冲突。
