@@ -10,7 +10,9 @@ import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_HISTORY_FILE} from '../../../../packages/contracts/src/project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
-import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, openProjectStore, previewFormat5Upgrade, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence, sameContentStamp, upgradeProjectFormatTo5} from '../../../../packages/business/src/project-file/index.ts';
+import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader,
+  isSequenceProjectFormat, openProjectStore, previewSequenceFormatUpgrade, PROJECT_FILE_SCHEMA_VERSION, projectReadFormatOptions,
+  recoverProjectFile, registerProjectTransactionFence, sameContentStamp, upgradeProjectSequenceFormat} from '../../../../packages/business/src/project-file/index.ts';
 import type {Format4Options, Format4UpgradePreview, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectFileFormat, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import {previewClosedProjectFormatUpgrade} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import type {ProjectFormatUpgradePreview} from '../../../../packages/contracts/src/project-format-upgrade.ts';
@@ -319,10 +321,11 @@ class RetryOpen extends Error {
 export function createProjectHostManager<Runtime extends ProjectHostRuntime = ProjectHostRuntime>(options: ProjectHostManagerOptions<Runtime>): ProjectHostManager<Runtime> {
   const {directories, registry, factory, format4, onEvent, assertProjectFile} = options;
   const targetFormat: ProjectFileFormat = options.targetFormat ?? (format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION);
+  const readFormat = projectReadFormatOptions(targetFormat, format4);
   const identity = options.identity ?? statProjectFileIdentity;
   const taskIndex = options.taskIndex ?? createMemoryBackgroundTaskIndex();
   const hooks = options.hooks ?? [];
-  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile: file => recoverProjectFile(file, format4)};
+  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile: file => recoverProjectFile(file, readFormat)};
   const idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
   const drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_REQUEST_DRAIN_MS;
   const busyRecheckMs = options.busyRecheckMs ?? DEFAULT_BUSY_RECHECK_MS;
@@ -384,12 +387,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }};
   };
   const preflightLegacy = (file: string, projectId: string, location: ProjectLocation, expected?: ProjectFormatUpgradePreview): void => {
-    if (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION) {
-      const version = inspectProjectFormatHeader(file);
-      if (version === FORMAT5_PROJECT_SCHEMA_VERSION) return;
-      if (version > FORMAT5_PROJECT_SCHEMA_VERSION) throw new AppError('PROJECT_FORMAT_NEWER', '项目由更新版本的 Mioon 创建。', 409,
-        {database: 'project', reason: 'format-newer', formatVersion: version, supportedFormatVersion: FORMAT5_PROJECT_SCHEMA_VERSION});
-      const preview = previewFormat5Upgrade(file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
+    if (isSequenceProjectFormat(targetFormat)) {
+      const version = inspectProjectFormatHeader(file, readFormat);
+      if (version === targetFormat) return;
+      const preview = previewSequenceFormatUpgrade(targetFormat, file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
       if (!preview) return;
       if (!expected || !upgradeMatches(preview, expected)) throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
       writeAllowed();
@@ -408,26 +409,27 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }
     writeAllowed();
   };
-  /** One opening seam for all trusted admissions: format 5 upgrades run the
+  /** One opening seam for all trusted admissions: sequence upgrades run the
    * kernel's confirmation/backup transaction, released profiles use openStore. */
   const kernelOpen = (projectFile: string, location: (projectId: string) => ProjectLocation,
     checkCopy: ProjectCopyCheck, expected?: ProjectFormatUpgradePreview): ProjectStore => {
-    if (targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION) {
-      const preview = expected?.targetProjectVersion === 5 ? expected : previewFormat5Upgrade(projectFile);
+    if (isSequenceProjectFormat(targetFormat)) {
+      const preview = expected?.targetProjectVersion === targetFormat ? expected : previewSequenceFormatUpgrade(targetFormat, projectFile);
       if (preview) {
         if (!expected || !upgradeMatches(preview, expected)) throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
-        return upgradeProjectFormatTo5({projectFile, locate: location, checkCopy, approveUpgrade: value => {
+        return upgradeProjectSequenceFormat(targetFormat, {projectFile, locate: location, checkCopy, approveUpgrade: value => {
           if (!upgradeMatches(value, expected!)) return false;
           writeAllowed();
           return true;
         }}).store;
       }
-      return openStore({projectFile, locate: location, checkCopy});
+      return openStore({projectFile, locate: location, checkCopy, allowFormat6: readFormat?.allowFormat6});
     }
-    if (expected?.targetProjectVersion === 5) throw new AppError('PROJECT_FORMAT_NEWER', '项目格式超出当前目标格式。', 409);
+    if (isSequenceProjectFormat(expected?.targetProjectVersion)) throw new AppError('PROJECT_FORMAT_NEWER', '项目格式超出当前目标格式。', 409);
     return openStore({projectFile, locate: location, format4: formatAdmission(expected), checkCopy});
   };
-  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
+  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4,
+    allowFormat6: readFormat?.allowFormat6, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
   const checkAdmittedFile = (file: string, projectId: string, admitted?: ProjectFileIdentity): void => {
     if (admitted && !sameProjectFileIdentity(identityOrNull(file), admitted)) throw projectFileMoved(projectId);
   };
@@ -1225,7 +1227,8 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         const receipt = completedHistoryResolution(config, input);
         if (receipt) { archiveTaskIndex(input, receipt); return receipt; }
       }
-      const store = openStore({projectFile: registration.projectFile, locate, format4, checkCopy: registeredCopyCheck(input.projectId)});
+      const store = openStore({projectFile: registration.projectFile, locate, format4, allowFormat6: readFormat?.allowFormat6,
+        checkCopy: registeredCopyCheck(input.projectId)});
       try {
         const controller = new AbortController();
         const session = createProjectHistorySession({projectId: input.projectId, store, directories, signal: controller.signal, relocate: () => {}}, writeAllowed);

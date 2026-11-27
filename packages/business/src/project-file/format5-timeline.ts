@@ -5,6 +5,9 @@ import {
   getFormat5TimelineIssue, format5TimelineHeader,
 } from '../../../contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Cue, Format5Issue, Format5Timeline, Format5TimelineHeader} from '../../../contracts/src/project-format5.ts';
+import type {ClipTiming} from '../../../contracts/src/timeline-speed.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from './schema/databases.ts';
+import {freezeSourceSha256} from '../format6-source-proof.ts';
 
 type ProjectSchema = 'main' | 'project';
 type Row = Record<string, unknown>;
@@ -25,6 +28,10 @@ function prepared(db: DatabaseSync, sql: string): StatementSync {
   let statement = cache.get(sql);
   if (!statement) {statement = db.prepare(sql); cache.set(sql, statement);}
   return statement;
+}
+
+function storageVersion(db: DatabaseSync, schema: ProjectSchema): number {
+  return Number(prepared(db, `PRAGMA ${schema}.user_version`).get()?.user_version);
 }
 
 type EntityColumnValue = string | number | null;
@@ -167,7 +174,7 @@ export function assertFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchem
   if (headerProblem) throw entityError(headerProblem);
   const timeline = assembleFormat5Timeline(state);
   if (!timeline) return invalidFormat5Timeline();
-  const problem = getFormat5TimelineIssue(timeline, {projectId: state.header.projectId});
+  const problem = getFormat5TimelineIssue(timeline, {projectId: state.header.projectId, formatVersion: storageVersion(db, schema)});
   if (problem) throw entityError(problem);
   if (storedBytes(state) > FORMAT5_LIMITS.timelineBytes) return invalidFormat5Timeline();
   return timeline;
@@ -258,13 +265,13 @@ export interface Format5TimelineEntityPatch {
 }
 export interface Format5TimelineEntityUpdatePlan extends Format5TimelineEntityUpdate {readonly changed: boolean;}
 
-function clipEntity(value: unknown, header: Format5TimelineHeader): Omit<Format5TimelineEntityChange, 'setColumns'> {
+function clipEntity(value: unknown, header: Format5TimelineHeader, formatVersion?: number): Omit<Format5TimelineEntityChange, 'setColumns'> {
   const row = value as Row;
   const tracks = new Map(header.tracks.map(track => [track.id, track.kind]));
   if (!object(row) || !uuid(row.id) || !uuid(row.trackId) || !tracks.has(String(row.trackId)))
     throw entityError({code: 'FORMAT5_CLIP_INVALID', message: 'Invalid format-5 clip'});
   const problem = getFormat5ClipIssue(value, {
-    width: header.width, height: header.height, fps: header.fps,
+    width: header.width, height: header.height, fps: header.fps, formatVersion,
     trackKind: tracks.get(String(row.trackId)) as 'video' | 'audio' | undefined,
     main: row.trackId === header.mainTrack.trackId,
   });
@@ -338,6 +345,8 @@ function deleteEntity(db: DatabaseSync, schema: ProjectSchema, kind: Format5Time
  * caller owns the single content-stamp bump for the transaction. */
 export function applyFormat5TimelineEntityUpdateInside(db: DatabaseSync, schema: ProjectSchema, update: Format5TimelineEntityUpdate): void {
   if (!db.isTransaction) throw new TypeError('Timeline entity writes require an open transaction');
+  if (storageVersion(db, schema) !== FORMAT6_PROJECT_SCHEMA_VERSION &&
+      update.clipWrites.some(change => Object.hasOwn(parseRaw(change.raw), 'timing'))) invalidFormat5Timeline();
   for (const kind of ['clip', 'cue'] as const) {
     for (const id of kind === 'clip' ? update.clipDeletes : update.cueDeletes) deleteEntity(db, schema, kind, id);
     for (const change of kind === 'clip' ? update.clipWrites : update.cueWrites) {
@@ -363,8 +372,9 @@ export function writeFormat5TimelineInside(db: DatabaseSync, schema: ProjectSche
   const clipOld = new Map(state.clips.map(row => [row.id, row])), cueOld = new Map(state.cues.map(row => [row.id, row]));
   const clipWrites: Format5TimelineEntityChange[] = [], cueWrites: Format5TimelineEntityChange[] = [];
   const nextClips = new Set<string>(), nextCues = new Set<string>();
+  const formatVersion = storageVersion(db, schema);
   for (const clip of timeline.clips) {
-    const entity = withColumns(clipEntity(clip, header), clipOld.get(clip.id));
+    const entity = withColumns(clipEntity(clip, header, formatVersion), clipOld.get(clip.id));
     if (nextClips.has(entity.id)) return invalidFormat5Timeline();
     nextClips.add(entity.id);
     if (clipOld.get(entity.id)?.raw !== entity.raw) clipWrites.push(entity);
@@ -390,7 +400,7 @@ export function writeFormat5TimelineInside(db: DatabaseSync, schema: ProjectSche
  * record, so the generic whole-row surface keeps its old guarantees. */
 export function putFormat5TimelineInside(db: DatabaseSync, schema: ProjectSchema, value: unknown, projectId: string): void {
   if (!object(value) || value.projectId !== projectId) return invalidFormat5Timeline();
-  const problem = getFormat5TimelineIssue(value, {projectId});
+  const problem = getFormat5TimelineIssue(value, {projectId, formatVersion: storageVersion(db, schema)});
   if (problem) throw entityError(problem);
   writeFormat5TimelineInside(db, schema, value as unknown as Format5Timeline);
   bumpFormat5ContentStampInside(db, schema);
@@ -404,7 +414,7 @@ export function insertFormat5TimelineEntitiesInside(db: DatabaseSync, schema: Pr
   const header = format5TimelineHeader(timeline);
   const update: Format5TimelineEntityUpdate = {timelineId: timeline.id, projectId: timeline.projectId,
     clipWrites: [], cueWrites: [], clipDeletes: [], cueDeletes: []};
-  for (const clip of timeline.clips) insertEntity(db, schema, 'clip', update, {...clipEntity(clip, header), setColumns: COLUMNS_OF.clip});
+  for (const clip of timeline.clips) insertEntity(db, schema, 'clip', update, {...clipEntity(clip, header, FORMAT5_PROJECT_SCHEMA_VERSION), setColumns: COLUMNS_OF.clip});
   for (const cue of timeline.subtitles?.cues ?? []) insertEntity(db, schema, 'cue', update, {...cueEntity(cue, header), setColumns: COLUMNS_OF.cue});
 }
 
@@ -470,6 +480,18 @@ export function fenceFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchema
   const headerProblem = getFormat5TimelineHeaderIssue(raw, {projectId: headerRow.projectId as string});
   if (headerProblem) return invalidFormat5Timeline();
   const header = raw as unknown as Format5TimelineHeader;
+  const formatVersion = storageVersion(db, schema);
+  const timedClips = prepared(db, `SELECT c.data, a.data AS asset FROM ${clips} c LEFT JOIN ${schema}.assets a
+    ON json_extract(c.data,'$.timing.profile')='timeline-freeze-v1' AND a.id=c.assetId AND a.projectId=c.projectId
+    WHERE json_type(c.data,'$.timing') IS NOT NULL OR json_type(c.data,'$.sourceSpanFrames') IS NOT NULL`);
+  for (const row of timedClips.iterate()) {
+    if (formatVersion !== FORMAT6_PROJECT_SCHEMA_VERSION || typeof row.data !== 'string') return invalidFormat5Timeline();
+    const clip = parseRaw(row.data) as Row & {timing?: ClipTiming};
+    clipEntity(clip, header, formatVersion);
+    if (clip.timing?.profile === 'timeline-freeze-v1' &&
+        (typeof row.asset !== 'string' || freezeSourceSha256(parseRaw(row.asset)) !== clip.timing.sourceSha256))
+      return invalidFormat5Timeline();
+  }
   const timelineId = headerRow.id as string, projectId = headerRow.projectId as string, main = header.mainTrack.trackId;
   const trackList = header.tracks.map(track => `'${String(track.id).replaceAll("'", "''")}'`).join(',');
   const trackKindCase = header.tracks.map(track => `WHEN '${String(track.id).replaceAll("'", "''")}' THEN '${track.kind}'`).join(' ');
@@ -528,15 +550,21 @@ export function fenceFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchema
   // range that fits its duration (asset facts are parsed once per asset).
   expectNone(db, `SELECT count(*) FROM ${clips} c WHERE c.timelineId=? AND c.sourceState='ready'
     AND NOT EXISTS(SELECT 1 FROM ${schema}.assets a WHERE a.id=c.assetId AND a.projectId=c.projectId)`, [timelineId]);
-  expectNone(db, `WITH asset_facts AS (SELECT id,json_extract(data,'$.mimeType') mime,json_extract(data,'$.duration') duration,json_extract(data,'$.hasAudio') hasAudio FROM ${schema}.assets)
+  const sourceSpan = formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION
+    ? "COALESCE(json_extract(c.data,'$.sourceSpanFrames'),c.durationFrames)" : 'c.durationFrames';
+  const timingSourceIssue = formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION
+    ? "(json_type(c.data,'$.timing') IS NOT NULL AND a.mime LIKE 'image/%') OR" : '';
+  expectNone(db, `WITH asset_facts AS (SELECT id,json_extract(data,'$.mimeType') mime,json_extract(data,'$.duration') duration,
+      json_extract(data,'$.hasAudio') hasAudio FROM ${schema}.assets)
     SELECT count(*) FROM ${clips} c JOIN asset_facts a ON a.id=c.assetId
     WHERE c.timelineId=? AND c.sourceState='ready' AND (
       (CASE c.trackId ${trackKindCase} END='video' AND a.mime NOT IN (${VIDEO_MIMES})) OR
       (CASE c.trackId ${trackKindCase} END='audio' AND NOT (a.mime IN (${AUDIO_MIMES}) OR
         (json_extract(c.data,'$.soundOnly')=1 AND a.mime IN ('video/mp4','video/webm') AND a.hasAudio=1))) OR
+      ${timingSourceIssue}
       (a.mime LIKE 'image/%' AND c.sourceInFrame<>0) OR
       (a.mime NOT LIKE 'image/%' AND (typeof(a.duration) NOT IN ('integer','real') OR
-        c.sourceInFrame+c.durationFrames>CAST(a.duration*30+0.000001 AS INTEGER))))`, [timelineId]);
+        c.sourceInFrame+${sourceSpan}>CAST(a.duration*30+0.000001 AS INTEGER))))`, [timelineId]);
   // Versioned rows prove the same ownership evidence the write path and the
   // full validator use.
   expectNone(db, `WITH version_facts AS (SELECT v.id,v.projectId,json_extract(v.data,'$.assetId') assetId,

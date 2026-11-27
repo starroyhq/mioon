@@ -696,6 +696,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     const plan=previewMioSequenceAction(store as ProjectStore,projectId,randomUUID(),parsed.data as MioSequenceAction,{origin:'user'});
     return {projectId,envelope:plan.envelope,planDigest:plan.planDigest,summary:plan.summary};
   };
+  const assertExternalSpeedOrigin=(envelope: unknown):void=>{
+    if(property(envelope,'speedIntent')&&property(envelope,'origin')==='mio'){
+      throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID','外部变速编辑必须从用户动作提交。',409);
+    }
+  };
  const sequenceInspection=createSequenceInspectionService(store);
  const timeline=createTimelineServices(store as unknown as Parameters<typeof createTimelineServices>[0],{required,check,hash,now,exportAdmission,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}} as Parameters<typeof createTimelineServices>[1]);
  const assertOrdinaryObservation=():void=>{assertProjectStore(store);assertTaskEffectOrigin();};
@@ -866,7 +871,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'export.premiere.get':premiereExport.get,
   'export.premiere.cancel':premiereExport.cancel,
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
-  'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
+  'sequence.preview':(input: ServiceRow)=>{
+    assertExternalSpeedOrigin(input);
+    return sequenceEdit.preview((input.speedIntent?{...input,origin:'user'}:input) as never);
+  },
   'sequence.action.edit':previewSequenceAction('sequence.tool.edit'),
   'sequence.board.edit':previewSequenceAction('sequence.tool.board'),
   'sequence.reference.edit':previewSequenceAction('sequence.tool.reference'),
@@ -880,10 +888,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
     const envelope=input.envelope as {projectId?:unknown};
     if(!envelope||envelope.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与序列动作不一致。',409);
+    assertExternalSpeedOrigin(envelope);
     const plan={envelope:input.envelope,planDigest:stringValue(input.expectedPlanDigest),summary:{action:'commit',affected:[],counts:{nodes:0,edges:0,clips:0,other:0},warnings:0}} as MioSequencePlan;
     return commitMioSequenceAction(store as ProjectStore,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
   },
-  'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
+  'sequence.commit':(input: ServiceRow)=>{
+    assertExternalSpeedOrigin(input.envelope);
+    return sequenceEdit.commit(input as never);
+  },
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
   'sequence.generation-inputs.get':(input: ServiceRow)=>{
    if(!isProjectStore(store)||!isFormat5Project(store))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
@@ -924,7 +936,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'project.list':()=>list('projects').map(currentProjectRecord).sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
   'project.get':(input: ServiceRow)=>tx(()=>{
    const projectId=stringValue(input.projectId) as string,project=currentProjectRecord(required('projects',projectId));
-   const currentTimeline=timeline.ensure(projectId),timelineHistory=timeline.history(projectId);
+   const currentTimeline=timeline.read(projectId),timelineHistory=timeline.history(projectId);
    const contents=['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>{
     if(t==='exports')return [t,exportValues(projectId).sort((a,b)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))];
     const values=t==='shots'||t==='nodes'||t==='edges'?liveCanvas(t,projectId):list(t,projectId);

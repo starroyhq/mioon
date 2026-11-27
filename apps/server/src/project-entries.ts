@@ -3,7 +3,8 @@ import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError, sameContentStamp} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectCopiedProjectFile,
+  isProjectFileHeld, projectFileError, projectReadFormatOptions, sameContentStamp} from '@mioon/business/project-file/index';
 import type {ProjectFileFormat} from '@mioon/business/project-file/index';
 import {readClosedProjectForFormatUpgrade} from '../../../packages/business/src/project-file/closed-copy.ts';
 import {isAppLibraryHeld, projectFileIdentity, sameProjectFileIdentity} from '@mioon/business/app-db/index';
@@ -95,7 +96,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly targetFormat?: ProjectFileFormat;
 }) {
   targetFormat ??= FORMAT5_PROJECT_SCHEMA_VERSION;
-  const format4 = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+  const format6 = projectReadFormatOptions(targetFormat)?.allowFormat6;
   const supportsFormatUpgrades = targetFormat >= FORMAT4_PROJECT_SCHEMA_VERSION;
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
@@ -159,7 +160,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     assertProjectFile?.(file);
     const before=sourceMetadata(file);
     for(const suffix of ['-journal','-wal','-shm'])if(lstatSync(file+suffix,{throwIfNoEntry:false}))sourceMetadata(file+suffix);
-    const stamp=inspectProjectFileReadOnly(file);
+    const stamp=inspectProjectFileReadOnly(file, format6 ? {allowFormat6: format6} : undefined);
     const metadata=inspectCopiedProjectFile(file);
     const after=sourceMetadata(file);
     if(generation(before)!==generation(after)||stamp.projectId!==metadata.projectId||stamp.contentSequence!==metadata.contentSequence||stamp.contentToken!==metadata.contentToken)throw unavailable();
@@ -183,7 +184,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     if (!supportsFormatUpgrades) throw unavailable();
     assertProjectFile?.(file);
     if (!sameProjectFileIdentity(fileIdentity(file), identity)) throw projectFileMoved(projectId);
-    const view = readClosedProjectForFormatUpgrade(file, projectId, preview);
+    const view = readClosedProjectForFormatUpgrade(file, projectId, preview, format6);
     if (current !== scope() || !sameProjectFileIdentity(fileIdentity(file), identity)) throw projectFileMoved(projectId);
     return view;
   };

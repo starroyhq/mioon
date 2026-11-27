@@ -1,3 +1,4 @@
+import {isTimelineSpeedRenderError} from '../../../packages/contracts/src/timeline-speed-render.ts';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { isWaveformResponse } from '@mioon/contracts';
 import { Button } from '@mioon/ui/components/button';
@@ -11,7 +12,7 @@ type Field = keyof DialogueDuckingParameters;
 const FIELDS: readonly Field[] = ['thresholdDb', 'paddingFrames', 'multiplier', 'attackFrames', 'releaseFrames'];
 const label = { thresholdDb: 'ducking.auto.threshold', paddingFrames: 'ducking.auto.padding', multiplier: 'ducking.auto.multiplier',
   attackFrames: 'ducking.auto.attack', releaseFrames: 'ducking.auto.release' } as const satisfies Record<Field, string>;
-type Result = { key: string } & ({ phase: 'ready' | 'empty'; candidate: DialogueDuckingCandidate } | { phase: 'missing'; assetIds: string[] } | { phase: 'error' });
+type Result = { key: string } & ({ phase: 'ready' | 'empty'; candidate: DialogueDuckingCandidate } | { phase: 'missing'; assetIds: string[] } | { phase: 'error'; speedBlocked?: boolean });
 
 export interface ClipDialogueDuckingControlsProps {
   /** The saved background clip; analysis is bound to its saved position. */
@@ -46,9 +47,10 @@ export default function ClipDialogueDuckingControls({ clip, clips, tracks, timel
   const current = result?.key === key ? result : null;
   async function analyze(): Promise<void> {
     if (disabled || blockedReason || analyzing || !trackId) return;
-    const run = ++epoch.current, requests = dialogueWaveformRequests(clip, clips, trackId), reads: DialogueWaveformRead[] = [], missing: string[] = [];
+    const run = ++epoch.current, reads: DialogueWaveformRead[] = [], missing: string[] = [];
     setAnalyzing(true); setRequested(false);
     try {
+      const requests = dialogueWaveformRequests(clip, clips, trackId);
       for (const request of requests) {
         const response = await readWaveform(request);
         if (!mounted.current || run !== epoch.current) return;
@@ -60,8 +62,8 @@ export default function ClipDialogueDuckingControls({ clip, clips, tracks, timel
       if (missing.length) { setResult({ key, phase: 'missing', assetIds: missing }); return; }
       const candidate = dialogueDuckingCandidate(clip, clips, reads, parameters);
       setResult({ key, phase: candidate.envelope ? 'ready' : 'empty', candidate });
-    } catch {
-      if (mounted.current && run === epoch.current) setResult({ key, phase: 'error' });
+    } catch (error) {
+      if (mounted.current && run === epoch.current) setResult({key, phase: 'error', speedBlocked: isTimelineSpeedRenderError(error)});
     } finally {
       if (mounted.current && run === epoch.current) setAnalyzing(false);
     }
@@ -95,7 +97,7 @@ export default function ClipDialogueDuckingControls({ clip, clips, tracks, timel
         {!requested && <Button type="button" variant="ghost" size="sm" data-testid="dialogue-ducking-request" onClick={() => void request(current.assetIds)}>{t('ducking.auto.request')}</Button>}
       </p>}
       {!analyzing && current?.phase === 'empty' && <p className="input-hint" role="status" data-testid="dialogue-ducking-empty">{t('ducking.auto.empty')}</p>}
-      {!analyzing && current?.phase === 'error' && <p role="alert">{t('ducking.auto.error')}</p>}
+      {!analyzing && current?.phase === 'error' && <p role="alert">{t(current.speedBlocked ? 'timeline.speed.renderNotReady' : 'ducking.auto.error')}</p>}
       {!analyzing && current?.phase === 'ready' && <div data-testid="dialogue-ducking-candidate">
         <p className="input-hint" role="status">{t('ducking.auto.found', { speech: current.candidate.speechCount, regions: current.candidate.regions.length })}</p>
         {current.candidate.bridged > 0 && <p className="input-hint">{t('ducking.auto.bridged', { count: current.candidate.bridged })}</p>}

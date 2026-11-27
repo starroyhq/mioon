@@ -2,6 +2,7 @@ import {FORMAT3_RELEASE_MANIFEST} from './format3-manifest.ts';
 import {FORMAT4_INITIAL_HISTORY_MANIFEST} from './history-v11-manifest.ts';
 import {FORMAT4_MANIFEST_CHANGES, FORMAT5_MANIFEST_CHANGES} from './manifest.ts';
 import type {SchemaManifest} from './manifest-check.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './domains/sequence.ts';
 
 function patchedManifest(kind: 'project' | 'history', patch: SchemaManifest): SchemaManifest {
   const entries = new Map(FORMAT3_RELEASE_MANIFEST[kind].entries.map(entry => [entry.name, entry]));
@@ -12,12 +13,15 @@ function patchedManifest(kind: 'project' | 'history', patch: SchemaManifest): Sc
 const project4 = patchedManifest('project', FORMAT4_MANIFEST_CHANGES.project);
 const history4 = patchedManifest('history', FORMAT4_MANIFEST_CHANGES.history);
 const project5 = patchedManifest('project', FORMAT5_MANIFEST_CHANGES.project);
+// Format 6 changes the clip data grammar without any new SQLite objects.
+const project6 = Object.freeze({version: FORMAT6_PROJECT_SCHEMA_VERSION, entries: project5.entries});
 const history5 = patchedManifest('history', FORMAT5_MANIFEST_CHANGES.history);
 
 export function projectManifestForVersion(version: number): SchemaManifest | undefined {
   if (version === FORMAT3_RELEASE_MANIFEST.project.version) return FORMAT3_RELEASE_MANIFEST.project;
   if (version === project4.version) return project4;
   if (version === project5.version) return project5;
+  if (version === project6.version) return project6;
   return undefined;
 }
 

@@ -3,11 +3,18 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {copyFileSync} from 'node:fs';
+import {rm} from 'node:fs/promises';
 import {join} from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
+import {mkdtempPortable} from './helpers/temp-root.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createFormat5ExportTicket, assertFormat5ExportAdmissible} from '../packages/business/src/format5-timeline-export.ts';
-import {getFormat5TimelineIssue} from '../packages/contracts/src/project-format5.ts';
+import {getFormat5TimelineIssue, type Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import type {SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {adoptFormat5GeneratedVersionInside} from '../packages/business/src/format5-sequence-sync.ts';
 import {previewMioSequenceAction, commitMioSequenceAction} from '../packages/business/src/format5-mio-sequence.ts';
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
@@ -412,3 +419,107 @@ test('GE-a real worker publishes a synthetic version into the placeholder', asyn
 });
 
 
+test('format 6 adopts the first real Mock generation and explicitly follows a new version without losing timing', {timeout: 90_000}, async t => {
+  const dataDir = mkdtempPortable('mioon-format6-generate-');
+  const oldFlag = process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV = '1';
+  let server: Awaited<ReturnType<typeof startServer>> | undefined;
+  t.after(async () => {
+    try {await server?.close();}
+    finally {
+      if (oldFlag === undefined) delete process.env.MIOON_FORMAT6_DEV;
+      else process.env.MIOON_FORMAT6_DEV = oldFlag;
+      await rm(dataDir, {recursive: true, force: true});
+    }
+  });
+  const token = 'synthetic-format6-mock-generation';
+  const running = server = await startServer({dataDir, port: 0, token, localDraftChannel: 'development',
+    projectFormatForTest: undefined, comfyModule: 'skip'});
+  const request = async <T>(route: string, operation: string, input: Record<string, unknown>): Promise<T> => {
+    const response = await fetch(running.url + route, {method: 'POST', signal: AbortSignal.timeout(20_000),
+      headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input})});
+    const body = await response.json() as {ok: true; data: T} | {ok: false; error: {code: string}};
+    assert.ok(response.ok && body.ok, `${operation}: ${body.ok ? response.status : body.error.code}`);
+    return body.data;
+  };
+  const {id: projectId} = await request<{id: string}>('/api/rpc', 'project.create', {name: 'Synthetic format 6 generation'});
+  const path = projectRpcPath(projectId);
+  const rpc = <T>(operation: string, input: Record<string, unknown> = {}) => request<T>(path, operation, {projectId, ...input});
+  const apply = async (group: 'board' | 'timeline', action: Record<string, unknown>): Promise<SequenceEditEnvelope> => {
+    const plan = await rpc<{envelope: SequenceEditEnvelope; planDigest: string}>(`sequence.${group}.edit`, action);
+    const receipt = await rpc<{status: string}>('sequence.action.commit', {envelope: plan.envelope, expectedPlanDigest: plan.planDigest});
+    assert.equal(receipt.status, 'applied');
+    return plan.envelope;
+  };
+  type Job = {id: string; shotId: string; status: string; providerId: string; versionId: string | null};
+  type Shot = {id: string; revision: number; selectedVersionId: string | null};
+  type Version = {id: string; assetId: string; jobId: string};
+  const read = () => rpc<{projectFormatVersion: number; timeline: Format5Timeline & {capabilities: {speed: boolean}};
+    jobs: Job[]; shots: Shot[]; versions: Version[]}>('project.get');
+  const generated = async (findJob: (job: Job) => boolean) => {
+    const deadline = Date.now() + 35_000;
+    while (Date.now() < deadline) {
+      const snapshot = await read();
+      const job = snapshot.jobs.find(findJob);
+      assert.ok(!job || !['failed', 'cancelled', 'unknown'].includes(job.status), `Mock job state ${job?.status}`);
+      if (job?.status === 'succeeded') {
+        const version = snapshot.versions.find(version => version.id === job.versionId);
+        assert.ok(version);
+        assert.equal(version.jobId, job.id);
+        assert.equal(job.providerId, 'mock');
+        return {snapshot, job, version};
+      }
+      await delay(100);
+    }
+    assert.fail('Mock generation did not finish');
+  };
+  assert.equal((await read()).projectFormatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+  await apply('board', {kind: 'board-root-create', name: 'Synthetic Mock sequence', position: {x: 0, y: 0}});
+  const plan = await apply('timeline', {kind: 'generate', placement: {kind: 'main', beforeClipId: null},
+    title: 'Synthetic Mock clip', providerId: 'mock', model: 'mock-motion-v1', region: 'local', prompt: 'Synthetic pattern',
+    aspectRatio: '9:16', duration: 2, parameters: {scenario: 'success'}});
+  const allocated = plan.allocation.clips[0]; assert.ok(allocated);
+  const {clipId, nodeId: shotId} = allocated;
+  const first = await generated(job => job.shotId === shotId);
+  const ready = first.snapshot.timeline.clips.find(clip => clip.id === clipId);
+  const shot = first.snapshot.shots.find(item => item.id === shotId);
+  assert.ok(ready && shot);
+  assert.equal(first.snapshot.timeline.capabilities.speed, true);
+  assert.equal(ready.sourceState, 'ready');
+  assert.equal(ready.assetId, first.version.assetId);
+  assert.equal(ready.versionId, first.version.id);
+  assert.equal(ready.jobId, first.job.id);
+  assert.equal(shot.selectedVersionId, first.version.id);
+  assert.equal(ready.trackId, first.snapshot.timeline.mainTrack.trackId);
+  assert.ok(ready.sequenceSource?.kind === 'shot');
+  assert.equal(ready.sequenceSource.versionMode, 'follow');
+
+  await apply('timeline', {kind: 'clip-speed', clipId, setting: {
+    speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}}, direction: 'forward', pitchShift: false, interpolation: 'off',
+  }});
+  const timed = (await read()).timeline.clips.find(clip => clip.id === clipId);
+  assert.equal(timed?.timing?.profile, 'timeline-speed-v1');
+  assert.equal(timed.durationFrames, 30);
+  const next = await request<{id: string}>(path, 'generation.submit', {shotId, expectedRevision: shot.revision,
+    requestId: randomUUID(), providerId: 'mock', model: 'mock-motion-v1', parameters: {scenario: 'success'}});
+  const second = await generated(job => job.id === next.id);
+  assert.equal(second.snapshot.shots.find(item => item.id === shotId)?.selectedVersionId, first.version.id);
+  assert.deepEqual(second.snapshot.timeline.clips.find(clip => clip.id === clipId), timed);
+  assert.notEqual(second.version.id, first.version.id);
+
+  const follow = await rpc<{envelope: SequenceEditEnvelope; planDigest: string}>('sequence.preview', {requestId: randomUUID(),
+    intents: [{side: 'board', operation: {kind: 'board-version', nodeId: shotId, version: {id: second.version.id, sourceFrames: null}}}]});
+  const receipt = await rpc<{status: string}>('sequence.commit', {envelope: follow.envelope, expectedPlanDigest: follow.planDigest});
+  assert.equal(receipt.status, 'applied');
+  const switched = await read();
+  assert.equal(switched.shots.find(item => item.id === shotId)?.selectedVersionId, second.version.id);
+  const replaced = switched.timeline.clips.find(clip => clip.id === clipId);
+  assert.ok(replaced);
+  assert.equal(replaced.assetId, second.version.assetId);
+  assert.equal(replaced.versionId, second.version.id);
+  assert.equal(replaced.sourceState, 'ready');
+  assert.equal(replaced.durationFrames, timed.durationFrames);
+  assert.deepEqual(replaced.timing, timed.timing);
+  assert.equal(replaced.sourceInFrame, timed.sourceInFrame);
+  assert.equal(replaced.sourceSpanFrames, timed.sourceSpanFrames);
+});

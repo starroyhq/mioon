@@ -1,5 +1,5 @@
-/** Operations which append an editable snapshot, not every client mutation.
- * Writers use this literal type and readers share this exact vocabulary. */
+/** Operations which append a legacy editable snapshot. The native sequence
+ * history has its own shared vocabulary in the sequence edit contract. */
 export const TIMELINE_HISTORY_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update',
   'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.replaceSource',

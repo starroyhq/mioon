@@ -2,6 +2,11 @@ import type {DatabaseSync} from 'node:sqlite';
 
 /** Format 5 is admitted explicitly while released formats retain their DDL. */
 export const FORMAT5_PROJECT_SCHEMA_VERSION = 5;
+/** Format 6 keeps the same tables and admits timing in native clip data. */
+export const FORMAT6_PROJECT_SCHEMA_VERSION = 6;
+export function isSequenceProjectFormat(version: unknown): version is typeof FORMAT5_PROJECT_SCHEMA_VERSION | typeof FORMAT6_PROJECT_SCHEMA_VERSION {
+  return version === FORMAT5_PROJECT_SCHEMA_VERSION || version === FORMAT6_PROJECT_SCHEMA_VERSION;
+}
 export const FORMAT5_HISTORY_SCHEMA_VERSION = 13;
 export const FORMAT5_CONTENT_TABLES_ADDED = ['shot_version_adoptions', 'sequence_sync_state', 'timeline_clips', 'timeline_cues'] as const;
 /** Entity rows advance the project content stamp once per write transaction from

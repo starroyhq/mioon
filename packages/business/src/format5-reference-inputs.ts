@@ -46,7 +46,7 @@ import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts
 import {isSeedance25Binding, isWan30Binding, videoInputProfile} from '../../contracts/src/video-providers.ts';
 import type {WanVideoInput} from '../../contracts/src/wan-video.ts';
 import type {ProjectStore} from './project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5TimelineState} from './project-file/format5-timeline.ts';
 import {canvasActiveEdgeCondition, isCanvasArchived} from './canvas-active.ts';
@@ -64,7 +64,7 @@ const isUuid = (value: unknown): value is string => typeof value === 'string' &&
 const now = (): string => new Date().toISOString();
 
 export function format5ReferenceInputs(store: ProjectStore): boolean {
-  return Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  return isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 }
 
 /** Every reference refusal gets a stable reason for the UI. The map keeps the
