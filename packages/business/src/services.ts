@@ -166,7 +166,7 @@ export interface CreateServicesOptions {
  frameOptions?: Parameters<typeof createFrameServices>[1];
  sceneOptions?: Parameters<typeof createSceneServices>[1];
  exportOptions?: Omit<NonNullable<Parameters<typeof createTimelineExportAdmissionServices>[1]>, 'reverseProxy' | 'opticalProxy'>;
- /** Project host's SP-P cache port. Never populated from an export request. */
+ /** Trusted fallback for service fixtures without the project processing owner. */
  reverseProxy?: TimelineReverseProxyPort;
  agentAuthorizations?: AgentAuthorizations | null;
  readRecentOpened?: ()=>Readonly<Record<string,string>>;
@@ -301,7 +301,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...processingOptions, ...(ownerSignal ? {ownerSignal} : {}),
   beforeEffect: () => {assertApplicationMutationAllowed(); assertMutationAllowed?.();},
  }) : undefined;
- const reverseProxy = injectedReverseProxy ?? processing?.reverseProxy;
+ const reverseProxy = processing?.reverseProxy ?? injectedReverseProxy;
  const opticalProxy = processing?.opticalProxy;
  const editorExportOptions={outsidePaths:applicationPorts.outsidePaths,receipts:applicationPorts.receipts,signal:ownerSignal,
   assertMutationAllowed:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}};

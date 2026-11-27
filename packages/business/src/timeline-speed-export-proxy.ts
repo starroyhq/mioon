@@ -2,62 +2,15 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import {
   SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES, type TimelineSpeedExportProxy,
 } from '../../contracts/src/timeline-speed-export.ts';
-import {timeMapSourceWindowForOutput, type TimeMapSourceWindow, type TimeMapTimebase} from '../../contracts/src/timeline-time-map.ts';
+import {timeMapSourceWindowForOutput, type TimeMapSourceWindow} from '../../contracts/src/timeline-time-map.ts';
 import type {SpeedExportLayout, SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
 import {speedExportMappingError} from './timeline-speed-export-plan.ts';
 import {timelineReverseAudioClock} from './timeline-speed-export-audio.ts';
 import {checkMediaEffect} from './media-runtime.ts';
 import {hasUnconfirmedMediaProcesses, waitForMediaProcesses} from './media-processes.ts';
+import type {TimelineReverseProxyLease, TimelineReverseProxyPort, TimelineReverseProxyRequest} from './timeline-processing/reverse-lease.ts';
 
-type ClockRange = {readonly fromSample: number; readonly toSample: number};
-export interface TimelineReverseProxyRequest {
-  readonly projectId: string;
-  readonly timelineId: string;
-  readonly clipId: string;
-  readonly assetId: string;
-  readonly sourceSha256: string;
-  readonly mapHash: string;
-  readonly media: 'audio' | 'video';
-  readonly sourceFps: TimeMapTimebase;
-  /** Visible demand used to locate the stable task. */
-  readonly sourceWindow: TimeMapSourceWindow;
-  /** Additional coverage required by the actual export, including transitions. */
-  readonly pictureWindows: readonly TimeMapSourceWindow[];
-  readonly needsAudio: boolean;
-  readonly audioWindow: ClockRange | null;
-}
-
-export interface TimelineReverseProxyLease {
-  readonly proof: TimelineSpeedExportProxy;
-  readonly video?: {
-    readonly file: string;
-    readonly firstSourceOrdinal: number;
-    readonly frameCount: number;
-    readonly storage: 'matroska' | 'raw';
-  };
-  readonly audio?: {
-    readonly file: string;
-    /** Exact endpoints on SP-E's 48 kHz source clock, before reversal. */
-    readonly clock: ClockRange;
-    readonly raw?: {readonly sampleRate: number; readonly channels: number; readonly layout: string};
-  };
-  /** Recheck the pinned entry and exact file identities at each use. */
-  verify(): boolean;
-  release(): void;
-}
-
-export interface TimelineReverseProxyPort {
-  /** Find the existing SP-P task for this demand and expose a verified,
-   * export-quality digest only if its sidecars cover the requested windows. */
-  lookup(request: TimelineReverseProxyRequest): {
-    readonly taskId: string;
-    readonly readySha256?: string;
-  } | null;
-  /** Reopen by frozen identity, verify the clock, index and payload hashes,
-   * and pin the cache entry before returning any private file or ordinal. */
-  acquire(request: TimelineReverseProxyRequest, proof: TimelineSpeedExportProxy,
-    options: {signal?: AbortSignal; beforeEffect?: () => void}): Promise<TimelineReverseProxyLease | null>;
-}
+export type {TimelineReverseProxyLease, TimelineReverseProxyPort, TimelineReverseProxyRequest} from './timeline-processing/reverse-lease.ts';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const sha256 = /^[0-9a-f]{64}$/u;

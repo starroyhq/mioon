@@ -5,12 +5,13 @@ import path from 'node:path';
 import test from 'node:test';
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {
-  compileFreezeTimeMap, compileTimeMap, initialTimeMap, instantiateSpeedPreset, splitTimeMap, timeMapRootInfo, timeMapTailInverse, trimTimeMap,
+  compileFreezeTimeMap, compileTimeMap, initialTimeMap, instantiateSpeedPreset, splitTimeMap, timeMapRootInfo, timeMapSourceRangeForEdit,
+  timeMapTailInverse, trimTimeMap,
   type CompiledTimeMap, type TimeMapResult, type TimeMapSpeed,
 } from '../packages/contracts/src/timeline-time-map.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {createSpeedAudioSourceClock} from '../packages/business/src/timeline-speed-export-audio-clock.ts';
-import {prepareTimelineSpeedAudio, timelineSpeedAudioMode, type TimelineSpeedAudioSource}
+import {prepareTimelineSpeedAudio, timelineReverseAudioClock, timelineSpeedAudioMode, type TimelineSpeedAudioSource}
   from '../packages/business/src/timeline-speed-export-audio.ts';
 
 const fps = {fpsNumerator: 30, fpsDenominator: 1};
@@ -196,6 +197,25 @@ test('reverse playback consumes the trusted reverse sample clock and keeps the c
   assert.ok(Math.abs(pcm.readFloatLE(0) - (0.1 + (frames * samplesPerFrame - 1) / 48000)) < 1e-6);
   assert.ok(pcm.readFloatLE(100 * 8) < pcm.readFloatLE(0));
   assertSilentFrom(pcm, 1440);
+});
+
+test('reverse audio after a fractional split reads only the admitted PCM grid and keeps its motion tail', async t => {
+  const frames = 8;
+  const remote = await fixture(t, frames, '0.1+n/48000|0.25', true);
+  const original = mapping(constant(10, 9), frames);
+  const {right} = unwrap(splitTimeMap(original.plan, 1));
+  const sourceRange = unwrap(timeMapSourceRangeForEdit(right));
+  const {timing: reverseTiming} = mapping(constant(1, 10), frames, true, 'reverse');
+  const basis = {...reverseTiming.basis, sourceRange};
+  const plan = initialTimeMap(unwrap(compileTimeMap(basis)), 'reverse');
+  const timing = {...reverseTiming, basis, outputWindow: plan.outputWindow};
+  assert.deepEqual(timelineReverseAudioClock(plan, timing), {fromSample: 1778, toSample: 12800});
+  const pcm = await remote.render(timing, plan);
+  assert.ok(Math.abs(pcm.readFloatLE(0) - (0.1 + 12799 / 48000)) < 1e-6);
+  // The last motion sample is at source 1777.8. Available PCM begins at
+  // ceil(1600 * 10 / 9) = 1778, so the cubic taps clamp to that sample.
+  assert.ok(Math.abs(pcm.readFloatLE(110222 * 8) - (0.1 + 1778 / 48000)) < 1e-6);
+  assertSilentFrom(pcm, 110223);
 });
 
 test('raw reverse PCM uses its verified native sample rate and layout', async t => {
