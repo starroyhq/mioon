@@ -1,3 +1,6 @@
+import {PREMIERE_EXPORT_NATIVE_CHANNEL} from '../packages/contracts/src/premiere-export-native.ts';
+import {createPremiereExportHost} from '../apps/desktop/src/premiere-export-host.ts';
+import {premiereNativeInvalid, premiereNativeUnavailable} from '../packages/contracts/src/project-entry-premiere-bridge.ts';
 import {FCP_EXPORT_NATIVE_CHANNEL} from '../packages/contracts/src/fcp-export-native.ts';
 import {createFcpExportHost} from '../apps/desktop/src/fcp-export-host.ts';
 import {fcpNativeInvalid, fcpNativeUnavailable} from '../packages/contracts/src/project-entry-fcp-bridge.ts';
@@ -249,6 +252,8 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     }
   }
   const context = vm.createContext({ FCP_EXPORT_NATIVE_CHANNEL, createFcpExportHost, fcpNativeInvalid, fcpNativeUnavailable,
+    PREMIERE_EXPORT_NATIVE_CHANNEL, createPremiereExportHost, premiereNativeInvalid, premiereNativeUnavailable,
+    premiereInstalled: async () => false, openInPremiere: async () => false,
     finalCutInstalled: async () => false, openInFinalCut: async () => false, createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT:pendingOpenChannel, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, argv: options.argv, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
@@ -315,7 +320,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     CANVAS_CLIPBOARD_CHANNEL, readNativeCanvasClipboard, clipboard: {read: () => assert.fail('Window lifecycle must not read the clipboard')},
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
-      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL, PREMIERE_EXPORT_NATIVE_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -338,7 +343,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   options.beforeReady?.(app);
   assert.deepEqual([...r.ipcHandlers!.keys()].sort(),
-    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL].sort());
+    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL, PREMIERE_EXPORT_NATIVE_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true; trayHost?.dispose()'); options.release?.();

@@ -16,7 +16,7 @@ import {timelineRenderDeliveryFields} from '../../contracts/src/timeline-deliver
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {exportControlSchemas,exportActivitySchema,exportOutputSchema} from '../../contracts/src/export-controls.ts';
 import {clipAudioExportRecordSchema} from '../../contracts/src/clip-audio-export.ts';
-import {isFcpExportTaskRecord} from './fcpxml-export-task.ts';
+import {isEditorExportTaskRecord} from './fcpxml-export-task.ts';
 
 type Stage='preparing'|'encoding'|'finalizing';
 interface Activity {stage:Stage;started:number;progress:number|null;abort():void}
@@ -41,7 +41,7 @@ export function createExportControlServices(store:Store,{signal}:{signal?:AbortS
   function read(projectId:string,exportId:string){
     checkpoint();const raw=store.db.prepare('SELECT data FROM exports WHERE id=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304').get(exportId,projectId);
     let value:unknown;try{value=raw&&typeof raw.data==='string'?JSON.parse(raw.data):null;}catch{value=null;}
-    if(!row(value)||value.id!==exportId||value.projectId!==projectId||typeof value.status!=='string'||isFcpExportTaskRecord(value))throw new AppError('NOT_FOUND','导出任务不存在',404);
+    if(!row(value)||value.id!==exportId||value.projectId!==projectId||typeof value.status!=='string'||isEditorExportTaskRecord(value))throw new AppError('NOT_FOUND','导出任务不存在',404);
     // «Save clip sound» tasks share the exports channel; their row is validated
     // by their own closed schema so cancellation/activity never touch timeline
     // rows or storyboard snapshots.

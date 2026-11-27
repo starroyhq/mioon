@@ -7,4 +7,5 @@ interface Window {
   readonly __mioonProjectEntries?: import('../../../packages/contracts/src/project-entry-desktop.ts').ProjectEntriesDesktopBridge;
   readonly __mioonAssetMediaNative?: import('./asset-relink-preload.ts').NativeAssetMediaBridge;
   readonly __mioonFcpExport?: import('../../../packages/contracts/src/fcp-export-native.ts').FcpExportNativeBridge;
+  readonly __mioonPremiereExport?: import('../../../packages/contracts/src/premiere-export-native.ts').PremiereExportNativeBridge;
 }

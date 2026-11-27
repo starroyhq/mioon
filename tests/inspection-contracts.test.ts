@@ -13,6 +13,8 @@ import {ToolAnnotationsSchema} from '@modelcontextprotocol/sdk/types.js';
 import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,COMFY_IMAGE_OPTIONS,
   operationEffect, assertOperationEffectCoverage, effectAnnotations, parse} from '@mioon/contracts';
 import {schemas as clientSchemas, operationDefinition, modelOperationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
+import {fcpExportSchemas} from '../packages/contracts/src/fcp-export.ts';
+import {premiereExportPreviewOutputSchema, premiereExportSchemas} from '../packages/contracts/src/premiere-export.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const inspections = ['project.inspect','asset.inspect','shot.inspect','timeline.inspect'] as const;
@@ -62,6 +64,22 @@ test('inspection arguments are strict and authority-free; RPC project scope is s
   }
 });
 
+test('Premiere RPC shares the FCP contract and adds subtitles to the preview loss list', () => {
+  assert.equal(premiereExportSchemas['export.premiere.preview'].input, fcpExportSchemas['export.fcpxml.preview'].input);
+  for (const suffix of ['start', 'get', 'cancel'] as const) {
+    assert.equal(premiereExportSchemas[`export.premiere.${suffix}`], fcpExportSchemas[`export.fcpxml.${suffix}`]);
+  }
+  const preview = {
+    timeline: {width: 1080, height: 1920, fps: 30, durationFrames: 30, clipCount: 1},
+    defaultName: 'Film', projectDestination: {displayPath: '~/synthetic/Exports'}, mediaFiles: 0, mediaBytes: 0,
+    missing: [{code: 'SUBTITLES', clips: [{id: 'caption', name: 'Hello'}]}], approximations: [],
+  };
+  assert.deepEqual(premiereExportPreviewOutputSchema.parse(preview), preview);
+  assert.equal(fcpExportSchemas['export.fcpxml.preview'].output.safeParse(preview).success, false);
+  assert.equal(premiereExportPreviewOutputSchema.safeParse({...preview, missing: [], approximations: preview.missing}).success, false);
+  assert.equal(premiereExportPreviewOutputSchema.safeParse({...preview, internalFile: '/private/synthetic'}).success, false);
+});
+
 test('every shared operation has a complete explicit frozen effect descriptor; unknown operations fail closed', () => {
   assert.deepEqual(Object.keys(operationEffects).sort(), Object.keys(schemas).sort());
   assert.doesNotThrow(() => assertOperationEffectCoverage(schemas));
@@ -75,7 +93,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
 
   for (const operation of ['project.backup.list', 'project.backup.inspect', 'project.backup.status', 'project.version.list', 'project.version.preview']) readOnly.add(operation);
   for (const operation of ['timeline.processing.list', 'timeline.processing.inspect', 'timeline.processing.wait', 'timeline.processing.cache.get']) readOnly.add(operation);
-  for (const operation of ['export.fcpxml.preview', 'export.fcpxml.get']) readOnly.add(operation);
+  for (const operation of ['export.fcpxml.preview', 'export.fcpxml.get', 'export.premiere.preview', 'export.premiere.get']) readOnly.add(operation);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes!.length > 20, true);
@@ -128,7 +146,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
   }
   assert.equal(operationEffects['export.cancel'].fileWrite, true, 'cancellation cleans only its owned part and unpublished output');
   assert.equal(operationEffects['export.cancel'].localProcess, true, 'cancellation terminates only its owned media process');
-  for (const operation of ['export.fcpxml.start', 'export.fcpxml.cancel'] as const) {
+  for (const operation of ['export.fcpxml.start', 'export.fcpxml.cancel', 'export.premiere.start', 'export.premiere.cancel'] as const) {
     const effect = operationEffects[operation];
     assert.equal(effect.databaseWrite && effect.fileWrite && effect.idempotent, true, operation);
     assert.equal(effect.localProcess || effect.externalIO || effect.paidGeneration, false, operation);

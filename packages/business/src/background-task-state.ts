@@ -2,7 +2,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {lstatSync, realpathSync} from 'node:fs';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {parseVideoBinding} from '../../contracts/src/video-providers.ts';
-import {FCPXML_EXPORT_TASK_KIND} from '../../contracts/src/project-registry.ts';
+import {editorExportTaskKind, MATCHED_EDITOR_EXPORT_TASK_SQL} from './fcpxml-export-task.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {agentTaskJobBinding} from './agent/task-effects-v2.ts';
@@ -151,8 +151,9 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
     if (row.projectId !== store.projectId || (ref.kind === 'job' || ref.kind === 'export') && (row.jsonId !== row.id || row.jsonProjectId !== row.projectId))
       return result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
     const state = String(row.status ?? row.state), errorCode = code(row.errorCode, 'BACKGROUND_TASK_REQUIRES_ATTENTION');
-    if (ref.kind === 'export' && (row.mode === FCPXML_EXPORT_TASK_KIND || row.kind === FCPXML_EXPORT_TASK_KIND)) {
-      if (row.mode !== FCPXML_EXPORT_TASK_KIND || row.kind !== FCPXML_EXPORT_TASK_KIND || revision(row.revision) === 0)
+    const editorKind = ref.kind === 'export' ? editorExportTaskKind(row) : undefined;
+    if (editorKind) {
+      if (row.mode !== editorKind || row.kind !== editorKind || revision(row.revision) === 0)
         return result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
       if (state === 'running') return result('running', true);
       if (['done', 'failed', 'cancelled'].includes(state)) return result('terminal', false);
@@ -274,7 +275,7 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
       (json_extract(data,'$.status')='cancelled' AND json_extract(data,'$.cancelScope')='local_only' AND
         (json_extract(data,'$.providerJobId') IS NOT NULL OR COALESCE(json_extract(data,'$.submissionCount'),0)>0)) ELSE 1 END`
       : kind === 'export' ? `CASE WHEN json_valid(data) THEN CASE
-        WHEN json_extract(data,'$.mode') IS '${FCPXML_EXPORT_TASK_KIND}' AND json_extract(data,'$.kind') IS '${FCPXML_EXPORT_TASK_KIND}'
+        WHEN ${MATCHED_EDITOR_EXPORT_TASK_SQL}
         THEN COALESCE(json_extract(data,'$.status'),'invalid') NOT IN ('done','failed','cancelled')
         ELSE COALESCE(json_extract(data,'$.status'),'invalid') NOT IN ('succeeded','failed','cancelled') END ELSE 1 END`
         : kind === 'edit_task' ? "status NOT IN ('applied','not_applied')"

@@ -3,6 +3,7 @@ import {exportControlSchemas,exportControlDescriptions} from './export-controls.
 import {clipAudioExportSchemas,clipAudioExportDescriptions} from './clip-audio-export.ts';
 import {timelineProcessingSchemas,timelineProcessingDescriptions} from './timeline-processing.ts';
 import {fcpExportSchemas} from './fcp-export.ts';
+import {premiereExportSchemas} from './premiere-export.ts';
 export * from './export-controls.ts';
 export * from './clip-audio-export.ts';
 export * from './timeline-processing.ts';
@@ -167,6 +168,10 @@ export const schemas={
 'export.fcpxml.start':fcpExportSchemas['export.fcpxml.start'].input,
 'export.fcpxml.get':fcpExportSchemas['export.fcpxml.get'].input,
 'export.fcpxml.cancel':fcpExportSchemas['export.fcpxml.cancel'].input,
+'export.premiere.preview':premiereExportSchemas['export.premiere.preview'].input,
+'export.premiere.start':premiereExportSchemas['export.premiere.start'].input,
+'export.premiere.get':premiereExportSchemas['export.premiere.get'].input,
+'export.premiere.cancel':premiereExportSchemas['export.premiere.cancel'].input,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
 ...projectLifecycleSchemas,
@@ -279,6 +284,10 @@ export const descriptions: Record<string, string> = {
  'export.fcpxml.start':'后台导出格式 5 项目到 FCPXML 1.13 包。使用稳定 requestId。默认写入项目的导出文件夹，其他位置需先在桌面版选择。',
  'export.fcpxml.get':'只读查询一次 Final Cut Pro 导出的进度、结果或失败原因。',
  'export.fcpxml.cancel':'取消一项 Final Cut Pro 导出并清理未完成的包，已结束时返回原状态。',
+ 'export.premiere.preview':'只读预览格式 5 项目的 Premiere Pro 导出清单、默认位置和去重后的素材大小。',
+ 'export.premiere.start':'后台导出格式 5 项目到 Premiere Pro 可导入的 Final Cut Pro 7 XML。使用稳定 requestId。默认写入项目的导出文件夹，其他位置需先在桌面版选择。',
+ 'export.premiere.get':'只读查询一次 Premiere Pro 导出的进度、结果或失败原因。',
+ 'export.premiere.cancel':'取消一项 Premiere Pro 导出并清理未完成的文件夹，已结束时返回原状态。',
  'workspace.settings.get':'读取旧版工作区设置客户端的兼容响应',
  'workspace.settings.set':'推进旧版工作区设置的修订号',
  ...taskDispositionDescriptions,

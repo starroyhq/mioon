@@ -40,6 +40,14 @@ export const fcpCompletedBundleControlResultSchema = z.object({
   path: fcpDirectory.refine(value => value.endsWith('.fcpxmld')),
   ...nativeFcpFileIdentity,
 }).strict().nullable();
+export const premiereCompletedBundleControlResultSchema = z.object({
+  path: fcpDirectory,
+  ...nativeFcpFileIdentity,
+}).strict().nullable();
+export const premiereCompletedXmlControlResultSchema = z.object({
+  path: fcpDirectory.refine(value => value.endsWith('.xml')),
+  ...nativeFcpFileIdentity,
+}).strict().nullable();
 
 /** Absolute file paths travel on the captured main-to-utility port only. */
 export interface NativeFcpExportControlPort {
@@ -47,6 +55,11 @@ export interface NativeFcpExportControlPort {
     Promise<z.infer<typeof fcpChooseDestinationControlResultSchema>>;
   completedBundle(input: z.infer<typeof fcpCompletedBundleControlInputSchema>, options?: {signal?: AbortSignal}):
     Promise<z.infer<typeof fcpCompletedBundleControlResultSchema>>;
+}
+
+export interface NativePremiereExportControlPort extends NativeFcpExportControlPort {
+  completedXml(input: z.infer<typeof fcpCompletedBundleControlInputSchema>, options?: {signal?: AbortSignal}):
+    Promise<z.infer<typeof premiereCompletedXmlControlResultSchema>>;
 }
 
 const commands=[
@@ -74,10 +87,13 @@ const commands=[
  z.object({operation:z.literal('mediaRelinkDiscard'),input:nativeRelinkDiscardInputSchema}).strict(),
  z.object({operation:z.literal('fcpChooseDestination'),input:fcpChooseDestinationControlInputSchema}).strict(),
  z.object({operation:z.literal('fcpCompletedBundle'),input:fcpCompletedBundleControlInputSchema}).strict(),
+ z.object({operation:z.literal('premiereChooseDestination'),input:fcpChooseDestinationControlInputSchema}).strict(),
+ z.object({operation:z.literal('premiereCompletedBundle'),input:fcpCompletedBundleControlInputSchema}).strict(),
+ z.object({operation:z.literal('premiereCompletedXml'),input:fcpCompletedBundleControlInputSchema}).strict(),
 ] as const;
 export const projectEntryControlCommandSchema=z.discriminatedUnion('operation',commands);
 export type ProjectEntryControlCommand=z.infer<typeof projectEntryControlCommandSchema>;
-export interface ProjectEntryControlResults{capabilities:ProjectDesktopCapabilities;listRecent:ProjectEntriesResponse;updateActivity:DesktopUpdateActivity;prepareAcquire:RecentProject;create:RecentProject;openPath:ProjectEntryWindow;acquire:ProjectEntryWindow;markOpened:true;release:true;inspectCopy:z.infer<typeof projectCopySourceSchema>;observeSource:ProjectEntrySourceObservation;observeFormat:ProjectFormatSource;readOnlyFormat:ProjectFormatReadOnlyView;adoptCopy:{copy:ProjectCopyResponse;window:ProjectEntryWindow};saveAs:{copy:ProjectCopyResponse;window:ProjectEntryWindow};duplicate:ProjectCopyResponse;copyTo:ProjectCopyResponse;instantiateTemplate:ProjectCopyResponse;mediaRelinkCandidate:NativeRelinkCandidate;mediaRelinkPreview:NativeRelinkPreview;mediaRelinkApply:NativeRelinkApplyResult;mediaRelinkDiscard:true;fcpChooseDestination:Awaited<ReturnType<NativeFcpExportControlPort['chooseDestination']>>;fcpCompletedBundle:Awaited<ReturnType<NativeFcpExportControlPort['completedBundle']>>}
+export interface ProjectEntryControlResults{capabilities:ProjectDesktopCapabilities;listRecent:ProjectEntriesResponse;updateActivity:DesktopUpdateActivity;prepareAcquire:RecentProject;create:RecentProject;openPath:ProjectEntryWindow;acquire:ProjectEntryWindow;markOpened:true;release:true;inspectCopy:z.infer<typeof projectCopySourceSchema>;observeSource:ProjectEntrySourceObservation;observeFormat:ProjectFormatSource;readOnlyFormat:ProjectFormatReadOnlyView;adoptCopy:{copy:ProjectCopyResponse;window:ProjectEntryWindow};saveAs:{copy:ProjectCopyResponse;window:ProjectEntryWindow};duplicate:ProjectCopyResponse;copyTo:ProjectCopyResponse;instantiateTemplate:ProjectCopyResponse;mediaRelinkCandidate:NativeRelinkCandidate;mediaRelinkPreview:NativeRelinkPreview;mediaRelinkApply:NativeRelinkApplyResult;mediaRelinkDiscard:true;fcpChooseDestination:Awaited<ReturnType<NativeFcpExportControlPort['chooseDestination']>>;fcpCompletedBundle:Awaited<ReturnType<NativeFcpExportControlPort['completedBundle']>>;premiereChooseDestination:Awaited<ReturnType<NativePremiereExportControlPort['chooseDestination']>>;premiereCompletedBundle:Awaited<ReturnType<NativePremiereExportControlPort['completedBundle']>>;premiereCompletedXml:Awaited<ReturnType<NativePremiereExportControlPort['completedXml']>>}
 export const projectEntryControlRequestSchema=z.object({type:z.literal('project-entry-control-request'),version:z.literal(1),backendId:id,requestId:id,deadline:z.number().int().positive(),command:projectEntryControlCommandSchema}).strict();
 export const projectEntryControlCancelSchema=z.object({type:z.literal('project-entry-control-cancel'),version:z.literal(1),backendId:id,requestId:id}).strict();
 /** Main-to-utility cleanup only; never a renderer action or queued business request. */
@@ -104,6 +120,13 @@ export function parseProjectEntryControlResult(command:ProjectEntryControlComman
    return result;
   }
   case 'fcpCompletedBundle':return fcpCompletedBundleControlResultSchema.parse(value);
+  case 'premiereChooseDestination':{
+   const result=fcpChooseDestinationControlResultSchema.parse(value);
+   if(result.token!==command.input.token)throw new TypeError('Premiere destination token mismatch');
+   return result;
+  }
+  case 'premiereCompletedBundle':return premiereCompletedBundleControlResultSchema.parse(value);
+  case 'premiereCompletedXml':return premiereCompletedXmlControlResultSchema.parse(value);
   case 'capabilities':return projectDesktopCapabilitiesSchema.parse(value);
   case 'listRecent':return projectEntriesResponseSchema.parse(value);
   case 'updateActivity':return desktopUpdateActivitySchema.parse(value);

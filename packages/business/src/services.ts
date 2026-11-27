@@ -1,5 +1,6 @@
 import {createFcpExportServices} from './fcp-export.ts';
-import {discloseFcpExportTask} from './fcpxml-export-task.ts';
+import {createPremiereExportServices} from './premiere-export.ts';
+import {discloseEditorExportTask} from './fcpxml-export-task.ts';
 import type {AppOperationReceiptStore} from './app-db/stores.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {createProjectBackgroundState} from './background-task-state.ts';
@@ -185,6 +186,7 @@ export interface OrdinaryServices {
  readonly timelineProcessingEnabled: boolean;
  readonly timelineProcessing?: Pick<ReturnType<typeof createTimelineProcessingService>, 'preview' | 'reverseProxy'>;
  fcpExport: ReturnType<typeof createFcpExportServices>;
+ premiereExport: ReturnType<typeof createPremiereExportServices>;
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
@@ -299,9 +301,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }) : undefined;
  const reverseProxy = processing?.reverseProxy ?? injectedReverseProxy;
  const opticalProxy = processing?.opticalProxy;
- const fcpExport=createFcpExportServices(store,{outsidePaths:applicationPorts.outsidePaths,receipts:applicationPorts.receipts,signal:ownerSignal,
-  assertMutationAllowed:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}});
- if(!deferBackgroundRecovery)fcpExport.recover();
+ const editorExportOptions={outsidePaths:applicationPorts.outsidePaths,receipts:applicationPorts.receipts,signal:ownerSignal,
+  assertMutationAllowed:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}};
+ const fcpExport=createFcpExportServices(store,editorExportOptions);
+ const premiereExport=createPremiereExportServices(store,editorExportOptions);
+ const editorExports=[fcpExport,premiereExport];
+ const recoverEditorExports=():void=>{for(const exporter of editorExports)exporter.recover();};
+ if(!deferBackgroundRecovery)recoverEditorExports();
  const configurationHandlers={
   'workspace.settings.get':()=>configuration.get(),
   'workspace.settings.set':(input:never)=>{assertApplicationMutationAllowed();return configuration.set(input);},
@@ -822,7 +828,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Registered after images: finished variant images become subject versions in
  // the image service's publishing transaction.
  const subjectVariants=createSubjectVariantServices(store,{deferRecovery:deferBackgroundRecovery,mockAllowed});
- const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();processing?.activate();fcpExport.recover();backgroundTasks.refresh();};
+ const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();processing?.activate();recoverEditorExports();backgroundTasks.refresh();};
  const previs=createPrevisServices(store,{now});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
@@ -846,7 +852,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Retain the source row identity when disclosing exports; a decoded body
  // must not borrow another export's valid request receipt. No write/normalization.
  const discloseExport=(row:ServiceRow,id:string,projectId?:string):ServiceRow=>
-  discloseFcpExportTask(row,{id,projectId})??subjectDisclosure('exports',row,projectId,id);
+  discloseEditorExportTask(row,{id,projectId})??subjectDisclosure('exports',row,projectId,id);
  const exportValues=(projectId: string): ServiceRow[]=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
   .map(row=>discloseExport(JSON.parse(String(row.data)) as ServiceRow,String(row.id),String(row.projectId)));
  const handlers: ServiceHandlers={
@@ -883,6 +889,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'export.fcpxml.start':fcpExport.start,
   'export.fcpxml.get':fcpExport.get,
   'export.fcpxml.cancel':fcpExport.cancel,
+  'export.premiere.preview':(input:never,context?:ServiceHandlerContext)=>premiereExport.preview(input,context?.signal??undefined),
+  'export.premiere.start':premiereExport.start,
+  'export.premiere.get':premiereExport.get,
+  'export.premiere.cancel':premiereExport.cancel,
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow,context: ServiceHandlerContext={})=>{
     assertExternalSpeedOrigin(input);
@@ -1202,7 +1212,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   removeJobStopper();removeExportStopper();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const ownerDrains=[fcpExport.drain(),waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain(), ...(processing ? [processing.close()] : [])];
+  const ownerDrains=[...editorExports.map(exporter=>exporter.drain()),waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain(), ...(processing ? [processing.close()] : [])];
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;
@@ -1266,7 +1276,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- const isBusy=():boolean=>active.size>0||fcpExport.isBusy()||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
+ const isBusy=():boolean=>active.size>0||editorExports.some(exporter=>exporter.isBusy())||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
  const assertImageMutationAllowed=():void=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();};
  const generationImageServices=(operation:string,input:unknown,outputLocale?:OutputLocale):unknown=>{
   checkpoint(ownerSignal);
@@ -1276,7 +1286,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,fcpExport,get timelineProcessingEnabled(){return processing?.enabled()??false;},
+ return {activateBackground,fcpExport,premiereExport,get timelineProcessingEnabled(){return processing?.enabled()??false;},
   ...(processing ? {timelineProcessing: {preview: processing.preview, reverseProxy: processing.reverseProxy}} : {}),
   ...(reverseProxy ? {reverseProxy} : {}), ...(opticalProxy ? {opticalProxy} : {}),
   compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;

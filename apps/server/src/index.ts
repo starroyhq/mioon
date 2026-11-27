@@ -315,6 +315,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, targetFormat, catalogClient,
       nativeFcpExportFor: runtime => runtime.project.services.fcpExport,
+      nativePremiereExportFor: runtime => runtime.project.services.premiereExport,
       catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
       updateActivity: () => {
         const active = appLibrary.taskIndex.list().filter(task => task.phase === 'prepared' || task.phase === 'active');

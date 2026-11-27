@@ -35,7 +35,7 @@ test('pure help preserves independent frozen content and ordering after explicit
     .replace('"provider.list",', '"provider.list","video.connection.list",')
     .replace('"export.output.get",', '"export.output.get","clip.audio.export","clip.audio.export.get",')
     .replace('"clip.audio.export.get",', '"clip.audio.export.get","timeline.processing.list","timeline.processing.inspect","timeline.processing.wait","timeline.processing.retry","timeline.processing.cancel","timeline.processing.cache.get","timeline.processing.cache.clear",')
-    .replace('"timeline.processing.cache.clear",', '"timeline.processing.cache.clear","export.fcpxml.preview","export.fcpxml.start","export.fcpxml.get","export.fcpxml.cancel",')
+    .replace('"timeline.processing.cache.clear",', '"timeline.processing.cache.clear","export.fcpxml.preview","export.fcpxml.start","export.fcpxml.get","export.fcpxml.cancel","export.premiere.preview","export.premiere.start","export.premiere.get","export.premiere.cancel",')
     .replace('"subject.binding.list",', '"subject.binding.list","subject.variants.create","subject.variants.retry","subject.variants.undo","subject.variants.get","subject.variants.list","previs.create","previs.scene.set","previs.thumbnail.set","previs.thumbnail.get",')
     .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",')
     .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade","timeline.clip.setGains","timeline.clip.setTransform","timeline.clip.setTransition",')

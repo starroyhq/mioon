@@ -897,6 +897,30 @@ export const operationMessages = {
     "en": "Cancel a Final Cut Pro export and clean up the unfinished bundle. If the task has already ended, return its existing status.",
     "ja": "Final Cut Pro への書き出しをキャンセルし、未完成のバンドルを削除します。処理が終了済みの場合は現在の状態を返します。"
   },
+  "operation.export.premiere.preview": {
+    "zh-Hans": "只读预览格式 5 项目的 Premiere Pro 导出清单、默认位置和去重后的素材大小。",
+    "zh-Hant": "唯讀預覽格式 5 專案的 Premiere Pro 匯出清單、預設位置及去重後的素材大小。",
+    "en": "Preview the Premiere Pro export checklist, default location, and deduplicated media size for a format-5 project without making changes.",
+    "ja": "フォーマット5のプロジェクトを変更せずに、Premiere Pro 書き出しの一覧、既定の保存先、重複を除いたメディアサイズを確認します。"
+  },
+  "operation.export.premiere.start": {
+    "zh-Hans": "后台导出格式 5 项目到 Premiere Pro 可导入的 Final Cut Pro 7 XML。使用稳定 requestId。默认写入项目的导出文件夹，其他位置需先在桌面版选择。",
+    "zh-Hant": "在背景將格式 5 專案匯出成 Premiere Pro 可匯入的 Final Cut Pro 7 XML。請使用固定的 requestId。預設寫入專案的匯出資料夾，其他位置須先在桌面版選擇。",
+    "en": "Export a format-5 project as a Final Cut Pro 7 XML file for Premiere Pro in the background. Use a stable requestId. The project's export folder is the default. Use the desktop app to choose another location.",
+    "ja": "フォーマット5のプロジェクトを、Premiere Pro に読み込める Final Cut Pro 7 XML としてバックグラウンドで書き出します。固定の requestId を使用してください。既定の保存先はプロジェクトの書き出しフォルダです。別の場所はデスクトップ版で選択してください。"
+  },
+  "operation.export.premiere.get": {
+    "zh-Hans": "只读查询一次 Premiere Pro 导出的进度、结果或失败原因。",
+    "zh-Hant": "唯讀查詢單次 Premiere Pro 匯出的進度、結果或失敗原因。",
+    "en": "Read the progress, result, or failure reason for a single Premiere Pro export.",
+    "ja": "1件の Premiere Pro 書き出しについて、進捗、結果、または失敗の理由を取得します。"
+  },
+  "operation.export.premiere.cancel": {
+    "zh-Hans": "取消一项 Premiere Pro 导出并清理未完成的文件夹，已结束时返回原状态。",
+    "zh-Hant": "取消一項 Premiere Pro 匯出並清理未完成的資料夾。匯出已結束時會回傳原狀態。",
+    "en": "Cancel a Premiere Pro export and clean up the unfinished folder. If the task has already ended, return its existing status.",
+    "ja": "Premiere Pro への書き出しをキャンセルし、未完成のフォルダを削除します。処理が終了済みの場合は現在の状態を返します。"
+  },
   "operation.export.get": {
     "zh-Hans": "查询导出进度和文件",
     "zh-Hant": "查詢匯出進度和檔案",

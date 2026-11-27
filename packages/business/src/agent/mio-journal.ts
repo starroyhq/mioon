@@ -17,6 +17,7 @@ import {parseTaskArguments, taskResponseLocale, taskToolExplanation} from './tas
 import type {TaskModelOutput} from './task-gateway-v2.ts';
 import {createMioAssembly} from './mio-assembly.ts';
 import {updateMioRunUsageSummary} from './mio-run-usage.ts';
+import {isMioEditorExportStart} from './task-editor-export-v2.ts';
 
 type ModelInput = Omit<AgentTaskStepInput, 'kind'>;
 type SafetyWindowStart = {startStepsUsed: number; afterPosition: number};
@@ -219,7 +220,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   }
   function hasPendingBackground(id: string): boolean {
     return background(id).some(item => {
-      if(item.kind === 'export' && item.operation === 'export.fcpxml.start') return !['done', 'failed', 'cancelled'].includes(item.status);
+      if(item.kind === 'export' && isMioEditorExportStart(item.operation)) return !['done', 'failed', 'cancelled'].includes(item.status);
       return !({job: ['succeeded', 'failed', 'cancelled'], export: ['succeeded', 'failed', 'cancelled'], image: ['succeeded', 'failed', 'cancelled_before_dispatch'], frame: ['succeeded', 'failed', 'cancelled_before_start'], scene: ['succeeded', 'undone', 'failed', 'local_result_error', 'interrupted', 'cancelled', 'cancelled_before_start']}[item.kind] ?? []).includes(item.status);
     });
   }
