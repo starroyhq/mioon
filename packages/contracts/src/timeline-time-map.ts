@@ -1289,6 +1289,97 @@ export function timeMapSourceAtOutputFrame(plan: CompiledTimeMap, outputFrame: n
   return done({outputFrame, source: continuous, sourceFrame: frame,
     nextSourceFrame: clampFrame(state, frame + nextOffset), phase, tail: false});
 }
+
+/** Read the continuous clock without rebuilding the off-mode frame vector for
+ * every sample. Timestamps are relative to the unsliced view origin so a trim
+ * can shift them by whole output frames after quantization. */
+export function timeMapInterpolationClock(plan: CompiledTimeMap): {
+  sample(outputFrame: number): TimeMapResult<{readonly source: ContinuousSourcePosition; readonly slow: boolean}>;
+  outputAtSource(sourceFrame: number): TimeMapResult<number>;
+} {
+  const view = planState(plan), state = rootState(plan.root);
+  const forward = plan.direction === 'forward';
+  const anchor = timeNumber(state, boundaryTimeValue(forward ? view.loTime : view.hiTime));
+  const start = numberFromRat(state.sourceStart), end = numberFromRat(state.sourceEnd);
+  const framesPerIntegral = numberFromRat(state.framesPerIntegral);
+  const cap = TIMELINE_TIME_MAP_LIMITS.maxRate;
+  const maximumRate = cap.numerator / cap.denominator / framesPerIntegral;
+  const curve = state.curve;
+  function curveClock(source: number): TimeMapResult<{value: number; errorBound: number}> {
+    if (source === start) return done({value: 0, errorBound: 0});
+    if (source === end) return done({value: state.lengthNumber, errorBound: state.lengthError});
+    const segment = curveSegment(curve!, source);
+    const cell = integrateCurveCell(curve!, segment, curve!.xs[segment]!, source,
+      CURVE_REFINEMENT_TOLERANCES.at(-1)!, LOCAL_CELL_BUDGET);
+    if (!cell) return fail('NUMERIC_BUDGET_EXCEEDED', 'interpolation clock exceeded the integration budget');
+    const prefix = curve!.prefix[segment]!;
+    const value = (prefix + cell.value - state.integralOrigin) * framesPerIntegral;
+    const errorBound = (curve!.prefixError[segment]! + cell.errorBound + state.integralOriginError +
+      12 * EPSILON * (Math.abs(prefix) + Math.abs(cell.value) + Math.abs(state.integralOrigin) + 1)) * framesPerIntegral;
+    return done({value, errorBound});
+  }
+  function invertForInterpolation(time: RootTimeValue): TimeMapResult<ContinuousSourcePosition> {
+    if (!curve || time.kind === 'clock' && time.frames === 0 || time.kind === 'rootEnd' && time.offset === 0) {
+      return invertAtTime(state, time, CURVE_REFINEMENT_TOLERANCES.length - 1);
+    }
+    const target = timeNumber(state, time), error = timeUncertainty(state, time);
+    let lo = start, hi = end;
+    let source = clampNumber(start + (end - start) * target / state.lengthNumber, start, end);
+    // Keep Newton inside a monotone bracket. A steep curve can otherwise
+    // overshoot the source extent even though its target lies inside it.
+    for (let step = 0; step < 64; step++) {
+      const estimate = curveClock(source);
+      if (!estimate.ok) return estimate;
+      const residual = estimate.value.value - target;
+      const uncertainty = estimate.value.errorBound + error;
+      const rounding = 8 * EPSILON * (Math.abs(source) + 1);
+      if (Math.abs(residual) <= uncertainty || hi - lo <= rounding) {
+        // PCHIP cannot exceed its admitted rate knots.
+        return done({kind: 'numeric', value: source,
+          errorBound: Math.min(hi - lo, (Math.abs(residual) + uncertainty) * maximumRate) + rounding});
+      }
+      if (residual > 0) hi = source;
+      else lo = source;
+      const next = source - residual * curveRate(curve, source) / framesPerIntegral;
+      source = next > lo && next < hi ? next : lo + (hi - lo) / 2;
+    }
+    return fail('NUMERIC_BUDGET_EXCEEDED', 'interpolation clock inverse did not converge');
+  }
+  const sample = (outputFrame: number): TimeMapResult<{readonly source: ContinuousSourcePosition; readonly slow: boolean}> => {
+    if (!Number.isSafeInteger(outputFrame) || outputFrame < 0 || outputFrame >= plan.durationFrames) {
+      return fail('INVALID_WINDOW', 'output frame outside the interpolation window');
+    }
+    const position = invertForInterpolation(planTimeValue(view, outputFrame));
+    if (!position.ok) return position;
+    const source = position.value;
+    if (!curve) return done({source, slow: state.kind === 'constant' && ratCmp(state.rate!, ratInt(1n)) < 0});
+    const center = source.kind === 'exact' ? Number(source.numerator) / Number(source.denominator) : source.value;
+    const error = source.kind === 'numeric' ? source.errorBound : 0;
+    const lo = clampNumber(center - error, start, end), hi = clampNumber(center + error, start, end);
+    // A shape-preserving segment cannot exceed the extrema at its ends.
+    // Where the numerical interval straddles 1x, the original sample is safe.
+    const slow = curveLogRate(curve, lo) < 0 && curveLogRate(curve, hi) < 0 &&
+      !curve.xs.some((point, index) => point > lo && point < hi && curve.ys[index]! >= 0);
+    return done({source, slow});
+  };
+  const outputAtSource = (sourceFrame: number): TimeMapResult<number> => {
+    if (!Number.isFinite(sourceFrame)) return fail('INVALID_REQUEST', 'interpolation source position must be finite');
+    if (state.kind === 'freeze') return fail('UNSUPPORTED_PROFILE', 'a freeze has no forward interpolation clock');
+    if (!curve) {
+      const absolute = (sourceFrame - start) * framesPerIntegral / numberFromRat(state.rate!);
+      return done(forward ? absolute - anchor : anchor - absolute);
+    }
+    const u = clampNumber(sourceFrame, start, end);
+    const estimate = curveClock(u);
+    if (!estimate.ok) return estimate;
+    let absolute = estimate.value.value;
+    // A physical frame can straddle a fractional root endpoint. Its timestamp
+    // extends at the endpoint rate while the visible output stays in the root.
+    if (u !== sourceFrame) absolute += (sourceFrame - u) * framesPerIntegral / curveRate(curve, u);
+    return done(forward ? absolute - anchor : anchor - absolute);
+  };
+  return {sample, outputAtSource};
+}
 /** Output frames whose displayed source frame equals `sourceFrame`. */
 export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: number): TimeMapResult<TimeMapOutputAtSource> {
   if (!Number.isSafeInteger(sourceFrame)) return fail('INVALID_REQUEST', 'source frame must be a safe integer');

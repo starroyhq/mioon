@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {createReverseStaging, finishMediaInput, isDiskFull, readOwnedBytes, reverseError, runReverseTool, writeMediaInput, writeOwnedBytes} from './reverse-io.ts';
 import type {ReverseProxyFile, ReverseProxyMediaOptions, ReverseStaging} from './reverse-io.ts';
 import {REVERSE_PROXY_LIMITS, REVERSE_PROXY_PROFILE, REVERSE_PROXY_RESERVATION_STEP, reverseColorArgs, reverseLocalInput, reversePreparedState, reverseProbe, reverseToolBase} from './reverse-profile.ts';
-import type {PreparedReverseProxy, ReverseProxyInput, ReverseProxyProfile} from './reverse-profile.ts';
+import type {PreparedReverseProxy, ReverseProxyInput, ReverseProxyProfile, ReverseVideoChunk, SourceVideoPlan} from './reverse-profile.ts';
 
 export {REVERSE_PROXY_COVERAGE_VERSION, REVERSE_PROXY_LIMITS, REVERSE_PROXY_PROFILE, prepareReverseProxy, reverseAudioCoverage} from './reverse-profile.ts';
 export type {PreparedReverseProxy, ReverseProxyAudioCoverage, ReverseProxyInput, ReverseProxyProfile} from './reverse-profile.ts';
@@ -99,7 +99,7 @@ Promise<{file: StagedFile; digest: string; sampleCount: number}> {
   return {file: output, digest: digest.digest('hex'), sampleCount};
 }
 
-function seekBefore(state: PreparedState, video: Video, ordinal: number): string[] {
+function seekBefore(state: SourceVideoPlan, video: Video, ordinal: number): string[] {
   if (ordinal === 0) return [];
   const pts = state.video!.frames[ordinal]!.pts;
   const num = BigInt(pts) * BigInt(video.timeBase.numerator) * 1_000_000n;
@@ -115,6 +115,42 @@ interface ReversedVideo {
   readonly frameCount: number;
 }
 
+export async function decodeVerifiedVideoChunk(state: SourceVideoPlan, video: Video, chunk: ReverseVideoChunk,
+  scratch: StagedFile, staging: ReverseStaging, options: ReverseProxyMediaOptions): Promise<void> {
+  staging.fence();
+  const count = chunk.end - chunk.start;
+  const firstPts = state.video.frames[chunk.start]!.pts, lastPts = state.video.frames[chunk.end - 1]!.pts;
+  const {numerator, denominator} = video.timeBase;
+  // The filter admits only indexed PTS in its actual decoder timebase. The
+  // showinfo rows are compared in order before reading the reversed block.
+  const filter = `select='if(eq(TB,${numerator}/${denominator}),if(isnan(pts),0,between(pts,${firstPts},${lastPts})),0)',showinfo=checksum=0`;
+  let bytes = 0, observed = 0;
+  await runReverseTool('ffmpeg', ['-v', 'info', ...reverseToolBase, ...restrictedDecode,
+    '-copyts', '-noautorotate', ...seekBefore(state, video, chunk.key), ...reverseLocalInput(state.input.sourcePath, state.container),
+    '-map', `0:${video.index}`, '-an', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1',
+    '-vf', filter, '-frames:v', String(count), '-threads:v', '1', ...rawVideo(video)], options,
+  {stdoutLimit: count * video.frameBytes,
+    async stdout(data) {
+      staging.fence();
+      await writeOwnedBytes(scratch.handle, data, bytes);
+      bytes += data.length;
+    },
+    stderrLine(line) {
+      if (!line.includes('Parsed_showinfo_')) return;
+      // These per-frame interpretations cannot be conveyed by static
+      // Matroska tags or the raw-video clock. Reject instead of dropping them.
+      if (/dynamic hdr|dolby vision|display matrix/i.test(line)) throw reverseError('UNSUPPORTED_FORMAT');
+      if (!/\bn:\s*\d/.test(line)) return;
+      if (observed >= count) throw reverseError('PROCESSING_FAILED');
+      const match = /\bn:\s*(\d+)\s+pts:\s*(-?\d+)\s.*\bfmt:\s*([a-z0-9_]+)\b.*\bs:\s*(\d+x\d+)\b.*\bi:([A-Z])/.exec(line);
+      const expected = state.video.frames[chunk.start + observed]!;
+      if (!match || Number(match[1]) !== observed || Number(match[2]) !== expected.pts ||
+          match[3] !== video.pixelFormat || match[4] !== size(video) || match[5] !== 'P') throw reverseError('PROCESSING_FAILED');
+      observed++;
+    }});
+  if (observed !== count || bytes !== count * video.frameBytes) throw reverseError('PROCESSING_FAILED');
+}
+
 async function decodeReverseVideo(state: PreparedState, video: Video, staging: ReverseStaging, options: ReverseProxyMediaOptions,
   emit: (frame: Buffer) => Promise<void>, progress: (frames: number) => void): Promise<ReversedVideo> {
   const plan = state.video!;
@@ -123,37 +159,7 @@ async function decodeReverseVideo(state: PreparedState, video: Video, staging: R
   const frame = Buffer.allocUnsafe(video.frameBytes);
   let ordinal = 0, indexBytes = 0;
   for (const chunk of plan.chunks) {
-    staging.fence();
-    const count = chunk.end - chunk.start;
-    const firstPts = plan.frames[chunk.start]!.pts, lastPts = plan.frames[chunk.end - 1]!.pts;
-    const {numerator, denominator} = video.timeBase;
-    // The filter admits only indexed PTS in its actual decoder timebase. The
-    // showinfo rows are compared in order before reading the reversed block.
-    const filter = `select='if(eq(TB,${numerator}/${denominator}),if(isnan(pts),0,between(pts,${firstPts},${lastPts})),0)',showinfo=checksum=0`;
-    let bytes = 0, observed = 0;
-    await runReverseTool('ffmpeg', ['-v', 'info', ...reverseToolBase, ...restrictedDecode,
-      '-copyts', '-noautorotate', ...seekBefore(state, video, chunk.key), ...reverseLocalInput(state.input.sourcePath, state.container),
-      '-map', `0:${video.index}`, '-an', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1',
-      '-vf', filter, '-frames:v', String(count), '-threads:v', '1', ...rawVideo(video)], options,
-    {stdoutLimit: count * video.frameBytes,
-      async stdout(data) {
-        await writeOwnedBytes(scratch.handle, data, bytes);
-        bytes += data.length;
-      },
-      stderrLine(line) {
-        if (!line.includes('Parsed_showinfo_')) return;
-        // These per-frame interpretations cannot be conveyed by static
-        // Matroska tags or the raw-video clock. Reject instead of dropping them.
-        if (/dynamic hdr|dolby vision|display matrix/i.test(line)) throw reverseError('UNSUPPORTED_FORMAT');
-        if (!/\bn:\s*\d/.test(line)) return;
-        if (observed >= count) throw reverseError('PROCESSING_FAILED');
-        const match = /\bn:\s*(\d+)\s+pts:\s*(-?\d+)\s.*\bfmt:\s*([a-z0-9_]+)\b.*\bs:\s*(\d+x\d+)\b.*\bi:([A-Z])/.exec(line);
-        const expected = plan.frames[chunk.start + observed]!;
-        if (!match || Number(match[1]) !== observed || Number(match[2]) !== expected.pts ||
-            match[3] !== video.pixelFormat || match[4] !== size(video) || match[5] !== 'P') throw reverseError('PROCESSING_FAILED');
-        observed++;
-      }});
-    if (observed !== count || bytes !== count * video.frameBytes) throw reverseError('PROCESSING_FAILED');
+    await decodeVerifiedVideoChunk({...state, video: plan}, video, chunk, scratch, staging, options);
     for (let sourceOrdinal = chunk.end - 1; sourceOrdinal >= chunk.start; sourceOrdinal--) {
       staging.fence();
       await readOwnedBytes(scratch.handle, frame, (sourceOrdinal - chunk.start) * video.frameBytes);
@@ -173,9 +179,8 @@ async function decodeReverseVideo(state: PreparedState, video: Video, staging: R
   return {index, digest: digest.digest('hex'), frameCount: ordinal};
 }
 
-function encoderArgs(state: PreparedState, profile: ReverseProxyProfile, audioPath?: string): string[] {
-  const {video, audio} = profile;
-  const fps = state.input.sourceFps;
+export function losslessProxyEncoderArgs(fps: ReverseProxyInput['sourceFps'], outputBytesLimit: number,
+  video: Video | null, audio: Audio | null = null, audioPath?: string, streamOutput = false): string[] {
   return ['-v', 'error', ...reverseToolBase, '-noauto_conversion_filters',
     ...(video ? ['-max_alloc', String(video.encoderAllocationBytes)] : []),
     ...(video ? ['-threads', '1', '-thread_queue_size', '1', '-f', 'rawvideo', '-pixel_format', video.pixelFormat, '-video_size', size(video),
@@ -186,7 +191,9 @@ function encoderArgs(state: PreparedState, profile: ReverseProxyProfile, audioPa
       ...(video.threads === 4 ? ['-slices', '4'] : []),
       '-pix_fmt', `+${video.pixelFormat}`, ...reverseColorArgs(video.colour), '-fps_mode', 'passthrough'] : []),
     ...(audio ? ['-map', `${video ? 1 : 0}:a:0`, ...audioArgs(audio)] : []),
-    '-map_metadata', '-1', '-map_chapters', '-1', '-max_interleave_delta', '2000000', '-f', 'matroska', 'pipe:1'];
+    '-map_metadata', '-1', '-map_chapters', '-1', '-max_interleave_delta', '2000000',
+    ...(streamOutput ? ['-f', 'matroska', 'pipe:1']
+      : ['-fs', String(Math.max(1, outputBytesLimit - (1024 * 1024))), '-f', 'matroska', 'fd:'])];
 }
 
 function muxWriter(output: StagedFile, state: PreparedState, prepared: PreparedReverseProxy,
@@ -224,10 +231,9 @@ async function checkDecoded(file: string, args: string[], expectedBytes: number,
   if (decoded !== expectedBytes || digest.digest('hex') !== expectedHash) throw reverseError('PROCESSING_FAILED');
 }
 
-async function checkMux(file: string, profile: ReverseProxyProfile, frames: ReversedVideo | null,
-  signals: {sampleCount: number; digest: string} | null, options: ReverseProxyMediaOptions): Promise<void> {
+export async function checkLosslessProxy(file: string, video: Video | null, audio: Audio | null,
+  frames: Pick<ReversedVideo, 'frameCount' | 'digest'> | null, signals: {sampleCount: number; digest: string} | null, options: ReverseProxyMediaOptions): Promise<void> {
   const probe = await reverseProbe(file, options, 'matroska');
-  const {video, audio} = profile;
   if (typeof probe.format.format_name !== 'string' || !probe.format.format_name.split(',').includes('matroska') ||
       probe.streams.length !== Number(Boolean(video)) + Number(Boolean(audio))) throw reverseError('PROCESSING_FAILED');
   if (video && frames) {
@@ -285,7 +291,8 @@ export async function renderReverseProxy(input: ReverseProxyInput, prepared: Pre
       }
     } else {
       const output = await staging.create('proxy.mkv');
-      await runReverseTool('ffmpeg', encoderArgs(state, profile, sound ? staging.pathFor(sound.file) : undefined), media, {
+      await runReverseTool('ffmpeg', losslessProxyEncoderArgs(input.sourceFps, state.outputBytesLimit, video, audio,
+        sound ? staging.pathFor(sound.file) : undefined, true), media, {
         stdout: muxWriter(output, state, prepared, options.reserveBytes), stdoutLimit: state.outputBytesLimit,
         stdoutOverflow: () => reverseError('CACHE_LIMIT'), timeoutMs: muxTimeoutMs,
         ...(video ? {async stdin(stream: Parameters<typeof writeMediaInput>[0]) {
@@ -296,7 +303,7 @@ export async function renderReverseProxy(input: ReverseProxyInput, prepared: Pre
       });
       await output.handle.sync();
       if ((await output.handle.stat()).size > state.outputBytesLimit) throw reverseError('CACHE_LIMIT');
-      await checkMux(staging.pathFor(output), profile, rendered.video, sound, media);
+      await checkLosslessProxy(staging.pathFor(output), video, audio, rendered.video, sound, media);
       if (sound) await staging.remove(sound.file);
       mediaEvidence = [await staging.evidence(output)];
     }

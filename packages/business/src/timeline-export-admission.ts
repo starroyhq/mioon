@@ -1,14 +1,17 @@
 import {assertProjectStore} from './store-runtime.ts';
-import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
+import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
 import {createFormat5ExportTicket,format5ExportBlockersFromTimeline,recheckFormat5ExportTicket} from './format5-timeline-export.ts';
 import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
 import {assertTimelineSpeedCapability,timelineSpeedExportLayout,type SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
 import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {isTimelineSpeedExportReason,SPEED_PROCESSING_NOT_READY,TIMELINE_SPEED_EXPORT_MESSAGES} from '../../contracts/src/timeline-speed-export.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION,isSequenceProjectFormat} from './project-file/schema/databases.ts';
+import {prepareTimelineInputs,readOwnedTimelineAsset,validatePreparedTimelineSources} from './timeline-sources.ts';
+import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
 import {checkpoint,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {isProjectStore} from './project-file/store.ts';
@@ -61,9 +64,9 @@ export function timelineExportCapabilityError(code: string): AppError{return new
 
 // Own every underlying check, including a non-cooperative injected helper. No
 // asynchronous media work ever runs while an admission SQLite transaction is open.
-export function createTimelineExportAdmissionServices(store: ExportAdmissionStore,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash,reverseProxy}: {
+export function createTimelineExportAdmissionServices(store: ExportAdmissionStore,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash,reverseProxy,opticalProxy}: {
  signal?: AbortSignal;inspect?: (delivery: unknown,options: AdmissionInspectOptions)=>Promise<InspectResult|null>;
- hash?: (value: unknown)=>string;reverseProxy?: TimelineReverseProxyPort;
+ hash?: (value: unknown)=>string;reverseProxy?: TimelineReverseProxyPort;opticalProxy?: TimelineOpticalProxyPort;
 }={}){
  assertProjectStore(store);
  const active=new Set<ActiveCheck>();let stopped=false,shutdownFailure: unknown;
@@ -83,7 +86,18 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
    beforeEffect?.();
    if(speed){
     const layout=timelineSpeedExportLayout(speed,new Map(speed.assets.map(asset=>[asset.id,asset])));
-    if(layout)await assertTimelineSpeedCapability(layout,{signal,beforeEffect});
+    if(layout){
+     const verifiesInterpolation=layout.clips.some(clip=>clip.interpolationChecks.length);
+     const projectId=speed.timeline.projectId;
+     const snapshot=speed as Parameters<typeof prepareTimelineInputs>[0];
+     const mediaSignal=verifiesInterpolation?AbortSignal.any([signal,AbortSignal.timeout(EXPORT_PREFLIGHT_LIMITS.timeoutMs)]):signal;
+     const prepared=verifiesInterpolation?await prepareTimelineInputs(snapshot,{root:store.root,projectId,
+      readAsset:(id:string)=>{beforeEffect();return readOwnedTimelineAsset(store.db,projectId,id) as unknown as ManagedAssetRecord|null;},
+      signal:mediaSignal,beforeEffect,budget:{...EXPORT_PREFLIGHT_LIMITS,bytesHashed:0},
+      readLut:createTimelineColourLutReader(store.db,projectId) as never}):undefined;
+     await assertTimelineSpeedCapability(layout,{signal:mediaSignal,beforeEffect,sources:prepared});
+     if(prepared)validatePreparedTimelineSources(store.db,projectId,snapshot,prepared,{root:store.root});
+    }
     if(delivery===undefined)return {status:'available'};
    }
    return inspect(delivery,{signal,beforeEffect,capabilityWorkRoot:store.tempDir});
@@ -120,7 +134,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   if(ticket.blockers.length){report.status='blocked';report.issues=[issue(ticket.blockers[0]!.code as string)];return report;}
   let result: InspectResult, speedIssue: TimelineExportCapabilityReport['issues'][number]|undefined;
   try{
-   const snapshot=format6&&timeline?.clips.some(clip=>clip.timing)?freezeFormat5RenderSnapshot(store as never,{...input,purpose:'export'},reverseProxy) as SpeedAdmissionSnapshot:undefined;
+   const snapshot=format6&&timeline?.clips.some(clip=>clip.timing)?freezeFormat5RenderSnapshot(store as never,{...input,purpose:'export'},reverseProxy,opticalProxy) as SpeedAdmissionSnapshot:undefined;
    result=await inspectOwned(report.delivery,options,snapshot) as InspectResult;
   }catch(error){
    const code=(error as {code?:unknown})?.code;

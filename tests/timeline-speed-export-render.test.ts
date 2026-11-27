@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {renameSync, writeFileSync} from 'node:fs';
-import {mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {mediaLocatorFields, type MediaLocator} from '../packages/business/src/asset-reference-record.ts';
@@ -10,6 +10,10 @@ import {createMediaEncoderPool, type MediaEncoderSlotPool} from '../packages/bus
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {freezeTimelineSnapshot, type TimelineClipRecord, type TimelineRecord} from '../packages/business/src/timeline-inputs.ts';
+import {timelineSpeedExportLayout} from '../packages/business/src/timeline-speed-export-admission.ts';
+import {freezeTimelineOpticalProxies} from '../packages/business/src/timeline-speed-export-optical.ts';
+import {prepareOpticalProxy, renderOpticalProxy} from '../packages/business/src/timeline-processing/optical.ts';
+import type {TimelineOpticalProxyPort} from '../packages/business/src/timeline-processing/optical-proxy-port.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {prepareTimelineInputs, readOwnedTimelineAsset, validatePreparedTimelineSources} from '../packages/business/src/timeline-sources.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
@@ -20,7 +24,7 @@ import {
   compileFreezeTimeMap, compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields, timeMapPlanFrames,
   type CompiledTimeMap, type TimeMapBasis, type TimeMapResult,
 } from '../packages/contracts/src/timeline-time-map.ts';
-import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
+import {clipTimingSchema, type ClipTiming, type SpeedInterpolation} from '../packages/contracts/src/timeline-speed.ts';
 import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {TypedServices, TypedStore} from './helpers/strict-service-responses.ts';
@@ -135,6 +139,80 @@ function assertMarkers(luma: readonly number[], frames: readonly number[]): void
     assert.ok(Math.abs(luma[index]! - marker(frame)) <= 2, `output frame ${index} must show source frame ${frame}`);
   }
 }
+
+test('export consumes a verified optical proxy on the frozen clip-local clock and rejects missing or changed proofs',
+  {timeout: 45_000}, async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-speed-render-optical-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const asset = await sourceAsset(root);
+  const {timeline: source, assets} = fixture(asset);
+  const {plan, timing} = motion(8, 16, 1, 4);
+  assert.equal(timing.profile, 'timeline-speed-v1');
+  const setTiming = (interpolation: SpeedInterpolation) => {
+    const clip = {...source.clips[0]!, startFrame: 0};
+    return {...source, clips: [{...clip, ...unwrap(projectTimeMapToCurrentClipFields(clip, plan)),
+      timing: {...timing, interpolation}}], durationFrames: plan.durationFrames};
+  };
+  const range = {startFrame: 3, endFrame: 18};
+  const timeline = setTiming('optical');
+  const base = {...freezeTimelineSnapshot(timeline, assets, undefined, {exportRange: range}),
+    ...timelineSpeedExportSnapshotFields(timeline)};
+  const layout = timelineSpeedExportLayout({...base, timeline}, assets);
+  const item = layout?.clips[0];
+  assert.ok(layout && item?.interpolation);
+  const phase = new Map([[item.clipId, item.interpolation.phase]]);
+  const taskId = randomUUID(), sha256 = '7'.repeat(64);
+  const file = path.join(root, 'selected.mp4');
+  const pending = {lookup: () => ({taskId}), acquire: async () => null};
+  assert.throws(() => freezeTimelineOpticalProxies({...base, timeline}, layout, assets, pending),
+    {code: 'SPEED_PROCESSING_NOT_READY', details: {clipId: item.clipId, taskId}});
+  for (const reason of ['INTERPOLATION_UNAVAILABLE', 'UNSUPPORTED_FORMAT'] as const) {
+    assert.throws(() => freezeTimelineOpticalProxies({...base, timeline}, layout, assets, {
+      ...pending, lookup: () => ({taskId, reason}),
+    }), {code: reason, details: {clipId: item.clipId}});
+  }
+  await assert.rejects(renderTimeline({...base, ...timelineSpeedExportSnapshotFields(timeline, undefined, {phases: phase})}, assets, file),
+    {code: 'SPEED_PROCESSING_NOT_READY'});
+  assert.ok(!(await readdir(root)).includes('selected.mp4'));
+  const privateDir = path.join(root, 'proxy');
+  await mkdir(privateDir, {mode: 0o700});
+  const optical = {sourcePath: asset.path, mapHash: item.mapHash, sceneCuts: () => [], window: {
+    timing: clipTimingSchema.options[0].parse({...timing, interpolation: 'optical'}), sourceFrames: 40, beforeFrames: 0, afterFrames: 0,
+  }};
+  const effect = {signal: new AbortController().signal, beforeEffect() {}};
+  const receipt = await renderOpticalProxy(optical, await prepareOpticalProxy(optical, effect), {...effect, stagingDirectory: privateDir});
+  let leased = 0, released = 0, verified = true;
+  const port: TimelineOpticalProxyPort = {
+    lookup: () => ({taskId, readySha256: sha256}),
+    async acquire(request, proof) {
+      assert.equal(request.mapHash, item.mapHash);
+      // Composition stages the whole intersecting segment before its final range trim.
+      assert.deepEqual(request.outputWindow, {fromFrame: 0, toFrame: plan.durationFrames});
+      assert.deepEqual(proof, {taskId, sha256});
+      leased++;
+      return {proof, video: {file: path.join(privateDir, 'proxy.mkv'), firstOutputFrame: receipt.firstOutputFrame,
+        frameCount: receipt.frameCount}, verify: () => verified, release: () => {released++;}};
+    },
+  };
+  const opticalProxies = freezeTimelineOpticalProxies({...base, timeline}, layout, assets, port);
+  const frozen = {...base, ...timelineSpeedExportSnapshotFields(timeline, undefined, {phases: phase, opticalProxies})};
+  const failed = path.join(root, 'changed-proxy.mp4');
+  verified = false;
+  await assert.rejects(renderTimeline(frozen, assets, failed, {opticalProxy: port}), {
+    code: 'SPEED_PROCESSING_NOT_READY', details: {clipId: item.clipId, taskId},
+  });
+  assert.ok(!(await readdir(root)).includes('changed-proxy.mp4'));
+  verified = true;
+  await renderTimeline(frozen, assets, file, {opticalProxy: port});
+  const observed = await readMedia(file, range.endFrame - range.startFrame);
+  assert.deepEqual(observed.pts, [...Array(range.endFrame - range.startFrame).keys()].map(frame => frame * 1000));
+  for (const frame of [4, 8, 12, 16]) {
+    assert.ok(Math.abs(observed.luma[frame - range.startFrame]! - marker(8 + frame / 4)) <= 2);
+  }
+  assert.equal(leased, 2);
+  assert.equal(released, leased);
+  assert.ok(!(await readdir(root)).some(name => name.startsWith('.timeline-render-')));
+});
 
 test('selected speed export preserves mapped frames and exact PTS with one and four segment encoders', {timeout: 120_000}, async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-speed-render-'));

@@ -25,6 +25,8 @@ import {REVERSE_PROXY_COVERAGE_VERSION} from '../packages/business/src/timeline-
 import {TIMELINE_PREVIEW_CACHE_PROFILE} from '../packages/business/src/timeline-processing/preview-port.ts';
 import type {PreviewProcessingRenderer} from '../packages/business/src/timeline-processing/preview-port.ts';
 import {reversePictureCoverage} from '../packages/business/src/timeline-processing/picture-coverage.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import type {SpeedInterpolation} from '../packages/contracts/src/timeline-speed.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const sha = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
@@ -91,7 +93,7 @@ async function until<T>(read: () => T | undefined): Promise<T> {
 
 async function fixture(t: test.TestContext, options: {enabled?: boolean; format?: 5 | 6;
   engine?: ProcessingServiceOptions['engine'] | 'real'; scheduler?: ProcessingServiceOptions['scheduler'];
-  cache?: Parameters<typeof createProcessingCache>[1]; video?: boolean; previewRenderer?: PreviewProcessingRenderer} = {}) {
+  cache?: Parameters<typeof createProcessingCache>[1]; video?: boolean; optical?: boolean; previewRenderer?: PreviewProcessingRenderer} = {}) {
   const parent = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-processing-lifecycle-'));
   const projectId = randomUUID(), projectFile = path.join(parent, 'project.mioon');
   const locate = () => ({localDir: path.join(parent, 'local'), cacheDir: path.join(parent, 'cache'), tempDir: path.join(parent, 'tmp')});
@@ -120,8 +122,10 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
     orderIndex: 1, hidden: false, muted: false};
   const media = path.join(parent, 'media'); mkdirSync(media, {mode: 0o700});
   const file = path.join(media, options.video ? 'processing-source.mp4' : 'processing-source.wav');
+  const dimension = options.optical ? 64 : 24;
   if (options.video) {
-    await run('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'color=s=24x24:r=30:d=2',
+    const sourceFilter = options.optical ? 'testsrc2=s=64x64:r=30' : 'color=s=24x24:r=30';
+    await run('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', sourceFilter, '-frames:v', '60',
       '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-n', file], {timeout: 30_000});
   } else writeFileSync(file, silentWave(), {mode: 0o600});
   const source = await referenceForPublishedMedia(store, file);
@@ -134,17 +138,17 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
     store.put('projects', {id: projectId, name: 'Processing lifecycle', createdAt: at, updatedAt: at, revision: 1});
     store.put('nodes', {id: rootId, projectId, type: 'sequence_root', name: 'Timeline', position: {x: 0, y: 0}, createdAt: at});
     store.put('assets', {id: assetId, projectId, name: path.basename(file), mimeType: options.video ? 'video/mp4' : 'audio/wav',
-      duration: 2, hasAudio: !options.video, width: options.video ? 24 : null, height: options.video ? 24 : null, createdAt: at, ...source});
+      duration: 2, hasAudio: !options.video, hasVideo: options.video ?? false, width: options.video ? dimension : null, height: options.video ? dimension : null, createdAt: at, ...source});
     store.put('timelines', timeline);
     store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
       .run(timeline.id, projectId, rootId, 1, JSON.stringify({version: 1, board: [], track: []}));
   });
   processing.activate();
-  function direction(direction: 'forward' | 'reverse', numerator = 1, clipId = initialClip.id) {
+  function direction(direction: 'forward' | 'reverse', numerator = 1, clipId = initialClip.id, denominator = 1, interpolation: SpeedInterpolation = 'off') {
     const service = createFormat5SequenceEditService(store);
     const reviewed = service.preview({projectId, requestId: randomUUID(), speedIntent: {side: 'timeline',
-      operation: {kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator, denominator: 1}},
-        direction, pitchShift: false, interpolation: 'off'}}}});
+      operation: {kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator, denominator}},
+        direction, pitchShift: false, interpolation}}}});
     assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
     return service.commit({projectId, envelope: reviewed.envelope, expectedPlanDigest: reviewed.planDigest});
   }
@@ -535,4 +539,91 @@ test('renewing an evicted completed demand regenerates under the same task and a
   await until(() => query.get(id)?.requestId !== previous ? true : undefined);
   assert.equal(f.processing.list(f).items[0]?.taskId, id);
   assert.equal((await f.processing.wait({...f, taskId: id})).item.status, 'ready');
+});
+
+function opticalRequest(f: Awaited<ReturnType<typeof fixture>>) {
+  const timeline = readFormat5TimelineRecord(f.store.db, 'project')!;
+  const clip = timeline.clips[0]!;
+  const plan = compileClipTimeMap(clip, timeline);
+  assert.ok(plan.ok && clip.timing && clip.assetId);
+  return {projectId: f.projectId, timelineId: timeline.id, clipId: clip.id, assetId: clip.assetId,
+    mapHash: plan.value.root.mapHash, sourceSha256: sha(readFileSync(f.file)), timing: clip.timing,
+    outputWindow: {fromFrame: 0, toFrame: clip.durationFrames}};
+}
+
+test('a real optical task reopens with an authenticated output lease and retries changed bytes', async t => {
+  const f = await fixture(t, {video: true, optical: true});
+  f.direction('forward', 1, f.clipId, 2, 'optical');
+  const task = await until(() => f.processing.list(f).items[0]);
+  const ready = await f.processing.wait({...f, taskId: task.taskId});
+  assert.equal(ready.item.status, 'ready', JSON.stringify(ready.item));
+  const request = opticalRequest(f);
+  const snapshot = f.processing.opticalProxy.lookup(request);
+  assert.ok(snapshot?.readySha256);
+  assert.equal(snapshot.taskId, task.taskId);
+  assert.equal(f.processing.opticalProxy.lookup({...request, sourceSha256: '0'.repeat(64)}), null);
+  assert.equal(f.processing.opticalProxy.lookup({...request, outputWindow: {fromFrame: -1, toFrame: 0}})?.readySha256, undefined);
+  const proof = {taskId: snapshot.taskId, sha256: snapshot.readySha256};
+  await f.reopen();
+  assert.deepEqual(f.processing.opticalProxy.lookup(request), snapshot);
+  assert.equal(await f.processing.opticalProxy.acquire(request, {...proof, sha256: '0'.repeat(64)}), null);
+  const lease = await f.processing.opticalProxy.acquire(request, proof);
+  assert.ok(lease);
+  assert.equal(lease.verify(), true);
+  assert.equal(lease.video.firstOutputFrame, 0);
+  assert.equal(lease.video.frameCount, request.outputWindow.toFrame);
+  const original = readFileSync(lease.video.file);
+  original[0] = original[0]! ^ 0xff;
+  writeFileSync(lease.video.file, original);
+  assert.equal(lease.verify(), false);
+  assert.equal(f.processing.opticalProxy.lookup(request)?.readySha256, undefined);
+  assert.equal(await f.processing.opticalProxy.acquire(request, proof), null);
+  lease.release();
+  assert.equal(f.processing.inspect({...f, taskId: task.taskId}).item.status, 'failed');
+  f.processing.retry({...f, taskId: task.taskId, requestId: randomUUID()});
+  assert.equal((await f.processing.wait({...f, taskId: task.taskId})).item.status, 'ready');
+  const regenerated = f.processing.opticalProxy.lookup(request);
+  assert.ok(regenerated?.readySha256);
+  assert.notEqual(regenerated.readySha256, snapshot.readySha256);
+  const newProof = {taskId: regenerated.taskId, sha256: regenerated.readySha256};
+  const frozen = await f.processing.opticalProxy.acquire(request, newProof);
+  assert.ok(frozen);
+  f.direction('forward');
+  assert.equal(f.processing.opticalProxy.lookup(request), null);
+  assert.equal(frozen.verify(), true);
+  assert.equal(f.processing.cacheClear(f).freedBytes, 0);
+  const frozenAgain = await f.processing.opticalProxy.acquire(request, newProof);
+  assert.ok(frozenAgain);
+  f.store.tx(() => f.store.db.prepare('DELETE FROM main.timeline_processing_tasks WHERE id=?').run(task.taskId));
+  assert.equal(frozen.verify(), false);
+  assert.equal(await f.processing.opticalProxy.acquire(request, newProof), null);
+  frozenAgain.release();
+  frozen.release();
+  assert.ok(f.processing.cacheClear(f).freedBytes > 0);
+});
+
+test('cancelling an active optical encoder reaps its owned process and discards the stage', async t => {
+  const f = await fixture(t, {video: true, optical: true});
+  const root = path.join(f.cacheRoot, 'timeline-processing');
+  const children = new Set<number>();
+  let cancellation: Promise<{status: string}> | undefined;
+  const unsubscribe = onMediaProcess(event => {
+    if (!event.pid) return;
+    if (event.type === 'exited') {children.delete(event.pid); return;}
+    if (!(existsSync(root) && readdirSync(root, {withFileTypes: true}).some(entry => entry.name.startsWith('stage-')))) return;
+    children.add(event.pid);
+    const task = f.processing.list(f).items.find(item => item.kind === 'optical');
+    if (task && !cancellation) cancellation = f.processing.cancel({...f, taskId: task.taskId});
+  });
+  t.after(unsubscribe);
+  f.direction('forward', 1, f.clipId, 2, 'optical');
+  const terminal = await until(() => cancellation ? {cancellation} : undefined);
+  assert.deepEqual(await terminal.cancellation, {status: 'failed'});
+  const request = opticalRequest(f);
+  const task = f.processing.opticalProxy.lookup(request);
+  assert.ok(task);
+  assert.equal(task.readySha256, undefined);
+  assert.equal(await f.processing.opticalProxy.acquire(request, {taskId: task.taskId, sha256: '0'.repeat(64)}), null);
+  assert.equal(children.size, 0);
+  assert.equal(readdirSync(root).some(name => name.startsWith('stage-') || /^[a-f0-9]{64}$/u.test(name)), false);
 });

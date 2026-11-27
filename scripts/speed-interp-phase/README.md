@@ -1,4 +1,6 @@
-# SP-I0 speed-interpolation phase prototype
+# Speed interpolation verification
+
+## Phase prototype
 
 Prototype-only measurement of curve-speed optical flow (`minterpolate`), frame
 blending (`framerate`) and chunked proxies. It does not touch product code,
@@ -22,5 +24,27 @@ Outputs: `results.json` (full evidence), `summary.json` (CI summary) and
 `status.log`. Methods, results and the SP-I recommendation are in
 `docs/verification/speed-interp-phase.md`.
 
-CI runs this script only when `scripts/speed-interp-phase/` changes (macOS
-arm64 pull-request job) and uploads `checks-sp-i0` evidence artifacts.
+## D9 product measurements
+
+```sh
+node scripts/speed-interp-phase/run-product.mjs --output /tmp/mioon-sp-i-results
+```
+
+The product benchmark uses the same pinned media tools and generates exact
+30 fps synthetic sources. It measures export-video staging and a common
+libx264 encode for 1080×1920 off, blend and optical deliveries. The optical time
+includes generating and verifying the lossless proxy before export staging.
+Each 0.25× delivery must contain exactly 600 frames.
+
+A separate 120-second, 64×64 source checks the real optical proxy at each
+2-second block boundary against a single continuous filter run. Synthetic scene
+cuts and 120 fps occlusion and fast-motion references exercise the same product
+paths. Known cut positions are injected into the proxy worker, so this does not
+measure scene detection. Peak RSS is sampled from the worker process tree
+every 100 ms. The sum can count shared pages more than once and can miss peaks
+between samples. The summary also records system load.
+
+The macOS arm64 pull-request step runs the prototype with `--skip-bench --quick`
+and the product benchmark when `scripts/speed-interp-phase/` changes. The
+`checks-sp-i0` artifact contains the prototype evidence and the product summary
+and status logs. Working media is removed.

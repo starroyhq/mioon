@@ -15,6 +15,7 @@ import {createTimelineLoudnessTransactions} from './timeline-loudness-transactio
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
 import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
@@ -75,6 +76,7 @@ interface TimelineTransactionContext {boundary: TimelineRecoveryBoundary;request
 interface TimelineServiceDeps {
  beforeEffect?: ()=>void;
  reverseProxy?: TimelineReverseProxyPort;
+ opticalProxy?: TimelineOpticalProxyPort;
  required: (table: string,id: string)=>void;
  check: (timeline: {revision?: number},expectedRevision: number)=>void;
  hash: (value: unknown)=>string;
@@ -200,7 +202,7 @@ const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
-export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission,beforeEffect,reverseProxy}: TimelineServiceDeps){
+export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission,beforeEffect,reverseProxy,opticalProxy}: TimelineServiceDeps){
  const assertTimelineAudioRoleWorkspace=legacyAssertAudioRoleWorkspace;
  const assertTimelineVolumeEnvelopeWorkspace=legacyAssertVolumeWorkspace;
  const createTimelineRecoveryBoundary: (db: DatabaseSync,input: TimelineMutationInput)=>TimelineRecoveryBoundary=legacyRecoveryBoundary as never;
@@ -408,7 +410,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   // legacy snapshot through the TSb export ticket rules instead of the legacy
   // aggregate reader.
   if(isProjectStore(store)&&isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
-   const frozen=freezeFormat5RenderSnapshot(store,input,reverseProxy);
+   const frozen=freezeFormat5RenderSnapshot(store,input,reverseProxy,opticalProxy);
    if(expectedTimelineId!==undefined&&(frozen as {timeline:{id:string}}).timeline.id!==expectedTimelineId)
     throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
    if(input.preflightSnapshotHash!==undefined&&hash(frozen)!==input.preflightSnapshotHash)
@@ -445,7 +447,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    if(previous.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
    return {replayed:true as const,response:JSON.parse(String(previous.response)) as unknown};
   }
-  const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input,reverseProxy) as
+  const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input,reverseProxy,opticalProxy) as
    {delivery: unknown; timeline: {id: string; revision: number}};
   if(Object.hasOwn(frozen,'speedExport')&&input.preflightSnapshotHash!==undefined&&hash(frozen)!==input.preflightSnapshotHash)
    throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);

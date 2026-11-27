@@ -1,4 +1,5 @@
 import {createHmac, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
+import {SCENE_DETECTION_PROFILE_ID} from '../../../contracts/src/scene-tasks.ts';
 import path from 'node:path';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {speedProcessingItemSchema, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '../../../contracts/src/timeline-processing.ts';
@@ -19,6 +20,12 @@ import {registerProjectTransactionObserver} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {readOwnedTimelineAsset} from '../timeline-sources.ts';
+import {createSceneHistoryReaders} from '../scene-history.ts';
+import {createOpticalProxyPort, opticalCacheProof, verifyOpticalCache} from './optical-lease.ts';
+import type {ResolvedOpticalProxy} from './optical-lease.ts';
+import {OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
+import type {TimelineOpticalProxyRequest} from './optical-proxy-port.ts';
+import {prepareOpticalProxy, renderOpticalProxy} from './optical.ts';
 import {PROCESSING_CACHE_LIMIT_BYTES, ProcessingFailure} from './cache.ts';
 import type {ProcessingCache, ProcessingCacheEntry} from './cache.ts';
 import {processingHash, processingSourceIdentity, readProcessingDemands} from './demand.ts';
@@ -108,42 +115,50 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
   }
   function entryFor(task: Task): ProcessingCacheEntry | null {
     if (!task.result) return null;
-    const profile = task.kind === 'preview' ? TIMELINE_PREVIEW_CACHE_PROFILE : REVERSE_PROXY_PROFILE;
+    const profile = task.kind === 'preview' ? TIMELINE_PREVIEW_CACHE_PROFILE
+      : task.kind === 'optical' ? OPTICAL_PROXY_PROFILE : REVERSE_PROXY_PROFILE;
     const found = cache.lookup(projectId, task.result.cacheKey, profile);
-    return found?.result.mapHash === task.input.frozen.mapHash ? found : null;
+    if (!found || found.result.mapHash !== task.input.frozen.mapHash) return null;
+    if (task.kind !== 'optical') return found;
+    try {
+      return task.result.verifiedProxy && opticalCacheProof(found)?.proof === task.result.verifiedProxy ? found : null;
+    } catch {return null;}
   }
   function item(task: Task, clipId = task.input.clipId): SpeedProcessingItem {
     const status = task.state === 'cancelled' || task.state === 'ready' && !entryFor(task)
       || uncertain && activeState(task.state) ? 'failed' : task.state;
     return speedProcessingItemSchema.parse({taskId: task.id, clipId, kind: task.kind, status,
       ...(status === 'running' ? {progress: task.progress ?? 0} : {}),
-      ...(status === 'failed' ? {reason: task.errorCode ?? 'PROCESSING_FAILED'} : {})});
+      ...(status === 'failed' ? {reason: task.input.outcomeReason ?? task.errorCode ?? 'PROCESSING_FAILED'} : {})});
   }
   function emit(): void {for (const listener of [...listeners]) listener();}
   function update(task: Task, state: TaskState, patch: {progress?: number | null; error?: SpeedProcessingReason | null; result?: TaskResult | null;
     attempt?: {requestId: string; input: Task['input']}} = {}): Task {
     const {attempt, progress = null, error = null, result = task.result} = patch;
     const updatedAt = now();
+    const {clipId, frozen} = attempt?.input ?? task.input;
+    const input = {clipId, frozen};
+    const errorCode = error;
     const changed = db.prepare(`UPDATE main.timeline_processing_tasks SET state=?,revision=revision+1,requestId=?,input=?,
       progress=?,errorCode=?,result=?,updatedAt=? WHERE id=? AND projectId=? AND revision=?`)
-      .run(state, attempt?.requestId ?? task.requestId, JSON.stringify(attempt?.input ?? task.input), progress, error,
+      .run(state, attempt?.requestId ?? task.requestId, JSON.stringify(input), progress, errorCode,
         result === null ? null : JSON.stringify(result), updatedAt, task.id, projectId, task.revision);
     if (changed.changes !== 1) throw stale();
     markBackgroundTaskChanged(db, taskKind, task.id);
-    return {...task, state, revision: task.revision + 1, input: attempt?.input ?? task.input, requestId: attempt?.requestId ?? task.requestId,
-      progress, errorCode: error, result, updatedAt};
+    return {...task, state, revision: task.revision + 1, input, requestId: attempt?.requestId ?? task.requestId,
+      progress, errorCode, result, updatedAt};
   }
   function freeze(demand: ProcessingDemand): {input: ProcessingInputWithClip; errorCode: SpeedProcessingReason | null} {
     const frozen = demand.input;
-    let errorCode = demand.unavailable, sourceStat: string | undefined;
+    let reason: SpeedProcessingReason | null = demand.unavailable, sourceStat: string | undefined;
     // A sampled reference alone cannot detect an in-place change between
     // enqueue and admission. Capture its metadata before freezing the input.
-    if (!errorCode && !frozen.sourceSha256 && frozen.assetId) {
+    if (!reason && !frozen.sourceSha256 && frozen.assetId) {
       const asset = readOwnedTimelineAsset(db, projectId, frozen.assetId);
       try {sourceStat = sourceStatHash(validateManagedSource(store.projectDir, asset).info);}
-      catch (error) {errorCode = reasonFor(error);}
+      catch (error) {reason = reasonFor(error);}
     }
-    return {input: {clipId: demand.clipId, frozen: {...frozen, ...(sourceStat ? {sourceStat} : {})}}, errorCode};
+    return {input: {clipId: demand.clipId, frozen: {...frozen, ...(sourceStat ? {sourceStat} : {})}}, errorCode: reason};
   }
   function record(demand: ProcessingDemand): Task {
     const id = randomUUID(), requestId = randomUUID();
@@ -255,7 +270,8 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     reconcileSoon();
   }
 
-  async function prepareWork(frozen: ProcessingInput, source: {file: string; sha256: string}, mediaOptions: ReverseProxyMediaOptions) {
+  async function prepareWork(frozen: ProcessingInput, source: {file: string; sha256: string}, assetId: string,
+    mediaOptions: ReverseProxyMediaOptions) {
     type RenderScope = {stagingDirectory: string; onProgress(percent: number): void; reserveBytes(requiredBytes: number): void;
       writer?: ReverseProxyMediaOptions['writer']};
     if (frozen.kind === 'preview') {
@@ -273,9 +289,25 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
           prepared.profile.sourceSha256 !== source.sha256) throw new ProcessingFailure('PROCESSING_FAILED');
       return {prepared, profileId: TIMELINE_PREVIEW_CACHE_PROFILE,
         frameCount: mapped.value.durationFrames,
-        render: (scope: RenderScope) => previewRenderer.render(input, prepared, {...mediaOptions, ...scope})};
+        render: (scope: RenderScope) => previewRenderer.render(input, prepared, {...mediaOptions, ...scope})} as const;
     }
-    if (frozen.kind !== 'reverse' || !frozen.media || !frozen.mapHash || !frozen.sourceWindow || !frozen.sourceFps) {
+    if (frozen.kind === 'optical') {
+      if (!frozen.optical || frozen.media !== 'video' || !frozen.mapHash) throw new ProcessingFailure('UNSUPPORTED_FORMAT');
+      const input = {sourcePath: source.file, mapHash: frozen.mapHash, window: frozen.optical, sceneCuts() {
+        mediaOptions.beforeEffect();
+        const history = createSceneHistoryReaders({db});
+        const savedId = history.schemaPresent() ? history.latestResultId(projectId, assetId) : null;
+        const saved = savedId ? history.result(projectId, savedId) : null;
+        if (saved?.sourceHash === source.sha256 && saved.profileId === SCENE_DETECTION_PROFILE_ID) {
+          return saved.cuts.map(cut => cut.frame);
+        }
+        return null;
+      }};
+      const prepared = await prepareOpticalProxy(input, mediaOptions);
+      return {prepared, profileId: OPTICAL_PROXY_PROFILE, frameCount: prepared.profile.frameCount,
+        render: (scope: RenderScope) => renderOpticalProxy(input, prepared, {...mediaOptions, ...scope})} as const;
+    }
+    if (!frozen.media || !frozen.mapHash || !frozen.sourceWindow || !frozen.sourceFps) {
       throw new ProcessingFailure('UNSUPPORTED_FORMAT');
     }
     const input: ReverseProxyInput = {sourcePath: source.file, sourceSha256: source.sha256, media: frozen.media,
@@ -285,7 +317,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     const prepared = await engine.prepare(input, mediaOptions);
     if (prepared.profile.id !== REVERSE_PROXY_PROFILE) throw new ProcessingFailure('PROCESSING_FAILED');
     return {prepared, profileId: REVERSE_PROXY_PROFILE, frameCount: undefined,
-      render: (scope: RenderScope) => engine.render(input, prepared, {...mediaOptions, ...scope})};
+      render: (scope: RenderScope) => engine.render(input, prepared, {...mediaOptions, ...scope})} as const;
   }
 
   function launch(original: Task): void {
@@ -326,14 +358,25 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
         }
       };
       const mediaOptions = {signal, ...(ownerSignal ? {ownerSignal} : {}), beforeEffect: checkSource};
-      const work = await prepareWork(frozen, source, mediaOptions);
+      const work = await prepareWork(frozen, source, assetId, mediaOptions);
       checkSource();
       const cacheKey = processingHash([projectId, frozen.recipe, source.sha256, work.prepared.profile]);
       const result: TaskResult = {cacheKey, sourceSha256: source.sha256, sourceStat: sourceStatHash(source.info)};
       current = store.tx(() => update(sameAttempt(), 'running', {progress: current.progress, result}));
       reconcilePins();
-      const existing = entryFor(current);
-      if (existing) cache.touch(existing, checkSource);
+      let existing = cache.lookup(projectId, cacheKey, work.profileId);
+      if (existing && frozen.kind === 'optical') {
+        let verified: Awaited<ReturnType<typeof verifyOpticalCache>> = null;
+        try {verified = await verifyOpticalCache(existing, mediaOptions);}
+        catch (error) {
+          if (errorCode(error) !== 'WORKSPACE_BACKUP_CHANGED') throw error;
+        }
+        if (!verified || verified.result.mapHash !== frozen.mapHash) {
+          cache.invalidate(existing, checkSource);
+          existing = null;
+        }
+      }
+      if (existing?.result.mapHash === frozen.mapHash) cache.touch(existing, checkSource);
       else {
         stage = cache.stage(projectId, cacheKey, work.prepared.reservationBytes, checkSource,
           {taskId: original.id, requestId: original.requestId});
@@ -349,10 +392,15 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
         checkSource();
         if (rendered.profileId !== work.profileId || rendered.mapHash !== frozen.mapHash ||
             work.frameCount !== undefined && rendered.frameCount !== work.frameCount) throw new ProcessingFailure('PROCESSING_FAILED');
-        stage.publish(rendered);
+        existing = stage.publish(rendered);
       }
       checkSource();
-      current = store.tx(() => update(sameAttempt(), 'ready'));
+      if (frozen.kind === 'optical') {
+        const proof = existing && opticalCacheProof(existing)?.proof;
+        if (!proof) throw new ProcessingFailure('PROCESSING_FAILED');
+        result.verifiedProxy = proof;
+      }
+      current = store.tx(() => update(sameAttempt(), 'ready', {result}));
       reconcilePins();
       emit();
     };
@@ -589,6 +637,35 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     reconcilePins(scanDemands());
     return cache.clear(projectId, check);
   }
+  function resolveOptical(request: TimelineOpticalProxyRequest, frozenTaskId?: string): ResolvedOpticalProxy | null {
+    if (!enabled() || ownerSignal?.aborted || uncertain || request.projectId !== projectId) return null;
+    const {clipId, timelineId, assetId, mapHash, timing, sourceSha256, outputWindow: {fromFrame, toFrame}} = request;
+    if (!Number.isSafeInteger(fromFrame) || !Number.isSafeInteger(toFrame) || fromFrame >= toFrame) return null;
+    const timingHash = processingHash(timing);
+    const matches = (frozen: ProcessingInput): boolean =>
+      frozen.kind === 'optical' && frozen.timelineId === timelineId && frozen.mapHash === mapHash &&
+      (!frozen.sourceSha256 || frozen.sourceSha256 === sourceSha256) && processingHash(frozen.optical?.timing ?? null) === timingHash;
+    let task: Task | null = null;
+    if (frozenTaskId) {
+      // Existing exports own the snapshot's verified task, even after a
+      // timeline edit. Identical frozen source bytes may share a prior task.
+      const row = db.prepare('SELECT * FROM main.timeline_processing_tasks WHERE id=? AND projectId=?').get(frozenTaskId, projectId);
+      if (row) task = decode(row);
+    } else {
+      const demand = currentDemands().find(value => value.clipId === clipId && value.input.assetId === assetId && matches(value.input));
+      if (demand) task = taskForKey(demand.demandKey);
+    }
+    if (!task || !matches(task.input.frozen) || task.result && task.result.sourceSha256 !== sourceSha256) return null;
+    if (task.state !== 'ready') return {taskId: task.id, reason: item(task, clipId).reason};
+    const entry = entryFor(task);
+    if (entry?.result.profileId !== OPTICAL_PROXY_PROFILE || fromFrame < entry.result.firstOutputFrame ||
+        toFrame > entry.result.firstOutputFrame + entry.result.frameCount) {
+      return {taskId: task.id, reason: 'PROCESSING_FAILED'};
+    }
+    return {taskId: task.id, entry, verifiedProxy: task.result?.verifiedProxy};
+  }
+  const opticalProxy = createOpticalProxyPort(cache, resolveOptical, assertEffect);
+
   async function close(): Promise<void> {
     closed = true;
     previewBindings.clear();
@@ -598,5 +675,5 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     await Promise.all([...running.values()].map(attempt => attempt.done));
     if (uncertain) throw uncertain;
   }
-  return {enabled, activate, close, list, inspect, wait, retry, cancel, cacheGet, cacheClear, preview, reverseProxy};
+  return {enabled, activate, close, list, inspect, wait, retry, cancel, cacheGet, cacheClear, preview, reverseProxy, opticalProxy};
 }
