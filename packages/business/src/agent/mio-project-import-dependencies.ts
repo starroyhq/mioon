@@ -408,7 +408,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     const tables: {schema: 'main' | 'project' | 'cache'; table: string}[] = [];
     const historyVersion = db.prepare('SELECT version FROM main.schema_version').get()?.version;
     const processingHistory = historyVersion === FORMAT6_HISTORY_SCHEMA_VERSION;
-    nativeSequence = historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION || processingHistory;
+    nativeSequence = historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION;
     const hasCanvasHistory = historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION || nativeSequence;
     if (processingHistory) {
       // An active attempt may still read the frozen asset after its clip is
