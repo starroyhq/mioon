@@ -60,8 +60,10 @@ export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
   'tests/sequence-edit-performance.test.ts', // K1 p95 221/279 ms while sharing CPUs in run 44345117309 (budget 200)
   'tests/server-worker-shutdown.test.ts', // 67%
   'tests/test-compile-cache.test.ts', // a self-sent SIGTERM must land while the cache handler is installed
+  'tests/timeline-audio-continuous-types.test.ts', // shared runner compiled the isolated graph past its 120 s test deadline in 45971645342
   'tests/timeline-history-transports.test.ts', // 35%
   'tests/timeline-mix-loudness-service-media.test.ts', // 69%; fixed operation budget for a 600-second mix
+  'tests/typecheck-contract.test.ts', // first compiler child timed out on a shared Linux runner in 45956781647
   'tests/typecheck-runtime.test.ts', // 50%
   'tests/worker-shutdown.test.ts', // 83%; timed out while sharing CPUs
 ]);

@@ -193,7 +193,8 @@ async function compileWithoutEmitting(directory: string, compiler: string) {
   const before = await snapshotFiles(directory);
   const result = spawnSync(process.execPath, [compiler, '--project', path.join(directory, configName), '--pretty', 'false', '--noEmit'], {
     cwd: directory, env: {...mediaEnvironment(), },
-    encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, shell: false, windowsHide: true,
+    // Hosted macOS compiles the full copied foundation graph with a variable CPU budget.
+    encoding: 'utf8', timeout: 60_000, maxBuffer: 1024 * 1024, shell: false, windowsHide: true,
   });
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.signal, null);
