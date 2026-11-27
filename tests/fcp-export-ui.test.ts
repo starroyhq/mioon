@@ -277,9 +277,10 @@ test('FCP export contracts validate all 4 RPC operations, task kind, native brid
   assert.equal(FCP_EXPORT_TASK_KIND, 'fcpxml-export');
   assert.equal(FCP_EXPORT_NATIVE_GLOBAL, '__mioonFcpExport');
   assert.equal(FCP_EXPORT_NATIVE_CHANNEL, 'mioon:fcp-export');
-  assert.equal(FCP_ITEM_CODES.length, 12);
-  assert.equal(FCP_MISSING_ITEM_CODES.length, 4);
-  assert.equal(FCP_APPROXIMATION_ITEM_CODES.length, 8);
+  assert.equal(FCP_ITEM_CODES.length, 13);
+  assert.equal(FCP_MISSING_ITEM_CODES.length, 5);
+  assert.equal(FCP_APPROXIMATION_ITEM_CODES.length, 9);
+  assert.ok(FCP_MISSING_ITEM_CODES.includes('SPEED') && FCP_APPROXIMATION_ITEM_CODES.includes('SPEED'));
   assert.deepEqual(FCP_EXPORT_STATUSES, ['running', 'done', 'failed', 'cancelled']);
   assert.deepEqual(FCP_EXPORT_ERROR_CODES, ['DISK_FULL', 'NOT_WRITABLE', 'MEDIA_UNREADABLE', 'EXPORT_FAILED']);
 
@@ -359,7 +360,7 @@ test('desktop bridge reader hides FCP export when bridge is absent or malformed 
   assert.equal(isFcpExportChosenDestination({token: '', displayPath: '~/Desktop'}), false);
 });
 
-test('formatting helpers and all 12 FcpItemCodes + 4 error codes render plain-language text in all 4 locales', () => {
+test('formatting helpers cover all checklist and error codes in the four locales', () => {
   assert.equal(formatFcpBytes(0), '0 B');
   assert.equal(formatFcpBytes(512), '512 B');
   assert.equal(formatFcpBytes(420 * 1024 * 1024), '420 MB');
@@ -386,12 +387,14 @@ test('formatting helpers and all 12 FcpItemCodes + 4 error codes render plain-la
     {code: 'MUTE', clips: [clip('m1', 'scene-a')]},
     {code: 'SEPARATE_SOUND', clips: [clip('sep1', 'scene-d', 'A2')]},
     {code: 'TRANSFORM', clips: [clip('tr1', 'scene-e')]},
+    {code: 'SPEED', clips: [clip('speed1', 'scene-f')], values: {from: '曲线变速', to: '线性关键时间点', maxErrorFrames: 0.03}},
   ];
   assert.deepEqual(items.map(item => item.code).sort(), [...FCP_ITEM_CODES].sort());
 
   for (const locale of LOCALES) {
     for (const item of items) {
       const label = renderMessage(locale, fcpItemLabelMessage(item));
+      if (item.code === 'SPEED') assert.equal(label, 'SPEED');
       assert.ok(label.length > 0 && !label.includes('fcpExport.') && !label.includes('{'), `${locale}:${item.code} => ${label}`);
       const affected = fcpItemAffectedText(item, locale);
       assert.ok(affected.length > 0 && !affected.includes('fcpExport.') && !affected.includes('{'), `${locale}:${item.code} affected => ${affected}`);
