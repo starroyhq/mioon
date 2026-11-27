@@ -268,7 +268,7 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
   }
   function previewForProperties(input: Row, options: Parameters<typeof previewSequenceSpeedWithMedia>[2]) {
     const operation = input.speedIntent?.operation;
-    if (operation?.kind !== 'clip-speed' || operation.setting?.interpolation !== 'blend') return preview(input);
+    if (operation?.kind !== 'clip-speed' || operation.setting?.interpolation === 'off') return preview(input);
     projectCheck(store, input.projectId);
     requireFormat5(store);
     return previewSequenceSpeedWithMedia(store, speedPreviewInput(input), options);

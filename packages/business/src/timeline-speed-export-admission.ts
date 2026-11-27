@@ -7,15 +7,14 @@ import {
   TIMELINE_SPEED_EXPORT_MESSAGES, type CompiledTimelineSpeedExportClip,
   type TimelineSpeedExportPhase, type TimelineSpeedExportSnapshot,
 } from '../../contracts/src/timeline-speed-export.ts';
-import {compileInterpolationPhase, INTERPOLATION_PHASE_PROFILE} from '../../contracts/src/timeline-interpolation.ts';
-import {timeMapHasSlowMotion} from '../../contracts/src/timeline-time-map.ts';
+import {INTERPOLATION_PHASE_EPSILON, INTERPOLATION_PHASE_PROFILE} from '../../contracts/src/timeline-interpolation.ts';
 import {timelineSpeedAudioMode} from './timeline-speed-export-audio.ts';
 import {assertSpeedExportVideoCapability, inspectSpeedVideoInterpolation} from './timeline-speed-export-video.ts';
 import {checkMediaEffect, run} from './media-runtime.ts';
 import {planTimelineExportRange, type TimelineExportRangePlan} from './timeline-export-range-plan.ts';
 import {MAX_PRIVATE_TIMELINE_STAGING_FILES} from './timeline-float-staging.ts';
 import {timelineTransitionRegions, transitionPictureRange, transitionPlanSnapshot} from './timeline-transition-filter.ts';
-import {speedPictureWindows, speedTransitionHandle, type SpeedPictureWindow} from './timeline-speed-export-plan.ts';
+import {speedInterpolationUnavailable, speedInterpolationWindows, speedPictureWindows, speedTransitionHandle, type SpeedPictureWindow} from './timeline-speed-export-plan.ts';
 import type {TimelineClipRecord, TimelineRecord} from './timeline-inputs.ts';
 
 interface SpeedAsset {
@@ -35,6 +34,9 @@ interface ActiveClip extends CompiledTimelineSpeedExportClip {
   readonly video: readonly SpeedPictureWindow[];
   readonly audio: boolean;
   readonly clip: TimelineClipRecord;
+  /** Check the same full picture and handles as an edit, including when the
+   * selected range only draws fast frames and needs no interpolation proxy. */
+  readonly interpolationChecks: readonly SpeedPictureWindow[];
   readonly interpolation?: {
     readonly mode: 'blend' | 'optical';
     readonly phase: TimelineSpeedExportPhase;
@@ -48,28 +50,31 @@ export interface SpeedExportLayout {
   readonly transitions: ReturnType<typeof timelineTransitionRegions>;
 }
 
-function unavailablePhase(clipId: string): AppError {
-  return new AppError(INTERPOLATION_UNAVAILABLE, TIMELINE_SPEED_EXPORT_MESSAGES[INTERPOLATION_UNAVAILABLE], 409, {clipId});
-}
+const interpolationPhaseLimit: TimelineSpeedExportPhase = Object.freeze({
+  profile: INTERPOLATION_PHASE_PROFILE,
+  maxPhaseErrorFrames: INTERPOLATION_PHASE_EPSILON,
+});
 
 function interpolationFor(item: CompiledTimelineSpeedExportClip, video: readonly SpeedPictureWindow[]): ActiveClip['interpolation'] {
   if (item.timing.profile !== 'timeline-speed-v1' || item.timing.interpolation === 'off') return;
-  const windows: SpeedPictureWindow[] = [];
-  let maxPhaseErrorFrames = 0;
-  for (const window of video) {
-    const slow = timeMapHasSlowMotion(window.plan);
-    if (!slow.ok) throw unavailablePhase(item.clipId);
-    if (!slow.value) continue;
-    const phase = compileInterpolationPhase(window.fullPlan);
-    if (!phase.ok) throw unavailablePhase(item.clipId);
-    const offset = window.plan.outputWindow.fromFrame - window.fullPlan.outputWindow.fromFrame;
-    const used = phase.value.frames.slice(offset, offset + window.plan.durationFrames);
-    if (!used.some(frame => frame.active)) continue;
-    if (!phase.value.available) throw unavailablePhase(item.clipId);
-    maxPhaseErrorFrames = Math.max(maxPhaseErrorFrames, phase.value.maxPhaseErrorFrames);
-    windows.push(window);
-  }
-  if (windows.length) return {mode: item.timing.interpolation, phase: {profile: INTERPOLATION_PHASE_PROFILE, maxPhaseErrorFrames}, windows};
+  const windows = speedInterpolationWindows(item.clipId, video);
+  // The synchronous snapshot records the policy ceiling. Its nominal editing
+  // clock cannot measure or bound the phase on the source's physical PTS.
+  if (windows.length) return {mode: item.timing.interpolation, phase: interpolationPhaseLimit, windows};
+}
+
+export function speedTimelineTransitionRegions(timeline: Parameters<typeof timelineTransitionRegions>[0],
+  assets: ReadonlyMap<string, SpeedAsset>,
+  planForClip: (clipId: string) => Pick<CompiledTimelineSpeedExportClip, 'plan' | 'timing'> | undefined) {
+  return timelineTransitionRegions(timeline, assets, (clip, side, frames, source) => {
+    const timed = planForClip(clip.id);
+    if (timed) {
+      speedTransitionHandle({...clip, timing: timed.timing}, timed.plan, side, frames, source.frames);
+      return true;
+    }
+    return source.image || (side === 'before' ? clip.sourceInFrame >= frames
+      : clip.sourceInFrame + clip.durationFrames + frames <= source.frames);
+  });
 }
 
 export function timelineSpeedExportLayout(snapshot: SpeedExportSnapshotContext,
@@ -78,15 +83,7 @@ export function timelineSpeedExportLayout(snapshot: SpeedExportSnapshotContext,
   const {timeline} = snapshot;
   const compiled = compileTimelineSpeedExportClips(timeline);
   const byId = new Map(compiled.map(clip => [clip.clipId, clip]));
-  const transitions = timelineTransitionRegions(timeline, assets, (clip, side, frames, source) => {
-    const timed = byId.get(clip.id);
-    if (timed) {
-      speedTransitionHandle({...clip, timing: timed.timing}, timed.plan, side, frames, source.frames);
-      return true;
-    }
-    return source.image || (side === 'before' ? clip.sourceInFrame >= frames
-      : clip.sourceInFrame + clip.durationFrames + frames <= source.frames);
-  });
+  const transitions = speedTimelineTransitionRegions(timeline, assets, clipId => byId.get(clipId));
   const plan = planTimelineExportRange(transitionPlanSnapshot({timeline, ...timelineExportRangeFields(snapshot)}, transitions));
   const tracks = new Map(timeline.tracks.map(track => [track.id, track]));
   const clipsById = new Map(timeline.clips.map(clip => [clip.id, clip]));
@@ -102,11 +99,18 @@ export function timelineSpeedExportLayout(snapshot: SpeedExportSnapshotContext,
     const audio = Boolean(track && !track.muted && clip.muted !== true && clip.gain > 0 && asset?.hasAudio !== false &&
       item.timing.profile !== 'timeline-freeze-v1' && clip.startFrame < used.end &&
       clip.startFrame + clip.durationFrames > used.start);
-    const video = visual ? speedPictureWindows({...clip, timing: item.timing}, item.plan,
-      transitionPictureRange(clip, transitions), used, sourceFrameCount(asset?.duration) ?? 0) : [];
+    const timedClip = {...clip, timing: item.timing};
+    const sourceFrames = sourceFrameCount(asset?.duration) ?? 0;
+    const picture = visual ? transitionPictureRange(clip, transitions) : null;
+    const video = picture ? speedPictureWindows(timedClip, item.plan, picture, used, sourceFrames) : [];
     if (audio || video.length > 0) {
       const interpolation = interpolationFor(item, video);
-      clips.push({...item, clip, video, audio, ...(interpolation && {interpolation})});
+      const fullPicture = picture && video.length && item.timing.profile === 'timeline-speed-v1' &&
+        item.timing.interpolation !== 'off' && (used.start > picture.start || used.end < picture.end);
+      const interpolationChecks = fullPicture
+        ? interpolationFor(item, speedPictureWindows(timedClip, item.plan, picture, picture, sourceFrames))?.windows ?? []
+        : interpolation?.windows ?? [];
+      clips.push({...item, clip, video, audio, interpolationChecks, ...(interpolation && {interpolation})});
     }
   }
   const distinctCues = new Set(timeline.subtitles?.cues.map(cue => cue.text)).size;
@@ -123,8 +127,12 @@ export function assertFrozenInterpolationPhase(snapshot: SpeedExportSnapshotCont
   for (const {clipId, interpolation} of layout.clips) {
     if (!interpolation) continue;
     const frozen = snapshot.speedExport?.clips.find(clip => clip.clipId === clipId)?.interpolationPhase;
-    if (frozen?.profile !== interpolation.phase.profile || frozen.maxPhaseErrorFrames !== interpolation.phase.maxPhaseErrorFrames)
-      throw unavailablePhase(clipId);
+    // Earlier snapshots kept the nominal estimate in this field. Accept that
+    // in-range evidence for replay and enforce the profile's real PTS bound
+    // when the immutable sources are opened.
+    if (frozen?.profile !== interpolation.phase.profile || !Number.isFinite(frozen.maxPhaseErrorFrames) ||
+        frozen.maxPhaseErrorFrames < 0 || frozen.maxPhaseErrorFrames > interpolation.phase.maxPhaseErrorFrames)
+      throw speedInterpolationUnavailable(clipId);
   }
 }
 
@@ -143,11 +151,11 @@ export async function assertTimelineSpeedCapability(layout: SpeedExportLayout, {
   const optical = layout.clips.some(clip => clip.interpolation?.mode === 'optical');
   if (visual) await assertSpeedExportVideoCapability({signal, beforeEffect, interpolation: blend ? 'blend' : optical ? 'optical' : undefined});
   if (blend && optical) await assertSpeedExportVideoCapability({signal, beforeEffect, interpolation: 'optical'});
-  if (sources) for (const {clipId, assetId, interpolation} of layout.clips) {
-    if (!interpolation) continue;
+  if (sources) for (const {clipId, assetId, interpolationChecks} of layout.clips) {
+    if (!interpolationChecks.length) continue;
     const source = sources.get(assetId);
     if (!source?.path) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '无法读取变速片段的源素材。', 409, {clipId});
-    for (const {fullPlan} of interpolation.windows) {
+    for (const {fullPlan} of interpolationChecks) {
       try {
         await inspectSpeedVideoInterpolation({source: {path: source.path, videoStreamIndex: source.videoStreamIndex},
           plan: fullPlan, signal, beforeEffect});

@@ -87,7 +87,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
    if(speed){
     const layout=timelineSpeedExportLayout(speed,new Map(speed.assets.map(asset=>[asset.id,asset])));
     if(layout){
-     const verifiesInterpolation=layout.clips.some(clip=>clip.interpolation);
+     const verifiesInterpolation=layout.clips.some(clip=>clip.interpolationChecks.length);
      const projectId=speed.timeline.projectId;
      const snapshot=speed as Parameters<typeof prepareTimelineInputs>[0];
      const mediaSignal=verifiesInterpolation?AbortSignal.any([signal,AbortSignal.timeout(EXPORT_PREFLIGHT_LIMITS.timeoutMs)]):signal;

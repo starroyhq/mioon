@@ -12,6 +12,7 @@ import {readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {isFormat5Project} from '../sequence-edit.ts';
 import {MioSequencePreviewRejection} from '../format5-sequence-preview-errors.ts';
+import {assertSequenceSpeedMedia} from '../format5-sequence-sync.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioProjectRules} from './mio-rules.ts';
@@ -404,7 +405,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   /** A proven domain admission rejection lets the run continue. Persist the
    * dispatch prevention and the model-facing result in the same transaction. */
-  function rejectNotApplied(runId:string,stepId:string,error:{code:string;message:string}):AgentTaskStep {
+  function rejectNotApplied(runId:string,stepId:string,error:{code:string;message:string;ids?:readonly string[];mutationOutcome?:'not_applied'}):AgentTaskStep {
     const apply=():AgentTaskStep=>{
       if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
       return journal.updateStep(runId,stepId,{status:'rejected',result:{error:json(error)},error:{code:error.code,message:error.message}});
@@ -581,6 +582,25 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...(prepared.processingProof?{processingProof:prepared.processingProof}:{}),...canvasEvidence,...speedEvidence}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
+      let speedMediaFence: (()=>void)|undefined;
+      const sequence=prepared.sequence;
+      if(sequence?.speedPlan&&'envelope' in sequence.plan&&isProjectStore(store)){
+        const initial=prepared,stepId=step.id;
+        // Physical timestamp reads belong outside the sequence transaction.
+        // This fence owns the read before approval and repeats on resumed execution.
+        const beforeMedia=():void=>{
+          if(signal.aborted)throw agentTaskFailure('AGENT_TASK_ABORTED');
+          const current=fence(runId),pending=journal.step(stepId);
+          if(pending.runId!==current.id||!['intent','awaiting_approval'].includes(pending.status))
+            throw agentTaskFailure('AGENT_TASK_PAUSED');
+          assertNotSkipped(current,initial.referencedTargets??initial.targets);
+          journal.assertTargets(current.projectId,initial.targets);
+        };
+        beforeMedia();
+        speedMediaFence=await assertSequenceSpeedMedia(store,sequence.plan.envelope,{signal,beforeEffect:beforeMedia},sequence.plan.planDigest);
+        beforeMedia();
+        step=journal.step(stepId);
+      }
       const serviceIssue=toolset().generationServiceIssue(prepared);
       if(serviceIssue)return recordGenerationServiceDenial(run,step,source,serviceIssue);
       // C3: a question waits for the user's answer; nothing is dispatched.
@@ -592,9 +612,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         &&['PROJECT_ASPECT_CHANGED','PROJECT_ASPECT_UNSUPPORTED','GENERATION_ASPECT_UNSUPPORTED'].includes(String(previous.result.error.code)));
       // Loosening the modes later never approves a confirmation already shown.
       if((prepared.forceApproval||reconfirmAspect||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
+        speedMediaFence?.();
         journal.updateStep(runId,step.id,{status:'awaiting_approval',...(prepared.proposal===undefined?{}:{result:{rulesProposal:prepared.proposal}})});changeStatus(runId,'awaiting_approval');return null;
       }
-      toolFence(runId,step.id,prepared);journal.markDispatch(runId,step.id);
+      toolFence(runId,step.id,prepared);
+      speedMediaFence?.();
+      journal.markDispatch(runId,step.id);
       const stepId=step.id,accepted=prepared;
       const outcome=await toolset().execute(accepted,{runId,stepId,requestId:stepId,signal,beforeEffect:()=>toolFence(runId,stepId,accepted),
         recordInside:(result,changes)=>{
@@ -646,6 +669,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       }
       if(failure==='AGENT_TASK_CONSENT_REQUIRED'||failure==='AGENT_TASK_STORAGE_UNAVAILABLE')throw error;
       const current=journal.step(step.id);if(current.status==='completed')throw error;
+      if(prepared?.sequence?.speedPlan&&['intent','awaiting_approval'].includes(current.status)&&error instanceof AppError){
+        if(failure==='SEQUENCE_EDIT_REVISION_CONFLICT')return handBackConflict(runId,step.id,'AGENT_TASK_TARGET_CHANGED',prepared.targets);
+        if(['INTERPOLATION_UNAVAILABLE','UNSUPPORTED_FORMAT','SPEED_SOURCE_NOT_READY'].includes(failure)){
+          const plan=prepared.sequence.plan;
+          const clipId='envelope' in plan?plan.envelope.speedIntent?.operation.clipId:undefined;
+          return rejectNotApplied(runId,step.id,{code:failure,message:error.message,mutationOutcome:'not_applied',
+            ...(clipId?{ids:[clipId]}:{})});
+        }
+      }
       if((prepared?.operation==='generation.submit'||prepared?.operation==='image.generate')&&(failure===GENERATION_SERVICE_UNAVAILABLE||failure==='IMAGE_SETTINGS_SELECTION_REQUIRED')&&error instanceof AppError&&record(error.details)&&error.details.mutationOutcome==='not_applied')
         return recordGenerationServiceDenial(run,current,source,failure);
       if(current.status==='intent'&&failure==='VALIDATION_ERROR'){
