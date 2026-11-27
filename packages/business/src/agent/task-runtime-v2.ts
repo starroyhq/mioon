@@ -665,10 +665,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
       }
-      const message=current.status==='intent'&&error instanceof MioSequencePreviewRejection
-        ?error.message:'工具未完成，请检查参数或可用性。';
+      const previewRejection=(current.status==='intent'||current.status==='awaiting_approval')&&error instanceof MioSequencePreviewRejection?error:undefined;
+      const message=current.status==='intent'&&previewRejection
+        ?previewRejection.message:'工具未完成，请检查参数或可用性。';
       const toolError={code:failure,message};
-      return journal.updateStep(runId,step.id,{status:'failed',result:{error:toolError},error:toolError});
+      const details=previewRejection?.details;
+      const reason=record(details)?details.reason:undefined;
+      // Only a bounded reason code from sequence preview belongs in the tool result.
+      const resultError=typeof reason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(reason)?{...toolError,details:{reason}}:toolError;
+      return journal.updateStep(runId,step.id,{status:'failed',result:{error:resultError},error:toolError});
     }
   }
   async function checkExecutionWitness(runId:string,signal:AbortSignal):Promise<void>{
