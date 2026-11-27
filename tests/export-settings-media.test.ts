@@ -1,8 +1,10 @@
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
-import test from 'node:test';
+import {testEnv} from './helpers/test-env.ts';
+import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,readFile,rm,readdir} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import {mkdir,mkdtemp,writeFile,readFile,realpath,rm,readdir} from 'node:fs/promises';
 import {lstatSync,readdirSync,renameSync,writeFileSync,existsSync,utimesSync} from 'node:fs';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {tmpdir} from 'node:os';
@@ -14,7 +16,8 @@ import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {openStore,openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
@@ -496,6 +499,119 @@ test('worker publication keeps failed or interrupted multi-chunk copies private'
    }
   }finally{await worker?.stop();await services.drain();store.close();}
  });
+});
+
+async function mountExfatFixture(t: TestContext): Promise<{root: string; mount: string} | undefined> {
+ const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-export-exfat-'));
+ const mount=path.join(root,'volume'), home=path.join(root,'home'), temp=path.join(root,'temp');
+ const image=path.join(root,'fixture.dmg'), hostDevice=lstatSync(root).dev;
+ const hdiutil=(...args: string[])=>spawnSync('/usr/bin/hdiutil',args,{
+  stdio:'pipe',timeout:20000,env:{...testEnv(),HOME:home,TMPDIR:temp},
+ });
+ const mounted=()=>{
+  const info=lstatSync(mount,{throwIfNoEntry:false});
+  return info!==undefined&&info.dev!==hostDevice;
+ };
+ t.after(async()=>{
+  if(mounted()){
+   const detach=hdiutil('detach',mount);
+   if(detach.status!==0&&mounted())assert.equal(hdiutil('detach','-force',mount).status,0,'detach the test exFAT image');
+   assert.equal(mounted(),false,'never traverse a mounted image during test cleanup');
+  }
+  await rm(root,{recursive:true,force:true});
+ });
+ await Promise.all([mkdir(mount),mkdir(home),mkdir(temp)]);
+ const create=hdiutil('create','-size','64m','-fs','ExFAT','-volname','MIOONTEST','-layout','MBRSPUD','-type','UDIF',image);
+ if(create.status!==0){t.skip(`exFAT image creation unavailable (hdiutil ${create.error?.message??create.signal??create.status})`);return;}
+ const attach=hdiutil('attach','-nobrowse','-noautoopen','-mountpoint',mount,image);
+ if(attach.status!==0){t.skip(`exFAT image mount unavailable (hdiutil ${attach.error?.message??attach.signal??attach.status})`);return;}
+ if(!mounted()){t.skip('hdiutil did not mount the exFAT image at the test mountpoint');return;}
+ return {root,mount};
+}
+
+test('worker atomically publishes and rolls back on a real exFAT volume',{
+ skip:process.platform!=='darwin'?'exFAT disk image fixture requires macOS hdiutil':false,
+ timeout:120000,
+},async t=>{
+ const fixture=await mountExfatFixture(t);
+ if(!fixture)return;
+ const {root,mount}=fixture,workspace=path.join(mount,'project');
+ await mkdir(workspace);
+ const projectFile=path.join(workspace,'project.mioon');
+ createProjectFile(projectFile);
+ const store=openServerTestStore({projectFile,locate:()=>({localDir:path.join(root,'records'),
+  cacheDir:path.join(root,'cache'),tempDir:path.join(root,'scratch')})},path.join(root,'app'));
+ const services=createServices(store,new Map()) as unknown as LocalServices;
+ const outputDirectory=path.join(workspace,'导出');
+ let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
+ try{
+  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic exFAT export'});
+  const sourcePath=path.join(workspace,'tone.wav');
+  await writeFile(sourcePath,wave());
+  const asset=await services.call<AssetShape>('asset.import',{
+   projectId:project.id,requestId:randomUUID(),sourcePath,
+  });
+  const initial=await services.call<TimelineShape>('timeline.get',{projectId:project.id});
+  const timeline=await services.call<TimelineShape>('timeline.clip.add',{
+   projectId:project.id,expectedRevision:initial.revision,requestId:randomUUID(),
+   trackId:initial.tracks.find(track=>track.kind==='audio')!.id,assetId:asset.id,startFrame:0,durationFrames:30,
+  });
+  worker=startWorker(store,services as unknown as Parameters<typeof startWorker>[1],new Map());
+  const queue=()=>services.call<ProjectShape>('timeline.render',{
+   projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',
+   exportSettings:selected('short_360'),
+  });
+  const rejected=await queue();
+  let candidate: string | undefined, installed: string | undefined;
+  const rollbackHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof,workingFile){
+   const final=path.join(workspace,proof.relativePath);
+   if(point==='after_final'){
+    assert.ok(workingFile);
+    assert.equal(existsSync(final),false,'keep the verified result private until installation');
+    candidate=workingFile;
+   }
+   if(point==='after_install'){
+    installed=final;
+    assert.equal(existsSync(final),true);
+    throw Object.assign(Error('Synthetic disk-full failure after installing the exFAT export'),{code:'ENOSPC',path:final});
+   }
+  }});
+  try{await worker.tick();}finally{rollbackHook();}
+  const failed=store.get('exports',rejected.id) as Json;
+  assert.ok(candidate&&installed,`reach and then roll back the exFAT installation (${JSON.stringify(failed.error)})`);
+  assert.equal(failed.status,'failed');
+  assert.equal(failed.assetId,null);
+  assert.equal((failed.error as {code?: string}).code,'INVALID_MEDIA');
+  assert.equal(existsSync(candidate),false);
+  assert.equal(existsSync(installed),false);
+  assert.deepEqual(await readdir(outputDirectory),[]);
+  assert.deepEqual(await readdir(path.dirname(candidate)),[]);
+  assert.deepEqual(await readdir(workerStageDirectory(store,workspace,rejected.id)),[]);
+  assert.equal(store.list('assets',project.id).length,1);
+
+  const accepted=await queue(), foreignBytes=Buffer.from('another process owns the original name');
+  let occupied: string | undefined;
+  const collisionHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
+   if(point!=='after_final'||occupied)return;
+   occupied=path.join(workspace,proof.relativePath);
+   writeFileSync(occupied,foreignBytes,{flag:'wx'});
+  }});
+  try{await worker.tick();}finally{collisionHook();}
+  const saved=store.get('exports',accepted.id) as Json;
+  assert.equal(saved.status,'succeeded',JSON.stringify(saved.error));
+  assert.equal(typeof saved.assetId,'string');
+  const output=store.get('assets',String(saved.assetId)) as Json;
+  const file=mediaFixturePath(workspace,output);
+  assert.ok(occupied);
+  assert.deepEqual(await readFile(occupied),foreignBytes);
+  assert.notEqual(file,occupied);
+  const expected=[path.basename(file),path.basename(occupied)];
+  const appleDouble=expected.map(name=>`._${name}`);
+  assert.deepEqual((await readdir(outputDirectory)).filter(name=>!appleDouble.includes(name)).sort(),expected.sort());
+  assert.equal(hash(await readFile(file)),output.sha256);
+  await verifyOutput(file,360,640,30);
+  assert.equal(store.list('assets',project.id).length,2);
+ }finally{await worker?.stop();await services.drain();store.close();}
 });
 
 test('postcommit publication exception preserves the successful custom export and its exact owned output',{timeout:20000},async t=>{

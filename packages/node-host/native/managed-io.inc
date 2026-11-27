@@ -73,8 +73,48 @@ napi_value syncManagedDirectory(napi_env env,napi_callback_info info){return gua
   // the existing trusted-ancestor ACL policy rather than private-root ACLs.
   auto tree=walk(opt.path,user,&opt.root,true,false,false,GENERIC_READ|GENERIC_WRITE,0,privateRoot);check(FlushFileBuffers(tree.leaf()));validate(tree.leaf(),opt.path.value,user,true,privateRoot,privateRoot&&opt.path.value==opt.root.value,0);return undefined(env);
 });}
+void renameHandleNoReplace(HANDLE file,const Path& destination){
+  std::vector<BYTE> bytes(sizeof(FILE_RENAME_INFO)+destination.value.size()*sizeof(wchar_t));
+  auto rename=reinterpret_cast<FILE_RENAME_INFO*>(bytes.data());
+  rename->ReplaceIfExists=FALSE;
+  rename->RootDirectory=nullptr;
+  rename->FileNameLength=static_cast<DWORD>(destination.value.size()*sizeof(wchar_t));
+  memcpy(rename->FileName,destination.value.data(),rename->FileNameLength);
+  if(!SetFileInformationByHandle(file,FileRenameInfo,rename,static_cast<DWORD>(bytes.size()))){
+    const auto failure=GetLastError();
+    if(failure==ERROR_ALREADY_EXISTS||failure==ERROR_FILE_EXISTS)reject("ALREADY_EXISTS");
+    reject("IO_ERROR");
+  }
+}
 napi_value renameManaged(napi_env env,napi_callback_info info){return guarded(env,[&]{auto values=args(env,info,4);auto opt=options(env,values[0],values[2]);auto destination=canonical(text(env,values[1]));check(!opt.directory);Lease source(env,opt);source.tree=walk(opt.path,source.user,&opt.root,false,false,false,DELETE,opt.maxBytes);expected(env,source.tree.leaf(),values[2]);auto target=walk(destination,source.user,&opt.root,false,false,true,0,opt.maxBytes);check(target.missing,"ALREADY_EXISTS");check(target.handles.size()==destination.components.size(),"MISSING");
-  std::vector<BYTE> bytes(sizeof(FILE_RENAME_INFO)+destination.value.size()*sizeof(wchar_t));auto rename=reinterpret_cast<FILE_RENAME_INFO*>(bytes.data());rename->ReplaceIfExists=FALSE;rename->RootDirectory=nullptr;rename->FileNameLength=static_cast<DWORD>(destination.value.size()*sizeof(wchar_t));memcpy(rename->FileName,destination.value.data(),rename->FileNameLength);if(!SetFileInformationByHandle(source.tree.leaf(),FileRenameInfo,rename,static_cast<DWORD>(bytes.size()))){if(GetLastError()==ERROR_ALREADY_EXISTS||GetLastError()==ERROR_FILE_EXISTS)reject("ALREADY_EXISTS");reject("IO_ERROR");}
+  renameHandleNoReplace(source.tree.leaf(),destination);
   Handle leaf=std::move(source.tree.handles.back());target.handles.push_back(std::move(leaf));source.tree=std::move(target);source.opt.path=destination;check(napi_create_reference(env,values[3],1,&source.metadata)==napi_ok);return metadata(source);
+});}
+napi_value renameProjectOutputNoReplace(napi_env env,napi_callback_info info){return guarded(env,[&]{
+  const auto values=args(env,info,3);
+  const auto opt=options(env,values[0],values[2]);
+  const auto destination=canonical(text(env,values[1]));
+  check(!opt.directory&&has(env,values[2],"root")&&has(env,values[2],"expectedVolume")&&
+    has(env,values[2],"maxBytes")&&!destination.components.empty(),"INVALID_PATH");
+  User user;
+  auto source=walk(opt.path,user,&opt.root,false,false,false,DELETE,opt.maxBytes);
+  expected(env,source.leaf(),values[2]);
+  const auto parentPath=canonical(joinPrefix(destination,destination.components.size()-1));
+  // Pin the public parent under the same ordinary ACL policy as directory
+  // sync. The source lease still enforces private storage and exact identity.
+  auto parent=walk(parentPath,user,&parentPath,true,false,false,0,0,false);
+  check(identify(source.leaf()).volume==identify(parent.leaf()).volume,"UNSUPPORTED_FILESYSTEM");
+  if(GetFileAttributesW(destination.value.c_str())!=INVALID_FILE_ATTRIBUTES)reject("ALREADY_EXISTS");
+  const auto absent=GetLastError();
+  check(absent==ERROR_FILE_NOT_FOUND||absent==ERROR_PATH_NOT_FOUND);
+  FILE_STANDARD_INFO current{};
+  check(GetFileInformationByHandleEx(source.leaf(),FileStandardInfo,&current,sizeof(current)));
+  check(current.NumberOfLinks==1&&current.EndOfFile.QuadPart>=0&&
+    static_cast<uint64_t>(current.EndOfFile.QuadPart)==opt.maxBytes,"FILE_CHANGED");
+  // The attributes check only classifies existing names. The kernel rename
+  // itself rejects a destination inserted by another writer at any time.
+  auto result=undefined(env);
+  renameHandleNoReplace(source.leaf(),destination);
+  return result;
 });}
 napi_value removeManaged(napi_env env,napi_callback_info info){return guarded(env,[&]{auto values=args(env,info,2);auto opt=options(env,values[0],values[1]);User user;auto tree=walk(opt.path,user,&opt.root,opt.directory,false,false,DELETE,opt.maxBytes);expected(env,tree.leaf(),values[1]);FILE_DISPOSITION_INFO disposition{TRUE};check(SetFileInformationByHandle(tree.leaf(),FileDispositionInfo,&disposition,sizeof(disposition)));return undefined(env);});}

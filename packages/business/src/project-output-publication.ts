@@ -1,6 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync, unlinkSync, linkSync} from 'node:fs';
+import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync, unlinkSync, linkSync, renameSync, statfsSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import {open, link} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
@@ -468,6 +468,49 @@ class ExportInstallUnresolved extends Error {
   constructor(cause: unknown) {super('The export installation outcome could not be reconciled.', {cause});}
 }
 export const isExportInstallUnresolved = (error: unknown): boolean => error instanceof ExportInstallUnresolved;
+function linkUnavailable(error: unknown, directory: string): boolean {
+  if (!record(error)) return false;
+  if (['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS'].includes(String(error.code))) return true;
+  if (error.code !== 'EPERM') return false;
+  if (process.platform === 'win32') return true;
+  if (process.platform !== 'linux') return false;
+  // Linux FAT and exFAT report EPERM when the filesystem has no link operation.
+  const {type} = statfsSync(directory);
+  return type === 0x4d44 || type === 0x2011bab0;
+}
+function installExportFile(workingFile: string, file: string, directoryIdentity: OutputFileIdentity, sizeBytes: number,
+  check: () => void): 'link' | 'rename' {
+  try {linkSync(workingFile, file);return 'link';}
+  catch (error) {
+    if (record(error) && error.code === 'EEXIST') throw new ExportNameOccupied();
+    if (!linkUnavailable(error, path.dirname(file))) throw error;
+    if (process.platform === 'win32') {
+      const rename = getWindowsManagedFileIO().renameProjectOutputNoReplace;
+      if (!rename) throw error;
+      const directory = path.dirname(workingFile);
+      const expected = validateManagedFile(workingFile, {root: directory, private: true, maxBytes: sizeBytes});
+      if (!expected) invalid();
+      check();
+      try {rename(workingFile, file, {root: directory, expected});}
+      catch (failure) {
+        if (record(failure) && failure.reason === 'ALREADY_EXISTS') throw new ExportNameOccupied();
+        throw failure;
+      }
+    } else {
+      // Where links are unavailable (e.g. macOS exFAT also rejects RENAME_EXCL),
+      // the project lock excludes other Mioon writers. Require an owner-only
+      // writable directory and check absence immediately before the same-volume
+      // rename. A non-cooperating writer with access can still race this check.
+      check();
+      const directory = lstatSync(path.dirname(file), {bigint: true});
+      if (!directory.isDirectory() || !sameOutputIdentity(directoryIdentity, outputFileIdentity(directory)) ||
+          !process.getuid || directory.uid !== BigInt(process.getuid()) || (directory.mode & 0o022n) !== 0n) invalid();
+      if (lstatSync(file, {throwIfNoEntry: false})) throw new ExportNameOccupied();
+      renameSync(workingFile, file);
+    }
+    return 'rename';
+  }
+}
 function exportCopyPath(store: ProjectStore, receipt: Receipt): string {
   return path.join(store.projectDir, '.mioon-export-staging',
     receipt.proof.publicationId + '-' + receipt.attempt + '.' + extensions[receipt.proof.mimeType]);
@@ -551,6 +594,19 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
       const created = await target.stat({bigint: true});
       candidateIdentity = outputFileIdentity(created);
       fault('after_target_create'); check();
+      const empty = fileMetadata(workingFile, check);
+      if (empty.size !== 0n || empty.nlink !== 1n || !sameOutputIdentity(candidateIdentity, outputFileIdentity(empty))) {
+        throw new BytesMismatch('copy-target', 'identity');
+      }
+      // exFAT assigns a different inode when the first cluster is allocated.
+      // Allocate it on our exclusive descriptor before saving the identity;
+      // the sequential copy overwrites this byte at offset zero.
+      try {await target.truncate(1);}
+      finally {candidateIdentity = outputFileIdentity(await target.stat({bigint: true}));}
+      const allocated = fileMetadata(workingFile, check);
+      if (allocated.size !== 1n || allocated.nlink !== 1n || !sameOutputIdentity(candidateIdentity, outputFileIdentity(allocated))) {
+        throw new BytesMismatch('copy-target', 'identity');
+      }
       receipt.targetIdentity = candidateIdentity; receipt.mode = 'copy'; receipt.phase = 'copying';
       writeReceipt(store, receipt, options);
       fault('after_target_identity'); check();
@@ -583,22 +639,20 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
       const install = (): void => {
         checkCandidate(() => check());
         register?.(published);
-        checkCandidate(() => {publicationCheck(); checkDirectory();});
-        try {linkSync(workingFile, file);}
-        catch (error) {
-          if (record(error) && error.code === 'EEXIST') throw new ExportNameOccupied();
-          throw error;
-        }
+        const recheck = () => checkCandidate(() => {publicationCheck(); checkDirectory();});
+        recheck();
+        const mode = installExportFile(workingFile, file, receipt.directoryIdentity, proof.sizeBytes, recheck);
         installed = true;
-        const linked = fileMetadata(file, publicationCheck);
-        assertFileFacts(linked, expected, 'registration');
-        if (linked.nlink !== 2n) throw new BytesMismatch('registration', 'identity');
+        const installedBeforeHook = fileMetadata(file, publicationCheck);
+        assertFileFacts(installedBeforeHook, expected, 'registration');
+        if (installedBeforeHook.nlink !== (mode === 'link' ? 2n : 1n)) throw new BytesMismatch('registration', 'identity');
         fault('after_install');
         const installedInfo = fileMetadata(file, publicationCheck);
         assertFileFacts(installedInfo, expected, 'registration');
-        if (installedInfo.ctimeNs !== linked.ctimeNs) throw new BytesMismatch('registration', 'ctime');
-        if (installedInfo.nlink !== linked.nlink) throw new BytesMismatch('registration', 'identity');
-        removeOwnedOutput(workingFile, directoryIdentity, identity, 2n);
+        if (installedInfo.ctimeNs !== installedBeforeHook.ctimeNs) throw new BytesMismatch('registration', 'ctime');
+        if (installedInfo.nlink !== installedBeforeHook.nlink) throw new BytesMismatch('registration', 'identity');
+        if (mode === 'link') removeOwnedOutput(workingFile, directoryIdentity, identity, 2n);
+        else syncDirectory(directory);
         const final = fileMetadata(file, publicationCheck);
         assertFileFacts(final, expected, 'registration');
         if (final.nlink !== 1n) throw new BytesMismatch('registration', 'identity');
