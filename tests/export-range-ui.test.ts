@@ -45,12 +45,26 @@ test('whole selection omits range, while explicit full span and one frame remain
 
 test('invalid raw selected fields survive unchanged and never become omitted whole timeline', () => {
   const f = rangeFixture();
-  for (const [start, end] of [['', '90'], ['0', ''], ['1.5', '90'], ['-1', '90'], ['30', '30'], ['31', '30'], ['0', '121'], ['0', '18001'], ['1e1', '90'], [' ', '90'], ['0', '9007199254740992']] as const) {
+  for (const [start, end] of [['', '90'], ['0', ''], ['1.5', '90'], ['-1', '90'], ['30', '30'], ['31', '30'], ['0', '121'], ['0', '54001'], ['1e1', '90'], [' ', '90'], ['0', '9007199254740992']] as const) {
     const raw = draft(start, end); assert.equal(f.choose(raw), true); assert.deepEqual(f.controller.getState().draft, raw);
     assert.equal(f.controller.getRange('project:1'), null); assert.ok(f.controller.getState().error);
     assert.equal(exportRangeContextFields({ exportRange: f.controller.getRange('project:1') }).exportRangeKey, null);
     assert.throws(() => rangeFields({ exportRange: null }));
   }
+});
+
+test('the final frame of a 30-minute timeline can be selected and bounds remain exclusive', () => {
+  const f = rangeFixture();
+  f.set({durationFrames: 54000});
+  assert.equal(f.choose(draft('53999', '54000')), true);
+  assert.deepEqual(f.controller.getRange('project:1'), {startFrame: 53999, endFrame: 54000});
+  assert.equal(f.choose(draft('53999', '54001')), true);
+  assert.equal(f.controller.getRange('project:1'), null);
+  const view = component('ExportRangeControls.tsx').default;
+  const changes: unknown[] = [];
+  const tree = view({durationFrames: 54000, onChange: (value: unknown) => changes.push(value)});
+  nodes(tree).find(node => node.props['data-testid'] === 'export-range-selected')!.props.onClick();
+  assert.deepEqual(changes, [draft('0', '54000')]);
 });
 
 test('session selection retains through visibility and reconnect, resets on project epoch and fences stale callbacks', () => {

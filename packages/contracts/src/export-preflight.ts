@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 type Rec = Record<string, unknown>;
 export {TIMELINE_COLOUR_PREFLIGHT_MESSAGES,TIMELINE_COLOUR_PREFLIGHT_CODES} from './timeline-colour.ts';
 import {timelineExportRangeSchema,isTimelineExportRangeInput,isTimelineExportRangeWithinDuration,isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
@@ -9,7 +10,7 @@ import {TIMELINE_SUBTITLE_PROFILE_IDS} from './timeline-subtitle-profile.ts';
 
 // Local source verification is bounded and never claims full media decoding.
 export const EXPORT_PREFLIGHT_LIMITS = Object.freeze({
-  assets: 100,
+  assets: TIMELINE_LIMITS.maxClips,
   sourceBytes: 512 * 1024 * 1024,
   totalBytes: 1024 * 1024 * 1024,
   timeoutMs: 30_000,
@@ -46,14 +47,14 @@ export const exportPreflightResponseSchema = z.object({
     fps: z.literal(30),
     width: z.number().int().positive().max(TIMELINE_OUTPUT_MAX_EDGE),
     height: z.number().int().positive().max(TIMELINE_OUTPUT_MAX_EDGE),
-    durationFrames: count(18000),
-    trackCount: count(12),
-    clipCount: count(100),
+    durationFrames: count(TIMELINE_LIMITS.maxFrames),
+    trackCount: count(TIMELINE_LIMITS.maxTracks),
+    clipCount: count(TIMELINE_LIMITS.maxClips),
     assetCount: count(EXPORT_PREFLIGHT_LIMITS.assets),
-    visualClipCount: count(100),
-    audibleClipCount: count(100),
-    mutedTrackCount: count(12),
-    hiddenVideoTrackCount: count(12),
+    visualClipCount: count(TIMELINE_LIMITS.maxClips),
+    audibleClipCount: count(TIMELINE_LIMITS.maxClips),
+    mutedTrackCount: count(TIMELINE_LIMITS.maxTracks),
+    hiddenVideoTrackCount: count(TIMELINE_LIMITS.maxTracks),
   }).strict().refine(value=>timelineOutputPreset(value)!==null,{message:'Summary dimensions must match a supported timeline-output preset.'}).nullable(),
   checks: z.object({
     totalAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),

@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 import {z} from 'zod';
 import {LUT_RESOURCE_PROFILE} from './lut-resources.ts';
 
@@ -111,7 +112,7 @@ export const timelineColourPlanClipSchema = z.object({
 export const timelineColourPlanSchema = z.object({
   profileId: z.literal(TIMELINE_COLOUR_RENDER_PROFILE), working: z.literal('rec709-encoded-rgb8-v1'),
   output: z.literal('rec709-yuv420p-limited-v1'), lutAlgorithm: z.literal('cube3d-tetrahedral-premixed-v1'),
-  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(timelineColourPlanClipSchema).max(100),
+  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(timelineColourPlanClipSchema).max(TIMELINE_LIMITS.maxClips),
 }).strict().refine(value => new Set(value.clips.map(clip => clip.clipId)).size === value.clips.length,
   'Colour plan clip identities must be unique.');
 export const timelineMixedColourPlanClipSchema = z.union([
@@ -129,7 +130,7 @@ export const timelineMixedColourPlanClipSchema = z.union([
 export const timelineMixedColourPlanSchema = z.object({
   profileId: z.literal(TIMELINE_MIXED_COLOUR_RENDER_PROFILE), working: z.literal('rec709-encoded-rgb8-v1'),
   output: z.literal('rec709-yuv420p-limited-v1'), lutAlgorithm: z.literal('cube3d-tetrahedral-premixed-v1'),
-  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(timelineMixedColourPlanClipSchema).max(100),
+  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(timelineMixedColourPlanClipSchema).max(TIMELINE_LIMITS.maxClips),
 }).strict().refine(value => new Set(value.clips.map(clip => clip.clipId)).size === value.clips.length && value.clips.some(clip => clip.kind === 'image'),
   'Mixed colour plans require unique clip identities and an image.');
 export const timelineJpegColourPlanClipSchema = z.object({
@@ -146,7 +147,7 @@ export const timelineJpegColourPlanClipSchema = z.object({
 export const timelineJpegMixedColourPlanSchema = z.object({
   profileId: z.literal(TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE), working: z.literal('rec709-encoded-rgb8-v1'),
   output: z.literal('rec709-yuv420p-limited-v1'), lutAlgorithm: z.literal('cube3d-tetrahedral-premixed-v1'),
-  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(z.union([timelineMixedColourPlanClipSchema,timelineJpegColourPlanClipSchema])).max(100),
+  outOfDomain: z.literal('clip-lut-domain'), clips: z.array(z.union([timelineMixedColourPlanClipSchema,timelineJpegColourPlanClipSchema])).max(TIMELINE_LIMITS.maxClips),
 }).strict().refine(value => new Set(value.clips.map(clip => clip.clipId)).size === value.clips.length &&
   value.clips.some(clip => clip.sourceProfileId === TIMELINE_JPEG_SOURCE_PROFILE), 'JPEG plans require unique clip identities and a JPEG.');
 export const timelineAnyColourPlanSchema = z.union([timelineColourPlanSchema, timelineMixedColourPlanSchema, timelineJpegMixedColourPlanSchema]);
@@ -171,7 +172,7 @@ const same = (left: unknown, right: unknown): boolean => {
  * Omitted/null colour preserves legacy bytes; even a hidden managed clip opts
  * the snapshot into the explicit plan, while hidden visual clips are skipped. */
 export function createTimelineColourPlan(timeline: unknown, assets: unknown): TimelineColourPlan | undefined {
-  if (!object(timeline) || !dense(timeline.clips, 100) || !dense(timeline.tracks, 12)) invalid('Invalid timeline colour structure.');
+  if (!object(timeline) || !dense(timeline.clips, TIMELINE_LIMITS.maxClips) || !dense(timeline.tracks, TIMELINE_LIMITS.maxTracks)) invalid('Invalid timeline colour structure.');
   const clips = timeline.clips as unknown[], tracks = timeline.tracks as unknown[];
   let managed = false;
   for (const clip of clips) {
@@ -182,7 +183,7 @@ export function createTimelineColourPlan(timeline: unknown, assets: unknown): Ti
     }
   }
   if (!managed) return undefined;
-  if (!dense(assets, 100)) invalid('Invalid colour source assets.');
+  if (!dense(assets, TIMELINE_LIMITS.maxClips)) invalid('Invalid colour source assets.');
   const trackMap = new Map<string, RecordValue>(), assetMap = new Map<string, RecordValue>();
   for (const track of tracks) {
     if (!object(track) || !id.safeParse(track.id).success || typeof track.id !== 'string' || trackMap.has(track.id) ||
@@ -207,7 +208,7 @@ export function createTimelineColourPlan(timeline: unknown, assets: unknown): Ti
     }
     if (track.hidden) continue;
     if (asset.mimeType === 'image/png' || asset.mimeType === 'image/jpeg') {
-      if(!Number.isSafeInteger(clip.startFrame)||!Number.isSafeInteger(clip.durationFrames)||Number(clip.startFrame)<0||Number(clip.durationFrames)<1||Number(clip.startFrame)+Number(clip.durationFrames)>18000)invalid('Invalid image interval.');
+      if(!Number.isSafeInteger(clip.startFrame)||!Number.isSafeInteger(clip.durationFrames)||Number(clip.startFrame)<0||Number(clip.durationFrames)<1||Number(clip.startFrame)+Number(clip.durationFrames)>TIMELINE_LIMITS.maxFrames)invalid('Invalid image interval.');
       imageEdges.push({frame:Number(clip.startFrame),delta:1},{frame:Number(clip.startFrame)+Number(clip.durationFrames),delta:-1});
       const jpeg = asset.mimeType === 'image/jpeg';
       const result = (jpeg ? timelineJpegClipColourSchema : timelineImageClipColourSchema).safeParse(clip.colour);

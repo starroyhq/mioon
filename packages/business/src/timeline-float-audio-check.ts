@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {TIMELINE_EXPORT_FLOAT_LIMITS} from '@mioon/contracts/timeline-export-float';
 import type {TimelineExportAudioMeasurement} from '@mioon/contracts/timeline-export-float';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 
 export const TIMELINE_FLOAT_AUDIO_LIMITS = Object.freeze({outputFrames: TIMELINE_EXPORT_FLOAT_LIMITS.outputFrames, sampleFrames: TIMELINE_EXPORT_FLOAT_LIMITS.sampleFrames,
   pcmBytes: TIMELINE_EXPORT_FLOAT_LIMITS.pcmBytes, totalMs: TIMELINE_EXPORT_FLOAT_LIMITS.timeoutMs, responseBytes: TIMELINE_EXPORT_FLOAT_LIMITS.reportBytes, probeBytes: 128 * 1024, stderrBytes: 64 * 1024});
@@ -143,7 +144,7 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
     if (typeof list !== 'string' || !path.isAbsolute(list) || list.includes('\0') || !options || typeof options.beforeEffect !== 'function' ||
         (options.remainingMs !== undefined && typeof options.remainingMs !== 'function') || !Number.isSafeInteger(runtime.terminationMs) ||
         runtime.terminationMs < 0 || runtime.terminationMs >= TIMELINE_FLOAT_AUDIO_LIMITS.totalMs) throw configuration();
-    if (!Array.isArray(options.ownedSegments) || options.ownedSegments.length < 1 || options.ownedSegments.length > 200 ||
+    if (!Array.isArray(options.ownedSegments) || options.ownedSegments.length < 1 || options.ownedSegments.length > TIMELINE_LIMITS.maxSegments ||
         options.ownedSegments.some(segment => !segment || typeof segment.file !== 'string' || !path.isAbsolute(segment.file) || segment.file.includes('\0') ||
           path.dirname(segment.file) !== path.dirname(list) || !Number.isSafeInteger(segment.outputFrames) || segment.outputFrames < 1) ||
         new Set(options.ownedSegments.map(segment => segment.file)).size !== options.ownedSegments.length ||

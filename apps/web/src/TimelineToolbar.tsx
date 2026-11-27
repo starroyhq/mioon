@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import React from 'react';
 import type {ReactNode} from 'react';
 import {MousePointer2, Magnet, Plus, ChevronDown, LocateFixed, Minus, ChevronUp} from '@mioon/ui/components/workbench-icons';
@@ -33,7 +34,7 @@ function TimelinePositionControl({playhead, playbackClock, fps, timecodeFormat, 
   const frame = useTimelinePlaybackFrame(playbackClock, playhead);
   return <label className="edit-playhead-input"><LocateFixed size={13} />
     <output>{displayTimelineFrame(frame, fps, timecodeFormat)}</output>
-    <Input aria-label={t('timeline.view.playheadFrame')} data-testid="timeline-playhead" type="number" min={0} max={18000} step={1}
-      value={frame} onChange={event => onSeek(Math.max(0, Math.min(18000, Math.round(Number(event.target.value) || 0))))} />
+    <Input aria-label={t('timeline.view.playheadFrame')} data-testid="timeline-playhead" type="number" min={0} max={TIMELINE_LIMITS.maxFrames} step={1}
+      value={frame} onChange={event => onSeek(Math.max(0, Math.min(TIMELINE_LIMITS.maxFrames, Math.round(Number(event.target.value) || 0))))} />
   </label>;
 }

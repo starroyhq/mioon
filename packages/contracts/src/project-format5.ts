@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 import {z} from 'zod';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
@@ -23,7 +24,7 @@ export const FORMAT5_INPUT_LIMITS = Object.freeze({
 });
 /** Editing and persistence limits. Export admission retains its own limits. */
 export const FORMAT5_LIMITS = Object.freeze({
-  mainTrackClips:500, otherTrackClips:1000, subtitleCues:1000, tracks:12,
+  mainTrackClips:500, otherTrackClips:1000, subtitleCues:TIMELINE_LIMITS.maxRenderedSubtitleCues, tracks:TIMELINE_LIMITS.maxTracks,
   durationFrames:300000, timelineBytes:8*1024*1024, baselineBytes:512*1024,
   historyEntryBytes:4*1024*1024, historyEntries:200, historyBytes:128*1024*1024,
   receiptRows:65536, receiptBytes:32*1024*1024, receiptResponseBytes:64*1024,

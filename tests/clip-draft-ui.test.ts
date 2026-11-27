@@ -104,6 +104,8 @@ test('invalid raw numbers and missing name never become valid zero-valued busine
   for (const [field, value] of [['startFrame', ''], ['sourceInFrame', '  '], ['sourceInFrame', '0x10'], ['gain', ''], ['durationFrames', '1.5'], ['fadeInFrames', '-1'], ['name', '']] as const) assert.equal(clipDraftPatch({ ...raw, [field]: value }), null, field);
   assert.equal(clipDraftPatch({ ...raw, rect: { ...raw.rect, x: '' } }), null);
   assert.ok(clipDraftPatch({ ...raw, name: 'n'.repeat(200) }));
+  assert.equal(clipDraftPatch({ ...raw, startFrame: '53999', durationFrames: '1' })?.startFrame, 53999);
+  assert.equal(clipDraftPatch({ ...raw, startFrame: '53999', durationFrames: '2' }), null);
   assert.equal(Object.hasOwn(clipDraftPatch(raw)!, 'fadeInFrames'), false);
   assert.equal(clipDraftPatch({ ...raw, fadeInFrames: '0' })!.fadeInFrames, 0);
   assert.deepEqual(clipDraftRaw({ id: clipId, assetId, ...raw }), raw);

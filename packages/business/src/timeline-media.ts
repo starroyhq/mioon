@@ -7,7 +7,7 @@ import path from 'node:path';
 import {run,probe} from './media.ts';
 import {validateTimeline} from './timeline-inputs.ts';
 import {timelineAudioSilenceFilter,timelineClipAudioFilter,timelineMixedAudioFilter} from './timeline-audio-filter-graph.ts';
-import {prepareTimelineSubtitles,timelineSubtitleFilters} from './subtitle-media.ts';
+import {prepareTimelineSubtitles,SUBTITLE_INK_BATCH_SIZE,timelineSubtitleFilters} from './subtitle-media.ts';
 import {validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
 import {isTimelineExportSnapshot} from '@mioon/contracts';
 import {assertTimelineExportCapability,timelineExportVideoArgs} from './timeline-export-capabilities.ts';
@@ -20,7 +20,7 @@ import {createTimelineFloatAudioChecker,assertTimelineFloatAudioAllowed,remember
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {createTimelineFloatStaging} from './timeline-float-staging.ts';
-import {planTimelineExportRange,validateTimelineExportRangeOutputStart} from './timeline-export-range-plan.ts';
+import {planTimelineExportRange,timelineExportConcat,validateTimelineExportRangeOutputStart} from './timeline-export-range-plan.ts';
 import {isTimelineColourSnapshot,projectTimelineColourPlan,assertTimelineImageCompositorInputCount,TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE} from '../../contracts/src/timeline-colour.ts';
 import {prepareTimelineColourLuts,timelineColourInputFilter,TIMELINE_COLOUR_OUTPUT_FILTER,TIMELINE_COLOUR_OUTPUT_ARGS} from './timeline-colour-lut.ts';
 import {validateTimelineColourSourceInterpretation} from './timeline-colour-source.ts';
@@ -64,10 +64,10 @@ const sameInode=(a: InodeIdentity,b: InodeIdentity): boolean=>a.dev===b.dev&&a.i
 const changedWork=(): Error=>Object.assign(Error('The local render staging files changed.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
 
 // Fenced attempts retain exact inode ownership, including failed/partial writes.
-// This fixed flat set is bounded by <=200 segments, <=200 segment scripts,
-// <=102 subtitle files and one concat list. Never scan or recursively remove
+// This flat set is bounded by the validated segment plan and subtitle set.
+// Never scan or recursively remove
 // children: replacements and files created by someone else must survive.
-function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefined,signal: AbortSignal|undefined): OwnedTimelineWork{
+function ownedTimelineWork(destination: string,maxFiles: number,beforeEffect: (()=>void)|undefined,signal: AbortSignal|undefined): OwnedTimelineWork{
  checkMediaEffect(beforeEffect,signal);
  const work=mkdtempSync(path.join(path.dirname(destination),'.timeline-render-'));
  const directoryFd=openSync(work,constants.O_RDONLY|(constants.O_NOFOLLOW??0));
@@ -81,7 +81,7 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
  };
  const reserve=(file: string): ReservedEntry=>{
   effect();
-  if(path.dirname(file)!==work||files.has(file)||files.size>=512)throw changedWork();
+  if(path.dirname(file)!==work||files.has(file)||files.size>=maxFiles)throw changedWork();
   const fd=openSync(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|(constants.O_NOFOLLOW??0),0o600);
   const entry={fd,identity:fstatSync(fd)};files.set(file,entry);return entry;
  };
@@ -151,8 +151,12 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  checkMediaEffect(beforeEffect,signal);
  // The validated frozen snapshot owns output geometry and the fixed timebase.
  const {width,height}=timeline;
- const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect} as never,{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
-  :beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
+ // One MOV and at most one filter script per segment, one text file per
+ // distinct cue, plus the subtitle font, measurement scripts and concat list.
+ const subtitleCueCount=timeline.subtitles?.cues.length??0;
+ const maxStageFiles=2*plan.segments.length+subtitleCueCount+Math.ceil(subtitleCueCount/SUBTITLE_INK_BATCH_SIZE)+2;
+ const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect,maxFiles:maxStageFiles},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
+  :beforeEffect===undefined?null:ownedTimelineWork(destination,maxStageFiles,beforeEffect,signal);
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
  const segmentOwner=signal??new AbortController().signal;
  let effect=owned?.effect??beforeEffect;
@@ -289,15 +293,15 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   await Promise.all(Array.from({length:Math.min(segmentConcurrency,plan.segments.length)},encodeNext));
   if(failedSegment!==undefined)throw segmentFailure;
   checkMediaEffect(effect,signal);
-  const entries=ownedSegments.map(({file,outputFrames})=>`file '${file.replaceAll("'","'\\''")}'\nduration ${seconds(outputFrames)}`);
-  const list=path.join(work,'segments.txt');await (owned?owned.writeOwnedFile(list,entries.join('\n')+'\n'):writeFile(list,entries.join('\n')+'\n'));
+  const {manifest,movieTimescale}=timelineExportConcat(ownedSegments,timeline);
+  const list=path.join(work,'segments.txt');await (owned?owned.writeOwnedFile(list,manifest):writeFile(list,manifest));
   checkMediaEffect(effect,signal);
   if(floatChecked){audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect as never,ownedSegments});checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck as never);}
   // The fenced worker reserves and retains the destination inode and checks
   // it in beforeEffect. Only that owned empty output may be overwritten.
   const concatRelease=await pool.acquire(signal,encoderOwner);
   try{
-   await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
+   await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000',...(movieTimescale===null?[]:['-movie_timescale',String(movieTimescale)]),'-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
   }finally{concatRelease();}
   checkMediaEffect(effect,signal);
   const result=await probe(destination,{signal,beforeEffect:effect}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');

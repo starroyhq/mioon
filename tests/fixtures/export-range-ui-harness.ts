@@ -1,6 +1,7 @@
 import * as i18n from '../helpers/i18n.ts';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import * as timelineLimits from '@mioon/contracts/timeline-limits';
 import * as rangeContract from '@mioon/contracts/timeline-export-range';
 import * as floatContract from '@mioon/contracts/timeline-export-float';
 import * as deliveryContract from '@mioon/contracts/timeline-delivery';
@@ -33,6 +34,7 @@ export function component(file: string): {default: UiComponent; [key: string]: u
       // file inspection has completed. Its real lifecycle has a separate suite.
       if (key === './ExportFileActions.tsx') return {__esModule:true, default:(props: Record<string, unknown>) => ({type:'ExportFileActions', props})};
       if (key === '@mioon/ui/components/workbench-confirm') return {useConfirmation:() => async () => {throw Error('Passive range presentation must not request confirmation');}};
+      if (key === '@mioon/contracts/timeline-limits') return timelineLimits;
       if (key === '@mioon/contracts/timeline-export-range') return rangeContract;
       if (key === '@mioon/contracts/timeline-export-float') return floatContract;
       if (key === '@mioon/contracts/timeline-delivery') return deliveryContract;

@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from './timeline-limits.ts';
 type Rec = Record<string, unknown>;
 import {z} from 'zod';
 import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,isTimelineSubtitleCodePoint,type TimelineSubtitleProfileId} from './timeline-subtitle-profile.ts';
@@ -5,7 +6,8 @@ import {timelineOutputPreset} from './timeline-output-geometry.ts';
 export {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,TIMELINE_SUBTITLE_PROFILE,isTimelineSubtitleCodePoint} from './timeline-subtitle-profile.ts';
 
 export const TIMELINE_SUBTITLE_OPERATIONS=Object.freeze(['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']);
-export const TIMELINE_SUBTITLE_LIMITS=Object.freeze({cues:100,lines:2,scalarsPerLine:20,textBytes:161,durationFrames:18000});
+export const TIMELINE_SUBTITLE_LIMITS=Object.freeze({cues:TIMELINE_LIMITS.maxSubtitleCues,lines:2,scalarsPerLine:20,textBytes:161,durationFrames:LEGACY_TIMELINE_LIMITS.maxFrames});
+export const TIMELINE_RENDER_SUBTITLE_LIMITS = Object.freeze({cues:TIMELINE_LIMITS.maxRenderedSubtitleCues,durationFrames:TIMELINE_LIMITS.maxFrames});
 export interface SubtitleIssue {code: string; message: string; details: Record<string, unknown>}
 const object=(value: unknown): value is Rec=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const fields=(value: unknown,required: readonly string[],optional: readonly string[]=[]): value is Rec=>object(value)&&required.every(key=>Object.hasOwn(value,key))&&Object.keys(value).every(key=>required.includes(key)||optional.includes(key));
@@ -40,18 +42,18 @@ export function getTimelineSubtitleTextIssue(text: unknown): SubtitleIssue | nul
 
 // durationFrames is media-derived, never extended by subtitles. Intervals use
 // the 30fps timeline clock and exclusive ends; adjacency is legal.
-export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unknown): SubtitleIssue | null {
+export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unknown, limits: {cues: number; durationFrames: number} = TIMELINE_SUBTITLE_LIMITS): SubtitleIssue | null {
  const layout=subtitleLayoutRecord(subtitles);
  if(!layout)
   return issue('INVALID_SUBTITLES','字幕数据或固定排版配置无效');
  const cues = layout.cues as Rec[];
- if(cues.length>TIMELINE_SUBTITLE_LIMITS.cues)return issue('SUBTITLE_LIMIT','时间线最多支持100条手动字幕',{maxCues:TIMELINE_SUBTITLE_LIMITS.cues});
+ if(cues.length>limits.cues)return issue('SUBTITLE_LIMIT',`时间线最多支持${limits.cues}条${limits===TIMELINE_SUBTITLE_LIMITS?'手动':''}字幕`,{maxCues:limits.cues});
  const ids=new Set<string>();
  for(const cue of cues){
   if(!fields(cue,['id','text','startFrame','durationFrames'])||!uuid(cue.id)||ids.has(cue.id))return issue('INVALID_SUBTITLES','字幕标识或字段无效');
   ids.add(cue.id);
   const textIssue=getTimelineSubtitleTextIssue(cue.text);if(textIssue)return {...textIssue,details:{...textIssue.details,cueId:cue.id}};
-  if(!integer(cue.startFrame,0,18000)||!integer(cue.durationFrames,1,18000)||!integer(durationFrames,0,18000)||cue.startFrame+cue.durationFrames>durationFrames)
+  if(!integer(cue.startFrame,0,limits.durationFrames)||!integer(cue.durationFrames,1,limits.durationFrames)||!integer(durationFrames,0,limits.durationFrames)||cue.startFrame+cue.durationFrames>durationFrames)
    return issue('SUBTITLE_BOUNDS','字幕起止帧必须位于已有媒体时长内',{cueId:cue.id,durationFrames});
  }
  const sorted=[...cues].sort((a,b)=>(a.startFrame as number)-(b.startFrame as number));
@@ -59,7 +61,7 @@ export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unk
   return issue('SUBTITLE_OVERLAP','字幕时间不能重叠，可以首尾相接',{cueIds:[sorted[i-1].id,sorted[i].id]});
  return null;
 }
-export const isTimelineSubtitles=(value: unknown,durationFrames: unknown): boolean=>getTimelineSubtitleIssue(value,durationFrames)===null;
+export const isTimelineSubtitles=(value: unknown,durationFrames: unknown,limits?: Parameters<typeof getTimelineSubtitleIssue>[2]): boolean=>getTimelineSubtitleIssue(value,durationFrames,limits)===null;
 export function timelineSubtitleSnapshotFields(subtitles:unknown):{subtitleProfile?:{profileId:TimelineSubtitleProfileId;fontSha256:string}}{
  if(subtitles===undefined)return {};
  const layout=subtitleLayoutRecord(subtitles);
@@ -79,9 +81,9 @@ export function isTimelineSubtitleSnapshotProfile(snapshot: unknown): boolean {
 }
 const base={projectId:z.string().uuid(),expectedRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),requestId:z.string().min(8).max(200)};
 const cueFields={text:z.string().superRefine((value,context)=>{const error=getTimelineSubtitleTextIssue(value);if(error)context.addIssue({code:'custom',message:error.message});}),
- startFrame:z.number().int().min(0).max(18000),durationFrames:z.number().int().min(1).max(18000)};
+ startFrame:z.number().int().min(0).max(LEGACY_TIMELINE_LIMITS.maxFrames),durationFrames:z.number().int().min(1).max(LEGACY_TIMELINE_LIMITS.maxFrames)};
 export const timelineSubtitleSchemas=Object.freeze({
- 'timeline.subtitle.add':z.object({...base,...cueFields}).strict().refine(value=>value.startFrame+value.durationFrames<=18000,{message:'Subtitle interval exceeds the timeline limit'}),
+ 'timeline.subtitle.add':z.object({...base,...cueFields}).strict().refine(value=>value.startFrame+value.durationFrames<=LEGACY_TIMELINE_LIMITS.maxFrames,{message:'Subtitle interval exceeds the timeline limit'}),
  'timeline.subtitle.update':z.object({...base,cueId:z.string().uuid(),patch:z.object(Object.fromEntries(Object.entries(cueFields).map(([key,value])=>[key,value.optional()]))).strict().refine(value=>Object.keys(value).length>0&&Object.values(value).every(item=>item!==undefined),{message:'A nonempty subtitle patch is required'})}).strict(),
  'timeline.subtitle.remove':z.object({...base,cueId:z.string().uuid()}).strict(),
 });

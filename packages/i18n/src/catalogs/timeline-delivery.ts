@@ -2543,6 +2543,18 @@ export const timelineDeliveryMessages = {
     "en": "The saved timeline has no exportable clips",
     "ja": "保存済みタイムラインに書き出せるクリップがありません"
   },
+  "export.preflight.issue.TIMELINE_LIMIT": {
+    "zh-Hans": "导出最多支持 {maxClips} 个片段和 {maxMinutes} 分钟",
+    "zh-Hant": "匯出最多支援 {maxClips} 個片段和 {maxMinutes} 分鐘",
+    "en": "Exports support up to {maxClips} clips and {maxMinutes} minutes",
+    "ja": "書き出しは最大 {maxClips} クリップ、{maxMinutes} 分までです"
+  },
+  "export.preflight.issue.TIMELINE_SEGMENT_LIMIT": {
+    "zh-Hans": "导出最多支持 {maxSegments} 个分段，请减少空隙或转场",
+    "zh-Hant": "匯出最多支援 {maxSegments} 個分段，請減少空隙或轉場",
+    "en": "Exports support up to {maxSegments} segments. Reduce gaps or transitions",
+    "ja": "書き出しは最大 {maxSegments} 区間までです。隙間やトランジションを減らしてください"
+  },
   "export.preflight.issue.INVALID_TIMELINE_SNAPSHOT": {
     "zh-Hans": "已保存的时间线包含无效或暂不支持的设置",
     "zh-Hant": "已儲存時間軸包含無效或暫不支援的設定",

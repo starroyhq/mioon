@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="e7b72ca805f31f9b531ad40f8f2353916297c94791774ac6b654ae8258c8bb13";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="f756bf8a42d03fb3dd03e9e2f61d3571785209ed52e8b6ea5f0ef8e4013612f9";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -5626,7 +5626,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "offsetFrames": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 18000
+      "maximum": 54000
      }
     },
     "required": [
@@ -12932,13 +12932,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "startFrame": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 17999,
+      "maximum": 53999,
       "description": "Included start frame on the saved composition clock, fixed at 30fps."
      },
      "endFrame": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 18000,
+      "maximum": 54000,
       "description": "Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration."
      }
     },
@@ -13512,7 +13512,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "startFrame": {
     "type": "integer",
     "minimum": 0,
-    "maximum": 17999
+    "maximum": 53999
    }
   },
   "required": [
@@ -13538,7 +13538,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "startFrame": {
     "type": "integer",
     "minimum": 0,
-    "maximum": 17999
+    "maximum": 53999
    }
   },
   "required": [
@@ -16050,13 +16050,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "startFrame": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 17999,
+      "maximum": 53999,
       "description": "Included start frame on the saved composition clock, fixed at 30fps."
      },
      "endFrame": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 18000,
+      "maximum": 54000,
       "description": "Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration."
      }
     },
@@ -16923,7 +16923,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "offsetFrames": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 18000
+      "maximum": 54000
      }
     },
     "required": [

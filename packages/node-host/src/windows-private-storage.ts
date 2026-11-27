@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {lstatSync,type Stats} from 'node:fs';
-import {PrivateStorageError,bindWindowsPrivateStorageIdentity,privateStorageIdentity} from '@mioon/contracts/private-storage';
+import {PrivateStorageError,bindWindowsPrivateStorageIdentity,privateStorageIdentity,PRIVATE_STORAGE_BUFFER_BYTES,PRIVATE_STORAGE_STREAM_BYTES} from '@mioon/contracts/private-storage';
 import type {WindowsPrivateStorageBackend,ManagedFileOptions,WindowsManagedFileIO} from '@mioon/contracts/private-storage';
 interface NativeOptions {root?:string;kind:'file'|'directory';create?:boolean;allowMissing?:boolean;private?:boolean;maxBytes?:number}
 interface NativeInspection {metadata:Stats;volume:string;fileId:string}
@@ -31,7 +31,7 @@ const failure=(error:unknown):never=>{
   throw new PrivateStorageError(typeof reason==='string'&&allowed.includes(reason)?reason:'IO_ERROR','Windows private storage validation or operation failed; existing data was not repaired.');
 };
 function maximum(value:unknown,fallback=4096):number {
-  const size=value??fallback;if(typeof size!=='number'||!Number.isSafeInteger(size)||size<0||size>64*1024*1024)throw new PrivateStorageError('INVALID_LIMIT','A safe storage byte limit is required.');return size;
+  const size=value??fallback;if(typeof size!=='number'||!Number.isSafeInteger(size)||size<0||size>PRIVATE_STORAGE_BUFFER_BYTES)throw new PrivateStorageError('INVALID_LIMIT','A safe storage byte limit is required.');return size;
 }
 export function createWindowsPrivateStorageBackend(native:WindowsStorageNative):WindowsPrivateStorageBackend {
   if(process.platform!=='win32'||native?.apiVersion!==1||['assertAvailable','inspect','read','write','remove','temporary'].some(name=>typeof (native as unknown as Record<string,unknown>)[name]!=='function'))throw unavailable();
@@ -44,8 +44,8 @@ export function createWindowsPrivateStorageBackend(native:WindowsStorageNative):
     const result=native.inspect(file,options,()=>lstatSync(file));if(result===null)return null;
     return metadata(result);
   });
-  const managed=(file:string,options:ManagedFileOptions,kind:'file'|'directory'):NativeOptions=>({...options,root:options.root??path.dirname(file),kind,...(options.maxBytes===undefined?{}:{maxBytes:maximum(options.maxBytes)})});
-  const streamMaximum=(value:number|undefined):number=>{const size=value??8*1024*1024*1024;if(!Number.isSafeInteger(size)||size<0||size>8*1024*1024*1024)throw new PrivateStorageError('INVALID_LIMIT','A safe streaming storage byte limit is required.');return size;};
+  const streamMaximum=(value:number|undefined):number=>{const size=value===undefined?PRIVATE_STORAGE_STREAM_BYTES:value;if(!Number.isSafeInteger(size)||size<0||size>PRIVATE_STORAGE_STREAM_BYTES)throw new PrivateStorageError('INVALID_LIMIT','A safe streaming storage byte limit is required.');return size;};
+  const managed=(file:string,options:ManagedFileOptions,kind:'file'|'directory'):NativeOptions=>({...options,root:options.root??path.dirname(file),kind,...(options.maxBytes===undefined?{}:{maxBytes:streamMaximum(options.maxBytes)})});
   const expected=(info:Stats):{expectedVolume:string;expectedFileId:string}=>{const identity=privateStorageIdentity(info),parts=/^windows:([a-f0-9]{16}):([a-f0-9]{32})$/u.exec(identity);if(!parts)throw unavailable();return {expectedVolume:parts[1]!,expectedFileId:parts[2]!};};
   const streamFunctions=['openManagedFile','openManagedDirectory','createManagedDirectory','syncManagedDirectory','renameManaged','removeManaged'] as const;
   const managedFileIO:WindowsManagedFileIO|undefined=streamFunctions.every(name=>typeof native[name]==='function')?Object.freeze({

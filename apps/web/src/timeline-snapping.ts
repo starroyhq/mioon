@@ -1,9 +1,10 @@
-import { message } from '../../../packages/i18n/src/index.ts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { sourceFrameCount } from '@mioon/contracts';
 // Renderer-only geometry. Explicit CLI/MCP/business frame edits never snap.
 export const SNAP_THRESHOLD_PX = 8;
-export const MAX_TIMELINE_FRAME = 18000;
+export const MAX_TIMELINE_FRAME = TIMELINE_LIMITS.maxFrames;
 export interface SnappingAsset { mimeType?: string; duration?: unknown; [key: string]: unknown }
 export interface SnappingClip { id: string; startFrame: number; durationFrames: number; trackId?: string; [key: string]: unknown }
 export interface SnappingTimeline { clips: SnappingClip[]; [key: string]: unknown }
@@ -62,8 +63,8 @@ export function timelineDropPreview({ timeline, track, asset, clip, pointerFrame
   if (!asset || !track || !timeline) { reason = '素材或轨道已不可用'; reasonMessage = message('timeline.snap.unavailable'); }
   else if (track.kind !== (asset.mimeType?.startsWith('audio/') ? 'audio' : 'video')) { reason = '片段类型与目标轨道不兼容'; reasonMessage = message('timeline.snap.incompatible'); }
   else if (!length.known)  { reason = length.note; reasonMessage = length.noteMessage ?? null; }
-  else if (length.durationFrames > MAX_TIMELINE_FRAME) { reason = '片段超过时间线 18000 帧上限'; reasonMessage = message('timeline.snap.tooLong'); }
-  else if (!clip && timeline.clips.length >= 100) { reason = '时间线最多容纳 100 个片段'; reasonMessage = message('timeline.snap.clipLimit'); }
+  else if (length.durationFrames > MAX_TIMELINE_FRAME) { reasonMessage = message('timeline.snap.tooLong', { maxFrames: MAX_TIMELINE_FRAME }); reason = renderMessage('zh-Hans', reasonMessage); }
+  else if (!clip && timeline.clips.length >= TIMELINE_LIMITS.maxClips) { reasonMessage = message('timeline.snap.clipLimit', { maxClips: TIMELINE_LIMITS.maxClips }); reason = renderMessage('zh-Hans', reasonMessage); }
   else if (timeline.clips.some(other => other.id !== clip?.id && other.trackId === track.id && position.startFrame < other.startFrame + other.durationFrames && position.startFrame + length.durationFrames > other.startFrame)) { reason = '同一轨道不允许重叠'; reasonMessage = message('timeline.snap.overlap'); }
   return { ...position, ...length, trackId: track?.id, valid: !reason, reason, reasonMessage, altKey, unchanged: Boolean(clip && clip.trackId === track?.id && clip.startFrame === position.startFrame) };
 }

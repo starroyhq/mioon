@@ -1,4 +1,5 @@
 import {sameMediaLocator} from './asset-reference-record.ts';
+import {LEGACY_TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
@@ -278,7 +279,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
     !(value.selectedVersionId===null||uuid(value.selectedVersionId))||!Number.isSafeInteger(value.orderIndex)||value.orderIndex<0)unavailable();
    return value;
   });
-  if(values.length>100)throw new AppError('TIMELINE_LIMIT','时间线最多支持100个片段',400);
+  if(values.length>LEGACY_TIMELINE_LIMITS.maxClips)throw new AppError('TIMELINE_LIMIT',`时间线最多支持${LEGACY_TIMELINE_LIMITS.maxClips}个片段`,400);
   return values.sort((a,b)=>a.orderIndex-b.orderIndex);
  }
  function restored(timeline: TimelineRecord,text: string,requireFormat=false,versionRestoreAfter?: unknown): TimelineRecord{

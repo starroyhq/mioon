@@ -159,15 +159,15 @@ test('lane-relative viewport coordinates preserve clip placement through horizon
   }
 });
 
-test('free placement clamps the whole duration within zero and 18000 frames', () => {
-  assert.equal(MAX_TIMELINE_FRAME, 18000);
-  for (const durationFrames of [1, 30, 90, 17999, 18000]) {
-    const maxStart = 18000 - durationFrames;
-    for (const pointerFrame of [-100.5, 18099.25]) {
+test('free placement clamps the whole duration within zero and 54000 frames', () => {
+  assert.equal(MAX_TIMELINE_FRAME, 54000);
+  for (const durationFrames of [1, 30, 90, 53999, 54000]) {
+    const maxStart = 54000 - durationFrames;
+    for (const pointerFrame of [-100.5, 54099.25]) {
       const result = snap({ pointerFrame, durationFrames, enabled: false });
       assert.equal(result.startFrame, pointerFrame < 0 ? 0 : maxStart);
       assert.equal(result.bounded, true);
-      assert.ok(result.startFrame + durationFrames <= 18000);
+      assert.ok(result.startFrame + durationFrames <= 54000);
     }
     for (const pointerFrame of [0, maxStart]) {
       const result = snap({ pointerFrame, durationFrames, enabled: false });
@@ -175,8 +175,8 @@ test('free placement clamps the whole duration within zero and 18000 frames', ()
       assert.equal(result.bounded, false);
     }
   }
-  const fractional = snap({ pointerFrame: 17970.49, durationFrames: 30, enabled: false });
-  assert.equal(fractional.startFrame, 17970);
+  const fractional = snap({ pointerFrame: 53970.49, durationFrames: 30, enabled: false });
+  assert.equal(fractional.startFrame, 53970);
   assert.equal(fractional.bounded, true);
 });
 
@@ -184,12 +184,12 @@ test('snap candidates cannot pull the clip before zero or past its duration-awar
   const beforeZero = snap({ pointerFrame: 2, playhead: 29, durationFrames: 30 });
   assert.equal(beforeZero.startFrame, 0);
   assert.equal(beforeZero.snap!.kind, 'zero');
-  const upper = snap({ pointerFrame: 17969, playhead: 18000, durationFrames: 30 });
-  assert.equal(upper.startFrame, 17970);
+  const upper = snap({ pointerFrame: 53969, playhead: 54000, durationFrames: 30 });
+  assert.equal(upper.startFrame, 53970);
   assert.equal(upper.snap!.edge, 'end');
-  assert.equal(upper.snap!.frame, 18000);
-  const beyond = snap({ pointerFrame: 17980, playhead: 18001, durationFrames: 30 });
-  assert.equal(beyond.startFrame, 17970);
+  assert.equal(upper.snap!.frame, 54000);
+  const beyond = snap({ pointerFrame: 53980, playhead: 54001, durationFrames: 30 });
+  assert.equal(beyond.startFrame, 53970);
   assert.equal(beyond.snap, null);
   assert.equal(beyond.bounded, true);
 });
@@ -200,7 +200,7 @@ test('Alt and the persisted toggle independently bypass snapping without bypassi
     assert.equal(result.startFrame, 302);
     assert.equal(result.snap, null);
     assert.equal(snap({ pointerFrame: -3, ...patch }).startFrame, 0);
-    assert.equal(snap({ pointerFrame: 18010, ...patch }).startFrame, 17970);
+    assert.equal(snap({ pointerFrame: 54010, ...patch }).startFrame, 53970);
   }
   const restored = snap({ pointerFrame: 302.25, clips: [clip()], enabled: true, altKey: false });
   assert.equal(restored.startFrame, 300);
@@ -212,7 +212,7 @@ test('invalid pixel scales and malformed target frames cannot create snap candid
     assert.equal(result.startFrame, 302);
     assert.equal(result.snap, null);
   }
-  const invalidFrames: unknown[] = [-1, 300.5, NaN, Infinity, '300', 18001];
+  const invalidFrames: unknown[] = [-1, 300.5, NaN, Infinity, '300', 54001];
   for (const frame of invalidFrames) {
     const result = snap({ pointerFrame: 302.25, playhead: frame as number, clips: [clip({ startFrame: frame as number, durationFrames: 30 })] });
     assert.equal(result.startFrame, 302);
@@ -278,23 +278,23 @@ test('images use a known 90-frame default even when duration metadata is absent 
     assert.equal(length.durationFrames, 90);
     assert.equal(length.known, true);
     assert.match(length.note, /90/);
-    const result = preview({ asset, pointerFrame: 17999, enabled: false });
+    const result = preview({ asset, pointerFrame: 53999, enabled: false });
     assert.equal(result.durationFrames, 90);
-    assert.equal(result.startFrame, 17910);
+    assert.equal(result.startFrame, 53910);
     assert.equal(result.valid, true);
   }
 });
 
 test('known audio and video durations use source-safe 30-fps flooring, not rounding up', () => {
   for (const mimeType of ['audio/wav', 'video/mp4']) {
-    for (const [duration, expectedFrames] of [[1 / 30, 1], [0.1 + 0.2, 9], [1.999, 59], [2.016, 60], [4.125, 123], [600, 18000]]) {
+    for (const [duration, expectedFrames] of [[1 / 30, 1], [0.1 + 0.2, 9], [1.999, 59], [2.016, 60], [4.125, 123], [600, 18000], [1800, 54000]]) {
       const asset = { id: 'source', mimeType, duration };
       const length = assetTimelineDuration(asset);
       assert.equal(length.durationFrames, expectedFrames);
       assert.equal(length.known, true);
-      const result = preview({ asset, track: mimeType.startsWith('audio/') ? audioTrack : videoTrack, pointerFrame: 18000, enabled: false });
+      const result = preview({ asset, track: mimeType.startsWith('audio/') ? audioTrack : videoTrack, pointerFrame: 54000, enabled: false });
       assert.equal(result.durationFrames, expectedFrames);
-      assert.equal(result.startFrame, 18000 - expectedFrames);
+      assert.equal(result.startFrame, 54000 - expectedFrames);
       assert.equal(result.valid, true);
     }
   }
@@ -330,19 +330,19 @@ test('moving an existing trimmed clip retains its duration and source metadata r
   assert.deepEqual(trimmed, before);
 });
 
-test('overlong sources and the 100-clip add limit are invalid, while moving existing clips stays allowed', () => {
-  const long = preview({ asset: { ...videoAsset, duration: 18001 / 30 }, pointerFrame: 10 });
-  assert.equal(long.durationFrames, 18001);
+test('overlong sources and the 300-clip add limit are invalid, while moving existing clips stays allowed', () => {
+  const long = preview({ asset: { ...videoAsset, duration: 54001 / 30 }, pointerFrame: 10 });
+  assert.equal(long.durationFrames, 54001);
   assert.equal(long.valid, false);
   assert.equal(long.snap, null);
-  assert.match(long.reason, /18000/);
-  const clips = Array.from({ length: 100 }, (_, index) => clip({ id: `clip-${index}`, startFrame: index * 30 }));
+  assert.match(long.reason, /54000/);
+  const clips = Array.from({ length: 300 }, (_, index) => clip({ id: `clip-${index}`, startFrame: index * 30 }));
   const full = timeline(clips);
-  const add = preview({ timeline: full, pointerFrame: 4000 });
+  const add = preview({ timeline: full, pointerFrame: 10000 });
   assert.equal(add.valid, false);
-  assert.match(add.reason, /100/);
-  assert.equal(preview({ timeline: timeline(clips.slice(0, 99)), pointerFrame: 4000 }).valid, true);
-  assert.equal(preview({ timeline: full, clip: clips[0], pointerFrame: 4000 }).valid, true);
+  assert.match(add.reason, /300/);
+  assert.equal(preview({ timeline: timeline(clips.slice(0, 299)), pointerFrame: 10000 }).valid, true);
+  assert.equal(preview({ timeline: full, clip: clips[0], pointerFrame: 10000 }).valid, true);
 });
 
 test('missing drop dependencies are invalid, and previewing never mutates supplied state', () => {

@@ -9,7 +9,8 @@ import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
 import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.ts';
-import {planTimelineExportRange, type TimelineExportRangePlanInput} from '../packages/business/src/timeline-export-range-plan.ts';
+import {planTimelineExportRange,timelineExportConcat, type TimelineExportRangePlanInput} from '../packages/business/src/timeline-export-range-plan.ts';
+import {LEGACY_TIMELINE_LIMITS,TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 import {resolveTimelineExportDelivery,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 import {TIMELINE_FORMAT_WRITE_PRESETS} from '../packages/contracts/src/timeline-output-geometry.ts';
 import type { BinaryLike } from 'crypto';
@@ -20,6 +21,54 @@ import type { TimelineAudioFilterClip } from '@mioon/business/timeline-audio-fil
 const sha=(bytes: NonSharedBuffer|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 const ffmpeg=(args: string[])=>run('ffmpeg',['-hide_banner','-loglevel','error','-n','-threads','1','-filter_complex_threads','1','-filter_threads','1',...args],{timeout:90000,maxStdoutBytes:0,maxStderrBytes:64*1024});
 async function sandbox(t: test.TestContext){const root=await mkdtemp(path.join(tmpdir(),'mioon-range-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
+test('production concat clock keeps 1000 pieces exact and historical delivery byte compatible',{timeout:60000},async t=>{
+ const root=await sandbox(t),fps=TIMELINE_LIMITS.framesPerSecond;
+ for(const frames of [1,3]){
+  await ffmpeg(['-f','lavfi','-i',`color=c=red:s=32x32:r=${fps}`,'-f','lavfi','-i','anullsrc=r=48000:cl=stereo',
+   '-c:v','libx264','-bf','0','-pix_fmt','yuv420p','-video_track_timescale','30000','-c:a','pcm_s16le',
+   '-t',(frames/fps).toFixed(9),path.join(root,`segment-${frames}.mov`)]);
+ }
+ const legacyManifest=(segments:readonly {file:string;outputFrames:number}[])=>segments.map(({file,outputFrames})=>
+  `file '${file}'\nduration ${(outputFrames/fps).toFixed(9)}\n`).join('');
+ type Segment = {file:string;outputFrames:number};
+ const mux=async(name:string,{manifest,movieTimescale}:ReturnType<typeof timelineExportConcat>,segments:readonly Segment[])=>{
+  const list=path.join(root,name+'.txt'),destination=path.join(root,name+'.mp4');
+  const frames=segments.reduce((sum,segment)=>sum+segment.outputFrames,0);
+  await writeFile(list,manifest);
+  await ffmpeg(['-f','concat','-safe','1','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy','-video_track_timescale','30000',
+   ...(movieTimescale===null?[]:['-movie_timescale',String(movieTimescale)]),
+   '-af',`apad,atrim=end_sample=${frames*1600},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',(frames/fps).toFixed(9),'-movflags','+faststart',destination]);
+  return destination;
+ };
+ const oldSegments=Array.from({length:LEGACY_TIMELINE_LIMITS.maxSegments},(_,index)=>index<LEGACY_TIMELINE_LIMITS.maxSegments-1
+  ?{file:'segment-3.mov',outputFrames:3}:{file:'segment-1.mov',outputFrames:1});
+ const oldTimeline={durationFrames:oldSegments.reduce((sum,segment)=>sum+segment.outputFrames,0),
+  clips:Array.from({length:LEGACY_TIMELINE_LIMITS.maxClips},(_,index)=>({startFrame:index,durationFrames:1}))};
+ const previous={manifest:legacyManifest(oldSegments),movieTimescale:null};
+ const compatible=timelineExportConcat(oldSegments,oldTimeline);
+ assert.deepEqual(compatible,previous);
+ const oldFile=await mux('legacy',previous,oldSegments),compatibleFile=await mux('compatible',compatible,oldSegments);
+ assert.deepEqual(await readFile(compatibleFile),await readFile(oldFile));
+
+ // One-frame durations previously lost a third of a microsecond per piece.
+ // Repeat a real encoder output to test concat's actual timebase conversion.
+ const segments=Array.from({length:1000},()=>({file:'segment-1.mov',outputFrames:1}));
+ const exact=timelineExportConcat(segments,{durationFrames:1000,clips:[]});
+ assert.equal(exact.movieTimescale,30000);
+ const fixed=await mux('exact',exact,segments);
+ const probe=JSON.parse(await run('ffprobe',['-v','error','-show_entries',
+  'stream=codec_type,duration_ts,time_base,nb_frames,avg_frame_rate:packet=pts','-select_streams','v:0','-of','json',fixed],
+  {timeout:30000,maxStdoutBytes:128*1024}));
+ assert.equal(probe.streams[0].time_base,'1/30000');
+ assert.equal(probe.streams[0].avg_frame_rate,'30/1');
+ assert.equal(Number(probe.streams[0].nb_frames),1000);
+ assert.equal(probe.streams[0].duration_ts,1_000_000);
+ assert.deepEqual(probe.packets.map(({pts}:{pts:number})=>pts),Array.from({length:1000},(_,index)=>index*1000));
+ const audioProof=JSON.parse(await run('ffprobe',['-v','error','-show_entries','stream=duration_ts,time_base',
+  '-select_streams','a:0','-of','json',fixed],{timeout:30000}));
+ assert.deepEqual(audioProof.streams,[{time_base:'1/48000',duration_ts:1_600_000}]);
+});
+
 async function binary(args: string[],maximum: number|undefined=2*1024*1024){const chunks: (Buffer<ArrayBuffer>)[]=[];const result=await runStreaming('ffmpeg',((['-v','error','-threads','1','-filter_threads','1','-filter_complex_threads','1',...args]) as unknown as Parameters<typeof runStreaming>[1]),{timeout:30000,maxStdoutBytes:maximum,maxStderrBytes:64*1024,onStdout:chunk=>chunks.push(Buffer.from(chunk))});return Buffer.concat(chunks,result.stdoutBytes);}
 const video=(file: string,scale: number|undefined=1)=>binary(['-i',file,'-an','-vf',`crop=${128*scale}:${96*scale}:${40*scale}:${40*scale},scale=32:24,format=rgb24`,'-fps_mode','passthrough','-threads','1','-f','rawvideo','pipe:1']);
 const audio=(file: string)=>binary(['-i',file,'-vn','-ac','2','-ar','48000','-c:a','pcm_f32le','-f','f32le','pipe:1']);

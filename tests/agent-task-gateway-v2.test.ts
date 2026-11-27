@@ -640,7 +640,7 @@ test('the complete production tool catalog builds in every supported preset/prot
     for(const item of body.tools){
       const definition=protocol==='chat_completions'?item.function!:item;assert.ok(typeof definition.name==='string');
       const tool=catalogByName.get(definition.name);assert.ok(tool);
-      assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${presetId}/${platformId}/${protocol}/${tool.operation}`);
+      assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters,false),`${presetId}/${platformId}/${protocol}/${tool.operation}`);
     }
   }
   for(const combination of ['minimax/china/anthropic_messages','minimax/china/responses','anthropic/global/anthropic_messages','ollama/local/anthropic_messages'])assert.ok(compiled.has(combination),combination);

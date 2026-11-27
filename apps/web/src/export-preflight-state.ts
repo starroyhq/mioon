@@ -2,6 +2,7 @@ import { translate } from '../../../packages/i18n/src/index.ts';
 import type { Locale } from '../../../packages/i18n/src/index.ts';
 import { isExportPreflightResponse, isTimelineExportCapabilitiesResponse } from '@mioon/contracts';
 import { exportPreflightResponseSchema, timelineExportCapabilitiesResponseSchema } from '@mioon/contracts';
+import { TIMELINE_LIMITS } from '@mioon/contracts/timeline-limits';
 import { exportRangeContextFields, sameExportRangeContext, rangeFields } from './export-range-state.ts';
 import { exportSettingsKey, freezeExportSettings } from './export-settings-state.ts';
 import { deliveryNameContextFields, sameDeliveryNameContext, deliveryNameRequestFields } from './export-delivery-state.ts';
@@ -82,7 +83,7 @@ const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]
 const errorCode=(error: unknown): string|undefined=>typeof property(error,'code')==='string'?property(error,'code') as string:undefined;
 const initialState=(): ExportPreflightState => ({ ...exportRangeContextFields(null), ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
 const hasRevision=(value: unknown): value is number=>Number.isSafeInteger(value) && (value as number) > 0;
-const knownIssueCodes = new Set(['EXPORT_RANGE_BOUNDS', 'TIMELINE_MISSING', 'EMPTY_TIMELINE', 'INVALID_TIMELINE_SNAPSHOT', 'TIMELINE_SOURCE_UNAVAILABLE', 'PREFLIGHT_SOURCE_INVALID', 'PREFLIGHT_SOURCE_CHANGED', 'PREFLIGHT_MEDIA_INVALID', 'PREFLIGHT_INCOMPLETE', 'PREFLIGHT_BUDGET', 'PREFLIGHT_SNAPSHOT_BUDGET', 'PREFLIGHT_TIMEOUT', 'PREFLIGHT_BUSY', 'PREFLIGHT_STALE', 'PLACEHOLDER_CLIP', 'VERSION_TOO_SHORT']);
+const knownIssueCodes = new Set(['EXPORT_RANGE_BOUNDS', 'TIMELINE_MISSING', 'EMPTY_TIMELINE', 'TIMELINE_LIMIT', 'TIMELINE_SEGMENT_LIMIT', 'INVALID_TIMELINE_SNAPSHOT', 'TIMELINE_SOURCE_UNAVAILABLE', 'PREFLIGHT_SOURCE_INVALID', 'PREFLIGHT_SOURCE_CHANGED', 'PREFLIGHT_MEDIA_INVALID', 'PREFLIGHT_INCOMPLETE', 'PREFLIGHT_BUDGET', 'PREFLIGHT_SNAPSHOT_BUDGET', 'PREFLIGHT_TIMEOUT', 'PREFLIGHT_BUSY', 'PREFLIGHT_STALE', 'PLACEHOLDER_CLIP', 'VERSION_TOO_SHORT']);
 for (const code of ['TIMELINE_IMAGE_COMPOSITOR_BUDGET', 'INVALID_TIMELINE_COLOUR', 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED', 'TIMELINE_COLOUR_SOURCE_MISMATCH', 'TIMELINE_COLOUR_RESOURCE_CHANGED', 'TIMELINE_COLOUR_LUT_BUDGET', 'TIMELINE_COLOUR_LOOK_UNAVAILABLE', 'SOURCE_BOUNDS', 'FADE_AUDIO_UNSUPPORTED', 'AUDIO_ROLE_CLIP_UNSUPPORTED', 'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED', 'VOLUME_ENVELOPE_SOURCE_UNSUPPORTED', 'INVALID_CLIP_TYPE', 'INVALID_FADE']) knownIssueCodes.add(code);
 const protocolError=(): Error&{code: string} => Object.assign(new Error('检查响应不完整或与当前快照不匹配，请重新检查。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
@@ -98,6 +99,8 @@ export function preflightErrorMessage(error: unknown,locale: Locale = 'zh-Hans')
 
 export function preflightIssueMessage(issue: unknown,locale: Locale = 'zh-Hans'): string {
   const code=property(issue,'code'), shotTitle=property(issue,'shotTitle');
+  if (code==='TIMELINE_LIMIT') return translate(locale,'export.preflight.issue.TIMELINE_LIMIT',{maxClips:TIMELINE_LIMITS.maxClips,maxMinutes:TIMELINE_LIMITS.maxMinutes});
+  if (code==='TIMELINE_SEGMENT_LIMIT') return translate(locale,'export.preflight.issue.TIMELINE_SEGMENT_LIMIT',{maxSegments:TIMELINE_LIMITS.maxSegments});
   if (code==='PLACEHOLDER_CLIP'&&typeof shotTitle==='string'&&shotTitle) return translate(locale,'export.preflight.issue.PLACEHOLDER_CLIP_NAMED',{name:shotTitle});
   if (typeof code==='string'&&knownIssueCodes.has(code)) return translate(locale, `export.preflight.issue.${code}` as never);
   // Unknown server messages must not leak paths, probe output or credentials.

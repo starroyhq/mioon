@@ -124,7 +124,7 @@ Preserved or redefined limits:
 | Limit | V2 scope |
 | --- | --- |
 | 30 fps, 48 kHz, 1,600 samples/frame | Unchanged; half-open intervals |
-| 18,000 frames / 12 tracks / 100 clips | Unchanged saved timeline limits |
+| 54,000 frames / 12 tracks / 300 clips | Saved timeline admission with the same per-source and decode work budgets |
 | 512 MiB / 600 s per source | Unchanged source admission |
 | 1 GiB hash reads | Cumulative per session; distinct assets share verified identity; cancelled/partial work remains charged |
 | Original decode work | Full graph admission at most 218,400 source frames, including segment lookahead; cumulative conservative execution charge at most 873,600 per session |

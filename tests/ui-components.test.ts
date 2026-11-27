@@ -362,14 +362,14 @@ test('timeline retains specialized positioning and accessible Base UI controls',
 
 
 test('timeline ruler keyboard navigation stays inside integer-frame bounds', () => {
-  for (const key of ['ArrowRight', 'ArrowUp']) assert.equal(rulerFrameForKey(key, 18000), 18000);
+  for (const key of ['ArrowRight', 'ArrowUp']) assert.equal(rulerFrameForKey(key, 54000), 54000);
   for (const key of ['ArrowLeft', 'ArrowDown']) assert.equal(rulerFrameForKey(key, 0), 0);
-  assert.equal(rulerFrameForKey('PageUp', 17990), 18000);
+  assert.equal(rulerFrameForKey('PageUp', 53990), 54000);
   assert.equal(rulerFrameForKey('PageDown', 12), 0);
   assert.equal(rulerFrameForKey('PageUp', 12), 42);
   assert.equal(rulerFrameForKey('PageDown', 100), 70);
   assert.equal(rulerFrameForKey('Home', 15000), 0);
-  assert.equal(rulerFrameForKey('End', 1), 18000);
+  assert.equal(rulerFrameForKey('End', 1), 54000);
   assert.equal(rulerFrameForKey('ArrowRight', 11.7), 13);
   assert.equal(rulerFrameForKey('ArrowLeft', Number.NaN), 0);
   for (const key of ['Tab', 'Escape', 'Enter', 'a']) assert.equal(rulerFrameForKey(key, 100), null);

@@ -109,6 +109,19 @@ test('private files reject symlinks, hardlinks, directories, FIFOs and oversized
   }
 });
 
+test('metadata validates streamed file sizes without lifting the private buffer size limit', posix, t => {
+  const root = fixture(t), file = path.join(root, 'artifact');
+  const size = 64 * 1024 ** 2 + 1;
+  fs.writeFileSync(file, '', {mode: 0o600}); fs.truncateSync(file, size);
+  assert.equal(validateManagedFile(file, {root, private: true, maxBytes: size})?.size, size);
+  rejects(() => validateManagedFile(file, {root, private: true, maxBytes: size - 1}), 'SIZE_LIMIT');
+  rejects(() => validateManagedFile(file, {root, private: true, maxBytes: 8 * 1024 ** 3 + 1}), 'INVALID_LIMIT');
+  rejects(() => readPrivateFile(file, {root, maxBytes: size}), 'INVALID_LIMIT');
+  rejects(() => writePrivateFileAtomic(file, 'replacement', {root, maxBytes: size}), 'INVALID_LIMIT');
+  rejects(() => removePrivateFile(file, {root, maxBytes: size}), 'INVALID_LIMIT');
+  assert.equal(fs.statSync(file).size, size);
+});
+
 test('missing reads are side-effect free, and writers require an already validated parent', posix, t => {
   const root = fixture(t), absent = path.join(root, 'missing'), file = path.join(absent, 'value');
   assert.equal(readPrivateFile(file, {allowMissing: true}), null);

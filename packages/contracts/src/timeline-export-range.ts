@@ -1,10 +1,11 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 import {z} from 'zod';
 
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 const duration = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 18000;
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= TIMELINE_LIMITS.maxFrames;
 function invalid(): never {
   throw Object.assign(new Error('Invalid frozen timeline export range'), {code: 'INVALID_TIMELINE_SNAPSHOT'});
 }
@@ -12,8 +13,8 @@ function invalid(): never {
 // The clock belongs to the saved composition. This optional half-open interval
 // never edits its timeline, source ranges, fades, cues, or encoding profile.
 export const timelineExportRangeSchema = z.object({
-  startFrame: z.number().int().min(0).max(17999).describe('Included start frame on the saved composition clock, fixed at 30fps.'),
-  endFrame: z.number().int().min(1).max(18000).describe('Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration.'),
+  startFrame: z.number().int().min(0).max(TIMELINE_LIMITS.maxFrames - 1).describe('Included start frame on the saved composition clock, fixed at 30fps.'),
+  endFrame: z.number().int().min(1).max(TIMELINE_LIMITS.maxFrames).describe('Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration.'),
 }).strict().refine(value => value.endFrame > value.startFrame, {
   message: 'Export range must contain at least one 30fps frame', path: ['endFrame'],
 }).describe('Export-only half-open [startFrame,endFrame) range on the saved 30fps composition. At least one frame; bounded by the saved timeline. Omission preserves full export.');

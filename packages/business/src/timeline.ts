@@ -22,11 +22,11 @@ import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assert
 import {canonicalFormatValue} from './timeline-format-receipts.ts';
 import {CLIP_LAYOUT_PROFILE} from '../../contracts/src/timeline-clip-layout.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitle-profile.ts';
-import {freezeTimelineSnapshot} from './timeline-inputs.ts';
+import {assertTimelineExportPlan,freezeTimelineSnapshot} from './timeline-inputs.ts';
 import {removeTimelineClipWithRipple} from './timeline-ripple-remove.ts';
 import {initializeProjectTimelineFormat} from './project-timeline-format.ts';
 import {newTimelineRecord} from './timeline-new-record.ts';
-export {TIMELINE_LIMITS} from './timeline-inputs.ts';
+export {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
 import {appendTimelineShots,refreshTimelineSources} from './timeline-shot-sync.ts';
@@ -35,7 +35,6 @@ import {setTimelineClipGains} from './timeline-clip-gains.ts';
 import {assertClipTransformWorkspace,setTimelineClipTransform} from './timeline-clip-transform.ts';
 import {clipTransformFieldsAfterEdit,splitClipTransformFields,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import {assertClipTransitionWorkspace,pruneTimelineClipTransitions,setTimelineClipTransition} from './timeline-clip-transition.ts';
-import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
 import type {ClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import {splitTimelineAtScenes} from './timeline-scene-split.ts';
 import type {TimelineSceneSplitPlan} from './timeline-scene-split.ts';
@@ -414,9 +413,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
   const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
   if(rangeIssue)throw new AppError(rangeIssue.code as string,rangeIssue.message as string,rangeIssue.status as number);
-  const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
+  const sources=boundary.sources(timeline);
+  const frozen=freezeTimelineSnapshot(timeline,sources,input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
-  assertTransitionImageBudget(frozen as never);
+  assertTimelineExportPlan(frozen as never,sources);
   if(input.preflightSnapshotHash!==undefined){
    let current;
    try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}

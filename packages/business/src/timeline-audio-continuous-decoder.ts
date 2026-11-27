@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {AUDIO_PREVIEW_LIMITS} from '@mioon/contracts/timeline-audio-preview';
 import {parseTimelineAudioPreviewProbe} from './timeline-audio-preview-decoder.ts';
 import type {TimelineAudioPreviewSourceProbe} from './timeline-audio-preview-decoder.ts';
 
@@ -59,7 +60,8 @@ export function createTimelineAudioContinuousDecoder(runtime: ContinuousDecoderR
     open(file, source, unit, options) {
       checkFile(file);
       if (![unit.sourceInFrame, unit.frameCount, unit.trimStartFrame].every(Number.isSafeInteger) || unit.sourceInFrame < 0 ||
-          unit.frameCount < 1 || unit.frameCount > 18000 || unit.trimStartFrame < 0 || unit.trimStartFrame >= unit.frameCount ||
+          unit.frameCount < 1 || unit.frameCount > AUDIO_PREVIEW_LIMITS.sourceSeconds * AUDIO_PREVIEW_LIMITS.fps ||
+          unit.trimStartFrame < 0 || unit.trimStartFrame >= unit.frameCount ||
           unit.sourceInFrame + unit.frameCount > Math.floor(source.durationSeconds * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_SOURCE_BOUNDS');
       const controller = new AbortController(), signal = AbortSignal.any([controller.signal, options.signal]);
       const originalSamples = unit.frameCount * 1600, trimSamples = unit.trimStartFrame * 1600;

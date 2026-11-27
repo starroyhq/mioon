@@ -3,14 +3,16 @@ import {timelineExportOutputFrames} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields} from './timeline-delivery.ts';
 import {TIMELINE_OUTPUT_MAX_EDGE,isTimelineDeliveryGeometry,timelineDeliveryGeometry,timelineOutputPreset} from './timeline-output-geometry.ts';
 import type {TimelineOutputResolution,TimelineOutputGeometry} from './timeline-output-geometry.ts';
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 
 /** Opt-in export policy only. Neither this profile nor a within-limit report
  * promises AAC reconstruction, true-peak, loudness or source-clipping safety. */
 export const TIMELINE_EXPORT_FLOAT_PROFILE_ID = 'mp4_h264_float_checked_v2';
 export const TIMELINE_EXPORT_FLOAT_POLICY_ID = 'preencode_sample_peak_reject_over_one_v1';
+const maxSampleFrames = TIMELINE_LIMITS.maxFrames * (48_000 / TIMELINE_LIMITS.framesPerSecond);
 export const TIMELINE_EXPORT_FLOAT_LIMITS = Object.freeze({
-  outputFrames:18000, sampleFrames:28_800_000, sampleCount:57_600_000,
-  pcmBytes:230_400_000, reportBytes:8*1024, timeoutMs:120_000,
+  outputFrames:TIMELINE_LIMITS.maxFrames, sampleFrames:maxSampleFrames, sampleCount:maxSampleFrames*2,
+  pcmBytes:maxSampleFrames*2*4, reportBytes:8*1024, timeoutMs:120_000,
 });
 
 export type TimelineExportResolution = TimelineOutputResolution;
@@ -172,7 +174,8 @@ export function isTimelineExportAudioMeasurement(value:unknown,outputFrames?:num
   try{
     if(!boundedAudioData(value))return false;
     const parsed=timelineExportAudioMeasurementSchema.safeParse(value);
-    return parsed.success&&(outputFrames===undefined||Number.isSafeInteger(outputFrames)&&outputFrames>=1&&outputFrames<=18000&&parsed.data.sampleFrames===outputFrames*1600);
+    return parsed.success&&(outputFrames===undefined||Number.isSafeInteger(outputFrames)&&outputFrames>=1&&
+      outputFrames<=TIMELINE_EXPORT_FLOAT_LIMITS.outputFrames&&parsed.data.sampleFrames===outputFrames*1600);
   }catch{return false;}
 }
 export function isTimelineExportAudioCheck(value:unknown):value is TimelineExportAudioCheck {

@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 import {timelineCompositionSegments} from './timeline-segments.ts';
 
 /** Disposable saved-timeline sound only. This profile never changes a saved
@@ -6,7 +7,7 @@ import {timelineCompositionSegments} from './timeline-segments.ts';
 export const AUDIO_PREVIEW_PROFILE = 'saved-timeline-audio-f32le-48k-stereo-v1';
 export const AUDIO_PREVIEW_LIMITS = Object.freeze({
   fps:30, sampleRate:48000, channels:2, bytesPerSample:4, samplesPerFrame:1600,
-  windowFrames:600, tracks:12, clips:100, timelineFrames:18000,
+  windowFrames:600, tracks:TIMELINE_LIMITS.maxTracks, clips:TIMELINE_LIMITS.maxClips, timelineFrames:TIMELINE_LIMITS.maxFrames,
   sourceBytes:512*1024*1024, sourceSeconds:600, hashReadBytes:1024*1024*1024,
   decodeWorkFrames:18000, totalDecodeSegments:200,
   memoryBytes:96*1024*1024, transportReserveBytes:2*1024*1024,
@@ -17,10 +18,13 @@ const id=z.string().uuid(), digest=z.string().regex(/^[a-f0-9]{64}$/u);
 const integer=(max:number,min=0):z.ZodNumber=>z.number().finite().int().min(min).max(max);
 const frame=integer(AUDIO_PREVIEW_LIMITS.timelineFrames);
 const positiveFrames=integer(AUDIO_PREVIEW_LIMITS.timelineFrames,1);
+const lastFrame=integer(AUDIO_PREVIEW_LIMITS.timelineFrames-1);
+const sourceFrames=AUDIO_PREVIEW_LIMITS.sourceSeconds*AUDIO_PREVIEW_LIMITS.fps;
+const sourcePosition=integer(sourceFrames-1);
 const revision=integer(Number.MAX_SAFE_INTEGER,1);
 const sourceFrame=integer(Number.MAX_SAFE_INTEGER-AUDIO_PREVIEW_LIMITS.timelineFrames);
 const gain=z.number().finite().min(0).max(2);
-const inputFields={projectId:id,timelineId:id,expectedRevision:revision,startFrame:integer(17999)};
+const inputFields={projectId:id,timelineId:id,expectedRevision:revision,startFrame:lastFrame};
 
 export const audioPreviewPlanInputSchema=z.object(inputFields).strict();
 export const audioPreviewSourceInputSchema=z.object({
@@ -31,25 +35,26 @@ export type AudioPreviewPlanInput=z.infer<typeof audioPreviewPlanInputSchema>;
 export type AudioPreviewSourceInput=z.infer<typeof audioPreviewSourceInputSchema>;
 
 const rangeSchema=z.object({
-  startFrame:integer(17999),endFrame:positiveFrames,
-  startSample:integer(28_798_400),endSample:integer(28_800_000,1),
+  startFrame:lastFrame,endFrame:positiveFrames,
+  startSample:integer((AUDIO_PREVIEW_LIMITS.timelineFrames-1)*AUDIO_PREVIEW_LIMITS.samplesPerFrame),
+  endSample:integer(AUDIO_PREVIEW_LIMITS.timelineFrames*AUDIO_PREVIEW_LIMITS.samplesPerFrame,1),
   sampleFrames:integer(960_000,1600),
 }).strict();
 const decodeSegmentSchema=z.object({
-  sourceInFrame:integer(17999),frameCount:positiveFrames,
-  trimStartFrame:integer(17999),outputFrames:integer(600,1),
+  sourceInFrame:sourcePosition,frameCount:integer(sourceFrames,1),
+  trimStartFrame:sourcePosition,outputFrames:integer(600,1),
 }).strict();
 const sourceSchema=z.object({
   sourceKey:digest,profileId:z.literal(AUDIO_PREVIEW_PROFILE),clipId:id,assetId:id,
-  sourceHash:digest,sourceInFrame:integer(17999),durationFrames:integer(600,1),
+  sourceHash:digest,sourceInFrame:sourcePosition,durationFrames:integer(600,1),
   sampleFrames:integer(960_000,1600),pcmBytes:integer(7_680_000,12_800),
   sourceBytes:integer(AUDIO_PREVIEW_LIMITS.sourceBytes,1),
   decodeSegments:z.array(decodeSegmentSchema).min(1).max(AUDIO_PREVIEW_LIMITS.totalDecodeSegments),
 }).strict();
 const voiceSchema=z.object({
   clipId:id,trackId:id,sourceKey:digest,startFrame:frame,durationFrames:positiveFrames,
-  sourceInFrame:integer(17999),gain,fadeInFrames:frame,fadeOutFrames:frame,
-  intersectionStartFrame:integer(17999),intersectionEndFrame:positiveFrames,
+  sourceInFrame:sourcePosition,gain,fadeInFrames:frame,fadeOutFrames:frame,
+  intersectionStartFrame:lastFrame,intersectionEndFrame:positiveFrames,
 }).strict();
 const memorySchema=z.object({
   retainedPcmBytes:integer(AUDIO_PREVIEW_LIMITS.memoryBytes),
@@ -78,7 +83,7 @@ function sourceIdentity(source:Pick<AudioPreviewSourceDescriptor,'assetId'|'sour
 export const audioPreviewPlanSchema=z.object({
   schemaVersion:z.literal(1),status:z.literal('planned'),profileId:z.literal(AUDIO_PREVIEW_PROFILE),
   projectId:id,timelineId:id,timelineRevision:revision,planHash:digest,
-  range:rangeSchema,sources:z.array(sourceSchema).max(100),voices:z.array(voiceSchema).max(100),memory:memorySchema,work:workSchema,
+  range:rangeSchema,sources:z.array(sourceSchema).max(AUDIO_PREVIEW_LIMITS.clips),voices:z.array(voiceSchema).max(AUDIO_PREVIEW_LIMITS.clips),memory:memorySchema,work:workSchema,
 }).strict().superRefine((plan,context)=>{
   const fail=(message:string):void=>context.addIssue({code:'custom',message});
   const range=plan.range;
@@ -92,10 +97,10 @@ export const audioPreviewPlanSchema=z.object({
     if(sources.has(source.sourceKey)||identities.has(identity))fail('Duplicate source identity.');
     sources.set(source.sourceKey,source);identities.add(identity);
     if(source.sampleFrames!==source.durationFrames*1600||source.pcmBytes!==source.sampleFrames*8||
-        source.sourceInFrame+source.durationFrames>18000)fail('Invalid source sample count or bounds.');
+        source.sourceInFrame+source.durationFrames>sourceFrames)fail('Invalid source sample count or bounds.');
     let outputFrames=0,previousEnd:number|undefined;
     for(const segment of source.decodeSegments){
-      if(segment.sourceInFrame+segment.frameCount>18000||segment.trimStartFrame+segment.outputFrames>segment.frameCount||
+      if(segment.sourceInFrame+segment.frameCount>sourceFrames||segment.trimStartFrame+segment.outputFrames>segment.frameCount||
           segment.sourceInFrame+segment.trimStartFrame!==source.sourceInFrame+outputFrames||
           previousEnd!==undefined&&segment.sourceInFrame!==previousEnd)
         fail('Invalid original decode segment bounds, order, or selected output.');
@@ -112,7 +117,7 @@ export const audioPreviewPlanSchema=z.object({
     clips.add(voice.clipId);usedSources.add(voice.sourceKey);
     if(!tracks.has(voice.trackId))tracks.set(voice.trackId,[]);
     tracks.get(voice.trackId)!.push(voice);
-    if(end>18000||voice.sourceInFrame+voice.durationFrames>18000||voice.gain===0||
+    if(end>AUDIO_PREVIEW_LIMITS.timelineFrames||voice.sourceInFrame+voice.durationFrames>sourceFrames||voice.gain===0||
         voice.fadeInFrames+voice.fadeOutFrames>voice.durationFrames||
         voice.intersectionStartFrame!==Math.max(range.startFrame,voice.startFrame)||
         voice.intersectionEndFrame!==Math.min(range.endFrame,end)||
@@ -141,7 +146,7 @@ export const audioPreviewPlanSchema=z.object({
 });
 export type AudioPreviewPlan=z.infer<typeof audioPreviewPlanSchema>;
 
-const trackSchema=z.object({id,kind:z.enum(['video','audio']),orderIndex:integer(11),hidden:z.boolean(),muted:z.boolean()}).strict();
+const trackSchema=z.object({id,kind:z.enum(['video','audio']),orderIndex:integer(AUDIO_PREVIEW_LIMITS.tracks-1),hidden:z.boolean(),muted:z.boolean()}).strict();
 const clipSchema=z.object({
   id,trackId:id,assetId:id,startFrame:frame,durationFrames:positiveFrames,sourceInFrame:sourceFrame,gain,
   fadeInFrames:frame.optional(),fadeOutFrames:frame.optional(),
@@ -155,8 +160,8 @@ const assetSchema=z.object({
 }).strict();
 const snapshotSchema=z.object({
   timeline:z.object({id,projectId:id,revision,fps:z.literal(30),durationFrames:frame,
-    tracks:z.array(trackSchema).min(1).max(12),clips:z.array(clipSchema).max(100)}).strict(),
-  assets:z.array(assetSchema).max(100),
+    tracks:z.array(trackSchema).min(1).max(AUDIO_PREVIEW_LIMITS.tracks),clips:z.array(clipSchema).max(AUDIO_PREVIEW_LIMITS.clips)}).strict(),
+  assets:z.array(assetSchema).max(AUDIO_PREVIEW_LIMITS.clips),
 }).strict();
 /** Backend projection after the complete saved timeline and ownership-graph
  * guard. No file paths, private provenance, or caller-selected decoder fields. */
@@ -172,6 +177,7 @@ function fail(code:AudioPreviewPlanErrorCode,message:string):never {
 /** Bound plain data before getters, toJSON, cycles, or huge graphs can enter
  * the pure builder/digest boundary. This is not a general object serializer. */
 function boundedPlainData(value:unknown):boolean {
+  const maxArrayLength=Math.max(AUDIO_PREVIEW_LIMITS.clips,AUDIO_PREVIEW_LIMITS.totalDecodeSegments);
   const ancestors=new Set<object>();let nodes=12000;
   const visit=(item:unknown,depth:number):boolean=>{
     if(--nodes<0||depth>8)return false;
@@ -180,10 +186,10 @@ function boundedPlainData(value:unknown):boolean {
     if(typeof item==='string')return item.length<=256;
     if(typeof item!=='object'||ancestors.has(item))return false;
     const array=Array.isArray(item);
-    if(array?(Object.getPrototypeOf(item)!==Array.prototype||item.length>200):
+    if(array?(Object.getPrototypeOf(item)!==Array.prototype||item.length>maxArrayLength):
         ![Object.prototype,null].includes(Object.getPrototypeOf(item)))return false;
     const keys=Reflect.ownKeys(item);
-    if(keys.length>(array?201:32)||array&&keys.length!==item.length+1)return false;
+    if(keys.length>(array?maxArrayLength+1:32)||array&&keys.length!==item.length+1)return false;
     ancestors.add(item);
     for(const key of keys){
       if(array&&key==='length')continue;
@@ -239,11 +245,12 @@ export interface TimelineAudioSamples {
 /** Integer clock shared with export's existing clip-relative FFmpeg fades.
  * fadeOutStartSample is clip-local; startSample/endSample are timeline-global. */
 export function deriveTimelineAudioSamples(clip:TimelineAudioSampleClip,segmentStartFrame:number):TimelineAudioSamples {
+  const {timelineFrames,samplesPerFrame}=AUDIO_PREVIEW_LIMITS;
   const fadeIn=clip.fadeInFrames===undefined?0:clip.fadeInFrames,fadeOut=clip.fadeOutFrames===undefined?0:clip.fadeOutFrames;
   const integral=(value:number,min:number,max:number):boolean=>Number.isSafeInteger(value)&&value>=min&&value<=max;
-  if(!integral(clip.startFrame,0,18000)||!integral(clip.durationFrames,1,18000)||
-      clip.startFrame+clip.durationFrames>18000||
-      !integral(clip.sourceInFrame,0,Math.floor(Number.MAX_SAFE_INTEGER/1600)-18000)||
+  if(!integral(clip.startFrame,0,timelineFrames)||!integral(clip.durationFrames,1,timelineFrames)||
+      clip.startFrame+clip.durationFrames>timelineFrames||
+      !integral(clip.sourceInFrame,0,Math.floor(Number.MAX_SAFE_INTEGER/samplesPerFrame)-clip.durationFrames)||
       !integral(fadeIn,0,clip.durationFrames)||!integral(fadeOut,0,clip.durationFrames)||fadeIn+fadeOut>clip.durationFrames||
       !integral(segmentStartFrame,clip.startFrame,clip.startFrame+clip.durationFrames))
     fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid clip sample mapping.');
@@ -311,7 +318,7 @@ export function buildAudioPreviewPlan(
   const ids=new Set<string>(),byTrack=new Map<string,z.infer<typeof clipSchema>[]>();let duration=0;
   for(const clip of timeline.clips){
     const track=trackMap.get(clip.trackId),asset=assetMap.get(clip.assetId),end=clip.startFrame+clip.durationFrames;
-    if(ids.has(clip.id)||!track||!asset||end>18000)fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Unresolvable saved clip.');
+    if(ids.has(clip.id)||!track||!asset||end>AUDIO_PREVIEW_LIMITS.timelineFrames)fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Unresolvable saved clip.');
     ids.add(clip.id);duration=Math.max(duration,end);
     const image=asset.mimeType.startsWith('image/'),audio=asset.mimeType.startsWith('audio/'),video=asset.mimeType.startsWith('video/');
     const soundOnly=clip.soundOnly===true;
@@ -342,7 +349,7 @@ export function buildAudioPreviewPlan(
     if(!digest.safeParse(result).success)fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid hash adapter result.');
     return result;
   };
-  const startFrame=input.startFrame,endFrame=Math.min(startFrame+600,timeline.durationFrames);
+  const startFrame=input.startFrame,endFrame=Math.min(startFrame+AUDIO_PREVIEW_LIMITS.windowFrames,timeline.durationFrames);
   const compositionSegments=timelineCompositionSegments(timeline);
   const sources:AudioPreviewSourceDescriptor[]=[],voices:AudioPreviewVoice[]=[],sourceMap=new Map<string,AudioPreviewSourceDescriptor>();
   const ordered=[...timeline.clips].sort((a,b)=>trackMap.get(a.trackId)!.orderIndex-trackMap.get(b.trackId)!.orderIndex||

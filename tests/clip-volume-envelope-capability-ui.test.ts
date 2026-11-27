@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
 import { CLIP_LAYOUT_PROFILE, type ClipLayout } from '../packages/contracts/src/timeline-clip-layout.ts';
 import * as formatState from '../apps/web/src/timeline-format-state.ts';
@@ -55,6 +56,7 @@ function inspector(locale: Locale='en', eligible=true, supported=true){
   if(name.includes('i18n/src/index'))return {message:(key: string)=>({key})};
   if(name.includes('workbench-confirm'))return {useConfirmation:()=>async()=>{calls.push('confirm');return true;}};
   if(name==='@mioon/contracts')return {sourceFrameCount:()=>10,isTimelineRecord:()=>true};
+  if(name==='@mioon/contracts/timeline-limits')return {TIMELINE_LIMITS};
   if(name.endsWith('/Timeline.tsx'))return {assetKind:(a: {mimeType:string})=>a.mimeType.split('/')[0],framesLabel:String};
   if(name.endsWith('clip-draft-hook.ts'))return {useClipDraft:()=>({state,controller})};
   if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:(clip: {volumeEnvelope?:RawVolumeEnvelope|null})=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({})};

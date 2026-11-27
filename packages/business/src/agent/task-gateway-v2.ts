@@ -285,7 +285,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
   const instruction=`${instructions[locale]} ${explanationInstructions[locale]}${options.toolLoading?` ${toolLoadingInstructions[locale]}`:''}${skills}${goals}`;
   const wireTools=definitions.map(tool=>({name:tool.name,description:tool.name===AGENT_TASK_TOOLS_LOAD_NAME
       ?(options.format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS[locale]:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS[locale]):tool.description,
-    parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters),locale,0,options.format5===true)}));
+    parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters,options.format5===true),locale,0,options.format5===true)}));
   // The host marker is local journal metadata, not an extra model-facing system
   // message. All protocols receive the same authoritative root instruction.
   const modelHistory=object(history[0])&&history[0].role==='system'&&history[0].content===languageContext[locale]&&Object.keys(history[0]).length===2?history.slice(1):history;

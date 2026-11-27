@@ -15,7 +15,7 @@
  */
 import {AppError} from '../../contracts/src/app-error.ts';
 import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
-import {getFormat5CueIssue, format5AnchorSchema, format5DialogueSchema} from '../../contracts/src/project-format5.ts';
+import {FORMAT5_LIMITS, getFormat5CueIssue, format5AnchorSchema, format5DialogueSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Anchor, Format5Cue, Format5Dialogue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getTimelineSubtitleTextIssue, TIMELINE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitles.ts';
 import type {
@@ -109,7 +109,7 @@ function anchorFor(timeline: Format5Timeline, startFrame: number, provided?: unk
   return {clipId: owner.id, offsetFrames: startFrame - owner.startFrame} as Format5Anchor;
 }
 function validateTimelineCues(timeline: Format5Timeline, cues: readonly Format5Cue[]): void {
-  if (cues.length > 1_000) invalid('字幕数量超过格式 5 上限');
+  if (cues.length > FORMAT5_LIMITS.subtitleCues) invalid(`时间线最多支持 ${FORMAT5_LIMITS.subtitleCues} 条字幕`, {maxCues: FORMAT5_LIMITS.subtitleCues});
   const ids = new Set<string>();
   for (const cue of cues) {
     const issue = getFormat5CueIssue(cue, {durationFrames: timeline.durationFrames});

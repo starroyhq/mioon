@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createContinuousTimelineAudioTransport } from '../apps/web/src/timeline-audio-continuous-engine.ts';
+import { TIMELINE_LIMITS } from '../packages/contracts/src/timeline-limits.ts';
 
 type Transport = ReturnType<typeof createContinuousTimelineAudioTransport>;
 type TransportState = ReturnType<Transport['getState']>;
@@ -59,7 +60,7 @@ const near = (a: number, b: number): void => assert.ok(Math.abs(a - b) < 1e-9, `
 test('continuous engine requires the exact fixed clock and a complete mixed initial block', () => {
   const context = new Context(), initialBlock = { startFrame: 0, endFrame: 60, buffer: new Buffer(2, 96000, 48000) };
   const options = { context, plan: { startFrame: 0, durationFrames: 100, blockFrames: 60, sampleRate: 48000, channels: 2 }, initialBlock, loadBlock: async () => initialBlock };
-  for (const patch of [{ plan: { ...options.plan, blockFrames: 600 } }, { plan: { ...options.plan, durationFrames: 18001 } },
+  for (const patch of [{ plan: { ...options.plan, blockFrames: 600 } }, { plan: { ...options.plan, durationFrames: TIMELINE_LIMITS.maxFrames + 1 } },
     { initialBlock: { ...initialBlock, endFrame: 59 } }, { initialBlock: { ...initialBlock, buffer: new Buffer(1, 96000, 48000) } },
     { initialBlock: { ...initialBlock, buffer: new Buffer(2, 96000, 44100) } }, { initialBlock: { ...initialBlock, buffer: new Buffer(2, 95999, 48000) } }]) {
     assert.throws(() => createContinuousTimelineAudioTransport({ ...options, ...patch } as never), { code: 'AUDIO_PREVIEW_INVALID_GRAPH' });
@@ -80,7 +81,7 @@ test('mount prepares no extra data and next block is scheduled on the exact comm
   assert.equal(f.transport.getState().underruns, 0); await f.transport.dispose();
 });
 
-for (const duration of [750, 3600, 18000]) {
+for (const duration of [750, 3600, 18000, TIMELINE_LIMITS.maxFrames]) {
   test(`continuous ${duration / 30}s playback crosses every boundary with bounded buffers and exact final samples`, async () => {
     const f = setup({ duration }); await f.transport.play(); await tick();
     const initialTime = f.context.sources[0].starts[0][0];

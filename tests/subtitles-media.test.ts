@@ -10,7 +10,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,getTimelineSubtitleTextIssue} from '@mioon/contracts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
-import {prepareTimelineSubtitles,timelineSubtitleFilters,createSubtitleInkScanner,subtitleFilterPath} from '../packages/business/src/subtitle-media.ts';
+import {prepareTimelineSubtitles,timelineSubtitleFilters,createSubtitleInkScanner,subtitleFilterPath,SUBTITLE_INK_BATCH_SIZE} from '../packages/business/src/subtitle-media.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {initializeSubtitleResources} from '../packages/business/src/subtitle-resources.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -38,7 +38,7 @@ test('streaming ink scanner crosses arbitrary chunk boundaries and rejects empty
  const empty=createSubtitleInkScanner(1);empty.consume(Buffer.alloc(4096*256));assert.throws(()=>empty.finish(),{code:'SUBTITLE_INK_INVALID'});
  const clipped=createSubtitleInkScanner(1),edge=Buffer.alloc(4096*256);edge[64*4096+16]=255;clipped.consume(edge);assert.throws(()=>clipped.finish(),{code:'SUBTITLE_INK_INVALID'});
  assert.throws(()=>createSubtitleInkScanner(1).consume(Buffer.alloc(4096*256+1)),{code:'SUBTITLE_INK_INVALID'});
- for(const count of [0,101,NaN,Infinity,1.5])assert.throws(()=>createSubtitleInkScanner(count));
+ for(const count of [0,SUBTITLE_INK_BATCH_SIZE+1,NaN,Infinity,1.5])assert.throws(()=>createSubtitleInkScanner(count));
  for(const value of ['/tmp/line\nfeed','relative',NaN])assert.throws(()=>subtitleFilterPath(value));
 });
 
@@ -65,6 +65,22 @@ test('caption filters preserve half-open global frames across media edges withou
  const prepared=await prepareTimelineSubtitles(snapshot,root),first=timelineSubtitleFilters(prepared,0,30,'layer0'),second=timelineSubtitleFilters(prepared,30,60,'layer0');
  assert.match(first.filters[0],/gte\(n,25\)\*lt\(n,30\)/);assert.match(second.filters[0],/gte\(n,0\)\*lt\(n,5\)/);assert.equal(timelineSubtitleFilters(prepared,35,60,'base').filters.length,0);
  assert.doesNotMatch(first.filters.join(';'),/amix|atrim|asetpts|apad/);assert.throws(()=>timelineSubtitleFilters(prepared,NaN,60,'base'));
+});
+
+test('native captions measure unique texts in bounded batches and keep their timeline positions',async t=>{
+ const root=await temp(t),texts=Array.from({length:SUBTITLE_INK_BATCH_SIZE+1},(_,i)=>`Caption ${i}`);
+ const snapshot=snap([...texts,texts[0]]),events:MediaProcessEvent[]=[],off=onMediaProcess(event=>events.push(event));
+ const prepared=await prepareTimelineSubtitles(snapshot,root).finally(off);assert.ok(prepared);
+ assert.deepEqual([...prepared.entries.keys()],texts);
+ assert.equal(events.filter(event=>event.type==='started'&&event.kind==='ffmpeg').length,3);
+ const first=await readFile(path.join(root,'subtitle-measure.filter'),'utf8');
+ const second=await readFile(path.join(root,'subtitle-measure-1.filter'),'utf8');
+ assert.equal(first.match(/enable='eq\(n,/gu)?.length,SUBTITLE_INK_BATCH_SIZE);
+ assert.equal(second.match(/enable='eq\(n,/gu)?.length,1);
+ assert.match(second,/subtitle-100\.txt.*enable='eq\(n,0\)'/u);
+ const at=SUBTITLE_INK_BATCH_SIZE*2;
+ assert.match(timelineSubtitleFilters(prepared,at,at+2,'base').filters.join(','),/subtitle-100\.txt.*gte\(n,0\)\*lt\(n,2\)/u);
+ assert.match(timelineSubtitleFilters(prepared,at+2,at+4,'base').filters.join(','),/subtitle-000\.txt/u);
 });
 
 test('relative profile applies the same scaled font during measurement and composition',async t=>{

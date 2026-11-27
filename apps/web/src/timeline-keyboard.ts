@@ -1,6 +1,8 @@
+import { TIMELINE_LIMITS } from '@mioon/contracts/timeline-limits';
+
 /** The ruler edits integer-frame position, independently of source playback. */
 const arrowSteps: Readonly<Record<string, number>> = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 30, PageDown: -30 };
-export function rulerFrameForKey(key: string, frame: number, maxFrame = 18000): number | null {
+export function rulerFrameForKey(key: string, frame: number, maxFrame: number = TIMELINE_LIMITS.maxFrames): number | null {
   const current = Number.isFinite(Number(frame)) ? Math.round(Number(frame)) : 0;
   const next = key === 'Home' ? 0 : key === 'End' ? maxFrame : Object.hasOwn(arrowSteps, key) ? current + arrowSteps[key] : null;
   return next === null ? null : Math.max(0, Math.min(maxFrame, next));

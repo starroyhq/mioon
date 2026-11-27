@@ -129,6 +129,8 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     if (!plain(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
     const saved = raw.timeline, managed = new Map<string, TimelineAudioPreviewManagedAsset>();
     if (!Array.isArray(saved.tracks) || !Array.isArray(saved.clips)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
+    if (saved.tracks.length > LIMITS.tracks || saved.clips.length > LIMITS.clips || raw.assets.length > LIMITS.clips)
+      throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
     let envelopeProfile: ReturnType<typeof volumeEnvelopeSnapshotFields>;
     try {
       volumeEnvelopeReadSnapshot(raw);
@@ -166,7 +168,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     const clipIds = new Set<string>(), byTrack = new Map<string, Clip[]>(), voices: Clip[] = [], envelopeClips: Clip[] = []; let duration = 0;
     for (const clip of timeline.clips) {
       const track = tracks.get(clip.trackId), asset = sources.get(clip.assetId), end = clip.startFrame + clip.durationFrames;
-      if (!track || !asset || clipIds.has(clip.id) || end > 18000) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
+      if (!track || !asset || clipIds.has(clip.id) || end > LIMITS.timelineFrames) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       clipIds.add(clip.id); duration = Math.max(duration, end);
       const image = asset.mimeType.startsWith('image/'), audio = asset.mimeType.startsWith('audio/'), video = asset.mimeType.startsWith('video/');
       const soundOnly = clip.soundOnly === true;
@@ -180,11 +182,11 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       const list = byTrack.get(clip.trackId) ?? []; list.push(clip); byTrack.set(clip.trackId, list);
       if (clip.volumeEnvelope != null) {
         if (image) throw fail('VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
-        if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
+        if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > LIMITS.sourceSeconds) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         envelopeClips.push(clip);
       }
       if (!track.muted && clip.muted !== true && clip.gain !== 0 && asset.hasAudio === true) {
-        if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > 600) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
+        if (asset.sizeBytes > LIMITS.sourceBytes || asset.duration === null || asset.duration > LIMITS.sourceSeconds) throw fail('AUDIO_PREVIEW_SOURCE_LIMIT');
         voices.push(clip);
       }
     }

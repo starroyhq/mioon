@@ -12,6 +12,7 @@ import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
 import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
 import type {TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {timelineGenerateTargetForBlank} from '../apps/web/src/edit-ui/generate-in-editing.ts';
 import {createDragConflictPreviewController, dragPreviewTargetKey} from '../apps/web/src/edit-ui/drag-conflict-preview.ts';
 
@@ -25,6 +26,7 @@ function harness(locale: unknown='zh-Hans'){
   if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if(name==='react')return react;
   if(name==='./i18n/I18nProvider.tsx')return i18nTestModule(((locale) as unknown as Parameters<typeof i18nTestModule>[0]));
   if(name==='./UiPreferencesProvider.tsx')return{useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})};
+  if(name==='@mioon/contracts/timeline-limits')return{TIMELINE_LIMITS};
   if(name==='./timeline-view-geometry.ts')return geometry;
   if(name==='./timeline-compact-layout.ts')return compactLayout;
   if(name==='./timeline-removal.ts')return{displayTimelineFrame};

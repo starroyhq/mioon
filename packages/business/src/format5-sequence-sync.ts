@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 /** Format-5 timeline ⇄ sequence-root synchronization (TSa), aligned with the
  * shared CS/TS action contract (`sequence-edit.ts`).
  *
@@ -763,7 +764,7 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
     if (main ? kind === 'audio' : track.kind !== (kind === 'audio' ? 'audio' : 'video'))
       return failure('INVALID_TRACK_TARGET', [targetTrackId]);
     const frames = assetFrames(asset, kind);
-    if (frames === null || frames < 1 || frames > 18000) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
+    if (frames === null || frames < 1 || frames > TIMELINE_LIMITS.maxFrames) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
     if (main) {
       const ids = allocated ?? {nodeId: randomUUID(), clipId: randomUUID()};
       if (!allocated) allocation.push(ids);

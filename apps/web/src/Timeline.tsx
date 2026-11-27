@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {ClipboardPaste, Eye, EyeOff, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
 import './timeline-editing.css';
 import './timeline-removal.css';
@@ -319,7 +320,7 @@ export default function Timeline({ onClipContextMenu, onRegisterMenuRemoval, onM
   const mainTrackId = editUiProjection?.mainTrackId ?? null;
   const trackBadge = (track: AppTimelineTrack) => track.kind === 'audio' ? `A${tracks.filter(item => item.kind === 'audio').indexOf(track) + 1}` : `V${videoTracks.length - videoTracks.indexOf(track)}`;
   const trackLabel = (track: AppTimelineTrack) => track.id === mainTrackId ? t('editUi.track.main') : /^(Video|Audio)\s*\d+$/i.test(track.name) ? t(track.kind === 'audio' ? 'edit.track.music' : track.id === primaryVideo?.id ? 'edit.track.picture' : 'edit.track.overlay') : track.name;
-  const frameAt = (event: {clientX: number; currentTarget: HTMLElement}, el: HTMLElement = event.currentTarget): number => Math.max(0, Math.min(17999, Math.round(timelinePointerFrameAtElement(event.clientX,el,pxFrame) ?? currentPlayhead())));
+  const frameAt = (event: {clientX: number; currentTarget: HTMLElement}, el: HTMLElement = event.currentTarget): number => Math.max(0, Math.min(TIMELINE_LIMITS.maxFrames - 1, Math.round(timelinePointerFrameAtElement(event.clientX,el,pxFrame) ?? currentPlayhead())));
   function over(event: DragLike, track: AppTimelineTrack): void {
     if (!bodyCurrent()) return;
     if (!event.dataTransfer.types.includes(ASSET_DRAG) && !event.dataTransfer.types.includes(CLIP_DRAG)) return;
@@ -428,7 +429,7 @@ function TimelineRuler({label, width, playhead, clock, ticks, pixelsPerSecond, p
   const frame = useTimelinePlaybackFrame(clock, playhead);
   const left = frame * pixelsPerFrame;
   return <div className="timeline-ruler" style={{width}} role="slider" aria-label={label} aria-valuemin={0}
-    aria-valuemax={18000} aria-valuenow={frame} tabIndex={0} onClick={onClick} onKeyDown={onKeyDown}>
+    aria-valuemax={TIMELINE_LIMITS.maxFrames} aria-valuenow={frame} tabIndex={0} onClick={onClick} onKeyDown={onKeyDown}>
     {ticks.map(second => <span key={second} className={`ruler-tick ${Math.abs(second * pixelsPerSecond - left) < 24 ? 'playhead-overlap' : ''}`}
       style={{left: second * pixelsPerSecond}}>{String(Math.floor(second / 60)).padStart(2, '0')}:{String(second % 60).padStart(2, '0')}</span>)}
     <div className="ruler-head" style={{left}} />

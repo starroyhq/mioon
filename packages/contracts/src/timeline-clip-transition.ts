@@ -1,3 +1,5 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
+
 /** Two-clip picture transitions at the cut between adjacent clips on one video
  * track, and the pure fitting rules the timeline editor, the renderer and the
  * inspector share. It grants no workspace capability: persisted transitions are
@@ -5,9 +7,9 @@
 export const CLIP_TRANSITION_PROFILE = 'mioon-clip-transition-v1';
 export const CLIP_TRANSITION_KINDS = Object.freeze(['dissolve', 'dipToBlack', 'wipeLeft', 'wipeRight', 'pushLeft', 'pushRight'] as const);
 export type ClipTransitionKind = typeof CLIP_TRANSITION_KINDS[number];
-/** Durations are timeline frames. Transition edges count towards the same
- * bound of 200 composition segments that 100 clips already reach. */
-export const CLIP_TRANSITION_LIMITS = Object.freeze({minFrames: 2, maxFrames: 60, segments: 200});
+/** Durations are timeline frames. Transition edges count towards the shared
+ * composition segment bound along with clip edges. */
+export const CLIP_TRANSITION_LIMITS = Object.freeze({minFrames: 2, maxFrames: 60, segments: TIMELINE_LIMITS.maxSegments});
 /** Saved on the incoming clip of a cut, centred on the cut. */
 export interface ClipTransition {
   readonly profileId: typeof CLIP_TRANSITION_PROFILE;

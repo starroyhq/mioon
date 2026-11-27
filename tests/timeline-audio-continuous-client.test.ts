@@ -41,9 +41,13 @@ function response(plan: Plan, req: BlockRequest, {extra = 0, truncate = 0, corru
 
 test('continuous metadata and fixed pull inputs are strict and versioned without weakening V1', () => {
   const plan = manifest(); assert.equal(isContinuousAudioPlan(plan, input), true);
-  for (const patch of [{schemaVersion: 1}, {blockFrames: 600}, {admittedBytes: L.memoryBytes + 1}, {durationFrames: 18001}, {sampleRate: 44100}, {path: '/private'}])
+  const lastFrame = L.timelineFrames - 1;
+  const tail = manifest({startFrame: lastFrame, durationFrames: L.timelineFrames});
+  assert.equal(isContinuousAudioPlan(tail, {...input, startFrame: lastFrame}), true);
+  assert.equal(continuousAudioBlockInputSchema.safeParse(request(tail, {startFrame: lastFrame, blockStartFrame: lastFrame})).success, true);
+  for (const patch of [{schemaVersion: 1}, {blockFrames: 600}, {admittedBytes: L.memoryBytes + 1}, {durationFrames: L.timelineFrames + 1}, {sampleRate: 44100}, {path: '/private'}])
     assert.equal(continuousAudioPlanSchema.safeParse({...plan, ...patch}).success, false);
-  for (const patch of [{generation: 0}, {generation: 257}, {sequence: 10001}, {blockStartFrame: 18000}, {sourcePath: '/private'}])
+  for (const patch of [{generation: 0}, {generation: 257}, {sequence: 10001}, {blockStartFrame: L.timelineFrames}, {sourcePath: '/private'}])
     assert.equal(continuousAudioBlockInputSchema.safeParse({...request(plan), ...patch}).success, false);
   assert.equal(isContinuousAudioPlan(plan, {...input, expectedRevision: 2}), false);
   const op = 'timeline.audioPreview.continuousPlan'; assert.deepEqual(parse(op, input), input); assert.ok(schemas[op]);

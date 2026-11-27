@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from './timeline-limits.ts';
 import {mediaFingerprintSchema, mediaReferenceSchema} from './media-reference.ts';
 import {createVolumeEnvelopeEvaluator, type VolumeEnvelope, type VolumeEnvelopeClip} from './timeline-volume-envelope.ts';
 import {isVolumeEnvelope,isVolumeEnvelopeProcessingSnapshot} from './timeline-volume-envelope-processing.ts';
@@ -45,7 +46,7 @@ const same = (a: unknown, b: unknown): boolean => object(a) && object(b)
 // Only this typed field compares arrays. Other legacy array semantics stay closed.
 const sameVolumeEnvelope = (a: unknown, b: unknown): boolean => {
   if(a===null||b===null)return a===b;
-  if(!isVolumeEnvelope(a,18000)||!isVolumeEnvelope(b,18000))return false;
+  if(!isVolumeEnvelope(a,LEGACY_TIMELINE_LIMITS.maxFrames)||!isVolumeEnvelope(b,LEGACY_TIMELINE_LIMITS.maxFrames))return false;
   const left = a as VolumeEnvelope, right = b as VolumeEnvelope;
   return left.profileId===right.profileId && left.points.length===right.points.length &&
     left.points.every((point,index)=>point.frame===right.points[index].frame&&point.multiplier===right.points[index].multiplier);
@@ -144,7 +145,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
     case 'timeline.clip.add': {
       const clipFields = clipFieldsFor(options);
       const optionalClipFields = clipFields.filter(key => !['trackId', 'startFrame', 'durationFrames'].includes(key));
-      if (!operationInput(input, ['assetId', 'trackId', 'startFrame', 'durationFrames'], optionalClipFields) || !uuid(request.assetId) || !uuid(request.trackId) || !integer(request.startFrame, 0, 18000) || !integer(request.durationFrames, 1, 18000) || Object.hasOwn(request,'volumeEnvelope')&&!isVolumeEnvelope(request.volumeEnvelope,request.durationFrames)) return false;
+      if (!operationInput(input, ['assetId', 'trackId', 'startFrame', 'durationFrames'], optionalClipFields) || !uuid(request.assetId) || !uuid(request.trackId) || !integer(request.startFrame, 0, LEGACY_TIMELINE_LIMITS.maxFrames) || !integer(request.durationFrames, 1, LEGACY_TIMELINE_LIMITS.maxFrames) || Object.hasOwn(request,'volumeEnvelope')&&!isVolumeEnvelope(request.volumeEnvelope,request.durationFrames)) return false;
       return timeline.clips.some(clip => clip.assetId === request.assetId && hasFields(clip, request, clipFields) &&
         clip.sourceInFrame === (request.sourceInFrame as number | undefined ?? 0) && clip.gain === (request.gain as number | undefined ?? 1) &&
         same(clip.rect, request.rect ?? {x: 0, y: 0, width: timeline.width, height: timeline.height}) &&
@@ -159,7 +160,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
     case 'timeline.clip.rippleRemove':
       return operationInput(input, ['clipId']) && uuid(request.clipId) && !target;
     case 'timeline.clip.split':
-      if (!operationInput(input, ['clipId', 'atFrame']) || !uuid(request.clipId) || !integer(request.atFrame, 0, 18000) || !target || target.startFrame + target.durationFrames !== request.atFrame || (target.fadeOutFrames ?? 0) !== 0) return false;
+      if (!operationInput(input, ['clipId', 'atFrame']) || !uuid(request.clipId) || !integer(request.atFrame, 0, LEGACY_TIMELINE_LIMITS.maxFrames) || !target || target.startFrame + target.durationFrames !== request.atFrame || (target.fadeOutFrames ?? 0) !== 0) return false;
       return timeline.clips.some(right => right.id !== target.id && right.startFrame === request.atFrame && splitEnvelopeMatches(target,right) &&
         ['trackId', 'assetId', 'name', 'rect', 'layout', 'gain', 'colour', 'audioRole', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
         (right.sourceInFrame === target.sourceInFrame + target.durationFrames || right.sourceInFrame === 0 && target.sourceInFrame === 0) &&
@@ -200,10 +201,13 @@ export function isTimelineRenderRecord(value: unknown, input: unknown, options: 
   if (!fields(snapshot, snapshotFields, snapshotOptionalFields) || !isTimelineExportSnapshot(snapshot,{purpose:request.purpose,exportSettings:request.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(snapshot) || !isVolumeEnvelopeProcessingSnapshot(snapshot)) return false;
   const snapshotRecord = snapshot as Rec;
   const timeline = snapshotRecord.timeline as TimelineRecord;
-  if (!isTimelineRecord(timeline, {...options, projectId: request.projectId}) ||
+  // Native clips and cues are stored in individual rows. The whole export
+  // receipt still has its existing byte fence, including the frozen timeline.
+  const timelineBytes = options.format === FORMAT5_TIMELINE_FORMAT ? TIMELINE_RENDER_RESPONSE_BYTES : undefined;
+  if (!isTimelineRecord(timeline, {...options, projectId: request.projectId}, timelineBytes) ||
       timeline.revision !== request.expectedRevision || !timeline.clips.length ||
       (request.timelineId !== undefined && timeline.id !== request.timelineId) ||
-      !Array.isArray(snapshotRecord.assets) || snapshotRecord.assets.length < 1 || snapshotRecord.assets.length > 100 ||
+      !Array.isArray(snapshotRecord.assets) || snapshotRecord.assets.length < 1 || snapshotRecord.assets.length > TIMELINE_LIMITS.maxClips ||
       !(render.error === null || renderError(render.error))) return false;
   if (render.status === 'succeeded') {
     if (!uuid(render.assetId) || render.url !== `/media/${render.assetId}` || render.error !== null) return false;

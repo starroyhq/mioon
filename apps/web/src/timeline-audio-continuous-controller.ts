@@ -1,6 +1,6 @@
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {DisplayMessage} from '../../../packages/i18n/src/types.ts';
-import type {ContinuousAudioPlanInput} from '@mioon/contracts/timeline-audio-continuous';
+import {CONTINUOUS_AUDIO_LIMITS, type ContinuousAudioPlanInput} from '@mioon/contracts/timeline-audio-continuous';
 import {createContinuousAudioPreviewClient, type ContinuousAudioClientSession} from './timeline-audio-continuous-client.ts';
 import {createContinuousTimelineAudioTransport} from './timeline-audio-continuous-engine.ts';
 import {timelineAudioPreviewErrorDescriptor, type TimelineAudioPreviewContext, type TimelineAudioPreviewState,
@@ -22,7 +22,7 @@ const same = (a: TimelineAudioPreviewContext, b: TimelineAudioPreviewContext): b
   a.connected === b.connected && a.visible === b.visible;
 const allowed = (state: TimelineAudioPreviewContext): boolean => Boolean(state.scope && state.projectId && state.timelineId &&
   Number.isSafeInteger(state.revision) && (state.revision ?? 0) > 0 && Number.isSafeInteger(state.durationFrames) &&
-  state.durationFrames > 0 && state.durationFrames <= 18000 && state.sourceIdentity && state.connected && state.visible);
+  state.durationFrames > 0 && state.durationFrames <= CONTINUOUS_AUDIO_LIMITS.timelineFrames && state.sourceIdentity && state.connected && state.visible);
 
 /** The continuous owner retains the existing saved-only binding. Language and
  * drafts are presentation state; neither becomes an audio session identity. */

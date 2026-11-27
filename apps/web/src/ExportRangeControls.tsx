@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useId } from 'react';
 import { Input } from '@mioon/ui/components/input';
@@ -18,7 +19,7 @@ export interface ExportRangeControlsProps {
 export default function ExportRangeControls({ draft = { mode: 'whole', startText: '', endText: '' }, value, durationFrames, error = '', disabled = false, onChange }: ExportRangeControlsProps) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const id = useId(), summary = value ? exportRangeDescription({ exportRange: value }, durationFrames) : null;
-  const extent = typeof durationFrames === 'number' && Number.isSafeInteger(durationFrames) && durationFrames > 0 && durationFrames <= 18000 ? durationFrames : null;
+  const extent = typeof durationFrames === 'number' && Number.isSafeInteger(durationFrames) && durationFrames > 0 && durationFrames <= TIMELINE_LIMITS.maxFrames ? durationFrames : null;
   return <section className="timeline-export-settings" data-testid="export-range-controls" aria-labelledby={`${id}-title`}>
     <h3 id={`${id}-title`}>{t('export.range.title')}</h3>
     <div className="clip-form-actions" role="group" aria-label={t('export.range.label')}>

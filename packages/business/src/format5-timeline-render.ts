@@ -10,7 +10,7 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {TimelineRecord, TimelineClipRecord, TimelineSubtitleCueRecord} from './timeline-inputs.ts';
-import {freezeTimelineSnapshot} from './timeline-inputs.ts';
+import {assertTimelineExportPlan,assertTimelineProcessingSize,freezeTimelineSnapshot} from './timeline-inputs.ts';
 import type {ManagedAssetRecord} from './timeline-inputs.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
@@ -131,6 +131,7 @@ export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
     throw new AppError('REVISION_CONFLICT', '时间线已有新版本，请重新读取后再修改', 409,
       {expectedRevision: input.expectedRevision, currentRevision: timeline.revision});
   }
+  assertTimelineProcessingSize(timeline);
   const rangeIssue = timelineExportRangeBoundsIssue(input, timeline.durationFrames);
   if (rangeIssue) throw new AppError(rangeIssue.code, rangeIssue.message, rangeIssue.status);
   const range = exportRange(input);
@@ -143,5 +144,6 @@ export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
   }
   if (!projection.legacy.clips.length) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
   const frozen = freezeTimelineSnapshot(projection.legacy, projection.assets, input.exportSettings, input) as Row;
+  assertTimelineExportPlan(frozen as never,projection.assets);
   return frozen;
 }

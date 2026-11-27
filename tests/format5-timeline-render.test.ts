@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {createChainWorld} from './helpers/sequence-edit-double.ts';
 import {freezeFormat5RenderSnapshot, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
-import {FORMAT5_TIMELINE_FORMAT} from '../packages/contracts/src/timeline-replacement.ts';
+import {FORMAT5_TIMELINE_FORMAT, TIMELINE_RESPONSE_BYTES} from '../packages/contracts/src/timeline-replacement.ts';
+import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
-import {timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
+import {createTimelinePreflightServices, timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 
 const rootId = '10000000-0000-4000-8000-000000000001';
@@ -127,6 +129,55 @@ test('format-5 export blockers refuse to freeze instead of rendering a placehold
   assert.throws(() => freezeFormat5RenderSnapshot(world.store),
     (error: {code?: string; details?: {blockers?: {code: string}[]}}) =>
       error.code === 'EXPORT_BLOCKED' && error.details?.blockers?.[0]?.code === 'VERSION_TOO_SHORT');
+});
+
+test('native export freezes exactly 300 clips and 54,000 frames and refuses either excess before probing', async (t) => {
+  const {world: {store, projectId, timeline}} = fixture(t);
+  const {maxClips, maxFrames} = TIMELINE_LIMITS;
+  const trackId = randomUUID();
+  const {rect} = timeline.clips[0]!;
+  const framesPerClip = maxFrames / maxClips;
+  const freeClip = {trackId, name: '镜'.repeat(200), assetId: assetA, sourceInFrame: 0, rect, gain: 1,
+    sourceState: 'ready' as const, anchor: null, durationFrames: framesPerClip, fadeInFrames: 3, fadeOutFrames: 3};
+  const clips = [...timeline.clips, ...Array.from({length: maxClips - timeline.clips.length}, (_, index) => ({
+    ...freeClip, id: randomUUID(), startFrame: (index + timeline.clips.length) * framesPerClip,
+  }))];
+  const boundary = {...timeline, clips, durationFrames: maxFrames,
+    tracks: [...timeline.tracks, {id: trackId, name: 'V2', kind: 'video' as const, orderIndex: 1, hidden: false, muted: false}]};
+  store.tx(() => {
+    const asset = store.get('assets', assetA) as Record<string, unknown>;
+    store.put('assets', {...asset, duration: 7});
+    store.put('timelines', boundary);
+  });
+  const request = {projectId, expectedRevision: timeline.revision, requestId: 'render-exact-limit-0001', purpose: 'export' as const};
+  const frozen = freezeFormat5RenderSnapshot(store, request) as {timeline: {durationFrames: number; clips: unknown[]}};
+  assert.equal(frozen.timeline.durationFrames, maxFrames);
+  assert.equal(frozen.timeline.clips.length, maxClips);
+  assert.ok(Buffer.byteLength(JSON.stringify(frozen.timeline)) > TIMELINE_RESPONSE_BYTES);
+  const receipt = {id: randomUUID(), projectId, requestId: request.requestId, mode: 'timeline', purpose: request.purpose,
+    timelineRevision: timeline.revision, snapshot: frozen, status: 'queued', assetId: null, url: null, error: null,
+    createdAt: timeline.createdAt, updatedAt: timeline.updatedAt};
+  assert.equal(isTimelineRenderRecord(receipt, request, {format: FORMAT5_TIMELINE_FORMAT}), true);
+  assert.equal(isTimelineRenderRecord(receipt, request), false);
+
+  const {handlers} = createTimelinePreflightServices(store, {probe: async () => assert.fail('over-limit export probed a source')});
+  const selected = {...request, exportRange: {startFrame: 0, endFrame: 30}};
+  const overBoundaries = [
+    {...boundary, durationFrames: maxFrames + 1, clips: [...clips.slice(0, -1), {...clips.at(-1)!, durationFrames: framesPerClip + 1}]},
+    {...boundary, clips: [...clips, {...freeClip, id: randomUUID(), startFrame: 120, durationFrames: 10}]},
+  ];
+  for (const overBoundary of overBoundaries) {
+    store.tx(() => store.put('timelines', overBoundary));
+    assert.throws(() => freezeFormat5RenderSnapshot(store, selected), {
+      code: 'TIMELINE_LIMIT', message: '时间线最多支持 300 个片段和 30 分钟（54000 帧）。',
+    });
+    const report = await handlers['timeline.export.preflight'](selected);
+    assert.equal(report.status, 'blocked');
+    assert.deepEqual(report.issues.map(({code, message}) => [code, message]), [
+      ['TIMELINE_LIMIT', '时间线最多支持 300 个片段和 30 分钟（54000 帧）。'],
+    ]);
+    assert.equal(report.checks.bytesHashed, 0);
+  }
 });
 
 test('format-5 render projection keeps muted and sound-only flags and the frozen snapshot admits them', (t) => {

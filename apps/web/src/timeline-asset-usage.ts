@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 /** A copied location in one saved timeline revision. Never a live selection. */
 export interface TimelineAssetUse {
   readonly projectId: string;
@@ -35,9 +36,9 @@ export interface TimelineAssetUsageInput {
 // timeline-inputs.ts. This projection deliberately does not validate render
 // settings, codec support, source availability, geometry relationships,
 // subtitles or drafts. Extra source metadata only fences navigation identity.
-const MAX_TRACKS = 12;
-const MAX_CLIPS = 100;
-const MAX_FRAMES = 18000;
+const MAX_TRACKS = TIMELINE_LIMITS.maxTracks;
+const MAX_CLIPS = TIMELINE_LIMITS.maxClips;
+const MAX_FRAMES = TIMELINE_LIMITS.maxFrames;
 const EMPTY_USES: readonly TimelineAssetUse[] = Object.freeze([]);
 const EMPTY_INDEX: UsesByAssetId = Object.freeze({});
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -103,7 +104,7 @@ function sourceIdentity(asset: Record<string, unknown>, clip: Record<string, unk
  * the complete project load; this function cannot establish transport freshness.
  * Missing/foreign/unresolved data is unknown, never evidence of zero use.
  * project.get has no asset-count cap: work is linear in the already-loaded
- * assets, reading two identity fields per row, plus at most 12 tracks/100 clips.
+ * assets, reading two identity fields per row, plus the bounded timeline rows.
  * Only referenced assets receive the bounded source-identity projection; no
  * historical/draft/selected-version source is read. */
 export function deriveTimelineAssetUsage({ projectId, assets, timeline, ready }: TimelineAssetUsageInput): UsageSnapshot {

@@ -2,7 +2,8 @@ import type { AgentEditingProof } from './agent-editing-proof.ts';
 import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
-import { TIMELINE_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_PROFILE_ID, getTimelineSubtitleIssue, isTimelineMutationResponse } from '@mioon/contracts';
+import { TIMELINE_RENDER_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_PROFILE_ID, getTimelineSubtitleIssue, isTimelineMutationResponse } from '@mioon/contracts';
+import { isFormat5Timeline } from '@mioon/contracts/project-format5';
 import { taskInputKey } from './edit-task-client.ts';
 
 export { TIMELINE_SUBTITLE_LIMITS };
@@ -13,6 +14,7 @@ export interface SubtitleTimeline {
   readonly projectId: string;
   readonly revision: number;
   readonly durationFrames: number;
+  readonly mainTrack?: { readonly trackId: string; readonly sequenceNodeId: string };
   readonly subtitles?: { readonly cues?: readonly SubtitleCue[] } | null;
 }
 export interface SubtitleCueFields { text: string; startFrame: number | string; durationFrames: number | string }
@@ -88,6 +90,10 @@ export interface SubtitleControllerOptions {
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const fields = (cue: { readonly text?: unknown; readonly startFrame?: unknown; readonly durationFrames?: unknown } | null | undefined): { text?: unknown; startFrame?: unknown; durationFrames?: unknown } | null => cue ? { text: cue.text, startFrame: cue.startFrame, durationFrames: cue.durationFrames } : null;
 const cues = (timeline: SubtitleTimeline | null | undefined): readonly SubtitleCue[] => timeline?.subtitles?.cues || [];
+const subtitleLimits = (timeline: SubtitleTimeline | null | undefined) => timeline?.mainTrack ? TIMELINE_RENDER_SUBTITLE_LIMITS : TIMELINE_SUBTITLE_LIMITS;
+const subtitleLimitMessage = (timeline: SubtitleTimeline | null | undefined) => timeline?.mainTrack
+  ? message('subtitles.error.nativeLimit', { maxCues: TIMELINE_RENDER_SUBTITLE_LIMITS.cues })
+  : message('subtitles.error.limit', { maxCues: TIMELINE_SUBTITLE_LIMITS.cues });
 const initial = (): SubtitleState => ({ scope: null, projectId: null, timeline: null, cueId: null, selection: 0, draft: null, baseRevision: null, dirty: false, conflict: false, submitting: false, uncertain: null, connected: false, pending: true, error: '', errorMessage: null });
 const protocolError = (): Error => Object.assign(new Error('字幕确认与原请求不一致；草稿仍保留，请在任务中心核对。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
@@ -104,7 +110,10 @@ function subtitleDraftValidation(state: SubtitleState | null | undefined): Subti
   let placeholder = 0, draftId: string;
   do { draftId = `00000000-0000-4000-8000-${String(placeholder++).padStart(12, '0')}`; } while (ids.has(draftId));
   const candidate = { id: state.cueId || draftId, ...fields(draft), startFrame: Number(draft.startFrame), durationFrames: Number(draft.durationFrames) };
-  return subtitleIssue(getTimelineSubtitleIssue({ profileId: TIMELINE_SUBTITLE_PROFILE_ID, cues: [...cues(state.timeline).filter(cue => cue.id !== state.cueId), candidate] }, state.timeline.durationFrames));
+  const saved = cues(state.timeline).filter(cue => cue.id !== state.cueId);
+  // Native cues carry anchors and dialogue links, which the shared text and timing validator does not accept.
+  const visible = state.timeline.mainTrack ? saved.map(({ id, text, startFrame, durationFrames }) => ({ id, text, startFrame, durationFrames })) : saved;
+  return subtitleIssue(getTimelineSubtitleIssue({ profileId: TIMELINE_SUBTITLE_PROFILE_ID, cues: [...visible, candidate] }, state.timeline.durationFrames, subtitleLimits(state.timeline)));
 }
 
 export const subtitleDraftIssue = (state: SubtitleState | null | undefined): string => subtitleDraftValidation(state)?.message || '';
@@ -118,7 +127,8 @@ export function subtitleDraftMessage(state: SubtitleState | null | undefined): D
     return typeof line === 'number' && Number.isSafeInteger(line) && line > 0 && typeof column === 'number' && Number.isSafeInteger(column) && column > 0 && typeof codePoint === 'string' && /^U\+[A-F0-9]{4,6}$/.test(codePoint)
       ? message('subtitles.error.character', { line, column, codePoint }) : message('subtitles.error.text');
   }
-  const issueKeys: Record<string, MessageKey> = { INVALID_SUBTITLES: 'subtitles.error.invalid', SUBTITLE_LIMIT: 'subtitles.error.limit', SUBTITLE_BOUNDS: 'subtitles.error.bounds', SUBTITLE_OVERLAP: 'subtitles.error.overlap' };
+  if (issue.code === 'SUBTITLE_LIMIT') return subtitleLimitMessage(state?.timeline);
+  const issueKeys: Record<string, MessageKey> = { INVALID_SUBTITLES: 'subtitles.error.invalid', SUBTITLE_BOUNDS: 'subtitles.error.bounds', SUBTITLE_OVERLAP: 'subtitles.error.overlap' };
   const key = Object.hasOwn(issueKeys, issue.code) ? issueKeys[issue.code] : 'subtitles.error.invalid';
   return message(key);
 }
@@ -127,13 +137,21 @@ export const subtitleCanSave = (state: SubtitleState | null | undefined): boolea
 export function subtitleAddMessage(timeline: SubtitleTimeline | null | undefined, frame: number, blocked = false): DisplayMessage | null {
   if (blocked) return message('subtitles.error.pending');
   if (!timeline || timeline.durationFrames < 1) return message('subtitles.error.mediaFirst');
-  if (cues(timeline).length >= TIMELINE_SUBTITLE_LIMITS.cues) return message('subtitles.error.limit');
+  if (cues(timeline).length >= subtitleLimits(timeline).cues) return subtitleLimitMessage(timeline);
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= timeline.durationFrames) return message('subtitles.error.playhead');
   return null;
 }
 export const subtitleAddReason = (timeline: SubtitleTimeline | null | undefined, frame: number, blocked = false): string => renderMessage('zh-Hans', subtitleAddMessage(timeline, frame, blocked));
-export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined, timeline: SubtitleTimeline | null | undefined): boolean {
-  if (!intent || timeline?.id !== intent.timelineId || !isTimelineMutationResponse(intent.operation, intent.input, timeline)) return false;
+export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined, timeline: SubtitleTimeline | null | undefined, native = false): boolean {
+  if (!intent || !timeline || timeline.id !== intent.timelineId) return false;
+  if (native) {
+    const { projectId, expectedRevision, cueId, patch } = intent.input;
+    if (!projectId || expectedRevision === null || !isFormat5Timeline(timeline, { projectId }) || timeline.revision !== expectedRevision + 1) return false;
+    const cue = cues(timeline).find(item => item.id === cueId);
+    if (intent.operation === 'timeline.subtitle.remove') return Boolean(cueId && !cue);
+    if (intent.operation === 'timeline.subtitle.update') return Boolean(cue && patch && cue.text === patch.text && cue.startFrame === patch.startFrame && cue.durationFrames === patch.durationFrames);
+    if (intent.operation !== 'timeline.subtitle.add') return false;
+  } else if (!isTimelineMutationResponse(intent.operation, intent.input, timeline)) return false;
   if (intent.operation !== 'timeline.subtitle.add') return true;
   const added = cues(timeline).filter(cue => !intent.previousIds.includes(cue.id));
   if (added.length !== 1) return false;
@@ -168,7 +186,7 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       if (!owns(intent)) return null;
       if (result?.status === 'applied') {
         const saved = result.timeline;
-        if (!subtitleAcknowledged(intent, saved as SubtitleTimeline)) throw protocolError();
+        if (!subtitleAcknowledged(intent, saved as SubtitleTimeline, Boolean(timeline.mainTrack))) throw protocolError();
         const applied = saved as SubtitleTimeline, current = state.timeline;
         if (!current) return null;
         if (current.revision > applied.revision) { emit({ submitting: false, conflict: true, error: '时间线已有更新版本；请核对后放弃草稿并载入最新字幕。', errorMessage: message('subtitles.error.newer') }); return applied; }

@@ -206,7 +206,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
           onProgress: (preparedSources, totalSources) => { if (current(attempt)) emit({ preparedSources, totalSources }); } });
         if (!current(attempt) || abort.signal.aborted) { prepared.buffers.clear(); return false; }
         // Validate the saved duration as well as the RPC-bound start/revision.
-        if (prepared.plan.range.endFrame !== Math.min(startFrame + 600, state.durationFrames)) {
+        if (prepared.plan.range.endFrame !== Math.min(startFrame + AUDIO_PREVIEW_LIMITS.windowFrames, state.durationFrames)) {
           prepared.buffers.clear(); throw new TimelineAudioPreviewError('AUDIO_PREVIEW_PROTOCOL', 'Prepared interval has an unexpected end');
         }
         if (context.state === 'closed') {
@@ -275,8 +275,8 @@ const record = (value: unknown): value is Record<string, unknown> => value !== n
 /** Stable, bounded saved-only projection. Public path/URL/provenance data and
  * unrelated library polling cannot become a sound generation identity. */
 export function timelineAudioPreviewSourceIdentity(timeline: unknown, assets: unknown): string {
-  if (!record(timeline) || !Array.isArray(timeline.tracks) || timeline.tracks.length > 12 ||
-      !Array.isArray(timeline.clips) || timeline.clips.length > 100 || !Array.isArray(assets) || assets.length > 10000) return '';
+  if (!record(timeline) || !Array.isArray(timeline.tracks) || timeline.tracks.length > AUDIO_PREVIEW_LIMITS.tracks ||
+      !Array.isArray(timeline.clips) || timeline.clips.length > AUDIO_PREVIEW_LIMITS.clips || !Array.isArray(assets) || assets.length > 10000) return '';
   const project = (value: Record<string, unknown>, fields: readonly string[]): Record<string, string | number | boolean | null> | null => {
     const result: Record<string, string | number | boolean | null> = {};
     for (const field of fields) {
@@ -294,7 +294,7 @@ export function timelineAudioPreviewSourceIdentity(timeline: unknown, assets: un
   const wanted = new Set(clips.map(value => value?.assetId));
   const selected = assets.filter(value => record(value) && wanted.has(value.id as string)).map(value => record(value) ?
     project(value, ['id', 'projectId', 'sha256', 'sizeBytes', 'duration', 'mimeType', 'hasAudio']) : null);
-  if (selected.length > 100 || selected.some(value => value === null)) return '';
+  if (selected.length > AUDIO_PREVIEW_LIMITS.clips || selected.some(value => value === null)) return '';
   const order = (a: Record<string, string | number | boolean | null> | null, b: Record<string, string | number | boolean | null> | null): number =>
     String(a?.id).localeCompare(String(b?.id));
   return JSON.stringify([top, tracks.sort(order), clips.sort(order), selected.sort(order)]);

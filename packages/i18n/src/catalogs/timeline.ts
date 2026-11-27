@@ -1387,10 +1387,10 @@ const timelineCoreMessages = {
     "ja": "再生ヘッドが音声フェード内にあります。フェードインの終了からフェードアウトの開始までの間（境界を含む）に移動してください"
   },
   "timeline.split.limit": {
-    "zh-Hans": "时间线已达到100个片段上限",
-    "zh-Hant": "時間軸已達 100 個片段上限",
-    "en": "The timeline has reached its 100-clip limit",
-    "ja": "タイムラインは上限の 100 クリップに達しています"
+    "zh-Hans": "时间线已达到{maxClips}个片段上限",
+    "zh-Hant": "時間軸已達 {maxClips} 個片段上限",
+    "en": "The timeline has reached its {maxClips}-clip limit",
+    "ja": "タイムラインは上限の {maxClips} クリップに達しています"
   },
   "timeline.split.unselected": {
     "zh-Hans": "未选择片段",
@@ -1471,16 +1471,16 @@ const timelineCoreMessages = {
     "ja": "クリップの種類は移動先のトラックに対応していません"
   },
   "timeline.snap.tooLong": {
-    "zh-Hans": "片段超过时间线 18000 帧上限",
-    "zh-Hant": "片段超出時間軸 18000 影格上限",
-    "en": "Clip exceeds the timeline’s 18000-frame limit",
-    "ja": "クリップがタイムラインの上限 18000 フレームを超えています"
+    "zh-Hans": "片段超过时间线 {maxFrames} 帧上限",
+    "zh-Hant": "片段超出時間軸 {maxFrames} 影格上限",
+    "en": "Clip exceeds the timeline’s {maxFrames}-frame limit",
+    "ja": "クリップがタイムラインの上限 {maxFrames} フレームを超えています"
   },
   "timeline.snap.clipLimit": {
-    "zh-Hans": "时间线最多容纳 100 个片段",
-    "zh-Hant": "時間軸最多容納 100 個片段",
-    "en": "The timeline allows at most 100 clips",
-    "ja": "タイムラインのクリップ数は最大 100 個です"
+    "zh-Hans": "时间线最多容纳 {maxClips} 个片段",
+    "zh-Hant": "時間軸最多容納 {maxClips} 個片段",
+    "en": "The timeline allows at most {maxClips} clips",
+    "ja": "タイムラインのクリップ数は最大 {maxClips} 個です"
   },
   "timeline.snap.overlap": {
     "zh-Hans": "同一轨道不允许重叠",
@@ -2461,16 +2461,16 @@ const timelineCoreMessages = {
     "ja": "先に互換性のある映像トラックを作成してください"
   },
   "timeline.range.error.tooLong": {
-    "zh-Hans": "追加后的终点超过时间线 18000 帧上限；请缩短已保存范围或调整轨道",
-    "zh-Hant": "追加後的終點超出時間軸 18000 影格上限；請縮短已儲存範圍或調整軌道",
-    "en": "Appending would exceed the timeline’s 18000-frame limit. Shorten the saved range or adjust the track",
-    "ja": "追加後の終了位置がタイムラインの上限 18000 フレームを超えます。保存済み範囲を短くするか、トラックを調整してください"
+    "zh-Hans": "追加后的终点超过时间线 {maxFrames} 帧上限；请缩短已保存范围或调整轨道",
+    "zh-Hant": "追加後的終點超出時間軸 {maxFrames} 影格上限；請縮短已儲存範圍或調整軌道",
+    "en": "Appending would exceed the timeline’s {maxFrames}-frame limit. Shorten the saved range or adjust the track",
+    "ja": "追加後の終了位置がタイムラインの上限 {maxFrames} フレームを超えます。保存済み範囲を短くするか、トラックを調整してください"
   },
   "timeline.range.error.clipLimit": {
-    "zh-Hans": "时间线最多容纳 100 个片段",
-    "zh-Hant": "時間軸最多容納 100 個片段",
-    "en": "The timeline allows at most 100 clips",
-    "ja": "タイムラインのクリップ数は最大 100 個です"
+    "zh-Hans": "时间线最多容纳 {maxClips} 个片段",
+    "zh-Hant": "時間軸最多容納 {maxClips} 個片段",
+    "en": "The timeline allows at most {maxClips} clips",
+    "ja": "タイムラインのクリップ数は最大 {maxClips} 個です"
   },
   "timeline.range.error.bounds": {
     "zh-Hans": "范围必须满足 0 ≤ 入点 < 出点 ≤ {count}",
@@ -3116,10 +3116,16 @@ const timelineCoreMessages = {
     "ja": "字幕を追加する前にメディアクリップを追加してください"
   },
   "subtitles.error.limit": {
-    "zh-Hans": "时间线最多支持100条手动字幕",
-    "zh-Hant": "時間軸最多支援 100 條手動字幕",
-    "en": "The timeline supports at most 100 manual subtitles",
-    "ja": "タイムラインで使える手動字幕は最大 100 件です"
+    "zh-Hans": "时间线最多支持{maxCues}条手动字幕",
+    "zh-Hant": "時間軸最多支援 {maxCues} 條手動字幕",
+    "en": "The timeline supports at most {maxCues} manual subtitles",
+    "ja": "タイムラインで使える手動字幕は最大 {maxCues} 件です"
+  },
+  "subtitles.error.nativeLimit": {
+    "zh-Hans": "时间线最多支持{maxCues}条字幕",
+    "zh-Hant": "時間軸最多支援 {maxCues} 條字幕",
+    "en": "The timeline supports at most {maxCues} subtitles",
+    "ja": "タイムラインで使える字幕は最大 {maxCues} 件です"
   },
   "subtitles.error.playhead": {
     "zh-Hans": "请将播放头放在已有媒体时长内的整数帧",
