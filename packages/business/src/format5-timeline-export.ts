@@ -12,6 +12,7 @@
  * (P5 D4). Nothing here writes project data.
  */
 import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
+import {clipSourceEndFrame} from '../../contracts/src/timeline-clip-timing.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {createHash} from 'node:crypto';
 import {AppError, sourceFrameCount} from '@mioon/contracts';
@@ -114,7 +115,7 @@ export function format5ExportBlockersFromTimeline(db: ProjectStore['db'], timeli
     const version = versions.get(selected);
     const asset = version && typeof version.assetId === 'string' ? assets.get(version.assetId) : undefined;
     const sourceFrames = sourceFrameCount(asset?.duration);
-    const needed = clip.sourceInFrame + clip.durationFrames;
+    const needed = clipSourceEndFrame(clip);
     if (sourceFrames !== null && sourceFrames < needed) {
       blockers.push({code: 'VERSION_TOO_SHORT', clipId: clip.id, nodeId: source.nodeId, versionId: selected,
         shortByFrames: needed - sourceFrames});
@@ -123,14 +124,14 @@ export function format5ExportBlockersFromTimeline(db: ProjectStore['db'], timeli
   return blockers;
 }
 /** Read the format-5 projection and freeze an export ticket. */
-export function createFormat5ExportTicket(store: ProjectStore, range: Format5ExportRange | null = null): Format5ExportTicket {
+export function createFormat5ExportTicket(store: ProjectStore, range: Format5ExportRange | null = null, {speedExport = false}: {speedExport?: boolean} = {}): Format5ExportTicket {
   if (!format5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于项目格式 5。', 409, {reason: 'FORMAT_REQUIRED'});
   return store.tx(() => {
     const timeline = readFormat5TimelineRecord(store.db, 'project');
     if (!timeline || timeline.projectId !== store.projectId) {
       throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
     }
-    assertTimelineSpeedRenderable(timeline);
+    if (!speedExport) assertTimelineSpeedRenderable(timeline);
     const stamp = readProjectContentStamp(store.db);
     const blockers = format5ExportBlockersFromTimeline(store.db, timeline, range);
     const revisions = {contentRevision: stamp.contentSequence, timelineRevision: timeline.revision,

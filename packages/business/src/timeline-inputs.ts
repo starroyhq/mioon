@@ -7,6 +7,10 @@ import {timelineExportRangeFields} from '@mioon/contracts/timeline-export-range'
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {projectTimelineColourPlan} from '../../contracts/src/timeline-colour.ts';
 import {isClipLayoutRect, type ClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
+import {clipTimingSchema, type ClipTiming} from '../../contracts/src/timeline-speed.ts';
+import {clipSourceEndFrame} from '../../contracts/src/timeline-clip-timing.ts';
+import {projectTimeMapToCurrentClipFields} from '../../contracts/src/timeline-time-map.ts';
+import {speedExportClipPlan, speedExportMappingError} from './timeline-speed-export-plan.ts';
 import {timelineSubtitleSnapshotFields} from '../../contracts/src/timeline-subtitles.ts';
 import {AppError,sourceFrameCount,getTimelineFadeIssue,timelineOutputPreset,getTimelineSubtitleIssue,resolveTimelineExportDelivery} from '@mioon/contracts';
 
@@ -18,7 +22,7 @@ export interface TimelineClipRecord {
  id: string;trackId: string;assetId: string;name?: string;startFrame: number;durationFrames: number;sourceInFrame: number;
  rect: TimelineRect;gain: number;layout?: ClipLayout;transform?: unknown;fadeInFrames?: number;fadeOutFrames?: number;audioRole?: string;
  colour?: Record<string, unknown>|null;volumeEnvelope?: unknown;opacityEnvelope?: unknown;
- versionId?: string;shotId?: string;jobId?: string;
+ versionId?: string;shotId?: string;jobId?: string;timing?: ClipTiming;sourceSpanFrames?: number;
  /** Format-5 only: per-clip mute of its own sound; absence means audible. */
  muted?: boolean;
  /** Format-5 only: an audio-track clip that plays a video source's sound. */
@@ -36,6 +40,23 @@ export interface ManagedAssetRecord {
 
 const integer=(value: unknown,min: number,max: number): boolean=>Number.isInteger(value)&&(value as number)>=min&&(value as number)<=max;
 function invalid(message: string): never{throw Object.assign(Error(message),{code:'INVALID_TIMELINE_SNAPSHOT'});}
+
+function validateClipTiming(clip: TimelineClipRecord, timeline: TimelineRecord, asset: ManagedAssetRecord): void {
+  if (!Object.hasOwn(clip, 'timing') && !Object.hasOwn(clip, 'sourceSpanFrames')) return;
+  const parsed = clipTimingSchema.safeParse(clip.timing);
+  if (!parsed.success || asset.mimeType.startsWith('image/')) throw speedExportMappingError(clip.id, 'INVALID_TIMING');
+  const timing = parsed.data;
+  const plan = speedExportClipPlan({...clip, timing}, timeline.fps);
+  const projection = projectTimeMapToCurrentClipFields({...clip}, plan);
+  if (!projection.ok || projection.value.sourceInFrame !== clip.sourceInFrame ||
+      projection.value.sourceSpanFrames !== clip.sourceSpanFrames) {
+    throw speedExportMappingError(clip.id, 'SOURCE_PROJECTION_MISMATCH');
+  }
+  if (timing.profile === 'timeline-freeze-v1' && (timing.sourceSha256 !== asset.sha256 ||
+      timing.sourceVersionId !== (clip.versionId ?? null))) {
+    throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '定格画面的原始素材已变更。', 409, {clipId: clip.id, assetId: asset.id});
+  }
+}
 
 // Defense in depth for recovered, persisted jobs. The service performs the same
 // public validation, but the renderer must never interpret arbitrary effects.
@@ -66,7 +87,8 @@ export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<st
   if(t.kind==='video'?(soundOnly||!isImage&&!isVideo):!(soundOnly?isVideo&&a.hasAudio===true:isAudio))invalid('Asset is not supported on this track');
   if(Object.hasOwn(c,'muted')&&c.muted!==true)invalid('Invalid clip mute flag');
   if(!structureOnly&&(t.kind==='video'&&!a.hasVideo||t.kind==='audio'&&!a.hasAudio))invalid('Asset has no required media stream');
-  if(isImage?c.sourceInFrame!==0:(!structureOnly&&c.sourceInFrame+c.durationFrames>(sourceFrameCount(a.duration)??0)))invalid('Clip exceeds source duration');
+  validateClipTiming(c,timeline,a);
+  if(isImage?c.sourceInFrame!==0:(!structureOnly&&clipSourceEndFrame(c)>(sourceFrameCount(a.duration)??0)))invalid('Clip exceeds source duration');
   for(const effect of ['transition','transitions','effects','speed','rate','opacity','blendMode'])if((c as unknown as Record<string, unknown>)[effect]!==undefined)invalid(`Unsupported timeline effect: ${effect}`);
   duration=Math.max(duration,c.startFrame+c.durationFrames);
  }
@@ -115,13 +137,14 @@ export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {t
    const end=item.startFrame+item.durationFrames;
    if(end>TIMELINE_LIMITS.durationFrames)
     throw new AppError('TIMELINE_LIMIT','时间线总时长不能超过18000帧（10分钟）',400,{maxDurationFrames:TIMELINE_LIMITS.durationFrames});
+   validateClipTiming(item,timeline,source);
    if(source.mimeType.startsWith('image/')){
     if(item.sourceInFrame!==0)throw new AppError('SOURCE_BOUNDS','图片的素材入点必须为0',400,{clipId:item.id});
    }else{
     // A fractional final frame cannot supply a complete output frame. The tiny
     // tolerance only absorbs the binary representation of exact 30fps times.
     const sourceFrames=sourceFrameCount(source.duration)??0;
-    if(sourceFrames<1||item.sourceInFrame+item.durationFrames>sourceFrames)
+    if(sourceFrames<1||clipSourceEndFrame(item)>sourceFrames)
      throw new AppError('SOURCE_BOUNDS','素材入点和片段时长超出素材范围',400,{clipId:item.id,assetId:source.id,availableFrames:sourceFrames});
    }
    duration=Math.max(duration,end);
