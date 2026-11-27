@@ -189,7 +189,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     if (!element) return;
     const speed = speedPreviewRef.current;
     if (speed) {
-      const rate = speed.frameDrivenPlayback ? 1 : speed.playbackRate;
+      const rate = speed.playbackRate;
       try {
         if (element.defaultPlaybackRate !== rate) element.defaultPlaybackRate = rate;
         if (element.playbackRate !== rate) element.playbackRate = rate;
@@ -214,7 +214,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
       commitNativeFrame(binding, loop.lastFrame);
     }
   }
-  function startFramePlayback(startFrame: number): void {
+  function startFramePlayback(startFrame: number, readOutputSample?: () => number | null): void {
     const token = {};
     const loop = { raf: null as number | null, token, startMs: typeof performance !== 'undefined' ? performance.now() : Date.now(), startFrame, lastFrame: startFrame };
     frameLoop.current = loop;
@@ -229,18 +229,24 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
       }
       const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const elapsedFrames = Math.floor(Math.max(0, nowMs - loop.startMs) / 1000 * liveSpeed.fps);
-      const nextFrame = Math.min(liveSpeed.clipStartFrame + liveSpeed.clipDurationFrames, loop.startFrame + elapsedFrames);
-      if (nextFrame !== loop.lastFrame) {
+      const sample = readOutputSample?.();
+      if (sample === null) { stopFramePlayback(true); stopSpeedPlayback(); return; }
+      const outputFrame = sample === undefined ? loop.startFrame + elapsedFrames : Math.floor(sample * liveSpeed.fps / 48_000);
+      const nextFrame = Math.max(loop.lastFrame, Math.min(liveSpeed.clipStartFrame + liveSpeed.clipDurationFrames, outputFrame));
+      const advanced = nextFrame !== loop.lastFrame;
+      if (advanced) {
         loop.lastFrame = nextFrame;
         timelineClock?.tick(token, nextFrame);
-        if (!liveSpeed.silent && !el.seeking) {
-          const target = liveSpeed.outputFrameToMediaSeconds(nextFrame) + SPEED_SEEK_EPSILON_SECONDS;
-          const max = Number.isFinite(el.duration) ? Math.max(0, el.duration - .001) : target;
-          const clamped = Math.max(0, Math.min(target, max));
-          if (Math.abs(el.currentTime - clamped) > .005 && activeMedia.current) {
-            activeMedia.current.programmaticSeek = clamped;
-            el.currentTime = clamped;
-          }
+      }
+      // A slow source seek may still be in flight at the previous paint.
+      // Retry the current frame without advancing the authoritative clock.
+      if (!liveSpeed.silent && !el.seeking && (advanced || readOutputSample)) {
+        const target = liveSpeed.outputFrameToMediaSeconds(nextFrame) + SPEED_SEEK_EPSILON_SECONDS;
+        const max = Number.isFinite(el.duration) ? Math.max(0, el.duration - .001) : target;
+        const clamped = Math.max(0, Math.min(target, max));
+        if (Math.abs(el.currentTime - clamped) > .005 && activeMedia.current) {
+          activeMedia.current.programmaticSeek = clamped;
+          el.currentTime = clamped;
         }
       }
       if (nextFrame >= liveSpeed.clipStartFrame + liveSpeed.clipDurationFrames) {
@@ -268,18 +274,19 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     const clipEnd = currentSpeed.clipStartFrame + currentSpeed.clipDurationFrames;
     const position = Math.round(timelineClock?.getSnapshot() ?? activeMedia.current?.speedSeekFrame ?? playhead);
     const frame = position >= clipEnd || position < currentSpeed.clipStartFrame ? currentSpeed.clipStartFrame : position;
-    seekMedia(element, false, frame, true);
+    seekMedia(element, false, frame, !currentSpeed.frameDrivenPlayback);
     const attempt = {speed: currentSpeed, frame, preparing: true};
     speedPlayback.current = attempt;
     notifyFramePlayback();
     try {
       // A native 10× clip can end before the first PCM fetch finishes. Start
       // both clocks from this frame once the audio is ready.
-      if (!currentSpeed.silent) await currentSpeed.onPlaybackStateChange?.({playing: true, frame, silent: false});
+      const readOutputSample = currentSpeed.silent ? undefined :
+        await currentSpeed.onPlaybackStateChange?.({playing: true, frame, silent: false});
       if (speedPlayback.current !== attempt) return;
       if (!isCurrentMedia(element)) { stopSpeedPlayback(); return; }
       attempt.preparing = false;
-      if (currentSpeed.frameDrivenPlayback) startFramePlayback(frame);
+      if (currentSpeed.frameDrivenPlayback) startFramePlayback(frame, currentSpeed.mode === 'native' && readOutputSample ? readOutputSample : undefined);
       else await element.play();
     } catch {
       if (speedPlayback.current === attempt) stopSpeedPlayback();

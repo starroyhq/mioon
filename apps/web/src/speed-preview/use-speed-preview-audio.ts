@@ -20,7 +20,8 @@ export interface UseSpeedPreviewAudioOptions {
 }
 
 export interface SpeedPreviewAudioCompanion {
-  readonly syncPlayback: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) => Promise<void>;
+  readonly syncPlayback: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) =>
+    Promise<(() => number | null) | undefined>;
   readonly stop: () => void;
 }
 
@@ -111,7 +112,9 @@ export function useSpeedPreviewAudio(options: UseSpeedPreviewAudioOptions): Spee
     const frame = Math.max(0, Math.min(ctx.durationFrames - 1, Math.round(state.frame)));
     try {
       const prepared = await controller.prepare(frame, ctx);
-      if (prepared && playEpochRef.current === epoch && enabledRef.current) await controller.play(ctx);
+      if (prepared && playEpochRef.current === epoch && enabledRef.current && await controller.play(ctx)) {
+        return () => playEpochRef.current === epoch ? controller.readOutputSample() : null;
+      }
     } catch {
       // The picture can still play if this source has no usable audio.
     }

@@ -35,9 +35,11 @@ import {
   compileTimeMap,
   initialTimeMap,
   instantiateSpeedPreset,
+  timeMapPlanFrames,
   timeMapSourceAtOutputFrame,
 } from '../packages/contracts/src/timeline-time-map.ts';
 import type {TimeMapBasis} from '../packages/contracts/src/timeline-time-map.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import {translate} from '../packages/i18n/src/index.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -335,7 +337,7 @@ test('createSpeedPreviewMediaController polls every 2000ms while queued/running,
   controller.dispose();
 });
 
-test('timeline thumbnails sample shared time-map frames (descending for reverse, single frame for freeze)', () => {
+test('timeline thumbnails sample the same reverse and curve frames as export and seek inside those frames', () => {
   const fast = makeConstantTiming({sourceInFrame: 0, sourceDurationFrames: 120, numerator: 2, denominator: 1});
   const fastSamples = computeClipThumbnailSamples(
     {id: CLIP_ID, trackId: 'v1', assetId: ASSET_ID, startFrame: 0, durationFrames: fast.durationFrames, sourceInFrame: 0, timing: fast.timing},
@@ -347,14 +349,27 @@ test('timeline thumbnails sample shared time-map frames (descending for reverse,
   // Output offset near midpoint (~30f) maps to source frame ~60f at 2×.
   assert.equal(fastSamples[2]!.sourceFrame, fastSamples[2]!.outputOffsetFrames * 2);
 
-  const rev = makeConstantTiming({sourceInFrame: 0, sourceDurationFrames: 120, numerator: 1, denominator: 1, direction: 'reverse'});
-  const revSamples = computeClipThumbnailSamples(
-    {id: CLIP_ID, trackId: 'v1', assetId: ASSET_ID, startFrame: 0, durationFrames: rev.durationFrames, sourceInFrame: 0, timing: rev.timing},
-    30,
-    384,
-  );
-  assert.equal(revSamples.length, 4);
-  assert.ok(revSamples[0]!.sourceFrame > revSamples[1]!.sourceFrame && revSamples[2]!.sourceFrame > revSamples[3]!.sourceFrame);
+  const reverse = makeConstantTiming({sourceDurationFrames: 180, numerator: 1, denominator: 1, direction: 'reverse'});
+  const curve = makeCurveTiming({presetId: 'slowMiddle', sourceDurationFrames: 180});
+  for (const [speed, width, expected] of [[reverse, 192, [134, 44]], [curve, 384, [42, 76, 103, 137]]] as const) {
+    const {timing, durationFrames} = speed;
+    assert.equal(timing.profile, 'timeline-speed-v1');
+    const root = compileTimeMap(timing.basis);
+    assert.equal(root.ok, true);
+    const exportFrames = timeMapPlanFrames(initialTimeMap(root.value, timing.view.direction));
+    assert.equal(exportFrames.ok, true);
+
+    const clip = {id: CLIP_ID, trackId: 'v1', assetId: ASSET_ID, startFrame: 37, durationFrames, sourceInFrame: 0, timing};
+    const samples = computeClipThumbnailSamples(clip, 30, width);
+    assert.deepEqual(samples.map(sample => sample.sourceFrame), expected);
+    for (const sample of samples) {
+      assert.equal(sample.sourceFrame, exportFrames.value[sample.outputOffsetFrames]);
+      assert.equal(sample.seekSeconds, (sample.sourceFrame + 0.5) / 30);
+      // Chromium can truncate the media timestamp before selecting pixels.
+      const microseconds = Math.floor(sample.seekSeconds * 1_000_000);
+      assert.equal(Math.floor(microseconds * 30 / 1_000_000), sample.sourceFrame);
+    }
+  }
 
   const freezeSamples = computeClipThumbnailSamples(
     {id: CLIP_ID, trackId: 'v1', assetId: ASSET_ID, startFrame: 10, durationFrames: 60, sourceInFrame: 0, timing: makeFreezeTiming(42)},
@@ -363,7 +378,35 @@ test('timeline thumbnails sample shared time-map frames (descending for reverse,
   );
   assert.equal(freezeSamples.length, 1);
   assert.equal(freezeSamples[0]?.sourceFrame, 42);
-  assert.equal(freezeSamples[0]?.sourceSeconds, 42 / 30);
+  assert.equal(freezeSamples[0]?.seekSeconds, 42.5 / 30);
+});
+
+test('thumbnails for a reversed curve with a trimmed fractional end preserve the export phase', () => {
+  const {timing, durationFrames} = makeCurveTiming({presetId: 'slowMiddle', sourceDurationFrames: 180, direction: 'reverse'});
+  assert.equal(timing.profile, 'timeline-speed-v1');
+  const trimEndFrames = 3;
+  const clip = {
+    id: CLIP_ID,
+    trackId: 'v1',
+    assetId: ASSET_ID,
+    startFrame: 37,
+    durationFrames: durationFrames - trimEndFrames,
+    sourceInFrame: 0,
+    timing: {
+      ...timing,
+      view: {...timing.view, hiTime: {anchor: 'end' as const, offsetOutputFrames: -trimEndFrames}},
+      outputWindow: {fromFrame: 0, toFrame: durationFrames - trimEndFrames},
+    },
+  };
+  const compiled = compileClipTimeMap(clip, {fps: 30});
+  assert.equal(compiled.ok, true);
+  const exportFrames = timeMapPlanFrames(compiled.value);
+  assert.equal(exportFrames.ok, true);
+
+  const samples = computeClipThumbnailSamples(clip, 30, 384);
+  assert.deepEqual(samples.map(sample => sample.outputOffsetFrames), [52, 158, 263, 369]);
+  assert.deepEqual(samples.map(sample => sample.sourceFrame), samples.map(sample => exportFrames.value[sample.outputOffsetFrames]));
+  assert.deepEqual(samples.slice(0, 2).map(sample => sample.sourceFrame), [136, 102]);
 });
 
 test('waveform window calculation and output-domain projection remap 0.5x, 2x, reverse, curve, freeze, and missing coverage', async () => {

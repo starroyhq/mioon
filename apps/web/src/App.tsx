@@ -3940,7 +3940,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return result;
   }
   function openClipContextMenu(clipId: string, point: {readonly x: number; readonly y: number}): void {
-    void selectClip(clipId, true, {preservePlayhead: true});
+    void selectClip(clipId, true, {preservePlayhead: speedEnabled});
     setClipContextMenu({clipId, x: point.x, y: point.y});
   }
   /** One bounded retry of the retained format-5 envelope, then the normal

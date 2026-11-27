@@ -11,7 +11,7 @@ import {assetUrl} from '../api.ts';
 import {disposeMedia} from '../Nodes.tsx';
 import {useWorkspaceVisibility} from '../workspace-visibility.tsx';
 import type {SpeedAssetLike, SpeedClipLike} from '../speed-ui/speed-model.ts';
-import {computeClipThumbnailSamples} from './speed-preview-model.ts';
+import {computeClipThumbnailSamples, type ClipThumbnailSample} from './speed-preview-model.ts';
 
 const FRAME_CACHE_MAX = 160;
 const frameCache = new Map<string, string>();
@@ -31,7 +31,7 @@ function seekVideoOnce(video: HTMLVideoElement, seconds: number, signal: AbortSi
     const clamped = Number.isFinite(video.duration) && video.duration > 0
       ? Math.max(0, Math.min(seconds, Math.max(0, video.duration - 0.001)))
       : Math.max(0, seconds);
-    if (Math.abs(video.currentTime - clamped) < 0.005 && video.readyState >= 2) {
+    if (!video.seeking && Math.abs(video.currentTime - clamped) < 0.005 && video.readyState >= 2) {
       resolve(true);
       return;
     }
@@ -78,7 +78,7 @@ function waitVideoMetadata(video: HTMLVideoElement, signal: AbortSignal): Promis
 interface ThumbnailJob {
   readonly url: string;
   readonly assetSig: string;
-  readonly frames: readonly {readonly sourceFrame: number; readonly sourceSeconds: number}[];
+  readonly frames: readonly ClipThumbnailSample[];
   readonly signal: AbortSignal;
   readonly onFrame: (sourceFrame: number, dataUrl: string) => void;
 }
@@ -139,7 +139,7 @@ async function drainThumbnailQueue(): Promise<void> {
           job.onFrame(frame.sourceFrame, cached);
           continue;
         }
-        const ok = await seekVideoOnce(sharedVideo, frame.sourceSeconds, job.signal);
+        const ok = await seekVideoOnce(sharedVideo, frame.seekSeconds, job.signal);
         if (!ok || job.signal.aborted) break;
         try {
           ctx.drawImage(sharedVideo, 0, 0, canvas.width, canvas.height);

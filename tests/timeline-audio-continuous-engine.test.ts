@@ -29,6 +29,7 @@ class Source {
 }
 class Context {
   state: string; sampleRate: number; currentTime: number; destination: Record<string, unknown>; sources: Source[]; events: Map<string, Set<() => void>>;
+  getOutputTimestamp?(): AudioTimestamp;
   resumes: Deferred[]; closeCalls: number; resumeCalls: number; failStart?: boolean; close: () => Promise<void> | void;
   constructor(state = 'running') { this.state = state; this.sampleRate = 48000; this.currentTime = 3; this.destination = {}; this.sources = []; this.events = new Map(); this.resumes = []; this.closeCalls = 0; this.resumeCalls = 0;
     this.close = () => { this.closeCalls++; this.state = 'closed'; return Promise.resolve(); }; }
@@ -78,6 +79,19 @@ test('mount prepares no extra data and next block is scheduled on the exact comm
   assert.equal(a.buffer, null); assert.equal(a.disconnected, true); assert.equal(f.transport.getState().status, 'playing');
   assert.deepEqual(f.loads.map(load => load.frame), [67, 127]); near(f.context.sources[2].starts[0][0], 7.02);
   assert.equal(f.transport.getState().underruns, 0); await f.transport.dispose();
+});
+
+test('the display clock reads the heard sample instead of the render-ahead position', async () => {
+  const f = setup({start: 400});
+  assert.equal(await f.transport.play(), true);
+  const [[start]] = f.context.sources[0].starts;
+  const now = performance.now();
+  f.context.currentTime = start + 0.34;
+  f.context.getOutputTimestamp = () => ({contextTime: start + 0.30, performanceTime: now});
+  const outputSample = f.transport.readOutputSample?.(now);
+  assert.equal(outputSample, 400 * 1600 + 14400, 'The displayed position follows the timestamped sample heard at 0.30 s');
+  assert.ok(f.transport.getState().sample - outputSample! > 1600, 'Render head leads audible output by more than one output frame');
+  await f.transport.dispose();
 });
 
 for (const duration of [750, 3600, 18000]) {

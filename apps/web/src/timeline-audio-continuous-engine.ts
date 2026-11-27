@@ -43,6 +43,7 @@ export interface ContinuousTimelineAudioTransport {
   stop(reason?: ContinuousAudioStopReason): void;
   dispose(): Promise<void>;
   getState(): ContinuousAudioTransportState;
+  readOutputSample?(presentationTimeMs?: number): number;
 }
 
 const RATE = 48_000, FRAME = 1_600, LEAD = 0.02;
@@ -75,8 +76,21 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
   let retirementFailure: unknown = null;
   let hasRunningClock = context.state === 'running';
   const heldBytes = (): number => 2 * ((current?.buffer.length ?? 0) + (next?.buffer.length ?? 0)) * 2 * 4;
-  const currentSample = (): number => status === 'playing'
-    ? Math.min(scheduledEnd, originSample + Math.max(0, Math.floor((context.currentTime - originTime) * RATE + 1e-6))) : cursor;
+  const sampleAt = (time: number): number => Math.min(scheduledEnd,
+    originSample + Math.max(0, Math.floor((time - originTime) * RATE + 1e-6)));
+  const currentSample = (): number => status === 'playing' ? sampleAt(context.currentTime) : cursor;
+  // Wall time in getOutputTimestamp refers to the device stream. currentTime
+  // alone is the renderer's position and can lead what is being heard.
+  const readOutputSample = (presentationTimeMs = performance.now()): number => {
+    if (status !== 'playing') return cursor;
+    const stamp = context.getOutputTimestamp?.();
+    if (!stamp?.performanceTime || !Number.isFinite(stamp.performanceTime) ||
+        typeof stamp.contextTime !== 'number' || !Number.isFinite(stamp.contextTime)) {
+      return sampleAt(context.currentTime - ((context.baseLatency || 0) + (context.outputLatency || 0)));
+    }
+    const deviceTime = stamp.contextTime + (presentationTimeMs - stamp.performanceTime) / 1000;
+    return sampleAt(Math.min(context.currentTime, deviceTime));
+  };
   const getState = (): ContinuousAudioTransportState => {
     const sample = currentSample(), held = heldBytes(); peakHeldBytes = Math.max(peakHeldBytes, held);
     return { status, sample, frame: Math.floor(sample / FRAME), reason, errorCode: failure, underruns, heldBytes: held, peakHeldBytes };
@@ -287,5 +301,5 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
     return close();
   };
   getState();
-  return { play, pause, seek, stop, dispose, getState };
+  return { play, pause, seek, stop, dispose, getState, readOutputSample };
 }
