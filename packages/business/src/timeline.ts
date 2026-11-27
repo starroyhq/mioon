@@ -15,6 +15,7 @@ import {createTimelineLoudnessTransactions} from './timeline-loudness-transactio
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
 import {createTimelineExportResourceServices, readTimelineExportBasis, timelineExportResourceError} from './timeline-export-estimate.ts';
+import {timeline4kImageStagingIssue} from './timeline-image-staging.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
@@ -404,6 +405,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   const problem=resources.selectedIssue(input,basis);
   if(problem)throw timelineExportResourceError(problem);
  }
+ function checkRenderImageStaging(snapshot: unknown): void{
+  const issue=timeline4kImageStagingIssue(snapshot);
+  if(issue)throw timelineExportResourceError(issue);
+ }
  function renderSnapshot(input: TimelineMutationInput,boundary: TimelineRecoveryBoundary,write: ()=>void,expectedTimelineId?: string): unknown{
   // Format 5 stores native clip/cue rows; project them into the renderer's frozen
   // legacy snapshot through the TSb export ticket rules instead of the legacy
@@ -415,6 +420,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
    if(input.preflightSnapshotHash!==undefined&&hash(frozen)!==input.preflightSnapshotHash)
     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
+   checkRenderImageStaging(frozen);
    return frozen;
   }
   // Explicit settings/ranges cannot initialize a timeline. The omitted path retains
@@ -434,6 +440,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
   assertTransitionImageBudget(frozen as never);
+  checkRenderImageStaging(frozen);
   if(input.preflightSnapshotHash!==undefined){
    let current;
    try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}
@@ -462,6 +469,8 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    try{checkFormat5RenderResources(input);}
    catch(error){rejection.callbackFailed=true;throw error;}
    const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   try{checkRenderImageStaging(frozen);}
+   catch(error){rejection.callbackFailed=true;throw error;}
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
      timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',

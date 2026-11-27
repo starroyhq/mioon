@@ -11,15 +11,18 @@ const edge = z.number().int().min(2).max(TIMELINE_DELIVERY_MAX_EDGE).multipleOf(
 const issueFields = {severity: z.literal('error'), message: z.string().min(1).max(240)};
 
 export const TIMELINE_EXPORT_RESOURCE_REJECTION_CODES = [
-  'EXPORT_4K_FPS_UNSUPPORTED', 'EXPORT_4K_MEMORY_INSUFFICIENT', 'EXPORT_4K_RASTER_UNSUPPORTED', 'EXPORT_OUTPUT_TOO_LARGE',
+  'EXPORT_4K_FPS_UNSUPPORTED', 'EXPORT_4K_MEMORY_INSUFFICIENT', 'EXPORT_4K_RASTER_UNSUPPORTED', 'EXPORT_4K_IMAGE_STAGING_LIMIT', 'EXPORT_OUTPUT_TOO_LARGE',
   'EXPORT_DISK_SPACE_INSUFFICIENT',
 ] as const;
-const [fpsCode, memoryCode, rasterCode, artifactCode, diskCode] = TIMELINE_EXPORT_RESOURCE_REJECTION_CODES;
+const [fpsCode, memoryCode, rasterCode, stagingCode, artifactCode, diskCode] = TIMELINE_EXPORT_RESOURCE_REJECTION_CODES;
 
 export const timelineExportResourceIssueSchema = z.discriminatedUnion('code', [
   z.object({...issueFields, code: z.literal(fpsCode), details: z.object({fps, maxFps: fps}).strict()}).strict(),
   z.object({...issueFields, code: z.literal(memoryCode), details: z.object({requiredBytes: bytes}).strict()}).strict(),
   z.object({...issueFields, code: z.literal(rasterCode), details: z.object({width: bytes.positive(), height: bytes.positive()}).strict()}).strict(),
+  z.object({...issueFields, code: z.literal(stagingCode), details: z.object({
+    requiredPixels: bytes, maxPixels: bytes.positive(), requiredLayers: bytes, maxLayers: bytes.positive(),
+  }).strict()}).strict(),
   z.object({...issueFields, code: z.literal(artifactCode), details: z.object({estimatedBytes: bytes, maxBytes: bytes}).strict()}).strict(),
   z.object({...issueFields, code: z.literal(diskCode), details: z.object({estimatedBytes: bytes, availableBytes: bytes}).strict()}).strict(),
 ]);

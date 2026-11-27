@@ -4,6 +4,7 @@ import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mi
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {createTimelineExportResourceServices, readTimelineExportBasis} from './timeline-export-estimate.ts';
 import type {TimelineExportResourceIssue} from '../../contracts/src/timeline-export-estimate.ts';
+import {timeline4kImageStagingIssue} from './timeline-image-staging.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
@@ -158,7 +159,14 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   let initial,referencePreparation: Awaited<ReturnType<typeof prepareTimelineReferenceHashes>>;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
   catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
-  if(initial?.timeline){report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;}
+  if(initial?.timeline){
+   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
+   if(initial.snapshot&&initial.timeline.revision===input.expectedRevision&&
+      !timelineExportRangeBoundsIssue(input,initial.timeline.durationFrames)){
+    const stagingIssue=timeline4kImageStagingIssue(initial.snapshot);
+    if(stagingIssue){report.issues=[stagingIssue];return report;}
+   }
+  }
   const referenceController=new AbortController(),referenceSignal=external?AbortSignal.any([external,referenceController.signal]):referenceController.signal;
   const referenceEntry: PreflightAttempt={controller:referenceController,task:null};active.add(referenceEntry);
   let referenceTimedOut=false;
@@ -188,6 +196,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   if(rangeIssue){report.issues=[issue('EXPORT_RANGE_BOUNDS')];return report;}
   if(!initial.timeline.clips.length){report.issues=[issue('EMPTY_TIMELINE')];return report;}
   const validation: TimelinePreflightSnapshot=initial.snapshot!;
+  const stagingIssue=timeline4kImageStagingIssue(validation);
+  if(stagingIssue){report.snapshotHash=null;report.summary=null;report.issues=[stagingIssue];return report;}
   const validationTimeline: TimelineRecord=initial.timeline;
   // Early structural check shares the renderer validator. Actual stream flags
   // and durations below replace these saved values and are validated again.

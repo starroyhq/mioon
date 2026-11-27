@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {hasRequestNotAppliedProof,isExportPreflightResponse} from '@mioon/contracts';
+import {exportPreflightResponseSchema,hasRequestNotAppliedProof,isExportPreflightResponse} from '@mioon/contracts';
+import {imageColour,png} from './helpers/timeline-image-fixtures.ts';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {freezeFormat5RenderSnapshot, readFormat5AudioProjection, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
 import {prepareTimelineReferenceHashes} from '../packages/business/src/timeline-reference-prepare.ts';
@@ -70,7 +71,7 @@ test('format-5 capability check accepts a saved timeline and blocks placeholders
 
 import {execFileSync as execFile, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtempSync, readFileSync, realpathSync, rmSync, statSync} from 'node:fs';
+import {mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -189,4 +190,89 @@ test('format-5 capabilities, preflight and real render complete through the expo
   assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='video'));
   assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='audio'));
   assert.ok(Number(probe.format.duration)>3,'output duration follows the frozen 4s timeline');
+});
+
+test('format-5 managed images must fit the selected 4K staging budget before export admission', async t => {
+  const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-format5-export-image-staging-'));
+  const projectId = randomUUID(), timelineId = randomUUID(), sequenceNodeId = randomUUID(), trackId = randomUUID();
+  const store = createProjectStore({projectId, projectFile: path.join(directory,'project.mioon'), targetFormat: 5,
+    locate: () => ({localDir: path.join(directory,'records'), cacheDir: path.join(directory,'cache'), tempDir: path.join(directory,'temp')})});
+  const library = openAppLibrary({dataDir: path.join(directory,'app')});
+  const services = createServices(store,new Map(),{env:{},
+    application:createProjectServiceApplication(library,undefined,{}),
+    exportOptions:{availableBytes:()=>2**40, memoryAllows:()=>true}});
+  t.after(async () => {
+    try {await services.drain();}
+    finally {library.close();store.close();rmSync(directory,{recursive:true,force:true});}
+  });
+  const width = 1920, height = 1080, clipCount = 16, framesPerClip = 2;
+  async function syntheticImage(index: number) {
+    const id = randomUUID(), name = `Synthetic PNG ${index+1}`, pixel = [24+index, 96, 128];
+    const file = path.join(directory,`source-${index}.png`);
+    const bytes = png({width,height,rgba:false,pixel:()=>pixel});
+    writeFileSync(file,bytes);
+    const locator = await referenceForPublishedMedia(store,file);
+    const asset = {id,projectId,name,mimeType:'image/png',width,height,duration:null,hasVideo:true,hasAudio:false,
+      createdAt:fixedAt,sha256:locator.sha256,sizeBytes:locator.sizeBytes,
+      reference:locator.reference,referenceRevision:locator.referenceRevision};
+    const node = {id:randomUUID(),projectId,type:'image',name,assetId:id,position:{x:0,y:0},createdAt:fixedAt};
+    const clip = {id:randomUUID(),trackId,name,startFrame:index*framesPerClip,durationFrames:framesPerClip,sourceInFrame:0,
+      rect:{x:0,y:0,width,height},gain:1,assetId:id,sourceState:'ready',
+      sequenceSource:{kind:'media',nodeId:node.id,segmentGroupId:randomUUID()},
+      colour:imageColour({profileId:'png-rgb8-srgb-v1',sha256:asset.sha256,sourceByteLength:asset.sizeBytes,
+        width,height,bitDepth:8,alphaMode:'opaque',orientation:1,colourTag:'srgb'})};
+    return {asset,node,clip};
+  }
+  const images: Awaited<ReturnType<typeof syntheticImage>>[] = [];
+  for (let index=0;index<clipCount;index++) images.push(await syntheticImage(index));
+  const baseline = {version:1,board:images.map(({asset,node})=>({nodeId:node.id,kind:'media',assetId:asset.id})),
+    track:images.map(({asset,node,clip})=>({nodeId:node.id,segmentGroupId:clip.sequenceSource.segmentGroupId,
+      clipId:clip.id,kind:'media',assetId:asset.id}))};
+  store.tx(() => {
+    store.put('projects',{id:projectId,name:'Synthetic 4K staging budget',revision:1,createdAt:fixedAt,updatedAt:fixedAt});
+    store.put('nodes',{id:sequenceNodeId,projectId,type:'sequence_root',name:'Film',position:{x:0,y:0},createdAt:fixedAt});
+    let previousNodeId = sequenceNodeId;
+    for (const {asset,node} of images) {
+      store.put('assets',asset);
+      store.put('nodes',node);
+      store.put('edges',{id:randomUUID(),projectId,kind:'sequence',source:previousNodeId,target:node.id,createdAt:fixedAt});
+      previousNodeId=node.id;
+    }
+    store.put('timelines',{id:timelineId,projectId,revision:1,fps:30,width,height,durationFrames:clipCount*framesPerClip,
+      createdAt:fixedAt,updatedAt:fixedAt,mainTrack:{trackId,sequenceNodeId},
+      tracks:[{id:trackId,name:'V1',kind:'video',orderIndex:0,hidden:false,muted:false}],clips:images.map(({clip})=>clip)});
+    store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
+      .run(timelineId,projectId,sequenceNodeId,1,JSON.stringify(baseline));
+  });
+
+  const input = {projectId,expectedRevision:1,exportSettings:{profileId:'mp4_h264_float_checked_v2',resolution:'short_2160',
+    rateControl:{mode:'crf',quality:'standard'}}};
+  const queueState = () => ({exports:store.list('exports').length,
+    receipts:store.db.prepare('SELECT count(*) AS count FROM timeline_requests').get()?.count});
+  const before = queueState();
+  assert.deepEqual(before,{exports:0,receipts:0});
+  const result = exportPreflightResponseSchema.parse(await services.call('timeline.export.preflight',input));
+  assert.equal(result.status,'blocked');
+  assert.equal(result.checks.checkedAssets,0);
+  const issue = result.issues[0];
+  assert.equal(issue?.code,'EXPORT_4K_IMAGE_STAGING_LIMIT');
+  assert.ok(issue && 'details' in issue);
+  const details = {requiredPixels:132_710_400,maxPixels:128_000_000,requiredLayers:clipCount,maxLayers:100};
+  assert.deepEqual(issue.details,details);
+
+  const request = {...input,requestId:randomUUID(),purpose:'export'};
+  await assert.rejects(services.call('timeline.render',request), (raw:unknown) => {
+    const error = raw as {code:string;details:typeof details};
+    assert.equal(error.code,issue.code);
+    for (const [key,value] of Object.entries(details)) assert.equal(error.details[key as keyof typeof details],value);
+    assert.ok(hasRequestNotAppliedProof(error,request,{operation:'timeline.render'}));
+    return true;
+  });
+  assert.deepEqual(queueState(),before);
+
+  const narrowed = {...input,exportRange:{startFrame:0,endFrame:framesPerClip}};
+  const allowed = exportPreflightResponseSchema.parse(await services.call('timeline.export.preflight',narrowed));
+  assert.equal(allowed.status,'ready',JSON.stringify(allowed.issues));
+  assert.deepEqual(allowed.summary?.exportRange,narrowed.exportRange);
+  assert.deepEqual(queueState(),before);
 });

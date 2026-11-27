@@ -176,10 +176,11 @@ test('the 21:9 1080 static layer fits its output budget without relaxing source 
 test('4K derives a full-raster premultiplied static layer and keeps the source pixel limit',{timeout:30000},async t=>{
  const f=await fixture(t),{input}=await layerInput(f),raster={width:4096,height:1756,nativePixels:2520*1080};
  const layer={...input,width:raster.width,height:raster.height};
- const stage=await prepareTimelineImageLayers([layer],path.join(f.root,'wide-4k.mp4'),{raster},layerRuntime);
+ const stage=await prepareTimelineImageLayers([layer,{...layer,clipId:'reused'}],path.join(f.root,'wide-4k.mp4'),{raster},layerRuntime);
  try{
   const bytes=await readFile(stage.path(layer.clipId)!);
   assert.deepEqual([bytes.readUInt32BE(16),bytes.readUInt32BE(20),bytes[25]],[4096,1756,6]);
+  assert.equal(stage.path('reused'),stage.path(layer.clipId));
   assert.equal(stage.totalPixels,4096*1756);
   stage.verifyBytes();
  }finally{assert.equal(stage.cleanup(),true);}

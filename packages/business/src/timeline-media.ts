@@ -1,5 +1,5 @@
 import {getTimelineOpacityRenderBinding} from './timeline-opacity-render-binding.ts';
-import {prepareTimelineImageLayers} from './timeline-image-staging.ts';
+import {planTimeline4kImageLayers,prepareTimelineImageLayers} from './timeline-image-staging.ts';
 import {validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
 import {mkdtemp,writeFile,rm,open} from 'node:fs/promises';
 import {constants,mkdtempSync,openSync,fstatSync,lstatSync,closeSync,unlinkSync,rmdirSync} from 'node:fs';
@@ -184,18 +184,16 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   if(colour){
    colourStage=await prepareTimelineColourLuts(colour as never,destination,{signal:preparationSignal,beforeEffect:effect,readLut} as never,{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never);
    effect=colourStage.effect;
-   const selectedImages=fourK?new Set(timeline.clips.filter(clip=>{
-    const {start,end}=transitionPictureRange(clip as never,transitions);
-    return !tracks.get(clip.trackId)!.hidden&&plan.segments.some(segment=>start<=segment.beginFrame&&end>=segment.endFrame);
-   }).map(clip=>clip.id)):undefined;
-   const images=colour.clips.filter(item=>item.kind==='image'&&(!selectedImages||selectedImages.has(item.clipId))).map(item=>{
+   const imagePlan=raster?planTimeline4kImageLayers(snapshot):null;
+   const images=raster?(imagePlan?.layers??[]).map(({assetId,...item})=>({...item,sourcePath:assets.get(assetId)?.path,
+    creativeLutPath:colourStage!.path(item.clipId)})):colour.clips.filter(item=>item.kind==='image').map(item=>{
     const placement=clipPlacements.get(item.clipId)!,asset=assets.get(item.assetId),creativeLutPath=colourStage!.path(item.clipId);
     const crop=clipTransformPixelCrop(placement.transform,item.evidence.width as number,item.evidence.height as number);
     return {clipId:item.clipId,assetSha256:item.assetSha256,sourcePath:asset?.path,sourceWidth:item.evidence.width as number,sourceHeight:item.evidence.height as number,...(item.sourceProfileId==='jfif-ycbcr8-srgb-v1'?{jpegEvidence:item.evidence}:{}),
      width:placement.width,height:placement.height,...(crop?{crop}:{}),creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
    });
    if(images.length){imageStage=await prepareTimelineImageLayers(images as never,destination,{signal:preparationSignal,beforeEffect:effect,
-    ...(raster?{raster:{width,height,nativePixels:timeline.width*timeline.height}}:{})},
+    ...(imagePlan?{raster:imagePlan.raster}:{})},
     {checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses} as never);effect=imageStage.effect;
     // Staged layers are premultiplied RGBA8. FFmpeg 8.1+ tags decoded PNGs as
     // straight alpha and would premultiply them again in `overlay`; declare the
