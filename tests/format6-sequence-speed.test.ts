@@ -611,7 +611,7 @@ test('a held future format 6 project refuses patches, history and receipt replay
   // A raw fixture write represents a later reader on a still-held project.
   db.exec('BEGIN');
   db.prepare("UPDATE project.projects SET data=json_set(data,'$.requiredReaderFeatures',json(?)) WHERE id=?")
-    .run(JSON.stringify([TIMELINE_FPS_READER_FEATURE]), projectId);
+    .run(JSON.stringify(['future-speed-fixture-v1', TIMELINE_FPS_READER_FEATURE]), projectId);
   db.prepare("UPDATE project.timelines SET data=json_set(data,'$.fps',24) WHERE id=?").run(timelineId);
   db.exec('COMMIT');
   const appError = {code: PROJECT_READER_UPDATE_REQUIRED, message: PROJECT_READER_UPDATE_MESSAGE, status: 409};
