@@ -19,7 +19,7 @@ import {startServer} from './helpers/test-server.ts';
 import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
-import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema,agentTaskConversationPolicySchema,AGENT_TASK_POLICY_PRESETS} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskEditingRejectedReceiptSchema,agentTaskEditingRetainedResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskEditingConflictDetailsSchema,agentTaskTargetSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -66,7 +66,7 @@ test('authenticated project editing groups preserve unknown owners and the batch
 
 test('format 5 project editing exposes write status and preserves a stale claim rejection over HTTP',async t=>{
  let write = true;
- const f=await fixture(t,'chat_completions',async function*(request){
+ const f=await fixture(t,'chat_completions',async function*(request):ReturnType<TaskGateway>{
   request.beforeSubmit?.();
   if(!write){
    yield {type:'done',output:{text:'Renamed',toolCalls:[],providerOutput:{role:'assistant',content:'Renamed'}}};
@@ -74,7 +74,7 @@ test('format 5 project editing exposes write status and preserves a stale claim 
   }
   const body=JSON.parse(request.body) as {tools?:Array<{function?:{name?:string}}>};
   const renameVisible=body.tools?.some(tool=>tool.function?.name==='mioon_project_rename');
-  const call=renameVisible
+  const call:AgentTaskToolCall=renameVisible
    ?{id:'co_editing_rename',name:'mioon_project_rename',arguments:{expectedRevision:1,name:'Mio saved name'}}
    :{id:'co_editing_load',name:'mioon_tools_load',arguments:{names:['mioon_project_rename']}};
   if(renameVisible)write=false;

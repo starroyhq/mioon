@@ -151,7 +151,7 @@ test('retained status combines only trusted local draft evidence with host liven
   const fourth = crypto.randomUUID(), occupied = owner(fourth, 'timeline_clip_audio', 'in_use');
   const groups = [group(clean, unknown), group(dirty, foreign), group(retained, active), group(occupied)];
   const wire = {groups, endableClaimCount: 1, endableGroupCount: 1};
-  const localIds = [clean, unknown, dirty, occupied].map(owner => owner.claim.ownerId);
+  const localIds: string[] = [clean, unknown, dirty, occupied].map(owner => owner.claim.ownerId);
   const client = createRetainedEditingClient(async (url, init) => {
     assert.equal(url, `/api/projects/${projectId}/agent/tasks/v2/editing/retained`);
     assert.equal(init?.method, 'GET');
