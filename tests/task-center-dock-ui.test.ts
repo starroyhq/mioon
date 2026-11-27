@@ -576,3 +576,35 @@ test('task center translates HTTP failures in main body, hides raw code inside d
     h.unmount(); store.dispose();
   }
 });
+
+test('task center keeps cancelled exports neutral while marking genuine failed exports as danger', () => {
+  const h = harness();
+  const projectId = id(90);
+  const cancelledExport = {
+    id: id(81), projectId, mode: 'timeline', purpose: 'export', status: 'failed',
+    error: {code: 'EXPORT_CANCELLED', message: 'cancelled', retryable: false},
+    snapshot: {deliveryName: '已取消导出样本'},
+  };
+  const failedExport = {
+    id: id(82), projectId, mode: 'timeline', purpose: 'export', status: 'failed',
+    error: {code: 'EXPORT_FAILED', message: 'ffmpeg failed', retryable: true},
+    snapshot: {deliveryName: '真实失败导出样本'},
+  };
+  const tree = h.render({
+    data: {project: {id: projectId}, shots: [], exports: [cancelledExport, failedExport]},
+    selectedTaskId: `render:${cancelledExport.id}`,
+  });
+  const cancelledRow = find(tree, `task-select-render:${cancelledExport.id}`)!;
+  const failedRow = find(tree, `task-select-render:${failedExport.id}`)!;
+  assert.equal(cancelledRow.props['data-danger'], undefined);
+  assert.match(text(cancelledRow), /已取消导出/);
+  assert.equal(failedRow.props['data-danger'], true);
+  assert.match(text(failedRow), /失败/);
+  const summary = find(tree, 'task-detail-summary')!;
+  assert.equal(nodes(summary).some((node: RootNode) => node.props?.['data-danger'] === true), false);
+  const renderList = find(tree, 'task-render-list')!;
+  const badge = nodes(renderList).find((node: RootNode) => node.type === 'WorkbenchBadge');
+  assert.equal(badge?.props?.tone, 'neutral');
+  assert.match(text(badge), /已取消导出/);
+  h.unmount();
+});
