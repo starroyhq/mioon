@@ -8,6 +8,8 @@ import {pathToFileURL} from 'node:url';
 import {ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, privateStorageIdentity} from '@mioon/contracts/private-storage';
 import type {Stats} from 'node:fs';
 import {AppError} from '../../../contracts/src/app-error.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../contracts/src/project-reader-requirements.ts';
+import {assertProjectReaderRequirements} from './reader-requirements.ts';
 import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import type {ContentStamp, ProjectHistoryAdmission, ProjectHistoryState, ProjectInvalidReason, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
@@ -126,6 +128,8 @@ export function openClosedProjectSnapshotConnection(options:{readonly projectFil
  const db=new DatabaseSync(inputs[0]![0],{...DATABASE_OPTIONS,readOnly:true});
  try{
   db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON');
+  const version = pragmaValue(db, 'main.user_version');
+  if (typeof version === 'number') assertProjectReaderRequirements(db, 'main', version);
   if(inputs[1])db.prepare('ATTACH DATABASE ? AS history').run(pathToFileURL(inputs[1][0]).href+'?mode=ro');
   for(let i=0;i<inputs.length;i++)if(identityOf(lstatSync(inputs[i]![0],{bigint:true}),inputs[i]![0])!==files[i]![0])throw invalid(inputs[i]![1],'unusable');
   registerProjectFiles(db,files);
@@ -156,6 +160,8 @@ export function openProjectCopyReplacementConnections(projectFile:string):{reado
   registerProjectFiles(writer,files);registered=true;
   reader=new DatabaseSync(file,{...DATABASE_OPTIONS,readOnly:true});
   reader.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON; BEGIN');
+  const version = pragmaValue(reader, 'main.user_version');
+  if (typeof version === 'number') assertProjectReaderRequirements(reader, 'main', version);
   if(identityOf(lstatSync(file,{bigint:true}),file)!==key)throw invalid('project','unusable');
   let closed=false;
   return {reader,close():void{if(closed)return;closed=true;close();}};
@@ -316,6 +322,7 @@ function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, pr
   }
   if (versions?.count !== 1 || versions.version !== storedVersion) throw invalid(kind, 'schema-version', projectId);
   if (pragmaValue(db, `${schema}.journal_mode`) !== 'delete') throw invalid(kind, 'journal-mode', projectId);
+  if (kind === 'project' && (schema === 'main' || schema === PROJECT)) assertProjectReaderRequirements(db, schema, storedVersion);
   const {missing, unexpected, changed} = compareManifest(readSchemaManifest(db, schema), expected.entries);
   const differences = [...missing.map(name => `missing ${name}`), ...unexpected.map(name => `unexpected ${name}`), ...changed.map(name => `changed ${name}`)];
   if (differences.length) throw projectFileError('PROJECT_INVALID', {...describe(kind, 'schema', projectId), differences});
@@ -456,7 +463,10 @@ function inspectProjectFile(requested: string, maximum: ProjectFileFormat): Proj
   try {
     const before = lstatSync(projectFile,{bigint:true});
     const formatVersion = checkReadableProjectHeader(projectFile, before, maximum);
-    if (isHotJournal(`${projectFile}-journal`)) throw invalid('project','hot-journal');
+    if (isHotJournal(`${projectFile}-journal`)) {
+      if (formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION) assertNoFutureReaderInHotJournal(projectFile, maximum);
+      throw invalid('project','hot-journal');
+    }
     db = new DatabaseSync(`${pathToFileURL(projectFile).href}?mode=ro`,{...DATABASE_OPTIONS,readOnly:true});
     db.exec('PRAGMA trusted_schema=OFF; PRAGMA cell_size_check=ON');
     if (pragmaValue(db,'encoding') !== 'UTF-8') throw invalid('project','encoding');
@@ -490,6 +500,39 @@ function validateRecoveryInIsolation(projectFile: string, maximum: ProjectFileFo
     if (db.prepare('PRAGMA main.foreign_key_check').get() !== undefined) throw invalid('project','foreign-key');
     return {...identity, formatVersion};
   } finally {db?.close();rmSync(directory,{recursive:true,force:true});}
+}
+
+function assertNoFutureReaderInHotJournal(projectFile: string, maximum: ProjectFileFormat): void {
+  try {validateRecoveryInIsolation(projectFile, maximum);}
+  catch (error) {
+    // Only discover compatibility here. The recovery owner still classifies
+    // journal, lock and corruption failures through its existing path.
+    if (error instanceof AppError && error.code === PROJECT_READER_UPDATE_REQUIRED) throw error;
+  }
+}
+
+/** An admission check before application code prepares local writes. A hot
+ * journal is inspected on the existing isolated copy, leaving the source intact. */
+export function assertProjectReaderRequirementsReadOnly(requested: string, profile?: ProjectReadFormatOptions): void {
+  const projectFile = path.resolve(requested);
+  const maximum = projectFormatMaximum(profile);
+  let db: DatabaseSync | undefined;
+  try {
+    const before = lstatSync(projectFile, {bigint:true});
+    const format = checkReadableProjectHeader(projectFile, before, maximum);
+    if (format !== FORMAT6_PROJECT_SCHEMA_VERSION) return;
+    if (isHotJournal(`${projectFile}-journal`)) {
+      assertNoFutureReaderInHotJournal(projectFile, maximum);
+      return;
+    }
+    db = new DatabaseSync(`${pathToFileURL(projectFile).href}?mode=ro`, {...DATABASE_OPTIONS, readOnly:true});
+    db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON');
+    assertProjectReaderRequirements(db, 'main', format);
+    const after = lstatSync(projectFile, {bigint:true});
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+      || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw invalid('project','unusable');
+  } catch (error) {throw openFailure(error, 'project');}
+  finally {db?.close();}
 }
 
 /** The catalog process has no live project connections. Copy from the verified
@@ -1201,7 +1244,7 @@ export function recoverProjectFile(requested: string, format4?: ProjectReadForma
     if (!sameContentStamp(readProjectIdentity(db,'main'),recovered)) throw invalid('project','metadata');
     return {state: 'recovered'};
   } catch (error) {
-    if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') throw error;
+    if (error instanceof AppError && (error.code === 'PROJECT_FORMAT_NEWER' || error.code === PROJECT_READER_UPDATE_REQUIRED)) throw error;
     return recoveryOf(error);
   } finally {
     db?.close();

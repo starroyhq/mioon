@@ -1,5 +1,6 @@
 // Node-only management client. Deliberately outside the RPC/MCP tool catalog.
 import {z} from 'zod';
+import {PROJECT_READER_UPDATE_MESSAGE, PROJECT_READER_UPDATE_REQUIRED} from '../../contracts/src/project-reader-requirements.ts';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import {setTimeout as delay} from 'node:timers/promises';
 import {resolveConnection} from './connection.ts';
@@ -97,7 +98,7 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
    const response=await fetchImpl(base+route,{method,headers:{authorization:`Bearer ${token}`,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:combined,redirect:'error'});
    const value=await responseJson(response,responseLimit);
    if(!object(value)||typeof value.ok!=='boolean'||value.ok&&(!response.ok||!Object.hasOwn(value,'data'))||!value.ok&&response.ok)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid Agent response.');
-   if(!value.ok||!response.ok){const raw=object(value.error)?value.error.code:undefined;const safeCode=typeof raw==='string'&&/^(?:AGENT_TASK_|AGENT_SETTINGS_|RESTORE_|WORKSPACE_)[A-Z0-9_]{1,80}$|^(?:UNAUTHORIZED|ORIGIN_REJECTED|METHOD_NOT_ALLOWED)$/u.test(raw)?String(safeValue(raw,[token,...secrets])):'BACKEND_PROTOCOL_ERROR';throw new ClientError(safeCode,'The local backend rejected the Agent operation.',{status:response.status,details:recovery?{...recovery,recovery:'Query the original operation before any further action.'}:{}});}
+   if(!value.ok||!response.ok){const raw=object(value.error)?value.error.code:undefined;const safeCode=typeof raw==='string'&&(raw===PROJECT_READER_UPDATE_REQUIRED||/^(?:AGENT_TASK_|AGENT_SETTINGS_|RESTORE_|WORKSPACE_)[A-Z0-9_]{1,80}$|^(?:UNAUTHORIZED|ORIGIN_REJECTED|METHOD_NOT_ALLOWED)$/u.test(raw))?String(safeValue(raw,[token,...secrets])):'BACKEND_PROTOCOL_ERROR';throw new ClientError(safeCode,safeCode===PROJECT_READER_UPDATE_REQUIRED?PROJECT_READER_UPDATE_MESSAGE:'The local backend rejected the Agent operation.',{status:response.status,details:recovery&&safeCode!==PROJECT_READER_UPDATE_REQUIRED?{...recovery,recovery:'Query the original operation before any further action.'}:{}});}
    validate?.(value.data);return value.data;
   }catch(error){
    if(signal?.aborted)throw new ClientError('INTERRUPTED','Stopped locally; the Agent task was not cancelled.',{details,exitCode:EXIT_CODES.interrupted});

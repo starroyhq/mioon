@@ -1,5 +1,6 @@
 import {assetMediaPrepareResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
 import type {NewProjectFormatVersion} from '../../../packages/contracts/src/project-entry.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../packages/contracts/src/project-reader-requirements.ts';
 import {useProjectMedia} from './use-project-media.ts';
 import type {ProjectMediaOwner} from './project-media-state.ts';
 import {sameMediaOwner} from './project-media-state.ts';
@@ -530,6 +531,7 @@ function readableError(error: unknown): AppMessage {
   if (failure?.code === 'CONFLICT' || failure?.code === 'REVISION_CONFLICT') return msg('shell.error.conflict');
   if (['CLIP_OVERLAP', 'TIMELINE_OVERLAP', 'OVERLAP'].includes(failure?.code as string)) return msg('shell.error.overlap');
   if (failure?.code === 'UNAUTHORIZED') return msg('shell.error.unauthorized');
+  if (failure?.code === PROJECT_READER_UPDATE_REQUIRED) return msg('projectFile.open.readerUpdate.body');
   if (failure?.code === 'VIDEO_TASK_NOT_FOUND') return msg('tasks.error.videoProviderCannotFindTask');
   if (failure?.code === 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT') return msg('tasks.error.videoReplacementCannotFindTask');
   if (failure?.code === 'VIDEO_REPLACEMENT_NOT_AUTHORIZED') return msg('tasks.error.videoReplacementNotAuthorized');

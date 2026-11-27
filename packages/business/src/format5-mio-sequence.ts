@@ -12,6 +12,7 @@ import {createFormat5SequenceEditService} from './format5-sequence-edit-service.
 import {MioSequencePreviewRejection} from './format5-sequence-preview-errors.ts';
 import {createSequenceEditing, readSequenceEditHistory} from './sequence-edit.ts';
 import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
+import {assertHeldProjectReaderRequirements} from './project-file/reader-requirements.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {readSequenceSyncContext, sequenceSpeedImpact} from './format5-sequence-sync.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
@@ -194,6 +195,7 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   } = {}): MioSequencePlan {
   requireF5(store);
   projectCheck(store, projectId);
+  assertHeldProjectReaderRequirements(store);
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) throw new AppError('SEQUENCE_EDIT_TARGET_NOT_FOUND', '项目没有格式 5 主轨。', 404);
   const request: Row = {projectId, requestId, origin, ...(locale !== undefined ? {locale} : {})};

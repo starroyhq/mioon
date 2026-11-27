@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore, type ProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -9,11 +9,17 @@ import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-f
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {applyCanvasPatch} from '../packages/business/src/canvas-patch.ts';
+import {findSequenceEditReceipt, prepareSequenceEditHistory, readSequenceEditHistoryEntry} from '../packages/business/src/format5-editor-history.ts';
+import {applyMioSequenceUndo, commitMioSequenceAction, prepareMioSequenceUndo, previewMioSequenceAction} from '../packages/business/src/format5-mio-sequence.ts';
+import {applySequenceEditBaselineDelta, applySequenceEditStateDelta, applySequenceEditTimelineDelta, readSequenceSyncContext} from '../packages/business/src/format5-sequence-sync.ts';
+import {applySequenceEditHistoryInside, readSequenceEditHistory} from '../packages/business/src/sequence-edit.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import {instantiateSpeedPreset, timeMapPlanFrames, TIMELINE_SPEED_PRESETS} from '../packages/contracts/src/timeline-time-map.ts';
 import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
+import {PROJECT_READER_UPDATE_MESSAGE, PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
 import type {TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
 import type {SequenceEditSpeedIntent, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
 import type {SequenceEditClipPropertiesPatch, SequenceEditHistoryView, SequenceEditReceipt} from '../packages/contracts/src/sequence-edit.ts';
@@ -494,4 +500,76 @@ test('a long retimed clip keeps effects when edited, replaced and separated', t 
   assert.equal(shortened.durationFrames, 10_500);
   assert.deepEqual(shortened.volumeEnvelope, {...volumeEnvelope,
     points: [...volumeEnvelope.points, {frame: 10_500, multiplier: 0.25}]});
+});
+
+test('a held future format 6 project refuses patches, history and receipt replay without writes', t => {
+  const store = fixture(t), db = store.db, projectId = store.projectId, api = editor(store);
+  const mioPlan = previewMioSequenceAction(store, projectId, randomUUID(), set(constant(1, 2)));
+  const mioReceipt = commitMioSequenceAction(store, mioPlan);
+  assert.equal(mioReceipt.status, 'applied');
+  const {receipt, replay} = api.apply(set(constant(2)));
+  const undo = {projectId, actionId: receipt.actionId, requestId: randomUUID(),
+    expected: {position: receipt.history.position, revision: receipt.history.revision}};
+  const undone = api.service.undo(undo) as SequenceEditReceipt;
+  assert.equal(undone.status, 'applied');
+  const redo = {...undo, requestId: randomUUID(),
+    expected: {position: undone.history.position, revision: undone.history.revision}};
+  const entry = readSequenceEditHistoryEntry(store, receipt.actionId);
+  assert.ok(entry);
+  const oldContext = readSequenceSyncContext(store);
+  const mioUndo = prepareMioSequenceUndo(store, projectId, randomUUID(), mioReceipt.actionId);
+  const preview = api.preview(set(constant(3, 2)));
+  assert.ok('envelope' in preview);
+  const confirm = {projectId, envelope: preview.envelope, expectedPlanDigest: preview.planDigest};
+
+  // A raw fixture write represents a later reader on a still-held project.
+  db.exec('BEGIN');
+  db.prepare("UPDATE project.projects SET data=json_set(data,'$.requiredReaderFeatures',json(?)) WHERE id=?")
+    .run(JSON.stringify([TIMELINE_FPS_READER_FEATURE]), projectId);
+  db.prepare("UPDATE project.timelines SET data=json_set(data,'$.fps',24) WHERE id=?").run(timelineId);
+  db.exec('COMMIT');
+  const appError = {code: PROJECT_READER_UPDATE_REQUIRED, message: PROJECT_READER_UPDATE_MESSAGE, status: 409};
+  const historyFile = db.prepare('PRAGMA database_list').all().find(row => row.name === 'main')?.file;
+  assert.equal(typeof historyFile, 'string');
+  const writes = () => db.prepare('SELECT total_changes() AS changes').get()?.changes;
+  const before = {project: readFileSync(store.projectFile), history: readFileSync(historyFile as string),
+    files: readdirSync(store.root).sort(), historyFiles: readdirSync(store.localDir).sort(), writes: writes()};
+
+  for (const attempt of [
+    () => api.preview(set(constant(2))),
+    () => api.service.commit(confirm),
+    replay,
+    () => api.service.undo(undo),
+    () => api.service.redo(redo),
+    () => api.service.history({projectId}),
+    () => readSequenceEditHistory(store),
+    () => prepareSequenceEditHistory(store),
+    () => readSequenceEditHistoryEntry(store, receipt.actionId),
+    () => findSequenceEditReceipt(store, receipt.requestId),
+    () => previewMioSequenceAction(store, projectId, randomUUID(), {kind: 'replace-source', clipId: randomUUID(), assetId: randomUUID()}),
+    () => commitMioSequenceAction(store, mioPlan),
+    () => prepareMioSequenceUndo(store, projectId, randomUUID(), mioReceipt.actionId),
+    () => applyMioSequenceUndo(store, mioUndo),
+    () => readSequenceSyncContext(store),
+  ]) assert.throws(attempt, appError);
+
+  let entered = false;
+  assert.throws(() => store.tx(() => {entered = true;}), appError);
+  assert.equal(entered, false);
+
+  db.exec('BEGIN');
+  try {
+    const canvasPatch = {version: 1, rows: [], guards: [], anchors: [], order: null, dependencyDigest: sha('a')} as const;
+    assert.throws(() => applyCanvasPatch(store, canvasPatch, canvasPatch, at), appError);
+    assert.throws(() => applySequenceEditStateDelta(store, entry.afterPatch, oldContext), appError);
+    assert.throws(() => applySequenceEditTimelineDelta(store, entry.afterPatch.timeline, oldContext), appError);
+    assert.throws(() => applySequenceEditBaselineDelta(store, entry.afterPatch.timeline.baseline, oldContext), appError);
+    assert.throws(() => applySequenceEditHistoryInside(store, 'undo', undo, () => {entered = true;}), appError);
+    assert.equal(entered, false);
+    assert.equal(writes(), before.writes);
+  } finally {db.exec('ROLLBACK');}
+  assert.deepEqual(readFileSync(store.projectFile), before.project);
+  assert.deepEqual(readFileSync(historyFile as string), before.history);
+  assert.deepEqual(readdirSync(store.root).sort(), before.files);
+  assert.deepEqual(readdirSync(store.localDir).sort(), before.historyFiles);
 });

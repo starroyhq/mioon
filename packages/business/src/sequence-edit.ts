@@ -40,6 +40,7 @@ import {
 } from './format5-editor-history.ts';
 import type {SequenceEditHistoryState, SequenceEditReceiptDraft} from './format5-editor-history.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
+import {assertHeldProjectReaderRequirements} from './project-file/reader-requirements.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5JsonRows} from './project-file/format5-content.ts';
 import {bumpFormat5ContentStampInside, readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
@@ -1341,6 +1342,7 @@ export function applySequenceEditHistoryInside(store: ProjectStore, direction: '
   request: SequenceEditHistoryRequest, authorize: () => void = () => {}): SequenceEditReceipt {
   if (!store.db.isTransaction) throw new Error('Sequence history requires an open transaction');
   assertFormat5(store);
+  assertHeldProjectReaderRequirements(store);
   const command: SequenceEditHistoryCommand = {...request, direction};
   const inputDigest = historyCommandDigest(command);
   authorize();

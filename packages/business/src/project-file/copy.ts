@@ -14,6 +14,7 @@ import {
 } from './backup.ts';
 import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
+import {assertProjectReaderRequirements} from './reader-requirements.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
@@ -75,6 +76,7 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   // cross-format copies); a current-format template is upgraded in place by
   // the template instantiation seam before publication.
   if (!writableFormat(requestedFormat) || !writableFormat(sourceFormat)) throw failed('format');
+  assertProjectReaderRequirements(source.db, live ? 'project' : 'main', sourceFormat);
   const targetFormat = isSequenceProjectFormat(requestedFormat) && sourceFormat < requestedFormat ? sourceFormat : requestedFormat;
   if (targetFormat < sourceFormat) {
     throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer',

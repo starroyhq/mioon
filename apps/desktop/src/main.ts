@@ -4,6 +4,7 @@ import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
 import { isProjectId, projectApiPath, projectRpcPath } from '../../../packages/contracts/src/project-file.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../packages/contracts/src/project-reader-requirements.ts';
 import { desktopAppDirectories } from '../../server/src/project-host/directories.ts';
 import { ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic, createPrivateTemporaryDirectory } from '@mioon/contracts/private-storage';
 import type {ReadPrivateFileOptions} from '@mioon/contracts/private-storage';
@@ -465,7 +466,14 @@ function projectFileFailureText(code: string, reason?: 'read-only') {
 }
 async function showProjectFileFailure(context: DesktopWindowContext, name: string, code: string, reason?: 'read-only') {
   const parent = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
-  if (ownsWindow(parent, context)) await showOwnedDialog(parent, context, {type: 'warning', message: nt('native.openProjectFileFailed'),
+  if (!ownsWindow(parent, context)) return;
+  if (code === PROJECT_READER_UPDATE_REQUIRED) {
+    const action = await showOwnedDialog(parent, context, {type: 'warning', message: nt('projectFile.open.readerUpdate.title'),
+      detail: nt('projectFile.open.readerUpdate.body'), buttons: [nt('projectFile.open.newer.checkUpdate'), nt('native.acknowledge')], cancelId: 1});
+    if (action === 0 && ownsWindow(parent, context)) await checkUpdateFromMenu();
+    return;
+  }
+  await showOwnedDialog(parent, context, {type: 'warning', message: nt('native.openProjectFileFailed'),
     detail: nt(projectFileFailureText(code, reason), {name}), buttons: [nt('native.acknowledge')]});
 }
 // Cold and hot OS intents use one sequential queue, attached only after a trusted backend is ready.

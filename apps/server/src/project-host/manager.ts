@@ -7,6 +7,7 @@ import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../../packages/contracts/src/project-reader-requirements.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_HISTORY_FILE} from '../../../../packages/contracts/src/project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
@@ -15,6 +16,8 @@ import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEM
   recoverProjectFile, registerProjectTransactionFence, sameContentStamp, upgradeProjectSequenceFormat} from '../../../../packages/business/src/project-file/index.ts';
 import type {Format4Options, Format4UpgradePreview, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectFileFormat, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import {previewClosedProjectFormatUpgrade} from '../../../../packages/business/src/project-file/closed-copy.ts';
+import {assertProjectReaderRequirementsReadOnly} from '../../../../packages/business/src/project-file/connection.ts';
+import {assertHeldProjectReaderRequirements} from '../../../../packages/business/src/project-file/reader-requirements.ts';
 import type {ProjectFormatUpgradePreview} from '../../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
@@ -132,7 +135,7 @@ interface OpenAdmission {
   readonly formatUpgrade?: ProjectFormatUpgradePreview;
   readonly fileIdentity?: ProjectFileIdentity;
 }
-type RecoveryResult = ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'} | {readonly state: 'upgrade-required'};
+type RecoveryResult = ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'} | {readonly state: 'upgrade-required' | 'update-required'};
 export type CatalogRecovery = {readonly result: RecoveryResult} | {readonly error: unknown} | {readonly pending: true};
 type InspectCatalog = (projects: readonly RecentProject[], isCurrent: (project: RecentProject) => boolean) => Promise<ReadonlyMap<string, CatalogRecovery>>;
 
@@ -389,7 +392,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   const preflightLegacy = (file: string, projectId: string, location: ProjectLocation, expected?: ProjectFormatUpgradePreview): void => {
     if (isSequenceProjectFormat(targetFormat)) {
       const version = inspectProjectFormatHeader(file, readFormat);
-      if (version === targetFormat) return;
+      if (version === targetFormat) {
+        if (readFormat?.allowFormat6) assertProjectReaderRequirementsReadOnly(file, readFormat);
+        return;
+      }
       const preview = previewSequenceFormatUpgrade(targetFormat, file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
       if (!preview) return;
       if (!expected || !upgradeMatches(preview, expected)) throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
@@ -560,6 +566,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   // Leases and the idle close
 
   function grant(entry: HostEntry<Runtime>, kind: ProjectLeaseKind): ProjectLease<Runtime> {
+    if (readFormat?.allowFormat6) assertHeldProjectReaderRequirements(entry.store);
     clearTimer(entry);
     const record: LeaseRecord = {kind, seq: ++grants, controller: new AbortController(), released: false};
     entry.leases.add(record);
@@ -786,6 +793,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if ('error' in observed) {
       const {error} = observed;
       const code = errorCode(error);
+      if (code === PROJECT_READER_UPDATE_REQUIRED) {
+        recoveries.set(projectId, {registration, result: {state: 'update-required'}});
+        return;
+      }
       if (code === 'PROJECT_FORMAT_NEWER') {
         recoveries.set(projectId, {registration, result: {state: 'invalid', reason: 'format-newer'}});
         return;
@@ -1215,11 +1226,17 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     writeAllowed();
     const registered = registry.get(input.projectId);
     if (!registered) throw projectNotFound(input.projectId);
+    if (readFormat?.allowFormat6) {
+      const entry = entries.get(input.projectId);
+      if (entry) assertHeldProjectReaderRequirements(entry.store);
+      else assertProjectReaderRequirementsReadOnly(registered.projectFile, readFormat);
+    }
     const receipt = completedHistoryResolution(switchOptions(registered.projectFile, input.projectId), input);
     if (receipt) { archiveTaskIndex(input, receipt); return receipt; }
     return withExclusive(input.projectId, registration => {
       writeAllowed();
       const config = switchOptions(registration.projectFile, input.projectId);
+      if (readFormat?.allowFormat6) assertProjectReaderRequirementsReadOnly(registration.projectFile, readFormat);
       const completed = completedHistoryResolution(config, input);
       if (completed) { archiveTaskIndex(input, completed); return completed; }
       const resumed = recoverHistorySwitch(config);

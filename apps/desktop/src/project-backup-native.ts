@@ -3,6 +3,7 @@ import {lstatSync, realpathSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import type {ProjectBackupInspection, ProjectBackupRestoreResponse} from '../../../packages/contracts/src/project-backups.ts';
 import type {ProjectEntryResponse} from '../../../packages/contracts/src/project-entry.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../packages/contracts/src/project-reader-requirements.ts';
 import {inspectCopiedProjectFile} from '../../../packages/business/src/project-file/backup.ts';
 import {isProjectFileHeld} from '../../../packages/business/src/project-file/held-files.ts';
 import {isAppLibraryHeld} from '../../../packages/business/src/app-db/connection.ts';
@@ -39,6 +40,7 @@ export function verifyRestoredBackupFile(result: ProjectBackupRestoreResponse, e
         project.fileIdentity.dev !== wanted.fileIdentity.dev || project.fileIdentity.ino !== wanted.fileIdentity.ino ||
         !path.isAbsolute(file) || path.resolve(file) !== file || realpathSync(file) !== file || realpathSync(directory) !== directory) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     if(['open','busy','locked'].includes(entry.entry.availability.state))throw backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
+    if(entry.entry.availability.state==='update-required')throw backupNativeError(PROJECT_READER_UPDATE_REQUIRED);
     if(entry.entry.availability.state!=='available')throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     const before = lstatSync(file, {bigint: true}), parent = lstatSync(directory, {bigint: true});
     const held = (info: BigIntStats): boolean => isProjectFileHeld({dev: String(info.dev), ino: String(info.ino)}) || isAppLibraryHeld({dev: String(info.dev), ino: String(info.ino)});

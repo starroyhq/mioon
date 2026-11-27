@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import type {ServiceStore} from '../packages/business/src/services.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../packages/contracts/src/project-reader-requirements.ts';
 import {
   DEFAULT_PROJECTS_DIRECTORY, DESKTOP_PROJECTS_FOLDER, PROJECT_ADDRESS_ERROR_CODES, PROJECT_API_PREFIX, PROJECT_BACKUPS_DIRECTORY,
   PROJECT_CACHE_DIRECTORY, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_EXPORTS_FOLDER, PROJECT_FILE_ERROR_CODES,
@@ -76,7 +77,7 @@ test('the kernel reports with the contract types and the contract creation code'
 
 test('states and error codes are the agreed strings', () => {
   assert.deepEqual(PROJECT_HISTORY_STATES, ['fresh', 'current', 'diverged']);
-  assert.deepEqual(PROJECT_OPEN_ERROR_CODES, ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID', 'PROJECT_ACCESS_DENIED']);
+  assert.deepEqual(PROJECT_OPEN_ERROR_CODES, ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', PROJECT_READER_UPDATE_REQUIRED, 'PROJECT_INVALID', 'PROJECT_ACCESS_DENIED']);
   assert.deepEqual(PROJECT_INVALID_REASONS, [
     'not-a-regular-file', 'not-a-project-file', 'journal-mode', 'encoding', 'application-id',
     'schema-version', 'schema', 'metadata', 'project-row', 'foreign-key', 'project-mismatch',

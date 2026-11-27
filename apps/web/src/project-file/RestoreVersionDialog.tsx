@@ -1,5 +1,6 @@
 import React from 'react';
 import type {ReactElement} from 'react';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../../packages/contracts/src/project-reader-requirements.ts';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {WorkbenchAlert, WorkbenchButton, WorkbenchDialogContent} from '@mioon/ui/components/workbench-controls';
 import type {ProjectVersionDifference} from '../../../../packages/contracts/src/project-version-operations.ts';
@@ -12,6 +13,7 @@ import './project-file-common.css';
 import './project-file-versions.css';
 
 export function historyErrorKey(code?: string) {
+  if (code === PROJECT_READER_UPDATE_REQUIRED) return 'projectFile.open.readerUpdate.body';
   if (['PROJECT_VERSION_BASELINE_CHANGED', 'PROJECT_VERSION_PREVIEW_CHANGED', 'PROJECT_VERSION_CURSOR_INVALID'].includes(code ?? '')) return 'projectHistory.error.stale';
   if (code === 'PROJECT_HOST_BUSY' || code === 'PROJECT_BACKUP_RESTORE_BUSY') return 'projectHistory.error.busy';
   if (code === 'PROJECT_FILE_EXISTS') return 'projectHistory.error.exists';
