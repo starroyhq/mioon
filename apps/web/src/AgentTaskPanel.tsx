@@ -4,6 +4,7 @@ import { Input } from '@mioon/ui/components/input';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { Switch } from '@mioon/ui/components/switch';
 import { WorkbenchAlert, WorkbenchButton as Button, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
+import { ArrowUp, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { WorkbenchPopover, WorkbenchPopoverContent, WorkbenchPopoverTrigger } from '@mioon/ui/components/workbench-popover';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -49,6 +50,8 @@ export interface AgentTaskPanelProps { isAdmissionAllowed?: () => boolean; proje
   onMioFollowFocus?: (projectId: string, focus: MioFollowFocus | null) => void;
   onMioFollowLocate?: (target: MioFollowTarget) => unknown;
   mioFollowTargetExists?: MioFollowTargetExists;
+  followControlInHeader?: boolean;
+  followHeaderError?: boolean;
 }
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const settingsChangedCodes=new Set(['AGENT_SETTINGS_CONFLICT','AGENT_TASK_SETTINGS_CHANGED']);
@@ -88,7 +91,7 @@ function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
     {working ? <span className="wb-spinner" /> : <Icon name={read ?? (step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus')} />}
   </span>;
 }
-export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules, onMioFollowFocus, onMioFollowLocate, mioFollowTargetExists }: AgentTaskPanelProps) {
+export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules, onMioFollowFocus, onMioFollowLocate, mioFollowTargetExists, followControlInHeader = false, followHeaderError = false }: AgentTaskPanelProps) {
   const { t, locale, formatNumber } = useI18n(), workspaceVisible = useWorkspaceVisibility();
   const preferences = useUiPreferences();
   const [mioFocus, setMioFocus] = useState<MioFollowFocus | null>(null);
@@ -312,7 +315,11 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   useLayoutEffect(() => { if (visible && !readOnly && focusKey && !review) log.current?.querySelector<HTMLButtonElement>('[data-mio-primary]:not(:disabled)')?.focus(); }, [projectId, focusKey, visible, readOnly, review]);
   const markedConflicts = steps.filter(step => step.display?.conflict === true);
   const conflictSteps = markedConflicts.length ? markedConflicts : [steps.filter(step => step.kind === 'tool' && ['intent', 'awaiting_approval'].includes(step.status)).at(-1)].filter((step): step is AgentTaskStep => step !== undefined);
-  const parameters = (step: AgentTaskStep, options = formatOptions) => <dl className="mio-parameters">{taskDisplayEntries(step.display, locale, options).map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>;
+  const parameters = (step: AgentTaskStep, options = formatOptions, extra?: React.ReactNode) => {
+    const entries = taskDisplayEntries(step.display, locale, options);
+    if (!entries.length && !extra) return null;
+    return <dl className="mio-parameters">{entries.map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}{extra}</dl>;
+  };
   const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>, diagnostic: ReturnType<typeof agentTaskDiagnosticDetails>) => {
     return <details className="mio-safe-details">
       <summary>{t('agent.panel.details')}</summary>
@@ -498,8 +505,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
               </div>}><Button type="button" variant="icon" className="mio-fee" aria-label={t('agent.panel.authorizationFeeTitle')}><Icon name="info" /></Button></WorkbenchTooltip>}
             </header>
             {targets && <p className="mio-secondary">{targets}</p>}
-            {parameters(step, options)}
-            {paid && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{targets} · {t('agent.panel.newVersion')}</dd></div></dl> : null}
+            {parameters(step, options, paid && step.display?.targets.length ? <div className="mio-parameter-result"><dt>{t('agent.panel.result')}</dt><dd>{targets} · {t('agent.panel.newVersion')}</dd></div> : null)}
             {!paid && <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}
             <div className="mio-card-actions">
               <Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button>
@@ -536,12 +542,12 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   return <section className="agent-panel agent-task-panel mio-panel" data-testid="agent-task-panel" data-phase={state.phase} aria-label={t('agent.task.title')}>
     <MioUsageDetails open={visible&&!historyOpen&&usage.detailRunId!==null} runId={usage.detailRunId} view={usage.detailRunId?usage.rounds[usage.detailRunId]:undefined} onClose={closeUsage} onRetry={()=>{if(usage.detailRunId)usageReader.current?.refresh(usage.detailRunId);}} />
     <header className="agent-task-heading mio-heading"><h3 title={state.conversation?.title}>{state.conversation?.title || t('agent.panel.newConversation')}</h3><div>
-      {onMioFollowFocus && <label className="mio-follow-control" style={mioFocus ? { '--mio-follow-color': mioFollowColor(mioFocus.runId) } as React.CSSProperties : undefined}><Icon name="locate" size={12} /><span>{t('agent.follow.toggle')}</span><Switch size="sm" data-testid="mio-follow-toggle" aria-label={t('agent.follow.toggle')} checked={preferences.preferences.mioFollow} disabled={followDisabled} onCheckedChange={enabled => { void saveFollow(enabled); }} /></label>}
+      {onMioFollowFocus && !followControlInHeader && <label className="mio-follow-control" style={mioFocus ? { '--mio-follow-color': mioFollowColor(mioFocus.runId) } as React.CSSProperties : undefined}><Icon name="locate" size={12} /><span>{t('agent.follow.toggle')}</span><Switch size="sm" data-testid="mio-follow-toggle" aria-label={t('agent.follow.toggle')} checked={preferences.preferences.mioFollow} disabled={followDisabled} onCheckedChange={enabled => { void saveFollow(enabled); }} /></label>}
       <WorkbenchTooltip content={composing?t('agent.conversation.blocked.composing'):newBlocked?t(`agent.conversation.blocked.${newBlocked}`):t('agent.panel.newConversation')}><Button variant="icon" aria-label={t('agent.panel.newConversation')} data-testid="agent-task-new-conversation" disabled={!visible||composing||Boolean(newBlocked)} aria-describedby={newBlocked||composing?'mio-new-conversation-blocked':undefined} onClick={newConversation}><Icon name="plus" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.panel.history')}><Button variant="icon" aria-label={t('agent.panel.history')} ref={historyButton} data-testid="agent-task-history-open" aria-expanded={historyOpen} disabled={!visible || busy} onClick={() => { if (visibility.current) setHistoryOpen(value => !value); }}><Icon name="clock" /></Button></WorkbenchTooltip>
-      <WorkbenchTooltip content={t('agent.task.settings')}><Button variant="icon" aria-label={t('agent.task.settings')} data-testid="agent-task-settings" disabled={!visible} onClick={event => { if (visibility.current) onSettings(undefined, event?.nativeEvent); }}><Icon name="settings" /></Button></WorkbenchTooltip>
+      <WorkbenchTooltip content={t('agent.task.settings')}><Button variant="icon" aria-label={t('agent.task.settings')} data-testid="agent-task-settings" disabled={!visible} onClick={event => { if (visibility.current) onSettings(undefined, event?.nativeEvent); }}><WorkbenchIcon name="settings" size={15} /></Button></WorkbenchTooltip>
     </div></header>
-    {onMioFollowFocus && (followError || followRetry !== undefined) && <div className="mio-follow-save-error"><p role="alert" data-testid="mio-follow-save-error">{t(preferences.phase === 'conflict' ? 'appearance.conflict' : 'agent.follow.saveError')}</p>{preferences.phase === 'conflict' && <Button variant="ghost" size="compact" disabled={!visible || savingFollow} onClick={() => { void reloadFollow(); }}>{t('appearance.reload')}</Button>}</div>}
+    {onMioFollowFocus && (followError || followHeaderError || followRetry !== undefined) && <div className="mio-follow-save-error"><p role="alert" data-testid="mio-follow-save-error">{t(preferences.phase === 'conflict' ? 'appearance.conflict' : 'agent.follow.saveError')}</p>{preferences.phase === 'conflict' && <Button variant="ghost" size="compact" disabled={!visible || savingFollow} onClick={() => { void reloadFollow(); }}>{t('appearance.reload')}</Button>}</div>}
     {(newBlocked||composing)&&<span id="mio-new-conversation-blocked" className="sr-only">{t(composing?'agent.conversation.blocked.composing':`agent.conversation.blocked.${newBlocked!}`)}</span>}
     <div className="mio-message-area">
     <div hidden={historyOpen} inert={historyOpen} aria-hidden={historyOpen||undefined} ref={log} className="agent-task-activity mio-log" role="log" aria-label={t('agent.task.title')} aria-live="polite" aria-relevant="additions text" data-testid="agent-task-activity" onScroll={event => { const node = event.currentTarget; follow.current = node.scrollHeight - node.clientHeight - node.scrollTop < 24; setFollowing(follow.current); }}>
@@ -566,7 +572,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
         {!readOnly && <WorkbenchTooltip content={t('agent.task.attach')}><Button variant="icon" data-testid="agent-task-attach" aria-label={t('agent.task.attach')} disabled={blocked||noteMode||answerMode} onClick={() => file.current?.click()}><Icon name="link" /></Button></WorkbenchTooltip>}
         {!readOnly && <AgentTaskPolicyMenu modes={policyModes} global={globalModes} disabled={blocked || policy?.phase === 'saving' || policy?.phase === 'loading'} anchor={composer} onChoose={modes => session.current?.choosePolicy(modes)} onSetGlobal={modes => session.current?.setGlobalPolicy(modes)} />}
         <WorkbenchPopover open={modelMenuOpen && visible} onOpenChange={open => setModelMenuOpen(open)}><WorkbenchPopoverTrigger render={<Button variant="ghost" className="mio-model-trigger" aria-label={t('agent.panel.modelMenu')} disabled={!visible} />}><span><span className="mio-model-name">{model || t('agent.panel.noConnection')}</span><span className="mio-model-scope"> · {t('agent.authorization.scope.project_agent')}</span></span><Icon name="down" /></WorkbenchPopoverTrigger><WorkbenchPopoverContent className="mio-model-menu"><p>{model}</p>{project?.settings.execution && <p className="mio-secondary">{deriveAgentEndpoint(project.settings.execution.configuration)}</p>}<Button variant="ghost" onClick={event => { if (visibility.current) onSettings(undefined, event?.nativeEvent); }}>{t('agent.panel.changeModel')}</Button></WorkbenchPopoverContent></WorkbenchPopover>
-        <WorkbenchTooltip content={t(stopInComposer ? 'agent.task.stop' : answerMode ? answerTooLong ? 'agent.panel.question.tooLong' : 'agent.panel.question.sendAnswer' : noteMode&&queuedNotes>=5?'agent.task.error.noteLimit':noteMode?'agent.panel.sendNote':'agent.task.send')}><Button variant="primary" className="mio-send" ref={sendButton} type={stopInComposer ? 'button' : 'submit'} aria-label={t(stopInComposer ? 'agent.task.stop' : answerMode ? 'agent.panel.question.sendAnswer' : noteMode?'agent.panel.sendNote':'agent.task.send')} data-testid={stopInComposer ? 'agent-task-stop' : 'agent-task-send'} disabled={stopInComposer ? blocked : !canSubmit} onClick={stopInComposer ? () => { void session.current?.action('stop',{},run?.id); } : undefined}><Icon name={stopInComposer ? 'stop' : 'upload'} /></Button></WorkbenchTooltip>
+        <WorkbenchTooltip content={t(stopInComposer ? 'agent.task.stop' : answerMode ? answerTooLong ? 'agent.panel.question.tooLong' : 'agent.panel.question.sendAnswer' : noteMode&&queuedNotes>=5?'agent.task.error.noteLimit':noteMode?'agent.panel.sendNote':'agent.task.send')}><Button variant="primary" className="mio-send" ref={sendButton} type={stopInComposer ? 'button' : 'submit'} aria-label={t(stopInComposer ? 'agent.task.stop' : answerMode ? 'agent.panel.question.sendAnswer' : noteMode?'agent.panel.sendNote':'agent.task.send')} data-testid={stopInComposer ? 'agent-task-stop' : 'agent-task-send'} disabled={stopInComposer ? blocked : !canSubmit} onClick={stopInComposer ? () => { void session.current?.action('stop',{},run?.id); } : undefined}>{stopInComposer ? <Icon name="stop" /> : <ArrowUp size={15} aria-hidden="true" />}</Button></WorkbenchTooltip>
       </div>
     </form>
     <Dialog open={Boolean(undoPreview)&&visible} onOpenChange={open=>{if(!open)setUndoPreview(null);}}><WorkbenchDialogContent size="confirm" showCloseButton={false} title={t('agent.panel.undoTitle',{count:willUndo.length})} className="mio-undo-dialog" initialFocus={undoCancel} finalFocus={undoTrigger} data-testid="agent-task-undo-dialog" footer={<><Button ref={undoCancel} data-testid="agent-task-undo-cancel" onClick={()=>setUndoPreview(null)}>{t('common.cancel')}</Button><Button variant="primary" data-testid="agent-task-undo-confirm" disabled={blocked||!undoCurrent||willUndo.length===0} onClick={confirmUndo}><Icon name="undo" />{t('agent.panel.undoCount',{count:willUndo.length})}</Button></>}>

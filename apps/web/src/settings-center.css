@@ -136,7 +136,8 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .workspace-tool-card .workspace-tool-capabilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--wb-space-2) var(--wb-space-5); padding: 0 var(--wb-space-3) var(--wb-space-3); background: var(--wb-input); border: 0; border-radius: 0; }
 .workspace-tool-card .workspace-tool-capabilities h3 { grid-column: 1 / -1; font-size: var(--wb-text-caption); color: var(--wb-muted); }
 .workspace-tool-card .workspace-tool-capabilities > div { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-3); }
-.settings-page-actions { flex: none; min-height: var(--wb-action-bar); padding: var(--wb-space-2) 0; border-top: 1px solid var(--wb-line-subtle); }
+.settings-page-actions { flex: none; display: flex; align-items: center; gap: var(--wb-space-2); min-height: var(--wb-action-bar); padding: var(--wb-space-2) 0; border-top: 1px solid var(--wb-line-subtle); background: var(--wb-raised); }
+:is(.web-settings-dialog, .project-home-settings-window) .settings-page-actions { margin-inline: -24px; padding-inline: 24px; }
 .settings-page-actions > [data-variant="primary"] { margin-left: auto; }
 .settings-center-content > section:has(> .settings-services), .settings-center-content > section:has(> .settings-managed-workspace) { display: flex; overflow: hidden; padding-bottom: 0; }
 .settings-services, .settings-managed-workspace { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }

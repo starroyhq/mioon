@@ -33,7 +33,7 @@ const forbidden = () => assert.fail('Presentation must use only the supplied cal
 const defaults = (patch?: Record<string, unknown>) => ({ projects, phase: 'home', busy: false, listBusy: false, page: 'projects',
   onPage: forbidden, onOpen: forbidden, onRetry: forbidden, onRefresh: forbidden, onCreate: forbidden,
   settings:null,...patch } as HomeProps);
-const nodes = (tree: ElementTree): ElementNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
+const nodes = (tree: ElementTree): ElementNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children), ...nodes(tree.props?.footer as ElementTree)] : [];
 const text = (tree: ElementTree): string => Array.isArray(tree) ? tree.map(text).join('') : tree && typeof tree === 'object' ? text(tree.props?.children) : tree == null || typeof tree === 'boolean' ? '' : String(tree);
 const find = (tree:ElementTree,id: string|Error|undefined) => { const node = nodes(tree).find((value: ElementNode) => value.props?.['data-testid'] === id); assert.ok(node, id); return node; };
 const deferred = <T = unknown>() => { let resolve!: (value?: T | PromiseLike<T>) => void, reject!: (reason?: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = (yes as (value?: T | PromiseLike<T>) => void); reject = no; }); return { promise, resolve, reject }; };
@@ -105,7 +105,7 @@ function harness(patch:Record<string,unknown> = {}) {
     if (name === 'react') return react;
     if (name === '@mioon/ui/components/workbench-icons') return { WorkbenchIcon: () => null };
     if (name === '@mioon/ui/components/dialog') return { Dialog: ({children}:{children?:import("react").ReactNode}) => actual.React.createElement(actual.React.Fragment, null, children) };
-    if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchButton: actual.WorkbenchButton, WorkbenchDialogContent: ({children}:{children?:import("react").ReactNode}) => actual.React.createElement('section', {role:'dialog'}, children) };
+    if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchButton: actual.WorkbenchButton, WorkbenchDialogContent: ({children, footer}:{children?:import("react").ReactNode; footer?:import("react").ReactNode}) => actual.React.createElement('section', {role:'dialog'}, children, footer) };
     if (name.endsWith('.css')) return {};
     if (name === './api.ts') return { mediaUrl };
     if (name === './workbench-modal-state.ts') return { hasOpenWorkbenchModal };

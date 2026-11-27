@@ -33,10 +33,10 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
   const desktop = controller.desktop ?? null, native = desktop?.getState(), capability = native?.capabilities;
   const homeDirectory = typeof window === 'undefined' ? undefined : (window as Window & {__mioonHomeDirectory?: unknown}).__mioonHomeDirectory;
   const disabled = context.quitting ? t('projects.quittingCreate')
-    : desktop && (!capability?.ready || !capability.create) ? t('projects.listUnavailable')
+    : desktop && capability?.ready && !capability.create ? t('projects.listUnavailable')
     : state.createUnknown ? t('projects.previousCreateUnknown')
-      : state.openUnknown ? t('projects.checkOpenResult')
-        : !state.catalogReady ? t('projects.listUnavailable') : '';
+      : state.openUnknown ? t('projects.checkOpenResult') : '';
+  const createUnavailable = !state.catalogReady || Boolean(desktop && !capability?.ready);
   const contents = <>
     {editor && <div className="project-entry-dialog-heading"><DialogTitle id="native-project-entry-heading">{state.mode === 'new' ? t('projects.createNew') : t('projects.openWorkspace')}</DialogTitle>
       <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
@@ -69,7 +69,7 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
       page="projects" onPage={(page, click) => { if (page === 'settings') { markSettingsClick(click); onSettings('agent'); } }} onOpen={id => controller.open(id)}
       onRetry={async () => { if (state.openUnknown) {await controller.reconcileOpen(); return !controller.getState().openUnknown;} return state.openingProjectId ? controller.open(state.openingProjectId) : false; }}
       onRefresh={async () => { controller.interacted(); const ready = await controller.refresh(); if (ready) await desktop?.initialize(editor); return ready; }} onCreate={controller.create} settings={null} status={status} help={help}
-      createDisabledReason={disabled} onCreateStateChange={controller.reportCreate} canMutateEntry={controller.canMutate} createIntentVersion={desktop ? 0 : state.formIntent} />
+      createDisabledReason={disabled} createUnavailable={createUnavailable} onCreateStateChange={controller.reportCreate} canMutateEntry={controller.canMutate} createIntentVersion={desktop ? 0 : state.formIntent} />
     <NativeProjectEntryDialogs desktop={desktop} formIntent={state.formIntent}
       onHistoryResolved={projectId => {void controller.open(projectId);}} />
   </>;

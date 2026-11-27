@@ -2,7 +2,7 @@ import {WorkbenchTooltip} from './WorkspaceControls.tsx';
 import {measureSettingsRead} from './settings-diagnostics.ts';
 import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
-import {Badge} from '@mioon/ui/components/badge';
+import {WorkbenchBadge} from '@mioon/ui/components/workbench-controls';
 import {useConfirmation} from '@mioon/ui/components/workbench-confirm';
 import {message} from '../../../packages/i18n/src/index.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
@@ -154,10 +154,10 @@ export default function GenerationServicesSettings({active, page = 'models', ent
     pageVisible={pageVisible} selectedKey={selected} onSelect={select} groups={groups}
     panels={[{key: 'general', content: general}, {key: 'image:custom', content: <div className="generation-services-custom-overview">{custom.notice}<p>{t('image.settings.services.choose')}</p>{imageServices.filter(service => service.custom).map(service => <Button key={service.key} type="button" variant="outline" onClick={() => select(service.key)}>{service.label}</Button>)}</div>},
       ...services.map(service => ({key: service.key, content: <div className="generation-service-detail" data-kind={service.kind}>
-        <header className="generation-service-heading">{serviceIcon(service, 24)}<h3>{service.label}</h3><Badge>{t(service.custom ? service.kind === 'video' ? 'generation.services.customVideo' : 'generation.services.customImage' : service.kind === 'video' ? 'generation.services.videoGroup' : 'generation.services.imageGroup')}</Badge><span className="generation-service-configured"><Badge>{t(service.configured === null ? 'redesign.settings.statusUnknown' : service.configured ? 'redesign.settings.configured' : 'redesign.settings.notConfigured')}</Badge>{service.dirty && <Badge variant="outline" className="generation-service-unsaved" data-testid="generation-service-unsaved">{t('settings.draftKey.unsaved')}</Badge>}</span></header>
+        <header className="generation-service-heading">{serviceIcon(service, 24)}<h3>{service.label}</h3><WorkbenchBadge tone="neutral">{t(service.custom ? service.kind === 'video' ? 'generation.services.customVideo' : 'generation.services.customImage' : service.kind === 'video' ? 'generation.services.videoGroup' : 'generation.services.imageGroup')}</WorkbenchBadge><span className="generation-service-configured"><WorkbenchBadge dot tone={service.configured === true ? 'success' : 'neutral'}>{t(service.configured === null ? 'redesign.settings.statusUnknown' : service.configured ? 'redesign.settings.configured' : 'redesign.settings.notConfigured')}</WorkbenchBadge>{service.dirty && <WorkbenchBadge tone="warning" className="generation-service-unsaved" data-testid="generation-service-unsaved">{t('settings.draftKey.unsaved')}</WorkbenchBadge>}</span></header>
         <fieldset className="generation-service-fields" disabled={saving}>{service.content}</fieldset>
         {service.kind === 'video' && environment?.[service.providerId] && Object.hasOwn(environmentVariables, service.providerId) && <p className="generation-services-environment"><span>{t('generation.services.environment')}</span><code>{environmentVariables[service.providerId as keyof typeof environmentVariables]}</code></p>}
       </div>}))]}
-    footer={{state: footerState, status: t(footerMessage), save: {label: t('generation.services.save'), testId: 'generation-services-save', busy: saving, disabled: !ready || navigation.busy || navigation.blocked || !navigation.dirty, onAction: save},
+    footer={{state: footerState, status: <WorkbenchBadge dot tone={footerState === 'saved' ? 'success' : ['error', 'blocked', 'partial', 'unknown'].includes(footerState) ? 'warning' : 'neutral'} data-testid="generation-services-footer-status">{t(footerMessage)}</WorkbenchBadge>, save: {label: t('generation.services.save'), testId: 'generation-services-save', busy: saving, disabled: !ready || navigation.busy || navigation.blocked || !navigation.dirty, onAction: save},
       discard: {label: t('generation.services.discard'), testId: 'generation-services-discard', disabled: saving || navigation.busy || navigation.blocked || !navigation.dirty, onAction: () => {void discard();}}}} />;
 }

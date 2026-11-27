@@ -44,8 +44,14 @@ test('application compositions render with real React/Base UI under the shipped 
     const badge = renderToStaticMarkup(<WorkbenchBadge tone="success" media="audio" dot>A1</WorkbenchBadge>);
     assert.ok(badge.includes('data-media="audio"'));
     assert.ok(badge.includes('aria-hidden="true"'));
-    assert.ok(renderToStaticMarkup(<WorkbenchAlert tone="danger">Failed</WorkbenchAlert>).includes('role="alert"'));
-    assert.ok(renderToStaticMarkup(<WorkbenchAlert>Ready</WorkbenchAlert>).includes('role="status"'));
+    const dangerAlert = renderToStaticMarkup(<WorkbenchAlert tone="danger">Failed</WorkbenchAlert>);
+    assert.ok(dangerAlert.includes('role="alert"'));
+    assert.ok(dangerAlert.includes('wb-feedback-icon'));
+    const neutralAlert = renderToStaticMarkup(<WorkbenchAlert>Ready</WorkbenchAlert>);
+    assert.ok(neutralAlert.includes('role="status"'));
+    assert.equal(neutralAlert.includes('wb-feedback-icon'), false);
+    const suppressedAlert = renderToStaticMarkup(<WorkbenchAlert tone="danger" icon={null}>Failed</WorkbenchAlert>);
+    assert.equal(suppressedAlert.includes('wb-feedback-icon'), false);
     const empty = renderToStaticMarkup(<WorkbenchEmptyState title="No shots" description="Add a shot" actions={<WorkbenchButton>Add</WorkbenchButton>} />);
     assert.ok(empty.includes('<h3>No shots</h3>'));
     const panel = renderToStaticMarkup(<WorkbenchPanel title="Properties" footer={<WorkbenchButton>Save</WorkbenchButton>}>Draft</WorkbenchPanel>);

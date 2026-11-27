@@ -28,7 +28,7 @@
 .subject-variant-caption{font-size:11px;color:var(--wb-soft)}
 .subject-variant-chosen{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.subject-variant-chosen .subject-helper{margin:0}
 .subject-variant-chip{display:inline-flex;align-items:center;border:1px solid var(--wb-line);border-radius:6px;overflow:hidden}.subject-variant-chip.current{border-color:var(--wb-accent-line)}
-.subject-variant-chip-label,.subject-variant-chip-remove{height:22px!important;padding:0 6px!important;font-size:11px!important;border-radius:0!important}
+.subject-variant-chip-label,.subject-variant-chip-remove{height:24px!important;padding:0 6px!important;font-size:11px!important;border-radius:0!important}
 .subject-variant-focal{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 12px;align-items:center}.subject-variant-focal>div:first-child{display:flex;flex-direction:column;gap:2px}.subject-variant-focal small{font-size:10px;color:var(--wb-muted)}.subject-variant-focal .subject-helper{grid-column:1/-1;margin:0}
 .subject-variant-light-direction{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:var(--wb-space-5);align-items:center}
 .subject-variant-sphere{position:relative;padding:16px}.subject-variant-sphere svg{display:block;width:100%;height:auto;cursor:crosshair;touch-action:none;color:var(--wb-text)}
@@ -66,7 +66,7 @@
 .subject-variant-notice{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}.subject-variant-notice .subject-actions{margin:0}
 /* Choosing a shot's version by angle (09-10c-2). */
 .shot-subject-variants{display:flex;flex-direction:column;gap:8px;margin-top:8px}.shot-subject-variants .subject-helper{margin:0}
-.shot-subject-angles{display:flex;flex-wrap:wrap;gap:4px}.shot-subject-angles button{height:22px!important;padding:0 8px!important;border-radius:999px!important;font-size:11px!important;background:var(--wb-raised)!important;color:var(--wb-soft)!important}.shot-subject-angles button[aria-pressed=true]{background:var(--wb-accent)!important;color:var(--wb-accent-foreground)!important}
+.shot-subject-angles{display:flex;flex-wrap:wrap;gap:4px}.shot-subject-angles button{height:24px!important;padding:0 8px!important;border-radius:999px!important;font-size:11px!important;background:var(--wb-raised)!important;color:var(--wb-soft)!important}.shot-subject-angles button[aria-pressed=true]{background:var(--wb-accent)!important;color:var(--wb-accent-foreground)!important}
 .shot-subject-versions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .shot-subject-version{position:relative;display:block!important;height:auto!important;aspect-ratio:3/4;padding:0!important;overflow:hidden;border-radius:6px!important;border:1px solid var(--wb-line-subtle)!important;background:var(--wb-input)!important}.shot-subject-version.selected{border:2px solid var(--wb-accent-line)!important}
 .shot-subject-version .subject-image{width:100%;height:100%;object-fit:cover;border-radius:0}

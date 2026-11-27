@@ -3,6 +3,7 @@ import { Button } from '@mioon/ui/components/button'
 import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible'
 import { DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog'
+import { AlertTriangle, WorkbenchIcon } from '@mioon/ui/components/workbench-icons'
 import { cn } from '@mioon/ui/lib/utils'
 
 export type WorkbenchTone = 'neutral' | 'danger' | 'warning' | 'success'
@@ -61,8 +62,12 @@ export function WorkbenchBadge({ tone = 'neutral', media, dot = false, className
 }
 
 export function WorkbenchAlert({ tone = 'neutral', icon, actions, className, children, ...props }: React.ComponentProps<'div'> & { tone?: WorkbenchTone; icon?: React.ReactNode; actions?: React.ReactNode }) {
+  const defaultIcon = tone === 'danger' ? <WorkbenchIcon name="warning" size={16} />
+    : tone === 'warning' ? <AlertTriangle size={16} aria-hidden="true" />
+    : tone === 'success' ? <WorkbenchIcon name="check" size={16} /> : null
+  const resolvedIcon = icon === undefined ? defaultIcon : icon
   return <div role={tone === 'danger' ? 'alert' : 'status'} {...props} className={cn('wb-alert', className)} data-tone={tone}>
-    {icon && <span className="wb-feedback-icon" aria-hidden="true">{icon}</span>}<div className="wb-feedback-copy">{children}</div>{actions && <div className="wb-feedback-actions">{actions}</div>}
+    {resolvedIcon && <span className="wb-feedback-icon" aria-hidden="true">{resolvedIcon}</span>}<div className="wb-feedback-copy">{children}</div>{actions && <div className="wb-feedback-actions">{actions}</div>}
   </div>
 }
 

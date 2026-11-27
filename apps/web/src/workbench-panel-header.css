@@ -73,3 +73,7 @@
   color: var(--wb-muted);
   font-size: var(--wb-text-label, 11px);
 }
+.workbench-panel-header > .mio-follow-control {
+  flex: none;
+  margin-inline-end: var(--wb-space-1);
+}

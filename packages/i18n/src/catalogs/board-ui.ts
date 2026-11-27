@@ -2,6 +2,7 @@ import type {MessageCatalog} from '../types.ts';
 
 export const boardUiMessages = {
   'boardUi.film': {'zh-Hans':'成片','zh-Hant':'成片',en:'Film',ja:'完成映像'},
+  'boardUi.unnamed': {'zh-Hans':'未命名','zh-Hant':'未命名',en:'Untitled',ja:'無題'},
   'boardUi.board': {'zh-Hans':'画板','zh-Hant':'畫板',en:'Board',ja:'ボード'},
   'boardUi.floating': {'zh-Hans':'游离 · 不在成片里','zh-Hant':'游離 · 不在成片裡',en:'Detached · Not in a film',ja:'未接続 · 完成映像に含まれません'},
   'boardUi.synced': {'zh-Hans':'与剪辑同步','zh-Hant':'與剪輯同步',en:'Synced with editing',ja:'編集と同期'},

@@ -370,66 +370,70 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       {t('boardUi.inspector.openInEditing')}</button>}
   </div>;
   const shotProperties = selected?.kind === 'shot' ? <div className="board-shot-properties" data-testid="board-shot-properties">
-    <section className="board-shot-fields" data-testid="board-shot-fields">
-      <label>{t('boardUi.inspector.description')}
-        <textarea data-testid="board-shot-prompt" rows={4} maxLength={5000} value={prompt}
-          disabled={props.busy || shotRevision === null} placeholder={t('boardUi.inspector.descriptionPlaceholder')}
-          onChange={event => {setPrompt(event.target.value); setShotSaved(false);}}/>
-        <span className="board-shot-count" data-testid="board-shot-prompt-count">{formatNumber(prompt.length)} / 5000</span>
-      </label>
-      {(shotDirty || shotSaved || shotError) && <div className="board-shot-save" data-testid="board-shot-save-row">
-        <button type="button" data-testid="board-shot-save" disabled={!shotDirty || props.busy}
-          onClick={() => {void saveShot();}}>{t('boardUi.inspector.saveShot')}</button>
-        <button type="button" data-testid="board-shot-discard" disabled={!shotDirty || props.busy}
-          onClick={() => {if (!shot) return; setTitle(String(shot.title ?? '')); setPrompt(String(shot.prompt ?? ''));
-            setDuration(Number(shot.duration ?? 4)); draftRevision.current = shotRevision;
-            setShotError(''); setShotSaved(false);}}>{t('common.cancel')}</button>
-        {shotSaved && <span role="status">{t('boardUi.inspector.saved')}</span>}
-        {shotError && <span role="alert" data-testid="board-shot-error">{t(shotError.includes('REVISION_CONFLICT')
-          ? 'boardUi.inspector.shotConflict' : 'boardUi.inspector.shotSaveFailed')}</span>}
-      </div>}
-    </section>
-    {generationPanel}
-    {props.rpc && typeof shot?.projectId === 'string' && props.rpc && <ShotDialogue shot={shot as never}
-      subjectNames={props.dialogueSubjects ?? {}} projectId={shot.projectId as string}
-      cueCount={props.dialogueCueCount ?? 0}
-      // WT-3-05: the GP shot panel shows the same live dialogue status as the
-      // read-only projection (selected silent service, prompt overflow, ...).
-      dialogueStatus={props.inputs && props.inputs.shotId === shot.id ? props.inputs.dialogue : null}
-      disabled={props.busy || !props.onDialogueApplied}
-      rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}
-    {runningJob ? <section className="board-shot-progress" data-testid="board-shot-job-running"
-      aria-label={`${t('redesign.board.generating')} · ${jobServiceName(runningJob)}`}>
-      <div className="board-shot-progress-row">
-        <span className="spinner" aria-hidden="true"/>
-        <span className="board-shot-progress-label">{t('redesign.board.generating')} · {jobServiceName(runningJob)}</span>
-        <strong className="board-shot-progress-percent">{Math.round(Number(runningJob.progress) || 0)}%</strong>
-        {props.onCancelJob && <button type="button" className="board-shot-progress-cancel" data-testid="cancel-generation"
-          disabled={props.busy || jobAction !== null} onClick={() => { void cancelGeneration(runningJob); }}>
-          {t('redesign.board.cancelGeneration')}
+    <div className="board-shot-body">
+      <section className="board-shot-fields" data-testid="board-shot-fields">
+        <label>{t('boardUi.inspector.description')}
+          <textarea data-testid="board-shot-prompt" rows={4} maxLength={5000} value={prompt}
+            disabled={props.busy || shotRevision === null} placeholder={t('boardUi.inspector.descriptionPlaceholder')}
+            onChange={event => {setPrompt(event.target.value); setShotSaved(false);}}/>
+          <span className="board-shot-count" data-testid="board-shot-prompt-count">{formatNumber(prompt.length)} / 5000</span>
+        </label>
+        {(shotDirty || shotSaved || shotError) && <div className="board-shot-save" data-testid="board-shot-save-row">
+          <button type="button" data-testid="board-shot-save" disabled={!shotDirty || props.busy}
+            onClick={() => {void saveShot();}}>{t('boardUi.inspector.saveShot')}</button>
+          <button type="button" data-testid="board-shot-discard" disabled={!shotDirty || props.busy}
+            onClick={() => {if (!shot) return; setTitle(String(shot.title ?? '')); setPrompt(String(shot.prompt ?? ''));
+              setDuration(Number(shot.duration ?? 4)); draftRevision.current = shotRevision;
+              setShotError(''); setShotSaved(false);}}>{t('common.cancel')}</button>
+          {shotSaved && <span role="status">{t('boardUi.inspector.saved')}</span>}
+          {shotError && <span role="alert" data-testid="board-shot-error">{t(shotError.includes('REVISION_CONFLICT')
+            ? 'boardUi.inspector.shotConflict' : 'boardUi.inspector.shotSaveFailed')}</span>}
+        </div>}
+      </section>
+      {generationPanel}
+      {props.rpc && typeof shot?.projectId === 'string' && props.rpc && <ShotDialogue shot={shot as never}
+        subjectNames={props.dialogueSubjects ?? {}} projectId={shot.projectId as string}
+        cueCount={props.dialogueCueCount ?? 0}
+        // WT-3-05: the GP shot panel shows the same live dialogue status as the
+        // read-only projection (selected silent service, prompt overflow, ...).
+        dialogueStatus={props.inputs && props.inputs.shotId === shot.id ? props.inputs.dialogue : null}
+        disabled={props.busy || !props.onDialogueApplied}
+        rpc={props.rpc} onApplied={() => props.onDialogueApplied?.()}/>}
+    </div>
+    <footer className="board-shot-footer">
+      {runningJob ? <section className="board-shot-progress" data-testid="board-shot-job-running"
+        aria-label={`${t('redesign.board.generating')} · ${jobServiceName(runningJob)}`}>
+        <div className="board-shot-progress-row">
+          <span className="spinner" aria-hidden="true"/>
+          <span className="board-shot-progress-label">{t('redesign.board.generating')} · {jobServiceName(runningJob)}</span>
+          <strong className="board-shot-progress-percent">{Math.round(Number(runningJob.progress) || 0)}%</strong>
+          {props.onCancelJob && <button type="button" className="board-shot-progress-cancel" data-testid="cancel-generation"
+            disabled={props.busy || jobAction !== null} onClick={() => { void cancelGeneration(runningJob); }}>
+            {t('redesign.board.cancelGeneration')}
+          </button>}
+        </div>
+        <div className="board-shot-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+          aria-valuenow={Math.round(Number(runningJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(runningJob.progress) || 0)))}%`}}/></div>
+      </section> : <>
+        {failedJob && <section className="board-shot-failure" data-testid={`failed-version-${failedJob.id}`} role="alert">
+          <span className="board-shot-failure-label" data-text-selectable>{formatBoardGenerationFailure(
+            failedJob.error, jobServiceName(failedJob), t, renderMessage)}</span>
+          {props.onRetryJob && canRetryGenerationFailure(failedJob.error) && <button type="button" className="board-shot-failure-retry" data-testid={`retry-failed-version-${failedJob.id}`}
+            disabled={props.busy || jobAction !== null || retryPending} onClick={() => { void retryGeneration(failedJob); }}>
+            <Icon name="refresh" size={12}/>{t('redesign.board.retry')}
+          </button>}
+        </section>}
+        {unknownJob && <button type="button" className="board-shot-unknown" data-testid={`unknown-generation-${unknownJob.id}`}
+          disabled={props.busy} onClick={() => props.onOpenTaskCenter?.(String(unknownJob.id))}>
+          {t('redesign.board.unknownOutcome')}
         </button>}
-      </div>
-      <div className="board-shot-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100}
-        aria-valuenow={Math.round(Number(runningJob.progress) || 0)}><span style={{width: `${Math.max(2, Math.min(100, Math.round(Number(runningJob.progress) || 0)))}%`}}/></div>
-    </section> : <>
-      {failedJob && <section className="board-shot-failure" data-testid={`failed-version-${failedJob.id}`} role="alert">
-        <span className="board-shot-failure-label" data-text-selectable>{formatBoardGenerationFailure(
-          failedJob.error, jobServiceName(failedJob), t, renderMessage)}</span>
-        {props.onRetryJob && canRetryGenerationFailure(failedJob.error) && <button type="button" className="board-shot-failure-retry" data-testid={`retry-failed-version-${failedJob.id}`}
-          disabled={props.busy || jobAction !== null || retryPending} onClick={() => { void retryGeneration(failedJob); }}>
-          <Icon name="refresh" size={12}/>{t('redesign.board.retry')}
-        </button>}
-      </section>}
-      {unknownJob && <button type="button" className="board-shot-unknown" data-testid={`unknown-generation-${unknownJob.id}`}
-        disabled={props.busy} onClick={() => props.onOpenTaskCenter?.(String(unknownJob.id))}>
-        {t('redesign.board.unknownOutcome')}
-      </button>}
-      <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
-        disabled={props.busy || !hasService || !props.onGenerateShot || Boolean(unknownJob)}
-        onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>
-        <Icon name="sparkle" size={15}/>{t('boardUi.inspector.generate')}
-      </button>
-    </>}
+        <button type="button" className="board-shot-generate" data-testid="board-inspector-generate"
+          disabled={props.busy || !hasService || !props.onGenerateShot || Boolean(unknownJob)}
+          onClick={() => { if (shot) props.onGenerateShot?.(shot.id); }}>
+          <Icon name="sparkle" size={15}/>{t('boardUi.inspector.generate')}
+        </button>
+      </>}
+    </footer>
   </div> : null;
   // A previs card owns the exact same inspector as formats 3/4 (keyframe
   // thumbnails, output links and 打开预演), including its own aside wrapper.

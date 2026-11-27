@@ -280,7 +280,10 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     setCreateIntent(value => value + 1);
   }, [enabled, props.createIntentVersion, snapshot, openingBusy, props.busy, props.phase]);
   const view = snapshot ? {kind: 'ready' as const, value: snapshot.registered}
-    : blocked || state.phase === 'error' || !catalogAvailable && props.listError ? {kind: 'error' as const, retryable: !blocked} : {kind: 'loading' as const};
+    : blocked ? {kind: 'error' as const, retryable: false}
+      : state.phase === 'loading' || props.listBusy ? {kind: 'loading' as const}
+        : state.phase === 'error' || !catalogAvailable && props.listError ? {kind: 'error' as const, retryable: true}
+          : {kind: 'loading' as const};
   const taskState = background.getState();
   const sameIdentity = snapshot && taskState.identity && taskState.identity.appLibraryScope === snapshot.appLibraryScope &&
     taskState.identity.instanceId === snapshot.instanceId && taskState.identity.epoch === verified?.epoch;
@@ -319,7 +322,8 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     onStartExample={closedExampleUnknown ? undefined : exampleAvailable ? snapshot ? () => {void nativeAction('example');} : undefined : props.onStartExample}
     onStartExampleBlocked={() => rejectNativeStart(true)}
     createIntentVersion={createIntent}
-    createDisabledReason={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.createDisabledReason || (!snapshot ? t('projects.listUnavailable') : '')}
+    createDisabledReason={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.createDisabledReason || ''}
+    createUnavailable={props.createUnavailable || !snapshot}
     renderCatalog={(emptyContent, pendingOpen) => <RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled} pendingOpen={pendingOpen}
       nativeLayout={props.nativeLayout} homeDirectory={props.homeDirectory} emptyContent={emptyContent}
       sort={preferences.preferences.homeSort} view={preferences.preferences.homeView} now={new Date()}

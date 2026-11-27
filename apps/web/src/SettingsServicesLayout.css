@@ -16,10 +16,10 @@
 .settings-services-navigation-actions > [data-slot="button"] { justify-content: center; min-height: 32px; color: var(--wb-soft); font-size: var(--wb-text-label); background: transparent; border-color: var(--wb-line-strong); }
 .settings-services-panels { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .settings-services-panel { min-width: 0; padding: 20px; }
-.settings-services-footer { display: flex; flex: none; align-items: center; gap: 12px; min-height: 48px; padding: 8px 24px; border-top: 1px solid var(--wb-line-subtle); background: var(--wb-raised); }
-.settings-services-footer-status { flex: 1; min-width: 0; color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.5; }
+.settings-services-footer { display: flex; flex: none; align-items: center; gap: 12px; min-height: var(--wb-action-bar, 48px); padding: 8px 24px; border-top: 1px solid var(--wb-line-subtle); background: var(--wb-raised); }
+.settings-services-footer-status { flex: 1; min-width: 0; display: flex; align-items: center; color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.5; }
 .settings-services-footer-actions { display: flex; flex: none; align-items: center; gap: 8px; }
-.settings-services-footer-actions > [data-slot="button"] { min-height: 28px; height: 28px; padding: 0 12px; font-size: var(--wb-text-label); }
+.settings-services-footer-actions > .wb-button { padding-inline: 12px; font-size: var(--wb-text-label); }
 .settings-center .settings-services-heading { display: none; }
 @media (max-width: 800px) { .settings-services-layout-body { grid-template-columns: 170px minmax(0, 1fr); } .settings-services-panel { padding: 16px; } }
 @media (max-width: 600px) {

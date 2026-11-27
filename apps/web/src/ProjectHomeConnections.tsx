@@ -12,9 +12,9 @@ import { settingsCategoryFor, visibleSettingsCategories } from './settings-categ
 import type { SettingsCategory as Category } from './settings-categories.ts';
 
 export type HomeConnectionSlot = SettingsConnectionPage;
-const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', models: 'sparkle', about: 'info' };
+const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', agent: 'sparkle', about: 'info' };
 const categoryIconPaths: Partial<Record<Category, ReactNode>> = {
-  agent: <><rect x="5" y="7" width="14" height="13" rx="3" /><path d="M12 3v4M2 12h3m14 0h3M9 12v2m6-2v2m-6 3h6" /></>,
+  models: <><rect width="16" height="16" x="4" y="4" rx="2" /><rect width="6" height="6" x="9" y="9" rx="1" /><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2" /></>,
   'external-agents': <><path d="m4 17 6-6-6-6" /><path d="M12 19h8" /></>,
   shortcuts: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8" /></>,
 };
