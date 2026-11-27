@@ -28,7 +28,7 @@ import {
 import type {SequenceEditingOperation} from '../../contracts/src/sequence-editing.ts';
 import {
   applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, applySubjectBindingWrite,
-  createMainTrackProjectionPort, previewMainTrackProjection, readSequenceSyncContext,
+  createMainTrackProjectionPort, FORMAT5_BOARD_DUPLICATE_OFFSET, previewMainTrackProjection, readSequenceSyncContext,
 } from './format5-sequence-sync.ts';
 import {copyFormat5ShotDialogue} from './format5-dialogue-projection.ts';
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
@@ -566,7 +566,8 @@ function boardIntentPreparation(context: EditContext, store: ProjectStore, inten
       for (const card of copyable) mapped.set(card.id, pairFor(card.id));
       const points = copyable.map(card => rowPosition(card.fields));
       const anchor = {x: Math.min(...points.map(point => point.x)), y: Math.min(...points.map(point => point.y))};
-      const offset = {x: viewport!.x + 40 - anchor.x, y: viewport!.y + 40 - anchor.y};
+      const offset = {x: viewport!.x + FORMAT5_BOARD_DUPLICATE_OFFSET - anchor.x,
+        y: viewport!.y + FORMAT5_BOARD_DUPLICATE_OFFSET - anchor.y};
       let order = [...context.rows.shots.values()].reduce((maximum, row) =>
         Math.max(maximum, Number.isSafeInteger(row.orderIndex) ? Number(row.orderIndex) : -1), -1);
       for (const card of copyable) {
