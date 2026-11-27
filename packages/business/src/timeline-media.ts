@@ -155,6 +155,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   if(item.kind==='image')validateTimelineImageSourceInterpretation({source:clip?.colour?.source,evidence:asset?.colourImageEvidence,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex} as never);
   else validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex} as never);}
  const delivery=snapshot.delivery,plan=speed?.segments??planTimelineExportRange(transitionPlanSnapshot({timeline,...timelineExportRangeFields(snapshot)},transitions)),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
+ // MOV/MP4 edit lists use the movie clock. Millisecond ticks cannot represent
+ // every 30 fps boundary and can shorten the 48 kHz audio presentation.
+ const movieClockArgs=speed?['-movie_timescale','48000']:[];
  // Never trust an earlier capability report as an admission token. Legacy and
  // omitted-settings snapshots keep their original no-probe rendering path.
  if([...clipPlacements.values()].some(placement=>placement.transform?.animated)){await assertTimelineTransformCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
@@ -295,7 +298,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    const filterArgs=['-filter_complex',filters.join(';')];
    if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,segmentSignal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,segmentSignal);filterArgs.splice(0,2,'-/filter_complex',script);}
    const videoArgs=delivery?timelineExportVideoArgs(delivery as never):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
-   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked||speed?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
+   args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked||speed?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2',...movieClockArgs,'-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
    const release=await pool.acquire(segmentSignal,encoderOwner);
    try{
@@ -348,7 +351,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   // it in beforeEffect. Only that owned empty output may be overwritten.
   const concatRelease=await pool.acquire(signal,encoderOwner);
   try{
-   await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2','-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
+   await run('ffmpeg',['-hide_banner','-loglevel','error',owned?'-y':'-n','-f','concat','-safe','0','-i',list,'-map','0:v:0','-map','0:a:0','-c:v','copy',...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-video_track_timescale','30000','-af',floatChecked?'asetpts=N/SR/TB':`apad,atrim=end_sample=${plan.outputFrames*SAMPLES_PER_FRAME},asetpts=N/SR/TB`,'-c:a','aac','-b:a','128k','-ar','48000','-ac','2',...movieClockArgs,'-t',seconds(plan.outputFrames),'-movflags','+faststart',destination],{timeout:300000,signal,beforeEffect:effect});
   }finally{concatRelease();}
   checkMediaEffect(effect,signal);
   const result=await probe(destination,{signal,beforeEffect:effect}),v=result.probe.streams.find(s=>s.codec_type==='video'),a=result.probe.streams.find(s=>s.codec_type==='audio');
@@ -361,6 +364,8 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    ||!String(result.probe.format?.format_name).split(',').includes('mp4')))throw Error('Rendered timeline failed delivery-profile verification');
   validateTimelineExportRangeOutputStart(plan as never,result.probe as never);
   if(speed){
+   if(Number(a?.duration_ts)!==plan.outputFrames*SAMPLES_PER_FRAME)
+    throw speedExportMappingError(undefined, 'OUTPUT_AUDIO_DURATION_MISMATCH');
    const timestamps=await withProbePermit(signal,()=>run('ffprobe',['-v','error','-select_streams','v:0',
     '-show_entries','packet=pts','-of','csv=p=0',destination],{signal,beforeEffect:effect,maxStdoutBytes:512*1024}));
    const points=timestamps.trimEnd().split('\n');

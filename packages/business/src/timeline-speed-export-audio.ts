@@ -92,10 +92,15 @@ function ceilRatio(numerator: bigint, denominator: bigint): number {
   return rounded;
 }
 
-function sampleBoundary(boundary: TimeMapSourceBoundary): number {
-  const numerator = BigInt(boundary.kind === 'rational' ? boundary.numerator : boundary.ticks);
+function sampleBoundaryFraction(boundary: TimeMapSourceBoundary) {
+  const numerator = BigInt(boundary.kind === 'rational' ? boundary.numerator : boundary.ticks) * BigInt(samplesPerFrame);
   const denominator = boundary.kind === 'rational' ? BigInt(boundary.denominator) : 1n << 64n;
-  return ceilRatio(numerator * BigInt(samplesPerFrame), denominator);
+  return {numerator, denominator};
+}
+
+function sampleBoundary(boundary: TimeMapSourceBoundary): number {
+  const {numerator, denominator} = sampleBoundaryFraction(boundary);
+  return ceilRatio(numerator, denominator);
 }
 
 function motionLength(plan: CompiledTimeMap,
@@ -264,10 +269,11 @@ function interpolate(p0: number, p1: number, p2: number, p3: number, phase: numb
     phase * (-p0 + 3 * p1 - 3 * p2 + p3))));
 }
 
-function pcmReadWindow(window: SampleWindow, localPosition: (sample: number) => number, from: number, to: number): SampleWindow {
+function pcmReadWindow(window: SampleWindow, positionEnd: number, localPosition: (sample: number) => number,
+  from: number, to: number): SampleWindow {
   const first = localPosition(from), last = localPosition(to - 1);
   if (!Number.isFinite(first) || !Number.isFinite(last) || first > last ||
-      first < window.start - 1 || last > window.end) throw invalid('PCM_CLOCK_ORDER');
+      first < window.start - 1 || last > positionEnd) throw invalid('PCM_CLOCK_ORDER');
   const start = Math.max(window.start, Math.min(window.end - 1, Math.floor(first) - 1));
   return {start, end: Math.max(start + 1, Math.min(window.end, Math.floor(last) + 3))};
 }
@@ -279,10 +285,18 @@ function pitchShiftClock(plan: CompiledTimeMap, timing: Extract<ClipTiming, {pro
     speed.kind === 'curve' ? speed.points : []);
   const localPosition = reverseEnd === undefined ? position : (sample: number) => reverseEnd - position(sample);
   const range = plan.root.sourceRange;
-  const start = sampleBoundary(range.start), end = sampleBoundary(range.end);
+  const startFraction = sampleBoundaryFraction(range.start);
+  const start = ceilRatio(startFraction.numerator, startFraction.denominator), end = sampleBoundary(range.end);
   if (start >= end) throw invalid('EMPTY_SOURCE_PCM');
   const bounds = reverseEnd === undefined ? {start, end} : {start: reverseEnd - end, end: reverseEnd - start};
-  return {window: pcmReadWindow(bounds, localPosition, from, to), localPosition};
+  // The integer PCM span is half-open and starts at ceil(sourceStart).
+  // Reversing it places the continuous end at reverseEnd - sourceStart,
+  // slightly beyond the integer end for a fractional cut. The taps remain
+  // clamped to the integer span. Only allow that exact phase and roundoff.
+  const phase = reverseEnd === undefined ? 0
+    : Number(BigInt(start) * startFraction.denominator - startFraction.numerator) / Number(startFraction.denominator);
+  const roundoff = reverseEnd === undefined ? 0 : 8 * Number.EPSILON * Math.max(1, start, reverseEnd);
+  return {window: pcmReadWindow(bounds, bounds.end + phase + roundoff, localPosition, from, to), localPosition};
 }
 
 function tempoSourceWindow(plan: CompiledTimeMap, timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>,
