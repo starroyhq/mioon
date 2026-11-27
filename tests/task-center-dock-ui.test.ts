@@ -75,6 +75,27 @@ test('actual TaskCenter renders an inline named dock with keyboard-scrollable bo
   assert.match(rendered.hidden, /exact-original-request-2/);
 });
 
+test('TaskCenter lists speed processing with the existing status filters and opens a task by its ID', () => {
+  const h = harness();
+  const running = {key: `processing:${id(70)}`, label: '倒放代理', status: '处理中', active: true, warning: false, progress: 42};
+  const failed = {key: `processing:${id(71)}`, label: '光流补帧', status: '失败', active: false, warning: true,
+    reason: '当前补帧方式不可用'};
+  const ready = {key: `processing:${id(72)}`, label: '变速预览', status: '已完成', active: false, warning: false};
+  const props = {activeCount: 1, processing: [running, failed, ready], selectedTaskId: failed.key};
+  let tree = h.render(props);
+  for (const row of props.processing) assert.ok(find(tree, `task-select-${row.key}`));
+  assert.match(text(find(tree, 'task-detail-summary')), new RegExp(id(71)));
+  assert.ok(nodes(tree).some(node => node.props['data-task-detail-key'] === failed.key &&
+    node.props.hidden === false && text(node).includes(failed.reason)));
+  find(tree, 'task-filter-active')!.props.onClick();
+  tree = h.render(props);
+  assert.ok(find(tree, `task-select-${running.key}`));
+  assert.equal(find(tree, `task-select-${failed.key}`), undefined);
+  assert.equal(find(tree, `task-select-${ready.key}`), undefined);
+  assert.ok(nodes(tree).some(node => node.type === 'WorkbenchProgress' && node.props.value === 42));
+  h.unmount();
+});
+
 // Render the real TaskCenter, TSX hook/shell, durable and pending cards. Hook
 // slots model commit/cleanup so retained handlers can be invoked after hiding.
 function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {

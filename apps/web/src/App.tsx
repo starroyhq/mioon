@@ -212,14 +212,13 @@ import EditUiNoticeBar, {EditUiUnknownBar} from './edit-ui/EditUiNotice.tsx';
 import TimelineClipContextMenu from './TimelineClipContextMenu.tsx';
 import ClipSpeedSection from './speed-ui/ClipSpeedSection.tsx';
 import {buildSpeedProcessingTaskCenterEntries} from './speed-ui/SpeedProcessingTaskCard.tsx';
-import {buildSpeedProcessingOverviewItems, buildTimelineClipSpeedViews} from './speed-ui/speed-presentation.ts';
+import {buildTimelineClipSpeedViews} from './speed-ui/speed-presentation.ts';
 import {
   DEFAULT_FREEZE_DURATION_FRAMES,
   buildClipSpeedIntent,
   buildFreezeFrameIntent,
   canFreezeClipAtPlayhead,
   clipSupportsSpeed,
-  processingItemActive,
   selectClipProcessingItem,
   settingFromClip,
   speedPreviewErrorKey,
@@ -281,6 +280,7 @@ import { sceneTime } from './scene-cuts.ts';
 import AssetSceneSummary from './AssetSceneSummary.tsx';
 import { sceneOverviewItems } from './scene-task-views.ts';
 import { sceneTaskCenterEntries } from './SceneTaskCard.tsx';
+import { speedProcessingOverviewItems, speedProcessingTaskViews } from './timeline-processing-tasks.ts';
 import { useSourceRange } from './use-source-range.ts';
 import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.ts';
 import { Media, nodeTypes } from './Nodes.tsx';
@@ -4652,6 +4652,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onRetry: (task: SceneShotsTask) => { void retryStoryboard(task); },
     onView: (task: SceneShotsTask) => { setShowTasks(false); void showStoryboard(task.id); } };
   const sceneTasks = scenes.state.tasks;
+  const processingTasks = speedProcessingTaskViews(speedEnabled ? speedProcessing.items : [], timeline?.clips ?? [], t);
   const sceneSummary = (asset: AppAsset | null | undefined) => asset ? <AssetSceneSummary asset={asset} state={scenes.state} controller={scenes.controller} onOpen={() => openSceneDetection(asset, false)} /> : null;
   const storyboardTask = storyboardBatch && storyboardBatch.projectId === data.project?.id ? sceneTasks.find((task): task is SceneShotsTask => task.id === storyboardBatch.taskId && task.kind === 'shots') ?? null : null;
   const storyboardShown = Boolean(storyboardTask?.state === 'succeeded' && workspaceMode === 'canvas');
@@ -4790,8 +4791,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // while they are queued/running.
   const clipAudioExports = data.exports.filter(item => item.mode === 'clip-audio');
   const activeClipAudioCount = clipAudioExports.filter(item => ['queued', 'running'].includes(item.status)).length;
-  const activeSpeedProcessingCount = speedEnabled ? speedProcessing.items.filter(processingItemActive).length : 0;
-  const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activeSpeedProcessingCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
+  const runningTaskCount = activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length +
+    processingTasks.filter(task => task.active).length;
+  const taskCount = runningTaskCount + activePending.length + activeTasks.length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
   const orderedExports = [...data.exports].filter(item => item.mode !== 'clip-audio').sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
   const saveIsDirty=Boolean(inspectorDirty||formatDirty||annotations.state?.dirtyCount);
@@ -5472,15 +5474,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onChoose={choice => {void resolveWebFormatUpgrade(upgrade, choice);}} />) : null;
   const videoDirectoryNotice = videoDirectoryUnavailable ? <p className="notice warning" role="status" data-testid="video-directory-unavailable">{t('video.providers.directoryUnavailableHint')}</p> : null;
   if (!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{webSettingsCenter}{historyRecoveryLayer}{historyLayer}{formatUpgradeLayer}<ProjectHome summaryEnabled={true} active={!webSettingsOpen && !formatUpgradeLayer} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} readDirectory={input => readProjectEntryIdentity(projectEntryIdentityRef.current!, input)} help={<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} />} status={backupRecovery || videoDirectoryNotice ? <>{backupRecovery}{videoDirectoryNotice}</> : null} settings={null} /></>;
-  const speedTaskCenterEntries = buildSpeedProcessingTaskCenterEntries({
+  const speedTaskCenterEntries = new Map(buildSpeedProcessingTaskCenterEntries({
     enabled: speedEnabled,
-    items: speedProcessing.items,
+    items: speedProcessing.items.filter(item => item.kind !== 'preview'),
     busyTaskIds: speedProcessing.busyTaskIds,
     clipNameFor: clipId => format5ClipName(clipId),
     t: t as never,
     onRetry: taskId => { void speedProcessing.retry(taskId); },
     onCancel: taskId => { void speedProcessing.cancel(taskId); },
-  });
+  }).map(item => [item.key.replace(/^speed:/u, 'processing:'), item.detail] as const));
+  const taskCenterProcessing = processingTasks.map(item => ({...item, detail: speedTaskCenterEntries.get(item.key)}));
   return <ProjectMediaProvider media={projectMedia}>{webSettingsCenter}{retainWorkbenchForIdentity && <div className="notice warning" role="alert" data-testid="project-entry-identity-blocked">{t('projects.locatorKeepWindow')}</div>}<main inert={retainWorkbenchForIdentity || undefined} className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style as never}>
     {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     {nativeLeaseRevoked.current&&<div className="notice warning" role="status" data-testid="native-project-lease-revoked"><p>{t('shell.projectLeaseRevoked')}</p></div>}
@@ -5500,14 +5503,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         ...activeTasks.filter(item=>!item.acknowledged).map(item=>({id:`local:${item.id}`,label:t('shell.tasks'),status:renderMessage(statusDescriptor(item.status)),phase:'attention',tone:'warning'})),
         ...activePending.map(item=>({id:`pending:${item.origin||'legacy'}:${item.key}`,label:t('shell.tasks'),status:t('redesign.tasks.unknownHint'),phase:'attention',tone:'warning'})),
         ...sceneOverviewItems(sceneTasks, sceneTaskContext),
-        ...buildSpeedProcessingOverviewItems({
-          enabled: speedEnabled,
-          items: speedProcessing.items,
-          clipNameFor: clipId => format5ClipName(clipId),
-          t: t as never,
-          onCancel: taskId => { void speedProcessing.cancel(taskId); },
-          onRetry: taskId => { void speedProcessing.retry(taskId); },
-        }),
+        ...speedProcessingOverviewItems(processingTasks),
       ] as never} onOpenTasks={id => { openTasks(undefined, id); }} />
       <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" onClick={event => openGlobalSettings('agent', event?.nativeEvent)}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={event => openGlobalSettings('general', event?.nativeEvent)}><WorkbenchIcon name="settings" size={16} /></Button>
@@ -5704,7 +5700,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
     />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
-    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} speedProcessing={speedTaskCenterEntries} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + activeSpeedProcessingCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
+    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} processing={taskCenterProcessing} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={runningTaskCount} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {!nativeWindow && showCreate && <CreateProject newProjectFormatVersion={projectEntryIdentityRef.current!.getState().snapshot?.newProjectFormatVersion} onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}

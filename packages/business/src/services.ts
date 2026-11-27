@@ -148,7 +148,7 @@ export interface ServiceApplicationPorts {
 }
 export interface CreateServicesOptions {
  deferBackgroundRecovery?: boolean;
- processing?: Pick<ProcessingServiceOptions, 'enabled' | 'cache' | 'scheduler'>;
+ processing?: Pick<ProcessingServiceOptions, 'enabled' | 'cache' | 'scheduler' | 'previewRenderer'>;
  application?: ServiceApplicationPorts;
  videoSettings?: VideoGenerationSettings;
  videoFetch?: typeof fetch;
@@ -181,6 +181,7 @@ type GenerationResultProvider=Pick<Provider,'capabilities'|'poll'|'download'> & 
 export interface OrdinaryServices {
  activateBackground: ()=>void;
  readonly timelineProcessingEnabled: boolean;
+ readonly timelineProcessing?: Pick<ReturnType<typeof createTimelineProcessingService>, 'preview' | 'reverseProxy'>;
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
@@ -273,7 +274,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,reverseProxy,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,reverseProxy: injectedReverseProxy,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false,processing: processingOptions}: CreateServicesOptions={}): OrdinaryServices {
  assertProjectStore(inputStore);
  const store = inputStore;
  const backgroundTasks=createProjectBackgroundState(store);
@@ -293,6 +294,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...processingOptions, ...(ownerSignal ? {ownerSignal} : {}),
   beforeEffect: () => {assertApplicationMutationAllowed(); assertMutationAllowed?.();},
  }) : undefined;
+ const reverseProxy = injectedReverseProxy ?? processing?.reverseProxy;
  const opticalProxy = processing?.opticalProxy;
  const configurationHandlers={
   'workspace.settings.get':()=>configuration.get(),
@@ -1258,5 +1260,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,...(reverseProxy?{reverseProxy}:{}),...(opticalProxy?{opticalProxy}:{}),saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,get timelineProcessingEnabled(){return processing?.enabled()??false;},
+  ...(processing ? {timelineProcessing: {preview: processing.preview, reverseProxy: processing.reverseProxy}} : {}),
+  compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,...(reverseProxy?{reverseProxy}:{}),...(opticalProxy?{opticalProxy}:{}),saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

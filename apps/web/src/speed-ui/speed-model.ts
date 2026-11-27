@@ -126,7 +126,7 @@ export function canFreezeClipAtPlayhead(
 export function clipNeedsSpeedProcessing(clip: SpeedClipLike | null | undefined): boolean {
   const timing = clipTimingOf(clip);
   if (!timing || timing.profile !== 'timeline-speed-v1') return false;
-  return timing.view.direction === 'reverse' || timing.interpolation === 'optical';
+  return timing.view.direction === 'reverse' || timing.interpolation === 'optical' || timing.basis.speed.kind === 'curve';
 }
 
 // ---------------------------------------------------------------------------

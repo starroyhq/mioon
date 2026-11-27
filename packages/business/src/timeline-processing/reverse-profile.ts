@@ -1,14 +1,20 @@
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import type {TimeMapSourceWindow, TimeMapTimebase} from '../../../contracts/src/timeline-time-map.ts';
-import {TIMELINE_TIME_MAP_LIMITS} from '../../../contracts/src/timeline-time-map.ts';
+import type {ClipTiming} from '../../../contracts/src/timeline-speed.ts';
+import type {CompiledTimeMap, TimeMapSourceBoundary, TimeMapSourceWindow, TimeMapTimebase} from '../../../contracts/src/timeline-time-map.ts';
+import {restoreTimeMap, timeMapRootInfo, timeMapSourceRangeForEdit, timeMapSourceWindowForOutput, TIMELINE_TIME_MAP_LIMITS} from '../../../contracts/src/timeline-time-map.ts';
 import {checkMediaEffect, run} from '../media-runtime.ts';
 import {withProbePermit} from '../media-probe.ts';
 import {MANAGED_FILE_IO_LIMITS} from '../managed-file-io.ts';
+import {PROCESSING_CACHE_LIMIT_BYTES} from './cache.ts';
 import {reverseError, runReverseTool} from './reverse-io.ts';
 import type {ReverseProxyMediaOptions} from './reverse-io.ts';
 
 export const REVERSE_PROXY_PROFILE = 'timeline-reverse-source-v1' as const;
+export const REVERSE_PROXY_COVERAGE_VERSION = 2 as const;
+export const REVERSE_PROXY_RESERVATION_STEP = 64 * 1024 ** 2;
+const exportAudioRate = 48_000;
+const exportSamplesPerFrame = exportAudioRate / 30;
 const mib = 1024 ** 2;
 // Decoders get one thread and restricted frame dimensions. Interframe codecs
 // may hold a decoded-picture buffer; FFV1 encodes only four slices in parallel.
@@ -25,6 +31,9 @@ type ColourKey = keyof typeof colorOptions;
 type VideoColour = Readonly<Partial<Record<ColourKey, string>>>;
 interface Rational { readonly numerator: number; readonly denominator: number }
 
+/** Half-open bounds on the original, forward 48 kHz source clock. */
+export interface ReverseProxyAudioCoverage { readonly fromSample: number; readonly toSample: number }
+
 export interface ReverseProxyInput {
   readonly sourcePath: string;
   readonly sourceSha256: string;
@@ -34,6 +43,9 @@ export interface ReverseProxyInput {
   readonly media: 'video' | 'audio';
   readonly videoStreamIndex?: number;
   readonly audioStreamIndex?: number;
+  readonly audioWindow?: ReverseProxyAudioCoverage;
+  /** An approved union of visible picture and transition handle windows. */
+  readonly pictureWindow?: TimeMapSourceWindow;
 }
 
 export interface VideoProfile {
@@ -59,6 +71,7 @@ interface AudioProfile {
 }
 export interface ReverseProxyProfile {
   readonly id: typeof REVERSE_PROXY_PROFILE;
+  readonly coverageVersion: typeof REVERSE_PROXY_COVERAGE_VERSION;
   readonly buildSha256: string;
   readonly storage: 'matroska' | 'raw';
   readonly video: VideoProfile | null;
@@ -76,6 +89,16 @@ interface ReverseVideoPlan {
   readonly chunks: readonly ReverseVideoChunk[];
   readonly frameCount: number;
   readonly endOfStream: number;
+  readonly firstSourceOrdinal: number;
+  readonly sourceZeroPts: number;
+  readonly endSourcePts: number;
+}
+interface AudioSourceZero {readonly streamIndex: number; readonly pts: string; readonly timeBase: Rational}
+interface ReverseAudioPlan {
+  readonly startSample: number;
+  readonly sampleCount: number;
+  readonly sourceCoverage: ReverseProxyAudioCoverage;
+  readonly sourceZero: AudioSourceZero;
 }
 export interface SourceVideoPlan {
   readonly input: Pick<ReverseProxyInput, 'sourcePath'>;
@@ -83,13 +106,13 @@ export interface SourceVideoPlan {
   readonly originUs: number;
   readonly video: Pick<ReverseVideoPlan, 'frames'>;
 }
-interface ReverseAudioPlan {readonly startSample: number; readonly sampleCount: number}
 interface PreparedState {
   readonly input: ReverseProxyInput;
   readonly container: string;
   readonly originUs: number;
   readonly video: ReverseVideoPlan | null;
   readonly audio: ReverseAudioPlan | null;
+  readonly scratchBytes: number;
   readonly outputBytesLimit: number;
 }
 
@@ -106,21 +129,33 @@ const interCodecs = ['h264', 'hevc', 'vp8', 'vp9', 'av1', 'mpeg4'];
 const isIndex = (index: unknown): index is number => typeof index === 'number' && Number.isInteger(index) && index >= 0 && index <= 255;
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
+function snapshotWindow(w: TimeMapSourceWindow): TimeMapSourceWindow {
+  if (!w || w.direction !== 'reverse' || ![w.startFrame, w.endFrame, w.outputFromFrame, w.outputToFrame].every(Number.isSafeInteger) ||
+      w.startFrame < 0 || w.endFrame <= w.startFrame || w.outputFromFrame < 0 || w.outputToFrame <= w.outputFromFrame ||
+      w.frameCount !== w.endFrame - w.startFrame || w.frameCount > TIMELINE_TIME_MAP_LIMITS.maxSourceFrames) return unsupported();
+  return Object.freeze({startFrame: w.startFrame, endFrame: w.endFrame, frameCount: w.frameCount, direction: 'reverse',
+    outputFromFrame: w.outputFromFrame, outputToFrame: w.outputToFrame});
+}
+
 function snapshot(input: ReverseProxyInput): ReverseProxyInput {
   if (typeof input.sourcePath !== 'string' || !path.isAbsolute(input.sourcePath) || input.sourcePath.includes('\0') ||
       !hash.test(input.sourceSha256) || !timeMapHash.test(input.mapHash) || !['video', 'audio'].includes(input.media)) unsupported();
-  const w = input.sourceWindow, fps = input.sourceFps;
-  if (!w || !fps || w.direction !== 'reverse' || ![w.startFrame, w.endFrame, w.outputFromFrame, w.outputToFrame].every(Number.isSafeInteger) ||
-      w.startFrame < 0 || w.endFrame <= w.startFrame || w.outputFromFrame < 0 || w.outputToFrame <= w.outputFromFrame ||
-      w.frameCount !== w.endFrame - w.startFrame || w.frameCount > TIMELINE_TIME_MAP_LIMITS.maxSourceFrames ||
+  const fps = input.sourceFps, audio = input.audioWindow;
+  const sourceWindow = snapshotWindow(input.sourceWindow);
+  const pictureWindow = input.pictureWindow === undefined ? null : snapshotWindow(input.pictureWindow);
+  if (!fps ||
       ![fps.fpsNumerator, fps.fpsDenominator].every(n => Number.isInteger(n) && n > 0 && n <= 1_000_000) ||
       (input.videoStreamIndex !== undefined && !isIndex(input.videoStreamIndex)) ||
       (input.audioStreamIndex !== undefined && !isIndex(input.audioStreamIndex))) unsupported();
+  if (audio !== undefined && (!audio || ![audio.fromSample, audio.toSample].every(Number.isSafeInteger) ||
+      audio.fromSample < 0 || audio.toSample <= audio.fromSample)) unsupported();
+  if (pictureWindow && (input.media !== 'video' || pictureWindow.startFrame > sourceWindow.startFrame ||
+      pictureWindow.endFrame < sourceWindow.endFrame)) unsupported();
   return Object.freeze({sourcePath: input.sourcePath, sourceSha256: input.sourceSha256, mapHash: input.mapHash, media: input.media,
-    sourceWindow: Object.freeze({startFrame: w.startFrame, endFrame: w.endFrame, frameCount: w.frameCount, direction: 'reverse',
-      outputFromFrame: w.outputFromFrame, outputToFrame: w.outputToFrame}),
-    sourceFps: Object.freeze({fpsNumerator: fps.fpsNumerator, fpsDenominator: fps.fpsDenominator}),
-    videoStreamIndex: input.videoStreamIndex, audioStreamIndex: input.audioStreamIndex});
+    sourceWindow, sourceFps: Object.freeze({fpsNumerator: fps.fpsNumerator, fpsDenominator: fps.fpsDenominator}),
+    videoStreamIndex: input.videoStreamIndex, audioStreamIndex: input.audioStreamIndex,
+    ...(audio ? {audioWindow: Object.freeze({fromSample: audio.fromSample, toSample: audio.toSample})} : {}),
+    ...(pictureWindow ? {pictureWindow} : {})});
 }
 
 export function reversePreparedState(input: ReverseProxyInput, prepared: PreparedReverseProxy): PreparedState {
@@ -206,17 +241,46 @@ function makeVideo(stream: Record<string, unknown>): VideoProfile {
     colour: Object.freeze(colour), threads: pixelFormat === 'gbrap16le' ? 4 : 1, encoderAllocationBytes});
 }
 
-function makeAudio(stream: Record<string, unknown>, originUs: number): AudioProfile {
+async function firstDecodedTimestamp(stream: Record<string, unknown>, input: ReverseProxyInput, container: string,
+  options: ReverseProxyMediaOptions): Promise<AudioSourceZero> {
+  const index = stream.index, timeBase = rational(stream.time_base);
+  if (!isIndex(index)) return unsupported();
+  const text = await withProbePermit(options.signal, () => run('ffprobe', [
+    '-v', 'error', '-threads', '1', '-max_alloc', String(128 * mib), '-max_pixels', String(REVERSE_PROXY_LIMITS.maxPixels),
+    '-select_streams', String(index), '-read_intervals', '%+#512', '-show_frames',
+    '-show_entries', 'frame=pts,best_effort_timestamp', '-of', 'json', ...reverseLocalInput(input.sourcePath, container),
+  ], {...options, beforeSpawn: options.beforeEffect, maxStdoutBytes: 128 * 1024, timeout: 15_000}));
+  let data: unknown;
+  try {data = JSON.parse(text);} catch {return unsupported();}
+  const first = isRecord(data) && Array.isArray(data.frames) ? data.frames[0] : null;
+  if (!isRecord(first)) return unsupported();
+  const pts = asInteger(first.pts);
+  if (pts === null || asInteger(first.best_effort_timestamp) !== pts) return unsupported();
+  return Object.freeze({streamIndex: index, pts: String(pts), timeBase});
+}
+
+function timestampSample(timestamp: AudioSourceZero, rate: number): number {
+  const {numerator, denominator} = timestamp.timeBase;
+  const scaled = BigInt(timestamp.pts) * BigInt(numerator) * BigInt(rate), divisor = BigInt(denominator);
+  const sign = scaled < 0n ? -1n : 1n;
+  return safeNumber(sign * ((2n * sign * scaled + divisor) / (2n * divisor)));
+}
+
+async function makeAudio(stream: Record<string, unknown>, picture: Record<string, unknown> | undefined,
+  input: ReverseProxyInput, container: string, options: ReverseProxyMediaOptions):
+  Promise<{profile: AudioProfile; plan: ReverseAudioPlan}> {
   const index = stream.index, codec = stream.codec_name, rate = asInteger(stream.sample_rate), channels = asInteger(stream.channels);
   if (!isIndex(index) || typeof codec !== 'string' || !name.test(codec) || !rate || rate < 8000 || rate > 192000 || !channels || channels < 1 || channels > 8) return unsupported();
   const layout = stream.channel_layout && stream.channel_layout !== 'unknown' ? stream.channel_layout : channels === 1 ? 'mono' : channels === 2 ? 'stereo' : null;
   if (typeof layout !== 'string' || !/^[a-zA-Z0-9_ .()+-]{1,64}$/.test(layout)) return unsupported();
-  const pts = asInteger(stream.start_pts);
-  const timeBase = rational(stream.time_base);
-  const seconds = pts === null ? timeUs(stream.start_time) / 1_000_000 : pts * timeBase.numerator / timeBase.denominator;
-  const firstMediaSample = Math.round((seconds - originUs / 1_000_000) * rate);
-  if (!Number.isSafeInteger(firstMediaSample)) unsupported();
-  return Object.freeze({index, codec, rate, channels, layout, firstMediaSample});
+  const audioStart = await firstDecodedTimestamp(stream, input, container, options);
+  // Match SP-E: the source clock starts at the first decoded picture, or at
+  // the first decoded audio sample when the source has no picture stream.
+  const sourceZero = picture ? await firstDecodedTimestamp(picture, input, container, options) : audioStart;
+  const firstMediaSample = timestampSample(audioStart, rate) - timestampSample(sourceZero, rate);
+  if (!Number.isSafeInteger(firstMediaSample)) return unsupported();
+  return {profile: Object.freeze({index, codec, rate, channels, layout, firstMediaSample}),
+    plan: audioPlan(input, sourceZero, rate)};
 }
 
 export async function reverseProbe(file: string, options: ReverseProxyMediaOptions, container?: string): Promise<{format: Record<string, unknown>; streams: Record<string, unknown>[]}> {
@@ -235,21 +299,93 @@ function floorRatio(n: bigint, d: bigint): bigint {
   const quotient = n / d;
   return n < 0n && n % d !== 0n ? quotient - 1n : quotient;
 }
+const ceilRatio = (n: bigint, d: bigint): bigint => -floorRatio(-n, d);
 function safeNumber(value: bigint): number {
   const number = Number(value);
   return Number.isSafeInteger(number) ? number : unsupported();
 }
-function frameClock(frame: number, fps: TimeMapTimebase, originUs: number): [bigint, bigint] {
-  return [BigInt(originUs) * BigInt(fps.fpsNumerator) + BigInt(frame) * 1_000_000n * BigInt(fps.fpsDenominator), 1_000_000n * BigInt(fps.fpsNumerator)];
+function tickBound(frame: number, fps: TimeMapTimebase, timeBase: Rational, mode: 'floor' | 'ceil'): number {
+  const num = BigInt(frame) * BigInt(fps.fpsDenominator) * BigInt(timeBase.denominator);
+  const den = BigInt(fps.fpsNumerator) * BigInt(timeBase.numerator);
+  return safeNumber(mode === 'floor' ? floorRatio(num, den) : ceilRatio(num, den));
 }
-function tickBound(frame: number, fps: TimeMapTimebase, timeBase: Rational, originUs: number, mode: 'floor' | 'ceil'): number {
-  const [n, d] = frameClock(frame, fps, originUs);
-  const num = n * BigInt(timeBase.denominator), den = d * BigInt(timeBase.numerator);
-  return safeNumber(mode === 'floor' ? floorRatio(num, den) : -floorRatio(-num, den));
+
+function sourceSampleBoundary(boundary: TimeMapSourceBoundary): number {
+  const numerator = BigInt(boundary.kind === 'rational' ? boundary.numerator : boundary.ticks);
+  const denominator = boundary.kind === 'rational' ? BigInt(boundary.denominator) : 1n << 64n;
+  return safeNumber(ceilRatio(numerator * BigInt(exportSamplesPerFrame), denominator));
 }
-function sampleBound(frame: number, fps: TimeMapTimebase, rate: number): number {
-  const [n, d] = frameClock(frame, fps, 0);
-  return safeNumber(floorRatio(n * BigInt(rate), d));
+
+function tempoAudioCoverage(plan: CompiledTimeMap, timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}>): ReverseProxyAudioCoverage | undefined {
+  const {rootLength} = timeMapRootInfo(plan.root);
+  if (rootLength.kind !== 'exact') return unsupported();
+  const {loTime, hiTime} = timing.view;
+  const samples = BigInt(exportSamplesPerFrame);
+  const offset = BigInt(hiTime.offsetOutputFrames - loTime.offsetOutputFrames);
+  const span = loTime.anchor === hiTime.anchor ? 0n : hiTime.anchor === 'end' ? 1n : -1n;
+  const divisor = BigInt(rootLength.denominator);
+  const count = ceilRatio((span * BigInt(rootLength.numerator) + offset * divisor) * samples, divisor);
+  if (count <= BigInt(plan.outputWindow.fromFrame) * samples) return;
+  const complete = restoreTimeMap(plan.root, {...timing.view,
+    outputWindow: {fromFrame: 0, toFrame: safeNumber(ceilRatio(count, samples))}});
+  if (!complete.ok) return unsupported();
+  const range = timeMapSourceRangeForEdit(complete.value);
+  if (!range.ok) return unsupported();
+  return {fromSample: sourceSampleBoundary(range.value.start), toSample: sourceSampleBoundary(range.value.end)};
+}
+
+function interpolationAudioCoverage(plan: CompiledTimeMap): ReverseProxyAudioCoverage {
+  const range = timeMapSourceRangeForEdit(plan);
+  if (!range.ok) return unsupported();
+  const {start, end} = plan.root.sourceRange;
+  // SP-E uses [floor(xFirst) - 1, floor(xLast) + 3) for cubic interpolation
+  // in reversed PCM coordinates. Converting back flips the margins. Allow
+  // one extra sample for its sub-sample inverse approximation at a boundary.
+  return {fromSample: Math.max(sourceSampleBoundary(start), sourceSampleBoundary(range.value.start) - 4),
+    toSample: Math.min(sourceSampleBoundary(end), sourceSampleBoundary(range.value.end) + 2)};
+}
+
+/** The continuous audio read can extend beyond the last discrete video frame.
+ * Pitch-preserving 2–4× also needs the complete motion view for tempo history. */
+export function reverseAudioCoverage(plan: CompiledTimeMap, timing: ClipTiming): ReverseProxyAudioCoverage | undefined {
+  if (timing.profile !== 'timeline-speed-v1' || plan.direction !== 'reverse') return;
+  const {sourceFps, outputFps} = plan.root;
+  if ([sourceFps, outputFps].some(fps => fps.fpsNumerator !== 30 || fps.fpsDenominator !== 1)) return unsupported();
+  const speed = timing.basis.speed;
+  const tempo = !timing.pitchShift && speed.kind === 'constant' && speed.rate.numerator >= 2 * speed.rate.denominator &&
+    speed.rate.numerator <= 4 * speed.rate.denominator;
+  const coverage = tempo ? tempoAudioCoverage(plan, timing) : interpolationAudioCoverage(plan);
+  if (!coverage) return;
+  const {fromSample, toSample} = coverage;
+  if (fromSample < 0 || fromSample >= toSample) return unsupported();
+  const visible = timeMapSourceWindowForOutput(plan);
+  if (!visible.ok) return unsupported();
+  if (fromSample >= visible.value.startFrame * exportSamplesPerFrame && toSample <= visible.value.endFrame * exportSamplesPerFrame) return;
+  return Object.freeze({fromSample, toSample});
+}
+
+function commonDivisor(a: number, b: number): number {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+
+function audioPlan(input: ReverseProxyInput, sourceZero: AudioSourceZero, rate: number): ReverseAudioPlan {
+  const {startFrame, endFrame} = input.sourceWindow;
+  const {fpsNumerator, fpsDenominator} = input.sourceFps;
+  const [exportGridNumerator, exportGridDenominator] = [BigInt(exportAudioRate) * BigInt(fpsDenominator), BigInt(fpsNumerator)];
+  const start = floorRatio(BigInt(startFrame) * exportGridNumerator, exportGridDenominator);
+  const end = ceilRatio(BigInt(endFrame) * exportGridNumerator, exportGridDenominator);
+  const extra = input.audioWindow;
+  const first = extra ? BigInt(extra.fromSample) : start;
+  const last = extra ? BigInt(extra.toSample) : end;
+  // Outward alignment makes each endpoint exactly representable in both the
+  // native PCM and export clocks, including raw fallback at 44.1 kHz.
+  const divisor = commonDivisor(exportAudioRate, rate);
+  const exportStep = BigInt(exportAudioRate / divisor), nativeStep = BigInt(rate / divisor);
+  const from = floorRatio(start < first ? start : first, exportStep);
+  const to = ceilRatio(end > last ? end : last, exportStep);
+  return Object.freeze({startSample: safeNumber(from * nativeStep), sampleCount: safeNumber((to - from) * nativeStep), sourceZero,
+    sourceCoverage: Object.freeze({fromSample: safeNumber(from * exportStep), toSample: safeNumber(to * exportStep)})});
 }
 
 function lowerBound(frames: readonly VideoFrame[], pts: number, allowEqual = true): number {
@@ -262,12 +398,12 @@ function lowerBound(frames: readonly VideoFrame[], pts: number, allowEqual = tru
   return lo;
 }
 
-type VideoSourceInput = Pick<ReverseProxyInput, 'sourcePath' | 'sourceWindow' | 'sourceFps'>;
+type VideoSourceInput = Pick<ReverseProxyInput, 'sourcePath' | 'sourceWindow' | 'sourceFps' | 'pictureWindow'>;
 
-async function buildVideoPlan(input: VideoSourceInput, profile: VideoProfile, container: string, originUs: number, options: ReverseProxyMediaOptions): Promise<ReverseVideoPlan> {
-  const {sourceWindow: w, sourceFps: fps} = input;
-  const startPts = tickBound(w.startFrame, fps, profile.timeBase, originUs, 'floor');
-  const endPts = tickBound(w.endFrame, fps, profile.timeBase, originUs, 'ceil');
+async function buildVideoPlan(input: VideoSourceInput, profile: VideoProfile, container: string, options: ReverseProxyMediaOptions): Promise<ReverseVideoPlan> {
+  const {sourceFps: fps} = input, w = input.pictureWindow ?? input.sourceWindow;
+  const startOffset = tickBound(w.startFrame, fps, profile.timeBase, 'floor');
+  const endOffset = tickBound(w.endFrame, fps, profile.timeBase, 'ceil');
   const frames: VideoFrame[] = [];
   let pending = '', previousKey = -1, lastDuration = 0;
   const endIndexed = new Error('The reverse source window has been indexed.');
@@ -288,7 +424,7 @@ async function buildVideoPlan(input: VideoSourceInput, profile: VideoProfile, co
     frames.push({pts, previousKey});
     // The successor proves the exclusive bound. There is no need to decode
     // the unused tail of a long source.
-    if (pts >= endPts) throw endIndexed;
+    if (pts - frames[0]!.pts >= endOffset) throw endIndexed;
   };
   try {
     await runReverseTool('ffprobe', ['-v', 'error', '-threads', '1', '-max_alloc', String(128 * mib), '-max_pixels', String(REVERSE_PROXY_LIMITS.maxPixels),
@@ -307,6 +443,11 @@ async function buildVideoPlan(input: VideoSourceInput, profile: VideoProfile, co
   }
   checkMediaEffect(options.beforeEffect, options.signal);
   if (!frames.length || frames[0]!.previousKey !== 0) unsupported();
+  // Source frame zero is the first picture. The demuxer's format start can
+  // belong to an earlier audio stream and is only used for seek addressing.
+  const sourceZeroPts = frames[0]!.pts;
+  const startPts = safeNumber(BigInt(sourceZeroPts) + BigInt(startOffset));
+  const endPts = safeNumber(BigInt(sourceZeroPts) + BigInt(endOffset));
   const finalPts = frames.at(-1)!.pts;
   // Containers such as Matroska express frame end in a coarser timebase than
   // the project clock. Allow one tick of quantisation when the duration is
@@ -326,7 +467,8 @@ async function buildVideoPlan(input: VideoSourceInput, profile: VideoProfile, co
     chunks.push({start, end, key: frames[start]!.previousKey});
     end = start;
   }
-  return {frames, chunks, frameCount: last - first, endOfStream};
+  return {frames, chunks, frameCount: last - first, firstSourceOrdinal: first, sourceZeroPts, endOfStream,
+    endSourcePts: frames[last]?.pts ?? endOfStream};
 }
 
 function metadataStream(streams: Record<string, unknown>[], kind: 'video' | 'audio', index?: number): Record<string, unknown> | undefined {
@@ -359,8 +501,25 @@ export async function prepareSourceVideo(input: VideoSourceInput, admit: (video:
   const video = makeVideo(stream);
   if (!admit(video)) return unsupported();
   return {video, buildSha256: await videoTools(video, options), state: {
-    input, originUs, container, video: await buildVideoPlan(input, video, container, originUs, options),
+    input, originUs, container, video: await buildVideoPlan(input, video, container, options),
   }};
+}
+
+export function reverseProxyDiskBudget(storage: ReverseProxyProfile['storage'], rawVideoBytes: number,
+  audioBytes: number, blockBytes: number, frameCount: number) {
+  const fileLimit = MANAGED_FILE_IO_LIMITS.fileBytes;
+  // The decoded audio scratch is removed before the encoder starts. The
+  // final PCM, video block and ordinal index can coexist during encoding.
+  const scratchBytes = Math.max(2 * audioBytes, audioBytes + blockBytes) + frameCount * 128 + 65536;
+  const outputBytesLimit = storage === 'raw' ? rawVideoBytes + audioBytes
+    : Math.min(fileLimit, PROCESSING_CACHE_LIMIT_BYTES - scratchBytes);
+  const initialOutputBytes = storage === 'raw' ? outputBytesLimit
+    : Math.min(outputBytesLimit, REVERSE_PROXY_RESERVATION_STEP, rawVideoBytes + audioBytes + 4 * mib);
+  const reservationBytes = scratchBytes + initialOutputBytes;
+  if (![audioBytes, blockBytes, ...(storage === 'raw' ? [rawVideoBytes] : [])].every(bytes => bytes <= fileLimit) ||
+      outputBytesLimit < 1 || !Number.isSafeInteger(reservationBytes) || reservationBytes > PROCESSING_CACHE_LIMIT_BYTES)
+    throw reverseError('CACHE_LIMIT');
+  return {scratchBytes, outputBytesLimit, reservationBytes};
 }
 
 export async function prepareReverseProxy(value: ReverseProxyInput, options: ReverseProxyMediaOptions): Promise<PreparedReverseProxy> {
@@ -371,34 +530,22 @@ export async function prepareReverseProxy(value: ReverseProxyInput, options: Rev
   if (!container) return unsupported();
   const originUs = timeUs(metadata.format.start_time);
   const audioStream = metadataStream(metadata.streams, 'audio', input.audioStreamIndex);
-  const videoStream = input.media === 'video' ? metadataStream(metadata.streams, 'video', input.videoStreamIndex) : undefined;
+  const pictureStream = metadataStream(metadata.streams, 'video', input.videoStreamIndex);
+  const videoStream = input.media === 'video' ? pictureStream : undefined;
   if ((input.media === 'video' && !videoStream) || (input.media === 'audio' && !audioStream)) return unsupported();
   const video = videoStream ? makeVideo(videoStream) : null;
-  const audio = audioStream ? makeAudio(audioStream, originUs) : null;
+  const sound = audioStream ? await makeAudio(audioStream, pictureStream, input, container, options) : null;
+  const audio = sound?.profile ?? null;
   const storage = video?.pixelFormat.endsWith('f32le') ? 'raw' : 'matroska';
-  const profile: ReverseProxyProfile = Object.freeze({id: REVERSE_PROXY_PROFILE,
+  const profile: ReverseProxyProfile = Object.freeze({id: REVERSE_PROXY_PROFILE, coverageVersion: REVERSE_PROXY_COVERAGE_VERSION,
     buildSha256: await videoTools(storage === 'matroska' ? video : null, options), storage, video, audio});
-  const w = input.sourceWindow;
-  const audioPlan = audio && (() => {
-    const startSample = sampleBound(w.startFrame, input.sourceFps, audio.rate);
-    return {startSample, sampleCount: sampleBound(w.endFrame, input.sourceFps, audio.rate) - startSample};
-  })();
-  const audioBytes = (audioPlan?.sampleCount ?? 0) * (audio?.channels ?? 0) * 4;
+  const audioBytes = (sound?.plan.sampleCount ?? 0) * (audio?.channels ?? 0) * 4;
   if (audio && (audioBytes < 1 || audioBytes > MANAGED_FILE_IO_LIMITS.fileBytes)) throw reverseError('CACHE_LIMIT');
-  const videoPlan = video ? await buildVideoPlan(input, video, container, originUs, options) : null;
+  const videoPlan = video ? await buildVideoPlan(input, video, container, options) : null;
   const frameCount = videoPlan?.frameCount ?? 0, frameBytes = video?.frameBytes ?? 0;
   const blockBytes = frameBytes * (videoPlan?.chunks.reduce((max, item) => Math.max(max, item.end - item.start), 0) ?? 0);
-  const rawBytes = frameCount * frameBytes;
-  // FFV1 can expand data that compresses poorly. Set a fixed output budget and
-  // verify the full decoded bytes, so a size-limited mux cannot be published.
-  const outputBytesLimit = storage === 'raw' ? rawBytes + audioBytes : Math.ceil(rawBytes * 1.5) + audioBytes + 4 * mib + frameCount * 256;
-  // FFmpeg can finish one more Matroska write after -fs. The allocation limit
-  // bounds a packet, and subsequent receipt checks enforce outputBytesLimit.
-  const muxOvershoot = storage === 'matroska' ? (video?.encoderAllocationBytes ?? mib) : 0;
-  const reservationBytes = outputBytesLimit + muxOvershoot + blockBytes + 2 * audioBytes + frameCount * 128 + 65536;
-  if (![blockBytes, outputBytesLimit].every(bytes => bytes <= MANAGED_FILE_IO_LIMITS.fileBytes) || !Number.isSafeInteger(reservationBytes))
-    throw reverseError('CACHE_LIMIT');
+  const {scratchBytes, outputBytesLimit, reservationBytes} = reverseProxyDiskBudget(storage, frameCount * frameBytes, audioBytes, blockBytes, frameCount);
   const prepared: PreparedReverseProxy = Object.freeze({profile, reservationBytes});
-  preparedState.set(prepared, {input, container, originUs, video: videoPlan, audio: audioPlan, outputBytesLimit});
+  preparedState.set(prepared, {input, container, originUs, video: videoPlan, audio: sound?.plan ?? null, scratchBytes, outputBytesLimit});
   return prepared;
 }

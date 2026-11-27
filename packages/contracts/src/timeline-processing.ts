@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {speedProcessingReasonSchema} from './timeline-speed.ts';
+import {speedProcessingKindSchema, speedProcessingReasonSchema} from './timeline-speed.ts';
 import type {SpeedProcessingItem} from './timeline-speed.ts';
 import {timelinePreviewMediaInputSchema, timelinePreviewMediaResponseSchema} from './timeline-preview-media.ts';
 
@@ -15,7 +15,7 @@ export const TIMELINE_PROCESSING_WAIT_MAX_MS = 60_000;
 export const speedProcessingItemSchema = z.object({
   taskId: uuid,
   clipId: uuid,
-  kind: z.enum(['reverse', 'optical', 'preview']),
+  kind: speedProcessingKindSchema,
   status,
   progress: z.number().finite().min(0).max(100).optional(),
   reason: speedProcessingReasonSchema.optional(),
