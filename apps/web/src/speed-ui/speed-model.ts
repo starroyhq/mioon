@@ -877,30 +877,51 @@ export function curveDragTargetCoords(
   return {frame, rate: logNormToRate(nextNormY)};
 }
 
-/** Nudges a curve control point's rate by one keyboard step. Rejects locally with
- * `INVALID_RATE` when already at the 0.1× floor (down) or 10× ceiling (up) so no
- * preview/commit request is dispatched at the bounds. */
+/** Exact comparison between two speed settings (rate/curve points, direction,
+ * pitchShift, and interpolation) so unchanged slider/key actions skip commits. */
+export function speedSettingsEqual(a: SpeedSetting, b: SpeedSetting): boolean {
+  if (a.direction !== b.direction || a.pitchShift !== b.pitchShift || a.interpolation !== b.interpolation) {
+    return false;
+  }
+  if (a.speed.kind !== b.speed.kind) return false;
+  if (a.speed.kind === 'constant' && b.speed.kind === 'constant') {
+    return a.speed.rate.numerator * b.speed.rate.denominator === b.speed.rate.numerator * a.speed.rate.denominator;
+  }
+  if (a.speed.kind === 'curve' && b.speed.kind === 'curve') {
+    return a.speed.presetId === b.speed.presetId && curvePointsEqual(a.speed.points, b.speed.points);
+  }
+  return false;
+}
+
+/** Nudges a curve control point's rate by one keyboard step. Reports
+ * `changed: false` when already at the 0.1× floor (down) or 10× ceiling (up)
+ * so keyboard nudging clamps silently with zero preview/commit requests. */
 export function nudgeCurveControlPointRate(
   points: readonly TimeMapCurvePoint[],
   index: number,
   direction: 'up' | 'down',
   coarse = false,
-): CurveEditResult {
+): {readonly ok: true; readonly changed: boolean; readonly points: readonly TimeMapCurvePoint[]; readonly selectedIndex: number}
+ | {readonly ok: false; readonly error: CurveEditError} {
   if (index < 0 || index >= points.length) return {ok: false, error: 'POINT_ORDER'};
   const current = points[index]!;
   if (direction === 'up' && current.rate.numerator >= current.rate.denominator * 10) {
-    return {ok: false, error: 'INVALID_RATE'};
+    return {ok: true, changed: false, points, selectedIndex: index};
   }
   if (direction === 'down' && current.rate.numerator * 10 <= current.rate.denominator) {
-    return {ok: false, error: 'INVALID_RATE'};
+    return {ok: true, changed: false, points, selectedIndex: index};
   }
   const norm = rateToLogNorm(rateToNumber(current.rate));
   const step = coarse ? 0.1 : 0.03;
   const nextRate = logNormToRate(norm + (direction === 'up' ? step : -step));
   const moved = moveCurveControlPoint(points, index, current.sourceFrame, nextRate);
   if (!moved.ok) return moved;
-  if (curvePointsEqual(points, moved.points)) return {ok: false, error: 'INVALID_RATE'};
-  return moved;
+  return {
+    ok: true,
+    changed: !curvePointsEqual(points, moved.points),
+    points: moved.points,
+    selectedIndex: moved.selectedIndex,
+  };
 }
 
 /** Nudges a curve control point's source frame by one keyboard step. Reports

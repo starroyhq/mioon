@@ -2490,9 +2490,29 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const format5EditProjection = useMemo(() => format5 ? format5Projection(timeline, data.shots, data.versions) : null,
     [format5, timeline, data.shots, data.versions]);
   const speedEnabled = timelineSpeedEnabled(timeline);
+  const speedProcessingVisible = Boolean(
+    showTasks
+    || (workspaceMode === 'editing'
+      && !comparisonId
+      && !previsOpen
+      && !previewAsset
+      && (panelVisible('timeline') || (panelVisible('inspector') && rightDockTab === 'properties' && propertiesPage === 'inspector'))),
+  );
+  const speedProcessingClipId = workspaceMode === 'editing'
+    && !comparisonId
+    && !previsOpen
+    && !previewAsset
+    && panelVisible('inspector')
+    && rightDockTab === 'properties'
+    && propertiesPage === 'inspector'
+    ? selectedClipId
+    : null;
   const speedProcessing = useSpeedProcessing({
     projectId: data.project?.id ?? null,
     timeline: timeline as never,
+    active: speedProcessingVisible,
+    selectedClipId: speedProcessingClipId,
+    forceProjectWide: showTasks,
     online,
     authenticated: auth === true,
     rpc,

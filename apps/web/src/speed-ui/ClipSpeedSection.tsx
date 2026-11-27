@@ -45,6 +45,7 @@ import {
   isDefaultSpeedSetting,
   logNormToRate,
   moveCurveControlPoint,
+  normalizeSpeedSettingForSubmit,
   nudgeCurveControlPointFrame,
   nudgeCurveControlPointRate,
   parseRateToRational,
@@ -60,6 +61,7 @@ import {
   speedNeedsInterpolation,
   speedPreviewErrorKey,
   speedProcessingCanRetry,
+  speedSettingsEqual,
 } from './speed-model.ts';
 import type {CurveEditError, SpeedClipLike} from './speed-model.ts';
 import type {SpeedProcessingPollState} from './use-speed-processing.ts';
@@ -157,6 +159,8 @@ export default function ClipSpeedSection({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draftRef = useRef<SpeedSetting>(draft);
   draftRef.current = draft;
+  const savedSettingRef = useRef<SpeedSetting>(savedSetting);
+  savedSettingRef.current = savedSetting;
 
   // Sync local draft whenever the selected clip or its committed timing changes.
   useEffect(() => {
@@ -240,6 +244,13 @@ export default function ClipSpeedSection({
 
   function handleSliderCommit(): void {
     if (disabled) return;
+    if (speedSettingsEqual(
+      normalizeSpeedSettingForSubmit(draftRef.current),
+      normalizeSpeedSettingForSubmit(savedSettingRef.current),
+    )) {
+      setLocalError(null);
+      return;
+    }
     void commit(draftRef.current);
   }
 
@@ -257,6 +268,10 @@ export default function ClipSpeedSection({
     };
     setDraft(next);
     setRateText(formatSpeedRateInput(parsed.rate));
+    if (speedSettingsEqual(
+      normalizeSpeedSettingForSubmit(next),
+      normalizeSpeedSettingForSubmit(savedSettingRef.current),
+    )) return;
     void commit(next);
   }
 
@@ -456,6 +471,10 @@ export default function ClipSpeedSection({
       );
       if (!moved.ok) {
         setLocalError(t(curveValidationMessageKey(moved.error) as never));
+        return;
+      }
+      if (!moved.changed) {
+        setLocalError(null);
         return;
       }
       applyCurvePoints(moved.points, moved.selectedIndex, true);

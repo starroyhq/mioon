@@ -62,6 +62,7 @@ import {
   speedPreviewErrorKey,
   speedProcessingCanRetry,
   speedProcessingReasonKey,
+  speedSettingsEqual,
   timelineSpeedEnabled,
   validateCurvePointsLocal,
 } from '../apps/web/src/speed-ui/speed-model.ts';
@@ -76,6 +77,7 @@ import {
   SPEED_PROCESSING_MAX_CONSECUTIVE_FAILURES,
   SPEED_PROCESSING_POLL_INTERVAL_MS,
   SPEED_PROCESSING_RETRY_MAX_BACKOFF_MS,
+  createScopedSpeedProcessingController,
   createSpeedProcessingPoller,
   isRetryableProcessingPollError,
   speedProcessingBackoffDelayMs,
@@ -562,30 +564,57 @@ test('A3/F2: all 8 curve presets match shared instantiateSpeedPreset and enforce
   }
 });
 
-test('A3/F2: curve keyboard bounds reject locally with zero commit, and vertical drag keeps sourceFrame exact under SVG letterbox', () => {
-  // 10× endpoint + ArrowUp and 0.1× endpoint/interior + ArrowDown reject locally (zero preview/commit).
+test('A3/F2: curve & speed bounds clamp silently on keys with zero commit, manual out-of-range keeps hint, and vertical drag keeps sourceFrame exact', () => {
+  // 10× endpoint + ArrowUp and 0.1× endpoint/interior + ArrowDown clamp silently (`changed: false`, zero error, zero commit).
   const atBounds = [
     {sourceFrame: 0, rate: {numerator: 10, denominator: 1}},
     {sourceFrame: 60, rate: {numerator: 1, denominator: 10}},
     {sourceFrame: 120, rate: {numerator: 1, denominator: 1}},
   ];
-  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 0, 'up', false), {ok: false, error: 'INVALID_RATE'});
-  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 0, 'up', true), {ok: false, error: 'INVALID_RATE'});
-  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 1, 'down', false), {ok: false, error: 'INVALID_RATE'});
-  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 1, 'down', true), {ok: false, error: 'INVALID_RATE'});
+  for (const [idx, dir, coarse] of [
+    [0, 'up', false],
+    [0, 'up', true],
+    [1, 'down', false],
+    [1, 'down', true],
+  ] as const) {
+    const res = nudgeCurveControlPointRate(atBounds, idx, dir, coarse);
+    assert.equal(res.ok, true);
+    if (res.ok) {
+      assert.equal(res.changed, false);
+      assert.equal(curvePointsEqual(res.points, atBounds), true);
+    }
+  }
 
-  // Moving away from 10× / 0.1× still succeeds, and reaching 10× then pressing up again rejects locally.
+  // Moving away from 10× / 0.1× still succeeds, and reaching 10× then pressing up again clamps silently.
   const downFrom10 = nudgeCurveControlPointRate(atBounds, 0, 'down', false);
   assert.equal(downFrom10.ok, true);
   if (downFrom10.ok) {
+    assert.equal(downFrom10.changed, true);
     assert.ok(downFrom10.points[0]!.rate.numerator / downFrom10.points[0]!.rate.denominator < 10);
     const backTo10 = nudgeCurveControlPointRate(downFrom10.points, 0, 'up', true);
     assert.equal(backTo10.ok, true);
     if (backTo10.ok) {
+      assert.equal(backTo10.changed, true);
       assert.deepEqual(backTo10.points[0]!.rate, {numerator: 10, denominator: 1});
-      assert.deepEqual(nudgeCurveControlPointRate(backTo10.points, 0, 'up', false), {ok: false, error: 'INVALID_RATE'});
+      const atCeilingAgain = nudgeCurveControlPointRate(backTo10.points, 0, 'up', false);
+      assert.equal(atCeilingAgain.ok, true);
+      if (atCeilingAgain.ok) assert.equal(atCeilingAgain.changed, false);
     }
   }
+
+  // Constant slider at 10× or 0.1× stays equal to savedSetting so bound keys skip commit silently,
+  // while manual text input outside 0.1×–10× still rejects with inline range hint.
+  const at10xSetting: SpeedSetting = {
+    speed: {kind: 'constant', rate: {numerator: 10, denominator: 1}},
+    direction: 'forward',
+    pitchShift: false,
+    interpolation: 'off',
+  };
+  assert.equal(speedSettingsEqual(at10xSetting, {...at10xSetting}), true);
+  assert.equal(speedSettingsEqual(at10xSetting, {...at10xSetting, speed: {kind: 'constant', rate: {numerator: 9, denominator: 1}}}), false);
+  assert.deepEqual(parseRateToRational('0.09'), {ok: false, code: 'INVALID_RATE'});
+  assert.deepEqual(parseRateToRational('10.01'), {ok: false, code: 'INVALID_RATE'});
+  assert.equal(translate('zh-Hans', 'speed.validation.rateRange'), '倍速须在 0.1× 到 10× 之间。');
 
   // Horizontal nudges on fixed endpoints or neighbor-clamped interior points report changed: false (no NOOP commit).
   const leftEnd = nudgeCurveControlPointFrame(atBounds, 0, 'right', false);
@@ -1011,11 +1040,193 @@ test('A7/F6: processing poller recovers after retryable 503, backs off to unknow
     assert.equal(clipBPoller.timers.size, 0, 'late 503 after stop/leave must never reschedule polling');
     assert.equal(clipBPoller.poller.getState(), 'idle');
 
-    // Hook wires active/scopeKey/clipTriggerKey cleanup so leaving or closing stops polling cleanly.
+    // Hook wires active/selectedClipId/scopeKey cleanup so leaving or closing stops polling cleanly.
     const hookSrc = read('apps/web/src/speed-ui/use-speed-processing.ts');
     assert.ok(hookSrc.includes('active = true'));
-    assert.ok(hookSrc.includes('scopeKey'));
-    assert.ok(hookSrc.includes('poller.dispose()'));
+    assert.ok(hookSrc.includes('selectedClipId = null'));
+    assert.ok(hookSrc.includes('createScopedSpeedProcessingController('));
+    const appSrc = read('apps/web/src/App.tsx');
+    assert.ok(appSrc.includes('active: speedProcessingVisible'));
+    assert.ok(appSrc.includes('selectedClipId: speedProcessingClipId'));
+    assert.ok(appSrc.includes('forceProjectWide: showTasks'));
+  }
+});
+
+test('A7/F6: scoped processing controller aborts in-flight & clears backoff on clip switch/close, discards late old replies by clip ID, and handles rapid A->B->A switches', async () => {
+  const flush = async () => {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  };
+  const makeScoped = () => {
+    let nextId = 1;
+    const timers = new Map<number, {fn: () => void; ms: number}>();
+    const reqs: Array<{
+      projectId: string;
+      clipId: string | null;
+      signal: AbortSignal;
+      resolve: (val: unknown) => void;
+      reject: (err: unknown) => void;
+    }> = [];
+    const snapshots: Array<readonly SpeedProcessingItem[]> = [];
+    const states: SpeedProcessingPollState[] = [];
+    const manager = createScopedSpeedProcessingController({
+      setTimeoutFn: ((fn: () => void, ms: number) => {
+        const id = nextId++;
+        timers.set(id, {fn, ms});
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }) as unknown as typeof setTimeout,
+      clearTimeoutFn: ((id: ReturnType<typeof setTimeout>) => {
+        timers.delete(id as unknown as number);
+      }) as unknown as typeof clearTimeout,
+      list: (projectId, signal, clipId) =>
+        new Promise((resolve, reject) => {
+          reqs.push({projectId, clipId, signal, resolve, reject});
+        }),
+      onItems: items => snapshots.push(items),
+      onStateChange: state => states.push(state),
+    });
+    const fireOnlyTimer = () => {
+      assert.equal(timers.size, 1, `expected 1 active timer, got ${timers.size}`);
+      const [id, entry] = [...timers.entries()][0]!;
+      timers.delete(id);
+      entry.fn();
+    };
+    return {manager, timers, reqs, snapshots, states, fireOnlyTimer};
+  };
+
+  const baseScope = {
+    active: true,
+    projectId: 'p1',
+    timelineRevision: 1,
+    clipTriggerKey: 'clip-a:constant:reverse:off|clip-b:curve:forward:optical',
+    selectedClipNeedsProcessing: true,
+    forceProjectWide: false,
+  };
+
+  // 1) Late old response after switching A -> B: A's in-flight request is aborted immediately,
+  // B fires immediately, late A response (71%) is discarded, and B's 64% is shown.
+  {
+    const h = makeScoped();
+    // Initial editing entry (null) -> first poll, then initial clip A selection adopts without aborting.
+    h.manager.update({...baseScope, selectedClipId: null});
+    assert.equal(h.reqs.length, 1);
+    h.manager.update({...baseScope, selectedClipId: 'clip-a'});
+    assert.equal(h.reqs.length, 1, 'initial null -> clip-a adopts running initial poll');
+    assert.equal(h.reqs[0]!.signal.aborted, false);
+    h.reqs[0]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'running', progress: 42}]});
+    await flush();
+    assert.equal(h.snapshots.at(-1)?.[0]?.progress, 42);
+
+    // Next scheduled poll for A is in-flight when user switches to B.
+    h.fireOnlyTimer();
+    assert.equal(h.reqs.length, 2);
+    assert.equal(h.reqs[1]!.signal.aborted, false);
+
+    h.manager.update({...baseScope, selectedClipId: 'clip-b'});
+    assert.equal(h.reqs[1]!.signal.aborted, true, 'switching A -> B must abort A in-flight request immediately');
+    assert.equal(h.reqs.length, 3, 'clip B must immediately issue its own query');
+    assert.equal(h.reqs[2]!.clipId, 'clip-b');
+
+    // Late A response resolves anyway (simulating transport ignoring AbortSignal): MUST be discarded!
+    h.reqs[1]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'running', progress: 71}]});
+    await flush();
+    assert.equal(h.snapshots.some(list => list.some(item => item.progress === 71)), false, 'late A 71% response must never apply');
+
+    // B's response arrives and renders immediately.
+    h.reqs[2]!.resolve({items: [{taskId: 't-b', clipId: 'clip-b', kind: 'preview', status: 'running', progress: 64}]});
+    await flush();
+    assert.equal(h.snapshots.at(-1)?.[0]?.clipId, 'clip-b');
+    assert.equal(h.snapshots.at(-1)?.[0]?.progress, 64);
+    h.manager.dispose();
+  }
+
+  // 2) 503 during switch: pending backoff timer for A is cancelled immediately & late 503 from A never taints B.
+  {
+    const h = makeScoped();
+    h.manager.update({...baseScope, selectedClipId: 'clip-a'});
+    h.reqs[0]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'running', progress: 42}]});
+    await flush();
+    h.fireOnlyTimer();
+    h.reqs[1]!.reject(new ApiError('Unavailable', 'UNAVAILABLE', undefined, false, 503));
+    await flush();
+    assert.equal(h.manager.getState(), 'retrying');
+    assert.equal(h.timers.size, 1, 'A has pending 2s backoff timer');
+
+    // Switch A -> B mid-backoff: A's timer is cleared and B immediately queries.
+    h.manager.update({...baseScope, selectedClipId: 'clip-b'});
+    assert.equal(h.timers.size, 0, 'A backoff timer must be cleared immediately on switch');
+    assert.equal(h.reqs.length, 3, 'B must immediately start its own query instead of waiting for A backoff');
+    assert.equal(h.manager.getState(), 'polling');
+
+    // Now B's query is in-flight when user switches to A again, and B's aborted query later rejects with 503.
+    h.manager.update({...baseScope, selectedClipId: 'clip-a'});
+    assert.equal(h.reqs[2]!.signal.aborted, true);
+    assert.equal(h.reqs.length, 4);
+    h.reqs[2]!.reject(new ApiError('Unavailable', 'UNAVAILABLE', undefined, false, 503));
+    await flush();
+    assert.equal(h.manager.getState(), 'polling', 'late 503 from aborted B must not push A into retrying');
+    assert.equal(h.timers.size, 0);
+    h.reqs[3]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'ready'}]});
+    await flush();
+    assert.equal(h.manager.getState(), 'idle');
+    assert.equal(h.timers.size, 0);
+    h.manager.dispose();
+  }
+
+  // 3) Rapid A -> B -> A switching: both A1 and B1 are aborted and late replies from either (even A1 with same clipId) are discarded.
+  {
+    const h = makeScoped();
+    h.manager.update({...baseScope, selectedClipId: 'clip-a'});
+    assert.equal(h.reqs.length, 1);
+    h.manager.update({...baseScope, selectedClipId: 'clip-b'});
+    assert.equal(h.reqs[0]!.signal.aborted, true);
+    assert.equal(h.reqs.length, 2);
+    h.manager.update({...baseScope, selectedClipId: 'clip-a'});
+    assert.equal(h.reqs[1]!.signal.aborted, true);
+    assert.equal(h.reqs.length, 3);
+
+    // Late A1 (stale generation, same clipId) and late B1 both resolve: neither can overwrite A2.
+    h.reqs[0]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'running', progress: 11}]});
+    h.reqs[1]!.resolve({items: [{taskId: 't-b', clipId: 'clip-b', kind: 'preview', status: 'running', progress: 22}]});
+    await flush();
+    assert.equal(h.snapshots.length, 0);
+
+    h.reqs[2]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'running', progress: 88}]});
+    await flush();
+    assert.equal(h.snapshots.length, 1);
+    assert.equal(h.snapshots[0]![0]!.progress, 88);
+    h.manager.dispose();
+  }
+
+  // 4) Switching to plain clip, closing inspector panel (clip -> null), or closing preview/editing (active -> false) stops immediately.
+  {
+    const h = makeScoped();
+    h.manager.update({...baseScope, selectedClipId: 'clip-a'});
+    h.reqs[0]!.resolve({items: [{taskId: 't-a', clipId: 'clip-a', kind: 'reverse', status: 'running', progress: 42}]});
+    await flush();
+    assert.equal(h.timers.size, 1);
+
+    // Switch to plain clip C (no processing needed): cancels timer, sends 0 requests.
+    h.manager.update({...baseScope, selectedClipId: 'clip-plain', selectedClipNeedsProcessing: false});
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.reqs.length, 1);
+    assert.equal(h.manager.getState(), 'idle');
+
+    // Back to clip-a, in-flight request active -> close inspector panel (selectedClipId -> null): aborts immediately.
+    h.manager.update({...baseScope, selectedClipId: 'clip-a', selectedClipNeedsProcessing: true});
+    assert.equal(h.reqs.length, 2);
+    h.manager.update({...baseScope, selectedClipId: null, selectedClipNeedsProcessing: false});
+    assert.equal(h.reqs[1]!.signal.aborted, true);
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.manager.getState(), 'idle');
+
+    // Re-open on clip-a -> close preview / leave editing (active -> false): aborts & clears items immediately.
+    h.manager.update({...baseScope, selectedClipId: 'clip-a', selectedClipNeedsProcessing: true});
+    assert.equal(h.reqs.length, 3);
+    h.manager.update({...baseScope, active: false, selectedClipId: null, selectedClipNeedsProcessing: false});
+    assert.equal(h.reqs[2]!.signal.aborted, true);
+    assert.equal(h.timers.size, 0);
+    assert.deepEqual(h.snapshots.at(-1), []);
+    h.manager.dispose();
   }
 });
 
