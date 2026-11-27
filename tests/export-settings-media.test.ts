@@ -242,7 +242,9 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
 });
 
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
- const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
+ const root=await sandbox(t),workspace=path.join(root,'workspace'),projectStore=openStore(workspace);
+ const store=projectStore as unknown as LooseStore,services=createServices(projectStore,new Map()) as unknown as LocalServices;
+ let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
  try{
   const projectName='Synthetic frozen-source race';
   const project=await services.call<ProjectShape>('project.create',{name:projectName}),other=await foreignProject(t);
@@ -268,12 +270,15 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   // fixture-local protection when testing the independent retained-graph fence.
   if(mutation==='version-sql-owner')store.db.exec('DROP TRIGGER immutable_versions');
   const outputDirectory=workerOutputDirectory(store,workspace);
-  let moved=false; let afterMutation: ReturnType<typeof state> | undefined; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined,publishedFile:string|undefined; let replacementIdentity: {dev: number; ino: number} | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
+  let moved=false; let afterMutation: ReturnType<typeof state> | undefined; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0;
+  let publicationArmed=false,checkedBeforeTx=false,installed=false;
+  let workingFile: string | undefined, publishedFile: string | undefined, replacementIdentity: {dev: number; ino: number} | undefined;
+  let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
   const replacementBytes=Buffer.from('Different fixture-owned inode must be preserved.');
+  const displaced=path.join(root,'displaced-export.mp4');
   const prepare=store.db.prepare;
   if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',(function(this: unknown, sql: string, ...args: unknown[]){
-   // Fault the original ownership/cleanup read only. S3's fixed-ID metadata
-   // projection reads different columns and cannot authorize output deletion.
+   // An uncertain export read cannot establish authority to remove a public file.
    if(readUncertain&&!store.db.isTransaction&&sql.startsWith('SELECT CASE')&&sql.endsWith('FROM exports WHERE id=?')){
     readUncertain=false;readFailureObserved=true;throw Error('Synthetic private cleanup-read failure.');
    }
@@ -296,38 +301,63 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
    }catch(error){observerFailure=error;}
   };
   const originalTx=store.tx;
-  const publicationPhase=['publication-tx','publication-replacement','publication-read-unknown'].includes(phase);
-  if(publicationPhase)store.tx=body=>{if(publicationArmed){
-   publicationArmed=false;
-   const linked=readdirSync(outputDirectory).find(name=>name===`${projectName}.mp4`);
-   linkedBeforeTx=Boolean(linked);
-   if(linked)publishedFile=path.join(outputDirectory,linked);
-   if(linked&&phase==='publication-replacement'){
-    replacementFile=path.join(outputDirectory,linked);
-    const originalIdentity=lstatSync(replacementFile);
-    // Create while the original inode is still live, then atomically replace
-    // the name; this avoids accidental same-inode reuse in the fixture.
-    const fresh=replacementFile+'.replacement';writeFileSync(fresh,replacementBytes,{flag:'wx',mode:0o600});renameSync(fresh,replacementFile);
-    const replaced=lstatSync(replacementFile);replacementIdentity={dev:replaced.dev,ino:replaced.ino};assert.notDeepEqual(replacementIdentity,{dev:originalIdentity.dev,ino:originalIdentity.ino});
+  const publicationPhase=['publication-tx','publication-replacement','publication-read-unknown','publication-rollback'].includes(phase);
+  const postInstall=phase==='publication-replacement'||phase==='publication-rollback';
+  const removeHook=publicationPhase?setProjectOutputPublicationTestHooks(projectStore,{fault(point,proof,candidate){
+   if(point==='after_final'){
+    assert.ok(candidate);
+    workingFile=candidate;
+    publishedFile=path.join(workspace,proof.relativePath);
+    publicationArmed=true;
    }
-   if(linked&&phase==='publication-read-unknown')preservedFile=path.join(outputDirectory,linked);
-   move();
+   if(point!=='after_install')return;
+   installed=true;
+   assert.ok(publishedFile);
+   if(phase==='publication-replacement'){
+    const originalIdentity=lstatSync(publishedFile);
+    renameSync(publishedFile,displaced);
+    writeFileSync(publishedFile,replacementBytes,{flag:'wx',mode:0o600});
+    const replacement=lstatSync(publishedFile);
+    replacementIdentity={dev:replacement.dev,ino:replacement.ino};
+    assert.notDeepEqual(replacementIdentity,{dev:originalIdentity.dev,ino:originalIdentity.ino});
+   }
+  }}):undefined;
+  if(publicationPhase)store.tx=body=>{
+   if(!publicationArmed)return originalTx(body);
+   publicationArmed=false;
+   assert.ok(workingFile&&publishedFile);
+   checkedBeforeTx=existsSync(workingFile)&&!existsSync(publishedFile);
+   if(postInstall)afterMutation=state();
+   else move();
    if(phase==='publication-read-unknown')readUncertain=true;
-  }return originalTx(body);};
+   if(phase!=='publication-rollback')return originalTx(body);
+   return originalTx(()=>{
+    body();
+    assert.equal(installed,true,'rollback begins after installing the complete output');
+    const pending=store.get('exports',accepted.id);
+    assert.equal(pending.status,'succeeded','the result row is still uncommitted when rollback starts');
+    assert.ok(store.get('assets',String(pending.assetId)));
+    throw Object.assign(Error('Synthetic registration rollback'),{code:'SYNTHETIC_REGISTRATION_ROLLBACK'});
+   });
+  };
   const off=onMediaProcess((event: ProcessEvent)=>{
    events.push(event);
    if(event.type==='started'&&event.kind==='ffmpeg'&&++ffmpegStarts===2&&phase==='capability')move();
    // Source probe, renderer verification, then final fileInfo probe. The third
    // observed close happens before the await resumes at publication admission.
-   if(event.type==='exited'&&event.kind==='ffprobe'&&++probeExits===3){
-    if(phase==='prepublication')move();
-    if(publicationPhase)publicationArmed=true;
-   }
+   if(event.type==='exited'&&event.kind==='ffprobe'&&++probeExits===3&&phase==='prepublication')move();
   });
-  try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
-  if(phase==='publication-read-unknown'){assert.equal(readFailureObserved,false,'S2 has no project-output deletion or cleanup ownership read');readUncertain=false;}
-  assert.equal(observerFailure,undefined);assert.equal(moved,true,`${mutation} raced at ${phase}`);
-  if(publicationPhase)assert.equal(linkedBeforeTx,true,'ownership changed after this task linked its output and immediately before the real publication transaction');
+  try{worker=startWorker(projectStore,services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}
+  finally{off();removeHook?.();}
+  if(phase==='publication-read-unknown'){assert.equal(readFailureObserved,false,'pre-install rejection does not need an ownership read for public rollback');readUncertain=false;}
+  assert.equal(observerFailure,undefined);
+  assert.equal(moved,!postInstall,`${mutation} raced at ${phase}`);
+  if(publicationPhase){
+   assert.equal(checkedBeforeTx,true,'the verified candidate exists privately at the registration transaction boundary');
+   assert.equal(installed,postInstall);
+   assert.ok(workingFile);
+   assert.equal(existsSync(workingFile),false,'known private copy is cleaned after failure');
+  }
   assert.ok(afterMutation);
   const isAcceptedExport=(row: Record<string, unknown>)=>row.projectId===project.id&&row.kind==='export'&&row.targetId===accepted.id;
   assert.equal(afterMutation.mio_process_target_revisions.filter(isAcceptedExport).length,1);
@@ -339,23 +369,24 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   const expectedState={...afterMutation,mio_process_target_revisions:afterMutation.mio_process_target_revisions.map(row=>
    isAcceptedExport(row)?Object.assign(Object.create(Object.getPrototypeOf(row)),row,{revision:Number(row.revision)+1}):row)};
   assert.deepEqual(currentState,expectedState,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
-  // 01a83cb applies the owned-output inode fence to every export. A replaced
-  // output is refused before the subsequent frozen-source ownership check.
-  const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal((rejected.error as {code?: string}).code,phase==='publication-replacement'?'INVALID_TIMELINE_SNAPSHOT':'TIMELINE_SOURCE_UNAVAILABLE');
+  const rejected=store.get('exports',accepted.id);
+  assert.equal(rejected.status,'failed');
+  const expectedCode=phase==='publication-replacement'?'INVALID_TIMELINE_SNAPSHOT':phase==='publication-rollback'?'SYNTHETIC_REGISTRATION_ROLLBACK':'TIMELINE_SOURCE_UNAVAILABLE';
+  assert.equal((rejected.error as {code?: string}).code,expectedCode);
   assert.equal(rejected.assetId,null);assert.equal(rejected.url,null);assert.deepEqual(rejected.snapshot,acceptedSnapshot);
   assert.equal(JSON.stringify(rejected.error).includes(other.id),false);assert.equal(JSON.stringify(rejected.error).includes(foreignShot.id),false);assert.equal(JSON.stringify(rejected.error).includes(workspace),false);
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
   assert.equal(ffmpegStarts,phase==='capability'?2:4,phase==='capability'?'no timeline encode after capability source drift':'render completed before publication source drift');
   if(phase==='publication-replacement'){
-   assert.ok(replacementFile);assert.deepEqual(await readFile(replacementFile),replacementBytes,'cleanup must refuse a replacement inode after the output identity fence rejects publication');
-   const preserved=lstatSync(replacementFile);assert.deepEqual({dev:preserved.dev,ino:preserved.ino},replacementIdentity,'cleanup must preserve the replacement inode itself');
-   assert.deepEqual((await readdir(outputDirectory)).sort(),[path.basename(replacementFile)]);
-  }else if(phase==='publication-read-unknown'){
-   assert.ok(preservedFile);
-   await verifyOutput(preservedFile,360,640,3);
-   assert.deepEqual((await readdir(outputDirectory)).sort(),[path.basename(preservedFile)],'uncertain publication ownership preserves the completed project file');
-  }else if(publicationPhase){assert.ok(publishedFile);await verifyOutput(publishedFile,360,640,3);assert.deepEqual((await readdir(outputDirectory)).sort(),[path.basename(publishedFile)],'a completed project file remains after its registration is refused');}
-  else assert.equal(existsSync(outputDirectory)&&readdirSync(outputDirectory).length>0,false,'no final output is created before publication');
+   assert.ok(publishedFile);
+   assert.deepEqual(await readFile(publishedFile),replacementBytes,'rollback must preserve a foreign replacement');
+   const preserved=lstatSync(publishedFile);assert.deepEqual({dev:preserved.dev,ino:preserved.ino},replacementIdentity);
+   assert.deepEqual((await readdir(outputDirectory)).filter(name=>!name.startsWith('.')),[path.basename(publishedFile)]);
+   await verifyOutput(displaced,360,640,3);
+  }else{
+   assert.deepEqual(existsSync(outputDirectory)?(await readdir(outputDirectory)).filter(name=>!name.startsWith('.')):[],[],
+    'failed registration leaves no final output');
+  }
   assert.deepEqual((await readdir(path.join(workspace,'media'))).sort(),files,'project source files remain unchanged');
   assert.equal(hash(await readFile(sourceFile)),sourceHash);
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
@@ -367,12 +398,13 @@ test('worker rechecks frozen source ownership, retained lineage and identity aft
   await t.test(mutation,t=>sourceOwnershipRace(t,{mutation}));
 });
 
-test('worker publication guards refuse stale registration and preserve completed, replaced or uncertain files',{timeout:20000},async t=>{
- for(const phase of ['prepublication','publication-tx','publication-replacement','publication-read-unknown'])await t.test(phase,t=>sourceOwnershipRace(t,{mutation:'asset-sql-owner',phase}));
+test('worker publication rejects stale registration and removes only its own rollback output',{timeout:25000},async t=>{
+ for(const phase of ['prepublication','publication-tx','publication-replacement','publication-read-unknown','publication-rollback'])
+  await t.test(phase,t=>sourceOwnershipRace(t,{mutation:'asset-sql-owner',phase}));
 });
 
-test('worker publication rejects a source change during multi-chunk copy',{timeout:30000},async t=>{
- for(const mutation of ['source row on the worker connection','source file timestamp'] as const)await t.test(mutation,async t=>{
+test('worker publication keeps failed or interrupted multi-chunk copies private',{timeout:35000},async t=>{
+ for(const mutation of ['source row on the worker connection','source file timestamp','disk full','worker shutdown'] as const)await t.test(mutation,async t=>{
   const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace);
   const services=createServices(store,new Map()) as unknown as LocalServices;
   let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
@@ -394,53 +426,82 @@ test('worker publication rejects a source change during multi-chunk copy',{timeo
    const requestReceipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?');
    const receipt=requestReceipt.get(input.requestId)?.response;
    assert.equal(typeof receipt,'string');
-   let copy: {proof: ProjectOutputPublicationProof; firstChunkBytes: number} | undefined;
-   let chunks=0,finished=false,mutationApplied=false;
-   const removeHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
-    if(point==='after_final')finished=true;
+   let copy: {proof: ProjectOutputPublicationProof; firstChunkBytes: number; workingFile: string} | undefined;
+   let stopping: Promise<void> | undefined;
+   let chunks=0,installed=false,mutationApplied=false;
+   const removeHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof,workingFile){
+    if(point==='after_install')installed=true;
     if(point!=='after_copy_chunk')return;
+    assert.equal(existsSync(path.join(workspace,proof.relativePath)),false,'copying does not expose the final export path');
     chunks++;
     if(chunks!==1)return;
-    copy={proof,firstChunkBytes:lstatSync(path.join(workspace,proof.relativePath)).size};
+    assert.ok(workingFile);
+    copy={proof,firstChunkBytes:lstatSync(workingFile).size,workingFile};
     if(mutation==='source row on the worker connection'){
      const current=store.get('assets',asset.id);
      assert.ok(current&&typeof current==='object');
      const result=store.db.prepare('UPDATE assets SET data=? WHERE id=?')
       .run(JSON.stringify({...current,sha256:'b'.repeat(64)}),asset.id);
      mutationApplied=result.changes===1;
-    }else{
+    }else if(mutation==='source file timestamp'){
      const original=lstatSync(source);
      utimesSync(source,original.atime,new Date(original.mtimeMs+10000));
      mutationApplied=lstatSync(source).mtimeMs!==original.mtimeMs;
+    }else if(mutation==='disk full'){
+     mutationApplied=true;
+     throw Object.assign(Error('Synthetic disk-full write failure'),{code:'ENOSPC',syscall:'write',path:workingFile});
+    }else{
+     assert.ok(worker);
+     stopping=worker.stop();
+     mutationApplied=true;
     }
    }});
    try{
     worker=startWorker(store,services as unknown as Parameters<typeof startWorker>[1],new Map());
     await worker.tick();
+    await stopping;
    }finally{removeHook();}
    assert.equal(mutationApplied,true);
    assert.ok(copy);
-   const {proof,firstChunkBytes}=copy;
+   const {proof,firstChunkBytes,workingFile}=copy;
    assert.ok(firstChunkBytes>0&&firstChunkBytes<proof.sizeBytes,'fixture must require multiple copy chunks');
    if(mutation==='source row on the worker connection'){
     assert.equal(chunks,1,'a changed database generation must be revalidated before the next chunk is written');
-    assert.equal(lstatSync(path.join(workspace,proof.relativePath)).size,firstChunkBytes);
    }
-   assert.equal(finished,false,'source changes must abort before preparing the final output receipt');
-   const publication=JSON.parse(await readFile(path.join(store.tempDir,'publications',proof.publicationId+'.json'),'utf8'));
-   assert.equal(publication.phase,'copying');
+   assert.equal(installed,false,'copy failure or interruption cannot enter the final export directory');
+   assert.deepEqual(await readdir(path.join(workspace,'导出')),[]);
+   assert.equal(existsSync(workingFile),false,'known private copy is cleaned');
+   assert.deepEqual(await readdir(path.dirname(workingFile)),[]);
    const rejected=store.get('exports',accepted.id) as Json;
-   assert.equal(rejected.status,'failed');
-   assert.equal((rejected.error as {code?: string}).code,'TIMELINE_SOURCE_UNAVAILABLE');
+   if(mutation==='worker shutdown'){
+    assert.equal(rejected.status,'queued');
+    assert.equal(rejected.error,null);
+   }else{
+    assert.equal(rejected.status,'failed');
+    assert.equal((rejected.error as {code?: string}).code,mutation==='disk full'?'INVALID_MEDIA':'TIMELINE_SOURCE_UNAVAILABLE');
+    assert.deepEqual(await readdir(workerStageDirectory(store,workspace,accepted.id)),[],'terminal failure discards the exact completed render');
+   }
    assert.equal(rejected.assetId,null);
    assert.deepEqual(store.list('assets',project.id),[store.get('assets',asset.id)]);
    assert.equal(requestReceipt.get(input.requestId)?.response,receipt);
+   if(mutation==='worker shutdown'){
+    worker=startWorker(store,services as unknown as Parameters<typeof startWorker>[1],new Map());
+    await worker.tick();
+    const resumed=store.get('exports',accepted.id) as Json;
+    assert.equal(resumed.status,'succeeded');
+    assert.equal(resumed.assetId,proof.assetId,'reopened worker reuses the original artifact and asset identity');
+    const final=mediaFixturePath(workspace,store.get('assets',proof.assetId));
+    assert.equal(hash(await readFile(final)),proof.sha256);
+    assert.equal(requestReceipt.get(input.requestId)?.response,receipt);
+   }
   }finally{await worker?.stop();await services.drain();store.close();}
  });
 });
 
 test('postcommit publication exception preserves the successful custom export and its exact owned output',{timeout:20000},async t=>{
- const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
+ const root=await sandbox(t),workspace=path.join(root,'workspace'),projectStore=openStore(workspace);
+ const store=projectStore as unknown as LooseStore,services=createServices(projectStore,new Map()) as unknown as LocalServices;
+ let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
  try{
   const project=await services.call<ProjectShape>('project.create',{name:'Synthetic committed publication'});
   const asset=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
@@ -448,14 +509,16 @@ test('postcommit publication exception preserves the successful custom export an
   timeline=await services.call<TimelineShape>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find((track: {kind: string; id: string}) => track.kind==='audio')!.id,assetId:asset.id,startFrame:0,durationFrames:3});
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:selected('short_360')};
   const accepted=await services.call<ProjectShape>('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
-  const originalTx=store.tx;let probeExits=0,armed=false,injected=false; let committed: Record<string, unknown> | undefined; let committedAsset: Record<string, unknown> | undefined;
+  const originalTx=store.tx;let armed=false,injected=false; let committed: Record<string, unknown> | undefined; let committedAsset: Record<string, unknown> | undefined;
   store.tx=body=>{
    if(!armed)return originalTx(body);
    armed=false;const result=originalTx(body);committed=store.get('exports',accepted.id);committedAsset=store.get('assets',String(committed.assetId));injected=true;
    throw Object.assign(Error('Synthetic acknowledgement failure after successful commit.'),{code:'SYNTHETIC_POSTCOMMIT_FAILURE'});
   };
-  const events: ProcessEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>{events.push(event);if(event.type==='exited'&&event.kind==='ffprobe'&&++probeExits===3)armed=true;});
-  try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
+  const removeHook=setProjectOutputPublicationTestHooks(projectStore,{fault(point){if(point==='after_final')armed=true;}});
+  const events: ProcessEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>events.push(event));
+  try{worker=startWorker(projectStore,services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}
+  finally{off();removeHook();}
   assert.equal(injected,true);assert.equal(committed!.status,'succeeded');assert.equal(committed!.error,null);
   assert.deepEqual(store.get('exports',accepted.id),committed,'postcommit exception cannot downgrade an already published success');
   assert.deepEqual(store.get('assets',String(committed!.assetId)),committedAsset);assert.equal(store.list('assets').length,2);

@@ -1,6 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync, unlinkSync} from 'node:fs';
+import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync, unlinkSync, linkSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import {open, link} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
@@ -17,6 +17,9 @@ import type {ProjectStore} from './project-file/store.ts';
 import {isProjectFileHeld} from './project-file/held-files.ts';
 import {isAppLibraryHeld} from './app-db/connection.ts';
 import {referenceForPublishedMedia} from './project-media-storage.ts';
+import {NODE_MEDIA_FILE_SYSTEM} from './media-reference/file-system.ts';
+import {hashSamples, isNotDownloaded, mediaMtimeMs, readHeader} from './media-reference/fingerprint.ts';
+import {detectMediaType} from './media-reference/media-type.ts';
 import {assertProjectOutputStore, outputFileIdentity, sameOutputIdentity,isProjectOutputAdmissionFailure} from './project-output-owner.ts';
 import type {OutputFileIdentity} from './project-output-owner.ts';
 import {isPublishedProjectOutput} from './project-output-proof.ts';
@@ -40,13 +43,15 @@ export interface PublishedProjectOutput {
   readonly reference: MediaReference; readonly referenceRevision: 1; readonly sha256: string;
   readonly sizeBytes: number; readonly relativePath: string; readonly publication: ProjectOutputPublicationProof;
 }
+type RegisterExport = (output: PublishedProjectOutput) => void;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const extensions: Readonly<Record<string, string>> = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a'};
 const inFlight = new WeakMap<ProjectStore, Map<string, Promise<PublishedProjectOutput>>>();
 const ordinaryOutputMode = 0o666;
 export interface ProjectOutputPublicationTestHooks {
   readonly forceCopy?: boolean;
-  readonly fault?: (point: 'after_intent' | 'after_target_create' | 'after_target_identity' | 'after_copy_chunk' | 'after_final' | 'after_registered', proof: ProjectOutputPublicationProof) => void;
+  readonly fault?: (point: 'after_intent' | 'after_target_create' | 'after_target_identity' | 'after_copy_chunk' | 'after_final' | 'after_install' | 'after_registered',
+    proof: ProjectOutputPublicationProof, workingFile?: string) => void;
 }
 const testHooks = new WeakMap<ProjectStore, ProjectOutputPublicationTestHooks>();
 const ownerFailures=new WeakSet<object>();
@@ -428,15 +433,194 @@ export async function readPublishedProjectOutput(store: ProjectStore, input: {ow
     throw error;
   }
 }
-function nextAttempt(store: ProjectStore, receipt: Receipt, input: ProjectOutputInput, options: ProjectOutputOptions): Receipt {
+function nextAttempt(store: ProjectStore, receipt: Receipt, input: ProjectOutputInput, options: ProjectOutputOptions, abandon = true): Receipt {
   if (receipt.attempt >= 16 || receipt.abandoned.length >= 16) throw new AppError('INVALID_MEDIA', '本地产物发布重试已达上限，请检查项目目录', 409);
-  const abandoned = [...receipt.abandoned, receipt.proof.relativePath];
+  const abandoned = abandon ? [...receipt.abandoned, receipt.proof.relativePath] : receipt.abandoned;
   const relativePath = nextOutputPath(store, input, receipt.proof.publicationId, receipt.attempt + 1, abandoned);
   const result: Receipt = {...receipt, proof: {...receipt.proof, relativePath},
-    attempt: receipt.attempt + 1, mode: 'link', phase: 'intent', targetIdentity: null, abandoned};
+    attempt: receipt.attempt + 1, mode: 'link', phase: 'intent', targetIdentity: null, finalStats: null, abandoned};
   writeReceipt(store, result, options); return result;
 }
-async function executePublication(store: ProjectStore, input: ProjectOutputInput, options: ProjectOutputOptions): Promise<PublishedProjectOutput> {
+/** Rollback uses filesystem proof even when the job's authority was revoked. */
+function removeOwnedOutput(file: string, directoryIdentity: OutputFileIdentity, identity: OutputFileIdentity, maxLinks: bigint): void {
+  const directory = path.dirname(file);
+  const parent = lstatSync(directory, {bigint: true, throwIfNoEntry: false});
+  if (!parent?.isDirectory() || !sameOutputIdentity(directoryIdentity, outputFileIdentity(parent)) || realpathSync(directory) !== directory) invalid();
+  const current = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  if (!current) return;
+  if (!current.isFile() || current.nlink < 1n || current.nlink > maxLinks ||
+      !sameOutputIdentity(identity, outputFileIdentity(current)) ||
+      isProjectFileHeld(identity) || isAppLibraryHeld(identity)) invalid();
+  unlinkSync(file);
+  syncDirectory(directory);
+}
+function committedExport(store: ProjectStore, proof: ProjectOutputPublicationProof): boolean {
+  const asset: unknown = store.get('assets', proof.assetId);
+  if (asset === null) return false;
+  if (!record(asset) || !isDeepStrictEqual(asset.publication, proof) || !isPublishedProjectOutput(asset, {
+      projectId: proof.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: 'exports',
+      sha256: proof.sha256, sizeBytes: proof.sizeBytes, mimeType: proof.mimeType,
+  })) invalid();
+  return true;
+}
+class ExportNameOccupied extends Error {}
+class ExportInstallUnresolved extends Error {
+  constructor(cause: unknown) {super('The export installation outcome could not be reconciled.', {cause});}
+}
+export const isExportInstallUnresolved = (error: unknown): boolean => error instanceof ExportInstallUnresolved;
+/** Use the verified hidden descriptor for sampling and the final name for
+ * the locator. The atomic install keeps the same inode and modification time. */
+async function stagedExportReference(file: string, proof: ProjectOutputPublicationProof,
+  verification: FileVerification, signal?: AbortSignal): Promise<MediaReference> {
+  const info = verification.current('reference');
+  if (info.nlink !== 1n || isNotDownloaded(info)) invalid();
+  const source = await NODE_MEDIA_FILE_SYSTEM.open(file);
+  try {
+    verification.observe(await source.stat(), 'reference');
+    const size = proof.sizeBytes;
+    if (detectMediaType(path.basename(proof.relativePath), await readHeader(source, size, signal))?.mimeType !== proof.mimeType) invalid();
+    const sampledSha256 = await hashSamples(source, size, signal);
+    verification.observe(await source.stat(), 'reference');
+    verification.current('reference');
+    return {pathForm: 'relative', path: proof.relativePath, volume: null, sizeBytes: size,
+      mtimeMs: mediaMtimeMs(info), sampledSha256, fullSha256: proof.sha256};
+  } finally {await source.close();}
+}
+async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage: string, stageInfo: BigIntStats,
+  options: ProjectOutputOptions, register?: RegisterExport): Promise<PublishedProjectOutput> {
+  const {proof} = receipt, file = path.join(store.projectDir, proof.relativePath);
+  const directory = path.join(store.projectDir, '.mioon-export-staging');
+  const workingFile = path.join(directory, proof.publicationId + '-' + receipt.attempt + '.' + extensions[proof.mimeType]);
+  checkReceiptDirectories(store, receipt, options);
+  ensurePrivateDirectory(directory, {create: true});
+  const directoryInfo = lstatSync(directory, {bigint: true}), directoryIdentity = outputFileIdentity(directoryInfo);
+  // The candidate and the public name must share the project filesystem.
+  if (directoryInfo.dev !== lstatSync(path.dirname(file), {bigint: true}).dev ||
+      directoryInfo.dev !== BigInt(receipt.rootIdentity.dev)) invalid();
+  const checkDirectory = (): void => {
+    const parent = lstatSync(directory, {bigint: true});
+    if (!parent.isDirectory() || realpathSync(directory) !== directory ||
+        !sameOutputIdentity(directoryIdentity, outputFileIdentity(parent)) ||
+        (process.platform !== 'win32' && ((parent.mode & 0o077n) !== 0n || parent.uid !== directoryInfo.uid))) invalid();
+  };
+  const check: CheckOutput = phase => {
+    checkReceiptDirectories(store, receipt, options, phase);
+    checkDirectory();
+    if (phase !== 'chunk') validateManagedDirectory(directory, {root: directory, private: true});
+  };
+  // A restarted copy can dispose of only the leaf whose identity reached the
+  // durable receipt. An unknown file will instead collide with exclusive open.
+  if (lstatSync(workingFile, {throwIfNoEntry: false}) && receipt.targetIdentity) {
+    removeOwnedOutput(workingFile, directoryIdentity, receipt.targetIdentity, 1n);
+  }
+  const fault = (point: Parameters<NonNullable<ProjectOutputPublicationTestHooks['fault']>>[0]): void =>
+    testHooks.get(store)?.fault?.(point, proof, workingFile);
+  const chunkBytes = bytePassChunkSize(options, proof.sizeBytes);
+  let candidateIdentity: OutputFileIdentity | undefined, installed = false;
+  try {
+    check();
+    const target = await open(workingFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, ordinaryOutputMode)
+      .catch(error => {
+        if (record(error) && error.code === 'EEXIST') throw new ExportNameOccupied();
+        throw error;
+      });
+    try {
+      const created = await target.stat({bigint: true});
+      candidateIdentity = outputFileIdentity(created);
+      fault('after_target_create'); check();
+      receipt.targetIdentity = candidateIdentity; receipt.mode = 'copy'; receipt.phase = 'copying';
+      writeReceipt(store, receipt, options);
+      fault('after_target_identity'); check();
+      await copyVerifiedStage(stage, stageInfo, workingFile, target, candidateIdentity, proof, check, () => fault('after_copy_chunk'), chunkBytes);
+    } finally {await target.close();}
+    const identity = candidateIdentity;
+    const verify = (mtimeNs?: bigint) => verifyStableFile(workingFile, {...proof, identity, mtimeNs}, check, 'final-hash', async verification => {
+      await readVerifiedBytes(workingFile, proof, check, verification, 'final-hash', {chunkBytes});
+      await syncVerifiedFile(workingFile, check, verification, 'final-sync');
+      syncDirectory(directory);
+      return stagedExportReference(workingFile, proof, verification, options.signal);
+    });
+    let verified = await verify();
+    fault('after_final');
+
+    // After the in-transaction success write the old running-row predicate
+    // no longer applies. Keep the separate project and filesystem fences.
+    const filesystemOnly = {signal: options.signal};
+    const publicationCheck = () => checkReceiptDirectories(store, receipt, filesystemOnly);
+    for (let attempt = 0; ; attempt++) {
+      const {stats, value: reference} = verified, expected = pinnedFile(proof, stats);
+      const published: PublishedProjectOutput = {reference, referenceRevision: 1, sha256: proof.sha256,
+        sizeBytes: proof.sizeBytes, relativePath: proof.relativePath, publication: proof};
+      const checkCandidate = (guard: () => void): void => {
+        const pending = fileMetadata(workingFile, guard);
+        assertFileFacts(pending, expected, 'registration');
+        if (pending.nlink !== 1n) throw new BytesMismatch('registration', 'identity');
+        if (pending.ctimeNs !== stats.ctimeNs) throw new CtimeChanged('registration');
+      };
+      const install = (): void => {
+        checkCandidate(() => check());
+        register?.(published);
+        checkCandidate(() => {publicationCheck(); checkDirectory();});
+        try {linkSync(workingFile, file);}
+        catch (error) {
+          if (record(error) && error.code === 'EEXIST') throw new ExportNameOccupied();
+          throw error;
+        }
+        installed = true;
+        const linked = fileMetadata(file, publicationCheck);
+        assertFileFacts(linked, expected, 'registration');
+        if (linked.nlink !== 2n) throw new BytesMismatch('registration', 'identity');
+        fault('after_install');
+        const installedInfo = fileMetadata(file, publicationCheck);
+        assertFileFacts(installedInfo, expected, 'registration');
+        if (installedInfo.ctimeNs !== linked.ctimeNs) throw new BytesMismatch('registration', 'ctime');
+        if (installedInfo.nlink !== linked.nlink) throw new BytesMismatch('registration', 'identity');
+        removeOwnedOutput(workingFile, directoryIdentity, identity, 2n);
+        const final = fileMetadata(file, publicationCheck);
+        assertFileFacts(final, expected, 'registration');
+        if (final.nlink !== 1n) throw new BytesMismatch('registration', 'identity');
+        syncDirectory(path.dirname(file));
+        saveFinalStats(receipt, final); receipt.phase = 'prepared';
+        writeReceipt(store, receipt, filesystemOnly);
+        const durable = fileMetadata(file, publicationCheck);
+        assertFileFacts(durable, expected, 'registration');
+        if (durable.ctimeNs !== final.ctimeNs) throw new BytesMismatch('registration', 'ctime');
+        if (durable.nlink !== 1n) throw new BytesMismatch('registration', 'identity');
+      };
+      try {
+        if (register) store.tx(install); else install();
+        return published;
+      } catch (error) {
+        if (installed || !(error instanceof CtimeChanged)) throw error;
+        if (attempt >= maxVerificationRetries) throw new BytesMismatch('registration', 'ctime');
+        verified = await verify(stats.mtimeNs);
+      }
+    }
+  } catch (error) {
+    if (candidateIdentity) {
+      let unresolved = false;
+      // A failed DB acknowledgement alone cannot authorize removal.
+      try {
+        if (installed && (!register || !committedExport(store, proof))) {
+          removeOwnedOutput(file, receipt.directoryIdentity, candidateIdentity, 2n);
+        }
+      } catch {
+        try {
+          const visible = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+          unresolved = Boolean(visible && sameOutputIdentity(candidateIdentity, outputFileIdentity(visible)));
+        } catch {unresolved = true;}
+      }
+      try {removeOwnedOutput(workingFile, directoryIdentity, candidateIdentity, 2n);}
+      catch { /* A replaced candidate belongs to its current owner. */ }
+      // Recovery can reconcile the exact receipt once the owner can reopen.
+      // A still-visible, uncertain install must not be called a failed export.
+      if (unresolved) throw new ExportInstallUnresolved(error);
+    }
+    throw error;
+  }
+}
+async function executePublication(store: ProjectStore, input: ProjectOutputInput, options: ProjectOutputOptions, register?: RegisterExport): Promise<PublishedProjectOutput> {
+  if (register && (input.targetKind !== 'exports' || typeof register !== 'function')) throw new TypeError('Only exports register during publication');
   projectOutputOwnerSchema.parse(input.owner); uuid.parse(input.assetId); if (store.db.isTransaction) throw new TypeError('Output I/O must run outside SQLite transactions');
   fence(store, options);
   let receipt = readReceipt(store, input.owner, input.assetId, options);
@@ -480,7 +664,21 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     if (existing) {
       const identity = current.targetIdentity ?? (current.mode === 'link' ? current.stageIdentity : null);
       if (identity && sameOutputIdentity(identity, outputFileIdentity(existing))) {
-        try {const result = await verifiedFinal(store, current, options,true); current.targetIdentity = identity; current.phase = current.phase === 'registered' ? 'registered' : 'prepared'; writeReceipt(store, current, options); return result;}
+        if (register && current.phase !== 'registered' && !committedExport(store, current.proof)) {
+          // Recover an interrupted install before trying to publish again.
+          removeOwnedOutput(file, current.directoryIdentity, identity, 2n);
+          continue;
+        }
+        try {
+          const result = await verifiedFinal(store, current, options, true);
+          current.targetIdentity = identity; current.phase = current.phase === 'registered' ? 'registered' : 'prepared';
+          writeReceipt(store, current, options);
+          if (register) await registerVerifiedProjectOutputs(store, options, () => store.tx(() => {
+            assertPublishedProjectOutput(store, current.proof, options);
+            register(result);
+          }));
+          return result;
+        }
         catch (error) {if (!(error instanceof BytesMismatch) || error.field === 'ctime' || current.phase === 'prepared' || current.phase === 'registered') throw error;}
       } else if (current.targetIdentity || current.phase === 'prepared' || current.phase === 'registered') invalid();
       receipt = nextAttempt(store, current, input, options); continue;
@@ -492,6 +690,14 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     const chunkBytes = bytePassChunkSize(options, current.proof.sizeBytes);
     stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash', chunkBytes);
     check();
+    if (current.proof.targetKind === 'exports') {
+      try {return await copyAndInstallExport(store, current, stage, stageInfo, options, register);}
+      catch (error) {
+        if (!(error instanceof ExportNameOccupied)) throw error;
+        receipt = nextAttempt(store, current, input, options, false);
+        continue;
+      }
+    }
     const upload = current.proof.targetKind === 'assets';
     const outputMode = upload ? 0o644 : ordinaryOutputMode;
     // A hard link shares the stage's private permissions. Create generated
@@ -528,10 +734,10 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     }
   }
 }
-export async function publishProjectOutput(store: ProjectStore, input: ProjectOutputInput, options: ProjectOutputOptions = {}): Promise<PublishedProjectOutput> {
+export async function publishProjectOutput(store: ProjectStore, input: ProjectOutputInput, options: ProjectOutputOptions = {}, register?: RegisterExport): Promise<PublishedProjectOutput> {
   try{
   fence(store, options); const key = keyFor(input.owner, input.assetId), running = inFlight.get(store) ?? new Map<string, Promise<PublishedProjectOutput>>(); inFlight.set(store, running);
-  const previous = running.get(key), result = previous ? previous.then(() => executePublication(store, input, options)) : executePublication(store, input, options);
+  const previous = running.get(key), result = previous ? previous.then(() => executePublication(store, input, options, register)) : executePublication(store, input, options, register);
   running.set(key, result); void result.finally(() => {if (running.get(key) === result) running.delete(key);}).catch(() => {}); return await result;
   }catch(error){return normalizeOutputIo(error);}
 }

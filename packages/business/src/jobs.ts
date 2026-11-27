@@ -43,8 +43,8 @@ import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
 import {adoptFormat5GeneratedVersionInside} from './format5-sequence-sync.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
-import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
-import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
+import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isExportInstallUnresolved} from './project-output-publication.ts';
+import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,discardCompletedExportArtifact,sealOutputArtifactStage} from './output-artifact-storage.ts';
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
@@ -556,7 +556,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
   const agentBound=!!agentTaskJobBinding(store.db,'export',e.id);
   const fencedAttempt=floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=timelineExportRangeEffectError;
-  let preparedAssets: Map<string, unknown>|undefined,linkedOutput=false,publicationAccepted=false,
+  let preparedAssets: Map<string, unknown>|undefined,linkedOutput=false,publicationAccepted=false,discardCompleted=false,
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
    floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false,renderStarted=false,blockedGate=false;
   const beforeStart=():void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}renderStarted=true;}};
@@ -698,16 +698,18 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const displayName=e.mode==='timeline'&&e.purpose!=='export'?undefined
      :stringValue(property(e.snapshot,'deliveryName'))??stringValue(property(get('projects',e.projectId),'name'))??'';
     const publicationOptions={signal,beforeEffect,...outputFence};
-    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},publicationOptions);checkpoint(signal);beforeEffect();
-    const {relativePath:_publishedPath,...locator}=published;
-    await registerVerifiedProjectOutputs(writerOwner, publicationOptions, () => {
-     tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
-     const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
+    const completed=artifact;
+    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:completed.assetId,publicationId:completed.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},publicationOptions,published=>{
+     beforeEffect();if(!resumedArtifact)checkCustomSources();
+     const {relativePath:_publishedPath,...locator}=published;
+     const asset={id:completed.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:completed.createdAt,url:`/media/${completed.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
-     });
-     publicationAccepted=true;
-     return markProjectOutputRegistered(writerOwner,published.publication,{signal});
+    }).catch(error=>{
+     if(property(error,'code')==='INVALID_MEDIA'&&property(property(error,'details'),'point')==='registration')throw effectError();
+     throw error;
     });
+    publicationAccepted=true;
+    await markProjectOutputRegistered(writerOwner,published.publication,{signal});
     return;
    }
    // link is an atomic, non-overwriting publication on the managed filesystem.
@@ -722,21 +724,25 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   } catch(error) {
    terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed')||hasUnconfirmedMediaProcesses({signal}));
    if(terminationUnconfirmed)failShutdown(error);
-   if(publicationAccepted)return;
+   if(publicationAccepted||isExportInstallUnresolved(error))return;
    if(isBackgroundTaskIndexUncertain(error))return;
    if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:e.id},error))return;
-   const failExport=(): void=>{
+   const failExport=(): boolean=>{
     const latest=currentOwnedExport(e);
     const latestStatus=stringValue(property(latest,'status'));
-    if(!latest||isCancelledExport(latest)||latestStatus==='cancelled'||(customExport(e)||writerOwner&&artifact&&latest.assetId===artifact.assetId)&&latestStatus==='succeeded')return;
-    if(agentBound&&!renderStarted&&(blockedGate||isAgentTaskEffectBlocked(error))){const cancelled=isAgentTaskJobStopped(store.db,'export',e.id);put('exports',{...(floatExport?requeueFloatTimelineExport(latest):latest),status:cancelled?'failed':'queued',error:cancelled?{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false}:null,updatedAt:now()});return;}
+    if(!latest||(customExport(e)||writerOwner&&artifact&&latest.assetId===artifact.assetId)&&latestStatus==='succeeded')return false;
+    if(isCancelledExport(latest)||latestStatus==='cancelled')return latest.assetId===null&&latest.url===null;
+    if(agentBound&&!renderStarted&&(blockedGate||isAgentTaskEffectBlocked(error))){const cancelled=isAgentTaskJobStopped(store.db,'export',e.id);put('exports',{...(floatExport?requeueFloatTimelineExport(latest):latest),status:cancelled?'failed':'queued',error:cancelled?{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false}:null,updatedAt:now()});return cancelled;}
     const audioCheck=floatExport&&!signal.aborted?(floatMeasurement?bindFloatTimelineMeasurement(e as never,floatMeasurement,now()):bindFloatTimelineFailure(e as never,error,now())):undefined;
     put('exports',{...(floatExport&&signal.aborted?requeueFloatTimelineExport(latest):latest),status:signal.aborted?'queued':'failed',error:terminationUnconfirmed?mediaPauseError('exports',latestStatus??'failed'):signal.aborted?null:{...safeError(error,'EXPORT_FAILED'),...(audioCheck?.code==='EXPORT_AUDIO_OVER_RANGE'?{retryable:false}:{})},...(audioCheck?{audioCheck}:{}),updatedAt:now()});
+    return !signal.aborted;
    };
-   tx(failExport);
+   discardCompleted=tx(failExport);
   } finally {
    claimLive=false;
    const cleanup=async(): Promise<void>=>{
+   if(outputHandle)await outputHandle.close().catch(()=>{});
+   if(writerOwner&&artifact&&discardCompleted)try{discardCompletedExportArtifact(writerOwner,artifact);}catch{/* An unverified file is not removed. */}
    const unpublished=(): boolean=>{const latest=currentOwnedExport(e,{cleanupOnly:floatExport});const status=stringValue(property(latest,'status'));return Boolean(latest&&exportIdentity(latest)===exportIdentity(e)&&status!==undefined&&['queued','running','failed'].includes(status)&&latest.assetId===null&&latest.url===null);};
    if(outputIdentity&&(!writerOwner||!artifactComplete)){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&unpublished())await unlink(part).catch(()=>{});}catch{/* an uncertain read preserves the part file */}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
@@ -750,7 +756,6 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      }
     }catch{/* An uncertain read or cleanup preserves the link and original error. */}
    }
-   if(outputHandle)await outputHandle.close().catch(()=>{});
    };
    if(terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
