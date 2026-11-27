@@ -75,13 +75,16 @@ function successor<C extends TransitionClip>(clips: readonly C[], clip: C): C | 
   return clips.find(other => other !== clip && other.trackId === clip.trackId && other.startFrame === clip.startFrame + clip.durationFrames) ?? null;
 }
 type Neighbour = (clip: TransitionClip) => ClipTransition | null;
+export type TransitionHandleCheck = (clip: TransitionClip, side: 'before' | 'after',
+  outputFrames: number, source: TransitionSource) => boolean;
+const affineHandle: TransitionHandleCheck = (clip, side, frames, source) => source.image ||
+  (side === 'before' ? clip.sourceInFrame >= frames : clip.sourceInFrame + clip.durationFrames + frames <= source.frames);
 /** Source handles on both sides, and room inside both clips beside the
  * transitions on their other cuts (`neighbour` says which of those count). */
-function fits(clips: readonly TransitionClip[], outgoing: TransitionClip, incoming: TransitionClip, durationFrames: number, sources: TransitionSources, neighbour: Neighbour): boolean {
+function fits(clips: readonly TransitionClip[], outgoing: TransitionClip, incoming: TransitionClip, durationFrames: number, sources: TransitionSources, neighbour: Neighbour, handle: TransitionHandleCheck = affineHandle): boolean {
   const {before, after} = clipTransitionSides(durationFrames), from = sources(outgoing.assetId), to = sources(incoming.assetId);
   if (!from || !to) return false;
-  if (!to.image && incoming.sourceInFrame < before) return false;
-  if (!from.image && outgoing.sourceInFrame + outgoing.durationFrames + after > from.frames) return false;
+  if (!handle(incoming, 'before', before, to) || !handle(outgoing, 'after', after, from)) return false;
   return outputFits(clips, outgoing, incoming, {before, after}, neighbour);
 }
 
@@ -123,12 +126,13 @@ export function clipTransitionSegmentCount(timeline: TransitionTimeline, regions
 /** The incoming clips whose saved transitions no longer hold. Each track is
  * read left to right, and a transition stays when it fits beside the ones
  * already kept on its left. Over the segment bound, the latest cuts go. */
-export function staleClipTransitions(timeline: TransitionTimeline, sources: TransitionSources): string[] {
+export function staleClipTransitions(timeline: TransitionTimeline, sources: TransitionSources,
+  handle: TransitionHandleCheck = affineHandle): string[] {
   const kept = new Map<string, ClipTransitionRegion>(), stale: string[] = [], keptTransitions = new Map<string, ClipTransition>();
   const incoming = timeline.clips.filter(clip => own(clip, 'transitionIn')).sort((a, b) => a.trackId < b.trackId ? -1 : a.trackId > b.trackId ? 1 : a.startFrame - b.startFrame);
   for (const clip of incoming) {
     const transition = savedClipTransition(clip), outgoing = clipTransitionPredecessor(timeline.clips, clip);
-    if (transition && outgoing && fits(timeline.clips, outgoing, clip, transition.durationFrames, sources, other => keptTransitions.get(other.id) ?? null)) {
+    if (transition && outgoing && fits(timeline.clips, outgoing, clip, transition.durationFrames, sources, other => keptTransitions.get(other.id) ?? null, handle)) {
       kept.set(clip.id, region(timeline.clips, clip, transition)); keptTransitions.set(clip.id, transition);
     } else stale.push(clip.id);
   }
@@ -138,8 +142,9 @@ export function staleClipTransitions(timeline: TransitionTimeline, sources: Tran
 }
 /** The saved transitions as render regions. Saved timelines are kept clean,
  * so a transition that no longer holds is invalid here, not dropped. */
-export function clipTransitionRegions(timeline: TransitionTimeline, sources: TransitionSources): ClipTransitionRegion[] {
-  if (staleClipTransitions(timeline, sources).length) fail('A saved transition does not fit its cut.');
+export function clipTransitionRegions(timeline: TransitionTimeline, sources: TransitionSources,
+  handle: TransitionHandleCheck = affineHandle): ClipTransitionRegion[] {
+  if (staleClipTransitions(timeline, sources, handle).length) fail('A saved transition does not fit its cut.');
   return timeline.clips.filter(clip => own(clip, 'transitionIn')).map(clip => region(timeline.clips, clip, savedClipTransition(clip)!))
     .sort((a, b) => a.cutFrame - b.cutFrame || (a.trackId < b.trackId ? -1 : 1));
 }

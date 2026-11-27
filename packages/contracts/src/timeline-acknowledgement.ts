@@ -19,6 +19,8 @@ import {timelineFormatSchemas,timelineFrameSetSchema,timelineOutputPreset} from 
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.ts';
 import {FORMAT5_TIMELINE_FORMAT, FORMAT6_TIMELINE_FORMAT, isSequenceTimelineFormat, isTimelineRecord, isTimelineReplacementResponse, type TimelineRecord, type TimelineRecordOptions} from './timeline-replacement.ts';
 import {sourceFrameCount} from './source-range.ts';
+import {clipSourceEndFrame} from './timeline-clip-timing.ts';
+import {isTimelineSpeedExportReason,SPEED_PROCESSING_NOT_READY} from './timeline-speed-export.ts';
 import {SUBJECT_MUTATION_OPERATIONS} from './subjects.ts';
 import {REFERENCE_MUTATION_OPERATIONS} from './reference-acknowledgement.ts';
 import {type z} from 'zod';
@@ -179,10 +181,12 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
 
 const renderFields = ['id', 'projectId', 'requestId', 'mode', 'purpose', 'timelineRevision', 'snapshot', 'status', 'assetId', 'url', 'error', 'createdAt', 'updatedAt'];
 const snapshotFields = ['timeline', 'assets'];
-const snapshotOptionalFields = ['subtitleProfile','delivery','deliveryName','exportRange','colourPlan','audioRoleProfile','volumeEnvelopeProfile'];
+const snapshotOptionalFields = ['subtitleProfile','delivery','deliveryName','exportRange','colourPlan','audioRoleProfile','volumeEnvelopeProfile','speedExport'];
 const visualTypes = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm'];
 const audioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp4'];
-const renderError = (value: unknown): boolean => fields(value, ['code', 'message'], ['retryable']) && text(value.code, 1, 200) && text(value.message, 1, 600) && (!Object.hasOwn(value, 'retryable') || typeof value.retryable === 'boolean');
+const renderError = (value: unknown, allowTaskId: boolean): boolean => fields(value, ['code', 'message'], ['retryable','taskId']) &&
+  text(value.code, 1, 200) && text(value.message, 1, 600) && (!Object.hasOwn(value, 'retryable') || typeof value.retryable === 'boolean') &&
+  (!Object.hasOwn(value, 'taskId') || allowTaskId && value.code===SPEED_PROCESSING_NOT_READY && uuid(value.taskId));
 
 // A progressed export and an immutable acknowledgement share frozen identity.
 // Never require the current job status to equal its originally queued status.
@@ -202,11 +206,13 @@ export function isTimelineRenderRecord(value: unknown, input: unknown, options: 
   if (!fields(snapshot, snapshotFields, snapshotOptionalFields) || !isTimelineExportSnapshot(snapshot,{purpose:request.purpose,exportSettings:request.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(snapshot) || !isVolumeEnvelopeProcessingSnapshot(snapshot)) return false;
   const snapshotRecord = snapshot as Rec;
   const timeline = snapshotRecord.timeline as TimelineRecord;
-  if (!isTimelineRecord(timeline, {...options, projectId: request.projectId}) ||
+  const retimed = Object.hasOwn(snapshotRecord,'speedExport');
+  if (retimed && options.format !== undefined && options.format !== FORMAT6_TIMELINE_FORMAT) return false;
+  if (!isTimelineRecord(timeline, {...options, ...(retimed ? {format:FORMAT6_TIMELINE_FORMAT} : {}), projectId: request.projectId}) ||
       timeline.revision !== request.expectedRevision || !timeline.clips.length ||
       (request.timelineId !== undefined && timeline.id !== request.timelineId) ||
       !Array.isArray(snapshotRecord.assets) || snapshotRecord.assets.length < 1 || snapshotRecord.assets.length > 100 ||
-      !(render.error === null || renderError(render.error))) return false;
+      !(render.error === null || renderError(render.error, retimed && render.status === 'failed'))) return false;
   if (render.status === 'succeeded') {
     if (!uuid(render.assetId) || render.url !== `/media/${render.assetId}` || render.error !== null) return false;
   } else if (render.assetId !== null || render.url !== null || render.status === 'failed' && render.error === null) return false;
@@ -236,7 +242,7 @@ export function isTimelineRenderRecord(value: unknown, input: unknown, options: 
       ? soundOnly ? !(asset.mimeType as string).startsWith('video/') || asset.hasAudio !== true
         : !audioTypes.includes(asset.mimeType as string)
       : !visualTypes.includes(asset.mimeType as string))) return false;
-    if ((asset.mimeType as string).startsWith('image/') ? clip.sourceInFrame !== 0 : clip.sourceInFrame + clip.durationFrames > (sourceFrameCount(asset.duration) ?? 0)) return false;
+    if ((asset.mimeType as string).startsWith('image/') ? clip.sourceInFrame !== 0 : clipSourceEndFrame(clip) > (sourceFrameCount(asset.duration) ?? 0)) return false;
     if (clip.volumeEnvelope != null && ((asset.mimeType as string).startsWith('image/') || asset.hasAudio === false)) return false;
     if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > 0 && ((asset.mimeType as string).startsWith('image/') || asset.hasAudio === false)) return false;
     used.add(asset.id as string);
@@ -288,6 +294,15 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
     (!Object.hasOwn(request,'colour')||isTimelineClipColour(request.colour))&&
     (!object(request.patch)||!Object.hasOwn(request.patch,'colour')||isTimelineClipColour(request.patch.colour))&&
     (integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true)&&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
+  if(isTimelineSpeedExportReason(failure?.code))return Boolean(operation==='timeline.render'&&
+    operationInput(input,['purpose'],['preflightSnapshotHash','exportSettings','deliveryName','exportRange'])&&request.purpose==='export'&&
+    isTimelineDeliveryNameInput(input,request.purpose)&&isTimelineExportRangeInput(input,request.purpose)&&
+    (request.exportSettings===undefined||timelineExportSettingsSchema.safeParse(request.exportSettings).success)&&
+    (request.preflightSnapshotHash===undefined||digest(request.preflightSnapshotHash))&&failure.terminationUnconfirmed!==true&&object(details)&&
+    (integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true)&&
+    (!Object.hasOwn(details,'taskId')||failure.code===SPEED_PROCESSING_NOT_READY&&uuid(details.taskId))&&
+    ['mutationOutcome','operation','projectId','requestId'].every(key=>Object.hasOwn(details,key))&&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
   const rangeProof={operation,error: failure,isRenderInput:(value: unknown): boolean =>
     operationInput(value,['purpose','exportRange'],['preflightSnapshotHash','exportSettings','deliveryName']) && isTimelineDeliveryNameInput(value,(value as Rec).purpose) &&
