@@ -1372,7 +1372,7 @@ export function timeMapTailInverse(plan: CompiledTimeMap, position: TimeMapOutpu
   return done({position: {kind: 'numeric', value: inverted.value.value, errorBound: inverted.value.errorBound}, frame: decided.value, tail: false});
 }
 
-// Forward curve audio repeatedly inverts nearby positions at sample resolution.
+// Curve audio repeatedly inverts nearby positions at sample resolution.
 // Keep one bounded, lazy prefix per control-point segment of the immutable root.
 const audioIntegrationCells = 64;
 const audioCellTolerance = 1e-12;
@@ -1465,12 +1465,14 @@ export function timeMapAudioInverse(plan: CompiledTimeMap, position: TimeMapOutp
   TimeMapResult<{readonly position: ContinuousSourcePosition; readonly tail: boolean}> {
   const exact = () => timeMapTailInverse(plan, position, {tailInverse: 'latest'});
   const state = rootState(plan.root);
-  if (plan.direction === 'reverse' || !state.curve || !Number.isFinite(prefixErrorLimit) || prefixErrorLimit <= 0) return exact();
+  if (!state.curve || !Number.isFinite(prefixErrorLimit) || prefixErrorLimit <= 0) return exact();
   let offset: Rat;
   try { offset = ratNorm(BigInt(position.numerator), BigInt(position.denominator)); }
   catch { return exact(); }
   if (offset.n < 0n) return exact();
-  const target = curveInverseTarget(state, boundaryTimeValue(planState(plan).loTime), offset);
+  const {direction, loTime, hiTime} = planState(plan);
+  const base = boundaryTimeValue(direction === 'forward' ? loTime : hiTime);
+  const target = curveInverseTarget(state, base, direction === 'forward' ? offset : ratNeg(offset));
   if (!target) return exact();
   const inverted = audioIntegralInverse(state, target.integral, target.error);
   if (!inverted || inverted.errorBound > prefixErrorLimit || inverted.value < numberFromRat(state.sourceStart) ||
