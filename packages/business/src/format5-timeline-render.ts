@@ -18,6 +18,7 @@ import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import type {ProjectStore} from './project-file/store.ts';
+import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 
 type Row = Record<string, unknown>;
 const sha256 = (value: unknown): boolean => typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
@@ -93,7 +94,7 @@ export function readFormat5RenderProjection(store: ProjectStore): Format5RenderP
 export function readFormat5AudioProjection(store: ProjectStore): {legacy: TimelineRecord; assets: ReadonlyMap<string, ManagedAssetRecord>} | null {
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) return null;
-  const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId});
+  const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId, formatVersion: timelineStorageFormat(store.db, 'project')});
   if (issue) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线数据不可用。', 409, {clipIds: issue.ids ?? []});
   assertTimelineSpeedRenderable(timeline);
   const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;

@@ -274,6 +274,22 @@ test('Preview applies a changed playhead deferred while hidden, without publishi
   h.mediaNode().props.onSeeked({ currentTarget: element }); assert.deepEqual(seeks, [210]);
 });
 
+test('timeline clip preview seeks and reports frames in the project clock', () => {
+  for (const fps of [24, 25, 30, 60]) {
+    const h = createHarness('Preview.tsx'), seeks: unknown[] = [];
+    const props = previewProps({timeline: {fps}, clip: {id: 'clip-one', sourceInFrame: fps, startFrame: 2 * fps, durationFrames: 4 * fps},
+      playhead: 3 * fps, onSeek: (value: unknown) => seeks.push(value)});
+    h.render(props);
+    const element = h.mediaNode().props.ref.current;
+    assert.equal(element.currentTime, 2);
+    h.mediaNode().props.onSeeked({currentTarget: element});
+    assert.deepEqual(seeks, []);
+    element.currentTime = 3;
+    h.mediaNode().props.onSeeked({currentTarget: element});
+    assert.deepEqual(seeks, [4 * fps]);
+  }
+});
+
 test('replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source', () => {
   const h = createHarness('Preview.tsx'), seeks: unknown[] = [], props = previewProps({ kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render-one', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded', url: '/first', timelineRevision: 1 }, onSeek: (value: unknown) => seeks.push(value) });
   h.render(props); const old = h.mediaNode(), original = old.props.ref.current;

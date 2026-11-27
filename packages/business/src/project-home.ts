@@ -3,7 +3,9 @@ import {projectSummaryListSchema,projectSummaryCoverSchema} from '../../contract
 import type {ProjectSummary} from '../../contracts/src/project-home.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {canvasActiveCondition,canvasActiveEdgeCondition} from './canvas-active.ts';
-import {readTimelineStorage} from './project-file/timeline-storage.ts';
+import {readTimelineStorage,timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
 
 interface Store{db:DatabaseSync}
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
@@ -33,6 +35,12 @@ function rows(db:DatabaseSync,table:Table,projectId?:string):Record<string,unkno
       if(!object(value)||value.id!==row.id||projectId!==undefined&&table!=='projects'&&value.projectId!==projectId)invalid();return value;
     });
   }
+
+function projectPreset(db:DatabaseSync,timeline:Record<string,unknown>|undefined){
+  const allowProjectFps=timeline!==undefined&&timeline.fps!==30&&process.env.MIOON_FORMAT6_DEV==='1'&&
+    timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION;
+  return timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET,{allowProjectFps});
+}
 
 function selectCover(projectId:string,shots:Record<string,unknown>[],sourceById:ReadonlyMap<unknown,Record<string,unknown>>,versionById:ReadonlyMap<unknown,Record<string,unknown>>,timeline:Record<string,unknown>|undefined):ProjectSummary['cover']{
     let cover:ProjectSummary['cover']=null;
@@ -64,7 +72,7 @@ export function readProjectCover({db}:Store,projectId:string):ProjectSummary['co
   const shots=rows(db,'shots',projectId).sort((a,b)=>Number(a.orderIndex)-Number(b.orderIndex)||String(a.id).localeCompare(String(b.id))),
     assets=rows(db,'assets',projectId),versions=rows(db,'versions',projectId),timelines=rows(db,'timelines',projectId);
   if(timelines.length>1)invalid();const timeline=timelines[0];
-  if(!timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET)||timeline&&(!Number.isSafeInteger(timeline.durationFrames)||Number(timeline.durationFrames)<0))invalid();
+  if(!projectPreset(db,timeline)||timeline&&(!Number.isSafeInteger(timeline.durationFrames)||Number(timeline.durationFrames)<0))invalid();
   return selectCover(projectId,shots,new Map(assets.map(asset=>[asset.id,asset])),new Map(versions.map(version=>[version.id,version])),timeline);
 }
 
@@ -75,7 +83,8 @@ export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}
     if(!uuid(project.id)||typeof project.name!=='string'||!date(project.createdAt)||!date(project.updatedAt)||!Number.isSafeInteger(project.revision))invalid();
     const projectId=project.id,shots=rows(db,'shots',projectId).sort((a,b)=>Number(a.orderIndex)-Number(b.orderIndex)||String(a.id).localeCompare(String(b.id))),
       assets=rows(db,'assets',projectId),versions=rows(db,'versions',projectId),timelines=rows(db,'timelines',projectId),nodes=rows(db,'nodes',projectId),edges=rows(db,'edges',projectId);
-    if(timelines.length>1)invalid();const timeline=timelines[0],preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET);if(!preset)invalid();
+    if(timelines.length>1)invalid();const timeline=timelines[0],preset=projectPreset(db,timeline),fps=timeline?.fps??30;
+    if(!preset||!isTimelineFps(fps))invalid();
     const sourceById=new Map(assets.map(asset=>[asset.id,asset])),versionById=new Map(versions.map(version=>[version.id,version]));
     const cover=selectCover(projectId,shots,sourceById,versionById,timeline);
     const timelineDuration=timeline?.durationFrames;
@@ -83,14 +92,14 @@ export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}
     const durationFrames=Number(timelineDuration)>0?Number(timelineDuration):shots.reduce((total,shot)=>{
       const version=versionById.get(shot.selectedVersionId),asset=version&&version.shotId===shot.id?sourceById.get(version.assetId):null;
       const duration=typeof asset?.duration==='number'&&Number.isFinite(asset.duration)&&asset.duration>0?asset.duration:shot.duration;
-      return total+(typeof duration==='number'&&Number.isFinite(duration)&&duration>0?Math.round(duration*30):0);
+      return total+(typeof duration==='number'&&Number.isFinite(duration)&&duration>0?Math.round(duration*fps):0);
     },0);
     const updatedAt=[project,...shots,...assets,...versions,...timelines,...nodes,...edges].reduce((latest,row)=>{
       for(const value of [row.updatedAt,row.createdAt])if(date(value)&&Date.parse(value)>Date.parse(latest))latest=value;return latest;
     },project.updatedAt);
     const opened=recent[projectId];
     return {id:projectId,name:project.name,description:typeof project.description==='string'?project.description:'',revision:Number(project.revision),
-      createdAt:project.createdAt,updatedAt,fps:30,width:preset.width,height:preset.height,presetId:preset.id,shotCount:shots.length,durationFrames,
+      createdAt:project.createdAt,updatedAt,fps,width:preset.width,height:preset.height,presetId:preset.id,shotCount:shots.length,durationFrames,
       lastOpenedAt:date(opened)?opened:null,cover};
   }
   return {handlers:{'project.summary.list':():ProjectSummary[]=>{

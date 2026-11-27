@@ -99,6 +99,25 @@ test('retains original clip clock/fades while mapping just its trimmed intersect
     sourceInSample:160000,offsetSamples:560000,sourceSample:720000,fadeInSamples:720000,fadeOutSamples:720000,fadeOutStartSample:720000});
 });
 
+test('saved integer project clock owns window size, sample edges, and source identity',()=>{
+  const f=fixture({startFrame:11,durationFrames:1500});
+  Object.assign(f.snapshot.timeline.clips[0],{sourceInFrame:7,fadeInFrames:50,fadeOutFrames:50});
+  const hashes=new Set<string>(),sourceKeys=new Set<string>();
+  for(const [fps,frameSamples] of [[24,2000],[25,1920],[30,1600],[60,800]] as const){
+    f.snapshot.timeline.fps=fps;
+    const plan=planOf(f),endFrame=11+20*fps;
+    assert.equal(plan.fps,fps===30?undefined:fps);
+    assert.deepEqual(plan.range,{startFrame:11,endFrame,startSample:11*frameSamples,endSample:endFrame*frameSamples,sampleFrames:960000});
+    assert.equal(plan.sources[0].pcmBytes,7_680_000);
+    assert.equal(audioPreviewEnvelopeAtSample(plan.voices[0],11*frameSamples,fps),11/50);
+    assert.equal(audioPreviewPlanSchema.safeParse({...plan,range:{...plan.range,startSample:11*frameSamples+1}}).success,false);
+    hashes.add(plan.planHash);
+    sourceKeys.add(plan.sources[0].sourceKey);
+  }
+  assert.equal(hashes.size,4);
+  assert.equal(sourceKeys.size,4);
+});
+
 test('saved audition skips muted clips and admits video sources only in the sound-only form',()=>{
   const f=fixture({trackCount:2}),videoAssetId=id(4);
   const [firstTrack,secondTrack]=f.snapshot.timeline.tracks;

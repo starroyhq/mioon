@@ -148,7 +148,8 @@ export function restoreTimelineFrameSubtitles(timeline: TimelineRecord,profile: 
  * LUT, subtitle, geometry, byte-budget and history boundaries as normal edits. */
 export function restoreProjectTimelineInside(store: ProjectStore, desired: TimelineRecord | null, {requestId,now}: {requestId:string;now:string}): void {
  if(!isProjectStore(store)||!store.db.isTransaction)throw new TypeError('Timeline restoration requires the real project transaction');
- const format5=isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)));
+ const formatVersion=timelineStorageFormat(store.db,timelineStorageSchema(store.db));
+ const format5=isSequenceProjectFormat(formatVersion);
  const row=format5?undefined:store.db.prepare('SELECT id,data FROM project.timelines WHERE projectId=?').get(store.projectId);
  const stored=format5?readTimelineStorage(store.db,store.projectId):null;
  const current=format5?stored?.timeline as TimelineRecord|null??null:row?JSON.parse(String(row.data)) as TimelineRecord:null;
@@ -168,7 +169,7 @@ export function restoreProjectTimelineInside(store: ProjectStore, desired: Timel
   // Native rows admit placeholder clips without a managed asset; the legacy
   // media boundary would reject them. The put path and commit fence validate
   // the whole format-5 aggregate, including anchors and native row identity.
-  const issue=getFormat5TimelineIssue(timeline as unknown as Format5Timeline,{projectId:store.projectId});
+  const issue=getFormat5TimelineIssue(timeline as unknown as Format5Timeline,{projectId:store.projectId,formatVersion});
   if(issue)throw new AppError(issue.code,issue.message,422,{database:'project',reason:'metadata'});
  }else{
   const boundary=legacyRecoveryBoundary(store.db,{projectId:store.projectId,requestId});

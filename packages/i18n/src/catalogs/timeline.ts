@@ -2448,6 +2448,12 @@ const timelineCoreMessages = {
     "en": "The saved range must use integer frames",
     "ja": "保存済み範囲は整数フレームである必要があります"
   },
+  "timeline.range.error.noCompleteProjectFrame": {
+    "zh-Hans": "该范围没有包含完整的项目帧，请扩大范围",
+    "zh-Hant": "該範圍沒有包含完整的專案影格，請擴大範圍",
+    "en": "The range contains no complete project frame. Extend the range",
+    "ja": "範囲内に完全なプロジェクトフレームがありません。範囲を広げてください"
+  },
   "timeline.range.error.audioTrack": {
     "zh-Hans": "请先创建兼容的音频轨道",
     "zh-Hant": "請先建立相容的音訊軌道",

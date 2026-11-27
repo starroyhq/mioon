@@ -12,6 +12,8 @@ import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitle-profile.ts';
 import {FORMAT5_LIMITS, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
+import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {findSequenceEditReceipt, prepareSequenceEditHistory, sequenceEditInputDigest,
   writeSequenceEditAction, writeSequenceEditFailure} from './format5-editor-history.ts';
@@ -43,7 +45,7 @@ const apply = (timeline: Format5Timeline, subtitles: Format5Timeline['subtitles'
   const clips = timeline.clips.map(clip => {
     const candidate = clip as Format5Clip & {layout?: unknown};
     if (Object.hasOwn(candidate, 'layout')) return candidate;
-    return {...candidate, layout: {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: timelineOutputPreset(timeline)?.id ?? ''}} as Format5Clip;
+    return {...candidate, layout: {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: timelineOutputPreset(timeline, {allowProjectFps: true})?.id ?? ''}} as Format5Clip;
   });
   return {...timeline, clips, ...(subtitles ? {subtitles} : {})};
 };
@@ -57,9 +59,10 @@ export interface TimelineFormatPlan {
 /** Pure plan against one live record. Throws SEQUENCE_EDIT_NOOP for the same
  * preset, and returns the header + frozen-layout clip rows to write. */
 export function planTimelineFormat(store: ProjectStore, timeline: Format5Timeline, intent: SequenceEditFormatIntent): TimelineFormatPlan {
-  const current = timelineOutputPreset(timeline);
+  const formatVersion = timelineStorageFormat(store.db, 'project');
+  const current = timelineOutputPreset(timeline, {allowProjectFps: true});
   const next = timelineOutputPreset(intent.operation.presetId);
-  if (!current || !next) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '画幅预设无效。', 409, {});
+  if (!current || !next || !isTimelineFps(timeline.fps)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '画幅预设无效。', 409, {});
   if (current.id === next.id) throw new AppError('SEQUENCE_EDIT_NOOP', '时间线已使用此输出规格。', 409, {});
   if (Math.min(current.width, current.height) !== Math.min(next.width, next.height)) {
     throw new AppError('TIMELINE_FORMAT_TIER_MISMATCH', '修改比例时必须保留当前画框的短边档位。', 409, {});
@@ -68,7 +71,7 @@ export function planTimelineFormat(store: ProjectStore, timeline: Format5Timelin
     ? {profileId: TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, basisPresetId: current.id, cues: timeline.subtitles.cues}
     : timeline.subtitles;
   const nextTimeline = apply(timeline, nextSubtitles);
-  const issue = getFormat5TimelineIssue(nextTimeline, {projectId: store.projectId});
+  const issue = getFormat5TimelineIssue(nextTimeline, {projectId: store.projectId, formatVersion});
   if (issue) {
     throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '切换画幅后片段布局无效。', 409, {issue: issue.code, ids: issue.ids});
   }
@@ -79,9 +82,9 @@ export function planTimelineFormat(store: ProjectStore, timeline: Format5Timelin
   const after = new Map(nextTimeline.clips.map(clip => [clip.id, clip] as const));
   const changedClipIds = timeline.clips.filter(clip => before.get(clip.id) !== after.get(clip.id)).map(clip => clip.id);
   const beforeHeader: NonNullable<SequenceEditTimelineDelta['header']> = {kind: 'set',
-    value: {fps: current.fps, width: current.width, height: current.height}};
+    value: {fps: timeline.fps, width: current.width, height: current.height}};
   const headerChange: NonNullable<SequenceEditTimelineDelta['header']> = {kind: 'set',
-    value: {fps: next.fps, width: next.width, height: next.height}};
+    value: {fps: timeline.fps, width: next.width, height: next.height}};
   const profile = (value: Format5Timeline['subtitles']): SequenceEditSubtitleProfileChange => value
     ? {kind: 'set', value: {profileId: value.profileId, ...(value.basisPresetId !== undefined ? {basisPresetId: value.basisPresetId} : {})}}
     : {kind: 'absent'};

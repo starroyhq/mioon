@@ -1,10 +1,13 @@
 import path from 'node:path';
+import {timelineAudioSampleBoundary} from '../../contracts/src/timeline-audio-clock.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {TIMELINE_EXPORT_FLOAT_LIMITS} from '@mioon/contracts/timeline-export-float';
 import type {TimelineExportAudioMeasurement} from '@mioon/contracts/timeline-export-float';
 
 export const TIMELINE_FLOAT_AUDIO_LIMITS = Object.freeze({outputFrames: TIMELINE_EXPORT_FLOAT_LIMITS.outputFrames, sampleFrames: TIMELINE_EXPORT_FLOAT_LIMITS.sampleFrames,
   pcmBytes: TIMELINE_EXPORT_FLOAT_LIMITS.pcmBytes, totalMs: TIMELINE_EXPORT_FLOAT_LIMITS.timeoutMs, responseBytes: TIMELINE_EXPORT_FLOAT_LIMITS.reportBytes, probeBytes: 128 * 1024, stderrBytes: 64 * 1024});
-const FRAME_BYTES = 8, SAMPLES_PER_FRAME = 1600, CHECKPOINT_BYTES = 64 * 1024;
+const FRAME_BYTES = 8, CHECKPOINT_BYTES = 64 * 1024;
 type CheckError = Error & {code: string; terminationUnconfirmed?: boolean};
 const failure = (code: string, message: string): CheckError => Object.assign(new Error(message), {code});
 const configuration = (): CheckError => failure('MEDIA_INVALID_CONFIGURATION', 'Invalid float audio check configuration.');
@@ -14,9 +17,12 @@ const timeout = (): CheckError => failure('EXPORT_AUDIO_TIMEOUT', 'The generated
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const ownedMeasurements = new WeakSet<object>();
 const ownedFailures = new WeakMap<object, Readonly<{code: string; measurement: TimelineExportAudioMeasurement | null}>>();
-const exactFrames = (outputFrames: number): number => {
+const exactFrames = (outputFrames: number, fps: TimelineFps): number => {
   if (!Number.isSafeInteger(outputFrames) || outputFrames < 1 || outputFrames > TIMELINE_FLOAT_AUDIO_LIMITS.outputFrames) throw configuration();
-  return outputFrames * SAMPLES_PER_FRAME;
+  if (!isTimelineFps(fps)) throw configuration();
+  const samples = timelineAudioSampleBoundary(outputFrames, fps);
+  if (samples > TIMELINE_FLOAT_AUDIO_LIMITS.sampleFrames) throw configuration();
+  return samples;
 };
 
 /** Server-created evidence only. Never infer authority from an error's public
@@ -49,10 +55,10 @@ export function assertTimelineFloatAudioAllowed(measurement: TimelineExportAudio
 /** Constant storage: two channel peaks/counters and less than one stereo-frame
  * remainder. No rounding, clamping, normalization, PCM history or EOF padding.
  * Every finite scalar sample contributes, including values above one. */
-export function createTimelineFloatAudioAccumulator(outputFrames: number): {
+export function createTimelineFloatAudioAccumulator(outputFrames: number, fps: TimelineFps = 30): {
   write(chunk: Buffer): void; finish(): TimelineExportAudioMeasurement;
 } {
-  const expectedFrames = exactFrames(outputFrames), expectedBytes = expectedFrames * FRAME_BYTES;
+  const expectedFrames = exactFrames(outputFrames, fps), expectedBytes = expectedFrames * FRAME_BYTES;
   const residual = Buffer.allocUnsafe(FRAME_BYTES);
   let residualBytes = 0, sampleFrames = 0, left = 0, right = 0, leftOver = 0, rightOver = 0, finished = false;
   let failed: unknown;
@@ -109,6 +115,7 @@ export interface TimelineFloatAudioRuntime {
   readonly terminationMs: number;
 }
 export interface TimelineFloatAudioCheckOptions {
+  readonly fps?: TimelineFps;
   readonly signal?: AbortSignal;
   /** Synchronous live attempt/source/owned staging inode fence. */
   readonly beforeEffect: () => void;
@@ -118,7 +125,7 @@ export interface TimelineFloatAudioCheckOptions {
   readonly remainingMs?: () => number;
 }
 const concatInput = (list: string): string[] => ['-protocol_whitelist', 'file', '-format_whitelist', 'concat,mov', '-f', 'concat', '-safe', '0', '-i', list];
-export function parseTimelineFloatAudioProbe(raw: unknown, expectedFrames?: number): number {
+export function parseTimelineFloatAudioProbe(raw: unknown, expectedFrames?: number, fps: TimelineFps = 30): number {
   const unsupported = (): CheckError => failure('EXPORT_AUDIO_FORMAT_MISMATCH', 'The generated audio is not the fixed float32 48 kHz stereo format.');
   if (typeof raw !== 'string' || Buffer.byteLength(raw) > TIMELINE_FLOAT_AUDIO_LIMITS.probeBytes) throw unsupported();
   let value: unknown;
@@ -130,7 +137,7 @@ export function parseTimelineFloatAudioProbe(raw: unknown, expectedFrames?: numb
   const audio = streams.filter(stream => stream.codec_type === 'audio');
   if (audio.length !== 1 || audio[0].codec_name !== 'pcm_f32le' || audio[0].sample_fmt !== 'flt' || audio[0].sample_rate !== '48000' ||
       audio[0].channels !== 2 || audio[0].channel_layout !== 'stereo') throw unsupported();
-  if (expectedFrames !== undefined && (audio[0].time_base !== '1/48000' || !Number.isSafeInteger(audio[0].duration_ts) || audio[0].duration_ts !== exactFrames(expectedFrames))) throw mismatch();
+  if (expectedFrames !== undefined && (audio[0].time_base !== '1/48000' || !Number.isSafeInteger(audio[0].duration_ts) || audio[0].duration_ts !== exactFrames(expectedFrames, fps))) throw mismatch();
   return audio[0].index as number;
 }
 
@@ -148,7 +155,7 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
           path.dirname(segment.file) !== path.dirname(list) || !Number.isSafeInteger(segment.outputFrames) || segment.outputFrames < 1) ||
         new Set(options.ownedSegments.map(segment => segment.file)).size !== options.ownedSegments.length ||
         options.ownedSegments.reduce((total, segment) => total + segment.outputFrames, 0) !== outputFrames) throw configuration();
-    const accumulator = createTimelineFloatAudioAccumulator(outputFrames);
+    const accumulator = createTimelineFloatAudioAccumulator(outputFrames, options.fps);
     const outerBudget = options.remainingMs?.() ?? TIMELINE_FLOAT_AUDIO_LIMITS.totalMs;
     if (!Number.isFinite(outerBudget) || outerBudget > TIMELINE_FLOAT_AUDIO_LIMITS.totalMs) throw configuration();
     if (outerBudget < 1) throw timeout();
@@ -176,7 +183,7 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
             'format=format_name:stream=index,codec_type,codec_name,sample_fmt,sample_rate,channels,channel_layout,time_base,duration_ts', '-of', 'json',
             '-protocol_whitelist', 'file', '-format_whitelist', 'mov', '-enable_drefs', '0', '-use_absolute_path', '0', '-f', 'mov', '-i', segment.file],
             runOptions(TIMELINE_FLOAT_AUDIO_LIMITS.probeBytes, 10000));
-          fence(); parseTimelineFloatAudioProbe(raw, segment.outputFrames);
+          fence(); parseTimelineFloatAudioProbe(raw, segment.outputFrames, options.fps);
         });
         fence();
       }

@@ -5,19 +5,60 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createTimelineAudioContinuousDecoder} from '../packages/business/src/timeline-audio-continuous-decoder.ts';
-import {run, runStreamingWithBackpressure, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
+import {run, runStreaming, runStreamingWithBackpressure, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {timelineAudioSilenceFilter, timelineClipAudioFilter, timelineMixedAudioFilter} from '../packages/business/src/timeline-audio-filter-graph.ts';
+import {planTimelineExportRange} from '../packages/business/src/timeline-export-range-plan.ts';
 import {mkdtempPortable} from './helpers/temp-root.ts';
 
-function wav(): Buffer {
+function wav(sample: (index: number) => number = () => 8192): Buffer {
   const samples = 9600, bytes = Buffer.alloc(44 + samples * 4);
   bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write('WAVEfmt ', 8); bytes.writeUInt32LE(16, 16);
   bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(2, 22); bytes.writeUInt32LE(48000, 24); bytes.writeUInt32LE(192000, 28);
   bytes.writeUInt16LE(4, 32); bytes.writeUInt16LE(16, 34); bytes.write('data', 36); bytes.writeUInt32LE(samples * 4, 40);
-  for (let at = 0; at < samples; at++) {bytes.writeInt16LE(8192, 44 + at * 4); bytes.writeInt16LE(-8192, 46 + at * 4);}
+  for (let at = 0; at < samples; at++) {bytes.writeInt16LE(sample(at), 44 + at * 4); bytes.writeInt16LE(-sample(at), 46 + at * 4);}
   return bytes;
 }
+
+test('preview and export PCM match across cuts at all integer project clocks', {timeout: 15000}, async (t) => {
+  const root = mkdtempPortable('mioon-project-fps-pcm-');
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const file = path.join(root, 'pattern.wav');
+  await writeFile(file, wav(index => index % 997));
+  const decoder = createTimelineAudioContinuousDecoder({run, runStreamingWithBackpressure, checkMediaEffect, withProbePermit});
+  const options = {signal: t.signal, beforeEffect() {}};
+  const source = await decoder.probe(file, options);
+  for (const [fps, frameSamples] of [[24, 2000], [25, 1920], [30, 1600], [60, 800]] as const) {
+    const clip = {startFrame: 3, durationFrames: 3, gain: 1};
+    const plan = planTimelineExportRange({
+      timeline: {fps, durationFrames: 6, clips: [clip]},
+      exportRange: {startFrame: 4, endFrame: 6},
+    });
+    assert.equal(plan.segments.length, 1);
+    const originalSamples = 3 * frameSamples;
+    const filter = [
+      timelineAudioSilenceFilter(originalSamples),
+      timelineClipAudioFilter(clip, 3, originalSamples, 0, source.streamIndex, fps),
+      timelineMixedAudioFilter(['silence', 'a0'], originalSamples, plan.segments[0]!.audioOutputTrim),
+    ].join(';');
+    const parts: Buffer[] = [];
+    await runStreaming('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-ss', (1 / fps).toFixed(9),
+      '-t', (4 / fps).toFixed(9), '-i', file, '-filter_complex', filter, '-map', '[outa]', '-f', 'f32le', 'pipe:1'], {
+      signal: t.signal, timeout: 5000, maxStdoutBytes: 2 * frameSamples * 8,
+      onStdout: chunk => {parts.push(Buffer.from(chunk));},
+    });
+    const expected = Buffer.concat(parts);
+    const cursor = decoder.open(file, source, {sourceInFrame: 1, frameCount: 3, trimStartFrame: 1, fps}, options);
+    try {
+      const first = await cursor.read(frameSamples), tail = await cursor.read(frameSamples);
+      await cursor.done;
+      assert.equal(expected.length, 2 * frameSamples * 8);
+      assert.notEqual(expected.readFloatLE(0), 0);
+      assert.deepEqual(Buffer.concat([first, tail]), expected, `${fps} fps`);
+    } finally {await cursor.close();}
+  }
+});
 
 test('a short FFmpeg segment keeps its paused tail readable across the next transport block', {timeout: 15000}, async (t: TestContext) => {
   const root = mkdtempPortable('mioon-continuous-tail-');

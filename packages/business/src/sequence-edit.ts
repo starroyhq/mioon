@@ -7,7 +7,6 @@ import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, C
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {ChainSyncBaseline, TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
-import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import {format5SyncBaselineSchema} from '../../contracts/src/project-format5.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {
@@ -510,9 +509,10 @@ function boardIntentPreparation(context: EditContext, store: ProjectStore, inten
           // 4.459 s supplies 133 frames, never 134. A restored shot's rounded
           // displayed duration (for example 4.46 s) must not invent one frame
           // beyond the source and fail the format-5 commit fence.
-          const sourceFrames = Number.isFinite(asset?.duration) ? Math.max(1, Math.floor(Number(asset!.duration) * 30)) : null;
+          const fps = context.timeline.fps;
+          const sourceFrames = Number.isFinite(asset?.duration) ? Math.max(1, Math.floor(Number(asset!.duration) * fps)) : null;
           const requestedFrames = Number.isFinite(archived.duration)
-            ? Math.max(1, Math.round(Number(archived.duration) * 30)) : 120;
+            ? Math.max(1, Math.round(Number(archived.duration) * fps)) : 4 * fps;
           createdMedia.push({nodeId: item.id, selectedVersion: version ? {id: String(version.id), sourceFrames} : null,
             durationFrames: sourceFrames === null ? requestedFrames : Math.min(requestedFrames, sourceFrames)});
           if (!allocation.clips.some(pair => pair.nodeId === item.id)) allocation.clips.push({nodeId: item.id, clipId: randomUUID()});

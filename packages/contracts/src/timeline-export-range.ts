@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {isTimelineFps} from './timeline-fps.ts';
 
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -44,7 +45,7 @@ export function isTimelineExportRangeSnapshot(
   if (!isTimelineExportRangeInput(snapshot)) return false;
   if (own(snapshot, 'exportRange')) {
     if (own(options, 'purpose') && options.purpose !== 'export') return false;
-    if (!object(snapshot) || !object(snapshot.timeline) || snapshot.timeline.fps !== 30 ||
+    if (!object(snapshot) || !object(snapshot.timeline) || !isTimelineFps(snapshot.timeline.fps) ||
         !isTimelineExportRangeWithinDuration(snapshot, snapshot.timeline.durationFrames)) return false;
   }
   if (!own(options, 'input')) return true;
@@ -57,7 +58,7 @@ export function isTimelineExportRangeSnapshot(
 // Only use this for an accepted nonempty frozen composition. It does not make
 // an unchecked or malformed snapshot valid, and it never modifies that data.
 export function timelineExportOutputFrames(snapshot: unknown): number {
-  if (!object(snapshot) || !object(snapshot.timeline) || snapshot.timeline.fps !== 30 ||
+  if (!object(snapshot) || !object(snapshot.timeline) || !isTimelineFps(snapshot.timeline.fps) ||
       !duration(snapshot.timeline.durationFrames) || snapshot.timeline.durationFrames < 1 ||
       !isTimelineExportRangeSnapshot(snapshot)) invalid();
   const range = timelineExportRangeFields(snapshot).exportRange;

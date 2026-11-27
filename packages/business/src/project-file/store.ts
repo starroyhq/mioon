@@ -228,7 +228,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     let result!: T;
     try {
       const formatBefore = database.prepare('PRAGMA project.user_version').get()?.user_version;
-      if (typeof formatBefore === 'number') assertProjectReaderRequirements(database, 'project', formatBefore);
+      const fpsBefore = typeof formatBefore === 'number' ? assertProjectReaderRequirements(database, 'project', formatBefore) : undefined;
       const format5Content = isSequenceProjectFormat(formatBefore) ? readProjectContentStamp(database) : undefined;
       const schemaBefore = format5Content ? database.prepare('PRAGMA project.schema_version').get()?.schema_version : undefined;
       for (const fence of transactionFences.get(database) ?? []) fence();
@@ -237,11 +237,13 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
         if (isPromise(result)) Promise.resolve(result).catch(() => {});
         throw new TypeError('Transactions require a synchronous result');
       }
-      const observers = transactionObservers.get(database);
-      if (observers?.size && formatBefore === FORMAT6_PROJECT_SCHEMA_VERSION) {
-        assertProjectReaderRequirements(database, 'project', formatBefore);
+      if (formatBefore === FORMAT6_PROJECT_SCHEMA_VERSION) {
+        const fpsAfter = assertProjectReaderRequirements(database, 'project', formatBefore);
+        if (fpsBefore !== undefined && fpsAfter !== fpsBefore) {
+          throw new AppError('TIMELINE_FORMAT_LOCKED', '项目帧率只能在创建时选择。', 409);
+        }
       }
-      for (const observer of observers ?? []) observer(result);
+      for (const observer of transactionObservers.get(database) ?? []) observer(result);
       const formatAfter = database.prepare('PRAGMA project.user_version').get()?.user_version;
       if (isSequenceProjectFormat(formatAfter) &&
           (!format5Content || !sameContentStamp(format5Content, readProjectContentStamp(database)) ||

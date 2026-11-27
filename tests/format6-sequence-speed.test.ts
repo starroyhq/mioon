@@ -17,6 +17,7 @@ import {applySequenceEditHistoryInside, readSequenceEditHistory} from '../packag
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {VOLUME_ENVELOPE_PROFILE, VOLUME_ENVELOPE_LIMITS} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
+import {TIMELINE_FPS, type TimelineFps} from '../packages/contracts/src/timeline-fps.ts';
 import {instantiateSpeedPreset, timeMapPlanFrames, TIMELINE_SPEED_PRESETS} from '../packages/contracts/src/timeline-time-map.ts';
 import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
 import {PROJECT_READER_UPDATE_MESSAGE, PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
@@ -36,38 +37,39 @@ const groupA = id(40), groupB = id(41), groupImage = id(42);
 const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
 
-function fixture(t: test.TestContext): ProjectStore {
+function fixture(t: test.TestContext, fps: TimelineFps = 30): ProjectStore {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-speed-'));
   const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: FORMAT6_PROJECT_SCHEMA_VERSION, allowFormat6: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const projectId = store.projectId;
+  const offset = 2 * fps - 60;
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
     ({id: nodeId, projectId, type, position: {x: 0, y: 0}, createdAt: at, ...extra});
   const timeline = {
-    id: timelineId, projectId, revision: 1, width: 720, height: 1280, fps: 30, durationFrames: 150,
+    id: timelineId, projectId, revision: 1, width: 720, height: 1280, fps, durationFrames: 150 + offset,
     createdAt: at, updatedAt: at, mainTrack: {trackId: videoTrack, sequenceNodeId: rootId},
     tracks: [{id: videoTrack, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false},
       {id: videoTrack2, name: 'V2', kind: 'video', orderIndex: 1, hidden: false, muted: false},
       {id: audioTrack, name: 'A1', kind: 'audio', orderIndex: 2, hidden: false, muted: false}],
     clips: [
-      {id: clipA, trackId: videoTrack, name: 'Shot A', startFrame: 0, durationFrames: 60, sourceInFrame: 0,
+      {id: clipA, trackId: videoTrack, name: 'Shot A', startFrame: 0, durationFrames: 2 * fps, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: assetA, versionId: versionA, shotId: shotA,
         sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: 'follow'}},
-      {id: clipB, trackId: videoTrack, name: 'Shot B', startFrame: 60, durationFrames: 30, sourceInFrame: 0,
+      {id: clipB, trackId: videoTrack, name: 'Shot B', startFrame: 60 + offset, durationFrames: 30, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: null, versionId: null, jobId: null,
         sourceState: 'placeholder', sequenceSource: {kind: 'shot', nodeId: shotB, segmentGroupId: groupB, versionMode: 'follow'}},
-      {id: clipImage, trackId: videoTrack, name: 'Image', startFrame: 90, durationFrames: 60, sourceInFrame: 0,
+      {id: clipImage, trackId: videoTrack, name: 'Image', startFrame: 90 + offset, durationFrames: 60, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: imageAsset,
         sourceState: 'ready', sequenceSource: {kind: 'media', nodeId: imageNode, segmentGroupId: groupImage}},
-      {id: clipAudio, trackId: audioTrack, name: 'Audio', startFrame: 65, durationFrames: 20, sourceInFrame: 0,
+      {id: clipAudio, trackId: audioTrack, name: 'Audio', startFrame: 65 + offset, durationFrames: 20, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: audioAsset, sourceState: 'ready',
         anchor: {clipId: clipB, offsetFrames: 5}},
-      {id: clipAudio2, trackId: audioTrack, name: 'Audio 2', startFrame: 120, durationFrames: 1, sourceInFrame: 0,
+      {id: clipAudio2, trackId: audioTrack, name: 'Audio 2', startFrame: 120 + offset, durationFrames: 1, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: audioAsset, sourceState: 'ready',
         anchor: {clipId: clipImage, offsetFrames: 30}},
     ],
-    subtitles: {profileId: 'bottom_cjk_v1', cues: [{id: cueId, text: '示例', startFrame: 66, durationFrames: 2,
+    subtitles: {profileId: 'bottom_cjk_v1', cues: [{id: cueId, text: '示例', startFrame: 66 + offset, durationFrames: 2,
       anchor: {clipId: clipB, offsetFrames: 6}}]},
   };
   const baseline = {version: 1,
@@ -77,7 +79,8 @@ function fixture(t: test.TestContext): ProjectStore {
       {nodeId: shotB, segmentGroupId: groupB, clipId: clipB, kind: 'shot', versionMode: 'follow', appliedVersionId: null},
       {nodeId: imageNode, segmentGroupId: groupImage, clipId: clipImage, kind: 'media', assetId: imageAsset}]};
   store.tx(() => {
-    store.put('projects', {id: projectId, name: 'Synthetic speed editing', createdAt: at, updatedAt: at, revision: 1});
+    store.put('projects', {id: projectId, name: 'Synthetic speed editing', createdAt: at, updatedAt: at, revision: 1,
+      ...(fps !== 30 ? {requiredReaderFeatures: [TIMELINE_FPS_READER_FEATURE]} : {})});
     store.put('assets', {id: assetA, projectId, mimeType: 'video/mp4', duration: 2, hasAudio: true, sha256: sha('a')});
     store.put('assets', {id: assetB, projectId, mimeType: 'video/mp4', duration: 3, sha256: sha('b')});
     store.put('assets', {id: imageAsset, projectId, mimeType: 'image/png', duration: null, sha256: sha('c')});
@@ -176,6 +179,49 @@ test('identity and repeated identical speed edits are zero-write operations', t 
   assert.ok('code' in repeated);
   assert.equal(repeated.code, 'SEQUENCE_EDIT_NOOP');
   assert.deepEqual(state(store), committed);
+});
+
+test('integer project clocks persist through two-times speed, default freeze, replay and history', async t => {
+  const previous = process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.MIOON_FORMAT6_DEV;
+    else process.env.MIOON_FORMAT6_DEV = previous;
+  });
+  for (const fps of TIMELINE_FPS) await t.test(`${fps} fps`, t => {
+    const store = fixture(t, fps), api = editor(store);
+    const before = saved(store);
+    const speed = api.apply(set(constant(2)));
+    const sped = saved(store);
+    const clip = sped.clips.find(item => item.id === clipA)!;
+    assert.equal(clip.durationFrames, fps);
+    assert.equal(clip.sourceSpanFrames, 2 * fps);
+    assert.equal(clip.timing?.profile, 'timeline-speed-v1');
+    assert.deepEqual(clip.timing.basis.sourceFps, {fpsNumerator: fps, fpsDenominator: 1});
+    assert.deepEqual(clip.timing.basis.outputFps, clip.timing.basis.sourceFps);
+    assert.equal(compileClipTimeMap(clip, {fps: fps === 30 ? 24 : 30}).ok, false);
+
+    const freeze = api.apply({kind: 'freeze-frame', clipId: clipA, atFrame: fps - 1});
+    const frozen = saved(store);
+    const still = frozen.clips.find(item => item.timing?.profile === 'timeline-freeze-v1')!;
+    assert.equal(still.durationFrames, 2 * fps);
+    assert.equal(still.timing?.profile, 'timeline-freeze-v1');
+    assert.equal(still.timing.sourceFrame, 2 * (fps - 1));
+    assert.deepEqual(new Set(sourceFrames(store, still.id)), new Set([2 * (fps - 1)]));
+    assert.equal(frozen.subtitles?.cues[0].startFrame, fps + 2 * fps + 6);
+    assert.deepEqual(speed.replay(), speed.receipt);
+    assert.deepEqual(freeze.replay(), freeze.receipt);
+    assert.deepEqual(saved(store), frozen);
+
+    api.history('undo', freeze.receipt.actionId);
+    assert.deepEqual(saved(store).clips, sped.clips);
+    api.history('undo', speed.receipt.actionId);
+    assert.deepEqual(saved(store).clips, before.clips);
+    api.history('redo', speed.receipt.actionId);
+    api.history('redo', freeze.receipt.actionId);
+    assert.equal(saved(store).fps, fps);
+    assert.deepEqual(saved(store).clips, frozen.clips);
+  });
 });
 
 test('eight constant rates preserve source range and carry suffix clips and anchors', async t => {

@@ -9,8 +9,10 @@ import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {readTimelineStorage} from './project-file/timeline-storage.ts';
+import {readTimelineStorage,timelineStorageFormat} from './project-file/timeline-storage.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.ts';
@@ -466,7 +468,10 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     function timelineDto(timeline: InspectionRecord|null|undefined = ownedTimeline()): Record<string, unknown>|null {
       if (!timeline) return null;
       if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
-      if(!timelineOutputPreset(timeline)) unavailable();
+      const fps=timeline.fps;
+      const allowProjectFps=fps!==30&&format5&&process.env.MIOON_FORMAT6_DEV==='1'&&
+        timelineStorageFormat(db,'project')===FORMAT6_PROJECT_SCHEMA_VERSION;
+      if(!isTimelineFps(fps)||!timelineOutputPreset(timeline,{allowProjectFps})) unavailable();
       if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames))unavailable();
       const trackIds = new Set(), clipIds = new Set();
       const tracks = timeline.tracks.map(track => {
@@ -477,7 +482,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         object(clip); const clipId = id(clip.id); if (clipIds.has(clipId) || !trackIds.has(clip.trackId)) unavailable(); clipIds.add(clipId);
         const asset = clipSource(clip);
         object(clip.rect);
-        const frame = {fps: 30, width: number(timeline.width, 0, 100000), height: number(timeline.height, 0, 100000)};
+        const frame = {fps, width: number(timeline.width, 0, 100000), height: number(timeline.height, 0, 100000)};
         const relative = Object.hasOwn(clip, 'layout');
         const storedRect = relative ? clip.rect as unknown as {x: number; y: number; width: number; height: number}
           : {x: number(clip.rect.x, 0, frame.width-2, true), y: number(clip.rect.y, 0, frame.height-2, true),
@@ -505,7 +510,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
           ...(transition ? {transitionIn: {kind: transition.kind, durationFrames: transition.durationFrames}} : {})};
       });
       const sequence=format5SequenceEvidence(db,projectId);
-      return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,
+      return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps, width: timeline.width, height: timeline.height,
         durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips, ...(sequence?{sequence}:{})};
     }
     const project = get('projects', projectId);

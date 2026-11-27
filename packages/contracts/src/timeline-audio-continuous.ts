@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {timelineFpsSchema} from './timeline-fps.ts';
+import {timelineAudioFpsSchema} from './timeline-audio-clock.ts';
 import {isVolumeEnvelope, isVolumeEnvelopeProcessingSnapshot, VOLUME_ENVELOPE_PROCESSING_PROFILE} from './timeline-volume-envelope-processing.ts';
 import type {TimelineVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {audioPreviewPlanInputSchema, AUDIO_PREVIEW_LIMITS} from './timeline-audio-preview.ts';
@@ -23,7 +25,7 @@ const integer = (min: number, max: number) => z.number().finite().int().min(min)
 /** Backend projection only. Public callers cannot submit saved snapshots. */
 const snapshotId = z.string().uuid(), snapshotFrame = integer(0, 18000);
 export const continuousAudioSnapshotSchema = z.object({volumeEnvelopeProfile: z.literal(VOLUME_ENVELOPE_PROCESSING_PROFILE).optional(), timeline: z.object({id: snapshotId, projectId: snapshotId,
-  revision: integer(1, Number.MAX_SAFE_INTEGER), fps: z.literal(30), durationFrames: snapshotFrame,
+  revision: integer(1, Number.MAX_SAFE_INTEGER), fps: timelineFpsSchema, durationFrames: snapshotFrame,
   tracks: z.array(z.object({id: snapshotId, kind: z.enum(['video', 'audio']), orderIndex: integer(0, 11),
     hidden: z.boolean(), muted: z.boolean()}).strict()).min(1).max(12),
   clips: z.array(z.object({id: snapshotId, trackId: snapshotId, assetId: snapshotId, startFrame: snapshotFrame,
@@ -45,10 +47,11 @@ export const continuousAudioPlanSchema = z.object({
   volumeEnvelopeProfile: z.literal(VOLUME_ENVELOPE_PROCESSING_PROFILE).optional(),
   projectId: z.string().uuid(), timelineId: z.string().uuid(), timelineRevision: integer(1, Number.MAX_SAFE_INTEGER),
   startFrame: integer(0, 17999), durationFrames: integer(1, 18000),
-  blockFrames: z.literal(60), sampleRate: z.literal(48000), channels: z.literal(2),
+  blockFrames: z.union([z.literal(48), z.literal(50), z.literal(60), z.literal(120)]), fps: timelineAudioFpsSchema, sampleRate: z.literal(48000), channels: z.literal(2),
   admittedBytes: z.literal(AUDIO_PREVIEW_LIMITS.memoryBytes), snapshotHash: digest, planHash: digest,
 }).strict().refine(plan => !Object.hasOwn(plan, 'volumeEnvelopeProfile') || plan.volumeEnvelopeProfile === VOLUME_ENVELOPE_PROCESSING_PROFILE,
-  'Invalid volume envelope processing profile.').refine(plan => plan.startFrame < plan.durationFrames, 'Start must precede the saved end.');
+  'Invalid volume envelope processing profile.').refine(plan => plan.blockFrames === 2 * (plan.fps ?? 30),
+  'Blocks must cover two seconds on the saved project clock.').refine(plan => plan.startFrame < plan.durationFrames, 'Start must precede the saved end.');
 export type ContinuousAudioPlan = z.infer<typeof continuousAudioPlanSchema>;
 export const continuousAudioBlockInputSchema = audioPreviewPlanInputSchema.extend({
   planHash: digest, sessionId: z.string().uuid(),

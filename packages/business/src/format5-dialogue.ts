@@ -25,6 +25,7 @@
  */
 import {AppError} from '@mioon/contracts';
 import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
+import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 import {format5DialogueSchema, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getTimelineSubtitleTextIssue} from '../../contracts/src/timeline-subtitles.ts';
@@ -258,7 +259,7 @@ export function planDialogueAction(store: ProjectStore, intent: SequenceEditDial
       : null;
   const nextTimeline: Format5Timeline = {...timeline, revision: timeline.revision + 1, updatedAt: now(),
     subtitles: subtitleProfile ? {...subtitleProfile, cues: projection.cues as Format5Cue[]} : undefined};
-  const issue = getFormat5TimelineIssue(nextTimeline, {projectId: store.projectId});
+  const issue = getFormat5TimelineIssue(nextTimeline, {projectId: store.projectId, formatVersion: timelineStorageFormat(store.db, 'project')});
   if (issue) conflict('字幕投影后时间线不合法', issue.ids ?? []);
   return {
     before: {board: boardWrites(beforeShots),

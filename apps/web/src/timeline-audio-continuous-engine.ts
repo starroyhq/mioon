@@ -1,9 +1,12 @@
+import {timelineAudioSampleBoundary,timelineAudioSampleSpan} from '@mioon/contracts/timeline-audio-preview';
+
 /** The continuous protocol delivers a complete, already mixed stereo block.
  * AudioContext time owns playback; RAF only paints its disposable cursor. */
 export interface ContinuousAudioPlanClock {
   startFrame: number;
   durationFrames: number;
   blockFrames: number;
+  fps?: Parameters<typeof timelineAudioSampleBoundary>[1];
   sampleRate: number;
   channels: number;
 }
@@ -45,7 +48,7 @@ export interface ContinuousTimelineAudioTransport {
   getState(): ContinuousAudioTransportState;
 }
 
-const RATE = 48_000, FRAME = 1_600, LEAD = 0.02;
+const RATE = 48_000, LEAD = 0.02;
 const errorCode = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
 const invalid = (): never => { throw Object.assign(new Error('Invalid continuous audio block or clock.'), { code: 'AUDIO_PREVIEW_INVALID_GRAPH' }); };
 
@@ -53,14 +56,16 @@ const invalid = (): never => { throw Object.assign(new Error('Invalid continuous
  * the exact preceding end time, before the end event reaches JavaScript. */
 export function createContinuousTimelineAudioTransport(options: ContinuousAudioTransportOptions): ContinuousTimelineAudioTransport {
   const { context, loadBlock, onReset, onChange, destination = context.destination } = options;
-  const { startFrame, durationFrames, blockFrames, sampleRate, channels } = options.plan;
+  const { startFrame, durationFrames, blockFrames, sampleRate, channels, fps = 30 } = options.plan;
+  const sampleAt = (frame: number): number => timelineAudioSampleBoundary(frame, fps);
+  const samplesPerFrame = sampleAt(1);
   const requestFrame = options.requestAnimationFrame ?? (typeof requestAnimationFrame === 'function' ? requestAnimationFrame.bind(globalThis) : undefined);
   const cancelFrame = options.cancelAnimationFrame ?? (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame.bind(globalThis) : undefined);
   if (context.sampleRate !== RATE || sampleRate !== RATE || channels !== 2 || !Number.isSafeInteger(durationFrames) || durationFrames < 1 || durationFrames > 18_000 ||
-      !Number.isSafeInteger(startFrame) || startFrame < 0 || startFrame >= durationFrames || blockFrames !== 60) invalid();
+      !Number.isSafeInteger(startFrame) || startFrame < 0 || startFrame >= durationFrames || ![24, 25, 30, 60].includes(fps) || blockFrames !== 2 * fps) invalid();
   const validate = (block: ContinuousAudioBlock, expected: number): ContinuousAudioBlock => {
     if (!block || block.startFrame !== expected || block.endFrame !== Math.min(expected + blockFrames, durationFrames) ||
-        !block.buffer || block.buffer.numberOfChannels !== 2 || block.buffer.sampleRate !== RATE || block.buffer.length !== (block.endFrame - block.startFrame) * FRAME) invalid();
+        !block.buffer || block.buffer.numberOfChannels !== 2 || block.buffer.sampleRate !== RATE || block.buffer.length !== timelineAudioSampleSpan(block.startFrame, block.endFrame, fps)) invalid();
     return block;
   };
   let current: ContinuousAudioBlock | null = validate(options.initialBlock, startFrame);
@@ -69,7 +74,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
   interface Flight { abort: AbortController; promise: Promise<ContinuousAudioBlock | null> }
   let currentGraph: Graph | null = null, nextGraph: Graph | null = null, flight: Flight | null = null;
   let status: ContinuousAudioTransportStatus = 'ready', reason: ContinuousAudioStopReason | null = null, failure = '';
-  let cursor = startFrame * FRAME, generation = 0, wantsPlaying = false;
+  let cursor = sampleAt(startFrame), generation = 0, wantsPlaying = false;
   let originSample = cursor, originTime = 0, scheduledEnd = cursor;
   let underruns = 0, peakHeldBytes = 0, frameHandle: number | null = null, closing: Promise<void> | null = null;
   let retirementFailure: unknown = null;
@@ -79,7 +84,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
     ? Math.min(scheduledEnd, originSample + Math.max(0, Math.floor((context.currentTime - originTime) * RATE + 1e-6))) : cursor;
   const getState = (): ContinuousAudioTransportState => {
     const sample = currentSample(), held = heldBytes(); peakHeldBytes = Math.max(peakHeldBytes, held);
-    return { status, sample, frame: Math.floor(sample / FRAME), reason, errorCode: failure, underruns, heldBytes: held, peakHeldBytes };
+    return { status, sample, frame: Math.floor(sample / samplesPerFrame), reason, errorCode: failure, underruns, heldBytes: held, peakHeldBytes };
   };
   const emit = (): void => { onChange?.(getState()); };
   const isCurrent = (token: number): boolean => token === generation && status !== 'stopped' && status !== 'disposed';
@@ -155,7 +160,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
       source.buffer = block.buffer; source.channelCount = 2; source.channelCountMode = 'explicit'; source.channelInterpretation = 'discrete';
       source.connect(destination);
       source.onended = () => boundary(graph, token);
-      source.start(originTime + (from - originSample) / RATE, (from - block.startFrame * FRAME) / RATE, (block.endFrame * FRAME - from) / RATE);
+      source.start(originTime + (from - originSample) / RATE, (from - sampleAt(block.startFrame)) / RATE, (sampleAt(block.endFrame) - from) / RATE);
       return graph;
     } catch (error) { release(graph); throw error; }
   };
@@ -167,20 +172,20 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
     const frame = current.endFrame;
     void request(frame, token, false).then(block => {
       if (!block || !isCurrent(token) || !wantsPlaying) return;
-      if (status === 'buffering' && cursor === frame * FRAME && !current) {
+      if (status === 'buffering' && cursor === sampleAt(frame) && !current) {
         current = block; schedule(token); return;
       }
       if (status !== 'playing' || !current || current.endFrame !== frame || next) return;
       next = block;
-      const when = originTime + (frame * FRAME - originSample) / RATE;
+      const when = originTime + (sampleAt(frame) - originSample) / RATE;
       if (when <= context.currentTime) {
         // The preceding end callback may itself be delayed. Preserve its
         // exact cursor instead of scheduling a source in the past.
-        enterBuffering(frame * FRAME);
+        enterBuffering(sampleAt(frame));
         if (!isCurrent(token) || !wantsPlaying) return;
         current = next; next = null; schedule(token); return;
       }
-      try { nextGraph = makeGraph(block, frame * FRAME, token); scheduledEnd = block.endFrame * FRAME; emit(); }
+      try { nextGraph = makeGraph(block, sampleAt(frame), token); scheduledEnd = sampleAt(block.endFrame); emit(); }
       catch { if (isCurrent(token)) stop('schedule-failed'); }
     }, error => fail(error, token));
   };
@@ -190,9 +195,9 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
     // End events may be delivered late. Remember an already ended successor
     // until its predecessor transfers ownership, rather than losing its end.
     if (graph !== currentGraph) return;
-    const end = graph.block.endFrame * FRAME;
+    const end = sampleAt(graph.block.endFrame);
     release(graph); currentGraph = null; current = null;
-    if (end === durationFrames * FRAME) {
+    if (end === sampleAt(durationFrames)) {
       cursor = end; clearGraphs(); next = null; wantsPlaying = false; status = 'ended'; reason = null; emit(); return;
     }
     if (next && nextGraph) {
@@ -208,16 +213,16 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
   function schedule(token: number): boolean {
     if (!isCurrent(token) || !wantsPlaying || !current) return false;
     if (context.state !== 'running') { stop('context-suspended'); return false; }
-    clearGraphs(); originSample = cursor; originTime = context.currentTime + LEAD; scheduledEnd = current.endFrame * FRAME;
+    clearGraphs(); originSample = cursor; originTime = context.currentTime + LEAD; scheduledEnd = sampleAt(current.endFrame);
     try {
       currentGraph = makeGraph(current, cursor, token);
-      if (next) { nextGraph = makeGraph(next, next.startFrame * FRAME, token); scheduledEnd = next.endFrame * FRAME; }
+      if (next) { nextGraph = makeGraph(next, sampleAt(next.startFrame), token); scheduledEnd = sampleAt(next.endFrame); }
       status = 'playing'; reason = null; emit();
       if (!isCurrent(token)) return false;
       paint(token); prefetch(token); return true;
     } catch { if (isCurrent(token)) stop('schedule-failed'); return false; }
   }
-  const contains = (block: ContinuousAudioBlock | null, sample: number): block is ContinuousAudioBlock => Boolean(block && sample >= block.startFrame * FRAME && sample < block.endFrame * FRAME);
+  const contains = (block: ContinuousAudioBlock | null, sample: number): block is ContinuousAudioBlock => Boolean(block && sample >= sampleAt(block.startFrame) && sample < sampleAt(block.endFrame));
   const selectBuffered = (sample: number): boolean => {
     if (contains(current, sample)) return true;
     if (contains(next, sample)) { current = next; next = null; return true; }
@@ -227,7 +232,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
     if (status === 'disposed' || status === 'stopped') return false;
     if (status === 'playing') return true;
     cursor = currentSample(); const token = revoke();
-    if (cursor >= durationFrames * FRAME) { cursor = startFrame * FRAME; current = null; next = null; }
+    if (cursor >= sampleAt(durationFrames)) { cursor = sampleAt(startFrame); current = null; next = null; }
     wantsPlaying = true; status = 'starting'; reason = null; failure = ''; emit();
     if (!isCurrent(token) || !wantsPlaying) return false;
     try {
@@ -238,7 +243,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
       if (!selectBuffered(cursor)) {
         status = 'buffering'; emit();
         if (!isCurrent(token) || !wantsPlaying) return false;
-        const block = await request(Math.floor(cursor / FRAME), token, true);
+        const block = await request(Math.floor(cursor / samplesPerFrame), token, true);
         if (!block || !isCurrent(token) || !wantsPlaying) return false;
         current = block;
       }
@@ -252,7 +257,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
   const seek = async (frame: number): Promise<boolean> => {
     if (status === 'disposed' || status === 'stopped') return false;
     if (!Number.isSafeInteger(frame) || frame < 0 || frame > durationFrames) { stop('outside-prepared-interval'); return false; }
-    const token = revoke(); cursor = frame * FRAME; reason = null; failure = '';
+    const token = revoke(); cursor = sampleAt(frame); reason = null; failure = '';
     if (frame === durationFrames) { current = null; next = null; wantsPlaying = false; status = 'ended'; emit(); return true; }
     // A seek can replace a still pending initial resume. Unlock the newest
     // gesture independently; the older acknowledgement owns no scheduling.

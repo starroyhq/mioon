@@ -39,7 +39,7 @@ function sourceHandleFits(clip: Format5Clip, timeline: Format5Timeline, source: 
   side: HandleSide, frames: number): boolean {
   if (!source || !clip.assetId || clip.sourceState !== 'ready') return false;
   if (typeof source.mimeType === 'string' && source.mimeType.startsWith('image/')) return true;
-  const sourceFrames = sourceFrameCount(source.duration) ?? 0;
+  const sourceFrames = sourceFrameCount(source.duration, timeline.fps) ?? 0;
   const {timing} = clip;
   if (!timing) return side === 'before' ? clip.sourceInFrame >= frames : clip.sourceInFrame + clip.durationFrames + frames <= sourceFrames;
   if (timing.profile === 'timeline-freeze-v1') return timing.sourceFrame < sourceFrames;

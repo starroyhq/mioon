@@ -124,7 +124,7 @@ function freezeClip(clip: Format5Clip, timeline: Format5Timeline,
   operation: Extract<SequenceEditSpeedIntent['operation'], {kind: 'freeze-frame'}>,
   asset: SourceAsset, allocation: SequenceEditAllocation): Format5Clip[] {
   const offset = operation.atFrame - clip.startFrame;
-  const durationFrames = operation.durationFrames ?? 60;
+  const durationFrames = operation.durationFrames ?? 2 * timeline.fps;
   if (offset < 0 || offset >= clip.durationFrames) invalid('INVALID_WINDOW', clip.id, '定格位置不在片段内。');
   if (durationFrames > FORMAT5_LIMITS.durationFrames) invalid('OUTPUT_FRAME_LIMIT', clip.id, '定格超过输出帧上限。');
   const freezeId = allocation.clips.find(item => item.nodeId === (clip.sequenceSource?.nodeId ?? clip.id))?.clipId;
@@ -173,7 +173,7 @@ export function planSpeedTimeline(timeline: Format5Timeline, operation: Sequence
   if ((!video && !audio) || (operation.kind === 'freeze-frame' && (!video || track?.kind !== 'video'))) {
     invalid('SPEED_NOT_SUPPORTED', clip.id, '该片段不支持此变速操作。');
   }
-  const sourceFrames = sourceFrameCount(asset.duration);
+  const sourceFrames = sourceFrameCount(asset.duration, timeline.fps);
   if (sourceFrames === null || sourceFrames < clipSourceEndFrame(clip)) {
     invalid('SPEED_SOURCE_NOT_READY', clip.id, '片段素材尚未就绪。');
   }
@@ -229,5 +229,5 @@ export function planSpeedTimeline(timeline: Format5Timeline, operation: Sequence
   const cues = timeline.subtitles?.cues.map(updateAnchor);
   return {timeline: {...timeline, clips, durationFrames, ...(timeline.subtitles && cues
     ? {subtitles: {...timeline.subtitles, cues}} : {})},
-  durationFrames: operation.kind === 'clip-speed' ? parts[0]!.durationFrames : operation.durationFrames ?? 60};
+    durationFrames: operation.kind === 'clip-speed' ? parts[0]!.durationFrames : operation.durationFrames ?? 2 * timeline.fps};
 }

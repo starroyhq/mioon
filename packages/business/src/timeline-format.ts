@@ -160,9 +160,9 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
    row.operation==='timeline.format.set'&&row.projectId===input.projectId&&row.requestId===input.requestId&&canonicalFormatValue(saved)===canonicalFormatValue(input)&&row.digest===formatRequestHash(input);
   if(!own)reasons.push('PENDING_EDIT');
  }
- const preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET)!;
- if(!preset)invalidTimeline();
- return {project,timeline,boundary,response:{projectId:input.projectId,projectRevision:project.revision,timelineId:timeline?.id??null,timelineRevision:timeline?.revision??0,presetId:preset.id,fps:preset.fps,width:preset.width,height:preset.height,eligible:reasons.length===0,blockedReasons:reasons}};
+ const preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET,{allowProjectFps:true});
+ if(!preset)return invalidTimeline();
+ return {project,timeline,boundary,response:{projectId:input.projectId,projectRevision:project.revision,timelineId:timeline?.id??null,timelineRevision:timeline?.revision??0,presetId:preset.id,fps:timeline?.fps??preset.fps,width:preset.width,height:preset.height,eligible:reasons.length===0,blockedReasons:reasons}};
 }
 export function getTimelineFormat(db: DatabaseSync,input: TimelineRecoveryInput,options: TimelineFormatStateOptions={}): TimelineFormatResponse{
  if(db.isTransaction)return readTimelineFormatState(db,input,options).response;

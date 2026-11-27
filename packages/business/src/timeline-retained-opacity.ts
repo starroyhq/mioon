@@ -141,7 +141,7 @@ export function validateTimelineOpacityRows(db: DatabaseSync): void {
           if (table === 'timelines') {
             if (!object(parsed) || parsed.id !== row.identity || containsOpacity(parsed)) invalid();
             owner(parsed.projectId);
-            if (getFormat5TimelineHeaderIssue(parsed, {projectId: parsed.projectId}) !== null) invalid();
+            if (getFormat5TimelineHeaderIssue(parsed, {projectId: parsed.projectId, formatVersion: storageFormat}) !== null) invalid();
           } else if (containsOpacity(parsed)) invalid();
           continue;
         }

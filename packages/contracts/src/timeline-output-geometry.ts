@@ -1,3 +1,5 @@
+import {isTimelineFps} from './timeline-fps.ts';
+
 export const TIMELINE_OUTPUT_RATIOS=Object.freeze(['9:16','16:9','1:1','4:3','3:4','21:9'] as const);
 export type TimelineOutputRatio=typeof TIMELINE_OUTPUT_RATIOS[number];
 export type TimelineOutputShortEdge=720|1080;
@@ -43,11 +45,13 @@ function matchesGeometry(value:Record<string,unknown>,geometry:TimelineOutputGeo
   return geometry.fps===value.fps&&geometry.width===value.width&&geometry.height===value.height;
 }
 
-export function timelineOutputPreset(value:unknown):TimelineOutputPreset|null{
+export function timelineOutputPreset(value:unknown,{allowProjectFps=false}:{allowProjectFps?:boolean}={}):TimelineOutputPreset|null{
   if(typeof value==='string')return TIMELINE_OUTPUT_PRESETS.find(item=>item.id===value)??null;
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
   const geometry=value as Record<string,unknown>;
-  return TIMELINE_OUTPUT_PRESETS.find(item=>matchesGeometry(geometry,item))??null;
+  const fps=geometry.fps;
+  if(fps!==30&&(!allowProjectFps||!isTimelineFps(fps)))return null;
+  return TIMELINE_OUTPUT_PRESETS.find(item=>item.width===geometry.width&&item.height===geometry.height)??null;
 }
 
 export function timelineOutputPresetForRatio(ratio:TimelineOutputRatio,short:TimelineOutputShortEdge):TimelineOutputPreset|null{

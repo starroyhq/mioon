@@ -253,14 +253,16 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       if (!fileIdentity(file.info) || file.info.size !== asset.sizeBytes) throw fault('AUDIO_PREVIEW_STALE');
       expected = Object.freeze({dev: file.info.dev, ino: file.info.ino, size: file.info.size, mtimeMs: file.info.mtimeMs, ctimeMs: file.info.ctimeMs});
       const first = await hash(); fence();
-      const decoded = await runtime.decode(first.file, {sourceInFrame: source.sourceInFrame, frameCount: source.durationFrames, segments: source.decodeSegments}, {signal, beforeEffect: fence, remainingMs});
+      const fps = initial.plan.fps ?? 30;
+      const decoded = await runtime.decode(first.file, {sourceInFrame: source.sourceInFrame, frameCount: source.durationFrames,
+        segments: source.decodeSegments, ...(initial.plan.fps === undefined ? {} : {fps: initial.plan.fps})}, {signal, beforeEffect: fence, remainingMs});
       fence();
       if (!object(decoded) || !Buffer.isBuffer(decoded.pcm) || decoded.sampleRate !== 48000 || decoded.channels !== 2 ||
           decoded.sampleFrames !== source.sampleFrames || decoded.pcm.byteLength !== source.pcmBytes ||
           !object(decoded.source) || decoded.source.sizeBytes !== source.sourceBytes ||
           typeof decoded.source.durationSeconds !== 'number' || !Number.isFinite(decoded.source.durationSeconds) ||
           decoded.source.durationSeconds <= 0 || decoded.source.durationSeconds > LIMITS.sourceSeconds ||
-          source.sourceInFrame + source.durationFrames > Math.floor(decoded.source.durationSeconds * 30 + 1e-7)) throw fault('AUDIO_PREVIEW_INVALID_PCM');
+          source.sourceInFrame + source.durationFrames > Math.floor(decoded.source.durationSeconds * fps + 1e-7)) throw fault('AUDIO_PREVIEW_INVALID_PCM');
       for (let offset = 0; offset < decoded.pcm.byteLength; offset += 4) {
         if (offset % (64 * 1024) === 0) fence();
         if (!Number.isFinite(decoded.pcm.readFloatLE(offset))) throw fault('AUDIO_PREVIEW_INVALID_PCM');

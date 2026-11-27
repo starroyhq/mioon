@@ -4,6 +4,7 @@ import {timelineExportRangeSchema,isTimelineExportRangeInput,isTimelineExportRan
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput,isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportDeliverySchema,isTimelineExportDelivery} from './timeline-export-profile.ts';
 import {z} from 'zod';
+import {timelineFpsSchema} from './timeline-fps.ts';
 import {TIMELINE_OUTPUT_MAX_EDGE,timelineOutputPreset} from './timeline-output-geometry.ts';
 import {TIMELINE_SUBTITLE_PROFILE_IDS} from './timeline-subtitle-profile.ts';
 
@@ -43,7 +44,7 @@ export const exportPreflightResponseSchema = z.object({
     delivery: timelineExportDeliverySchema.optional(),
     deliveryName: timelineDeliveryNameSchema.optional(),
     exportRange: timelineExportRangeSchema.optional(),
-    fps: z.literal(30),
+    fps: timelineFpsSchema,
     width: z.number().int().positive().max(TIMELINE_OUTPUT_MAX_EDGE),
     height: z.number().int().positive().max(TIMELINE_OUTPUT_MAX_EDGE),
     durationFrames: count(18000),

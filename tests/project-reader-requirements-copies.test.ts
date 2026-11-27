@@ -8,7 +8,7 @@ import test, {type TestContext} from 'node:test';
 import {gzipSync} from 'node:zlib';
 import {startServer} from './helpers/test-server.ts';
 import {changeMarks, readProjectState} from './helpers/project-state.ts';
-import {PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../packages/contracts/src/project-reader-requirements.ts';
 import {createProjectBackup, inspectCopiedProjectFile, inspectProjectBackup} from '../packages/business/src/project-file/backup.ts';
 import {captureClosedProjectSnapshot} from '../packages/business/src/project-file/closed-copy.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
@@ -22,7 +22,7 @@ import {inspectProjectDocumentForCopy} from '../packages/business/src/project-ve
 import {storeManualVersionInside} from '../packages/business/src/project-versions/repository.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 
-const future = TIMELINE_FPS_READER_FEATURE;
+const future = 'future-timeline-reader-v1';
 const requiresUpdate = {code: PROJECT_READER_UPDATE_REQUIRED, status: 409};
 
 function fixture(t: TestContext, targetFormat: typeof FORMAT5_PROJECT_SCHEMA_VERSION | typeof FORMAT6_PROJECT_SCHEMA_VERSION = FORMAT6_PROJECT_SCHEMA_VERSION) {

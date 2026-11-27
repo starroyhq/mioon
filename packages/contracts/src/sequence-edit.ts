@@ -8,6 +8,7 @@ import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {TIMELINE_FORMAT_WRITE_PRESETS} from './timeline-output-geometry.ts';
+import {timelineFpsSchema, type TimelineFps} from './timeline-fps.ts';
 import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline, Format5Timeline,
 } from './project-format5.ts';
@@ -1258,7 +1259,7 @@ export interface SequenceEditTimelineDelta {
 }
 export type SequenceEditTimelineHeaderChange =
   | {readonly kind: 'unchanged'}
-  | {readonly kind: 'set'; readonly value: {readonly fps: 30; readonly width: number; readonly height: number}};
+  | {readonly kind: 'set'; readonly value: {readonly fps: TimelineFps; readonly width: number; readonly height: number}};
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
  * patch direction. Reading and writing remain owned by CS/TS services. */
@@ -1311,7 +1312,7 @@ const baselineChangeSchema = z.discriminatedUnion('kind', [
 ]);
 const timelineHeaderChangeSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('unchanged')}).strict(),
-  z.object({kind: z.literal('set'), value: z.object({fps: z.literal(30), width: z.number().int().min(2).max(100000),
+  z.object({kind: z.literal('set'), value: z.object({fps: timelineFpsSchema, width: z.number().int().min(2).max(100000),
     height: z.number().int().min(2).max(100000)}).strict()}).strict(),
 ]);
 const timelineDeltaSchema = z.object({

@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {createTimelineAudioContinuousServices} from '../packages/business/src/timeline-audio-continuous.ts';
+import type {TimelineFps} from '../packages/contracts/src/timeline-fps.ts';
 
 interface BusinessClip {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; [key: string]: unknown}
 interface BusinessTrack {id: string; orderIndex: number; kind: string; hidden: boolean; muted: boolean; [key: string]: unknown}
 interface BusinessAsset {id: string; projectId: string; sha256: string; sizeBytes: number; duration: number; mimeType: string; hasAudio: boolean; relativePath: string; [key: string]: unknown}
 interface BusinessSnapshot {timeline: {id: string; projectId: string; revision: number; fps: number; durationFrames: number; tracks: BusinessTrack[]; clips: BusinessClip[]; [key: string]: unknown}; assets: BusinessAsset[]}
 interface BusinessInfo {dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number}
-interface BusinessOpen {sourceInFrame: number; frameCount: number; trimStartFrame: number}
+interface BusinessOpen {sourceInFrame: number; frameCount: number; trimStartFrame: number; fps?: TimelineFps}
 interface BusinessCalls {hashes: number; probes: number; opens: BusinessOpen[]; reads: number; closed: number; active: number; peak: number}
 interface BusinessInput {projectId: string; timelineId: string; expectedRevision: number; startFrame: number}
 interface BusinessBlock extends BusinessInput {planHash: string; sessionId: string; generation: number; sequence: number; blockStartFrame: number}
@@ -19,10 +20,10 @@ interface BusinessService {handlers: Record<string, (input: unknown) => Promise<
 interface BusinessFixture {service: BusinessService; input: BusinessInput; plan: {planHash: string}; block: BusinessBlock; snapshot: BusinessSnapshot; info: BusinessInfo; calls: BusinessCalls; decoder: BusinessDecoder; consume(value?: BusinessBlock, context?: Record<string, unknown>): Promise<{pcm: Buffer; details: Record<string, unknown>}>}
 const sha = (value: string): string => createHash('sha256').update(value).digest('hex');
 const tick = (): Promise<void> => new Promise<void>(resolve => setImmediate(resolve));
-async function fixture(t: TestContext, {durationFrames = 750, trackCount = 1, runtime: overrides = {}}: {durationFrames?: number; trackCount?: number; runtime?: Record<string, unknown>} = {}): Promise<BusinessFixture> {
+async function fixture(t: TestContext, {durationFrames = 750, trackCount = 1, fps = 30, runtime: overrides = {}}: {durationFrames?: number; trackCount?: number; fps?: TimelineFps; runtime?: Record<string, unknown>} = {}): Promise<BusinessFixture> {
   const db = new DatabaseSync(':memory:'), projectId = randomUUID(), timelineId = randomUUID(), assetId = randomUUID();
   const tracks: BusinessTrack[] = Array.from({length: trackCount}, (_, orderIndex) => ({id: randomUUID(), orderIndex, kind: 'audio', hidden: false, muted: false}));
-  const snapshot: BusinessSnapshot = {timeline: {id: timelineId, projectId, revision: 1, fps: 30, durationFrames, tracks,
+  const snapshot: BusinessSnapshot = {timeline: {id: timelineId, projectId, revision: 1, fps, durationFrames, tracks,
     clips: tracks.map((track, index) => ({id: randomUUID(), trackId: track.id, assetId, startFrame: 0,
       durationFrames, sourceInFrame: index, gain: 1}))},
   assets: [{id: assetId, projectId, sha256: sha('test asset'), sizeBytes: 4096, duration: 600, mimeType: 'audio/wav', hasAudio: true, relativePath: 'media/owned.wav'}]};
@@ -31,11 +32,12 @@ async function fixture(t: TestContext, {durationFrames = 750, trackCount = 1, ru
   const probe = {sizeBytes: info.size, durationSeconds: 600};
   const decoder: BusinessDecoder = {async probe() {calls.probes++; return probe;}, open(_file: unknown, _source: unknown, unit: BusinessOpen, options: {onDecodedBytes?: (bytes: number) => void}) {
     calls.opens.push({...unit}); calls.active++; calls.peak = Math.max(calls.peak, calls.active);
-    let consumed = unit.trimStartFrame * 1600, closed = false;
+    const frameSamples = 48000 / (unit.fps ?? 30);
+    let consumed = unit.trimStartFrame * frameSamples, closed = false;
     return {done: Promise.resolve(), async read(samples: number) {
       calls.reads++; options.onDecodedBytes?.(samples * 8); const pcm = Buffer.alloc(samples * 8);
       for (let index = 0; index < samples; index++) {
-        const sample = ((unit.sourceInFrame * 1600 + consumed + index) % 128) / 1024;
+        const sample = ((unit.sourceInFrame * frameSamples + consumed + index) % 128) / 1024;
         pcm.writeFloatLE(sample, index * 8); pcm.writeFloatLE(-sample, index * 8 + 4);
       }
       consumed += samples; return pcm;
@@ -55,6 +57,18 @@ async function fixture(t: TestContext, {durationFrames = 750, trackCount = 1, ru
   const consume = async (value: BusinessBlock = block, context: Record<string, unknown> = {}): Promise<{pcm: Buffer; details: Record<string, unknown>}> => service.consumeBlock(value, {consume: async ({pcm}: {pcm: Buffer}, details: unknown) => ({pcm, details}), ...context} as never);
   return {service, input, plan, block, snapshot, info, calls, decoder, consume};
 }
+
+test('each project clock produces two-second blocks and an exactly trimmed tail', async (t) => {
+  for (const [fps, frameSamples] of [[24, 2000], [25, 1920], [30, 1600], [60, 800]] as const) {
+    const f = await fixture(t, {fps, durationFrames: 2 * fps + 3});
+    const first = await f.consume();
+    const tail = await f.consume({...f.block, sequence: 2, blockStartFrame: 2 * fps});
+    assert.deepEqual([first.details.endFrame, first.details.sampleFrames, first.pcm.length], [2 * fps, 96000, 8 * 96000]);
+    assert.deepEqual([tail.details.endFrame, tail.details.sampleFrames, tail.pcm.length], [2 * fps + 3, 3 * frameSamples, 24 * frameSamples]);
+    assert.equal(f.calls.opens.length, 1);
+    assert.equal(f.calls.opens[0]?.fps, fps === 30 ? undefined : fps);
+  }
+});
 
 test('25-second playback crosses twelve pull boundaries with one decoder and two hashes', async (t: TestContext) => {
   const f = await fixture(t); let frames = 0, sequence = 0;

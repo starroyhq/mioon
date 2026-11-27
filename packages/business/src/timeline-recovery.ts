@@ -88,7 +88,7 @@ export function restoreTimelineEditableSnapshot(timeline: TimelineRecord,saved: 
  const result={...timeline,tracks:record.tracks,clips:record.clips,durationFrames:record.durationFrames};
  if(Object.hasOwn(record,'format')){
   const format=record.format;
-  if(!format||!object(format)||Object.keys(format).length!==3||!timelineOutputPreset(format))invalidTimeline();
+  if(!format||!object(format)||Object.keys(format).length!==3||!timelineOutputPreset(format,{allowProjectFps:timeline.fps!==30})||format.fps!==timeline.fps)invalidTimeline();
   Object.assign(result,format);
  }else if(requireFormat)invalidTimeline();
  delete result.subtitles;
@@ -107,9 +107,10 @@ export function projectVersionRestoreBefore(saved: unknown,afterText: unknown): 
   !Object.hasOwn(before,'format'))return saved;
  let decoded: unknown;try{decoded=JSON.parse(afterText as string);}catch{invalidTimeline();}
  if(!object(decoded))invalidTimeline();
- const after=asRecord<Record<string,unknown>>(decoded),preset=timelineOutputPreset(before.format);
+ const after=asRecord<Record<string,unknown>>(decoded),preset=timelineOutputPreset(before.format,{allowProjectFps:true});
  if(!preset||!object(after.format)||Object.keys(after.format as object).length!==3||
-  timelineOutputPreset(after.format)?.id!==preset.id||!Array.isArray(after.tracks)||!after.tracks.length)invalidTimeline();
+  (after.format as {fps:unknown}).fps!==(before.format as {fps:unknown}).fps||
+  timelineOutputPreset(after.format,{allowProjectFps:true})?.id!==preset.id||!Array.isArray(after.tracks)||!after.tracks.length)invalidTimeline();
  return {...before,tracks:after.tracks};
 }
 
@@ -214,8 +215,9 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return assets;
  }
  function validate(timeline: TimelineRecord): TimelineRecord{
-  if(isSequenceProjectFormat(timelineStorageFormat(db,timelineStorageSchema(db)))&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
-   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});if(issue)invalidTimeline();return timeline;
+  const formatVersion=timelineStorageFormat(db,timelineStorageSchema(db));
+  if(isSequenceProjectFormat(formatVersion)&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
+   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId,formatVersion});if(issue)invalidTimeline();return timeline;
   }
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
@@ -230,8 +232,9 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return timeline;
  }
  function validateReadonly(timeline: TimelineRecord): TimelineRecord{
-  if(isSequenceProjectFormat(timelineStorageFormat(db,timelineStorageSchema(db)))&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
-   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});if(issue)invalidTimeline();return timeline;
+  const formatVersion=timelineStorageFormat(db,timelineStorageSchema(db));
+  if(isSequenceProjectFormat(formatVersion)&&object((timeline as unknown as Record<string,unknown>).mainTrack)){
+   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId,formatVersion});if(issue)invalidTimeline();return timeline;
   }
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
@@ -244,11 +247,12 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(legacyMissingProject&&!db.prepare('SELECT 1 FROM projects WHERE id=?').get(input.projectId))
    throw new AppError('NOT_FOUND','找不到记录',404,{id:input.projectId});
   graph(); // Validate the current project before any aggregate/CAS disclosure.
-  if(isSequenceProjectFormat(timelineStorageFormat(db,timelineStorageSchema(db)))){
+  const formatVersion=timelineStorageFormat(db,timelineStorageSchema(db));
+  if(isSequenceProjectFormat(formatVersion)){
    const timeline=readFormat5TimelineRecord(db,'project');
    if(!timeline)return null;
    if(timeline.projectId!==input.projectId)unavailable();
-   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId});
+   const issue=getFormat5TimelineIssue(timeline,{projectId:input.projectId,formatVersion});
    if(issue)invalidTimeline();
    // Drafts and loudness read the renderer-facing projection; export admission
    // has its own ticket boundary and never calls this reader for format 5.
