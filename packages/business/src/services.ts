@@ -37,7 +37,7 @@ import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts'
 import {readFormat5AudioProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
-import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {createProjectAudioSnapshotStamp, createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-decoder.ts';
@@ -780,6 +780,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const continuousAudio=createTimelineAudioContinuousServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:(projectId: string)=>readSavedAudioTimeline(projectId,speedAudioPreview),
+  ...(speedAudioPreview ? {readSnapshotStamp:createProjectAudioSnapshotStamp(db)} : {}),
   validateSource:validateManagedSource,hash:verifiedManagedHash,speedPreview:speedAudioPreview,reverseProxy,
   decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
  }});
