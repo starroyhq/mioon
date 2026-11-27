@@ -1,3 +1,9 @@
+import {PREMIERE_EXPORT_NATIVE_CHANNEL} from '../packages/contracts/src/premiere-export-native.ts';
+import {createPremiereExportHost} from '../apps/desktop/src/premiere-export-host.ts';
+import {premiereNativeInvalid, premiereNativeUnavailable} from '../packages/contracts/src/project-entry-premiere-bridge.ts';
+import {FCP_EXPORT_NATIVE_CHANNEL} from '../packages/contracts/src/fcp-export-native.ts';
+import {createFcpExportHost} from '../apps/desktop/src/fcp-export-host.ts';
+import {fcpNativeInvalid, fcpNativeUnavailable} from '../packages/contracts/src/project-entry-fcp-bridge.ts';
 import {createAssetRelinkHost} from '../apps/desktop/src/asset-relink-host.ts';
 import {createProjectLocationHelp} from '../apps/desktop/src/project-location-help.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../packages/contracts/src/asset-media-native.ts';
@@ -99,7 +105,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     cliCloses: number[];
     warnings: string[];
   } = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [], cliStarts: [], cliCloses: [], warnings: [] };
-  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL];
+  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL, PREMIERE_EXPORT_NATIVE_CHANNEL];
   const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
   const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
   const lutStoreCalls: unknown[] = [];
@@ -212,7 +218,10 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ FCP_EXPORT_NATIVE_CHANNEL, createFcpExportHost, fcpNativeInvalid, fcpNativeUnavailable,
+    PREMIERE_EXPORT_NATIVE_CHANNEL, createPremiereExportHost, premiereNativeInvalid, premiereNativeUnavailable,
+    premiereInstalled: async () => false, openInPremiere: async () => false,
+    finalCutInstalled: async () => false, openInFinalCut: async () => false, createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',

@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable, isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import type {MediaLocator} from './asset-reference-record.ts';
@@ -125,10 +126,11 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
   function current(input: ContinuousAudioPlanInput): Current {
     available();
     let raw: unknown;
-    try {raw = runtime.readSavedTimeline(input.projectId);} catch {throw fail('AUDIO_PREVIEW_UNAVAILABLE', 404);}
+    try {raw = runtime.readSavedTimeline(input.projectId);} catch (error) {if (isTimelineSpeedRenderError(error)) throw error; throw fail('AUDIO_PREVIEW_UNAVAILABLE', 404);}
     if (!plain(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
     const saved = raw.timeline, managed = new Map<string, TimelineAudioPreviewManagedAsset>();
     if (!Array.isArray(saved.tracks) || !Array.isArray(saved.clips)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
+    assertTimelineSpeedRenderable(saved);
     let envelopeProfile: ReturnType<typeof volumeEnvelopeSnapshotFields>;
     try {
       volumeEnvelopeReadSnapshot(raw);

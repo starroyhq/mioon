@@ -25,6 +25,7 @@ import type {MioProjectRules} from './mio-rules.ts';
 import {AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS,AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {isAsyncFunction} from 'node:util/types';
 import path from 'node:path';
 import {setTimeout as waitDelay} from 'node:timers/promises';
@@ -49,7 +50,10 @@ import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../pr
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskLocale} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
-import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
+import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_EDITOR_EXPORT_START_PARAMETERS,AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS,AGENT_TASK_THUMBNAIL_READ_PARAMETERS} from './task-tool-schemas-v2.ts';
+import {MIO_EDITOR_EXPORT_DESCRIPTIONS,MIO_EDITOR_EXPORT_OPERATIONS,isMioEditorExportOperation,isMioEditorExportStart,isMioEditorExportGet,mioEditorExportLabel,mioEditorExportStartSchema} from './task-editor-export-v2.ts';
+import {discloseEditorExportTask} from '../fcpxml-export-task.ts';
+import {fcpDisplayPath} from '../fcp-export-plan.ts';
 import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,agentTaskToolSupportsGroupLoad,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
 import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
@@ -110,6 +114,8 @@ const readOperations=[
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
  'sequence.inspect','sequence.generation-inputs.get','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
+ 'export.fcpxml.preview','export.fcpxml.get',
+ 'export.premiere.preview','export.premiere.get',
 ] as const;
 const reversibleOperations=[
  'project.rename','project.notes.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','subject.binding.set','asset.range.set','asset.disposition.set','asset.annotation.set',
@@ -131,13 +137,15 @@ const irreversibleOperations=[
  'frame.extract','scene.shots.create','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render','previs.create',
  // FR-G «save clip sound» publishes a new project asset; its local task record
  // and portable source provenance remain reviewable after the step.
- 'clip.audio.export',
+ 'clip.audio.export','export.fcpxml.start','export.fcpxml.cancel',
+ 'export.premiere.start','export.premiere.cancel',
 ] as const;
 const paidOperations=['generation.submit','image.generate','subject.variants.retry'] as const;
 const parityConfirmOperations=new Set<string>([
  'scene.cuts.save','scene.shots.undo','scene.task.cancel','subject.variants.undo','previs.thumbnail.set','project.version.save',
  'frame.task.cancelQueued','image.task.cancelQueued','task.disposition.archiveCompleted','subject.variants.retry',
- 'clip.audio.export',
+ 'clip.audio.export','export.fcpxml.start','export.fcpxml.cancel',
+ 'export.premiere.start','export.premiere.cancel',
 ]);
 const forbiddenOperations=[
  'workspace.settings.get','workspace.settings.set',
@@ -190,6 +198,7 @@ interface TaskInputSchema {
  parse(input:unknown):unknown;
 }
 function toolInputSchema(operation:string,frameTransaction=false):TaskInputSchema{
+ if(isMioEditorExportStart(operation))return mioEditorExportStartSchema;
  if(frameTransaction&&(operation==='previs.thumbnail.get'||operation==='previs.thumbnail.set'))return previsThumbnailPublicSchemas[operation];
  return frameTransaction&&operation===FRAME_SET?timelineFrameSetSchema:
   Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:publicOperationSchemas[operation as keyof typeof publicOperationSchemas];
@@ -200,6 +209,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  for(const candidate of [{...source,projectId,requestId},{...source,projectId},{...source,requestId},source]){
   const result=schema.safeParse(candidate);if(result.success&&object(result.data))return result.data;
  }
+ if(isMioEditorExportStart(operation))throw new AppError('VALIDATION_ERROR',mioEditorExportLabel(operation)+' 导出仅接受当前项目的导出文件夹',400);
  if(Object.hasOwn(schemas,operation)&&!(frameTransaction&&(operation===FRAME_SET||operation.startsWith('previs.thumbnail.'))))return parse(operation as OperationName,source) as Value;
  throw new AppError('VALIDATION_ERROR','工具输入字段无效',400);
 }
@@ -266,7 +276,8 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  return [...references.values()];
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string;unavailableReason?:string}
-export interface MioSequencePreparation {readonly plan:MioSequencePlan|MioSequenceUndoPlan;readonly action:string;readonly summary?:MioSequencePlan['summary']}
+interface MioSpeedPlanEvidence {readonly digest:string;readonly allocation:SequenceEditAllocation}
+export interface MioSequencePreparation {readonly plan:MioSequencePlan|MioSequenceUndoPlan;readonly action:string;readonly summary?:MioSequencePlan['summary'];readonly speedPlan?:MioSpeedPlanEvidence}
 /** Loadable sequence group operations share the one bounded expansion path. */
 const MIO_SEQUENCE_WRITE_OPERATIONS:ReadonlySet<string>=new Set<string>(MIO_SEQUENCE_GROUP_OPERATIONS);
 const isMioSequenceWriteOperation=(operation:string):boolean=>MIO_SEQUENCE_WRITE_OPERATIONS.has(operation);
@@ -307,7 +318,9 @@ function snapshot(store:Store,projectId:string):Snapshot{
  const insert=(kind:string,id:string,table:string,value:Value):void=>{result[key(kind,id)]={kind,id,table,value:structuredClone(value),revision:readRevision(store,projectId,kind,id)};};
  const project=store.get('projects',projectId);if(object(project))insert('project',projectId,'projects',project);
  for(const [table,kind] of Object.entries(rowTables))for(const row of store.db.prepare(`SELECT id,data FROM ${table} WHERE projectId=?`).all(projectId)){
-  const value:unknown=JSON.parse(String(row.data));if(!object(value)||value.id!==row.id||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','项目记录无法验证');insert(kind,String(row.id),table,value);
+  const value:unknown=JSON.parse(String(row.data));if(!object(value)||value.id!==row.id||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','项目记录无法验证');
+  const visible=table==='exports'?discloseEditorExportTask(value,{id:String(row.id),projectId}):null;
+  insert(kind,String(row.id),table,visible??value);
  }
  for(const [table,descriptor] of Object.entries(extraTables)){
   if(!hasStoreTable(store.db,table))continue;
@@ -407,6 +420,11 @@ function retainedCanvasDependency(store:Store,projectId:string,entries:ChangeEnt
  }
  return deleted.length>0&&hasRetainedCanvasDependency(store.db,projectId,deleted);
 }
+function mioSpeedReceiptForChange(store:Store,change:AgentTaskChange){
+ if(change.operation!=='sequence.tool.timeline'||!isProjectStore(store)||change.projectId!==store.projectId)return null;
+ const saved=findSequenceEditReceipt(store,change.stepId);
+ return saved&&(saved.receipt.operation==='timeline.clip.setSpeed'||saved.receipt.operation==='timeline.clip.freeze')?saved:null;
+}
 function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,entries:ChangeEntry[]):UndoDisposition{
  if(change.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
   const owned=projectFileImportUndo(store,change);if(!owned||!isProjectStore(store))return 'blocked';
@@ -473,6 +491,7 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
  assertProjectStore(store);
  const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(projectId,target.kind,target.id);
  const canvasPreviewTargets=new Set<string>();
+ let sequenceUndoPosition:number|undefined;
  for(const change of [...changes].reverse()){
   const visibleTargets=(isMioCanvasOperation(change.operation)||isMioCanvasCopyOperation(change.operation))&&change.status==='applied'?agentTaskUndoTargets(change,chain):[...change.targets,...(change.frameDependencies??[])];
   const modifiedAfter=visibleTargets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>
@@ -499,7 +518,20 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
    else for(const target of change.targets)canvasPreviewTargets.add(key(target.kind,target.id));
    continue;
   }
-  let disposition=blocked||expected.some(target=>canvasPreviewTargets.has(key(target.kind,target.id)))?'blocked':undoDisposition(store,change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
+  let disposition=blocked||expected.some(target=>canvasPreviewTargets.has(key(target.kind,target.id)))?'blocked':undoDisposition(store,change,current,expected,revision,claimed);
+  const speedReceipt=mioSpeedReceiptForChange(store,change);
+  if(speedReceipt){
+   // The actual compensation uses the sequence inverse patch. Simulate its
+   // cursor for contiguous speed steps while keeping the per-target checks.
+   const entry=readSequenceEditHistoryEntry(store,speedReceipt.receipt.actionId);
+   if(sequenceUndoPosition===undefined){
+    const history=readSequenceEditHistory(store,'mio');
+    sequenceUndoPosition=history.undoAvailable&&history.undo?.actionId===entry?.actionId?history.position:0;
+   }
+   if(disposition==='undo'&&entry?.origin==='mio'&&entry.position===sequenceUndoPosition)sequenceUndoPosition--;
+   else disposition='blocked';
+  }else if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);
+  result.set(change.id,{modifiedAfter,undoDisposition:disposition});
   if(disposition==='blocked'){blocked=true;continue;}
   if(disposition!=='undo')continue;
   for(const entry of undoEntries(change)!){const identity=(entry.after??entry.before)!,id=key(identity.kind,identity.id);if(entry.before)current[id]=structuredClone(entry.before);else if(reversibleMetadata.has(identity.kind)){const value=defaultMetadataCompensation(identity.kind,identity.value);if(value)current[id]={...identity,value};else delete current[id];}else delete current[id];}
@@ -510,7 +542,7 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
 /** Recheck supersession within the same transaction as its journal record. */
 export function agentTaskChangeWasModified(store:Store,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
  assertProjectStore(store);
- if((isMioCanvasOperation(change.operation)||isMioCanvasCopyOperation(change.operation)))return false;
+ if(isMioCanvasOperation(change.operation)||isMioCanvasCopyOperation(change.operation)||mioSpeedReceiptForChange(store,change))return false;
  return undoDisposition(store,change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
 }
 function canvasUndoTargets(expected:readonly AgentTaskTarget[]):Array<CanvasTarget&{revision:number}>{
@@ -579,13 +611,23 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
  return projectResult(value);
 }
 
+function editorExportToolResult(value:unknown,projectDir:string):AgentTaskJson{
+ if(object(value)&&object(value.result)){
+  const {bundleName,displayPath}=value.result;
+  const inProject=typeof bundleName==='string'&&bundleName===path.basename(bundleName)&&
+   displayPath===fcpDisplayPath(path.join(projectDir,'导出',bundleName));
+  if(!inProject)return projectResult({...value,result:{...value.result,displayPath:'[项目外路径已隐藏]'}});
+ }
+ return projectResult(value);
+}
+
 const previsWrite=(operation:string):boolean=>operation==='previs.create'||operation==='previs.scene.set';
  // Mio's previs tools explain axes and units and leave host-owned scene fields out.
  const previsTools:Readonly<Record<string,{description:string;parameters?:unknown}>>={
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export').map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].filter(([operation])=>operation!=='sequence.inspect'&&operation!=='sequence.generation-inputs.get'&&operation!=='clip.audio.export'&&!isMioEditorExportOperation(operation)).map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:operation==='subject.variants.retry'?'为失败或未发出的变体重新生成一次。每次由用户确认费用；沿用该项冻结的图片输入，不重试未知结果。':previsTools[operation]?.description??descriptions[operation]??operation,parameters:operation==='previs.thumbnail.get'?AGENT_TASK_THUMBNAIL_READ_PARAMETERS:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:(Object.hasOwn(schemas,operation)?operationEffect(operation).readOnly:risk==='read_only')?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -600,11 +642,14 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
 /** Diagnostics retain their reviewed byte-level catalog. Conversation tools
  * expose AGENTS.md authority only through the host approval protocol. */
 import {AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS,FORMAT5_UNAVAILABLE_OPERATIONS} from './task-tool-groups-v2.ts';
-import {isFormat5Project} from '../sequence-edit.ts';
+import {applySequenceEditHistoryInside,isFormat5Project,readSequenceEditHistory} from '../sequence-edit.ts';
 import {MIO_SEQUENCE_GROUP_OPERATIONS,mioSequenceEditSchemas} from '../../../contracts/src/mio-sequence.ts';
 import {SEQUENCE_GENERATION_INPUT_LIMITS} from '../../../contracts/src/sequence-inspection.ts';
 import type {MioSequenceAction,MioSequenceGroupOperation} from '../../../contracts/src/mio-sequence.ts';
 import {previewMioSequenceAction,commitMioSequenceAction,prepareMioSequenceUndo,applyMioSequenceUndo} from '../format5-mio-sequence.ts';
+import {sequenceEditAllocationSchema} from '../../../contracts/src/sequence-edit.ts';
+import type {SequenceEditAllocation,SequenceEditReceipt} from '../../../contracts/src/sequence-edit.ts';
+import {findSequenceEditReceipt,readSequenceEditHistoryEntry} from '../format5-editor-history.ts';
 import {readFrozenFormat5GenerationInputs} from '../format5-reference-inputs.ts';
 import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.ts';
 export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTaskToolDefinition[]=>{
@@ -633,7 +678,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_subject_edit',operation:'sequence.tool.subject',description:'按需加载的格式 5 主体动作：主体绑定创建/跟随锁定/断开/恢复、主体卡建卡/删卡。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.subject'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_previs_edit',operation:'sequence.tool.previs',description:'按需加载的格式 5 预演动作：预演节点新建、预演场景保存（人偶/道具可带主体）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.previs'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
-  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的格式 5 时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、素材入轨、分离声音、在剪辑里生成（主轨占位/其他轨游离镜头，生成每次费用确认）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、素材入轨、分离声音、在剪辑里生成（生成每次费用确认）。已启用变速的格式 6 项目支持片段变速和定格。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_clip_edit',operation:'sequence.tool.clip',description:'按需加载的格式 5 片段属性动作：变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称及兼容素材替换。主轨镜头替换需指定该镜头拥有或已采纳的版本。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.clip'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   // FR-G: one format-5 clip's current sound becomes a new project audio asset.
@@ -642,6 +687,12 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTask
   definitions.push({name:'mioon_sequence_board_get',operation:'sequence.board.get',description:'只读读取格式 5 画板挂载投影：时间线与同步修订、当前成片链是否与主轨一致、可恢复的归档画板行；不规划、不写回执。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.board.get'],risk:'read_only',receipt:'observation',recovery:'read the board again',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_inspect',operation:'sequence.inspect',description:'按根分页只读格式 5 顺序链、片段组、实际/画板版本、状态、锚、游离节点和差异；同一快照标识续页，不写画板、时间线、回执或历史。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.inspect'],risk:'read_only',receipt:'observation',recovery:'read the saved sequence again; the snapshot cursor must match',undo:'unavailable'});
   definitions.push({name:'mioon_sequence_generation_inputs_get',operation:'sequence.generation-inputs.get',description:`只读查看一个镜头在当前生成服务下的实际生成输入：模式、每条引用线的角色/来源/顺序/主体版本、服务不支持的原因、主图和用到几项；最多 ${SEQUENCE_GENERATION_INPUT_LIMITS.entries} 条。connectionId/configurationRevision/modelEntryId 必须三个一起给，省略表示还没选服务。不写项目、任务、回执或历史。`,parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.generation-inputs.get'],risk:'read_only',receipt:'observation',recovery:'read the projection again after the board or service selection changes',undo:'unavailable'});
+  for(const operation of MIO_EDITOR_EXPORT_OPERATIONS){
+   const risk=tierByOperation.get(operation)!;
+   definitions.push({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:MIO_EDITOR_EXPORT_DESCRIPTIONS[operation],
+    parameters:isMioEditorExportStart(operation)?AGENT_TASK_EDITOR_EXPORT_START_PARAMETERS:AGENT_TASK_TOOL_SCHEMAS[operation],
+    risk,receipt:risk==='read_only'?'observation':'durable task step',recovery:'observe the same export; never duplicate an unknown export',undo:'unavailable'});
+  }
   // C+A: the format-5 directory no longer lists legacy entries that the gate
   // rejects. The reviewed unavailable table stays for parity and UI reasons.
   for(let index=definitions.length-1;index>=0;index--)if(FORMAT5_UNAVAILABLE_OPERATIONS[definitions[index]!.operation]!==undefined)definitions.splice(index,1);
@@ -840,7 +891,8 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   }
   return agentTaskParameterFeedback({operation,input,capabilities});
  }
-  function prepareMioSequence(operation:MioSequenceGroupOperation|'sequence.tool.undo',projectId:string,input:unknown,locale?:AgentTaskLocale):PreparedAgentTaskTool{
+  function prepareMioSequence(operation:MioSequenceGroupOperation|'sequence.tool.undo',projectId:string,input:unknown,
+   locale?:AgentTaskLocale,stepId?:string,retainedSpeedPlan?:unknown):PreparedAgentTaskTool{
   if(!format5||!isProjectStore(store))fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
   const before=snapshot(store,projectId);
   const targets:AgentTaskTarget[]=[];
@@ -877,7 +929,16 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='subject-card-delete')add('node',action.nodeId);
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
    if(action.kind==='generate'&&action.placement.kind==='main'&&action.placement.beforeClipId)add('timeline_clip',action.placement.beforeClipId);
-   const plan=previewMioSequenceAction(store,projectId,randomUUID(),action,{origin:'mio',locale});
+   const speed=action.kind==='clip-speed'||action.kind==='freeze-frame';
+   let allocation:SequenceEditAllocation|undefined;
+   if(speed&&retainedSpeedPlan!==undefined){
+    const retained=sequenceEditAllocationSchema.safeParse(object(retainedSpeedPlan)?retainedSpeedPlan.allocation:undefined);
+    if(!retained.success)fail('AGENT_TASK_STORAGE_UNAVAILABLE','变速步骤的原分配无法验证');
+    allocation=retained.data;
+   }
+   const requestId=speed&&stepId?stepId:randomUUID();
+   const plan=previewMioSequenceAction(store,projectId,requestId,action,{origin:'mio',locale,
+    ...(speed?{speedStep:{actionId:requestId,allocation}}:{})});
    // A generate action creates a shot and a placeholder clip inside this same
    // step. They have no pre-edit target row, so record their identities for the
    // runtime to resolve after the effect; the job target gate then sees them.
@@ -886,19 +947,31 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     for(const target of [{kind:'shot',id:clip.nodeId},{kind:'timeline_clip',id:clip.clipId}])
      if(!generatedTargets.some(item=>item.kind===target.kind&&item.id===target.id))generatedTargets.push(target);
    }
+   if(speed){
+    const {mainTrackClipIds,otherTrackItemIds,subtitleCueIds}=plan.envelope.impact;
+    for(const clipId of [...mainTrackClipIds,...otherTrackItemIds]){
+     if(before[key('timeline_clip',clipId)])add('timeline_clip',clipId);
+     else generatedTargets.push({kind:'timeline_clip',id:clipId});
+    }
+    for(const cueId of subtitleCueIds){
+     if(before[key('timeline_subtitle',cueId)])add('timeline_subtitle',cueId);
+     else generatedTargets.push({kind:'timeline_subtitle',id:cueId});
+    }
+   }
    // Copy, delete, split and anchor/subject changes always surface a stable
    // impact for the existing approval path; other actions inherit the tier.
    const forceApproval=['copy-move','remove','delete-node','insert','split','subject-binding','clip-properties','replace-source','dialogue',
     'format-set','split-at-scenes','insert-asset','separate-sound','subtitles','board-root-create','board-shot-append','board-layout-move',
     'board-node-create','board-shot-update','board-node-update','board-restore','board-duplicate',
     'reference-attach','reference-set-role','reference-detach','reference-reorder',
-    'subject-card-create','subject-card-delete','previs-create','generate'].includes(action.kind);
+    'subject-card-create','subject-card-delete','previs-create','generate','clip-speed','freeze-frame'].includes(action.kind);
    // A generate action submits a paid provider call through the sequence tool;
    // the step risk must be paid so the runtime requires the same per-call fee
    // confirmation as generation.submit instead of the local-reversible path.
    const risk:AgentTaskTier=action.kind==='generate'?'paid':'local_reversible';
    return {projectId,operation,input:parsed.data as unknown as Value,risk,targets,before,
-     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary},
+     ...(forceApproval?{forceApproval:true}:{}),sequence:{plan,action:action.kind,summary:plan.summary,
+      ...(speed?{speedPlan:{digest:plan.planDigest,allocation:plan.envelope.allocation}}:{})},
      ...(generatedTargets.length?{generatedTargets}:{})};
   }
   const parsed=mioSequenceEditSchemas['sequence.tool.undo'].safeParse(input);
@@ -906,9 +979,10 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   const plan=prepareMioSequenceUndo(store,projectId,randomUUID(),parsed.data.actionId);
   return {projectId,operation,input:parsed.data as unknown as Value,risk:'local_reversible',targets,before,sequence:{plan,action:'undo'}};
  }
-function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester,locale}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester;locale?:AgentTaskLocale}):PreparedAgentTaskTool{
+function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester,locale,retainedSpeedPlan}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester;locale?:AgentTaskLocale;retainedSpeedPlan?:unknown}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
- if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input,locale);
+ if(isMioEditorExportOperation(operation)&&(!format5||!isProjectStore(store)||store.projectId!==projectId))fail('AGENT_TASK_TOOL_FORBIDDEN',mioEditorExportLabel(operation)+' 导出只用于当前格式 5 项目');
+ if(isMioSequenceWriteOperation(operation)||operation==='sequence.tool.undo')return prepareMioSequence(operation as MioSequenceGroupOperation|'sequence.tool.undo',projectId,input,locale,canvasRequester?.stepId,retainedSpeedPlan);
  if(format5&&FORMAT5_UNAVAILABLE_OPERATIONS[operation])fail('AGENT_TASK_TOOL_FORBIDDEN',FORMAT5_UNAVAILABLE_OPERATIONS[operation]!);
   if(operation==='asset.import'){
    const parsed=mioAssetImportInputSchema.safeParse(input);
@@ -1123,16 +1197,34 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   return projectImport.lookup(proof,context);
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
+  if(isMioEditorExportOperation(prepared.operation)&&(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId))fail('AGENT_TASK_TOOL_FORBIDDEN',mioEditorExportLabel(prepared.operation)+' 导出只用于当前格式 5 项目');
   if(prepared.sequence){
    if(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
+   const sequence=prepared.sequence;
    // Sequence writes, including the paid generation job, share the task effect
    // origin so the background completion is bound and gated like any Mio job.
    const origin:AgentTaskEffectOrigin={...context,beforeEffect:()=>{},projectId:prepared.projectId,
      operation:prepared.operation,recorded:false};
-   preparedOrigins.set(origin,prepared);
-   const sequence=prepared.sequence;
+   // Speed records the result explicitly inside the sequence transaction.
+   if(!sequence.speedPlan)preparedOrigins.set(origin,prepared);
    return withTaskEffectOrigin(origin,async()=>{
     context.beforeEffect();context.signal?.throwIfAborted();
+    if(sequence.speedPlan){
+     const plan=sequence.plan as MioSequencePlan,step=journal.step(context.stepId);
+     if(plan.envelope.requestId!==context.requestId||context.requestId!==step.id||step.runId!==context.runId||
+        step.status!=='dispatch_started'||!object(step.data)||!isDeepStrictEqual(step.data.speedPlan,sequence.speedPlan))
+      fail('AGENT_TASK_STATE_CONFLICT','剪辑变速缺少原步骤已确认的计划');
+     const resultOf=(receipt:SequenceEditReceipt):AgentTaskJson=>json({action:sequence.action,status:receipt.status,
+      actionId:receipt.actionId,affected:receipt.affected,
+      history:{position:receipt.history.position,revision:receipt.history.revision},
+      ...(receipt.status==='applied'?{speed:plan.summary.speed}:{code:receipt.code})});
+     const receipt=commitMioSequenceAction(store,plan,{recordSpeedReceiptInside:receipt=>{
+      context.recordInside(resultOf(receipt),changes(prepared,snapshot(store,prepared.projectId)));
+      origin.recorded=true;
+     }});
+     if(!origin.recorded)fail('AGENT_TASK_STATE_CONFLICT','剪辑变速缺少原子任务回执');
+     return {result:resultOf(receipt),changes:[],recorded:origin.recorded};
+    }
     const receipt=sequence.action==='undo'
       ? applyMioSequenceUndo(store,sequence.plan as MioSequenceUndoPlan)
       : commitMioSequenceAction(store,sequence.plan as MioSequencePlan,{generationSubmit:services.createGenerationJobInside});
@@ -1370,7 +1462,8 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
     }else if(prepared.operation==='timeline.format.get'){
      if(!isTimelineFormatReadResponse(value,input))fail('AGENT_TASK_INVALID_TOOL_RESULT','画框读取不属于当前项目');
      result=projectResult(value);
-    }else result=prepared.frameTransaction||previsWrite(prepared.operation)||hasGenerationAspectSource(prepared)?taskResult(prepared,value,context.requestId):projectResult(value);
+    }else if(isMioEditorExportGet(prepared.operation))result=editorExportToolResult(value,storeDirectories(store).projectDir);
+    else result=prepared.frameTransaction||previsWrite(prepared.operation)||hasGenerationAspectSource(prepared)?taskResult(prepared,value,context.requestId):projectResult(value);
     return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
  }
@@ -1410,6 +1503,10 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
   const value=services.handlers[operation]!(args as never);if(!object(value)||typeof value.then==='function')fail('AGENT_TASK_INVALID_TARGET','任务无法验证');
   if(value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   const state=value.status??value.state;
+  if(input.kind==='export'&&state==='done'){
+   const editorTask=discloseEditorExportTask(value,{id:input.id,projectId});
+   if(editorTask)return projectResult(editorTask);
+  }
   // An interrupted scene task saved nothing and can simply be run again; a
   // storyboard whose result could not be saved also left no shots.
   if(input.kind==='scene')return ['succeeded','failed','cancelled','cancelled_before_start','interrupted','local_result_error','undone'].includes(String(state))?projectResult(value):null;
@@ -1437,6 +1534,10 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    return {outcome:'not_applied',reason:'atomic_receipt_absent'};
   }
   if(tier==='local_reversible'&&(isMioCanvasOperation(operation)||isMioCanvasCopyOperation(operation)))return {outcome:'not_applied',reason:'atomic_receipt_absent'};
+  if(tier==='local_reversible'&&operation==='sequence.tool.timeline'&&object(step.data)&&object(step.data.speedPlan)){
+   if(!isProjectStore(store)||findSequenceEditReceipt(store,input.requestId))return null;
+   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
+  }
   if(tier!=='local_reversible'||!reversibleOperations.includes(operation as typeof reversibleOperations[number]))return null;
   // These operations have no effects outside their domain transaction. The
   // immutable domain receipt and v2 completion either both committed or neither
@@ -1513,6 +1614,20 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    context.beforeEffect();const current=snapshot(store,change.projectId),expected=context.expectedTargets??agentTaskUndoTargets(change,new Map());
    if(!frameDependenciesMatch(change,current,expected))fail('AGENT_TASK_TARGET_CHANGED','画框依赖的片段或字幕已变化');
    for(const target of expected){if(readRevision(store,change.projectId,target.kind,target.id)!==target.revision)fail('AGENT_TASK_TARGET_CHANGED','目标在此项变化后已被修改');if(db.prepare(`SELECT 1 FROM ${mioTable(db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))fail('AGENT_TASK_TARGET_CLAIMED','目标仍有未保存草稿');}
+   const speedReceipt=mioSpeedReceiptForChange(store,change);
+   if(speedReceipt&&isProjectStore(store)){
+    const source=journal.step(change.stepId);
+    if(source.runId!==change.runId||source.status!=='completed'||!object(source.data)||!object(source.data.speedPlan)||
+       speedReceipt.receipt.status!=='applied'||speedReceipt.receipt.actionId!==change.stepId||
+       speedReceipt.inputDigest!==source.data.speedPlan.digest)
+     fail('AGENT_TASK_NOT_REVERSIBLE','无法核对原变速步骤的编辑回执');
+    const requestId=`mio-speed-undo-${createHash('sha256').update(JSON.stringify([context.requestId??randomUUID(),change.stepId])).digest('hex')}`;
+    const plan=prepareMioSequenceUndo(store,change.projectId,requestId,speedReceipt.receipt.actionId);
+    context.beforeCompensation?.();
+    applySequenceEditHistoryInside(store,'undo',plan);
+    context.recordInside(change);
+    return {targets:change.targets.map(target=>({...target,revision:readRevision(store,change.projectId,target.kind,target.id)}))};
+   }
    const entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
    for(const item of undoEntries){if(!object(item))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');const before=item.before,after=item.after;if(before!==undefined&&!object(before)||after!==undefined&&!object(after))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');
     const entry={...(before?{before:before as unknown as SnapshotEntry}:{}),...(after?{after:after as unknown as SnapshotEntry}:{})},identity=entry.after??entry.before;if(!identity||typeof identity.kind!=='string'||typeof identity.id!=='string'||typeof identity.table!=='string')fail('AGENT_TASK_INVALID_TARGET','撤销目标无效');

@@ -70,6 +70,13 @@ const sameEnvelope = (value: unknown, expected: VolumeEnvelope): boolean => obje
   value.profileId === expected.profileId && Array.isArray(value.points) && value.points.length === expected.points.length &&
   value.points.every((point, index) => object(point) && exactKeys(point, ['frame', 'multiplier']) &&
     point.frame === expected.points[index].frame && point.multiplier === expected.points[index].multiplier);
+/** Older timelines persist the two exact crossfade curves as volume envelopes. */
+export function hasTimelineCrossfadeEnvelopes(
+  outgoing: CrossfadeClip & {volumeEnvelope?: unknown}, incoming: CrossfadeClip & {volumeEnvelope?: unknown},
+): boolean {
+  const curves = timelineCrossfadeEnvelopes(outgoing, incoming);
+  return curves !== null && sameEnvelope(outgoing.volumeEnvelope, curves.outgoing) && sameEnvelope(incoming.volumeEnvelope, curves.incoming);
+}
 /** Binds every identity field of a not-applied proof, as scene split does. */
 export function hasTimelineCrossfadeNotAppliedProof(error: unknown, input: unknown, operation: unknown): boolean {
   try {

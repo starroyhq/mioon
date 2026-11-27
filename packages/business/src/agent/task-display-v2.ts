@@ -155,6 +155,10 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
    display.operation='generation.submit';
    appendFields(display,undefined,{},fields('generation.submit','shot',{...args.settings as Value,referenceAssetIds:[]}),true);
   }
+  const speedDuration=step.toolCall.name==='mioon_sequence_timeline_edit'&&object(step.data)&&object(step.data.speedImpact)
+    &&displayCount(step.data.speedImpact.durationFrames)?step.data.speedImpact.durationFrames:undefined;
+  if(args.kind==='freeze-frame'&&speedDuration!==undefined)
+    appendFields(display,undefined,{},{durationFrames:{unit:'frames',value:speedDuration}},true);
   let targets:Pick<AgentTaskTarget,'kind'|'id'>[]=[...(step.targets??[])];
   for(const [field,kind] of [['shotId','shot'],['clipId','timeline_clip'],['cueId','timeline_subtitle'],['trackId','timeline_track'],['assetId','asset'],['nodeId','node'],['jobId','job'],['exportId','export']] as const){const id=args[field];if(typeof id==='string'&&uuid.test(id)&&!targets.some(item=>item.kind===kind&&item.id===id))targets.push({kind,id});}
   // A creation has no saved target yet. Its parameter fields are operation-wide;
@@ -200,6 +204,8 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
     // to the current counts in a conflict they would read as a difference.
     const inputPreset=display.operation==='timeline.format.set'&&typeof args.presetId==='string'?timelineOutputPreset(args.presetId):null;
     let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,display.operation==='timeline.format.set'?inputPreset??undefined:input);
+    if(args.kind==='clip-speed'&&speedDuration!==undefined&&item.kind==='timeline_clip'&&item.id===args.clipId)
+      planned={durationFrames:{unit:'frames',value:speedDuration}};
     // A gain batch plans one gain for each clip it lists.
     if(display.operation==='timeline.clip.setGains'){const listed=Array.isArray(args.gains)?args.gains.find(entry=>object(entry)&&entry.clipId===item.id):undefined;planned=object(listed)?fields(display.operation,item.kind,{gain:listed.gain}):{};}
     if(display.operation==='canvas.archive'&&item.kind==='shot')planned=shotImpacts.get(item.id)??{};

@@ -6,6 +6,7 @@
  * refuses placeholders / pending too-short versions through the TSb export
  * ticket rules before any media metadata is frozen.
  */
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
@@ -45,7 +46,7 @@ export interface Format5RenderProjection {
   readonly assets: ReadonlyMap<string, ManagedAssetRecord>;
 }
 function stripClip(clip: Format5Timeline['clips'][number]): TimelineClipRecord {
-  const {sourceState: _state, sequenceSource: _sequence, anchor: _anchor, ...legacy} = clip as TimelineClipRecord & Row;
+  const {sourceState: _state, sequenceSource: _sequence, anchor: _anchor, timing: _timing, sourceSpanFrames: _span, ...legacy} = clip as TimelineClipRecord & Row;
   return legacy as TimelineClipRecord;
 }
 function stripCue(cue: Format5Cue): TimelineSubtitleCueRecord {
@@ -61,6 +62,7 @@ function exportRange(input: {exportRange?: unknown}): {startFrame: number; endFr
 export function readFormat5RenderProjection(store: ProjectStore): Format5RenderProjection | null {
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) return null;
+  assertTimelineSpeedRenderable(timeline);
   const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
   const legacyClips = clips.map(stripClip);
   const cues = subtitles?.cues.map(stripCue) ?? [];
@@ -93,6 +95,7 @@ export function readFormat5AudioProjection(store: ProjectStore): {legacy: Timeli
   if (!timeline) return null;
   const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId});
   if (issue) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线数据不可用。', 409, {clipIds: issue.ids ?? []});
+  assertTimelineSpeedRenderable(timeline);
   const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
   const ready = clips.filter(clip => clip.sourceState !== 'placeholder' && clip.assetId !== null);
   const legacyClips = ready.map(stripClip);

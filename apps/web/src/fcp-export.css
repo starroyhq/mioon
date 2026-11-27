@@ -1,0 +1,514 @@
+/* Section 24: Export to Final Cut Pro (.fcpxmld) */
+
+.topbar-export-split {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-accent);
+  color: var(--wb-accent-foreground);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.topbar-export-split .wb-button.topbar-export-main {
+  border-radius: var(--wb-radius-control) 0 0 var(--wb-radius-control);
+  padding-inline: 10px 9px;
+  gap: 5px;
+  border: 0;
+}
+.topbar-export-split .wb-button.topbar-export-menu-trigger {
+  border-radius: 0 var(--wb-radius-control) var(--wb-radius-control) 0;
+  padding-inline: 6px;
+  min-width: 24px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--wb-accent-foreground) 18%, transparent);
+}
+.topbar-export-menu {
+  min-width: 224px;
+}
+.topbar-export-menu [data-slot="dropdown-menu-item"] {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+}
+.topbar-export-shortcut {
+  margin-inline-start: auto;
+  padding-inline-start: var(--wb-space-4);
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-caption);
+}
+
+/* 560px standard dialog */
+.fcp-export-dialog.wb-dialog[data-slot="dialog-content"] {
+  width: min(var(--wb-dialog-standard, 560px), calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+.fcp-export-dialog .wb-dialog-heading {
+  padding: 20px 24px 0;
+  border-bottom: 0;
+}
+.fcp-export-dialog .wb-dialog-heading [data-slot="dialog-title"] {
+  font-size: var(--wb-text-title);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.fcp-export-dialog .wb-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+  padding: 12px 24px 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.fcp-export-dialog .wb-dialog-footer {
+  border-top: 0;
+  padding: 4px 24px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-2);
+}
+.fcp-export-dialog .wb-dialog-footer .wb-button {
+  min-height: 32px;
+  padding-inline: 16px;
+}
+
+.fcp-export-summary {
+  margin: -4px 0 0;
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+  line-height: 1.4;
+}
+
+.fcp-export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.fcp-export-label {
+  color: var(--wb-soft);
+  font-size: var(--wb-text-label);
+  font-weight: 500;
+}
+
+.fcp-export-location-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  min-width: 0;
+}
+.fcp-export-path-box {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: 0 10px;
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-input);
+  border: 1px solid var(--wb-line);
+  color: var(--wb-text);
+  font-size: var(--wb-text-body);
+}
+.fcp-export-path-box > svg {
+  flex: none;
+  color: var(--wb-muted);
+}
+.fcp-export-path-box > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fcp-export-choose-btn.wb-button {
+  flex: none;
+  min-height: 32px;
+  padding-inline: 12px;
+}
+
+.fcp-export-name-box {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: 0 10px 0 2px;
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-input);
+  border: 1px solid var(--wb-line);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.fcp-export-name-box:focus-within {
+  border-color: var(--wb-accent-line);
+  box-shadow: 0 0 0 2px var(--wb-accent-subtle);
+}
+.fcp-export-name-input[data-slot="input"] {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 8px;
+  color: var(--wb-text);
+  font-size: var(--wb-text-body);
+}
+.fcp-export-name-input[data-slot="input"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: 0;
+}
+.fcp-export-name-suffix {
+  flex: none;
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+  user-select: none;
+}
+
+.fcp-export-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-3);
+  padding: 2px 0;
+}
+.fcp-export-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  color: var(--wb-text);
+  font-size: var(--wb-text-body);
+  cursor: default;
+  user-select: none;
+}
+.fcp-export-checkbox {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--wb-accent);
+  border-radius: 3px;
+  cursor: default;
+}
+.fcp-export-media-size {
+  flex: none;
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+}
+
+/* Missing & Approximations lists (24-02, 24-05) */
+.fcp-export-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  min-width: 0;
+}
+.fcp-export-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--wb-text-label);
+  font-weight: 500;
+  color: var(--wb-text);
+}
+.fcp-export-group-count {
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+  font-weight: 400;
+}
+.fcp-export-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--wb-text);
+  font: inherit;
+  font-size: var(--wb-text-label);
+  font-weight: 500;
+  cursor: default;
+  align-self: flex-start;
+  border-radius: 4px;
+}
+.fcp-export-disclosure:hover {
+  color: var(--wb-accent);
+}
+.fcp-export-disclosure:focus-visible {
+  outline: 1.5px solid var(--wb-accent-line);
+  outline-offset: 2px;
+}
+.fcp-export-disclosure > svg {
+  color: var(--wb-muted);
+  flex: none;
+}
+.fcp-export-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-input);
+  border: 1px solid var(--wb-line-subtle);
+  max-height: 210px;
+  overflow-y: auto;
+}
+.fcp-export-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-3);
+  padding: 10px 12px;
+  font-size: var(--wb-text-label);
+  line-height: 1.4;
+  min-width: 0;
+}
+.fcp-export-list-row + .fcp-export-list-row {
+  border-top: 1px solid var(--wb-line-subtle);
+}
+.fcp-export-list-left {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  min-width: 0;
+  color: var(--wb-text);
+}
+.fcp-export-list-left > svg {
+  flex: none;
+}
+.fcp-export-list-left[data-tone="warning"] > svg {
+  color: var(--wb-warning);
+}
+.fcp-export-list-left[data-tone="info"] > svg {
+  color: var(--wb-muted);
+}
+.fcp-export-list-left > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fcp-export-list-clips {
+  flex: none;
+  max-width: 52%;
+  color: var(--wb-muted);
+  font-size: var(--wb-text-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Loading preview placeholder */
+.fcp-export-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: 20px 0;
+  color: var(--wb-soft);
+  font-size: var(--wb-text-body);
+}
+.fcp-export-spin {
+  animation: fcp-export-spin .9s linear infinite;
+}
+@keyframes fcp-export-spin { to { transform: rotate(360deg); } }
+
+/* Exporting progress state (24-03) */
+.fcp-export-running {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+  padding: 4px 0 8px;
+}
+.fcp-export-bundle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  color: var(--wb-text);
+  font-size: var(--wb-text-section);
+  font-weight: 500;
+  min-width: 0;
+}
+.fcp-export-bundle-row > svg {
+  flex: none;
+  color: var(--wb-soft);
+}
+.fcp-export-bundle-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fcp-export-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+}
+.fcp-export-progress-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wb-space-3);
+  font-size: var(--wb-text-label);
+}
+.fcp-export-progress-status {
+  color: var(--wb-soft);
+}
+.fcp-export-progress-bytes {
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+  flex: none;
+}
+.fcp-export-progress-bar.wb-progress {
+  height: 4px;
+  background: var(--wb-line);
+}
+.fcp-export-progress-bar.wb-progress > span {
+  background: var(--wb-accent);
+}
+
+/* Done state (24-04) */
+.fcp-export-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+  padding: 4px 0;
+}
+.fcp-export-status-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wb-space-3);
+  min-width: 0;
+}
+.fcp-export-status-icon {
+  flex: none;
+  margin-top: 1px;
+}
+.fcp-export-status-icon[data-tone="success"] {
+  color: var(--wb-success);
+}
+.fcp-export-status-icon[data-tone="danger"] {
+  color: var(--wb-danger);
+}
+.fcp-export-status-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.fcp-export-status-copy strong {
+  color: var(--wb-text);
+  font-size: var(--wb-text-section);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.fcp-export-status-meta {
+  margin: 0;
+  color: var(--wb-muted);
+  font-family: var(--wb-font-mono);
+  font-size: var(--wb-text-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fcp-export-status-reason {
+  margin: 0;
+  color: var(--wb-soft);
+  font-size: var(--wb-text-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.fcp-export-missing-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 34px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--wb-soft);
+  font: inherit;
+  font-size: var(--wb-text-label);
+  cursor: default;
+  align-self: flex-start;
+  border-radius: 4px;
+}
+.fcp-export-missing-link:hover {
+  color: var(--wb-text);
+}
+.fcp-export-missing-link:focus-visible {
+  outline: 1.5px solid var(--wb-accent-line);
+  outline-offset: 2px;
+}
+.fcp-export-missing-link > svg:first-child {
+  color: var(--wb-warning);
+  flex: none;
+}
+.fcp-export-missing-link > svg:last-child {
+  color: var(--wb-muted);
+  flex: none;
+}
+
+/* Failed state (24-04b) */
+.fcp-export-failed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  padding: 4px 0 8px;
+}
+
+/* Background completion toast (bottom-right, 24-05 rule 09) */
+.fcp-export-toasts.wb-toasts {
+  top: auto;
+  bottom: var(--wb-space-4);
+  right: var(--wb-space-4);
+  width: auto;
+  max-width: min(480px, calc(100vw - 32px));
+  z-index: 120;
+}
+.fcp-export-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  width: max-content;
+  max-width: 100%;
+}
+.fcp-export-toast-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--wb-success);
+}
+.fcp-export-toast-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--wb-text);
+  font-size: var(--wb-text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Task center detail card */
+.fcp-export-task-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-3);
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-card);
+  border: 1px solid var(--wb-line-subtle);
+}
+.fcp-export-task-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fcp-export-spin { animation: none; }
+}

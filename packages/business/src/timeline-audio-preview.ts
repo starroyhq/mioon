@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable, isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import type {MediaLocator} from './asset-reference-record.ts';
@@ -124,11 +125,12 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
   function current(input: AudioPreviewPlanInput): Current {
     assertOwner();
     let raw: unknown;
-    try {raw = runtime.readSavedTimeline(input.projectId);} catch {return unavailable();}
+    try {raw = runtime.readSavedTimeline(input.projectId);} catch (error) {if (isTimelineSpeedRenderError(error)) throw error; return unavailable();}
     assertOwner();
     if (!plainData(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets) || raw.assets.length > 100) unavailable();
     const timeline = raw.timeline;
     if (!Array.isArray(timeline.tracks) || timeline.tracks.length > 12 || !Array.isArray(timeline.clips) || timeline.clips.length > 100) unavailable();
+    assertTimelineSpeedRenderable(timeline);
     const tracks = timeline.tracks.map((track: unknown) => {
       if (!object(track)) return unavailable();
       return {id: track.id, kind: track.kind, orderIndex: track.orderIndex, hidden: track.hidden, muted: track.muted};

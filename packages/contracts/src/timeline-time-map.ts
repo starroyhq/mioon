@@ -808,6 +808,68 @@ export function initialTimeMap(root: CompiledTimeMapRoot, direction: 'forward' |
     direction, outputWindow: {fromFrame: 0, toFrame: state.durationFrames}});
 }
 
+/** Reopen a persisted view after checking it against its compiled root. */
+export function restoreTimeMap(root: CompiledTimeMapRoot, view: Omit<PlanState, 'root'>): TimeMapResult<CompiledTimeMap> {
+  const state = rootState(root);
+  const {loTime, hiTime, outputWindow: {fromFrame, toFrame}} = view;
+  const limit = state.durationFrames;
+  if (![loTime.offsetOutputFrames, hiTime.offsetOutputFrames].every(value => Number.isSafeInteger(value) && Math.abs(value) <= limit)
+      || !Number.isSafeInteger(fromFrame) || !Number.isSafeInteger(toFrame)
+      || fromFrame < 0 || fromFrame >= toFrame || toFrame > limit) {
+    return fail('INVALID_WINDOW', 'view and output window must use bounded integer offsets');
+  }
+  const lo = boundaryTimeValue(loTime), hi = boundaryTimeValue(hiTime);
+  if (timeValueLess(state, lo, clockTime(0)) || timeValueLess(state, {kind: 'rootEnd', offset: 0}, hi)
+      || !timeValueLess(state, timeShift(lo, toFrame - 1), hi)) {
+    return fail('INVALID_WINDOW', 'view or output window leaves its motion interval');
+  }
+  return done(makePlan(root, view));
+}
+
+/** The edit domain includes the full half-open output window, including motion
+ * after the last sampled frame start. Endpoints already in the basis stay exact. */
+export function timeMapSourceRangeForEdit(plan: CompiledTimeMap): TimeMapResult<TimeMapSourceRange> {
+  const state = rootState(plan.root);
+  const interval = planClockInterval(state, planState(plan));
+  function boundary(time: RootTimeValue, original: TimeMapSourceBoundary): TimeMapResult<TimeMapSourceBoundary> {
+    if ((time.kind === 'clock' && time.frames === 0) || (time.kind === 'rootEnd' && time.offset === 0)) {
+      return done(original);
+    }
+    const position = invertAtTime(state, time, CURVE_REFINEMENT_TOLERANCES.length - 1);
+    if (!position.ok) return position;
+    if (position.value.kind === 'exact') {
+      const {numerator, denominator} = position.value;
+      return done({kind: 'rational', numerator, denominator});
+    }
+    const projected = projectSourceBoundaryToQ64(position.value);
+    return projected.ok ? done(projected.value.boundary) : projected;
+  }
+  const start = boundary(interval.lo, plan.root.sourceRange.start);
+  if (!start.ok) return start;
+  const end = boundary(interval.hi, plan.root.sourceRange.end);
+  return end.ok ? done({start: start.value, end: end.value}) : end;
+}
+
+/** PCHIP is shape-preserving, so only the visible ends and interior control
+ * points can determine the minimum rate. */
+export function timeMapHasSlowMotion(plan: CompiledTimeMap): TimeMapResult<boolean> {
+  const state = rootState(plan.root);
+  if (state.rate) return done(ratCmp(state.rate, ratInt(1n)) < 0);
+  const curve = state.curve;
+  if (!curve) return done(false);
+  const interval = planClockInterval(state, planState(plan));
+  const start = invertAtTime(state, interval.lo, 0);
+  if (!start.ok) return start;
+  const end = invertAtTime(state, interval.hi, 0);
+  if (!end.ok) return end;
+  const toFrame = (position: ContinuousSourcePosition) => position.kind === 'numeric'
+    ? position.value : Number(position.numerator) / Number(position.denominator);
+  const lo = toFrame(start.value), hi = toFrame(end.value);
+  return done(curveRate(curve, lo) < 1 || curveRate(curve, hi) < 1 ||
+    state.basis.speed.kind === 'curve' && state.basis.speed.points.some(point =>
+      point.sourceFrame > lo && point.sourceFrame < hi && point.rate.numerator < point.rate.denominator));
+}
+
 /** Flips the traversal direction over the same visible clock interval. The
  * output length and the tail rule stay put; nothing is re-rounded. */
 export function reverseTimeMap(plan: CompiledTimeMap): CompiledTimeMap {
@@ -1063,6 +1125,9 @@ function marchCurveFrames(state: RootState, direction: 'forward' | 'reverse'): T
 
 function invertAtTime(state: RootState, value: RootTimeValue, level: number): TimeMapResult<ContinuousSourcePosition> {
   if (state.kind === 'freeze') return done({kind: 'exact', numerator: String(state.freezeFrame!), denominator: '1'});
+  const endpoint = value.kind === 'clock' && value.frames === 0 ? state.sourceStart
+    : value.kind === 'rootEnd' && value.offset === 0 ? state.sourceEnd : null;
+  if (endpoint) return done({kind: 'exact', numerator: String(endpoint.n), denominator: String(endpoint.d)});
   const time = timeNumber(state, value);
   const timeError = timeUncertainty(state, value);
   if (state.lengthExact !== null && state.rate !== null) {
@@ -1102,11 +1167,6 @@ function planTimeValue(state: PlanState, outputOffset: number): RootTimeValue {
   const global = state.outputWindow.fromFrame + outputOffset;
   return timeShift(boundaryTimeValue(state.direction === 'forward' ? state.loTime : state.hiTime), state.direction === 'forward' ? global : -global);
 }
-function planExtremeTimes(state: RootState, plan: PlanState): {readonly earlier: RootTimeValue; readonly later: RootTimeValue} {
-  const first = planTimeValue(plan, 0), last = planTimeValue(plan, plan.outputWindow.toFrame - plan.outputWindow.fromFrame - 1);
-  return timeNumber(state, first) <= timeNumber(state, last) ? {earlier: first, later: last} : {earlier: last, later: first};
-}
-
 // ---------------------------------------------------------------------------
 // Public describe/compile surface for plans.
 // ---------------------------------------------------------------------------
@@ -1152,33 +1212,47 @@ export function timeMapPlanFrames(plan: CompiledTimeMap): TimeMapResult<Int32Arr
   const frames = new Int32Array(plan.durationFrames);
   const first = planTimeValue(planInfo, 0);
   const needed: 'forward' | 'reverse' = first.kind === 'clock' ? 'forward' : 'reverse';
-  const vector = rootFrames(state, needed);
-  if (!vector.ok) return vector;
+  // A flipped sub-window can traverse the other direction on this grid.
+  // Only the grid matching the traversal uses the cached floor/ceil vector.
+  const vector = needed === plan.direction ? rootFrames(state, needed) : null;
+  if (vector && !vector.ok) return vector;
   for (let index = 0; index < frames.length; index++) {
     const time = planTimeValue(planInfo, index);
     const vectorIndex = time.kind === 'clock' ? time.frames : -time.offset;
-    if (time.kind !== first.kind || !Number.isSafeInteger(vectorIndex) || vectorIndex < 0 || vectorIndex >= vector.value.length) {
+    if (time.kind !== first.kind || !Number.isSafeInteger(vectorIndex)) {
       return fail('INVALID_WINDOW', 'view window leaves the compiled frame vector');
     }
-    frames[index] = vector.value[vectorIndex]!;
+    if (vector && vectorIndex >= 0 && vectorIndex < vector.value.length) {
+      frames[index] = vector.value[vectorIndex]!;
+    } else {
+      const forward = plan.direction === 'forward';
+      const sample = resolvePositionInteger(state, time, forward ? 'floor' : 'ceil');
+      if (!sample.ok) return sample;
+      frames[index] = clampFrame(state, forward ? sample.value : sample.value - 1);
+    }
   }
   return done(frames);
 }
-/** Continuous visible source interval (earlier→later clock times) and the strict
- * integer envelope `[floor(lo), ceil(hi))` used for decode/capacity checks. */
+/** The first and last displayed source positions and the decode sample window.
+ * Persisted clip capacity uses the full motion interval, including the time
+ * after the last displayed frame start. */
 export function timeMapVisibleSourceRange(plan: CompiledTimeMap): TimeMapResult<TimeMapVisibleSourceRange> {
   const state = rootState(plan.root), planInfo = planState(plan);
-  const extremes = planExtremeTimes(state, planInfo);
-  const forward = planInfo.direction === 'forward';
-  const startBoundary = resolvePositionInteger(state, extremes.earlier, forward ? 'floor' : 'ceil');
+  if (state.freezeFrame !== null) {
+    const position = {kind: 'exact' as const, numerator: String(state.freezeFrame), denominator: '1'};
+    return done({lo: position, hi: position, sourceWindow: {startFrame: state.freezeFrame, endFrame: state.freezeFrame + 1}});
+  }
+  const first = planTimeValue(planInfo, 0), last = planTimeValue(planInfo, plan.durationFrames - 1);
+  const {lo, hi} = timeValueLess(state, last, first) ? {lo: last, hi: first} : {lo: first, hi: last};
+  const forward = plan.direction === 'forward';
+  const startBoundary = resolvePositionInteger(state, lo, forward ? 'floor' : 'ceil');
   if (!startBoundary.ok) return startBoundary;
-  const endBoundary = resolvePositionInteger(state, extremes.later, forward ? 'floor' : 'ceil');
+  const endBoundary = resolvePositionInteger(state, hi, forward ? 'floor' : 'ceil');
   if (!endBoundary.ok) return endBoundary;
-  const low = invertAtTime(state, extremes.earlier, 0);
+  const low = invertAtTime(state, lo, 0);
   if (!low.ok) return low;
-  const high = invertAtTime(state, extremes.later, 0);
+  const high = invertAtTime(state, hi, 0);
   if (!high.ok) return high;
-  // Forward samples floor(position); reverse samples ceil(position)-1.
   const startFrame = Math.max(state.frameRange.start, forward ? startBoundary.value : startBoundary.value - 1);
   const endFrame = Math.min(state.frameRange.end + 1, forward ? endBoundary.value + 1 : endBoundary.value);
   if (endFrame <= startFrame) return fail('INVALID_WINDOW', 'visible source envelope is empty');
@@ -1252,7 +1326,7 @@ export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: n
 // ---------------------------------------------------------------------------
 
 export interface TimeMapOutputPosition {readonly numerator: string; readonly denominator: string}
-function tailResult(plan: CompiledTimeMap, state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
+function tailResult(plan: CompiledTimeMap, _state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
   const visible = timeMapVisibleSourceRange(plan);
   if (!visible.ok) return visible;
   const latest = options.tailInverse === 'latest';
@@ -1297,6 +1371,111 @@ export function timeMapTailInverse(plan: CompiledTimeMap, position: TimeMapOutpu
     level => invertCurve(state, targetIntegral, targetError, level));
   if (!decided.ok) return decided;
   return done({position: {kind: 'numeric', value: inverted.value.value, errorBound: inverted.value.errorBound}, frame: decided.value, tail: false});
+}
+
+interface CurveEstimate { readonly value: number; readonly errorBound: number }
+
+interface TimeMapCurveReference {
+  readonly motionEnd: number;
+  readonly terminalSource: number;
+  readonly heldSource: number;
+  readonly sampleMotion: (outputFrame: number) => TimeMapResult<CurveEstimate>;
+  readonly maxLinearError: (from: number, to: number, sourceFrom: number, sourceTo: number) => TimeMapResult<number>;
+}
+
+/** Compare interchange-format line segments on the shared continuous clock.
+ * Between successive log-PCHIP knots the signed motion rate is monotone.
+ * Line error can peak only at an endpoint, a knot or a rate/line-slope
+ * crossing. The rounded output tail includes both sides of its hold boundary. */
+export function timeMapCurveReference(plan: CompiledTimeMap): TimeMapResult<TimeMapCurveReference> {
+  const view = planState(plan), state = rootState(plan.root);
+  if (state.kind !== 'curve') return fail('INVALID_REQUEST', 'a curve plan is required');
+  const first = planTimeValue(view, 0), firstTime = timeNumber(state, first);
+  const firstError = timeUncertainty(state, first);
+  const sign = view.direction === 'forward' ? 1 : -1;
+  const motionEnd = sign > 0 ? state.lengthNumber - firstTime : firstTime;
+  const motionEndError = firstError + (sign > 0 ? state.lengthError : 0) + 8 * EPSILON * (Math.abs(motionEnd) + 1);
+  const sourceStart = numberFromRat(state.sourceStart), sourceEnd = numberFromRat(state.sourceEnd);
+  const terminalSource = sign > 0 ? sourceEnd : sourceStart;
+  const visible = timeMapVisibleSourceRange(plan);
+  if (!visible.ok) return visible;
+  const heldSource = sign > 0 ? visible.value.sourceWindow.endFrame : visible.value.sourceWindow.startFrame;
+  const framesPerIntegral = numberFromRat(state.framesPerIntegral);
+  const level = CURVE_REFINEMENT_TOLERANCES.length - 1;
+  const samples = new Map<number, CurveEstimate>();
+
+  function sampleMotion(outputFrame: number): TimeMapResult<CurveEstimate> {
+    const cached = samples.get(outputFrame);
+    if (cached) return done(cached);
+    const frame = clampNumber(outputFrame, 0, motionEnd);
+    const time = planTimeValue(view, frame);
+    const result: TimeMapResult<CurveEstimate> = state.rate
+      ? done({value: clampNumber(sourceStart + timeNumber(state, time) * numberFromRat(state.rate) / framesPerIntegral,
+        sourceStart, sourceEnd), errorBound: 8 * EPSILON * (Math.abs(sourceEnd) + 1)})
+      : (() => {
+        const sample = invertAtTime(state, time, level);
+        if (!sample.ok) return sample;
+        return done(sample.value.kind === 'numeric' ? sample.value
+          : {value: Number(sample.value.numerator) / Number(sample.value.denominator), errorBound: 0});
+      })();
+    if (result.ok) samples.set(outputFrame, result.value);
+    return result;
+  }
+
+  function maxLinearError(from: number, to: number, sourceFrom: number, sourceTo: number): TimeMapResult<number> {
+    if (!(from >= 0 && from < to && to <= plan.durationFrames)) return fail('INVALID_WINDOW', 'line outside the output window');
+    const lineSlope = (sourceTo - sourceFrom) / (to - from);
+    const lineAt = (output: number): number => sourceFrom + lineSlope * (output - from);
+    const errorAt = (source: number, output: number): number => Math.abs(source - lineAt(clampNumber(output, from, to)));
+    const end = Math.min(to, motionEnd);
+    let maximum = 0;
+    if (motionEnd < plan.durationFrames && to >= motionEnd - motionEndError) {
+      maximum = Math.max(errorAt(heldSource, Math.max(from, motionEnd)), errorAt(heldSource, to))
+        + Math.abs(lineSlope) * motionEndError;
+      if (from <= motionEnd + motionEndError) {
+        maximum = Math.max(maximum, errorAt(terminalSource, motionEnd) + Math.abs(lineSlope) * motionEndError);
+      }
+    }
+    if (end <= from) return done(maximum);
+    const left = sampleMotion(from), right = sampleMotion(end);
+    if (!left.ok) return left;
+    if (!right.ok) return right;
+    maximum = Math.max(maximum, errorAt(left.value.value, from) + left.value.errorBound,
+      errorAt(right.value.value, end) + right.value.errorBound);
+
+    const curve = state.curve;
+    if (!curve || sign * lineSlope <= 0) return done(maximum);
+    const low = Math.max(sourceStart, Math.min(left.value.value - left.value.errorBound, right.value.value - right.value.errorBound));
+    const high = Math.min(sourceEnd, Math.max(left.value.value + left.value.errorBound, right.value.value + right.value.errorBound));
+    const targetRate = sign * lineSlope * framesPerIntegral;
+    for (let cell = curveSegment(curve, low); cell <= curveSegment(curve, high); cell++) {
+      const cellStart = curve.xs[cell]!;
+      const a = Math.max(low, cellStart), b = Math.min(high, curve.xs[cell + 1]!);
+      const before = curveRateAtSegment(curve, cell, a), after = curveRateAtSegment(curve, cell, b);
+      const crosses = targetRate > Math.min(before, after) && targetRate < Math.max(before, after);
+      let lower = a, upper = b;
+      if (crosses) for (let step = 0; step < 52; step++) {
+        const middle = (lower + upper) / 2;
+        if ((curveRateAtSegment(curve, cell, middle) < targetRate) === (before < after)) lower = middle;
+        else upper = middle;
+      }
+      const candidates = crosses ? [b, (lower + upper) / 2] : [b];
+      for (const source of candidates) {
+        if (source >= high || source <= low) continue;
+        const integral = integrateCurve(curve, cellStart, source, CURVE_REFINEMENT_TOLERANCES[level]!, LOCAL_CELL_BUDGET);
+        if (!integral) return fail('NUMERIC_BUDGET_EXCEEDED', 'curve line measurement exceeded the local integration budget');
+        const output = sign * ((curve.prefix[cell]! + integral.value - state.integralOrigin) * framesPerIntegral - firstTime);
+        const timeError = (curve.prefixError[cell]! + integral.errorBound + state.integralOriginError) * framesPerIntegral
+          + firstError + 8 * EPSILON * (Math.abs(firstTime) + Math.abs(output) + 1);
+        if (output + timeError < from || output - timeError > end) continue;
+        maximum = Math.max(maximum, errorAt(source, output) + Math.abs(lineSlope) * timeError
+          + (source === b ? 0 : (upper - lower) / 2) + 8 * EPSILON * (Math.abs(source) + 1));
+      }
+    }
+    return done(maximum);
+  }
+
+  return done({motionEnd, terminalSource, heldSource, sampleMotion, maxLinearError});
 }
 
 // ---------------------------------------------------------------------------
@@ -1496,11 +1675,18 @@ export function timeMapBasisFromCurrentClip(clip: CurrentTimelineClipLike, timel
 }
 /** Projects the compiled source envelope onto the current clip fields. */
 export function projectTimeMapToCurrentClipFields(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<ClipFrameProjection> {
-  const range = timeMapVisibleSourceRange(plan);
-  if (!range.ok) return range;
-  const start = range.value.sourceWindow.startFrame;
-  const span = range.value.sourceWindow.endFrame - start;
-  return done({startFrame: clip.startFrame, durationFrames: plan.durationFrames, sourceInFrame: start, sourceSpanFrames: span});
+  const state = rootState(plan.root);
+  const output = {startFrame: clip.startFrame, durationFrames: plan.durationFrames};
+  if (state.freezeFrame !== null) return done({...output, sourceInFrame: state.freezeFrame, sourceSpanFrames: 1});
+  const interval = planClockInterval(state, planState(plan));
+  const start = resolvePositionInteger(state, interval.lo, 'floor');
+  if (!start.ok) return start;
+  const end = resolvePositionInteger(state, interval.hi, 'ceil');
+  if (!end.ok) return end;
+  const sourceInFrame = Math.max(state.frameRange.start, start.value);
+  const sourceSpanFrames = Math.min(state.frameRange.end + 1, end.value) - sourceInFrame;
+  if (sourceSpanFrames < 1) return fail('INVALID_WINDOW', 'visible source envelope is empty');
+  return done({...output, sourceInFrame, sourceSpanFrames});
 }
 /** Verifies that the current integer fields equal the compiled projection. */
 export function verifyCurrentClipTiming(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<{readonly projection: ClipFrameProjection; readonly matches: boolean}> {

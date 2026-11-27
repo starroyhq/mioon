@@ -339,7 +339,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const explicit=step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,journal.run(step.runId).projectId).map(target=>({...target,revision:0})):[];
     return [...dispatchTargets(step),...references.map(value=>{const parsed=agentTaskTargetSchema.safeParse(value);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');return parsed.data;}),...explicit];
   }
-  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasCopyProof==='string'?{canvasCopyProof:step.data.canvasCopyProof}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{})})).digest('hex');
+  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasCopyProof==='string'?{canvasCopyProof:step.data.canvasCopyProof}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{}),...(record(step.data)&&step.data.speedPlan!==undefined?{speedPlan:step.data.speedPlan}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
   /** The user's answer becomes the question's tool result. It is input, never an approval. */
   function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
@@ -436,6 +436,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     assertNotSkipped(run,prepared.referencedTargets??prepared.targets);
     if(prepared.canvasCopy&&(!record(step.data)||step.data.canvasCopyProof!==prepared.canvasCopy.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if(prepared.canvas&&(!record(step.data)||step.data.canvasProof!==prepared.canvas.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+    if(prepared.sequence?.speedPlan&&(!record(step.data)||!isDeepStrictEqual(step.data.speedPlan,prepared.sequence.speedPlan)))
+      throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     journal.assertTargets(run.projectId,prepared.targets);
   }
@@ -535,7 +537,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const message=invalidLoaderInputMessage(run,source,call.arguments);
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'VALIDATION_ERROR',message}},error:{code:'VALIDATION_ERROR',message}});
       }
-      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,locale:taskResponseLocale(run.context),canvasRequester:{runId,stepId:step.id},...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
+      const retainedSpeedPlan=record(step.data)?step.data.speedPlan:undefined;
+      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,locale:taskResponseLocale(run.context),canvasRequester:{runId,stepId:step.id},retainedSpeedPlan,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
       if(prepared.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
         const initial=prepared,stepId=step.id;
         // Preparing the frozen source is read-only and precedes approval. The
@@ -560,10 +563,17 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         conflicts=prepared.targets;
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
+      const speedPlan=prepared.sequence?.speedPlan;
+      if(retainedSpeedPlan!==undefined&&!isDeepStrictEqual(retainedSpeedPlan,speedPlan)){
+        conflicts=prepared.targets;
+        throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+      }
       const canvasEvidence=canvas?{canvasProof:canvas.proof,...(canvas.input.operation==='archive'?{canvasArchiveImpact:json({
         ...canvas.impact,shotIds:canvas.impact.shots.map(shot=>shot.id),selected:canvas.input.targets,
       })}:{})}:{};
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...canvasEvidence}});
+      const speedEvidence:Record<string,AgentTaskJson>=speedPlan?
+        {speedPlan:json(speedPlan),speedImpact:json(prepared.sequence?.summary?.speed)}:{};
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...canvasEvidence,...speedEvidence}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       const serviceIssue=toolset().generationServiceIssue(prepared);
@@ -606,6 +616,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(record(step.data)&&typeof step.data.canvasProof==='string'&&['CANVAS_EDIT_CONFLICT','CANVAS_EDIT_BLOCKED'].includes(failure)&&
         ['intent','awaiting_approval'].includes(journal.step(step.id).status))
         return handBackConflict(runId,step.id,failure==='CANVAS_EDIT_BLOCKED'?'AGENT_TASK_TARGET_CLAIMED':'AGENT_TASK_TARGET_CHANGED',step.targets??[]);
+      if(record(step.data)&&step.data.speedPlan!==undefined&&error instanceof MioSequencePreviewRejection&&
+        ['intent','awaiting_approval'].includes(journal.step(step.id).status))
+        return handBackConflict(runId,step.id,'AGENT_TASK_TARGET_CHANGED',step.targets??[]);
       // X4: a step that meets a conflict before it runs is handed back, not paused.
       // This includes a pending approval re-entered after a pause or restart.
       // A partly committed (completed) step keeps the conflict pause below.

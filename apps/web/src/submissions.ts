@@ -3,6 +3,7 @@ import type { DisplayMessage, Locale } from '../../../packages/i18n/src/index.ts
 import { pendingStorageKey, samePendingIntent, removeExactPending } from './pending-request.ts';
 import { migratePendingStorage } from './storage-migration.ts';
 import { isGenerationAspectResponse } from '../../../packages/contracts/src/generation-aspect.ts';
+import { PREMIERE_EXPORT_TASK_KIND } from '../../../packages/contracts/src/premiere-export.ts';
 import { DURABLE_EDIT_OPERATIONS, LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 // A lost HTTP response is not proof that the server rejected a paid request.
 // Preserve the exact operation and input until a verified response or matching
@@ -180,7 +181,9 @@ export function pendingVerdict(entry: PendingEntry,evidence: PendingEvidence = {
 }
 export function reconcilePending(projectId: string,data: PendingData & PendingEvidence): void {
   const jobIds = new Set(rows(data.jobs).map(record => property(record,'requestId')));
-  const exportIds = new Set(rows(data.exports).map(record => property(record,'requestId')));
+  const exportIds = new Set(rows(data.exports)
+    .filter(record => property(record,'mode') !== PREMIERE_EXPORT_TASK_KIND && property(record,'kind') !== PREMIERE_EXPORT_TASK_KIND)
+    .map(record => property(record,'requestId')));
   const editTasks = rows(data.editTasks);
   for (const entry of pendingForProject(projectId)) {
     if (isSubjectRetryPending(entry, rows(data.jobs))) {

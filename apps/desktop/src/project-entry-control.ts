@@ -2,7 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {PROJECT_ENTRY_CONTROL_LIMITS,projectEntryControlRequestSchema,projectEntryControlCancelSchema,projectEntryControlReleaseSchema,projectEntryControlResponseSchema,projectEntryControlRevokedSchema,projectEntryControlCommandSchema,parseProjectEntryControlResult,projectEntryControlErrorSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectEntryControlCommand,ProjectEntryControlResults} from '../../../packages/contracts/src/project-entry-control.ts';
-import type {ProjectEntryControlPort,ProjectEntryWindowRevoked} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {NativeFcpExportControlPort,NativePremiereExportControlPort,ProjectEntryControlPort,ProjectEntryWindowRevoked} from '../../../packages/contracts/src/project-entry-native.ts';
 import {NATIVE_ASSET_MEDIA_LIMITS} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {NativeAssetMediaPort} from '../../../packages/contracts/src/asset-media-native.ts';
 import {PROJECT_FORMAT_READ_ONLY_LIMITS, projectFormatUpgradeFromError} from '../../../packages/contracts/src/project-format-upgrade.ts';
@@ -13,7 +13,7 @@ const failure=(code='PROJECT_ENTRY_UNAVAILABLE',details:Record<string,unknown>={
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const size=(value:unknown):number=>{try{return Buffer.byteLength(JSON.stringify(value));}catch{return Infinity;}};
 export function safeProjectEntryControlError(error:unknown){
- const known=record(error)&&typeof error.code==='string'&&(/^(?:PROJECT_|REQUEST_ID_|VALIDATION_|ASSET_MEDIA_NATIVE_|MEDIA_)[A-Z0-9_]+$/u.test(error.code)||['REVISION_CONFLICT','IDEMPOTENCY_CONFLICT','PREFLIGHT_BUDGET','INSPECTION_BUDGET_EXCEEDED','NOT_FOUND'].includes(error.code));
+ const known=record(error)&&typeof error.code==='string'&&(/^(?:PROJECT_|REQUEST_ID_|VALIDATION_|ASSET_MEDIA_NATIVE_|MEDIA_|FCP_EXPORT_)[A-Z0-9_]+$/u.test(error.code)||['REVISION_CONFLICT','IDEMPOTENCY_CONFLICT','PREFLIGHT_BUDGET','INSPECTION_BUDGET_EXCEEDED','NOT_FOUND'].includes(error.code));
  const code=record(error)&&(error.code==='EACCES'||error.code==='EPERM')?'PROJECT_ACCESS_DENIED':known?String(error.code):'PROJECT_ENTRY_UNAVAILABLE';
  const details:Record<string,unknown>={};
  if(record(error)&&record(error.details))for(const key of ['projectId','requestId','operation','database','reason','invalidReason','formatVersion','supportedFormatVersion'])if(Object.hasOwn(error.details,key))details[key]=error.details[key];
@@ -28,7 +28,7 @@ export function safeProjectEntryControlError(error:unknown){
  const parsed=projectEntryControlErrorSchema.safeParse({code,status,details});return parsed.success?parsed.data:{code:'PROJECT_ENTRY_UNAVAILABLE',status:503,details:{}};
 }
 const windowId=(command:ProjectEntryControlCommand):string|undefined=>'windowId'in command.input?command.input.windowId:undefined;
-const mutates=(command:ProjectEntryControlCommand)=>command.operation==='openPath'||command.operation==='acquire'?Boolean(command.input.formatUpgrade):!['capabilities','listRecent','updateActivity','prepareAcquire','inspectCopy','observeSource','observeFormat','readOnlyFormat','release','mediaRelinkCandidate','mediaRelinkDiscard'].includes(command.operation);
+const mutates=(command:ProjectEntryControlCommand)=>command.operation==='openPath'||command.operation==='acquire'?Boolean(command.input.formatUpgrade):!['capabilities','listRecent','updateActivity','prepareAcquire','inspectCopy','observeSource','observeFormat','readOnlyFormat','release','mediaRelinkCandidate','mediaRelinkDiscard','fcpCompletedBundle','premiereCompletedBundle','premiereCompletedXml'].includes(command.operation);
 const responseBudget=(command:ProjectEntryControlCommand)=>command.operation==='listRecent'?PROJECT_ENTRY_LIMITS.responseBytes:command.operation==='readOnlyFormat'?PROJECT_FORMAT_READ_ONLY_LIMITS.bytes+1024:command.operation.startsWith('mediaRelink')?NATIVE_ASSET_MEDIA_LIMITS.responseBytes:PROJECT_ENTRY_CONTROL_LIMITS.requestBytes;
 
 /** Main's bounded client is tied to one exact utility generation. It never
@@ -73,6 +73,15 @@ export function createProjectEntryControlClient({backendId,send,isCurrent=()=>tr
   return true;
  }
  const api={
+  nativeFcpExport:{
+   chooseDestination:(input:Parameters<NativeFcpExportControlPort['chooseDestination']>[0],options:RequestOptions={})=>request({operation:'fcpChooseDestination',input},options),
+   completedBundle:(input:Parameters<NativeFcpExportControlPort['completedBundle']>[0],options:RequestOptions={})=>request({operation:'fcpCompletedBundle',input},options),
+  } satisfies NativeFcpExportControlPort,
+  nativePremiereExport:{
+   chooseDestination:(input:Parameters<NativePremiereExportControlPort['chooseDestination']>[0],options:RequestOptions={})=>request({operation:'premiereChooseDestination',input},options),
+   completedBundle:(input:Parameters<NativePremiereExportControlPort['completedBundle']>[0],options:RequestOptions={})=>request({operation:'premiereCompletedBundle',input},options),
+   completedXml:(input:Parameters<NativePremiereExportControlPort['completedXml']>[0],options:RequestOptions={})=>request({operation:'premiereCompletedXml',input},options),
+  } satisfies NativePremiereExportControlPort,
   nativeRelink:{
    candidate:(input:Parameters<NativeAssetMediaPort['candidate']>[0],options:RequestOptions={})=>request({operation:'mediaRelinkCandidate',input},options),
    preview:(input:Parameters<NativeAssetMediaPort['preview']>[0],options:RequestOptions={})=>request({operation:'mediaRelinkPreview',input},options),
@@ -116,7 +125,14 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
  const releasedWindows=new Set<string>();
  const releaseWindow=(id:string)=>{if(releasedWindows.has(id))return;releasedWindows.add(id);control.release({windowId:id});};
  const unlisten=control.onWindowRevoked(event=>{releasedWindows.add(event.windowId);if(!closed&&isCurrent())send({type:'project-entry-control-revoked',version:1,backendId,event});});
- const release=(command:ProjectEntryControlCommand)=>{const id=windowId(command);if(id&&command.operation!=='release'&&command.operation!=='markOpened')releaseWindow(id);};
+ const release=(command:ProjectEntryControlCommand)=>{
+  // Editing export requests borrow an already opened lease. Only commands that
+  // acquire a window lease may release it when their result is abandoned.
+  switch(command.operation){
+   case 'openPath':case 'acquire':case 'saveAs':case 'adoptCopy':
+    releaseWindow(command.input.windowId);break;
+  }
+ };
  const cleanNative=(command:ProjectEntryControlCommand,data:unknown)=>{
   if(!control.nativeRelink||!record(data))return;
   if(command.operation!=='mediaRelinkCandidate'&&command.operation!=='mediaRelinkPreview')return;
@@ -136,6 +152,11 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   entry.response=abandoned(requestId,entry.command);
  };
  async function execute(command:ProjectEntryControlCommand,signal:AbortSignal):Promise<unknown>{switch(command.operation){
+  case 'fcpChooseDestination':if(!control.nativeFcpExport)throw failure();return control.nativeFcpExport.chooseDestination(command.input,{signal});
+  case 'fcpCompletedBundle':if(!control.nativeFcpExport)throw failure();return control.nativeFcpExport.completedBundle(command.input,{signal});
+  case 'premiereChooseDestination':if(!control.nativePremiereExport)throw failure();return control.nativePremiereExport.chooseDestination(command.input,{signal});
+  case 'premiereCompletedBundle':if(!control.nativePremiereExport)throw failure();return control.nativePremiereExport.completedBundle(command.input,{signal});
+  case 'premiereCompletedXml':if(!control.nativePremiereExport)throw failure();return control.nativePremiereExport.completedXml(command.input,{signal});
   case 'mediaRelinkCandidate':if(!control.nativeRelink)throw failure();return control.nativeRelink.candidate(command.input,{signal});
   case 'mediaRelinkPreview':if(!control.nativeRelink)throw failure();return control.nativeRelink.preview(command.input,{signal});
   case 'mediaRelinkApply':if(!control.nativeRelink)throw failure();return control.nativeRelink.apply(command.input,{signal});

@@ -24,7 +24,7 @@ const temporary = (): string => mkdtempSync(path.join(realpathSync(tmpdir()), 'f
 function testApplication(library: ReturnType<typeof openAppLibrary>): ServiceApplicationPorts {
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library)});
   const assertOwner = createProjectServiceApplication(library).assertMutationAllowed;
-  return {configuration, outsidePaths: library.outsidePaths, assertMutationAllowed() {
+  return {configuration, outsidePaths: library.outsidePaths, receipts: library.receipts, assertMutationAllowed() {
     assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission');
   }};
 }

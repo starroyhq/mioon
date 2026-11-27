@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="7f8c33a5349914570c59667230a518a25354089f5388ceb624d5eb059523d31c";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="bc2c40fb708b78bbb48c8e010960c9d6bf0eb59e9158371f1c68d7cee8fe41b1";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -3044,6 +3044,196 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ],
     "additionalProperties": false
    },
+   "speedIntent": {
+    "type": "object",
+    "properties": {
+     "side": {
+      "type": "string",
+      "const": "timeline"
+     },
+     "operation": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "clip-speed"
+         },
+         "clipId": {
+          "type": "string",
+          "format": "uuid"
+         },
+         "setting": {
+          "type": "object",
+          "properties": {
+           "speed": {
+            "anyOf": [
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "constant"
+               },
+               "rate": {
+                "type": "object",
+                "properties": {
+                 "numerator": {
+                  "type": "number"
+                 },
+                 "denominator": {
+                  "type": "number"
+                 }
+                },
+                "required": [
+                 "numerator",
+                 "denominator"
+                ],
+                "additionalProperties": false
+               }
+              },
+              "required": [
+               "kind",
+               "rate"
+              ],
+              "additionalProperties": false
+             },
+             {
+              "type": "object",
+              "properties": {
+               "kind": {
+                "type": "string",
+                "const": "curve"
+               },
+               "interpolation": {
+                "type": "string",
+                "const": "log-pchip-v1"
+               },
+               "presetId": {
+                "type": "string",
+                "maxLength": 80
+               },
+               "points": {
+                "type": "array",
+                "items": {
+                 "type": "object",
+                 "properties": {
+                  "sourceFrame": {
+                   "type": "integer",
+                   "minimum": -9007199254740991,
+                   "maximum": 9007199254740991
+                  },
+                  "rate": {
+                   "type": "object",
+                   "properties": {
+                    "numerator": {
+                     "type": "number"
+                    },
+                    "denominator": {
+                     "type": "number"
+                    }
+                   },
+                   "required": [
+                    "numerator",
+                    "denominator"
+                   ],
+                   "additionalProperties": false
+                  }
+                 },
+                 "required": [
+                  "sourceFrame",
+                  "rate"
+                 ],
+                 "additionalProperties": false
+                },
+                "maxItems": 256
+               }
+              },
+              "required": [
+               "kind",
+               "interpolation",
+               "presetId",
+               "points"
+              ],
+              "additionalProperties": false
+             }
+            ]
+           },
+           "direction": {
+            "type": "string",
+            "enum": [
+             "forward",
+             "reverse"
+            ]
+           },
+           "pitchShift": {
+            "type": "boolean"
+           },
+           "interpolation": {
+            "type": "string",
+            "enum": [
+             "off",
+             "blend",
+             "optical"
+            ]
+           }
+          },
+          "required": [
+           "speed",
+           "direction",
+           "pitchShift",
+           "interpolation"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kind",
+         "clipId",
+         "setting"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "freeze-frame"
+         },
+         "clipId": {
+          "type": "string",
+          "format": "uuid"
+         },
+         "atFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+         },
+         "durationFrames": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "exclusiveMinimum": 0
+         }
+        },
+        "required": [
+         "kind",
+         "clipId",
+         "atFrame"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "required": [
+     "side",
+     "operation"
+    ],
+    "additionalProperties": false
+   },
    "allocation": {
     "type": "object",
     "properties": {
@@ -5049,6 +5239,196 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "kind",
            "shotId",
            "duration"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
+     "speedIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "clip-speed"
+           },
+           "clipId": {
+            "type": "string",
+            "format": "uuid"
+           },
+           "setting": {
+            "type": "object",
+            "properties": {
+             "speed": {
+              "anyOf": [
+               {
+                "type": "object",
+                "properties": {
+                 "kind": {
+                  "type": "string",
+                  "const": "constant"
+                 },
+                 "rate": {
+                  "type": "object",
+                  "properties": {
+                   "numerator": {
+                    "type": "number"
+                   },
+                   "denominator": {
+                    "type": "number"
+                   }
+                  },
+                  "required": [
+                   "numerator",
+                   "denominator"
+                  ],
+                  "additionalProperties": false
+                 }
+                },
+                "required": [
+                 "kind",
+                 "rate"
+                ],
+                "additionalProperties": false
+               },
+               {
+                "type": "object",
+                "properties": {
+                 "kind": {
+                  "type": "string",
+                  "const": "curve"
+                 },
+                 "interpolation": {
+                  "type": "string",
+                  "const": "log-pchip-v1"
+                 },
+                 "presetId": {
+                  "type": "string",
+                  "maxLength": 80
+                 },
+                 "points": {
+                  "type": "array",
+                  "items": {
+                   "type": "object",
+                   "properties": {
+                    "sourceFrame": {
+                     "type": "integer",
+                     "minimum": -9007199254740991,
+                     "maximum": 9007199254740991
+                    },
+                    "rate": {
+                     "type": "object",
+                     "properties": {
+                      "numerator": {
+                       "type": "number"
+                      },
+                      "denominator": {
+                       "type": "number"
+                      }
+                     },
+                     "required": [
+                      "numerator",
+                      "denominator"
+                     ],
+                     "additionalProperties": false
+                    }
+                   },
+                   "required": [
+                    "sourceFrame",
+                    "rate"
+                   ],
+                   "additionalProperties": false
+                  },
+                  "maxItems": 256
+                 }
+                },
+                "required": [
+                 "kind",
+                 "interpolation",
+                 "presetId",
+                 "points"
+                ],
+                "additionalProperties": false
+               }
+              ]
+             },
+             "direction": {
+              "type": "string",
+              "enum": [
+               "forward",
+               "reverse"
+              ]
+             },
+             "pitchShift": {
+              "type": "boolean"
+             },
+             "interpolation": {
+              "type": "string",
+              "enum": [
+               "off",
+               "blend",
+               "optical"
+              ]
+             }
+            },
+            "required": [
+             "speed",
+             "direction",
+             "pitchShift",
+             "interpolation"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "clipId",
+           "setting"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "freeze-frame"
+           },
+           "clipId": {
+            "type": "string",
+            "format": "uuid"
+           },
+           "atFrame": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+           },
+           "durationFrames": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "exclusiveMinimum": 0
+           }
+          },
+          "required": [
+           "kind",
+           "clipId",
+           "atFrame"
           ],
           "additionalProperties": false
          }
@@ -7229,6 +7609,178 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "required": [
      "kind",
      "clipId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "clip-speed"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "setting": {
+      "type": "object",
+      "properties": {
+       "speed": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "constant"
+           },
+           "rate": {
+            "type": "object",
+            "properties": {
+             "numerator": {
+              "type": "number"
+             },
+             "denominator": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "numerator",
+             "denominator"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "rate"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "curve"
+           },
+           "interpolation": {
+            "type": "string",
+            "const": "log-pchip-v1"
+           },
+           "presetId": {
+            "type": "string",
+            "maxLength": 80
+           },
+           "points": {
+            "type": "array",
+            "items": {
+             "type": "object",
+             "properties": {
+              "sourceFrame": {
+               "type": "integer",
+               "minimum": -9007199254740991,
+               "maximum": 9007199254740991
+              },
+              "rate": {
+               "type": "object",
+               "properties": {
+                "numerator": {
+                 "type": "number"
+                },
+                "denominator": {
+                 "type": "number"
+                }
+               },
+               "required": [
+                "numerator",
+                "denominator"
+               ],
+               "additionalProperties": false
+              }
+             },
+             "required": [
+              "sourceFrame",
+              "rate"
+             ],
+             "additionalProperties": false
+            },
+            "maxItems": 256
+           }
+          },
+          "required": [
+           "kind",
+           "interpolation",
+           "presetId",
+           "points"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       },
+       "direction": {
+        "type": "string",
+        "enum": [
+         "forward",
+         "reverse"
+        ]
+       },
+       "pitchShift": {
+        "type": "boolean"
+       },
+       "interpolation": {
+        "type": "string",
+        "enum": [
+         "off",
+         "blend",
+         "optical"
+        ]
+       }
+      },
+      "required": [
+       "speed",
+       "direction",
+       "pitchShift",
+       "interpolation"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "setting"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "freeze-frame"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "atFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+     },
+     "durationFrames": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991,
+      "exclusiveMinimum": 0
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "atFrame"
     ],
     "additionalProperties": false
    },
@@ -9476,6 +10028,196 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ],
       "additionalProperties": false
      },
+     "speedIntent": {
+      "type": "object",
+      "properties": {
+       "side": {
+        "type": "string",
+        "const": "timeline"
+       },
+       "operation": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "clip-speed"
+           },
+           "clipId": {
+            "type": "string",
+            "format": "uuid"
+           },
+           "setting": {
+            "type": "object",
+            "properties": {
+             "speed": {
+              "anyOf": [
+               {
+                "type": "object",
+                "properties": {
+                 "kind": {
+                  "type": "string",
+                  "const": "constant"
+                 },
+                 "rate": {
+                  "type": "object",
+                  "properties": {
+                   "numerator": {
+                    "type": "number"
+                   },
+                   "denominator": {
+                    "type": "number"
+                   }
+                  },
+                  "required": [
+                   "numerator",
+                   "denominator"
+                  ],
+                  "additionalProperties": false
+                 }
+                },
+                "required": [
+                 "kind",
+                 "rate"
+                ],
+                "additionalProperties": false
+               },
+               {
+                "type": "object",
+                "properties": {
+                 "kind": {
+                  "type": "string",
+                  "const": "curve"
+                 },
+                 "interpolation": {
+                  "type": "string",
+                  "const": "log-pchip-v1"
+                 },
+                 "presetId": {
+                  "type": "string",
+                  "maxLength": 80
+                 },
+                 "points": {
+                  "type": "array",
+                  "items": {
+                   "type": "object",
+                   "properties": {
+                    "sourceFrame": {
+                     "type": "integer",
+                     "minimum": -9007199254740991,
+                     "maximum": 9007199254740991
+                    },
+                    "rate": {
+                     "type": "object",
+                     "properties": {
+                      "numerator": {
+                       "type": "number"
+                      },
+                      "denominator": {
+                       "type": "number"
+                      }
+                     },
+                     "required": [
+                      "numerator",
+                      "denominator"
+                     ],
+                     "additionalProperties": false
+                    }
+                   },
+                   "required": [
+                    "sourceFrame",
+                    "rate"
+                   ],
+                   "additionalProperties": false
+                  },
+                  "maxItems": 256
+                 }
+                },
+                "required": [
+                 "kind",
+                 "interpolation",
+                 "presetId",
+                 "points"
+                ],
+                "additionalProperties": false
+               }
+              ]
+             },
+             "direction": {
+              "type": "string",
+              "enum": [
+               "forward",
+               "reverse"
+              ]
+             },
+             "pitchShift": {
+              "type": "boolean"
+             },
+             "interpolation": {
+              "type": "string",
+              "enum": [
+               "off",
+               "blend",
+               "optical"
+              ]
+             }
+            },
+            "required": [
+             "speed",
+             "direction",
+             "pitchShift",
+             "interpolation"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "clipId",
+           "setting"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "freeze-frame"
+           },
+           "clipId": {
+            "type": "string",
+            "format": "uuid"
+           },
+           "atFrame": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+           },
+           "durationFrames": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "exclusiveMinimum": 0
+           }
+          },
+          "required": [
+           "kind",
+           "clipId",
+           "atFrame"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "side",
+       "operation"
+      ],
+      "additionalProperties": false
+     },
      "baseline": {
       "type": "object",
       "properties": {
@@ -9874,6 +10616,196 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "exportId": {
     "type": "string",
     "format": "uuid"
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.preview": {
+  "type": "object",
+  "properties": {
+   "copyMedia": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "copyMedia"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.start": {
+  "type": "object",
+  "properties": {
+   "name": {
+    "type": "string",
+    "minLength": 1
+   },
+   "copyMedia": {
+    "type": "boolean"
+   },
+   "destination": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "project"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "chosen"
+       },
+       "token": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "required": [
+       "kind",
+       "token"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "required": [
+   "name",
+   "copyMedia",
+   "destination"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.cancel": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.premiere.preview": {
+  "type": "object",
+  "properties": {
+   "copyMedia": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "copyMedia"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.premiere.start": {
+  "type": "object",
+  "properties": {
+   "name": {
+    "type": "string",
+    "minLength": 1
+   },
+   "copyMedia": {
+    "type": "boolean"
+   },
+   "destination": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "project"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "chosen"
+       },
+       "token": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "required": [
+       "kind",
+       "token"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "required": [
+   "name",
+   "copyMedia",
+   "destination"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.premiere.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.premiere.cancel": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
    }
   },
   "required": [
@@ -18506,6 +19438,178 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "clip-speed"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "setting": {
+      "type": "object",
+      "properties": {
+       "speed": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "constant"
+           },
+           "rate": {
+            "type": "object",
+            "properties": {
+             "numerator": {
+              "type": "number"
+             },
+             "denominator": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "numerator",
+             "denominator"
+            ],
+            "additionalProperties": false
+           }
+          },
+          "required": [
+           "kind",
+           "rate"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "curve"
+           },
+           "interpolation": {
+            "type": "string",
+            "const": "log-pchip-v1"
+           },
+           "presetId": {
+            "type": "string",
+            "maxLength": 80
+           },
+           "points": {
+            "type": "array",
+            "items": {
+             "type": "object",
+             "properties": {
+              "sourceFrame": {
+               "type": "integer",
+               "minimum": -9007199254740991,
+               "maximum": 9007199254740991
+              },
+              "rate": {
+               "type": "object",
+               "properties": {
+                "numerator": {
+                 "type": "number"
+                },
+                "denominator": {
+                 "type": "number"
+                }
+               },
+               "required": [
+                "numerator",
+                "denominator"
+               ],
+               "additionalProperties": false
+              }
+             },
+             "required": [
+              "sourceFrame",
+              "rate"
+             ],
+             "additionalProperties": false
+            },
+            "maxItems": 256
+           }
+          },
+          "required": [
+           "kind",
+           "interpolation",
+           "presetId",
+           "points"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       },
+       "direction": {
+        "type": "string",
+        "enum": [
+         "forward",
+         "reverse"
+        ]
+       },
+       "pitchShift": {
+        "type": "boolean"
+       },
+       "interpolation": {
+        "type": "string",
+        "enum": [
+         "off",
+         "blend",
+         "optical"
+        ]
+       }
+      },
+      "required": [
+       "speed",
+       "direction",
+       "pitchShift",
+       "interpolation"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "setting"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "freeze-frame"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "atFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+     },
+     "durationFrames": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991,
+      "exclusiveMinimum": 0
+     }
+    },
+    "required": [
+     "kind",
+     "clipId",
+     "atFrame"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "generate"
      },
      "placement": {
@@ -18953,6 +20057,38 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   ],
   "additionalProperties": false
  }
+};
+export const AGENT_TASK_EDITOR_EXPORT_START_PARAMETERS:unknown={
+ "type": "object",
+ "properties": {
+  "name": {
+   "type": "string",
+   "minLength": 1
+  },
+  "copyMedia": {
+   "type": "boolean"
+  },
+  "destination": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "const": "project"
+    }
+   },
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false
+  }
+ },
+ "required": [
+  "name",
+  "copyMedia",
+  "destination"
+ ],
+ "additionalProperties": false,
+ "$schema": "http://json-schema.org/draft-07/schema#"
 };
 export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown={
  "type": "object",

@@ -1,7 +1,9 @@
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts';
 import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import {runClipAudioExport} from './clip-audio-export.ts';
+import {EDITOR_EXPORT_TASK_SQL, isEditorExportTaskRecord} from './fcpxml-export-task.ts';
 import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import type {BackgroundTaskRef} from './background-task-events.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -42,6 +44,7 @@ import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-v
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
 import {adoptFormat5GeneratedVersionInside} from './format5-sequence-sync.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
@@ -118,12 +121,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  const exportUuid=(value: string): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
  const exportRowBytes=4*1024*1024,identity=(column: string): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
  const exportColumns=`${identity('id')},${identity('projectId')},
-  CASE WHEN typeof(data)='text' THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data)='object' THEN
+  CASE WHEN ${EDITOR_EXPORT_TASK_SQL} THEN NULL WHEN typeof(data)='text' THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data)='object' THEN
    CASE WHEN (SELECT count(*) FROM json_each(exports.data) WHERE key='mode')<=1 THEN
     CASE WHEN json_type(data,'$.mode')='text' AND length(CAST(json_extract(data,'$.mode') AS BLOB))=8 AND json_extract(data,'$.mode')='timeline'
      THEN CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${exportRowBytes} THEN data END
      ELSE ${'data'} END
-   END END END END AS data`;
+   END END END END AS data, ${EDITOR_EXPORT_TASK_SQL} AS editorExport`;
  let invalidExportReported=false;
  const invalidExport=(): null=>{if(!invalidExportReported){invalidExportReported=true;console.error('Skipped invalid local export record.');}return null;};
  function decodeExport(row: Record<string, unknown>|null|undefined): ExportRecord|null {
@@ -131,6 +134,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(typeof row.data!=='string')return invalidExport();
   let record: unknown;try{record=JSON.parse(row.data);}catch{return invalidExport();}
   if(!isRecord(record)||!exportUuid(String(row.id))||!exportUuid(String(row.projectId))||!exportUuid(String(record.id))||!exportUuid(String(record.projectId)))return invalidExport();
+  if(isEditorExportTaskRecord(record))return null;
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
@@ -138,7 +142,10 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   return value;
  }
  const workerExport=(id: string,observe=true): ExportRecord|null=>{
-  const value=decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
+  const row=store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id);
+  // Editor interchange exports own their worker and publication fences.
+  if(row?.editorExport===1)return null;
+  const value=decodeExport(row);
   if(!value&&observe)observeInvalid('export',id);return value;
  };
  // Custom delivery adds an awaited capability step. Preserve the complete
@@ -444,17 +451,16 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const commit = () => tx(()=>{if(projectOwner){checkOutput();if(published)assertPublishedProjectOutput(projectOwner,published.publication);}const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){if(artifact&&(previous.id!==artifact.versionId||previous.assetId!==artifact.assetId||previous.sha256!==artifact.info.sha256))throw Object.assign(Error('Generation result conflicts with completed artifact'),{code:'INVALID_OUTPUT_ARTIFACT'});services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
      const asset={id:artifact?.assetId??randomUUID(),projectId:j!.projectId,name:generatedVideoAssetName(store.db,j!,String(property(j!.snapshot,'title'))),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:artifact?.versionId??randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
-     const format5=projectOwner!==null&&projectOwner!==undefined&&Number(projectOwner.db.prepare('PRAGMA project.user_version').get()?.user_version)===5;
-     // Format-5 adoption is a background mutation of the generated shot. It
+     const sequenceTimeline=projectOwner&&isSequenceProjectFormat(Number(projectOwner.db.prepare('PRAGMA project.user_version').get()?.user_version));
+     // Native timeline adoption is a background mutation of the generated shot. It
      // uses the same Mio target gate as the version selection below (one call
      // records the skipped/conflict event); user-owned jobs have no binding and
      // pass. A denied check leaves the placeholder and version untouched.
-     const targetAllowed=!format5||allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId});
-     const adopted=format5&&projectOwner&&targetAllowed?adoptFormat5GeneratedVersionInside(projectOwner,j!,version):false;
-     // Format-5 edit-created shots adopt only while their placeholder and the
-     // frozen shot revision still match. A late result records the version but
-     // never rewrites a moved-on shot.
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const targetAllowed=!sequenceTimeline||allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId});
+     if(sequenceTimeline&&projectOwner&&targetAllowed)adoptFormat5GeneratedVersionInside(projectOwner,j!,version);
+     // Adoption resolves the first usable placeholder. A later result records
+     // its version without overwriting the selected shot or timeline source.
+     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(sequenceTimeline?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
       await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {
@@ -565,6 +571,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   try {
    beforeEffect?.();
    const outputGeometry=e.mode==='timeline'?property(e.snapshot,'timeline'):storyboardOutputGeometry(e);
+   if(e.mode==='timeline')assertTimelineSpeedRenderable(outputGeometry);
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}

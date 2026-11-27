@@ -1,6 +1,8 @@
 import {toAssetMediaDto,publicMediaFingerprint} from './asset-media.ts';
 import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
 import {clipAudioExportSchemas,clipAudioExportDescriptions} from './clip-audio-export.ts';
+import {fcpExportSchemas} from './fcp-export.ts';
+import {premiereExportSchemas} from './premiere-export.ts';
 export * from './export-controls.ts';
 export * from './clip-audio-export.ts';
 import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
@@ -124,7 +126,8 @@ export {SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse, sourceRangeSc
 export {ASSET_DISPOSITIONS, ASSET_DISPOSITION_BATCH_LIMIT, assetDispositionSchemas, isAssetDispositionResponse, isAssetDispositionListResponse} from './asset-disposition.ts';
 export {WAVEFORM_ALGORITHM, WAVEFORM_FPS, WAVEFORM_SAMPLE_RATE, WAVEFORM_BINS_PER_SECOND, WAVEFORM_MAX_DURATION, WAVEFORM_MAX_SOURCE_FRAMES, WAVEFORM_MAX_POINTS, WAVEFORM_DEFAULT_POINTS, WAVEFORM_STATUSES, waveformSchemas, waveformResponseSchema, isWaveformResponse} from './waveforms.ts';
 export {TIMELINE_FADE_MAX_FRAMES, getTimelineFadeIssue} from './timeline-fades.ts';
-export {FORMAT5_TIMELINE_FORMAT, isTimelineReplacementResponse, isTimelineRecord, TIMELINE_RESPONSE_BYTES, TIMELINE_REPLACEMENT_RESPONSE_BYTES} from './timeline-replacement.ts';
+export {FORMAT5_TIMELINE_FORMAT, FORMAT6_TIMELINE_FORMAT, isSequenceTimelineFormat, isTimelineReplacementResponse, isTimelineRecord, TIMELINE_RESPONSE_BYTES, TIMELINE_REPLACEMENT_RESPONSE_BYTES} from './timeline-replacement.ts';
+export type {ClipTiming, SequenceEditSpeedIntent, SpeedInterpolation, SpeedProcessingItem, SpeedProcessingReason, SpeedSetting} from './timeline-speed.ts';
 export {TIMELINE_MUTATION_OPERATIONS, TIMELINE_RENDER_RESPONSE_BYTES, isTimelineMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof} from './timeline-acknowledgement.ts';
 export {REFERENCE_MUTATION_OPERATIONS, REFERENCE_RESPONSE_BYTES, isReferenceMutationResponse, isReferenceShotRecord, isReferenceEdgeRecord} from './reference-acknowledgement.ts';
 export {exportPreflightSchemas, exportPreflightResponseSchema, isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from './export-preflight.ts';
@@ -158,6 +161,14 @@ export const schemas={
 ...sequenceGenerationInputSchemas,
 ...exportControlSchemas,
 ...clipAudioExportSchemas,
+'export.fcpxml.preview':fcpExportSchemas['export.fcpxml.preview'].input,
+'export.fcpxml.start':fcpExportSchemas['export.fcpxml.start'].input,
+'export.fcpxml.get':fcpExportSchemas['export.fcpxml.get'].input,
+'export.fcpxml.cancel':fcpExportSchemas['export.fcpxml.cancel'].input,
+'export.premiere.preview':premiereExportSchemas['export.premiere.preview'].input,
+'export.premiere.start':premiereExportSchemas['export.premiere.start'].input,
+'export.premiere.get':premiereExportSchemas['export.premiere.get'].input,
+'export.premiere.cancel':premiereExportSchemas['export.premiere.cancel'].input,
 ...workspaceConfigurationSchemas,
 ...taskDispositionSchemas,
 ...projectLifecycleSchemas,
@@ -265,6 +276,14 @@ export const descriptions: Record<string, string> = {
  ...projectBackupDescriptions,...projectVersionDescriptions,
  ...exportControlDescriptions,
  ...clipAudioExportDescriptions,
+ 'export.fcpxml.preview':'只读预览格式 5 项目的 Final Cut Pro 导出清单、默认位置和去重后的素材大小。',
+ 'export.fcpxml.start':'后台导出格式 5 项目到 FCPXML 1.13 包。使用稳定 requestId。默认写入项目的导出文件夹，其他位置需先在桌面版选择。',
+ 'export.fcpxml.get':'只读查询一次 Final Cut Pro 导出的进度、结果或失败原因。',
+ 'export.fcpxml.cancel':'取消一项 Final Cut Pro 导出并清理未完成的包，已结束时返回原状态。',
+ 'export.premiere.preview':'只读预览格式 5 项目的 Premiere Pro 导出清单、默认位置和去重后的素材大小。',
+ 'export.premiere.start':'后台导出格式 5 项目到 Premiere Pro 可导入的 Final Cut Pro 7 XML。使用稳定 requestId。默认写入项目的导出文件夹，其他位置需先在桌面版选择。',
+ 'export.premiere.get':'只读查询一次 Premiere Pro 导出的进度、结果或失败原因。',
+ 'export.premiere.cancel':'取消一项 Premiere Pro 导出并清理未完成的文件夹，已结束时返回原状态。',
  'workspace.settings.get':'读取旧版工作区设置客户端的兼容响应',
  'workspace.settings.set':'推进旧版工作区设置的修订号',
  ...taskDispositionDescriptions,
