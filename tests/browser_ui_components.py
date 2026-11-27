@@ -313,8 +313,11 @@ def slider_keyboard(page, state, requests):
 
 def ruler_keyboard(page, state, requests):
     ruler = page.get_by_role('slider', name='时间标尺', exact=True)
+    expect(ruler).to_have_attribute('aria-valuemin', '0')
+    expect(ruler).to_have_attribute('aria-valuemax', '54000')
     ruler.focus()
-    checks = [('Home', 0), ('ArrowLeft', 0), ('ArrowRight', 1), ('PageUp', 31), ('PageDown', 1), ('End', 18000), ('ArrowRight', 18000), ('Home', 0)]
+    checks = [('Home', 0), ('ArrowLeft', 0), ('ArrowRight', 1), ('PageUp', 31), ('PageDown', 1),
+              ('End', 54000), ('ArrowRight', 54000), ('Home', 0)]
     for key, expected in checks:
         page.keyboard.press(key)
         expect(ruler).to_have_attribute('aria-valuenow', str(expected))

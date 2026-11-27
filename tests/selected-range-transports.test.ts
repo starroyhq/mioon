@@ -18,6 +18,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {hash} from '../packages/business/src/services.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded as _strictBoundedBase} from './fixtures/selected-range-http-fixture.ts'
@@ -96,7 +97,9 @@ test('actual offline CLI and official MCP discover the same optional strict sele
     const schema = definition.inputSchema.properties.exportRange;
     assert.deepEqual(schema.required, ['startFrame', 'endFrame']); assert.equal(schema.additionalProperties, false);
     assert.equal(schema.properties.startFrame.type, 'integer'); assert.equal(schema.properties.endFrame.type, 'integer');
-    assert.equal(schema.properties.startFrame.minimum, 0); assert.equal(schema.properties.endFrame.maximum, 18000);
+    assert.equal(schema.properties.startFrame.minimum, 0);
+    assert.equal(schema.properties.startFrame.maximum, TIMELINE_LIMITS.maxFrames - 1);
+    assert.equal(schema.properties.endFrame.maximum, TIMELINE_LIMITS.maxFrames);
     assert.equal(definition.inputSchema.required.includes('exportRange'), false); assert.equal(definition.effects.paidGeneration, false);
     assert.deepEqual((await cli(t, undefined, ['schema', operation])).data, definition);
   }
@@ -177,7 +180,7 @@ test('all transports reject invalid/preview ranges; omission retains legacy byte
   const before = await f.checkpoint();
   for (const transport of wire.all) {
     for (const exportRange of [null, {startFrame: 0}, {startFrame: -1, endFrame: 1}, {startFrame: 1, endFrame: 1},
-      {startFrame: 1.5, endFrame: 2}, {startFrame: 0, endFrame: 18001}, {startFrame: 0, endFrame: 1, extra: true}]) {
+      {startFrame: 1.5, endFrame: 2}, {startFrame: 0, endFrame: TIMELINE_LIMITS.maxFrames + 1}, {startFrame: 0, endFrame: 1, extra: true}]) {
       for (const [operation, input] of [['timeline.export.preflight', {...base, exportRange}],
         ['timeline.render', {...base, requestId: randomUUID(), purpose: 'export', exportRange}]] as const) {
         const result = await transport.call(operation, input); assert.equal(result.ok, false); assert.equal(result.error.code, 'VALIDATION_ERROR');

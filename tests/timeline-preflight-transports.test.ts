@@ -30,6 +30,7 @@ import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {createClient, discoverSchema} from '../packages/client/src/index.ts';
 import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflightResponseSchema,
   isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.ts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 import {openServerProject,projectDirFor} from './helpers/project-database.ts';
 import {createApplicationStorageReader,createProjectStorageReader} from './fixtures/project-server-process.ts';
@@ -273,7 +274,8 @@ if(process.argv[2] === 'preflight-server'){
 test('export preflight contracts reject malformed DTOs and preserve omitted legacy render input', () => {
   assert.equal(schemas[operation], exportPreflightSchemas[operation]);
   assert.deepEqual(parse(operation, input), input);
-  assert.deepEqual(EXPORT_PREFLIGHT_LIMITS, {assets: 100, sourceBytes: 536870912, totalBytes: 1073741824, timeoutMs: 30000, issues: 128});
+  const {maxClips,maxFrames}=TIMELINE_LIMITS;
+  assert.deepEqual(EXPORT_PREFLIGHT_LIMITS, {assets: maxClips, sourceBytes: 536870912, totalBytes: 1073741824, timeoutMs: 30000, issues: 128});
   assert.equal(Object.isFrozen(EXPORT_PREFLIGHT_LIMITS), true);
   for (const invalid of ([{}, {projectId: IDS.project}, {expectedRevision: 4}, {...input, projectId: 'invalid'},
     ...[0, -1, 0.5, '4', null, Infinity].map(expectedRevision => ({...input, expectedRevision})),
@@ -286,6 +288,9 @@ test('export preflight contracts reject malformed DTOs and preserve omitted lega
   for (const preflightSnapshotHash of (['', 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), 'z'.repeat(64), null, 1] as const))
     assert.throws(() => parse('timeline.render', {...legacy, preflightSnapshotHash}), {code: 'VALIDATION_ERROR'});
   const ready = readyReport(); assert.equal(isExportPreflightResponse(ready, input), true); assert.deepEqual(exportPreflightResponseSchema.parse(ready), ready);
+  const atLimit = {...ready, summary: {...ready.summary, clipCount: maxClips, assetCount: maxClips, durationFrames: maxFrames},
+    checks: {...ready.checks, totalAssets: maxClips, checkedAssets: maxClips}};
+  assert.equal(isExportPreflightResponse(atLimit, input), true);
   assert.equal(isExportPreflightResponse(ready, {...input, projectId: IDS.other}), false);
   assert.equal(isExportPreflightResponse(ready, {...input, expectedRevision: 5}), false);
   for (const status of (['ready', 'blocked', 'incomplete', 'stale'] as const)) assert.equal(isExportPreflightResponse({...ready, status}), true);
@@ -296,12 +301,12 @@ test('export preflight contracts reject malformed DTOs and preserve omitted lega
   for (const patch of ([{projectId: 'bad'}, {timelineId: ''}, {timelineId: null}, {timelineRevision: null}, {summary: null}, {snapshotHash: null},
     {timelineRevision: 0}, {timelineRevision: 3}, {expectedRevision: -1}, {snapshotHash: 'A'.repeat(64)},
     {checkedAt: 'yesterday'}, {status: 'success'}, {path: PRIVATE}, {summary: {...ready.summary, fps: 60}}, {summary: {...ready.summary, width: 1080}},
-    {summary: {...ready.summary, height: 1920}}, {summary: {...ready.summary, durationFrames: 18001}}, {summary: {...ready.summary, trackCount: 13}},
-    {summary: {...ready.summary, clipCount: 101}}, {summary: {...ready.summary, assetCount: 101}}, {summary: {...ready.summary, visualClipCount: 101}},
+    {summary: {...ready.summary, height: 1920}}, {summary: {...ready.summary, durationFrames: maxFrames + 1}}, {summary: {...ready.summary, trackCount: 13}},
+    {summary: {...ready.summary, clipCount: maxClips + 1}}, {summary: {...ready.summary, assetCount: maxClips + 1}}, {summary: {...ready.summary, visualClipCount: maxClips + 1}},
     {summary: {...ready.summary, audibleClipCount: -1}}, {summary: {...ready.summary, audibleClipCount: 3}}, {summary: {...ready.summary, visualClipCount: 3}},
     {summary: {...ready.summary, assetCount: 1}}, {summary: {...ready.summary, mutedTrackCount: 13}}, {summary: {...ready.summary, hiddenVideoTrackCount: 13}},
     {summary: {...ready.summary, secret: PRIVATE}}, {checks: {...ready.checks, fullDecode: true}}, {checks: {...ready.checks, checkedAssets: 3}},
-    {checks: {...ready.checks, checkedAssets: 1}}, {checks: {...ready.checks, totalAssets: 101}}, {checks: {...ready.checks, bytesHashed: 1073741825}}, {checks: {...ready.checks, command: PRIVATE}},
+    {checks: {...ready.checks, checkedAssets: 1}}, {checks: {...ready.checks, totalAssets: maxClips + 1}}, {checks: {...ready.checks, bytesHashed: 1073741825}}, {checks: {...ready.checks, command: PRIVATE}},
     {issues: [{code: 'KNOWN_BLOCKER', severity: 'error', message: 'Not ready'}]},
     {issues: [{code: 'lowercase', severity: 'error', message: 'Safe'}]}, {issues: [{code: 'A'.repeat(65), severity: 'warning', message: 'Safe'}]},
     {issues: [{code: 'SAFE', severity: 'info', message: 'Safe'}]}, {issues: [{code: 'SAFE', severity: 'error', message: 'a'.repeat(241)}]},
