@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import * as protection from '../apps/web/src/agent-editing-protection.ts';
-import {AGENT_TASK_DISPLAY_TARGET_KINDS,agentTaskEditingSchema, type AgentTaskTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {AGENT_TASK_DISPLAY_TARGET_KINDS,agentTaskEditingResolveBatchSchema,agentTaskEditingSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskEditingLiveness,AgentTaskEditingResolveBatchInput,AgentTaskEditingResolveBatchReceipt,AgentTaskTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {matchesEditingBatchReceipt,RetainedEditingConflict} from '../apps/web/src/agent-retained-editing.ts';
 import {taskDisplayTargets} from '../apps/web/src/agent-task-presentation.ts';
 import {i18nTestModule,translate} from './helpers/i18n.ts';
 
@@ -17,17 +19,37 @@ function harness(){
   const initialProjectId=crypto.randomUUID(),target={kind:'shot',id:crypto.randomUUID(),revision:0},foreignOwner='normal:'+crypto.randomUUID()+':shot:'+target.id;
   let projectId: string=initialProjectId,claims: ReturnType<typeof makeClaim>[]=[],controller: ReturnType<typeof protection.createAgentEditingProtection>,visible=true,readOnly=false,recovery: unknown,confirm: (value?:unknown)=>Promise<unknown>=async()=>true,readHandler: ((...args: Parameters<protection.AgentEditingClient['read']>)=>unknown)|undefined,lookupHandler: ((...args:Parameters<NonNullable<protection.AgentEditingClient['lookup']>>)=>unknown)|undefined,updateHandler: ((input:Parameters<protection.AgentEditingClient['update']>[0])=>unknown)|undefined,storageWriteFailure=false;
   const updates: ({ action: string; ownerId: unknown; })[]=[],reads: unknown[][]=[],lookups: unknown[][]=[],confirmations: unknown[]=[],registrations: CloseRegistration[]=[],slots: UiHook[]=[],storage=new Map();let cursor=0,effects: number[]=[];
+  const liveness=new Map<string,AgentTaskEditingLiveness>(),batchRequests:AgentTaskEditingResolveBatchInput[]=[],batchLookups:string[][]=[];
+  let resolveBatch:((input:AgentTaskEditingResolveBatchInput)=>Promise<AgentTaskEditingResolveBatchReceipt>)|undefined;
+  let batchReceipt:AgentTaskEditingResolveBatchReceipt|null=null;
   const react={createContext:()=>({}),createElement:(type: import('./helpers/strict-agent-ui-types.ts').ElementType,props: Partial<UiProps>|null,...children: UiTree[])=>(({type,props:{...props,children}}) as unknown as UiElement),useRef:(value: unknown)=>slots[cursor++]??={current:value},useState:(value: unknown)=>{const at=cursor++;slots[at]??={value};return[slots[at].value,(next: (arg0: unknown) => unknown)=>{slots[at].value=typeof next==='function'?next(slots[at].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const at=cursor++,old=slots[at];if(!old||deps.some((value: unknown,index)=>value!==old.deps![index])){slots[at]={...old,fn,deps};effects.push(at);}}};(react as typeof react&{default?:unknown}).default=react;
-  const makeClaim=(ownerId: string,claimProject: string=initialProjectId)=>({id:crypto.randomUUID(),projectId:claimProject,ownerId,target:{...target},state:'active',createdAt:'2026-10-20T00:00:00Z',updatedAt:'2026-10-20T00:00:00Z'});
+  const makeClaim=(ownerId: string,claimProject: string=initialProjectId)=>({id:crypto.randomUUID(),projectId:claimProject,ownerId,target:{...target},state:'active' as const,createdAt:'2026-10-20T00:00:00Z',updatedAt:'2026-10-20T00:00:00Z'});
   const client={
     read:async(...args: Parameters<protection.AgentEditingClient['read']>)=>{reads.push(args);return readHandler?readHandler(...args):{claims:[...claims],targets:[target]};},
     lookup:async(...args: Parameters<NonNullable<protection.AgentEditingClient['lookup']>>)=>{lookups.push(args);return lookupHandler?lookupHandler(...args):{claims:[...claims],targets:[target],receipt:{requestId:args[2],projectId:args[0],ownerId:args[1],generation:123,sequence:1}};},
     update:async (input: Parameters<protection.AgentEditingClient['update']>[0])=>{updates.push(input);if(updateHandler)return updateHandler(input);if(input.action==='claim')claims=[...claims,makeClaim(input.ownerId)];else if(input.action==='resolve')claims=claims.filter(claim=>claim.ownerId!==input.ownerId);return{claims:[...claims],targets:[target]};},
   };
+  const retainedClient={
+    async read(id:string){
+      reads.push([id]);if(readHandler)await readHandler(id);
+      const owners=claims.filter(claim=>claim.projectId===id).map(claim=>({claim,generation:123,sequence:4,claimSnapshot:'0'.repeat(64),liveness:liveness.get(claim.ownerId)??'in_use'}));
+      return owners.length?[{projectId:id,kind:target.kind,id:target.id,owners}]:[];
+    },
+    async lookup(id:string,requestId:string){batchLookups.push([id,requestId]);return batchReceipt;},
+    async resolve(input:AgentTaskEditingResolveBatchInput){
+      batchRequests.push(input);
+      if(resolveBatch)return resolveBatch(input);
+      const releasedClaimIds=input.claims.map(claim=>claim.claimId);
+      claims=claims.filter(claim=>!releasedClaimIds.includes(claim.id));
+      return {requestId:input.requestId,projectId:input.projectId,releasedClaimIds};
+    },
+  };
   const load=(file: string,boundary?: {}|undefined)=>{const module: UiModule={exports:{}};Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/'+file,import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)((id: string)=>{
     if(id==='react')return react;
     if(id==='./agent-editing-protection.ts')return{...protection,createAgentEditingClient:()=>client,createAgentEditingProtection:(options: { projectId: string; ownerId: string; targets: readonly AgentTaskTarget[]; generation?: number; client?: protection.AgentEditingClient; requestId?: () => string; onChange?: (state: protection.AgentEditingState) => void; })=>(controller=protection.createAgentEditingProtection({...options,client:(client as unknown as protection.AgentEditingClient)}))};
     if(id==='./AgentEditingBoundary.tsx')return boundary;
+    if(id==='./workspace-visibility.tsx')return{useWorkspaceVisibility:()=>true};
+    if(id==='./agent-retained-editing.ts')return{createRetainedEditingClient:()=>retainedClient,matchesEditingBatchReceipt,RetainedEditingConflict};
     if(id==='./agent-task-presentation.ts')return{taskDisplayTargets};
     if(id.includes('I18nProvider'))return i18nTestModule();
     if(id.includes('workbench-confirm'))return{useConfirmation:()=>(value: unknown)=>{confirmations.push(value);return confirm(value);}};
@@ -36,7 +58,7 @@ function harness(){
     if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};
     if(id==='./icons.tsx')return{__esModule:true,default:'Icon'};
     if(id.includes('packages/i18n'))return{message:(key: unknown)=>({key})};
-    if(id.includes('agent-tasks-v2'))return{agentTaskEditingSchema,AGENT_TASK_DISPLAY_TARGET_KINDS};
+    if(id.includes('agent-tasks-v2'))return{agentTaskEditingResolveBatchSchema,agentTaskEditingSchema,AGENT_TASK_DISPLAY_TARGET_KINDS};
     if(id.endsWith('.css'))return{};
     throw Error('Unmocked component dependency: '+id);
   },module,module.exports);return module.exports;};
@@ -46,11 +68,14 @@ function harness(){
   const render=()=>{cursor=0;effects=[];const tree=retained.default!({projectId,visible,readOnly,nativeCloseRegistry,recovery,targetName:()=> 'Opening scene'});for(const at of effects){slots[at].cleanup?.();slots[at].cleanup=slots[at].fn!();}return tree;};
   const renderBoundary=(props: Record<string,unknown>)=>{cursor=0;effects=[];const outer=boundary.default!(props as never) as unknown as UiElement;const tree=(outer.type as unknown as (props: UiProps)=>UiTree)(outer.props);for(const at of effects){slots[at].cleanup?.();slots[at].cleanup=slots[at].fn!();}return tree;};
   const pending=<Patch extends object = {}>(patch: Patch={} as Patch)=>({requestId:crypto.randomUUID(),projectId:initialProjectId,ownerId:foreignOwner,generation:123,sequence:1,action:'resolve',targets:[target],...patch});
-  return{initialProjectId,target,client,updates,reads,lookups,confirmations,registrations,boundary,render,renderBoundary,storage,foreignOwner,pending,
+  return{initialProjectId,target,client,updates,reads,lookups,batchRequests,batchLookups,confirmations,registrations,boundary,render,renderBoundary,storage,foreignOwner,pending,
     key:()=> 'mioon.agent-editing-recovery.'+initialProjectId,
     closeState:()=>registrations.at(-1)?.states.at(-1),
     setVisible:(value: boolean)=>{visible=value;},setReadOnly:(value: boolean)=>{readOnly=value;},setProject:(value: string)=>{projectId=value;},setRecovery:(value: unknown)=>{recovery=value;},setConfirm:(value: ()=>Promise<unknown>)=>{confirm=value;},setRead:(value: (...args:unknown[])=>unknown)=>{readHandler=value;},setLookup:(value: (...args:unknown[])=>unknown)=>{lookupHandler=value;},setUpdate:(value: (...args:unknown[])=>unknown)=>{updateHandler=value;},setStorageWriteFailure:(value: boolean)=>{storageWriteFailure=value;},
-    addForeign(){claims.push(makeClaim(foreignOwner));},controller:()=>controller,
+    addForeign(state:AgentTaskEditingLiveness='retained',ownerId=foreignOwner){const claim=makeClaim(ownerId);claims.push(claim);liveness.set(ownerId,state);return claim;},
+    setBatchResolve(value:typeof resolveBatch){resolveBatch=value;},
+    setBatchReceipt(value:typeof batchReceipt){batchReceipt=value;},
+    controller:()=>controller,
     cleanup(){for(const slot of slots)slot.cleanup?.();controller?.dispose();globalThis.sessionStorage=(previous as unknown as Storage);},
   };
 }
@@ -91,15 +116,47 @@ test('automatic read leaves no empty recovery card and never dispatches a write'
   const h=harness();try{assert.equal(h.render(),null);await flush();assert.equal(h.render(),null);assert.equal(h.reads.length,1);assert.equal(h.updates.length,0);assert.equal(h.closeState()!.blocked,false);}finally{h.cleanup();}
 });
 
-test('retained recovery excludes this window active claim while keeping other-window claims explicitly resolvable',async()=>{
+test('retained recovery offers explicit resolution only for claims the host confirms are retained',async()=>{
   const h=harness();try{
-    await h.boundary.acquireAgentEditingTarget(h.initialProjectId,h.target);h.addForeign();h.render();await flush();let tree=h.render();
+    await h.boundary.acquireAgentEditingTarget(h.initialProjectId,h.target);
+    const claim=h.addForeign();
+    h.addForeign('in_use',crypto.randomUUID());h.addForeign('uncertain',crypto.randomUUID());
+    h.render();await flush();const tree=h.render();
     const articles=nodes(tree).filter((node)=>node.type==='article');assert.equal(articles.length,1);assert.equal(h.controller().canEdit!(),true);
     assert.match(text(tree),/鏡頭|镜头/u);assert.match(text(tree),/Opening scene/u);assert.doesNotMatch(text(tree),new RegExp(h.target.id+'|'+h.foreignOwner+'|\\bshot\\b'));
-    await resolveButton(tree)!.props.onClick();await flush();assert.equal(h.updates.at(-1)!.action,'resolve');assert.equal(h.updates.at(-1)!.ownerId,h.foreignOwner);assert.equal(h.controller().canEdit!(),true);
+    await resolveButton(tree)!.props.onClick();await flush();
+    assert.equal(h.batchRequests.length,1);
+    assert.deepEqual(h.batchRequests[0].claims,[{claimId:claim.id,ownerId:h.foreignOwner,generation:123,sequence:4,claimSnapshot:'0'.repeat(64)}]);
+    assert.equal(h.updates.length,1);assert.equal(h.controller().canEdit!(),true);
   }finally{h.cleanup();}
 });
 
+test('an indeterminate batch send only queries its original receipt and clears the close fence on a match',async()=>{
+  const h=harness();try{
+    const claim=h.addForeign();
+    h.setBatchResolve(async()=>{throw Error('offline');});
+    h.render();await flush();await resolveButton(h.render())!.props.onClick();await flush();
+    const input=h.batchRequests[0];assert.equal(h.closeState()!.blocked,true);assert.equal(h.storage.get(h.key()),JSON.stringify(input));
+    h.setBatchReceipt({projectId:input.projectId,requestId:input.requestId,releasedClaimIds:[crypto.randomUUID()]});
+    await reloadButton(h.render())!.props.onClick();await flush();
+    assert.equal(h.closeState()!.blocked,true);
+    h.setBatchReceipt({projectId:input.projectId,requestId:input.requestId,releasedClaimIds:[claim.id]});
+    await reloadButton(h.render())!.props.onClick();await flush();
+    assert.equal(h.closeState()!.blocked,false);assert.equal(h.storage.has(h.key()),false);
+    assert.deepEqual(h.batchLookups,[[input.projectId,input.requestId],[input.projectId,input.requestId]]);
+    assert.equal(h.batchRequests.length,1);
+  }finally{h.cleanup();}
+});
+
+test('a definitive stale batch rejection refreshes the list without holding close or replaying a write',async()=>{
+  const h=harness();try{
+    h.addForeign();
+    h.setBatchResolve(async()=>{throw new RetainedEditingConflict();});
+    h.render();await flush();await resolveButton(h.render())!.props.onClick();await flush();
+    assert.equal(h.closeState()!.blocked,false);assert.equal(h.storage.has(h.key()),false);
+    assert.equal(h.reads.length,2);assert.equal(h.batchRequests.length,1);
+  }finally{h.cleanup();}
+});
 test('unknown reads retain the recovery content and safe target name without exposing raw identifiers',async()=>{
   const h=harness();try{
     h.addForeign();h.setRecovery({type:'p',props:{children:['Synthetic interrupted round']}});h.render();await flush();h.setRead(async()=>{throw Error('offline');});
@@ -142,7 +199,7 @@ test('a retained resolve confirmation cannot dispatch after hiding, hide/show or
     h.addForeign();const confirmation=deferred();h.setConfirm(()=>confirmation.promise);h.render();await flush();resolveButton(h.render())!.props.onClick();await flush();
     if(change.startsWith('hide')){h.setVisible(false);h.render();if(change==='hide-show'){h.setVisible(true);h.render();}}
     else{h.setProject(crypto.randomUUID());h.render();if(change==='project-return'){h.setProject(h.initialProjectId);h.render();}}
-    confirmation.resolve!(true);await flush();assert.equal(h.updates.length,0,change);
+    confirmation.resolve!(true);await flush();assert.equal(h.batchRequests.length,0,change);
   }finally{h.cleanup();}}
 });
 
@@ -168,6 +225,6 @@ test('a retained receipt belonging to a different project cannot be cleared thro
 test('failure to retain an explicit resolve blocks close and prevents all write dispatch',async()=>{
   const h=harness();try{
     h.addForeign();h.render();await flush();h.setStorageWriteFailure(true);await resolveButton(h.render())!.props.onClick();await flush();const tree=h.render();
-    assert.equal(h.updates.length,0);assert.equal(h.storage.size,0);assert.equal(h.closeState()!.blocked,true);assert.equal(resolveButton(tree)!.props.disabled,true);
+    assert.equal(h.batchRequests.length,0);assert.equal(h.storage.size,0);assert.equal(h.closeState()!.blocked,true);assert.equal(resolveButton(tree)!.props.disabled,true);
   }finally{h.cleanup();}
 });

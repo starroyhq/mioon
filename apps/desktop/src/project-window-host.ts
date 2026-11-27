@@ -460,6 +460,9 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     // only actual contents destruction proves every old document is gone.
     const destroyed = () => {
       contents.removeListener('destroyed', destroyed);
+      if (lease) {
+        try { projectEntries?.release({windowId, closed:true}); } catch { /* Missing destruction evidence stays uncertain. */ }
+      }
       try { options.onWebContentsDestroyed?.(windowId); } catch { /* Observation is never a new resource grant. */ }
     };
     contents.on('destroyed', destroyed);
