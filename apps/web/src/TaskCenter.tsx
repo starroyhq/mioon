@@ -15,6 +15,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchTooltip } from './WorkspaceControls.tsx';
+import { WorkbenchProgress } from '@mioon/ui/components/workbench-controls';
 import Icon from './icons.tsx';
 import SubjectVideoSummary from './SubjectVideoSummary.tsx';
 import { isSubjectRetryPending } from './submissions.ts';
@@ -24,6 +25,7 @@ import { isMutationOperation } from './mutation-submissions.ts';
 import { isDurableEditOperation } from './edit-task-client.ts';
 import { activeJob, outputReviewRequired } from './api.ts';
 import type { DisplayMessage, MessageArguments, MessageKey } from '../../../packages/i18n/src/index.ts';
+import type { SpeedProcessingTaskView } from './timeline-processing-tasks.ts';
 
 type Translator = <K extends MessageKey>(key: K, ...args: MessageArguments<K>) => string;
 const pass = <T,>(value: unknown): T => value as T;
