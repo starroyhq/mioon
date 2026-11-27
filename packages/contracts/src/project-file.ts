@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {PROJECT_READER_UPDATE_REQUIRED} from './project-reader-requirements.ts';
 /** Project file v1 (docs/PROJECT-FILE.md). A `.mioon` is one SQLite file that
  * holds exactly one project's current content; this computer's records for it
  * are kept per project ID outside the file.
@@ -140,7 +141,7 @@ export interface ProjectStore<Db = unknown> {
 }
 
 /** Why a project cannot be opened. */
-export const PROJECT_OPEN_ERROR_CODES = Object.freeze(['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID', 'PROJECT_ACCESS_DENIED'] as const);
+export const PROJECT_OPEN_ERROR_CODES = Object.freeze(['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', PROJECT_READER_UPDATE_REQUIRED, 'PROJECT_INVALID', 'PROJECT_ACCESS_DENIED'] as const);
 export type ProjectOpenErrorCode = typeof PROJECT_OPEN_ERROR_CODES[number];
 /** Store-level `project.create` on a file that already has its project. */
 export const PROJECT_FILE_SINGLE_PROJECT = 'PROJECT_FILE_SINGLE_PROJECT';
@@ -219,6 +220,7 @@ export const projectOpenFailureSchema = z.discriminatedUnion('code', [
   z.object({code: z.literal('PROJECT_LOCKED'), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_ACCESS_DENIED'), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_FORMAT_NEWER'), ...failure, database: z.enum(['project', 'history', 'cache']), formatVersion, supportedFormatVersion: formatVersion}).strict(),
+  z.object({code: z.literal(PROJECT_READER_UPDATE_REQUIRED), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_INVALID'), ...failure, reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
 ]).refine(value => value.code !== 'PROJECT_FORMAT_NEWER' || value.formatVersion > value.supportedFormatVersion,
   'A newer format must exceed the supported version.');

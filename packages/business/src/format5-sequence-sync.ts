@@ -56,6 +56,7 @@ import {
   planFormat5TimelineEntityUpdate, readFormat5TimelineState,
 } from './project-file/format5-timeline.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
+import {assertHeldProjectReaderRequirements} from './project-file/reader-requirements.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {
@@ -167,6 +168,7 @@ function readMediaNode(node: ChainNode, nodeRows: ReadonlyMap<string, Row>, shot
 
 function readSyncContext(store: ProjectStore): SyncContext {
   const db = store.db;
+  assertHeldProjectReaderRequirements(store);
   const timelineState = readFormat5TimelineState(db, 'project');
   const timeline = assembleFormat5Timeline(timelineState);
   if (!timeline) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
@@ -2504,9 +2506,11 @@ export function createMainTrackProjectionPort(store: ProjectStore,
 
 /** Apply coupled board and timeline entities with their baseline in the caller's transaction. */
 export function applySequenceEditStateDelta(store: ProjectStore, patch: SequenceEditStateDelta,
-  context = readSyncContext(store)): {
+  providedContext?: SequenceSyncContext): {
   readonly contentRevision: number; readonly timelineRevision: number; readonly syncRevision: number;
 } {
+  if (providedContext) assertHeldProjectReaderRequirements(store);
+  const context = providedContext ?? readSyncContext(store);
   applyBoardDelta(store, patch.board);
   const timelineApply = applyTimelineDelta(store, patch.timeline, context);
   const baselineApply = applyBaselineDelta(store, context, patch.timeline.baseline);
@@ -2577,6 +2581,7 @@ function writeHistoryFailure(store: ProjectStore, command: SequenceEditHistoryCo
  * the shared history module still owns the cursor and receipt. */
 export function applySequenceEditTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelta,
   providedContext?: SequenceSyncContext): {readonly timelineRevision: number} {
+  assertHeldProjectReaderRequirements(store);
   const result = applyTimelineDelta(store, delta, providedContext);
   return {timelineRevision: result.timeline.revision};
 }
@@ -2584,6 +2589,7 @@ export function applySequenceEditTimelineDelta(store: ProjectStore, delta: Seque
 /** Apply the three-state baseline half of a stored patch. */
 export function applySequenceEditBaselineDelta(store: ProjectStore, change: SequenceEditBaselineChange,
   providedContext?: SequenceSyncContext): {readonly syncRevision: number} {
+  if (providedContext) assertHeldProjectReaderRequirements(store);
   const context = providedContext ?? readSyncContext(store);
   const result = applyBaselineDelta(store, context, change);
   return {syncRevision: result.revision};

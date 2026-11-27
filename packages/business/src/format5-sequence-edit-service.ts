@@ -44,6 +44,7 @@ import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edi
 import {previewDialogueAction, runDialogueAction} from './format5-dialogue.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
+import {assertProjectReaderRequirements} from './project-file/reader-requirements.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
@@ -58,10 +59,10 @@ type SequenceEditPreview = SequenceEditPreviewFailure | {
 };
 const uuid = (value: unknown): value is string => typeof value === 'string' &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[a-f0-9]{12}$/iu.test(value);
-const format5 = (store: ProjectStore): boolean =>
-  isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 const requireFormat5 = (store: ProjectStore): void => {
-  if (!format5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
+  const version = Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
+  if (!isSequenceProjectFormat(version)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
+  assertProjectReaderRequirements(store.db, 'project', version);
 };
 const projectCheck = (store: ProjectStore, projectId: string): void => {
   if (projectId !== store.projectId) throw new AppError('PROJECT_ID_MISMATCH', '项目地址与请求不一致。', 409);

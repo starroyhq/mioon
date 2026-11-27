@@ -10,6 +10,7 @@ import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
 import {CANVAS_ARCHIVE_COLUMNS, CANVAS_ARCHIVE_TABLES} from '../project-file/schema/domains/canvas.ts';
 import {isTimelineGeometryProfileAllowed} from '../project-file/schema/format4-geometry.ts';
 import {assertFormat5TimelineRows} from '../project-file/format5-timeline.ts';
+import {assertProjectReaderRequirements, assertProjectReaderRequirementsInData} from '../project-file/reader-requirements.ts';
 import {PROJECT_SNAPSHOT_MAX_RAW_BYTES} from './limits.ts';
 import {FORMAT_2_SNAPSHOT_TABLE_SQL, FORMAT_1_COPY_TABLE_SQL} from './format-2.ts';
 
@@ -175,6 +176,7 @@ export function assertProjectSnapshotTableLedger(names: readonly string[], forma
 export function captureProjectDocumentInside(store: ProjectStore): ProjectDocument {
   if (!isProjectStore(store) || !store.db.isTransaction) throw new TypeError('Snapshot capture requires the exact live store inside a transaction');
   const format = readSnapshotProjectFormat(store.db);
+  assertProjectReaderRequirements(store.db, 'project', format);
   const names = store.db.prepare("SELECT name FROM project.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(row => String(row.name));
   assertProjectSnapshotTableLedger(names, format);
   for (const table of tableNamesFor(format)) {
@@ -243,12 +245,22 @@ function validateDocument<Format extends DocumentFormat>(input: unknown, format:
   if (!object(input) || !exact(input, ['snapshotProfileVersion', 'projectId', 'projectFormatVersion', 'evidence', 'tables'])
     || input.snapshotProfileVersion !== PROJECT_SNAPSHOT_PROFILE || input.projectFormatVersion !== format || !isProjectId(input.projectId)
     || !object(input.evidence) || !exact(input.evidence, ['contentSequence', 'targetRevisions']) || typeof input.evidence.contentSequence !== 'number'
-    || !Number.isSafeInteger(input.evidence.contentSequence) || input.evidence.contentSequence < 0 || !object(input.tables)
-    || !exact(input.tables, snapshotTablesFor(format))) throw snapshotInvalid('document');
+    || !Number.isSafeInteger(input.evidence.contentSequence) || input.evidence.contentSequence < 0 || !object(input.tables)) throw snapshotInvalid('document');
+  const tables = snapshotTablesFor(format);
+  if (format !== FORMAT6_PROJECT_SCHEMA_VERSION && !exact(input.tables, tables)) throw snapshotInvalid('document');
   const {statements, shapes: definitions} = profile(format);
-  for (const table of snapshotTablesFor(format)) validateRows(table, input.tables[table], input.projectId, definitions, format);
+  validateRows('projects', input.tables.projects, input.projectId, definitions, format);
+  if (input.tables.projects.length !== 1) throw snapshotInvalid('project-row');
+  // The project row is stable even when the named version contains tables
+  // or timeline payloads that this reader cannot interpret.
+  if (format === FORMAT6_PROJECT_SCHEMA_VERSION) {
+    assertProjectReaderRequirementsInData(JSON.parse(String(input.tables.projects[0]!.data)));
+    if (!exact(input.tables, tables)) throw snapshotInvalid('document');
+  }
+  for (const table of tables) {
+    if (table !== 'projects') validateRows(table, input.tables[table], input.projectId, definitions, format);
+  }
   validateRows('agent_task_target_revisions_v2', input.evidence.targetRevisions, input.projectId, definitions, format);
-  if ((input.tables.projects as readonly unknown[]).length !== 1) throw snapshotInvalid('project-row');
   const db = new DatabaseSync(':memory:', {enableForeignKeyConstraints: false, enableDoubleQuotedStringLiterals: false});
   try {
     for (const sql of statements) db.exec(sql);

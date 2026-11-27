@@ -6,6 +6,7 @@ import {isProjectId} from '../../contracts/src/project-file.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
+import {assertHeldProjectReaderRequirements} from './project-file/reader-requirements.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 export const canvasError = (reason: string, details: Record<string, unknown> = {}): never => {
@@ -221,6 +222,7 @@ export function expectCanvasPatchBase(store: ProjectStore, before: CanvasPatch, 
 
 export function applyCanvasPatch(store: ProjectStore, before: CanvasPatch, after: CanvasPatch, at: string): void {
   if (!store.db.isTransaction) throw new TypeError('Canvas patch requires the project transaction');
+  assertHeldProjectReaderRequirements(store);
   const current = expectCanvasPatchBase(store, before, after);
   const anchors = new Map(after.anchors.map(anchor => [anchor.id, anchor]));
   for (const [index, row] of current.entries()) {

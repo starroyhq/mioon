@@ -30,6 +30,7 @@ import {
   SEQUENCE_EDIT_LIMITS, canonicalSequenceEditInput, isSequenceEditEnvelope, sequenceEditEnvelopeOperationName,
   sequenceEditHistoryEntrySchema, sequenceEditReceiptSchema,
 } from '@mioon/contracts/sequence-edit';
+import {assertHeldProjectReaderRequirements} from './project-file/reader-requirements.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
 type Row = Record<string, unknown>;
@@ -116,6 +117,7 @@ function entryFromRow(row: Row): SequenceEditHistoryEntry {
 }
 
 export function readSequenceEditHistoryEntry(store: ProjectStore, actionId: string): SequenceEditHistoryEntry | null {
+  assertHeldProjectReaderRequirements(store);
   const row = store.db.prepare(`SELECT actionId,projectId,epoch,position,operation,origin,beforePatch,afterPatch,createdAt
     FROM main.editor_history_entries WHERE actionId=? AND projectId=?`).get(actionId, store.projectId) as Row | undefined;
   return row ? entryFromRow(row) : null;
@@ -135,6 +137,7 @@ function historyView(store: ProjectStore, state: SequenceEditHistoryState): Sequ
 export function prepareSequenceEditHistory(store: ProjectStore, observedEpoch?: string): {
   readonly state: SequenceEditHistoryState; readonly view: SequenceEditHistoryView;
 } {
+  assertHeldProjectReaderRequirements(store);
   let state = readStateRow(store);
   if (!state) {
     const epoch = observedEpoch ?? randomUUID();
@@ -152,6 +155,7 @@ export function patchFromEntry(entry: SequenceEditHistoryEntry): SequenceEditPat
 }
 
 export function findSequenceEditReceipt(store: ProjectStore, requestId: string): SequenceEditStoredReceipt | null {
+  assertHeldProjectReaderRequirements(store);
   const row = store.db.prepare('SELECT inputDigest,response FROM main.editor_requests WHERE requestId=? AND projectId=?')
     .get(requestId, store.projectId) as Row | undefined;
   if (!row) return null;

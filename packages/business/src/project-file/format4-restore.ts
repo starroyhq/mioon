@@ -8,7 +8,7 @@ import {isProjectId, PROJECT_CACHE_FILE, PROJECT_HISTORY_FILE} from '../../../co
 import type {ContentStamp} from '../../../contracts/src/project-file.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {syncCopiedDirectory, syncCopiedFile, validateProjectCopyStagingDirectory} from './backup.ts';
-import {clearLockedFormat4RestoreCache, inspectLockedFormat4RestoreSource, withFormat4RestoreLocks} from './connection.ts';
+import {assertProjectReaderRequirementsReadOnly, clearLockedFormat4RestoreCache, inspectLockedFormat4RestoreSource, withFormat4RestoreLocks} from './connection.ts';
 import type {Format4RestoreLockInput, ProjectLocation} from './connection.ts';
 import {isContentToken, sameContentStamp} from './content-stamp.ts';
 import {projectFileError} from './errors.ts';
@@ -164,6 +164,7 @@ export function restoreFormat4Backup(options: RestoreFormat4BackupOptions): Resu
   validateProjectCopyStagingDirectory(path.dirname(projectFile));
   validatePrivateDirectory(localDir);
   validatePrivateDirectory(cacheDir, {allowMissing: true});
+  if (allowFormat6) assertProjectReaderRequirementsReadOnly(projectFile, {allowFormat6});
   const history = path.join(localDir, PROJECT_HISTORY_FILE), cache = path.join(cacheDir, PROJECT_CACHE_FILE);
   const marker = path.join(localDir, FORMAT4_RESTORE_ACTIVE);
   const request = hash([projectFile, projectId, backupId, expected.contentSequence, expected.contentToken]);

@@ -10,7 +10,7 @@ import {copyProjectToNewFile} from '../../../../packages/business/src/project-fi
 import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
-import {inspectProjectFormatHeader, projectReadFormatOptions} from '../../../../packages/business/src/project-file/connection.ts';
+import {assertProjectReaderRequirementsReadOnly, projectReadFormatOptions} from '../../../../packages/business/src/project-file/connection.ts';
 import {inspectCopiedProjectFile, openProjectBackup, syncCopiedFile, syncCopiedDirectory, publishProjectCopyFile,
   createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {initializeProjectCopyHistory, readProjectCopyHistory} from '../../../../packages/business/src/project-file/copy-history.ts';
@@ -158,7 +158,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
     if (!sameCopyIdentity(copyIdentity(readyFile), intent.stageIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目文件已被替换。');
     // A newer app may have stopped on either side of project publication.
     // Apply the host's format gate before publishing any remaining records.
-    if (!published || !manager.status(intent.projectId)) inspectProjectFormatHeader(readyFile, readFormat);
+    if (!published || !manager.status(intent.projectId)) assertProjectReaderRequirementsReadOnly(readyFile, readFormat);
     const local = projectLocation(directories, intent.projectId).localDir;
     ensurePrivateDirectory(path.dirname(local), {create: true});
     if (!intent.recordsIdentity) {
@@ -243,6 +243,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
       assertProjectFile(registration.projectFile);
       assertProjectFile(input.projectFile);
       if (registration.projectFile === input.projectFile) throw copyFailure('PROJECT_FILE_EXISTS', '目标不能是原项目文件。');
+      if (readFormat?.allowFormat6) assertProjectReaderRequirementsReadOnly(registration.projectFile, readFormat);
       if (!intent) {
         if (lstatSync(input.projectFile, {throwIfNoEntry: false})) throw copyFailure('PROJECT_FILE_EXISTS', '目标项目文件已存在。');
         library.registry.assertCanRegister?.();

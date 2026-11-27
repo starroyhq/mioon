@@ -4,7 +4,9 @@ import path from 'node:path';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, projectReadFormatOptions,
   PROJECT_FILE_SCHEMA_VERSION, isSequenceProjectFormat, recoverProjectFile} from '@mioon/business/project-file/index';
 import type {ProjectFileRecovery} from '@mioon/business/project-file/index';
+import {assertProjectReaderRequirementsReadOnly} from '../../../packages/business/src/project-file/connection.ts';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../packages/contracts/src/project-reader-requirements.ts';
 import {PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {PROJECT_INVALID_REASONS} from '../../../packages/contracts/src/project-file.ts';
 
@@ -20,7 +22,7 @@ export interface ProjectCatalogScanInput {
 const formatStatuses = ['current', 'upgrade-required', 'newer'] as const;
 
 export interface ProjectCatalogScanResult {
-  readonly recovery: ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'} | 'changed';
+  readonly recovery: ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'} | {readonly state: 'update-required'} | 'changed';
   readonly generation?: string;
   readonly birthtime?: string;
   readonly format?: {readonly generation: string; readonly status: typeof formatStatuses[number]};
@@ -60,8 +62,9 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     try {
       recovery = recoverProjectFile(file, recoveryProfile, {project: assertProject, journal: assertJournal});
     } catch (error) {
-      if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') throw error;
-      recovery = {state: 'invalid', reason: 'format-newer'};
+      if (error instanceof AppError && error.code === PROJECT_READER_UPDATE_REQUIRED) recovery = {state: 'update-required'};
+      else if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') recovery = {state: 'invalid', reason: 'format-newer'};
+      else throw error;
     }
     if (changed) return {recovery: 'changed'};
     const after = observe();
@@ -78,9 +81,14 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     let status: typeof formatStatuses[number];
     try {
       const version = inspectProjectFormatHeader(file, developmentProfile, assertHeader);
+      if (version === FORMAT6_PROJECT_SCHEMA_VERSION) assertProjectReaderRequirementsReadOnly(file, developmentProfile);
       status = version < targetFormat ? 'upgrade-required' : version === targetFormat ? 'current' : 'newer';
     } catch (error) {
       if (changed) return {recovery: 'changed'};
+      if (error instanceof AppError && error.code === PROJECT_READER_UPDATE_REQUIRED) {
+        assertHeader(observe());
+        return {...result, recovery: {state: 'update-required'}};
+      }
       if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') return result;
       status = 'newer';
     }
@@ -122,7 +130,7 @@ function isScanRecovery(value: unknown): boolean {
   if (recovery.state === 'invalid') return Object.keys(recovery).length === 2
     && (recovery.reason === 'format-newer' || PROJECT_INVALID_REASONS.some(reason => reason === recovery.reason));
   return Object.keys(recovery).length === 1
-    && ['clean', 'recovered', 'locked', 'open-here', 'missing', 'access-denied'].some(state => state === recovery.state);
+    && ['clean', 'recovered', 'locked', 'open-here', 'missing', 'access-denied', 'update-required'].some(state => state === recovery.state);
 }
 
 export function isCatalogScanResult(value: unknown): value is ProjectCatalogScanResult {

@@ -5,6 +5,7 @@ import {randomBytes,randomUUID, createHash} from 'node:crypto';
 import {lstatSync, mkdirSync, readdirSync, rmSync, rmdirSync} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../../packages/contracts/src/project-reader-requirements.ts';
 import {isProjectId} from '../../../../packages/contracts/src/project-file.ts';
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic, validateManagedFile, validatePrivateDirectory} from '../../../../packages/contracts/src/private-storage.ts';
 import {projectBackupSchemas, projectBackupStatusSchema, projectBackupSummarySchema} from '../../../../packages/contracts/src/project-backups.ts';
@@ -13,7 +14,8 @@ import {legacyProjectBackupIndexSchema,legacyProjectBackupIntentSchema,projectBa
 import type {ProjectBackupEntry} from '../../../../packages/contracts/src/project-backup-records.ts';
 import {createProjectBackup, openProjectBackup, inspectCopiedProjectFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {copyProjectBackup} from '../../../../packages/business/src/project-file/copy.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import {assertHeldProjectReaderRequirements} from '../../../../packages/business/src/project-file/reader-requirements.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {transferCopiedProjectConfirmations} from './copy-outside-confirmations.ts';
 import type {CopyOutsidePaths} from './copy-outside-confirmations.ts';
@@ -127,9 +129,14 @@ export function createProjectBackups({directories, registry, identity, assertPro
       const reader = verify(entry, key); reader.close();
     } catch (error) {validated.delete(file); throw error;}
   };
-  const validEntries = (entries: Entry[]): Entry[] => entries.filter(entry => {
-    try {confirm(entry); return true;} catch {return false;}
-  });
+  const validEntry = (entry: Entry): boolean => {
+    try {confirm(entry); return true;}
+    catch (error) {
+      if (error instanceof AppError && error.code === PROJECT_READER_UPDATE_REQUIRED) throw error;
+      return false;
+    }
+  };
+  const validEntries = (entries: Entry[]): Entry[] => entries.filter(validEntry);
   const cleanup = (projectId: string, retained: Entry[]): void => {
     const root = rootFor(projectId), keep = new Set(retained.map(entry => entry.backupId));
     // The per-project queue pins every reader. A crash can leave a complete
@@ -187,20 +194,21 @@ export function createProjectBackups({directories, registry, identity, assertPro
     let pending: string | undefined, published = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      if (targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION) assertHeldProjectReaderRequirements(host.store);
+      const indexed = index(projectId);
+      const stamp=host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file WHERE singleton=1').get();
+      // An unchanged open or close only needs the latest valid copy. Older
+      // copies are checked before publishing a change that could remove them.
+      let latestIndex = 0;
+      while (latestIndex < indexed.length && !validEntry(indexed[latestIndex])) latestIndex++;
+      const latest = indexed[latestIndex];
+      const unchanged = latest && stamp && latest.contentSequence === stamp.contentSequence && latest.contentToken === stamp.contentToken;
+      const retained = indexed.slice(latestIndex);
+      if (!unchanged && targetFormat === FORMAT6_PROJECT_SCHEMA_VERSION) validEntries(retained);
       current = {...readStatus(projectId), lastAttemptAt: current.lastAttemptAt, state: 'running', lastError: null};
       ensurePrivateDirectory(root, {create: true});
       saveStatus(current);
-      const indexed = index(projectId);
-      const stamp=host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file WHERE singleton=1').get();
-      // Unchanged opens need only the latest valid copy. Inspecting/listing or
-      // making a new copy checks the older entries when they are actually used.
-      let latestIndex = 0;
-      for (; latestIndex < indexed.length; latestIndex++) {
-        try {confirm(indexed[latestIndex]); break;} catch { /* A bad copy never suppresses a replacement. */ }
-      }
-      const latest = indexed[latestIndex];
-      if (latest && stamp && latest.contentSequence === stamp.contentSequence && latest.contentToken===stamp.contentToken) {
-        const retained = indexed.slice(latestIndex);
+      if (unchanged) {
         if (latestIndex !== 0) durableWrite(root, 'index.json', {version: 2, projectId, backups: retained});
         // Confirm the committed index's directory before deleting any orphan.
         syncCopiedDirectory(root);
@@ -218,8 +226,7 @@ export function createProjectBackups({directories, registry, identity, assertPro
       const copied = await backup(host.store, path.join(pending, 'project.mioon'));
       if (copied.projectId !== projectId) throw failure('PROJECT_BACKUP_CHANGED', '备份项目身份不一致。');
       const entry: Entry = {...projectBackupSummarySchema.parse({backupId, projectId, contentSequence: copied.contentSequence,contentToken:copied.contentToken, createdAt: new Date().toISOString(), reason, sizeBytes: copied.sizeBytes}), sourceProjectDir: host.store.projectDir};
-      const previous = validEntries(indexed.slice(latestIndex));
-      const next = [entry, ...previous].slice(0, 3);
+      const next = [entry, ...validEntries(retained)].slice(0, 3);
       // Publication of this index is the commit point. Never restore an older
       // index after removing its files, even when later cleanup fails.
       write(root, 'index.json', {version: 2, projectId, backups: next});
@@ -231,7 +238,11 @@ export function createProjectBackups({directories, registry, identity, assertPro
       saveStatus(current);
       cleanup(projectId, next);
     } catch (error) {
-      recordFailure(projectId, current, error);
+      if (!(error instanceof AppError && error.code === PROJECT_READER_UPDATE_REQUIRED)) recordFailure(projectId, current, error);
+      else {
+        statuses.delete(projectId);
+        try {onWarning(projectId, error.code);} catch {}
+      }
       if (!published && pending) {
         // Only this invocation's fresh staging directory, never an indexed one.
         try {rmSync(pending, {recursive: true, force: true});} catch {}

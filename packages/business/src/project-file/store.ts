@@ -7,7 +7,8 @@ import type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConn
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
-import {isSequenceProjectFormat} from './schema/databases.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './schema/databases.ts';
+import {assertProjectReaderRequirements} from './reader-requirements.ts';
 import {fenceFormat5ProjectContent} from './format5-content.ts';
 import {putFormat5TimelineInside, readFormat5TimelineRecord} from './format5-timeline.ts';
 import {readProjectContentStamp, sameContentStamp, type ContentStamp} from './content-stamp.ts';
@@ -238,6 +239,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     let result!: T;
     try {
       const formatBefore = database.prepare('PRAGMA project.user_version').get()?.user_version;
+      if (typeof formatBefore === 'number') assertProjectReaderRequirements(database, 'project', formatBefore);
       const format5Content = isSequenceProjectFormat(formatBefore) ? readProjectContentStamp(database) : undefined;
       const schemaBefore = format5Content ? database.prepare('PRAGMA project.schema_version').get()?.schema_version : undefined;
       for (const fence of transactionFences.get(database) ?? []) fence();
@@ -246,10 +248,18 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
         if (isPromise(result)) Promise.resolve(result).catch(() => {});
         throw new TypeError('Transactions require a synchronous result');
       }
-      for (const observer of transactionObservers.get(database) ?? []) observer(result);
-      if (format5() &&
+      const observers = transactionObservers.get(database);
+      if (observers?.size && formatBefore === FORMAT6_PROJECT_SCHEMA_VERSION) {
+        assertProjectReaderRequirements(database, 'project', formatBefore);
+      }
+      for (const observer of observers ?? []) observer(result);
+      const formatAfter = database.prepare('PRAGMA project.user_version').get()?.user_version;
+      if (isSequenceProjectFormat(formatAfter) &&
           (!format5Content || !sameContentStamp(format5Content, readProjectContentStamp(database)) ||
-           schemaBefore !== database.prepare('PRAGMA project.schema_version').get()?.schema_version)) fenceFormat5ProjectContent(database, 'project');
+           schemaBefore !== database.prepare('PRAGMA project.schema_version').get()?.schema_version)) {
+        assertProjectReaderRequirements(database, 'project', formatAfter);
+        fenceFormat5ProjectContent(database, 'project');
+      }
       // A pure quota check prevents a committed task from exceeding the
       // discovery bound. It never writes a prepared app-library record.
       validateBackgroundTaskChanges(database);

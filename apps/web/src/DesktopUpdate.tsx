@@ -29,9 +29,14 @@ function failureMessage(control: Control, error: unknown): Feedback {
 
 interface Presentation {
   readonly view: DesktopUpdateView | null;
+  readonly check: (() => void) | undefined;
   open(): void;
 }
 const UpdatePresentation = createContext<Presentation | null>(null);
+
+export function useDesktopCheckUpdate() {
+  return useContext(UpdatePresentation)?.check;
+}
 
 function readBridge(): DesktopUpdateBridge | null {
   if (typeof window === 'undefined') return null;
@@ -131,6 +136,7 @@ export function DesktopUpdateRoot({blocked, children}: {readonly blocked: boolea
     }
   }
   const show = () => {if (!blocked) changeOpen(true);};
+  const check = () => {if (bridge) void run('check', () => bridge.check());};
   const install = (mode: 'now' | 'on-quit') => {
     if (!bridge || view?.state.kind !== 'ready') return;
     const {version} = view.state.offer;
@@ -140,11 +146,11 @@ export function DesktopUpdateRoot({blocked, children}: {readonly blocked: boolea
   };
   const state = view?.state;
   const visible = !blocked && state?.kind !== 'disabled';
-  return <UpdatePresentation.Provider value={{view, open: show}}>
+  return <UpdatePresentation.Provider value={{view, open: show, check: bridge ? check : undefined}}>
     {children}
     {visible && bridge && view && open && <DesktopUpdateDialog view={view} feedback={feedback} pending={pending}
       dismiss={reason => {if (state?.kind === 'ready' && reason === 'escape-key') install('on-quit'); else changeOpen(false);}}
-      check={() => {void run('check', () => bridge.check());}}
+      check={check}
       download={version => {void run('download', () => bridge.download(version));}}
       cancel={() => {void run('cancel', () => bridge.cancel());}}
       install={install} />}
