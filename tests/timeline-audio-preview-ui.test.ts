@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
+import { TIMELINE_LIMITS } from '../packages/contracts/src/timeline-limits.ts';
 import { createTimelineAudioPreviewController, timelineAudioPreviewViewState, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview, timelineAudioPreviewErrorMessage } from '../apps/web/src/use-timeline-audio-preview.ts';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -190,7 +191,9 @@ test('saved source identity excludes drafts/private paths/irrelevant library row
   assert.notEqual(timelineAudioPreviewSourceIdentity({ ...timeline, revision: 2 }, [asset]), identity);
   assert.notEqual(timelineAudioPreviewSourceIdentity({ ...timeline, tracks: [{ ...timeline.tracks[0], muted: true }] }, [asset]), identity);
   assert.notEqual(timelineAudioPreviewSourceIdentity({ ...timeline, clips: [{ ...timeline.clips[0], fadeInFrames: 1 }] }, [asset]), identity);
-  assert.equal(timelineAudioPreviewSourceIdentity({ ...timeline, clips: Array(101).fill(timeline.clips[0]) }, [asset]), '');
+  const maxClips = Array.from({length: TIMELINE_LIMITS.maxClips}, (_, index) => ({...timeline.clips[0], id: id(100 + index)}));
+  assert.ok(timelineAudioPreviewSourceIdentity({...timeline, clips: maxClips}, [asset]));
+  assert.equal(timelineAudioPreviewSourceIdentity({...timeline, clips: [...maxClips, timeline.clips[0]]}, [asset]), '');
 });
 
 test('App helpers keep playback ephemeral and route each explicit seek to exactly one owner', async () => {
@@ -278,8 +281,8 @@ test('initially suspended context remains eligible for explicit play after compl
   assert.equal(f.calls.transports[0].playCalls, 0);
 });
 
-test('explicit editor seek beyond saved duration stops sound and persists once up to the existing 18000-frame bound', async () => {
-  for (const frame of [1200, 18000]) {
+test('explicit editor seek beyond saved duration stops sound and persists once up to the shared timeline bound', async () => {
+  for (const frame of [1200, TIMELINE_LIMITS.maxFrames]) {
     const f = fixture(); await f.controller.prepare(0); await f.controller.play();
     assert.equal(f.controller.seek(frame), false); assert.equal(f.controller.getState().plan, null);
     assert.equal(f.calls.transports[0].disposed, true); assert.deepEqual(f.calls.positions, [frame]); assert.equal(f.calls.prepares.length, 1);
@@ -288,7 +291,7 @@ test('explicit editor seek beyond saved duration stops sound and persists once u
 
 test('out-of-editor bounds and stale owners still cannot change the saved playhead', async () => {
   const f = fixture(); await f.controller.prepare(0); await f.controller.play(); const old = f.controller.getState();
-  for (const frame of [-1, 18001, 1200.5, NaN]) assert.equal(f.controller.seek(frame), false);
+  for (const frame of [-1, TIMELINE_LIMITS.maxFrames + 1, 1200.5, NaN]) assert.equal(f.controller.seek(frame), false);
   assert.equal(f.controller.getState().phase, 'playing'); assert.deepEqual(f.calls.positions, []);
   f.setContext({ scope: 'new-project-epoch' }); assert.equal(f.controller.seek(1200, old), false); assert.deepEqual(f.calls.positions, []);
 });

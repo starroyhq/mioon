@@ -56,6 +56,17 @@ test('v2 render staging confirms only exact private owned cleanup and preserves 
  assert.throws(()=>changed.effect(),{code:'INVALID_TIMELINE_SNAPSHOT'});assert.equal(changed.cleanup(),false);assert.ok((await stat(replacement)).isFile());
 });
 
+test('a render attempt enforces its explicit staging file count',async t=>{
+ const {createTimelineFloatStaging}=await import('../packages/business/src/timeline-float-staging.ts');
+ const root=await sandbox(t),stage=createTimelineFloatStaging(path.join(root,'output.mp4'),{maxFiles:2},
+  runtime() as unknown as Parameters<typeof createTimelineFloatStaging>[2]);
+ try{
+  stage.reserve(path.join(stage.work,'segment.mov'));
+  await stage.writeOwnedFile(path.join(stage.work,'segments.txt'),'manifest');
+  assert.throws(()=>stage.reserve(path.join(stage.work,'extra.mov')),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ }finally{assert.equal(stage.cleanup(),true);}
+});
+
 test('capability preserves a primary encode failure if exact cleanup also cannot finish',async t=>{
  const root=await sandbox(t),primary=Object.assign(Error('primary encode failure'),{code:'MEDIA_EXIT_FAILED'});
  const r=runtime({async run(command: unknown,args: string[]){const work=path.dirname(((args.at(-1)) as unknown as Parameters<typeof path.dirname>[0]));await writeFile(path.join(work,'unknown-file'),'foreign');throw primary;}});

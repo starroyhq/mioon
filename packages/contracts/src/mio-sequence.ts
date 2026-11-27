@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 /** Bounded Mio/MT write actions for the unified format-5 sequence RPC.
  *
  * The model names inspected targets and one action; it never supplies an
@@ -67,7 +68,7 @@ const mioSequenceActionBranches = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('delete-node'), nodeId: uuid}).strict(),
   z.object({kind: z.literal('reorder'), clipId: uuid, beforeClipId: uuid.nullable()}).strict(),
   z.object({kind: z.literal('remove'), clipId: uuid}).strict(),
-  z.object({kind: z.literal('split'), clipId: uuid, offsetFrames: z.number().int().min(1).max(18000)}).strict(),
+  z.object({kind: z.literal('split'), clipId: uuid, offsetFrames: z.number().int().min(1).max(TIMELINE_LIMITS.maxFrames)}).strict(),
   z.object({kind: z.literal('set-mode'), clipId: uuid, mode: z.enum(['follow', 'locked']),
     versionId: uuid.nullable().optional()}).strict(),
   z.object({kind: z.literal('copy-move'), clipId: uuid, beforeClipId: uuid.nullable()}).strict(),
@@ -98,7 +99,7 @@ const mioSequenceActionBranches = z.discriminatedUnion('kind', [
   // service, and a linked cue text edit goes through `update` + the shot line.
   z.object({kind: z.literal('dialogue'), shotId: uuid,
     edits: z.array(dialogueEdit).min(1).max(MIO_SEQUENCE_ACTION_LIMITS.maxDialogueEdits)}).strict(),
-  z.object({kind: z.literal('subtitles'), edits: z.array(subtitleEdit).min(1).max(100)}).strict(),
+  z.object({kind: z.literal('subtitles'), edits: z.array(subtitleEdit).min(1).max(TIMELINE_LIMITS.maxSubtitleCues)}).strict(),
   z.object({kind: z.literal('format-set'),
     presetId: sequenceEditFormatIntentSchema.shape.operation.shape.presetId}).strict(),
   z.object({kind: z.literal('split-at-scenes'), assetId: uuid, resultId: uuid}).strict(),

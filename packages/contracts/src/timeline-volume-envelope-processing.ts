@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from './timeline-limits.ts';
 import {validateVolumeEnvelope, volumeEnvelopeFieldsAfterEdit, VOLUME_ENVELOPE_PROFILE} from './timeline-volume-envelope.ts';
 import type {VolumeEnvelope, VolumeEnvelopeClip} from './timeline-volume-envelope.ts';
 export type TimelineVolumeEnvelope = VolumeEnvelope;
@@ -30,7 +31,7 @@ export function isVolumeEnvelopeProcessingSnapshot(snapshot: unknown): boolean {
   const clips = snapshot.timeline.clips;
   if (!clips.some(clip => object(clip) && Object.hasOwn(clip, 'volumeEnvelope')))
     return !Object.hasOwn(snapshot, 'volumeEnvelopeProfile');
-  if (clips.length > 100) return false;
+  if (clips.length > TIMELINE_LIMITS.maxClips) return false;
   try {
     const expected = volumeEnvelopeProcessingProfile(clips);
     if (Object.hasOwn(snapshot, 'volumeEnvelopeProfile') !== (expected !== undefined) || snapshot.volumeEnvelopeProfile !== expected) return false;

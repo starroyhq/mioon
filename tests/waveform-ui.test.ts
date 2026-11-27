@@ -21,6 +21,7 @@ import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 import {createDragConflictPreviewController, dragPreviewTargetKey} from '../apps/web/src/edit-ui/drag-conflict-preview.ts';
 import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.ts';
 
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const projectId = '11111111-1111-4111-8111-111111111111';
@@ -292,6 +293,7 @@ function componentHarness({ hook = false, realTimelineWaveforms = false, wavefor
       if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: mediaGate, ProjectMediaImage: 'img'}; if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (id === 'react') return react;
       if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
       if (id === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences:DEFAULT_UI_PREFERENCES})};
+      if (id === '@mioon/contracts/timeline-limits') return {TIMELINE_LIMITS};
       if (id === './timeline-view-geometry.ts') return geometry;
       if (id === './timeline-compact-layout.ts') return compactLayout;
       if (id === './timeline-removal.ts') return removalState;

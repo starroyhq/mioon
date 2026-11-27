@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import { rawVolumeEnvelopeFields, validateRawVolumeEnvelope, rawVolumeEnvelopeChanged, isRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
 import type { RawVolumeEnvelope, VolumeEnvelopeComposition } from './clip-volume-envelope-state.ts';
 import type { RawOpacityEnvelopeFields } from './clip-opacity-envelope-state.ts';
@@ -65,7 +66,7 @@ export function clipDraftPatch(raw: ClipDraftRaw, readOnlyRect?: ClipDraftRaw['r
     if (!Number.isFinite(value) || field !== 'gain' && !Number.isSafeInteger(value)) return null;
     patch[field] = value;
   }
-  if (Number(patch.startFrame) < 0 || Number(patch.durationFrames) < 1 || Number(patch.durationFrames) > 18000 || Number(patch.startFrame) + Number(patch.durationFrames) > 18000 || Number(patch.sourceInFrame) < 0 || Number(patch.gain) < 0 || Number(patch.gain) > 2) return null;
+  if (Number(patch.startFrame) < 0 || Number(patch.durationFrames) < 1 || Number(patch.durationFrames) > TIMELINE_LIMITS.maxFrames || Number(patch.startFrame) + Number(patch.durationFrames) > TIMELINE_LIMITS.maxFrames || Number(patch.sourceInFrame) < 0 || Number(patch.gain) < 0 || Number(patch.gain) > 2) return null;
   const rect = Object.fromEntries(Object.entries(raw.rect).map(([key, value]) => [key, number(value)]));
   if (Object.values(rect).some(value => !Number.isSafeInteger(value) || value % 2 !== 0) || rect.x < 0 || rect.y < 0 || rect.width < 2 || rect.height < 2) return null;
   // Local drafts still record the whole form. A recovered geometry edit must

@@ -1,7 +1,8 @@
+import {TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from './timeline-limits.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
-import {isTimelineSubtitles} from './timeline-subtitles.ts';
+import {isTimelineSubtitles,TIMELINE_RENDER_SUBTITLE_LIMITS} from './timeline-subtitles.ts';
 import {timelineOutputPreset} from './timeline-format.ts';
 import {isClipTransform} from './timeline-clip-transform.ts';
 import {isClipLayoutRect, type ClipLayout} from './timeline-clip-layout.ts';
@@ -55,14 +56,17 @@ const clipFields = ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationF
 // They are validated as booleans below; older snapshots omit both.
 const format5ClipFlags = ['muted', 'soundOnly'];
 
-export function isTimelineRecord(value: unknown, {projectId, ...options}: TimelineRecordOptions = {}): value is TimelineRecord {
-  const clipFlags = acceptsFormat5ClipFlags(options) ? format5ClipFlags : [];
+export function isTimelineRecord(value: unknown, {projectId, ...options}: TimelineRecordOptions = {},
+  maxBytes = TIMELINE_RESPONSE_BYTES): value is TimelineRecord {
+  const native = acceptsFormat5ClipFlags(options);
+  const clipFlags = native ? format5ClipFlags : [];
+  const limits = native ? TIMELINE_LIMITS : LEGACY_TIMELINE_LIMITS;
   if (!fields(value, timelineFields, ['subtitles']) || !uuid(value.id) || !uuid(value.projectId) ||
       (projectId !== undefined && value.projectId !== projectId) || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER) ||
       !timelineOutputPreset(value) ||
-      !integer(value.durationFrames, 0, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
-      !Array.isArray(value.tracks) || value.tracks.length < 1 || value.tracks.length > 12 ||
-      !Array.isArray(value.clips) || value.clips.length > 100) return false;
+      !integer(value.durationFrames, 0, limits.maxFrames) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
+      !Array.isArray(value.tracks) || value.tracks.length < 1 || value.tracks.length > TIMELINE_LIMITS.maxTracks ||
+      !Array.isArray(value.clips) || value.clips.length > limits.maxClips) return false;
   const tracks = new Map<string, TimelineClipRecord[]>(), trackKinds = new Map<string, 'video' | 'audio'>(), ids = new Set<string>();
   for (const track of value.tracks as unknown[]) {
     if (!fields(track, trackFields) || !uuid(track.id) || tracks.has(track.id) || !text(track.name, 150) ||
@@ -74,8 +78,9 @@ export function isTimelineRecord(value: unknown, {projectId, ...options}: Timeli
   for (const clip of value.clips as unknown[]) {
     if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout', ...clipFlags]) ||
         !uuid(clip.id) || ids.has(clip.id) || !uuid(clip.trackId) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
-        !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
-        clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
+        !integer(clip.startFrame, 0, limits.maxFrames) || !integer(clip.durationFrames, 1, limits.maxFrames) ||
+        clip.startFrame + clip.durationFrames > limits.maxFrames ||
+        !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - (native ? clip.durationFrames : LEGACY_TIMELINE_LIMITS.maxFrames)) ||
         !Number.isFinite(clip.gain) || (clip.gain as number) < 0 || (clip.gain as number) > 2 ||
         Object.hasOwn(clip, 'audioRole') && !isClipAudioRole(clip.audioRole) ||
         Object.hasOwn(clip, 'volumeEnvelope') && !isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames) ||
@@ -96,9 +101,9 @@ export function isTimelineRecord(value: unknown, {projectId, ...options}: Timeli
     clips.sort((a, b) => a.startFrame - b.startFrame);
     for (let i = 1; i < clips.length; i++) if (clips[i].startFrame < clips[i - 1].startFrame + clips[i - 1].durationFrames) return false;
   }
-  if (duration !== value.durationFrames || Object.hasOwn(value, 'subtitles') && !isTimelineSubtitles(value.subtitles, duration)) return false;
+  if (duration !== value.durationFrames || Object.hasOwn(value, 'subtitles') && !isTimelineSubtitles(value.subtitles, duration, native ? TIMELINE_RENDER_SUBTITLE_LIMITS : undefined)) return false;
   // Structural caps bound serialization before checking the retained row cap.
-  return encoder.encode(JSON.stringify(value)).byteLength <= TIMELINE_RESPONSE_BYTES;
+  return encoder.encode(JSON.stringify(value)).byteLength <= maxBytes;
 }
 
 export function isTimelineReplacementResponse(value: unknown, input: unknown, options: TimelineRecordOptions = {}): boolean {

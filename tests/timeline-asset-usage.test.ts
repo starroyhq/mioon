@@ -139,11 +139,11 @@ test('invalid revision, track position, names and UUIDs are unknown', () => {
 
 test('unsafe, negative, fractional or overflowing frame metadata remains unknown', () => {
   for (const [field, values] of ([
-    ['startFrame', [-1, 0.1, '0', NaN, Infinity, 18000]],
-    ['durationFrames', [0, -1, 0.1, '30', NaN, Infinity, 18001]],
-    ['sourceInFrame', [-1, 0.1, '15', NaN, Infinity, Number.MAX_SAFE_INTEGER - 17999]],
+    ['startFrame', [-1, 0.1, '0', NaN, Infinity, 54000]],
+    ['durationFrames', [0, -1, 0.1, '30', NaN, Infinity, 54001]],
+    ['sourceInFrame', [-1, 0.1, '15', NaN, Infinity, Number.MAX_SAFE_INTEGER - 53999]],
   ] as const)) for (const value of values) { const input = fixture(); input.timeline.clips[0][field] = (value as unknown as ((((typeof input)["timeline"])["clips"])[number])[typeof field]); assertUnknown(input); }
-  for (const duration of ([-1, 0, 29, 31, 18001, '30'] as const)) {
+  for (const duration of ([-1, 0, 29, 31, 54001, '30'] as const)) {
     const input = fixture(); input.timeline.durationFrames = (duration as unknown as ((typeof input)["timeline"])["durationFrames"]); assertUnknown(input);
   }
 });
@@ -158,10 +158,10 @@ test('inconsistent aggregate duration or overlapping saved intervals are unknown
 
 test('current exact timeline limits pass, while oversized tracks or clips are rejected before traversal', () => {
   const input = fixture(); input.timeline.tracks = Array.from({ length: 12 }, (_, index) => track(id(100 + index), index));
-  input.timeline.clips = Array.from({ length: 100 }, (_, index) => clip(id(200 + index), { trackId: id(100), startFrame: index * 180, durationFrames: 180 }));
-  input.timeline.durationFrames = 18000;
+  input.timeline.clips = Array.from({ length: 300 }, (_, index) => clip(id(200 + index), { trackId: id(100), startFrame: index * 180, durationFrames: 180 }));
+  input.timeline.durationFrames = 54000;
   assert.equal(deriveTimelineAssetUsage(input).status, 'ready');
-  input.timeline.clips.push(clip(id(400))); assertUnknown(input);
+  input.timeline.clips.push(clip(id(600))); assertUnknown(input);
   input.timeline.clips.pop(); input.timeline.tracks.push(track(id(401), 0)); assertUnknown(input);
   input.timeline.tracks = []; assertUnknown(input);
 });
@@ -276,7 +276,7 @@ test('malformed or oversized present identity metadata is unknown rather than ar
 (    input: { timeline: { clips: { rect: { x: number; }; }[]; }; }) => { input.timeline.clips[0].rect.x = -1; },
 (    input: { timeline: { clips: { gain: {}; }[]; }; }) => { input.timeline.clips[0].gain = {}; },
 (    input: { timeline: { clips: { fadeInFrames: string; }[]; }; }) => { input.timeline.clips[0].fadeInFrames = '0'; },
-(    input: { timeline: { clips: { fadeOutFrames: number; }[]; }; }) => { input.timeline.clips[0].fadeOutFrames = 18001; },
+(    input: { timeline: { clips: { fadeOutFrames: number; }[]; }; }) => { input.timeline.clips[0].fadeOutFrames = 54001; },
 (    input: { timeline: { tracks: { kind: {}; }[]; }; }) => { input.timeline.tracks[0].kind = {}; },
 (    input: { timeline: { tracks: { muted: undefined; }[]; }; }) => { input.timeline.tracks[0].muted = undefined; },
   ];
@@ -375,7 +375,7 @@ test('semantic retention replaces changed status, scope, membership, source iden
 
 test('projection source has no storage, RPC, mutation or untyped-boundary escape', async () => {
   const source = await readFile(new URL('../apps/web/src/timeline-asset-usage.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /^import\s/m, 'pure dependency-free projection');
+  assert.deepEqual(source.match(/^import[^\n]+/gm), ["import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';"], 'projection only imports shared limits');
   assert.doesNotMatch(source, /\b(?:fetch|localStorage|sessionStorage|indexedDB)\b|@ts-ignore|@ts-nocheck|\bas\s+(?:unknown|any)\b|:\s*any\b/);
 });
 

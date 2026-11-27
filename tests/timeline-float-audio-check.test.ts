@@ -3,8 +3,12 @@ type FloatCall={command:string;args:string[];options:MediaStreamingRunOptions};
 type FloatPermit=string & {command?:never;args?:never;options?:never};
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {LEGACY_TIMELINE_LIMITS,TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
+import {createExportAttemptChunkFence} from '../packages/business/src/export-attempt-fence.ts';
 import {createTimelineFloatAudioAccumulator,createTimelineFloatAudioChecker,parseTimelineFloatAudioProbe,
-  assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure,isOwnedTimelineFloatAudioMeasurement,readTimelineFloatAudioCheckFailure,TIMELINE_FLOAT_AUDIO_LIMITS} from '../packages/business/src/timeline-float-audio-check.ts';
+  assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure,isOwnedTimelineFloatAudioMeasurement,readTimelineFloatAudioCheckFailure,TIMELINE_FLOAT_AUDIO_LIMITS,
+  timelineFloatAudioBudgetMs} from '../packages/business/src/timeline-float-audio-check.ts';
 const pcm=(frames: number|undefined=1600,value: ((arg0: number,arg1: number) => number)|undefined=(_frame?: unknown,channel?: unknown)=>channel?-1.5:1.25)=>{const bytes=Buffer.alloc(frames*8);for(let frame=0;frame<frames;frame++)for(let channel=0;channel<2;channel++)bytes.writeFloatLE(value(frame,channel),frame*8+channel*4);return bytes;};
 const metadata=()=>({format:{format_name:'concat'},streams:[{index:0,codec_type:'video'},{index:1,codec_type:'audio',codec_name:'pcm_f32le',sample_fmt:'flt',sample_rate:'48000',channels:2,channel_layout:'stereo'}]});
 const options=(overrides?: { signal?: AbortSignal; beforeEffect?: (() => void)|(() => void); remainingMs?: (() => number)|(() => number)|(() => number); ownedSegments?: { file: string; outputFrames: number; }[]|{ file: string; outputFrames: number; }[]; }|undefined)=>({beforeEffect(){},ownedSegments:[{file:'/private/segment-0.mov',outputFrames:1}],...overrides});
@@ -34,12 +38,13 @@ test('float complete <=1 passes; overrange rejection exposes only privately bran
 });
 
 test('float accumulator rejects short, extra, residual and poisoned PCM permanently',()=>{
- for(const frames of ([0,-1,1.1,18001,NaN,Infinity] as const))assert.throws(()=>createTimelineFloatAudioAccumulator(frames),{code:'MEDIA_INVALID_CONFIGURATION'});
+ assert.doesNotThrow(()=>createTimelineFloatAudioAccumulator(TIMELINE_LIMITS.maxFrames));
+ for(const frames of ([0,-1,1.1,TIMELINE_LIMITS.maxFrames+1,NaN,Infinity] as const))assert.throws(()=>createTimelineFloatAudioAccumulator(frames),{code:'MEDIA_INVALID_CONFIGURATION'});
  for(const value of ([NaN,Infinity,-Infinity] as const)){const sum=createTimelineFloatAudioAccumulator(1);assert.throws(()=>sum.write(pcm(1600,((()=>value) as unknown as Parameters<typeof pcm>[1]))),{code:'EXPORT_AUDIO_INVALID_PCM'});assert.throws(()=>sum.finish(),{code:'EXPORT_AUDIO_INVALID_PCM'});}
  const short=createTimelineFloatAudioAccumulator(1);short.write(pcm(1599));assert.throws(()=>short.finish(),{code:'EXPORT_AUDIO_SAMPLE_COUNT_MISMATCH'});
  const tail=createTimelineFloatAudioAccumulator(1);tail.write(pcm().subarray(0,-1));assert.throws(()=>tail.finish(),{code:'EXPORT_AUDIO_INVALID_PCM'});
  for(const excess of ([1,8] as const)){const sum=createTimelineFloatAudioAccumulator(1);sum.write(pcm());assert.throws(()=>sum.write(Buffer.alloc(excess)),{code:'EXPORT_AUDIO_SAMPLE_COUNT_MISMATCH'});assert.throws(()=>sum.finish(),{code:'EXPORT_AUDIO_SAMPLE_COUNT_MISMATCH'});}
- assert.equal(TIMELINE_FLOAT_AUDIO_LIMITS.pcmBytes,230400000);assert.equal(TIMELINE_FLOAT_AUDIO_LIMITS.sampleFrames,28800000);
+ assert.equal(TIMELINE_FLOAT_AUDIO_LIMITS.pcmBytes,691_200_000);assert.equal(TIMELINE_FLOAT_AUDIO_LIMITS.sampleFrames,86_400_000);
 });
 
 test('float probe refuses other audio formats and missing/ambiguous streams',()=>{
@@ -51,7 +56,7 @@ test('float probe refuses other audio formats and missing/ambiguous streams',()=
 test('checker measures owned concat naturally with unchanged 48k stereo floats and original signal',async()=>{
  const r=runtime(),controller=new AbortController();let fences=0;
  const measured=await createTimelineFloatAudioChecker(((r) as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]))('/private/segments.txt',1,options({signal:controller.signal,beforeEffect(){fences++;}}));assert.equal(measured.peakLinear,1.5);assert.ok(fences>=8);
- const call=r.calls.find(value=>value.command==='ffmpeg');assert.equal(((call)!.options)!.signal,controller.signal);assert.equal(((call)!.options)!.maxStdoutBytes,230400000);assert.ok((((call)!.options)!.timeout)!<=117000);
+ const call=r.calls.find(value=>value.command==='ffmpeg');assert.equal(((call)!.options)!.signal,controller.signal);assert.equal(((call)!.options)!.maxStdoutBytes,TIMELINE_FLOAT_AUDIO_LIMITS.pcmBytes);assert.ok((((call)!.options)!.timeout)!<=117000);
  assert.equal(((call)!.args)![((call)!.args)!.indexOf('-f')+1],'concat');assert.equal(((call)!.args)![((call)!.args)!.indexOf('-af')+1],'asetpts=N/SR/TB');assert.equal(((call)!.args)![((call)!.args)!.indexOf('-map')+1],'0:1');assert.equal(((call)!.args)![((call)!.args)!.indexOf('-reinit_filter')+1],'0');assert.ok(((call)!.args)!.includes('-xerror'));
  for(const forbidden of (['-ar','-ac','-t','-ss','-frames:a','-filter_complex'] as const))assert.ok(!((call)!.args)!.includes(forbidden),forbidden);
 });
@@ -80,11 +85,77 @@ test('checker validates every generated segment format/count before concat and r
  await assert.rejects(createTimelineFloatAudioChecker(((bad) as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]))('/private/list',2,options({ownedSegments:[{file:'/private/a.mov',outputFrames:1},{file:'/private/b.mov',outputFrames:1}]})),{code:'EXPORT_AUDIO_FORMAT_MISMATCH'});assert.equal(seen,2);
 });
 
+test('float checker admits the composition segment limit and rejects one more without media work',async()=>{
+ const {maxSegments}=TIMELINE_LIMITS;
+ const segments=Array.from({length:maxSegments+1},(_,index)=>({file:`/private/segment-${index}.mov`,outputFrames:1}));
+ const buffer=pcm(1600,()=>0.5);
+ const r=runtime({async runStreaming(_command:string,_args:string[],options:{onStdout:(bytes:Buffer<ArrayBuffer>)=>void}){
+  for(let index=0;index<maxSegments;index++)options.onStdout(buffer);
+  return {stdoutBytes:buffer.length*maxSegments};
+ }});
+ const check=createTimelineFloatAudioChecker(r as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]);
+ await assert.rejects(check('/private/list',maxSegments+1,options({ownedSegments:segments})),{code:'MEDIA_INVALID_CONFIGURATION'});
+ assert.equal(r.calls.length,0);
+ const verified=await check('/private/list',maxSegments,options({ownedSegments:segments.slice(0,maxSegments)}));
+ assert.equal(verified.sampleFrames,maxSegments*1600);
+ assert.equal(r.calls.filter(call=>call.command==='ffprobe').length,maxSegments+1);
+});
+
 test('queued probe wait is bounded by the same total deadline without reassigning spawned-child ownership',async()=>{
  let spawned=false;const r=runtime({async withProbePermit(signal: { addEventListener: (arg0: string,arg1: () => void,arg2: { once: boolean; }) => void; }){await new Promise<never>((resolve,reject)=>{signal.addEventListener('abort',()=>reject(Object.assign(Error('cancel'),{code:'MEDIA_CANCELLED'})),{once:true});});},async run(){spawned=true;}});
  const keepAlive=setTimeout(()=>{},1000);try{await assert.rejects(createTimelineFloatAudioChecker(((r) as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]))('/private/list',1,options({remainingMs:()=>20})),{code:'EXPORT_AUDIO_TIMEOUT'});}finally{clearTimeout(keepAlive);}assert.equal(spawned,false);
 });
 
+
+test('float-check budgets scale separately with extra frames and segments within the admitted envelope',()=>{
+ const legacy=LEGACY_TIMELINE_LIMITS, current=TIMELINE_LIMITS;
+ assert.equal(timelineFloatAudioBudgetMs(1,1),120_000);
+ assert.equal(timelineFloatAudioBudgetMs(legacy.maxFrames,legacy.maxSegments),120_000);
+ assert.equal(timelineFloatAudioBudgetMs(legacy.maxFrames+30,legacy.maxSegments),120_100);
+ assert.equal(timelineFloatAudioBudgetMs(legacy.maxFrames,legacy.maxSegments+1),120_500);
+ assert.equal(timelineFloatAudioBudgetMs(current.maxFrames,current.maxClips),290_000);
+ assert.equal(timelineFloatAudioBudgetMs(current.maxFrames,current.maxSegments),440_000);
+ assert.throws(()=>timelineFloatAudioBudgetMs(current.maxFrames+1,1),{code:'MEDIA_INVALID_CONFIGURATION'});
+ assert.throws(()=>timelineFloatAudioBudgetMs(1,current.maxSegments+1),{code:'MEDIA_INVALID_CONFIGURATION'});
+});
+
+test('a revoked stream fence rejects later PCM without branding a completed observation',async()=>{
+ let consumed=0;
+ const revoked=Object.assign(Error('The stage was replaced'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ const r=runtime({async runStreaming(_command:string,_args:string[],{onStdout}:{onStdout:(bytes:Buffer<ArrayBuffer>)=>void}){
+  const bytes=pcm();
+  onStdout(bytes.subarray(0,8));
+  assert.equal(consumed,1);
+  onStdout(bytes.subarray(8));
+  assert.fail('Revoked streaming appended the remaining bytes');
+ }});
+ const check=createTimelineFloatAudioChecker(r as unknown as Parameters<typeof createTimelineFloatAudioChecker>[0]);
+ await assert.rejects(check('/private/list',1,{...options(),beforeChunk(){if(++consumed===2)throw revoked;}}),
+  error=>error===revoked&&readTimelineFloatAudioCheckFailure(error)===undefined);
+});
+
+test('a streaming attempt revalidates locally edited or uncommitted ownership',()=>{
+ const db=new DatabaseSync(':memory:');
+ try{
+  db.exec("ATTACH ':memory:' AS project; ATTACH ':memory:' AS cache; CREATE TABLE project.sources(id INTEGER)");
+  let live=0,full=0;
+  const fence=createExportAttemptChunkFence(db,()=>{live++;},()=>{full++;});
+  fence();fence();
+  assert.deepEqual({live,full},{live:2,full:1});
+  db.exec('INSERT INTO project.sources VALUES (1)');
+  fence();
+  assert.equal(full,2);
+  db.exec('CREATE TEMP VIEW current_sources AS SELECT * FROM project.sources');
+  fence();
+  assert.equal(full,3);
+  db.exec('BEGIN');
+  fence();fence();
+  assert.equal(full,5);
+  db.exec('ROLLBACK');
+  fence();
+  assert.equal(full,6);
+ }finally{db.close();}
+});
 
 test('completed check remains owned evidence when later AAC/probe/cleanup fails, never on cancellation or uncertain close',()=>{
  const accumulator=createTimelineFloatAudioAccumulator(1);accumulator.write(pcm(1600,((()=>0.5) as unknown as Parameters<typeof pcm>[1])));const measurement=accumulator.finish();

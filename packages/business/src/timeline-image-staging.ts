@@ -4,6 +4,7 @@ import {constants,openSync,fstatSync,readSync,closeSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {createTimelineFloatStaging} from './timeline-float-staging.ts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {timelineImageDisplayTable,timelineImageFilterGraph,TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_RESIZE_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256} from './timeline-image-filter.ts';
 
 type StagingRuntime=Parameters<typeof createTimelineFloatStaging>[2];
@@ -27,7 +28,7 @@ const LEGACY_IMAGE_LAYER_PIXELS=1920*1080;
 const LEGACY_IMAGE_LAYER_BYTES=9*1024*1024;
 // An ultrawide 1080 canvas needs room for its own RGBA layer. Source and
 // aggregate admission budgets are independent of the output canvas.
-export const TIMELINE_IMAGE_LAYER_LIMITS=Object.freeze({layers:100,sourceBytes:32*1024*1024,sourcePixels:2073600,
+export const TIMELINE_IMAGE_LAYER_LIMITS=Object.freeze({layers:TIMELINE_LIMITS.maxClips,sourceBytes:32*1024*1024,sourcePixels:2073600,
  outputPixels:2520*1080,totalOutputPixels:32_000_000,fileBytes:12*1024*1024,totalBytes:128*1024*1024,deriveTimeoutMs:20000});
 const fault=(budget=false)=>Object.assign(new Error(budget?'The static image layers exceed the bounded render staging budget.':'The image display transform or derived static layer staging cannot be verified.'),{code:budget?'TIMELINE_COLOUR_LUT_BUDGET':'TIMELINE_COLOUR_RESOURCE_CHANGED'});
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');

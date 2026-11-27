@@ -24,7 +24,8 @@ import {createServices} from '../packages/business/src/services.ts';
 
 
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../packages/contracts/src/timeline-colour.ts';
-import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
+import {TIMELINE_LIMITS,TIMELINE_SEGMENT_LIMIT_MESSAGE} from '../packages/contracts/src/timeline-limits.ts';
+import {assertTimelineExportPlan,freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
 import {assertTransitionImageBudget} from '../packages/business/src/timeline-transition-filter.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {png,sha,imageColour,stamp,timelineFixture} from './helpers/timeline-image-fixtures.ts';
@@ -72,11 +73,30 @@ test('a transition needs a cut, source handles on both sides and room beside its
  assert.throws(()=>clipTransitionRegions({durationFrames:95,clips:crowded},sources),invalid,'a saved timeline never renders a stale transition');
  assert.deepEqual(clipTransitionRegions({durationFrames:120,clips:[a,{...b,transitionIn:dissolve}]},sources),
   [{trackId:'v',outgoingId:'a',incomingId:'b',kind:'dissolve',durationFrames:20,startFrame:50,cutFrame:60,endFrame:70}]);
- // Transition edges count towards the 200 composition segments.
+ // Legacy edit pruning counts transition edges toward its 200 segments.
  const many=Array.from({length:100},(_,index)=>clip(`c${index}`,index*20,20,30,index?{transitionIn:make('dissolve',2)}:{}));
  // 100 clips make 100 segments; each kept transition adds two edges, so 50 fit
  // and the 49 latest cuts lose theirs, latest first.
  assert.deepEqual(staleClipTransitions({durationFrames:2000,clips:many},sources),Array.from({length:49},(_,index)=>`c${99-index}`));
+});
+
+test('render admission reports actual segment overflow from fitted saved transitions',()=>{
+ const still={id:'still',mimeType:'image/png',duration:null};
+ const assets=new Map([[still.id,still]]);
+ const snapshot=(clipCount:number,transitionCount:number)=>{
+  const clips=Array.from({length:clipCount},(_,index)=>({id:`clip-${index}`,trackId:'main',assetId:still.id,sourceInFrame:0,
+   startFrame:index*4,durationFrames:4,...(index>0&&index<=transitionCount?{transitionIn:make('dissolve',2)}:{})}));
+  return {timeline:{fps:TIMELINE_LIMITS.framesPerSecond,durationFrames:clipCount*4,clips},assets:[still]};
+ };
+ const {maxClips,maxSegments}=TIMELINE_LIMITS;
+ const transitionsAtLimit=(maxSegments-maxClips)/2;
+ assert.doesNotThrow(()=>assertTimelineExportPlan(snapshot(maxClips,transitionsAtLimit),assets));
+ const overLimit=snapshot(maxClips-1,transitionsAtLimit+1);
+ const refusal={code:'TIMELINE_SEGMENT_LIMIT',message:TIMELINE_SEGMENT_LIMIT_MESSAGE,
+  details:{maxSegments,actualSegments:maxSegments+1}};
+ assert.throws(()=>assertTimelineExportPlan(overLimit,assets),refusal);
+ assert.throws(()=>assertTimelineExportPlan({...overLimit,exportRange:{startFrame:0,endFrame:1},
+  colourPlan:{clips:[{clipId:'clip-0',kind:'image'}]}},assets),refusal);
 });
 
 async function fixture(t: test.TestContext,opener:typeof openStore=openStore){

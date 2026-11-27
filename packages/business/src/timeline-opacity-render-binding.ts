@@ -2,6 +2,7 @@
  * an opacity render, so an own opacity field fails closed instead of silently
  * falling through the legacy render. Portable JSON plans grant nothing. */
 import {isProxy} from 'node:util/types';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 
 type Value = Record<string, unknown>;
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
@@ -27,7 +28,7 @@ function hasOpacityFields(snapshot: Value): boolean {
   if (isProxy(list)) return unavailable();
   const descriptors = Object.getOwnPropertyDescriptors(list);
   const length: unknown = Object.getOwnPropertyDescriptor(list, 'length')?.value;
-  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 || length > 100) return unavailable();
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 || length > TIMELINE_LIMITS.maxClips) return unavailable();
   for (let index = 0; index < length; index++) {
     const descriptor = descriptors[index];
     if (!descriptor || !own(descriptor, 'value')) return unavailable();

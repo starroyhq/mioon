@@ -1,4 +1,4 @@
-import {sourceFrameCount} from '@mioon/contracts';
+import {AppError,sourceFrameCount} from '@mioon/contracts';
 import {clipTransitionRegions,type ClipTransitionRegion} from '../../contracts/src/timeline-clip-transition.ts';
 import {assertTimelineImageCompositorInputCount} from '../../contracts/src/timeline-colour.ts';
 
@@ -20,7 +20,10 @@ export function timelineTransitionRegions(timeline: RenderTimeline,assets: Reado
    const asset=assets.get(assetId);if(!asset)return null;
    const image=asset.mimeType.startsWith('image/');return {image,frames:image?0:sourceFrameCount(asset.duration)??0};
   });
- }catch{throw Object.assign(Error('A saved transition does not fit its cut.'),{code:'INVALID_TIMELINE_SNAPSHOT'});}
+ }catch(error){
+  if(error instanceof AppError&&error.code==='TIMELINE_SEGMENT_LIMIT')throw error;
+  throw Object.assign(Error('A saved transition does not fit its cut.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ }
 }
 /** The segment planner's input: transition edges cut segments like clip edges,
  * so every segment lies wholly inside or outside each transition. */

@@ -19,7 +19,7 @@ import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} fro
 import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isContinuousAudioPlan} from '@mioon/contracts/timeline-audio-continuous';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+import {FORMAT5_TIMELINE_FORMAT, isTimelineRenderRecord} from '@mioon/contracts';
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
@@ -299,7 +299,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
   const loudnessApplyTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_LOUDNESS_APPLY_CLIENT_MS;
   const clipLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_CLIP_LOUDNESS_LIMITS.clientTimeoutMs;
   const mixLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_MIX_LOUDNESS_LIMITS.clientTimeoutMs;
-  async function request(resource: string, {body, signal, timeoutMs = requestTimeoutMs, userAction = false}: RequestOptions = {}): Promise<unknown> {
+  async function request(resource: string, {body, signal, timeoutMs = requestTimeoutMs, userAction = false}: RequestOptions = {}): Promise<{envelope: unknown; headers: Headers}> {
     checkSignal(signal);
     if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new ClientError('VALIDATION_ERROR', 'Request timeout must be positive.');
     const connection: LocalConnection = await resolveConnection(env);
@@ -371,7 +371,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
         }
         throw new ClientError(typeof failure.code === 'string' ? safeValue(failure.code, [token]) : 'BACKEND_UNAVAILABLE', typeof failure.message === 'string' ? safeValue(failure.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
       }
-      return result;
+      return {envelope: result, headers: response.headers};
     } catch (error) {
       if (error instanceof ClientError) throw error;
       const details = recoveryDetails;
@@ -413,8 +413,12 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     let resource: string;
     try { resource = isAssetMediaOperation(operation) ? projectRpcPath(String(parsed.projectId)) : rpcPathFor(operation, parsed, projectId); }
     catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
-    const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
-    const result = envelope.data;
+    const {envelope, headers} = await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body});
+    const result = (envelope as {data?: unknown}).data;
+    // The mounted project host supplies the format in the same response. The
+    // frozen export payload is shared across formats and cannot identify it.
+    const renderFormat = (operation === 'timeline.render' || operation === 'export.get') &&
+      headers?.get('X-Mioon-Project-Format') === String(FORMAT5_TIMELINE_FORMAT) ? {format: FORMAT5_TIMELINE_FORMAT} : undefined;
     if (isCanvasEditingOperation(operation)) {
       const decoded = canvasEditingResponses[operation].safeParse(result);
       if (!decoded.success || 'projectId' in decoded.data && decoded.data.projectId !== parsed.projectId) {
@@ -444,7 +448,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation retry acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((LOCAL_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
-    if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result))
+    if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result, renderFormat))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isReferenceMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid reference acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
@@ -486,7 +490,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       :operation==='image.request.get'?isImageRequestResponse(result)&&(result===null||resultRecord?.projectId===parsed.projectId&&resultRecord?.requestId===parsed.requestId)
       :['image.task.list','image.group.list','image.version.list'].includes(operation)?isImageListResponse(operation,parsed,result):true;
     if(!imageReadValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid image record.');
-    if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId as string, isTimelineRenderRecord))
+    if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId,
+      (value, input) => input.projectId === projectId && isTimelineRenderRecord(value, input, renderFormat)))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid float export report.');
     if (operation === 'timeline.colour.jpeg.inspect' && !isTimelineJpegSourceInspection(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The JPEG source inspection reply does not match the request.');
@@ -520,7 +525,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
   }
   async function capabilities<T = unknown>(options?: RpcOptions): Promise<T> { return rpc<T>('provider.list', {}, options); }
   async function doctor(options?: RpcOptions): Promise<DoctorReport> {
-    const health = await request('/health', options) as {service: unknown; version: unknown; sqlite: unknown};
+    const {envelope} = await request('/health', options);
+    const health = envelope as {service: unknown; version: unknown; sqlite: unknown};
     const providers = await capabilities(options);
     return {ready: true, clientVersion: VERSION, backend: {service: health.service, version: health.version, sqlite: health.sqlite}, connection: {source: connectionSource(env), localOnly: true, credentialsReloadedPerRequest: true}, providers};
   }
@@ -551,7 +557,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     if (!isTrustedAssetMediaOperation(operation)) throw new ClientError('UNKNOWN_OPERATION','Unknown trusted asset action.');
     const parsed=trustedAssetMediaSchemas[operation].safeParse(input);
     if(!parsed.success)throw new ClientError('VALIDATION_ERROR','Invalid trusted asset arguments.',{details:{issues:parsed.error.issues}});
-    const envelope=await request(projectApiPath(parsed.data.projectId,'asset-media','trusted'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs,userAction:true}) as {data:T};
+    const {envelope: response}=await request(projectApiPath(parsed.data.projectId,'asset-media','trusted'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs,userAction:true});
+    const envelope=response as {data:T};
     if(operation==='asset.import.path'){
       const acknowledged=nativeAssetImportResponseSchema.safeParse(envelope.data);
       if(!acknowledged.success||acknowledged.data.asset.projectId!==parsed.data.projectId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid path import acknowledgement.');
@@ -564,7 +571,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     if(!parsed.success)throw new ClientError('VALIDATION_ERROR','Invalid image service arguments.');
     const projectId='projectId' in parsed.data?parsed.data.projectId:parsed.data.input.projectId;
     if(options.projectId!==undefined&&options.projectId!==projectId)throw new ClientError('VALIDATION_ERROR','Image service project address mismatch.');
-    const envelope=await request(projectApiPath(projectId,'images','services'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs}) as {data:unknown};
+    const {envelope: response}=await request(projectApiPath(projectId,'images','services'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs});
+    const envelope=response as {data:unknown};
     if(!isGenerationImageServiceResponse(operation,parsed.data,envelope.data))throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image service response.',{details:'input' in parsed.data?{operation,requestId:parsed.data.input.requestId,submissionMayHaveSucceeded:true}:{}});
     return envelope.data as T;
   }

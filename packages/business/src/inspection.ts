@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {projectExportObservation} from './project-export-observation.ts';
 import {clipAudioSourceSchema} from '../../contracts/src/clip-audio-export.ts';
 import {readPrevisOutputSource} from './previs-output-ownership.ts';
@@ -11,6 +12,7 @@ import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
 import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {TIMELINE_RENDER_SUBTITLE_LIMITS} from '../../contracts/src/timeline-subtitles.ts';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.ts';
@@ -75,7 +77,7 @@ export interface InspectionReader {
 // In particular, reading an absent timeline must never initialize one.
 export const INSPECTION_OPERATIONS = Object.freeze(['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect']);
 export const INSPECTION_LIMITS = Object.freeze({maxCalls: 16, maxResultBytes: 128 * 1024, maxTotalBytes: 512 * 1024,
-  maxReadBytes: 4 * 1024 * 1024, maxReadRecords: 1024, promptBytes: 1000, tracks: 12, clips: 100});
+  maxReadBytes: 4 * 1024 * 1024, maxReadRecords: 1024, promptBytes: 1000, tracks: TIMELINE_LIMITS.maxTracks, clips: TIMELINE_LIMITS.maxClips});
 const countTables = Object.freeze(['assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines']);
 const operationSet = new Set(INSPECTION_OPERATIONS);
 const entityId = inspectionSchemas['project.inspect'].shape.projectId;
@@ -465,9 +467,10 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     }
     function timelineDto(timeline: InspectionRecord|null|undefined = ownedTimeline()): Record<string, unknown>|null {
       if (!timeline) return null;
-      if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > INSPECTION_LIMITS.clips) unavailable();
+      const limits = format5 ? TIMELINE_LIMITS : LEGACY_TIMELINE_LIMITS;
+      if (!Array.isArray(timeline.tracks) || timeline.tracks.length > INSPECTION_LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > limits.maxClips) unavailable();
       if(!timelineOutputPreset(timeline)) unavailable();
-      if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames))unavailable();
+      if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames,format5 ? TIMELINE_RENDER_SUBTITLE_LIMITS : undefined))unavailable();
       const trackIds = new Set(), clipIds = new Set();
       const tracks = timeline.tracks.map(track => {
         object(track); const trackId = id(track.id); if (trackIds.has(trackId)) unavailable(); trackIds.add(trackId);
@@ -483,8 +486,8 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
           : {x: number(clip.rect.x, 0, frame.width-2, true), y: number(clip.rect.y, 0, frame.height-2, true),
              width: number(clip.rect.width, 2, frame.width, true), height: number(clip.rect.height, 2, frame.height, true)};
         if (!isClipLayoutRect(relative ? clip : {rect: storedRect}, frame)) unavailable();
-        const startFrame = number(clip.startFrame, 0, 18000, true), durationFrames = number(clip.durationFrames, 1, 18000, true);
-        if (startFrame + durationFrames > 18000) unavailable();
+        const startFrame = number(clip.startFrame, 0, limits.maxFrames, true), durationFrames = number(clip.durationFrames, 1, limits.maxFrames, true);
+        if (startFrame + durationFrames > limits.maxFrames) unavailable();
         // Mio reads a clip's transform (position and scale keyframes, rotation, crop) but cannot change it.
         const transform = Object.hasOwn(clip, 'transform') ? clip.transform as ClipTransform | null : undefined;
         if (transform !== undefined && (transform === null || !isClipTransform(transform, durationFrames))) unavailable();
@@ -499,14 +502,14 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         const transition = Object.hasOwn(clip, 'transitionIn') ? clip.transitionIn as ClipTransition | null : undefined;
         if (transition !== undefined && (transition === null || !isClipTransition(transition))) unavailable();
         return {id: clipId, trackId: id(clip.trackId), assetId: asset.id, name: string(clip.name, 200, 1), startFrame, durationFrames,
-          sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2),
+          sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - (format5 ? durationFrames : LEGACY_TIMELINE_LIMITS.maxFrames), true), rect, gain: number(clip.gain, 0, 2),
           ...(basis ? {layout: {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: basis.id}} : {}),
           ...(displayTransform ? {transform: {keyframes: displayTransform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: displayTransform.rotation, crop: {...displayTransform.crop}}} : {}),
           ...(transition ? {transitionIn: {kind: transition.kind, durationFrames: transition.durationFrames}} : {})};
       });
       const sequence=format5SequenceEvidence(db,projectId);
       return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,
-        durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips, ...(sequence?{sequence}:{})};
+        durationFrames: number(timeline.durationFrames, 0, limits.maxFrames, true), tracks, clips, ...(sequence?{sequence}:{})};
     }
     const project = get('projects', projectId);
     const projectSequence=format5SequenceEvidence(db,projectId);

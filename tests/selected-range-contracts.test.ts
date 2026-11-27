@@ -11,6 +11,7 @@ import {
   timelineExportRangeSchema, isTimelineExportRangeInput, timelineExportRangeFields,
   isTimelineExportRangeWithinDuration, isTimelineExportRangeSnapshot, timelineExportOutputFrames,
 } from '@mioon/contracts/timeline-export-range';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {
   timelineRenderDeliveryFields, hasTimelineDeliveryIdentity, TIMELINE_DELIVERY_RECEIPT_SQL,
 } from '@mioon/contracts/timeline-delivery';
@@ -51,7 +52,7 @@ function report(f: ReturnType<typeof fixture>) {
 
 const badRanges = [undefined, null, [], {}, 7, '7:19', {startFrame: 1}, {endFrame: 2},
   {startFrame: 0, endFrame: 0}, {startFrame: 4, endFrame: 3}, {startFrame: -1, endFrame: 2},
-  {startFrame: 18000, endFrame: 18001}, {startFrame: 0, endFrame: 18001},
+  {startFrame: TIMELINE_LIMITS.maxFrames, endFrame: TIMELINE_LIMITS.maxFrames + 1}, {startFrame: 0, endFrame: TIMELINE_LIMITS.maxFrames + 1},
   {startFrame: 0.5, endFrame: 2}, {startFrame: 0, endFrame: 1.5},
   {startFrame: '0', endFrame: 2}, {startFrame: 0, endFrame: '2'},
   {startFrame: NaN, endFrame: 2}, {startFrame: 0, endFrame: Infinity},
@@ -65,7 +66,8 @@ test('range syntax is strict, integer, nonempty, export-only and preserves legac
   assert.equal(Object.hasOwn(parse('timeline.render', input), 'exportRange'), false);
   assert.deepEqual(timelineExportRangeFields(input), {});
   assert.equal(isTimelineExportRangeInput(input, 'preview'), true);
-  for (const exportRange of [{startFrame: 0, endFrame: 1}, selection(), {startFrame: 17999, endFrame: 18000}, {startFrame: 0, endFrame: 18000}]) {
+  for (const exportRange of [{startFrame: 0, endFrame: 1}, selection(),
+    {startFrame: TIMELINE_LIMITS.maxFrames - 1, endFrame: TIMELINE_LIMITS.maxFrames}, {startFrame: 0, endFrame: TIMELINE_LIMITS.maxFrames}]) {
     assert.deepEqual(timelineExportRangeSchema.parse(exportRange), exportRange);
     assert.deepEqual(parse('timeline.render', {...input, exportRange}), {...input, exportRange});
     assert.deepEqual(parse('timeline.export.preflight', {projectId: input.projectId, expectedRevision: 4, exportRange}),
@@ -124,13 +126,14 @@ test('syntax projection never checks the current timeline, while output length r
   const value = {exportRange: selection()}, before = JSON.stringify(value);
   assert.deepEqual(timelineExportRangeFields(value), value);
   assert.equal(isTimelineExportRangeWithinDuration(value, 19), true);
-  for (const duration of [18, 0, -1, 19.5, '19', NaN, Infinity, 18001, undefined]) {
+  assert.equal(isTimelineExportRangeWithinDuration(value, TIMELINE_LIMITS.maxFrames), true);
+  for (const duration of [18, 0, -1, 19.5, '19', NaN, Infinity, TIMELINE_LIMITS.maxFrames + 1, undefined]) {
     assert.equal(isTimelineExportRangeWithinDuration(value, duration), false);
   }
   assert.equal(isTimelineExportRangeWithinDuration({}, undefined), true);
   assert.equal(isTimelineExportRangeWithinDuration({exportRange: undefined}, 60), false);
   for (const snapshot of [null, {}, {timeline: {}}, {timeline: {fps: 60, durationFrames: 60}},
-    {timeline: {fps: 30, durationFrames: 0}}, {timeline: {fps: 30, durationFrames: 18001}},
+    {timeline: {fps: 30, durationFrames: 0}}, {timeline: {fps: 30, durationFrames: TIMELINE_LIMITS.maxFrames + 1}},
     {timeline: {fps: 30, durationFrames: 18}, ...value}]) {
     assert.throws(() => timelineExportOutputFrames(snapshot), {code: 'INVALID_TIMELINE_SNAPSHOT'});
   }

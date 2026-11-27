@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {readTimelineStorage, timelineStorageChanged} from './project-file/timeline-storage.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -16,7 +17,7 @@ export async function prepareTimelineReferenceHashes(store: {db: DatabaseSync; r
  const before = readTimelineStorage(store.db, projectId);
  if (!before) return {preparedBytes:0, preparedSources};
  const value: unknown = before.timeline;
- if (!value || typeof value !== 'object' || !('projectId' in value) || value.projectId !== projectId || !('clips' in value) || !Array.isArray(value.clips) || value.clips.length > 100) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用', 409);
+ if (!value || typeof value !== 'object' || !('projectId' in value) || value.projectId !== projectId || !('clips' in value) || !Array.isArray(value.clips) || value.clips.length > TIMELINE_LIMITS.maxClips) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线素材不可用', 409);
  validateSelection?.(value as Record<string,unknown>);
  const ids = new Set<string>();
  for (const clip of value.clips) {
@@ -69,7 +70,7 @@ export function hasSampledTimelineReferences(store:{db:DatabaseSync;root:string}
  if(!registeredProjectStore(store.root))return false;
  const stored=readTimelineStorage(store.db,projectId);
  const timeline:unknown=stored?.timeline;
- if(!timeline||typeof timeline!=='object'||!('clips' in timeline)||!Array.isArray(timeline.clips)||timeline.clips.length>100)return false;
+ if(!timeline||typeof timeline!=='object'||!('clips' in timeline)||!Array.isArray(timeline.clips)||timeline.clips.length>TIMELINE_LIMITS.maxClips)return false;
  for(const clip of timeline.clips){
   if(!clip||typeof clip!=='object'||typeof clip.id!=='string'||typeof clip.assetId!=='string'||clipId!==undefined&&clip.id!==clipId)continue;
   const source=store.db.prepare("SELECT CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM assets WHERE id=? AND projectId=?").get(clip.assetId,projectId);

@@ -185,6 +185,8 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       const outputLocale = readOutputLocale(req, input.operation);
       const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {}, outputLocale ? {outputLocale} : undefined);
       if (!res.destroyed && !res.writableEnded) {
+        if (input.operation === 'timeline.render' || input.operation === 'export.get')
+          res.setHeader('X-Mioon-Project-Format', String(readSnapshotProjectFormat(store.db)));
         const response = input.operation === 'project.get'
           ? {...(data as Record<string, unknown>), projectFormatVersion: readSnapshotProjectFormat(store.db)}
           : data;

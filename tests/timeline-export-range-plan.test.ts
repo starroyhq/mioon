@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planTimelineExportRange,validateTimelineExportRangeOutputStart, type TimelineExportRangePlan} from '../packages/business/src/timeline-export-range-plan.ts';
+import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 
 const saved=()=>({timeline:{fps:30,durationFrames:120,clips:[
  {startFrame:10,durationFrames:50},{startFrame:30,durationFrames:90},
@@ -44,6 +45,18 @@ test('range planner handles half-open boundaries, minimum and bounded maximum wi
 test('range planner delegates persisted range admission to the shared contract',()=>{
  for(const exportRange of ([null,undefined,{},[],{startFrame:0,endFrame:0},{startFrame:-1,endFrame:1},{startFrame:0,endFrame:121},{startFrame:0.5,endFrame:1},{startFrame:1,endFrame:2,extra:true}] as const))
   assert.throws(()=>planTimelineExportRange((({...saved(),exportRange}) as unknown as Parameters<typeof planTimelineExportRange>[0])),{code:'INVALID_TIMELINE_SNAPSHOT'});
+});
+
+test('export accepts the composition segment limit and refuses the next segment before trimming',()=>{
+ const {maxClips,maxSegments,framesPerSecond}=TIMELINE_LIMITS;
+ const clips=Array.from({length:maxClips},(_,index)=>({startFrame:index*2+1,durationFrames:1}));
+ const timeline={fps:framesPerSecond,durationFrames:maxSegments,clips};
+ assert.equal(planTimelineExportRange({timeline}).segments.length,maxSegments);
+ const oversized={...timeline,durationFrames:maxSegments+1};
+ const refusal={code:'TIMELINE_SEGMENT_LIMIT',message:'导出最多支持 600 个分段。请减少片段中的空隙或转场再试。',
+  details:{maxSegments,actualSegments:maxSegments+1}};
+ assert.throws(()=>planTimelineExportRange({timeline:oversized}),refusal);
+ assert.throws(()=>planTimelineExportRange({timeline:oversized,exportRange:{startFrame:0,endFrame:1}}),refusal);
 });
 
 test('selected output validates presentation origin without interpreting AAC priming packet DTS',()=>{

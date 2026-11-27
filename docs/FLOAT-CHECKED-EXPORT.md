@@ -40,12 +40,13 @@ Restored workspaces retain their existing restrictions. Inherited records remain
 
 ## Resources and ownership
 
-- Maximum measured interval: 18,000 timeline frames at 30 fps, or 600 seconds.
-- Exact audio length: 1,600 stereo sample frames per output frame, up to 28,800,000 stereo frames / 230,400,000 streamed PCM bytes.
-- Measurement budget: 120 seconds including the existing direct-child termination allowance. Queue admission, probes, chunk processing and completion consume the same measurement budget. This is not a 120-second promise for the complete video render.
+- Maximum measured interval: 54,000 timeline frames at 30 fps, or 30 minutes, with at most 600 generated segments under the shared timeline limits.
+- Exact audio length: 1,600 stereo sample frames per output frame, up to 86,400,000 stereo frames and 691,200,000 streamed PCM bytes.
+- Measurement budget: 120 seconds through 10 minutes and 200 segments. Add 100 ms per extra second of output (round up to a millisecond) for PCM streaming and 500 ms per extra generated segment for its probe and ownership checks. At the shared upper bounds the budget is 440 seconds, including the direct-child termination allowance. Queue admission, probes, streaming and completion share this deadline. Each probe retains its 10-second cap and the capability proof retains its tighter 15-second deadline.
+- The worker reuses its frozen relational validation while the project database generation is stable. It checks cancellation, the attempt and staged file identities per PCM block. Probe/decode boundaries and a changed generation still run full validation. Full checks run again before AAC and publication.
 - Resident PCM storage: less than one stereo-frame remainder plus bounded counters/peaks. Report size: at most 8 KiB. Extra tail, short EOF, nonfinite samples, format mismatch, timeout or missing confirmed child completion fail closed.
 - Capability proof: the existing single-active, no-queue, 15-second local check; v2 uses fixed private synthetic MOV/concat/AAC files and proves above-one float headroom. No source media, network or provider calls. Discovery truthfully advertises possible temporary file writes. HTTP/CLI disconnection still cancels this bounded advisory work and reaps its owned child/files; the exception is exclusive to this fixed capability operation, with no DB/business/network/paid effects. It never cancels an accepted render. It is an observation, never a reusable authorization token.
-- Float audio doubles the raw intermediate PCM payload from at most 115.2 MB to 230.4 MB. Video/container data and the final output are additional, so this is not a total-disk-size guarantee. No persistent cache is added.
+- Float audio doubles the raw intermediate PCM payload. At 30 minutes it grows from 345.6 MB of signed 16-bit PCM to 691.2 MB of float PCM. Total temporary space also includes video/container data and the final output.
 
 Only generated fixed-leaf files and directories whose retained inode identity still matches may be cleaned. No recursive deletion of unknown children. A media child whose close is unconfirmed keeps the shared media admission fence and its owned staging; a timeout does not release that ownership. No numeric-PID cleanup or process-tree management is added.
 

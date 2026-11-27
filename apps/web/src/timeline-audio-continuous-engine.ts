@@ -1,3 +1,5 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+
 /** The continuous protocol delivers a complete, already mixed stereo block.
  * AudioContext time owns playback; RAF only paints its disposable cursor. */
 export interface ContinuousAudioPlanClock {
@@ -56,7 +58,7 @@ export function createContinuousTimelineAudioTransport(options: ContinuousAudioT
   const { startFrame, durationFrames, blockFrames, sampleRate, channels } = options.plan;
   const requestFrame = options.requestAnimationFrame ?? (typeof requestAnimationFrame === 'function' ? requestAnimationFrame.bind(globalThis) : undefined);
   const cancelFrame = options.cancelAnimationFrame ?? (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame.bind(globalThis) : undefined);
-  if (context.sampleRate !== RATE || sampleRate !== RATE || channels !== 2 || !Number.isSafeInteger(durationFrames) || durationFrames < 1 || durationFrames > 18_000 ||
+  if (context.sampleRate !== RATE || sampleRate !== RATE || channels !== 2 || !Number.isSafeInteger(durationFrames) || durationFrames < 1 || durationFrames > TIMELINE_LIMITS.maxFrames ||
       !Number.isSafeInteger(startFrame) || startFrame < 0 || startFrame >= durationFrames || blockFrames !== 60) invalid();
   const validate = (block: ContinuousAudioBlock, expected: number): ContinuousAudioBlock => {
     if (!block || block.startFrame !== expected || block.endFrame !== Math.min(expected + blockFrames, durationFrames) ||

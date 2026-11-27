@@ -72,7 +72,7 @@ The renderer consumes sources serially and streams PCM into the exact stereo Aud
 All sources are admitted before any source decode. Limits include:
 
 - At most 600 editing frames per prepared interval and per source request
-- Existing limits of 12 tracks and 100 clips
+- Up to 54,000 editing frames (30 minutes at 30 fps), 12 tracks and 300 clips in the saved timeline
 - At most 200 original source decode segments and 18,000 decoded source frames across all distinct prepared sources, counting prefixes, repeated decoding, and the existing one-frame input lookahead per segment, even when only a small selected suffix is retained
 - At most 512 MiB and 600 seconds for each source file
 - At most 1 GiB of planned double-hash reads across distinct prepared source requests

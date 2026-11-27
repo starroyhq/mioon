@@ -1,13 +1,15 @@
+import {isTimelineExportLimitCode,TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {assertProjectStore} from './store-runtime.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
+import {TIMELINE_SEGMENT_LIMIT_MESSAGE} from './timeline-export-range-plan.ts';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
 import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
-import {validateTimeline,validateSavedTimeline,freezeTimelineSnapshot} from './timeline-inputs.ts';
+import {validateTimeline,validateSavedTimeline,freezeTimelineSnapshot,assertTimelineExportPlan,assertTimelineProcessingSize,TIMELINE_PROCESSING_LIMIT_MESSAGE} from './timeline-inputs.ts';
 import {terminateMediaProcesses} from './media-processes.ts';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
@@ -42,6 +44,8 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  SUBTITLE_RENDERER_UNAVAILABLE:'This FFmpeg build lacks the drawtext options required for subtitles. Select a build with libfreetype and libharfbuzz.',
  TIMELINE_MISSING:'This project has no saved timeline. Add clips and save the timeline before exporting.',
  EMPTY_TIMELINE:'The saved timeline has no clips to export.',
+ TIMELINE_LIMIT:TIMELINE_PROCESSING_LIMIT_MESSAGE,
+ TIMELINE_SEGMENT_LIMIT:TIMELINE_SEGMENT_LIMIT_MESSAGE,
  INVALID_TIMELINE_SNAPSHOT:'The saved timeline contains invalid or unsupported settings.',
  TIMELINE_SOURCE_UNAVAILABLE:'A referenced source is missing or is not available in this project.',
  PREFLIGHT_SOURCE_INVALID:'A source is missing or cannot be accessed safely in managed media.',
@@ -62,7 +66,7 @@ const object=(value: unknown): value is Record<string, unknown>=>(value!==null&&
 export const timelineSnapshotHash=(snapshot: unknown): string=>createHash('sha256').update(canonical(snapshot) as string).digest('hex');
 function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {hasAudio?: boolean}>|null): Record<string, unknown>|null{
  const t=snapshot.timeline,assets=verified??new Map(snapshot.assets.map(a=>[a.id,a])),tracks=new Map(t.tracks.map(lane=>[lane.id,lane]));
- if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
+ if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>TIMELINE_LIMITS.maxFrames)return null;
  return {...timelineDeliveryNameFields(snapshot),...timelineExportRangeFields(snapshot),...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
   visualClipCount:t.clips.filter(c=>tracks.get(c.trackId)?.kind==='video'&&!tracks.get(c.trackId)!.hidden).length,
   audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.muted!==true&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
@@ -84,7 +88,7 @@ function classify(error: unknown): [string,string]{
  if(failure.code==='MANAGED_SOURCE_CHANGED')return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
  if(failure.code==='PREFLIGHT_STALE')return ['stale','PREFLIGHT_STALE'];
  if(failure.code==='TIMELINE_SOURCE_UNAVAILABLE')return ['blocked','TIMELINE_SOURCE_UNAVAILABLE'];
- if(failure.code==='INVALID_TIMELINE_SNAPSHOT')return ['blocked','INVALID_TIMELINE_SNAPSHOT'];
+ if(failure.code==='INVALID_TIMELINE_SNAPSHOT'||isTimelineExportLimitCode(failure.code))return ['blocked',failure.code];
  return ['blocked','PREFLIGHT_MEDIA_INVALID'];
 }
 
@@ -125,6 +129,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    if(format5Timeline){
     report.timelineId=format5Timeline.id;report.timelineRevision=format5Timeline.revision;
     if(format5Timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
+    try{assertTimelineProcessingSize(format5Timeline);}
+    catch(error){if(!(error instanceof AppError)||error.code!=='TIMELINE_LIMIT')throw error;report.issues=[issue(error.code)];return report;}
     const requestedRange=object(input.exportRange)?{startFrame:Number(input.exportRange.startFrame),endFrame:Number(input.exportRange.endFrame)}:null;
     const blockers=format5ExportBlockersFromTimeline(store.db,format5Timeline,requestedRange);
     if(blockers.length){
@@ -176,9 +182,13 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    const savedAssets=new Map<string, TimelinePreflightSnapshotAsset>(validation.assets.map((a: TimelinePreflightSnapshotAsset)=>[a.id,a]));
    const trackFn=(timeline: TimelineRecord,id: string)=>timeline.tracks.find(t=>t.id===id)!;
    validateTimeline(validationTimeline,savedAssets as unknown as ReadonlyMap<string, import('./timeline-inputs.ts').ManagedAssetRecord>,{structureOnly:true});
-   validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never});
+   validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never,processing:true});
+   assertTimelineExportPlan(validation as never,savedAssets as never);
   }
-  catch{report.issues=[issue('INVALID_TIMELINE_SNAPSHOT')];return report;}
+  catch(error){
+   report.issues=[issue(error instanceof AppError&&error.code==='TIMELINE_SEGMENT_LIMIT'?error.code:'INVALID_TIMELINE_SNAPSHOT')];
+   return report;
+  }
   const remaining=limits.timeoutMs-(performance.now()-started);
   if(remaining<=0){report.status='incomplete';report.issues=[issue('PREFLIGHT_TIMEOUT','warning')];return report;}
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}

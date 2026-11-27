@@ -1,6 +1,10 @@
 import {timelineCompositionSegments} from '@mioon/contracts/timeline-segments';
 import {timelineExportOutputFrames} from '@mioon/contracts/timeline-export-range';
 import type {TimelineExportRange} from '@mioon/contracts/timeline-export-range';
+import {LEGACY_TIMELINE_LIMITS, TIMELINE_LIMITS, TIMELINE_SEGMENT_LIMIT_MESSAGE} from '@mioon/contracts/timeline-limits';
+import {AppError} from '../../contracts/src/app-error.ts';
+
+export {TIMELINE_SEGMENT_LIMIT_MESSAGE} from '@mioon/contracts/timeline-limits';
 
 /** The caller validates the complete frozen timeline before planning. Original
  * segment bounds are retained so source seeking and fps/resampler initialization
@@ -37,7 +41,12 @@ export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput):
   const start = snapshot.exportRange?.startFrame ?? 0;
   const end = snapshot.exportRange?.endFrame ?? timeline.durationFrames;
   const segments: TimelineExportRangeSegment[] = [];
-  for (const {beginFrame, endFrame} of timelineCompositionSegments(timeline)) {
+  const composition = timelineCompositionSegments(timeline);
+  if (composition.length > TIMELINE_LIMITS.maxSegments) {
+    throw new AppError('TIMELINE_SEGMENT_LIMIT', TIMELINE_SEGMENT_LIMIT_MESSAGE, 400,
+      {maxSegments: TIMELINE_LIMITS.maxSegments, actualSegments: composition.length});
+  }
+  for (const {beginFrame, endFrame} of composition) {
     const from = Math.max(beginFrame, start), to = Math.min(endFrame, end);
     if (from >= to) continue;
     const first = from - beginFrame, last = to - beginFrame;
@@ -49,6 +58,34 @@ export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput):
   }
   return Object.freeze({selected: Object.hasOwn(snapshot, 'exportRange'), outputFrames,
     segments: Object.freeze(segments)});
+}
+
+/** FFmpeg concat reads durations to microsecond precision. Derive them from
+ * adjacent absolute output-frame boundaries so rounding cannot accumulate.
+ * The MP4 edit list uses the same exact frame clock on expanded exports.
+ * Snapshots in the historical delivery envelope keep the original mux inputs. */
+export function timelineExportConcat(
+  segments: readonly {readonly file: string; readonly outputFrames: number}[],
+  timeline: Pick<TimelineExportRangePlanInput['timeline'], 'durationFrames' | 'clips'>,
+): {manifest: string; movieTimescale: number | null} {
+  const legacy = timeline.durationFrames <= LEGACY_TIMELINE_LIMITS.maxFrames &&
+    timeline.clips.length <= LEGACY_TIMELINE_LIMITS.maxClips && segments.length <= LEGACY_TIMELINE_LIMITS.maxSegments;
+  const microsecondsPerSecond = 1_000_000;
+  let frames = 0, previousBoundary = 0;
+  const lines = segments.map(({file, outputFrames}) => {
+    let duration: string;
+    if (legacy) {
+      duration = (outputFrames / TIMELINE_LIMITS.framesPerSecond).toFixed(9);
+    } else {
+      frames += outputFrames;
+      const boundary = Math.round(frames * microsecondsPerSecond / TIMELINE_LIMITS.framesPerSecond);
+      const delta = boundary - previousBoundary;
+      previousBoundary = boundary;
+      duration = `${Math.floor(delta / microsecondsPerSecond)}.${String(delta % microsecondsPerSecond).padStart(6, '0')}`;
+    }
+    return `file '${file.replaceAll("'", "'\\''")}'\nduration ${duration}`;
+  });
+  return {manifest: lines.join('\n') + '\n', movieTimescale: legacy ? null : TIMELINE_LIMITS.framesPerSecond * 1_000};
 }
 
 const object = (value: unknown): value is Record<string, unknown> =>

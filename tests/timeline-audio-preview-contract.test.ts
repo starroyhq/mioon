@@ -7,6 +7,7 @@ import {
   buildAudioPreviewPlan,isAudioPreviewPlan,audioPreviewPlanDigestMaterial,
   deriveTimelineAudioSamples,audioPreviewEnvelopeAtSample,audioPreviewEnvelopeGainAtLocalSample,
 } from '../packages/contracts/src/timeline-audio-preview.ts';
+import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 import {timelineCompositionSegments} from '../packages/contracts/src/timeline-segments.ts';
 
 import type {NegativePreviewPlan, Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -53,7 +54,7 @@ test('strict public inputs admit only saved identity and fixed source binding',(
     assert.equal(audioPreviewPlanInputSchema.safeParse({...input,...extra}).success,false);
     assert.equal(audioPreviewSourceInputSchema.safeParse({...source,...extra}).success,false);
   }
-  for(const patch of [{startFrame:-1},{startFrame:18000},{startFrame:1.2},{expectedRevision:0},
+  for(const patch of [{startFrame:-1},{startFrame:TIMELINE_LIMITS.maxFrames},{startFrame:1.2},{expectedRevision:0},
     {expectedRevision:Infinity},{expectedRevision:Number.MAX_SAFE_INTEGER+1},{projectId:'foreign'},
     {timelineId:'foreign'},{sourceHash:'A'.repeat(64)}]){
     assert.equal(audioPreviewSourceInputSchema.safeParse({...source,...patch}).success,false);
@@ -247,8 +248,30 @@ test('admission uses every distinct clipped source payload rather than track cou
   many.snapshot.timeline.clips=Array.from({length:100},(_,i)=>({...many.snapshot.timeline.clips[0],
     id:id(100+i),startFrame:i,durationFrames:1,sourceInFrame:i}));
   const admitted=planOf(many);assert.equal(admitted.voices.length,100);assert.equal(admitted.sources.length,100);
-  many.snapshot.timeline.clips.push({...many.snapshot.timeline.clips[0],id:id(201)});
-  throwsCode(()=>planOf(many),'AUDIO_PREVIEW_INVALID_SNAPSHOT');
+});
+
+test('a 300-clip timeline prepares audio through the last frame of minute 30',()=>{
+  const {maxClips,maxFrames}=TIMELINE_LIMITS;
+  const f=fixture({durationFrames:maxFrames,startFrame:maxFrames-60});
+  const timeline=f.snapshot.timeline, durationFrames=maxFrames/maxClips;
+  const first={...timeline.clips[0],durationFrames};
+  timeline.clips=Array.from({length:maxClips},(_,index)=>({
+    ...first,id:id(100+index),startFrame:index*durationFrames,
+  }));
+  const plan=planOf(f);
+  assert.deepEqual(plan.range,{startFrame:maxFrames-60,endFrame:maxFrames,startSample:(maxFrames-60)*1600,endSample:maxFrames*1600,sampleFrames:60*1600});
+  assert.deepEqual(plan.sources[0].decodeSegments,[{sourceInFrame:0,frameCount:durationFrames,trimStartFrame:durationFrames-60,outputFrames:60}]);
+  assert.equal(plan.voices.length,1);
+  assert.ok(isAudioPreviewPlan(plan,f.input));
+
+  const tooMany=clone(f);
+  tooMany.snapshot.timeline.clips[0].durationFrames=1;
+  tooMany.snapshot.timeline.clips.push({...first,id:id(999),startFrame:1,durationFrames:durationFrames-1});
+  throwsCode(()=>planOf(tooMany),'AUDIO_PREVIEW_INVALID_SNAPSHOT');
+  const tooLong=clone(f);
+  tooLong.snapshot.timeline.durationFrames++;
+  tooLong.snapshot.timeline.clips.at(-1)!.durationFrames++;
+  throwsCode(()=>planOf(tooLong),'AUDIO_PREVIEW_INVALID_SNAPSHOT');
 });
 
 test('per-source and aggregate double-hash caps reject complete interval without shortening',()=>{

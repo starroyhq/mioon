@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 // View preferences never change project data,
 // generation snapshots, timeline history or the durable request recovery log.
 import { defaultWorkspaceLayout, isWorkspaceLayout, normalizeWorkspaceLayout } from './workspace-layout.ts';
@@ -86,7 +87,7 @@ export function normalizeWorkspaceState(value: unknown): WorkspaceState {
   return { version: 1, activeMode: source.activeMode === 'editing' ? 'editing' : 'canvas',
     canvas: { viewport,
       selectedId: id(c.selectedId), selectedEdgeId: id(c.selectedEdgeId), inspectorTab: c.inspectorTab === 'versions' ? 'versions' : 'settings', highlightedVersionId: id(c.highlightedVersionId), storyboardOpen: c.storyboardOpen === true, miniMap: c.miniMap === true },
-    editing: { selectedClipId: id(e.selectedClipId), quickAssetId: id(e.quickAssetId), previewKind: e.previewKind === 'source' ? 'source' : 'timeline', playhead: Math.round(number(e.playhead, 0, 0, 18000)), pixelsPerSecond: number(e.pixelsPerSecond, 76, 28, 220), scrollLeft: number(e.scrollLeft, 0, 0, 1e7), scrollTop: number(e.scrollTop, 0, 0, 1e6), timelineCollapsed: e.timelineCollapsed === true, snappingEnabled: e.snappingEnabled !== false,
+    editing: { selectedClipId: id(e.selectedClipId), quickAssetId: id(e.quickAssetId), previewKind: e.previewKind === 'source' ? 'source' : 'timeline', playhead: Math.round(number(e.playhead, 0, 0, TIMELINE_LIMITS.maxFrames)), pixelsPerSecond: number(e.pixelsPerSecond, 76, 28, 220), scrollLeft: number(e.scrollLeft, 0, 0, 1e7), scrollTop: number(e.scrollTop, 0, 0, 1e6), timelineCollapsed: e.timelineCollapsed === true, snappingEnabled: e.snappingEnabled !== false,
       ...(e.aspectFrameSuggestionSeen === true ? {aspectFrameSuggestionSeen: true as const} : {}) },
     shared: { assetFilter, assetSearch: typeof s.assetSearch === 'string' ? s.assetSearch.slice(0, 500) : '', assetsCollapsed: s.assetsCollapsed === true, inspectorCollapsed: s.inspectorCollapsed === true },
     layout: normalizeWorkspaceLayout(source.layout, s) };

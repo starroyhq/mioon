@@ -1,7 +1,7 @@
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
-import {appendFileSync,chmodSync,closeSync,existsSync,fstatSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,unlinkSync,utimesSync,writeFileSync,writeSync} from 'node:fs';
+import {appendFileSync,chmodSync,closeSync,createReadStream,existsSync,fstatSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,truncateSync,unlinkSync,utimesSync,writeFileSync,writeSync} from 'node:fs';
 import {open,type FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -9,6 +9,7 @@ import {realpathSync} from 'node:fs';
 import {createProjectFile,openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {registerProjectMediaStore,registeredProjectAssetReferences} from '../packages/business/src/project-media-storage.ts';
 import {registerProjectOutputAdmission} from '../packages/business/src/project-output-owner.ts';
+import {createOutputArtifactStage,writeOutputArtifact} from '../packages/business/src/output-artifact-storage.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
@@ -36,6 +37,24 @@ function useUmask(t: TestContext, mask: number): void {
  t.after(() => {process.umask(original);});
 }
 const permissionBits = (file: string): number => statSync(file).mode & 0o777;
+
+test('staged export artifacts larger than 64 MiB are published with their verified size and hash', async t => {
+ const {store, projectDir, input} = fixture(t, 'exports');
+ const sizeBytes = 64 * 1024 ** 2 + 1;
+ const stageFile = createOutputArtifactStage(store, input.owner, 'export');
+ writeFileSync(stageFile, mp4HeaderFixture('Large export'), {mode: 0o600});
+ truncateSync(stageFile, sizeBytes);
+ const hash = createHash('sha256');
+ for await (const chunk of createReadStream(stageFile)) hash.update(chunk);
+ const sha256 = hash.digest('hex');
+ const artifact = writeOutputArtifact(store, {owner: input.owner, kind: 'export', sourceIdentity: input.owner.inputHash,
+  stageFile, info: {sizeBytes, sha256, width: 1280, height: 720, duration: 1800, hasVideo: true, hasAudio: true}}, () => {});
+ const output = await publishProjectOutput(store, {...input, assetId: artifact.assetId, publicationId: artifact.publicationId,
+  stageFile, mimeType: 'video/mp4', sizeBytes, sha256});
+ assert.equal(output.reference.sizeBytes, sizeBytes);
+ assert.equal(output.reference.fullSha256, sha256);
+ assert.equal(statSync(path.join(projectDir, output.relativePath)).size, sizeBytes);
+});
 
 for (const {kind, mask, forceCopy} of [
  {kind: 'exports', mask: 0o022, forceCopy: false},

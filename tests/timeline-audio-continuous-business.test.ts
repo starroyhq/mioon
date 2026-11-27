@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {createTimelineAudioContinuousServices} from '../packages/business/src/timeline-audio-continuous.ts';
+import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 
 interface BusinessClip {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; [key: string]: unknown}
 interface BusinessTrack {id: string; orderIndex: number; kind: string; hidden: boolean; muted: boolean; [key: string]: unknown}
@@ -78,6 +79,34 @@ test('ten-minute single segment is admitted, pulled in 300 bounded buffers and r
   assert.equal(samples, 28_800_000); assert.equal(largest, 768000); assert.equal(f.calls.hashes, 2);
   assert.equal(f.calls.opens.length, 1); assert.equal(f.calls.active, 0);
   t.diagnostic(JSON.stringify({sampleFrames: samples, largestMixedPcmBytes: largest, hashPasses: f.calls.hashes, decoderRuns: f.calls.opens.length}));
+});
+
+test('continuous preview pulls the final block of a 30-minute project with 300 saved clips', async (t: TestContext) => {
+  const f = await fixture(t), {maxFrames, maxClips} = TIMELINE_LIMITS;
+  const timeline = f.snapshot.timeline, durationFrames = maxFrames / maxClips;
+  const first = {...timeline.clips[0], durationFrames};
+  timeline.durationFrames = maxFrames;
+  timeline.clips = Array.from({length: maxClips}, (_, index) => ({
+    ...first, id: randomUUID(), startFrame: index * durationFrames,
+  }));
+  const startFrame = maxFrames - 60, input = {...f.input, startFrame};
+  const readPlan = f.service.handlers['timeline.audioPreview.continuousPlan'];
+  const plan = await readPlan(input);
+  assert.equal(plan.durationFrames, maxFrames);
+  const {pcm, details} = await f.consume({...f.block, ...input, planHash: plan.planHash, blockStartFrame: startFrame});
+  assert.equal(details.endFrame, maxFrames);
+  assert.equal(pcm.length, 768000);
+  assert.equal(f.calls.hashes, 2);
+  assert.deepEqual(f.calls.opens, [{sourceInFrame: 0, frameCount: durationFrames, trimStartFrame: durationFrames - 60}]);
+
+  timeline.clips[0].durationFrames = 1;
+  timeline.clips.push({...first, id: randomUUID(), startFrame: 1, durationFrames: durationFrames - 1});
+  await assert.rejects(readPlan(input), {code: 'AUDIO_PREVIEW_INVALID_SNAPSHOT'});
+  timeline.clips.pop();
+  timeline.clips[0].durationFrames = durationFrames;
+  timeline.durationFrames++;
+  timeline.clips.at(-1)!.durationFrames++;
+  await assert.rejects(readPlan(input), {code: 'AUDIO_PREVIEW_INVALID_SNAPSHOT'});
 });
 
 test('pause makes no source progress and seek restarts at original composition boundary', async (t: TestContext) => {

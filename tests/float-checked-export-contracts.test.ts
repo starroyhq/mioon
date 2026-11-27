@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {parse,schemas,TIMELINE_OUTPUT_PRESETS,TIMELINE_EXPORT_DEFAULT_SETTINGS,resolveTimelineExportDelivery,isTimelineExportDelivery,isTimelineExportSnapshot,isTimelineRenderRecord,isTimelineMutationResponse,isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID,TIMELINE_EXPORT_FLOAT_POLICY_ID,TIMELINE_EXPORT_AUDIO_INCOMPLETE_CODES,isTimelineExportAudioMeasurement,isTimelineExportAudioCheck,isTimelineExportAudioOutcome,isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 
 const clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
 const stamp='2026-10-13T07:00:00.000Z';
@@ -87,10 +88,11 @@ test('queued receipt is unchanged and running requires only a fresh attempt toke
 });
 
 test('complete measurement has exact counts and strict >1 threshold',()=>{
+  const {maxFrames}=TIMELINE_LIMITS;
   for(const value of ([0,0.5,1,1.0000001192092896,1.4] as const))assert.ok(isTimelineExportAudioMeasurement(measurement(value),30));
-  assert.ok(isTimelineExportAudioMeasurement(measurement(0.5,18000),18000));
+  assert.ok(isTimelineExportAudioMeasurement(measurement(0.5,maxFrames),maxFrames));
   for(const mutate of ([(m: { peakLinear: number; })=>{m.peakLinear=NaN;},(m: { channelPeaks: { peakLinear: number; }[]; })=>{m.channelPeaks[0].peakLinear=Infinity;},(m: { sampleFrames: number; })=>{m.sampleFrames--;},(m: { sampleCount: number; })=>{m.sampleCount++;},(m: { overRangeSampleCount: number; })=>{m.overRangeSampleCount=1;},(m: { channelPeaks: { overRangeSampleCount: number; }[]; })=>{m.channelPeaks[0].overRangeSampleCount=1;},(m: { channelPeaks: { channel: number; }[]; })=>{m.channelPeaks[0].channel=1;},(m: { sampleFormat: string; })=>{m.sampleFormat='s16le';},(m: { path: string; })=>{m.path='/private';}] as const)){const bad=measurement();mutate(((((bad) as unknown as Parameters<typeof mutate>[0])) as unknown as StrictIntersection<Parameters<NonNullable<typeof mutate>>[0]>));assert.equal(isTimelineExportAudioMeasurement(bad,30),false);}
-  assert.equal(isTimelineExportAudioMeasurement(measurement(0.5,18001)),false);
+  assert.equal(isTimelineExportAudioMeasurement(measurement(0.5,maxFrames+1)),false);
   assert.equal(isTimelineExportAudioMeasurement(measurement(),31),false);
   assert.equal(isTimelineExportAudioMeasurement(measurement(),0),false);
 });

@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import type {DatabaseSync} from 'node:sqlite';
 import {timelineRetainedRuntime as runtime} from './timeline-retained-runtime.ts';
 import {isTimelineVolumeEnvelopeRecord} from '../../contracts/src/timeline-volume-envelope-record.ts';
@@ -39,7 +40,7 @@ export function retainedRenderBindings(db:Pick<DatabaseSync,'prepare'>,root:unkn
  if((table==='exports'||owner!=null)&&root.projectId!==owner||timeline.projectId!==root.projectId||
     root[table==='timeline_requests'?'requestId':'id']!==rowIdentity||
     Buffer.byteLength(JSON.stringify(root))>runtime.timelineRenderResponseBytes||
-    !Array.isArray(timeline.clips)||assets.length<1||assets.length>100||
+    !Array.isArray(timeline.clips)||assets.length<1||assets.length>TIMELINE_LIMITS.maxClips||
     !isVolumeEnvelopeProcessingSnapshot(snapshot))invalid();
  const clips=timeline.clips as unknown[];
  const hasEnvelope=clips.some(clip=>object(clip)&&own(clip,'volumeEnvelope'));

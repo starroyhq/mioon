@@ -55,7 +55,7 @@ test('default full source is never treated as explicitly saved, even when untouc
   assert.equal(controller.getState().dirty, false); assert.equal(controller.snapshot(), null);
   await controller.save();
   assert.equal((controller.getState().row)!.revision, 1); assert.equal((controller.snapshot())!.outFrame, 36000);
-  assert.match(sourceRangeAddPlan({ snapshot: controller.snapshot(), asset: asset(), timeline: timeline() }).reason, /18000/);
+  assert.equal(sourceRangeAddPlan({ snapshot: controller.snapshot(), asset: asset(), timeline: timeline() }).valid, true);
 });
 
 test('edits during an acknowledged save remain dirty and use its next CAS revision', async () => {
@@ -126,7 +126,14 @@ test('saved range creates an immutable bounded timeline plan; later range saves 
   assert.equal(Object.isFrozen(snapshot), true); assert.equal(Object.isFrozen(plan.input), true);
   controller.edit('inFrame', 21000); controller.edit('outFrame', 21300); await controller.save();
   assert.equal(plan.input.sourceInFrame, 20000); assert.equal(plan.input.durationFrames, 120); assert.equal(tl.clips.length, 1);
-  for (const patch of [{ blocked: true }, { snapshot: null }, { timeline: timeline({ tracks: [] }) }, { timeline: timeline({ clips: [{ trackId: 'video', startFrame: 17900, durationFrames: 50 }] }) }, { asset: asset({ projectId: 'other' }) }]) assert.equal(sourceRangeAddPlan({ snapshot, asset: asset(), timeline: tl, ...patch }).valid, false);
+  const endAligned = (startFrame: number) => sourceRangeAddPlan({snapshot, asset: asset(),
+    timeline: timeline({clips: [{trackId: 'video', startFrame, durationFrames: 30}]})});
+  assert.equal(endAligned(53850).valid, true);
+  assert.match(endAligned(53851).reason, /54000/);
+  const clips = Array.from({length: 300}, (_, startFrame) => ({trackId: 'video', startFrame, durationFrames: 1}));
+  assert.equal(sourceRangeAddPlan({snapshot, asset: asset(), timeline: timeline({clips: clips.slice(0, 299)})}).valid, true);
+  assert.match(sourceRangeAddPlan({snapshot, asset: asset(), timeline: timeline({clips})}).reason, /300/);
+  for (const patch of [{ blocked: true }, { snapshot: null }, { timeline: timeline({ tracks: [] }) }, { asset: asset({ projectId: 'other' }) }]) assert.equal(sourceRangeAddPlan({ snapshot, asset: asset(), timeline: tl, ...patch }).valid, false);
   const audio = asset({ mimeType: 'audio/wav' }); assert.equal((sourceRangeAddPlan({ snapshot, asset: audio, timeline: tl }).input)!.trackId, 'audio');
 });
 
@@ -200,8 +207,8 @@ test('source range controls use full source bounds and retain timeline caps sepa
   assert.match(source, /timeline.range.timebase/); assert.match(translate('zh-Hans', 'timeline.range.timebase', { fps: 30 }), /不是原生帧率或 VFR/); assert.match(source, /timeline.range.recovery/); assert.match(translate('zh-Hans', 'timeline.range.recovery'), /关闭并重建原生窗口可能丢失凭据/);
   const inspector = readFileSync(new URL('../apps/web/src/TimelineInspector.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /data-testid="clip-source-in"[^>]*sourceFrameCount/);
-  assert.match(inspector, /data-testid="clip-start"[^>]*max="17999"/);
-  assert.match(inspector, /data-testid="clip-duration"[^>]*max="18000"/);
+  assert.match(inspector, /data-testid="clip-start"[^>]*max=\{TIMELINE_LIMITS\.maxFrames - 1\}/);
+  assert.match(inspector, /data-testid="clip-duration"[^>]*max=\{TIMELINE_LIMITS\.maxFrames\}/);
 });
 
 test('retained source inspector handlers reject another asset epoch, hidden panes and unmount', async () => {

@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {mediaLocatorFields, sameMediaLocator} from './asset-reference-record.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
@@ -71,7 +72,7 @@ export function readTimelineSourceGraph(db: DatabaseSync,projectId: string,timel
  return assets;
 }
 
-// Recovered exports have at most 100 clips, but are not subject to the
+// Recovered exports have a bounded clip count and are not subject to the
 // preflight aggregate read budget. Validate every clip before file I/O using
 // the exact same independently bounded graph (4 MiB/1024 records per lineage).
 // Readers are discarded between clips, preserving the resident metadata bound.
@@ -96,7 +97,7 @@ export function validateFrozenTimelineSourceGraph(db: DatabaseSync,projectId: st
 // or a guarantee against a privileged same-user/root pathname race.
 export function validatePreparedTimelineSources(db: DatabaseSync,projectId: string,snapshot: TimelineSnapshotLike,prepared: Map<string, PreparedSource>,{root}: {root?: string}={}): void{
  try{
-  if(snapshot?.timeline?.projectId!==projectId||!Array.isArray(snapshot.timeline.clips)||snapshot.timeline.clips.length>100||!Array.isArray(snapshot.assets)||snapshot.assets.length>100||!(prepared instanceof Map)||typeof root!=='string')throw invalid();
+  if(snapshot?.timeline?.projectId!==projectId||!Array.isArray(snapshot.timeline.clips)||snapshot.timeline.clips.length>TIMELINE_LIMITS.maxClips||!Array.isArray(snapshot.assets)||snapshot.assets.length>TIMELINE_LIMITS.maxClips||!(prepared instanceof Map)||typeof root!=='string')throw invalid();
   validateFrozenTimelineSourceGraph(db,projectId,snapshot.timeline);
   if(prepared.size!==snapshot.assets.length)throw invalid();
   for(const frozen of snapshot.assets){
@@ -126,8 +127,8 @@ export function readTimelinePreflightSnapshot(store: {db: DatabaseSync},projectI
   if(!stored)return {timeline:null,snapshot:null};
   const timeline=stored.timeline as TimelineRecord;
   if(!object(timeline)||!uuid(stored.id)||timeline.id!==stored.id||timeline.projectId!==projectId||
-   !Number.isSafeInteger(timeline.revision)||timeline.revision<1||!Array.isArray(timeline.clips)||timeline.clips.length>100||
-   !Array.isArray(timeline.tracks)||timeline.tracks.length>12||timeline.clips.some((c: unknown)=>!object(c)||!uuid((c as {id?: unknown}).id)||!uuid((c as {assetId?: unknown}).assetId)||!uuid((c as {trackId?: unknown}).trackId))||
+   !Number.isSafeInteger(timeline.revision)||timeline.revision<1||!Array.isArray(timeline.clips)||timeline.clips.length>LEGACY_TIMELINE_LIMITS.maxClips||
+   !Array.isArray(timeline.tracks)||timeline.tracks.length>TIMELINE_LIMITS.maxTracks||timeline.clips.some((c: unknown)=>!object(c)||!uuid((c as {id?: unknown}).id)||!uuid((c as {assetId?: unknown}).assetId)||!uuid((c as {trackId?: unknown}).trackId))||
    timeline.tracks.some((t: unknown)=>!object(t)||!uuid((t as {id?: unknown}).id)))throw invalid();
   if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames))throw invalid();
   let assets;
@@ -174,7 +175,7 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
  checkMediaEffect(beforeEffect,signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
  if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw invalid();
- if(snapshot.assets.length>100||snapshot.assets.some(a=>!object(a)||!uuid(a.id)||typeof a.mimeType!=='string'||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256))||new Set(snapshot.assets.map(a=>a.id)).size!==snapshot.assets.length)throw invalid();
+ if(snapshot.assets.length>TIMELINE_LIMITS.maxClips||snapshot.assets.some(a=>!object(a)||!uuid(a.id)||typeof a.mimeType!=='string'||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256))||new Set(snapshot.assets.map(a=>a.id)).size!==snapshot.assets.length)throw invalid();
  validateTimeline(snapshot.timeline,new Map(snapshot.assets.map(a=>[a.id,a])) as unknown as ReadonlyMap<string, ManagedAssetRecord>,{structureOnly:true});
  const referenced=new Set(snapshot.timeline.clips.map(clip=>clip.assetId));
  if(referenced.size!==snapshot.assets.length||snapshot.assets.some(asset=>!referenced.has(asset.id)))throw invalid();

@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 interface TimelineWithClips {readonly clips:readonly {readonly colour?:unknown}[]}
 /** A new image declaration adds bounded evidence to each clip, but does not
  * enlarge any historical record/receipt/history budget. Called only on an
@@ -6,7 +7,7 @@ interface TimelineWithClips {readonly clips:readonly {readonly colour?:unknown}[
 export function timelineImageResponseBudgetIssue(timeline:TimelineWithClips,maxBytes:number):{
  code:'TIMELINE_IMAGE_AGGREGATE_BUDGET';message:string;status:409;details:{maxBytes:number;actualBytes:number};
 }|null {
- if(!Array.isArray(timeline.clips)||timeline.clips.length>100||!timeline.clips.some(clip=>clip!==null&&typeof clip==='object'&&clip.colour!==null&&typeof clip.colour==='object'&&
+ if(!Array.isArray(timeline.clips)||timeline.clips.length>TIMELINE_LIMITS.maxClips||!timeline.clips.some(clip=>clip!==null&&typeof clip==='object'&&clip.colour!==null&&typeof clip.colour==='object'&&
   'profileId' in clip.colour&&['mioon-srgb-image-clip-v1','mioon-jfif-image-clip-v1'].includes(String(clip.colour.profileId))))return null;
  const actualBytes=new TextEncoder().encode(JSON.stringify(timeline)).byteLength;
  if(actualBytes<=maxBytes)return null;

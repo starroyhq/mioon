@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {AppError, schemas} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProjectStore} from './project-file/store.ts';
@@ -98,7 +99,7 @@ export function parseWorkspacePreferencesState(value: unknown): Record<string, u
       selectedClipId: id(e.selectedClipId, ['state', 'editing', 'selectedClipId']),
       quickAssetId: id(e.quickAssetId, ['state', 'editing', 'quickAssetId']),
       previewKind: oneOf(e.previewKind, ['timeline', 'source'], ['state', 'editing', 'previewKind']),
-      playhead: numeric(e.playhead, 0, 18000, ['state', 'editing', 'playhead'], true),
+      playhead: numeric(e.playhead, 0, TIMELINE_LIMITS.maxFrames, ['state', 'editing', 'playhead'], true),
       pixelsPerSecond: numeric(e.pixelsPerSecond, 28, 220, ['state', 'editing', 'pixelsPerSecond']),
       scrollLeft: numeric(e.scrollLeft, 0, 1e7, ['state', 'editing', 'scrollLeft']),
       scrollTop: numeric(e.scrollTop, 0, 1e6, ['state', 'editing', 'scrollTop']),

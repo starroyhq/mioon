@@ -9,11 +9,11 @@ interface FloatStagingRuntime {
   createPrivateTemporaryDirectory(root: string, prefix: string): string;
   validatePrivateDirectory(root: string): unknown;
 }
-interface Options {readonly signal?: AbortSignal; readonly beforeEffect?: () => void}
+interface Options {readonly signal?: AbortSignal; readonly beforeEffect?: () => void; readonly maxFiles?: number}
 const changed = (): Error => Object.assign(new Error('The local render staging files changed.'), {code:'INVALID_TIMELINE_SNAPSHOT'});
 const same = (left: Stats, right: Stats): boolean => left.dev === right.dev && left.ino === right.ino;
 
-/** Only the opt-in float renderer uses this private, bounded, flat staging set.
+/** Colour and float rendering use this private, bounded, flat staging set.
  * No scan/recursive deletion or same-name replacement adoption is permitted.
  * The caller retains this object until its exact unconfirmed child closes. */
 export function createTimelineFloatStaging(destination: string, options: Options, runtime: FloatStagingRuntime): {
@@ -25,6 +25,8 @@ export function createTimelineFloatStaging(destination: string, options: Options
   cleanup(): boolean;
 } {
   runtime.checkMediaEffect(options.beforeEffect,options.signal);
+  const maxFiles = options.maxFiles ?? 512;
+  if (!Number.isSafeInteger(maxFiles) || maxFiles < 1) throw changed();
   const work = runtime.createPrivateTemporaryDirectory(path.dirname(destination),'.timeline-render-');
   const directoryFd = openSync(work,constants.O_RDONLY | constants.O_NOFOLLOW), directory = fstatSync(directoryFd);
   const files = new Map<string,{fd: number; identity: Stats}>();
@@ -42,7 +44,7 @@ export function createTimelineFloatStaging(destination: string, options: Options
   };
   const reserve = (file: string): void => {
     effect();
-    if(path.dirname(file)!==work||files.has(file)||files.size>=512)throw changed();
+    if(path.dirname(file)!==work||files.has(file)||files.size>=maxFiles)throw changed();
     const fd=openSync(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
     files.set(file,{fd,identity:fstatSync(fd)});
   };

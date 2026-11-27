@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 const fadeKeys = ['fadeInFrames', 'fadeOutFrames'] as const;
 type FadeKey = typeof fadeKeys[number];
@@ -27,7 +28,7 @@ export function clipAudioMessage(draft: FrameDraft, asset: {hasAudio?: unknown; 
   const fades = fadeKeys.map(key => owns(draft, key) ? frameValue(draft[key]) : 0);
   if (fades.some(value => !Number.isSafeInteger(value) || value < 0)) return message('audio.clip.integerFrames');
   const duration = frameValue(draft.durationFrames);
-  if (!Number.isSafeInteger(duration) || duration < 1 || duration > 18000) return message('audio.clip.durationFirst');
+  if (!Number.isSafeInteger(duration) || duration < 1 || duration > TIMELINE_LIMITS.maxFrames) return message('audio.clip.durationFirst');
   if (fades.some(value => value > duration) || fades[0] + fades[1] > duration) return message('audio.clip.totalTooLong', { duration });
   if (fades.some(value => value > 0) && !supportsClipAudioFades(asset)) return message('audio.clip.requiresAudio');
   return null;

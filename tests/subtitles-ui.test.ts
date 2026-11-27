@@ -54,6 +54,41 @@ test('new cue chooses exact integer frame and bounded duration, then sends liter
   assert.equal(Object.isFrozen(h.intents[0].input), true); assert.equal(h.controller.getState().cueId, id(9)); assert.equal(h.controller.getState().dirty, false);
 });
 
+test('native drafts use the 30-minute clock and accept the saved anchored cue', async () => {
+  const original = timeline({durationFrames: 54000});
+  const mainTrack = {trackId: original.tracks[0].id, sequenceNodeId: id(20)};
+  const clip = {...original.clips[0], durationFrames: 54000, sourceState: 'ready',
+    sequenceSource: {kind: 'media', nodeId: id(21), segmentGroupId: id(22)}};
+  const native = {...original, mainTrack, clips: [clip],
+    subtitles: {...original.subtitles, cues: Array.from({length: 101}, (_, index) => ({
+      ...cue({id: id(100 + index), startFrame: index * 30}), anchor: {clipId: clip.id, offsetFrames: index * 30},
+    }))}};
+  const h = fixture({ctx: {...context(), timeline: native}, submit: async intent => {
+    const saved = applied(intent, native);
+    const added = saved.subtitles.cues.at(-1);
+    assert.ok(added);
+    Object.assign(added, {anchor: {clipId: clip.id, offsetFrames: added.startFrame}});
+    return {status: 'applied', timeline: saved};
+  }});
+  assert.equal(h.controller.begin(54000), false);
+  assert.equal(h.controller.begin(53999), true);
+  h.controller.edit('text', '末帧');
+  h.controller.edit('durationFrames', 2);
+  assert.equal(subtitles.subtitleCanSave(h.controller.getState()), false);
+  h.controller.edit('durationFrames', 1);
+  assert.equal(subtitles.subtitleCanSave(h.controller.getState()), true);
+  assert.ok(await h.controller.save());
+  assert.equal(h.controller.getState().cueId, id(9));
+  assert.equal(h.controller.getState().dirty, false);
+  assert.equal(h.controller.getState().uncertain, null);
+  assert.equal(h.intents[0].input.startFrame, 53999);
+  assert.equal(h.intents[0].input.durationFrames, 1);
+  const bad = structuredClone(h.controller.getState().timeline!);
+  assert.equal(subtitles.subtitleAcknowledged(h.intents[0], {...bad, revision: bad.revision + 1}, true), false);
+  const full = {...native, subtitles: {...native.subtitles, cues: Array.from({length: 1000}, () => native.subtitles.cues[0])}};
+  assert.match(subtitles.subtitleAddReason(full, 53999), /1000条字幕/);
+});
+
 test('shared validation rejects fractional, blank, out-of-media, overlap, long lines, extra lines and unsupported glyphs without editing text', () => {
   const h = fixture(); h.controller.select(cueId);
   for (const [key, value] of [['startFrame', '.5'], ['startFrame', ''], ['durationFrames', 181], ['durationFrames', 61], ['text', 'a'.repeat(21)], ['text', 'a\nb\nc'], ['text', '测试🙂'], ['text', 'a\tb']]) {
@@ -291,9 +326,9 @@ test('native subtitle selection validates a detached cue beside projected dialog
 
 test('native subtitle drafts use native cue and duration limits', () => {
   const { timeline: native } = format5SequenceFixture();
-  const firstFrame = subtitles.TIMELINE_SUBTITLE_LIMITS.durationFrames;
   const count = FORMAT5_LIMITS.subtitleCues;
-  native.durationFrames = firstFrame + count + 1;
+  native.durationFrames = FORMAT5_LIMITS.durationFrames;
+  const firstFrame = native.durationFrames - count - 1;
   native.clips[1]!.durationFrames = native.durationFrames - native.clips[1]!.startFrame;
   native.subtitles!.cues = Array.from({length: count - 1}, (_, index) => ({
     id: format5FixtureId(100 + index), text: 'Caption', startFrame: firstFrame + index, durationFrames: 1, anchor: null,
@@ -304,10 +339,10 @@ test('native subtitle drafts use native cue and duration limits', () => {
   assert.equal(controller.begin(firstFrame + count - 1), true);
   controller.edit('text', 'Last caption');
   assert.equal(subtitles.subtitleCanSave(controller.getState()), true);
-  assert.equal(subtitles.subtitleAddMessage({...native, subtitles: {cues: [
+  assert.deepEqual(subtitles.subtitleAddMessage({...native, subtitles: {cues: [
     ...native.subtitles!.cues, {id: format5FixtureId(100 + count), text: 'Last caption',
       startFrame: firstFrame + count - 1, durationFrames: 1},
-  ]}}, firstFrame + count)?.key, 'subtitles.error.limit');
+  ]}}, firstFrame + count), message('subtitles.error.nativeLimit', {maxCues: count}));
 });
 
 test('actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard', async () => {

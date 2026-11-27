@@ -2,8 +2,9 @@ import { mediaConfigurationError, mediaExecutable } from './media-environment.ts
 import { createStreamingMediaRuntime } from './media-streaming-runtime.ts';
 import { spawnMedia, mediaInterrupted, onMediaInterruption, interruptedMediaError, throwIfMediaAborted, terminateMediaProcess } from './media-processes.ts';
 import type { ManagedMediaChild, PipedMediaChild } from './media-processes.ts';
+import { TIMELINE_EXPORT_FLOAT_LIMITS } from '@mioon/contracts/timeline-export-float';
 
-export const MEDIA_RUNTIME_LIMITS = Object.freeze({ stdoutBytes: 4 * 1024 * 1024, streamingStdoutBytes: 600 * 48000 * 2 * 4, stderrBytes: 1024 * 1024, stderrTailBytes: 16 * 1024, timeoutMs: 120000 });
+export const MEDIA_RUNTIME_LIMITS = Object.freeze({ stdoutBytes: 4 * 1024 * 1024, streamingStdoutBytes: TIMELINE_EXPORT_FLOAT_LIMITS.pcmBytes, stderrBytes: 1024 * 1024, stderrTailBytes: 16 * 1024, timeoutMs: 120000 });
 export const MEDIA_PULL_CHUNK_BYTES = 1024 * 1024;
 
 /** Trusted synchronous fence supplied by backend-owned callers. */

@@ -34,6 +34,15 @@ test('strict integer interior, selected clip, correct workspace and clip limit g
  for(const patch of [{selectedClipId:null},{selectedClipId:'absent'},{mode:'canvas'},{timeline:null},{projectId:null}])assert.equal(splitState({...fixture(),...patch}).canSplit,false);
  const many=fixture();many.timeline.clips=Array.from({length:99},(_,i)=>({...many.timeline.clips[0],id:i?'extra-'+i:'clip'}));assert.equal(splitState(many).canSplit,true);many.timeline.clips.push({...many.timeline.clips[0],id:'hundred'});assert.match(splitState(many).blockedReason,/100/);
 });
+test('native splits are available through 299 clips and report the 300-clip limit', () => {
+ const base = fixture();
+ const timeline = {...base.timeline, mainTrack: {trackId: 'video'}, clips: Array.from({length: 299}, (_, index) => ({
+  ...base.timeline.clips[0], id: index ? `clip-${index}` : 'clip',
+ }))};
+ assert.equal(splitState({...base, timeline}).canSplit, true);
+ timeline.clips.push({...base.timeline.clips[0], id: 'clip-299'});
+ assert.match(splitState({...base, timeline}).blockedReason, /300/);
+});
 test('split fails closed for dirty, loading, offline, pending, busy and mismatched snapshots',()=>{
  for(const patch of [{dirty:true},{online:false},{busy:true},{pending:true},{history:null},{history:{...fixture().history,revision:4}},{history:{...fixture().history,projectId:'other'}}]){const state=splitState({...fixture(),...patch});assert.equal(state.canSplit,false,JSON.stringify(patch));assert.ok(state.blockedReason);}
 });

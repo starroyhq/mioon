@@ -282,20 +282,6 @@
       "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '已保存范围必须使用整数帧。'."
     },
     {
-      "file": "apps/web/src/source-range-state.ts",
-      "category": "cjk-source",
-      "hash": "629b5810ec213ed4efa102c6194478ecd875dae067b7ae5303981508b8625a43",
-      "owner": "timeline",
-      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '追加后的终点超过时间线 18000 帧上限；请缩短已保存范围或调整轨道。'."
-    },
-    {
-      "file": "apps/web/src/source-range-state.ts",
-      "category": "cjk-source",
-      "hash": "5a70a2681102d2967e5b99a4c0b4a9955585d68866b25a8825784902d9f9ecd9",
-      "owner": "timeline",
-      "reason": "The legacy string is retained for exact old helper/state assertions and boolean eligibility checks only. The visible explanation is the paired stable descriptor. Existing saved range and timeline-add input are not rewritten. Display boundary: errorMessage/reasonMessage → SourceRangeInspector.jsx; reasonMessage → App.jsx notify. Compatibility purpose: In-memory diagnostic and eligibility compatibility. Reviewed original literal: '时间线最多容纳 100 个片段。'."
-    },
-    {
       "file": "apps/web/src/subtitle-state.ts",
       "category": "cjk-source",
       "hash": "49260984d489f98f731caa146516cd6d6fc0a5e5cfef8416f6c536cbfcc64a5c",
@@ -504,20 +490,6 @@
       "hash": "dce7dcc57c8ff599f0b6973c774307e29a9b00d2cf1d39097320f56280bcdace",
       "owner": "timeline",
       "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '片段类型与目标轨道不兼容'."
-    },
-    {
-      "file": "apps/web/src/timeline-snapping.ts",
-      "category": "cjk-source",
-      "hash": "7fc3eee28b841d79ba5ef1e027a770166acb5e4ada1d5439f03aba4bc45b59ea",
-      "owner": "timeline",
-      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '片段超过时间线 18000 帧上限'."
-    },
-    {
-      "file": "apps/web/src/timeline-snapping.ts",
-      "category": "cjk-source",
-      "hash": "939ba51855d1be586a76d9b9991639b41e5eb7f081ba3354836973d512e2a7d4",
-      "owner": "timeline",
-      "reason": "Legacy note/reason/label fields remain for existing pure geometry consumers and tests. UI renders corresponding stable descriptors; snap ordering and placement use numeric data, not translated text. No presentation metadata enters edit inputs. Display boundary: noteMessage/reasonMessage/snap.labelMessage → Timeline.jsx. Compatibility purpose: Renderer helper return-shape compatibility. Reviewed original literal: '时间线最多容纳 100 个片段'."
     },
     {
       "file": "apps/web/src/timeline-snapping.ts",

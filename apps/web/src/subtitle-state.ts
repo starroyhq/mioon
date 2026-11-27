@@ -93,6 +93,9 @@ const fields = (cue: { readonly text?: unknown; readonly startFrame?: unknown; r
 const cues = (timeline: SubtitleTimeline | null | undefined): readonly SubtitleCue[] => timeline?.subtitles?.cues || [];
 const nativeSubtitleLimits = { cues: FORMAT5_LIMITS.subtitleCues, durationFrames: FORMAT5_LIMITS.durationFrames };
 const subtitleLimits = (timeline: SubtitleTimeline) => timeline.mainTrack ? nativeSubtitleLimits : TIMELINE_SUBTITLE_LIMITS;
+const subtitleLimitMessage = (timeline: SubtitleTimeline | null | undefined) => timeline?.mainTrack
+  ? message('subtitles.error.nativeLimit', { maxCues: nativeSubtitleLimits.cues })
+  : message('subtitles.error.limit', { maxCues: TIMELINE_SUBTITLE_LIMITS.cues });
 const initial = (): SubtitleState => ({ scope: null, projectId: null, timeline: null, cueId: null, selection: 0, draft: null, baseRevision: null, dirty: false, conflict: false, submitting: false, uncertain: null, connected: false, pending: true, error: '', errorMessage: null });
 const protocolError = (): Error => Object.assign(new Error('字幕确认与原请求不一致；草稿仍保留，请在任务中心核对。'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
@@ -128,7 +131,8 @@ export function subtitleDraftMessage(state: SubtitleState | null | undefined): D
     return typeof line === 'number' && Number.isSafeInteger(line) && line > 0 && typeof column === 'number' && Number.isSafeInteger(column) && column > 0 && typeof codePoint === 'string' && /^U\+[A-F0-9]{4,6}$/.test(codePoint)
       ? message('subtitles.error.character', { line, column, codePoint }) : message('subtitles.error.text');
   }
-  const issueKeys: Record<string, MessageKey> = { INVALID_SUBTITLES: 'subtitles.error.invalid', SUBTITLE_LIMIT: 'subtitles.error.limit', SUBTITLE_BOUNDS: 'subtitles.error.bounds', SUBTITLE_OVERLAP: 'subtitles.error.overlap' };
+  if (issue.code === 'SUBTITLE_LIMIT') return subtitleLimitMessage(state?.timeline);
+  const issueKeys: Record<string, MessageKey> = { INVALID_SUBTITLES: 'subtitles.error.invalid', SUBTITLE_BOUNDS: 'subtitles.error.bounds', SUBTITLE_OVERLAP: 'subtitles.error.overlap' };
   const key = Object.hasOwn(issueKeys, issue.code) ? issueKeys[issue.code] : 'subtitles.error.invalid';
   return message(key);
 }
@@ -137,7 +141,7 @@ export const subtitleCanSave = (state: SubtitleState | null | undefined): boolea
 export function subtitleAddMessage(timeline: SubtitleTimeline | null | undefined, frame: number, blocked = false): DisplayMessage | null {
   if (blocked) return message('subtitles.error.pending');
   if (!timeline || timeline.durationFrames < 1) return message('subtitles.error.mediaFirst');
-  if (cues(timeline).length >= subtitleLimits(timeline).cues) return message('subtitles.error.limit');
+  if (cues(timeline).length >= subtitleLimits(timeline).cues) return subtitleLimitMessage(timeline);
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= timeline.durationFrames) return message('subtitles.error.playhead');
   return null;
 }

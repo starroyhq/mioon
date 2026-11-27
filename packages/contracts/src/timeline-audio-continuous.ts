@@ -12,8 +12,8 @@ export const CONTINUOUS_AUDIO_LIMITS = Object.freeze({
   blockFrames: 60, sampleRate: 48000, channels: 2, samplesPerFrame: 1600,
   memoryBytes: AUDIO_PREVIEW_LIMITS.memoryBytes,
   hashReadBytes: AUDIO_PREVIEW_LIMITS.hashReadBytes,
-  sourceBytes: AUDIO_PREVIEW_LIMITS.sourceBytes, sourceSeconds: 600,
-  timelineFrames: 18000, tracks: 12, clips: 100,
+  sourceBytes: AUDIO_PREVIEW_LIMITS.sourceBytes, sourceSeconds: AUDIO_PREVIEW_LIMITS.sourceSeconds,
+  timelineFrames: AUDIO_PREVIEW_LIMITS.timelineFrames, tracks: AUDIO_PREVIEW_LIMITS.tracks, clips: AUDIO_PREVIEW_LIMITS.clips,
   decodeWorkFrames: 218400, sessionDecodeWorkFrames: 873600,
   decodeSegments: 2400, generations: 256, requests: 10000,
   prepareTimeoutMs: 120000, sessionTimeoutMs: 30 * 60 * 1000,
@@ -21,22 +21,24 @@ export const CONTINUOUS_AUDIO_LIMITS = Object.freeze({
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const integer = (min: number, max: number) => z.number().finite().int().min(min).max(max);
 /** Backend projection only. Public callers cannot submit saved snapshots. */
-const snapshotId = z.string().uuid(), snapshotFrame = integer(0, 18000);
+const snapshotId = z.string().uuid(), snapshotFrame = integer(0, CONTINUOUS_AUDIO_LIMITS.timelineFrames);
+const snapshotDuration = integer(1, CONTINUOUS_AUDIO_LIMITS.timelineFrames);
+const lastFrame = integer(0, CONTINUOUS_AUDIO_LIMITS.timelineFrames - 1);
 export const continuousAudioSnapshotSchema = z.object({volumeEnvelopeProfile: z.literal(VOLUME_ENVELOPE_PROCESSING_PROFILE).optional(), timeline: z.object({id: snapshotId, projectId: snapshotId,
   revision: integer(1, Number.MAX_SAFE_INTEGER), fps: z.literal(30), durationFrames: snapshotFrame,
-  tracks: z.array(z.object({id: snapshotId, kind: z.enum(['video', 'audio']), orderIndex: integer(0, 11),
-    hidden: z.boolean(), muted: z.boolean()}).strict()).min(1).max(12),
+  tracks: z.array(z.object({id: snapshotId, kind: z.enum(['video', 'audio']), orderIndex: integer(0, CONTINUOUS_AUDIO_LIMITS.tracks - 1),
+    hidden: z.boolean(), muted: z.boolean()}).strict()).min(1).max(CONTINUOUS_AUDIO_LIMITS.tracks),
   clips: z.array(z.object({id: snapshotId, trackId: snapshotId, assetId: snapshotId, startFrame: snapshotFrame,
-    durationFrames: integer(1, 18000), sourceInFrame: integer(0, Number.MAX_SAFE_INTEGER - 18000),
+    durationFrames: snapshotDuration, sourceInFrame: integer(0, Number.MAX_SAFE_INTEGER - CONTINUOUS_AUDIO_LIMITS.timelineFrames),
     gain: z.number().finite().min(0).max(2), fadeInFrames: snapshotFrame.optional(), fadeOutFrames: snapshotFrame.optional(),
     muted: z.literal(true).optional(), soundOnly: z.literal(true).optional(),
     volumeEnvelope: z.custom<TimelineVolumeEnvelope|null>().optional()}).strict().refine(clip =>
-      !Object.hasOwn(clip, 'volumeEnvelope') || isVolumeEnvelope(clip.volumeEnvelope, clip.durationFrames), 'Invalid volume envelope.')).max(100),
+      !Object.hasOwn(clip, 'volumeEnvelope') || isVolumeEnvelope(clip.volumeEnvelope, clip.durationFrames), 'Invalid volume envelope.')).max(CONTINUOUS_AUDIO_LIMITS.clips),
 }).strict(), assets: z.array(z.object({id: snapshotId, projectId: snapshotId, sha256: digest,
   sizeBytes: integer(1, Number.MAX_SAFE_INTEGER),
   mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4']),
   duration: z.number().finite().nonnegative().nullable(), hasAudio: z.boolean().nullable().optional(),
-}).strict()).max(100)}).strict().refine(isVolumeEnvelopeProcessingSnapshot, 'Invalid volume envelope processing profile.');
+}).strict()).max(CONTINUOUS_AUDIO_LIMITS.clips)}).strict().refine(isVolumeEnvelopeProcessingSnapshot, 'Invalid volume envelope processing profile.');
 export type ContinuousAudioSnapshot = z.infer<typeof continuousAudioSnapshotSchema>;
 export const continuousAudioPlanInputSchema = audioPreviewPlanInputSchema;
 export type ContinuousAudioPlanInput = z.infer<typeof continuousAudioPlanInputSchema>;
@@ -44,7 +46,7 @@ export const continuousAudioPlanSchema = z.object({
   schemaVersion: z.literal(2), status: z.literal('planned'), profileId: z.literal(CONTINUOUS_AUDIO_PROFILE),
   volumeEnvelopeProfile: z.literal(VOLUME_ENVELOPE_PROCESSING_PROFILE).optional(),
   projectId: z.string().uuid(), timelineId: z.string().uuid(), timelineRevision: integer(1, Number.MAX_SAFE_INTEGER),
-  startFrame: integer(0, 17999), durationFrames: integer(1, 18000),
+  startFrame: lastFrame, durationFrames: snapshotDuration,
   blockFrames: z.literal(60), sampleRate: z.literal(48000), channels: z.literal(2),
   admittedBytes: z.literal(AUDIO_PREVIEW_LIMITS.memoryBytes), snapshotHash: digest, planHash: digest,
 }).strict().refine(plan => !Object.hasOwn(plan, 'volumeEnvelopeProfile') || plan.volumeEnvelopeProfile === VOLUME_ENVELOPE_PROCESSING_PROFILE,
@@ -53,7 +55,7 @@ export type ContinuousAudioPlan = z.infer<typeof continuousAudioPlanSchema>;
 export const continuousAudioBlockInputSchema = audioPreviewPlanInputSchema.extend({
   planHash: digest, sessionId: z.string().uuid(),
   generation: integer(1, CONTINUOUS_AUDIO_LIMITS.generations),
-  sequence: integer(1, CONTINUOUS_AUDIO_LIMITS.requests), blockStartFrame: integer(0, 17999),
+  sequence: integer(1, CONTINUOUS_AUDIO_LIMITS.requests), blockStartFrame: lastFrame,
 }).strict();
 export type ContinuousAudioBlockInput = z.infer<typeof continuousAudioBlockInputSchema>;
 export const continuousAudioSchemas = Object.freeze({'timeline.audioPreview.continuousPlan': continuousAudioPlanInputSchema});

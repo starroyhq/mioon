@@ -4,10 +4,13 @@ import {validateTimelineVolumeEnvelopeClip} from './timeline-volume-envelope-adm
 import {volumeEnvelopeField,volumeEnvelopeSnapshotFields,isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {getTimelineAudioRoleIssue,timelineAudioRoleSnapshotFields} from '../../contracts/src/timeline-audio-role.ts';
 import {timelineExportRangeFields} from '@mioon/contracts/timeline-export-range';
+import {LEGACY_TIMELINE_LIMITS,TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {projectTimelineColourPlan} from '../../contracts/src/timeline-colour.ts';
 import {isClipLayoutRect, type ClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
-import {timelineSubtitleSnapshotFields} from '../../contracts/src/timeline-subtitles.ts';
+import {timelineSubtitleSnapshotFields,TIMELINE_RENDER_SUBTITLE_LIMITS} from '../../contracts/src/timeline-subtitles.ts';
+import {planTimelineExportRange} from './timeline-export-range-plan.ts';
+import {assertTransitionImageBudget,timelineTransitionRegions,transitionPlanSnapshot} from './timeline-transition-filter.ts';
 import {AppError,sourceFrameCount,getTimelineFadeIssue,timelineOutputPreset,getTimelineSubtitleIssue,resolveTimelineExportDelivery} from '@mioon/contracts';
 
 export interface TimelineRect {x: number;y: number;width: number;height: number}
@@ -36,13 +39,23 @@ export interface ManagedAssetRecord {
 
 const integer=(value: unknown,min: number,max: number): boolean=>Number.isInteger(value)&&(value as number)>=min&&(value as number)<=max;
 function invalid(message: string): never{throw Object.assign(Error(message),{code:'INVALID_TIMELINE_SNAPSHOT'});}
+export const TIMELINE_PROCESSING_LIMIT_MESSAGE = `时间线最多支持 ${TIMELINE_LIMITS.maxClips} 个片段和 ${TIMELINE_LIMITS.maxMinutes} 分钟（${TIMELINE_LIMITS.maxFrames} 帧）。`;
+
+export function assertTimelineProcessingSize(timeline: {durationFrames: number; clips: readonly unknown[]}): void {
+ if(timeline.clips.length>TIMELINE_LIMITS.maxClips||timeline.durationFrames>TIMELINE_LIMITS.maxFrames){
+  throw new AppError('TIMELINE_LIMIT',TIMELINE_PROCESSING_LIMIT_MESSAGE,400,{
+   maxClips:TIMELINE_LIMITS.maxClips,maxDurationFrames:TIMELINE_LIMITS.maxFrames,
+  });
+ }
+}
 
 // Defense in depth for recovered, persisted jobs. The service performs the same
 // public validation, but the renderer must never interpret arbitrary effects.
 export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<string, ManagedAssetRecord>,{structureOnly=false}: {structureOnly?: boolean}={}): Map<string, TimelineTrackRecord>{
  // Keep the accepted geometry closed, including readable legacy 720 records.
  if(!timelineOutputPreset(timeline))invalid('Timeline output must match a supported 720 or 1080 preset at 30 fps');
- if(!Array.isArray(timeline.tracks)||timeline.tracks.length>12||!Array.isArray(timeline.clips)||!timeline.clips.length||timeline.clips.length>100)invalid('Timeline requires 1–100 clips and at most 12 tracks');
+ if(!Array.isArray(timeline.tracks)||timeline.tracks.length>TIMELINE_LIMITS.maxTracks||!Array.isArray(timeline.clips)||!timeline.clips.length||timeline.clips.length>TIMELINE_LIMITS.maxClips)
+  invalid(`Timeline requires 1–${TIMELINE_LIMITS.maxClips} clips and at most ${TIMELINE_LIMITS.maxTracks} tracks`);
  const tracks=new Map<string, TimelineTrackRecord>();
  for(const t of timeline.tracks){if(!t||!t.id||tracks.has(t.id)||!['video','audio'].includes(t.kind)||!Number.isInteger(t.orderIndex)||typeof t.hidden!=='boolean'||typeof t.muted!=='boolean'||(t.kind==='audio'&&t.hidden))invalid('Invalid timeline track');tracks.set(t.id,t);}
  let duration=0;const ids=new Set();
@@ -50,7 +63,8 @@ export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<st
   if(!c||typeof c!=='object')invalid('Missing, duplicate, or unresolvable timeline clip');
   const t=tracks.get(c.trackId),a=assets.get(c.assetId);
   if(!c.id||ids.has(c.id)||!t||!a)invalid('Missing, duplicate, or unresolvable timeline clip');ids.add(c.id);
-  if(!integer(c.startFrame,0,18000)||!integer(c.durationFrames,1,18000)||!integer(c.sourceInFrame,0,Number.MAX_SAFE_INTEGER-18000)||c.startFrame+c.durationFrames>18000)invalid('Invalid frame range');
+  if(!integer(c.startFrame,0,TIMELINE_LIMITS.maxFrames)||!integer(c.durationFrames,1,TIMELINE_LIMITS.maxFrames)||
+     !integer(c.sourceInFrame,0,Number.MAX_SAFE_INTEGER-c.durationFrames)||c.startFrame+c.durationFrames>TIMELINE_LIMITS.maxFrames)invalid('Invalid frame range');
   const r=c.rect;
   const placement=Object.hasOwn(c,'layout')?c:{rect:r&&{x:r.x,y:r.y,width:r.width,height:r.height}};
   if(!isClipLayoutRect(placement,timeline))invalid('Invalid clip layout or rectangle');
@@ -72,7 +86,7 @@ export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<st
  }
  for(const t of tracks.values()){const clips=timeline.clips.filter(c=>c.trackId===t.id).sort((a,b)=>a.startFrame-b.startFrame);for(let i=1;i<clips.length;i++)if(clips[i].startFrame<clips[i-1].startFrame+clips[i-1].durationFrames)invalid('Clips overlap on one track');}
  if(timeline.durationFrames!==duration)invalid('Timeline duration does not match clips');
- if(Object.hasOwn(timeline,'subtitles')){const issue=getTimelineSubtitleIssue(timeline.subtitles,duration);if(issue)invalid(issue.message);}
+ if(Object.hasOwn(timeline,'subtitles')){const issue=getTimelineSubtitleIssue(timeline.subtitles,duration,TIMELINE_RENDER_SUBTITLE_LIMITS);if(issue)invalid(issue.message);}
  return tracks;
 }
 
@@ -80,6 +94,7 @@ export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<st
 // Keep this projection and source order identical for both new exports and
 // preflight digests. Omitted legacy fields stay omitted in frozen responses.
 export function freezeTimelineSnapshot(timeline: TimelineRecord,assets: ReadonlyMap<string, ManagedAssetRecord>,exportSettings: unknown,deliveryInput: {deliveryName?: string;exportRange?: unknown}={}){
+ assertTimelineProcessingSize(timeline);
  const snapshot=JSON.parse(JSON.stringify({timeline,...volumeEnvelopeSnapshotFields(timeline),...timelineAudioRoleSnapshotFields(timeline),...timelineDeliveryNameFields(deliveryInput),...timelineExportRangeFields(deliveryInput),...(exportSettings===undefined?{}:{delivery:resolveTimelineExportDelivery(timeline,exportSettings)}),...timelineSubtitleSnapshotFields(timeline.subtitles),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
   const source=assets.get(id);
   if(!source)throw Object.assign(Error('Timeline snapshot does not match managed asset'),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
@@ -95,12 +110,23 @@ export function freezeTimelineSnapshot(timeline: TimelineRecord,assets: Readonly
  return snapshot;
 }
 
-export const TIMELINE_LIMITS=Object.freeze({fps:30,width:1080,height:1920,tracks:12,clips:100,durationFrames:18000});
+/** Preflight and fresh enqueue share the renderer's transition and segment
+ * admission. A history replay reads its existing receipt before planning. */
+export function assertTimelineExportPlan(snapshot: Parameters<typeof assertTransitionImageBudget>[0] & Parameters<typeof planTimelineExportRange>[0],
+ assets: ReadonlyMap<string, ManagedAssetRecord>): void {
+ assertTransitionImageBudget(snapshot);
+ planTimelineExportRange(transitionPlanSnapshot(snapshot,timelineTransitionRegions(snapshot.timeline,assets)));
+}
+
+const legacySavedLimits=Object.freeze({fps:TIMELINE_LIMITS.framesPerSecond,width:1080,height:1920,tracks:TIMELINE_LIMITS.maxTracks,
+ clips:LEGACY_TIMELINE_LIMITS.maxClips,durationFrames:LEGACY_TIMELINE_LIMITS.maxFrames});
 const visualTypes=new Set(['image/png','image/jpeg','image/webp','video/mp4','video/webm']);
 const audioTypes=new Set(['audio/mpeg','audio/wav','audio/mp4']);
-export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {track: (timeline: TimelineRecord,id: string)=>TimelineTrackRecord;asset: (projectId: string,assetId: string)=>ManagedAssetRecord}): TimelineRecord{
-  if(timeline.tracks.length>TIMELINE_LIMITS.tracks||timeline.clips.length>TIMELINE_LIMITS.clips)
-   throw new AppError('TIMELINE_LIMIT','时间线最多支持12条轨道和100个片段',400,TIMELINE_LIMITS);
+export function validateSavedTimeline(timeline: TimelineRecord,{track,asset,processing=false}: {track: (timeline: TimelineRecord,id: string)=>TimelineTrackRecord;asset: (projectId: string,assetId: string)=>ManagedAssetRecord;processing?:boolean}): TimelineRecord{
+  const limits=processing?TIMELINE_LIMITS:LEGACY_TIMELINE_LIMITS;
+  if(timeline.tracks.length>TIMELINE_LIMITS.maxTracks||timeline.clips.length>limits.maxClips)
+   throw new AppError('TIMELINE_LIMIT',`时间线最多支持${TIMELINE_LIMITS.maxTracks}条轨道和${limits.maxClips}个片段`,400,
+    processing?{maxClips:limits.maxClips,maxDurationFrames:limits.maxFrames}:legacySavedLimits);
   let duration=0;
   for(const item of timeline.clips){
    const lane=track(timeline,item.trackId),source=asset(timeline.projectId,item.assetId);
@@ -113,8 +139,8 @@ export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {t
    const fadeIssue=getTimelineFadeIssue(item,source);
    if(fadeIssue)throw new AppError(fadeIssue.code,fadeIssue.message,400,fadeIssue.details);
    const end=item.startFrame+item.durationFrames;
-   if(end>TIMELINE_LIMITS.durationFrames)
-    throw new AppError('TIMELINE_LIMIT','时间线总时长不能超过18000帧（10分钟）',400,{maxDurationFrames:TIMELINE_LIMITS.durationFrames});
+   if(end>limits.maxFrames)
+    throw new AppError('TIMELINE_LIMIT',`时间线总时长不能超过${limits.maxFrames}帧（${limits.maxFrames/TIMELINE_LIMITS.framesPerSecond/60}分钟）`,400,{maxDurationFrames:limits.maxFrames});
    if(source.mimeType.startsWith('image/')){
     if(item.sourceInFrame!==0)throw new AppError('SOURCE_BOUNDS','图片的素材入点必须为0',400,{clipId:item.id});
    }else{
@@ -134,7 +160,7 @@ export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {t
      throw new AppError('CLIP_OVERLAP','同一轨道的片段不能重叠，可以首尾相接',409,{trackId:lane.id,clipIds:[previous.id,current.id]});
    }
   }
-  if(Object.hasOwn(timeline,'subtitles')){const issue=getTimelineSubtitleIssue(timeline.subtitles,duration);if(issue)throw new AppError(issue.code,issue.message,400,issue.details);}
+  if(Object.hasOwn(timeline,'subtitles')){const issue=getTimelineSubtitleIssue(timeline.subtitles,duration,processing?TIMELINE_RENDER_SUBTITLE_LIMITS:undefined);if(issue)throw new AppError(issue.code,issue.message,400,issue.details);}
   timeline.durationFrames=duration;
   return timeline;
  }

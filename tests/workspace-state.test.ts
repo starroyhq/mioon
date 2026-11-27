@@ -92,11 +92,11 @@ test('malformed, obsolete and unavailable preference storage fall back safely', 
 test('preference normalization bounds viewport, timeline geometry, frames and text', () => {
   const state = saved();
   state.canvas.viewport = { x: 1e10, y: -1e10, zoom: 10 };
-  Object.assign(state.editing, { playhead: 18001.8, pixelsPerSecond: -3, scrollLeft: -10, scrollTop: Infinity });
+  Object.assign(state.editing, { playhead: 54001.8, pixelsPerSecond: -3, scrollLeft: -10, scrollTop: Infinity });
   Object.assign(state.shared, { assetSearch: 'a'.repeat(700), assetFilter: 'unexpected' });
   const result = normalizeWorkspaceState(state);
   assert.deepEqual(result.canvas.viewport, { x: 1e6, y: -1e6, zoom: 1.75 });
-  assert.equal(result.editing.playhead, 18000); assert.equal(result.editing.pixelsPerSecond, 28);
+  assert.equal(result.editing.playhead, 54000); assert.equal(result.editing.pixelsPerSecond, 28);
   assert.equal(result.editing.scrollLeft, 0); assert.equal(result.editing.scrollTop, 0);
   assert.equal(result.shared.assetSearch.length, 500); assert.equal(result.shared.assetFilter, 'all');
   state.editing.playhead = 17.8; state.canvas.viewport.zoom = NaN;

@@ -94,7 +94,7 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
   }
   const ranges: [readonly (string|number)[],number,number][] = [
     [['canvas', 'viewport', 'x'], -1e6, 1e6], [['canvas', 'viewport', 'y'], -1e6, 1e6], [['canvas', 'viewport', 'zoom'], .2, 1.75],
-    [['editing', 'playhead'], 0, 18000], [['editing', 'pixelsPerSecond'], 28, 220], [['editing', 'scrollLeft'], 0, 1e7], [['editing', 'scrollTop'], 0, 1e6],
+    [['editing', 'playhead'], 0, 54000], [['editing', 'pixelsPerSecond'], 28, 220], [['editing', 'scrollLeft'], 0, 1e7], [['editing', 'scrollTop'], 0, 1e6],
     [['layout', 'canvas', 'assetsWidth'], 180, 480], [['layout', 'canvas', 'inspectorWidth'], 240, 560],
     [['layout', 'editing', 'assetsWidth'], 180, 480], [['layout', 'editing', 'inspectorWidth'], 240, 560], [['layout', 'editing', 'timelineHeight'], 160, 800],
   ];

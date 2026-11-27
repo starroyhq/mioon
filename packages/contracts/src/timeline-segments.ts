@@ -5,8 +5,8 @@ export interface TimelineCompositionSegment {
 
 /** The caller validates the complete saved/frozen timeline first. All clip
  * edges participate, including muted tracks, zero gain, images, and gaps.
- * With at most 100 clips and duration equal to the final clip end, there are
- * at most 200 segments. This preserves export's original reseek boundaries. */
+ * With duration equal to the final clip end, each clip adds at most two
+ * segments. This preserves export's original reseek boundaries. */
 export function timelineCompositionSegments(timeline:{
   readonly durationFrames:number;
   readonly clips:readonly {readonly startFrame:number;readonly durationFrames:number}[];

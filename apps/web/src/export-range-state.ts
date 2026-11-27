@@ -1,3 +1,4 @@
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { timelineExportRangeSchema, timelineExportRangeFields, isTimelineExportRangeInput, isTimelineExportRangeWithinDuration, isTimelineExportRangeSnapshot } from '@mioon/contracts/timeline-export-range';
 import type { TimelineExportRange, TimelineExportRangeInput } from '@mioon/contracts/timeline-export-range';
@@ -10,7 +11,7 @@ export interface ExportRangeContext { scope: string | null; projectId: string | 
 export interface ExportRangeState extends ExportRangeContext { draft: Readonly<ExportRangeDraft>; value: Readonly<TimelineExportRange> | undefined | null; version: number; error: string }
 export interface ExportRangeContextFields { exportRange: Readonly<TimelineExportRange> | undefined | null; exportRangeKey: string | null; rangeVersion: number }
 const wholeDraft = (): Readonly<ExportRangeDraft> => Object.freeze({ mode: 'whole', startText: '', endText: '' });
-const validDuration = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 18000;
+const validDuration = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= TIMELINE_LIMITS.maxFrames;
 const frame = (value: string): number => /^\d+$/.test(value) ? Number(value) : NaN;
 function projectDraft(draft: Readonly<ExportRangeDraft>, durationFrames: unknown): Readonly<TimelineExportRange> | undefined | null {
   if (draft.mode === 'whole') return undefined;

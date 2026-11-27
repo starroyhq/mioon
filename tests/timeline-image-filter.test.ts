@@ -14,6 +14,7 @@ import {TIMELINE_COLOUR_OUTPUT_FILTER,timelineColourInputFilter} from '../packag
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {prepareTimelineImageLayers,TIMELINE_IMAGE_LAYER_LIMITS} from '../packages/business/src/timeline-image-staging.ts';
+import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 import {onMediaProcess,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -150,9 +151,10 @@ async function layerInput(f: Awaited<ReturnType<typeof fixture>>,name: string|un
 }
 test('owned static layer derives once, binds exact look identity and decodes byte-identically to direct graph',{timeout:30000},async t=>{
  const f=await fixture(t),{input}=await layerInput(f);let calls=0;
- const runtime={...layerRuntime,run:async(...args: unknown[])=>{calls++;return run(...(args as Parameters<typeof run>));}},stage=await prepareTimelineImageLayers([input,{...input,clipId:'reuse'},{...input,clipId:'other-binding',lookCacheKey:'different-strength-binding'}],path.join(f.root,'result.mp4'),{},runtime);
+ const reuse=Array.from({length:TIMELINE_LIMITS.maxClips-2},(_,index)=>({...input,clipId:`reuse-${index}`}));
+ const runtime={...layerRuntime,run:async(...args: unknown[])=>{calls++;return run(...(args as Parameters<typeof run>));}},stage=await prepareTimelineImageLayers([input,...reuse,{...input,clipId:'other-binding',lookCacheKey:'different-strength-binding'}],path.join(f.root,'result.mp4'),{},runtime);
  try{
-  assert.equal(calls,2);assert.equal(stage.path(input.clipId),stage.path('reuse'));assert.notEqual(stage.path(input.clipId),stage.path('other-binding'));assert.equal(stage.totalPixels,2*14*14);assert.ok(stage.totalBytes>14738);stage.effect();stage.verifyBytes();
+  assert.equal(calls,2);assert.equal(stage.path(input.clipId),stage.path(reuse.at(-1)!.clipId));assert.notEqual(stage.path(input.clipId),stage.path('other-binding'));assert.equal(stage.totalPixels,2*14*14);assert.ok(stage.totalBytes>14738);stage.effect();stage.verifyBytes();
   const direct=await frame([input.sourcePath],timelineImageFilterGraph(options(f,7,5,14,14,{creativeLutPath:f.creative})),'rgba',14,14);
   const decoded=await frame([stage.path(input.clipId)!],['[0:v]format=rgba[out]'],'rgba',14,14);assert.deepEqual(decoded,direct,'internal PNG must retain already-premultiplied encoded RGBA bytes exactly');
   for(let y=0;y<2;y++)for(let x=0;x<14;x++)assert.deepEqual([...decoded.subarray((y*14+x)*4,(y*14+x+1)*4)],[0,0,0,0]);
@@ -182,7 +184,7 @@ test('owned layer rejects hash tampering and preserves unknown replacement files
 test('layer admission binds source hash, look identity and source/output budgets before derivation',async t=>{
  const f=await fixture(t),{input}=await layerInput(f);let children=0;const runtime={...layerRuntime,run:async()=>{children++;throw Error('unexpected child');}};
  for(const patch of ([{assetSha256:'0'.repeat(64)},{sourceWidth:1920,sourceHeight:1081},{width:2520,height:1081},{lookCacheKey:null},{creativeLutPath:undefined},{sourcePath:'relative.png'}] as const))await assert.rejects(prepareTimelineImageLayers([{...input,...patch}],path.join(f.root,'out.mp4'),{},runtime));
- await assert.rejects(prepareTimelineImageLayers(Array.from({length:101},(_,i)=>({...input,clipId:`clip-${i}`})),path.join(f.root,'out.mp4'),{},runtime),{code:'TIMELINE_COLOUR_LUT_BUDGET'});
+ await assert.rejects(prepareTimelineImageLayers(Array.from({length:TIMELINE_LIMITS.maxClips+1},(_,i)=>({...input,clipId:`clip-${i}`})),path.join(f.root,'out.mp4'),{},runtime),{code:'TIMELINE_COLOUR_LUT_BUDGET'});
  assert.equal(TIMELINE_IMAGE_LAYER_LIMITS.sourcePixels,2073600);assert.equal(children,0);assert.equal((await readdir(f.root)).some(name=>name.startsWith('.timeline-render-')),false);
 });
 test('cancelled layer derivation joins its exact FFmpeg child and removes owned partial staging',{timeout:30000},async t=>{

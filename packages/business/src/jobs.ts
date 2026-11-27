@@ -26,6 +26,7 @@ import path from 'node:path';
 import {fileInfo,probe,safePath,stitch,run} from './media.ts';
 import {storyboardOutputGeometry} from './storyboard-output.ts';
 import {renderTimeline} from './timeline-media.ts';
+import {createExportAttemptChunkFence} from './export-attempt-fence.ts';
 import {readTimelineReceipt} from './timeline-recovery.ts';
 import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph,validatePreparedTimelineSources} from './timeline-sources.ts';
 import {now} from './services.ts';
@@ -577,9 +578,17 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(currentOwnedExport(e)?.status!=='running')return;
     preparedAssets=assets as unknown as Map<string, unknown>;
     validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
+    const beforeFloatAudioChunk=writerOwner&&floatExport?createExportAttemptChunkFence(store.db,()=>{
+     // The scanner is reached after all segment writers have joined. It can
+     // only read private staged audio during this attempt.
+     if(!claimLive||stopped||signal.aborted||agentBound&&!renderStarted||!outputIdentity)throw effectError();
+     let actual;
+     try{actual=lstatSync(part);}catch{throw effectError();}
+     if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();
+    },beforeEffect):undefined;
     exportStage(store,e.id,'encoding');
     const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{
-     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
+     signal,beforeEffect,beforeFloatAudioChunk,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
      onSegmentProgress:(completed,total)=>exportEncodingProgress(store,e.id,completed,total),
      ...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{}),
     });checkpoint(signal);

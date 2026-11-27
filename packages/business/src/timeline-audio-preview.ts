@@ -126,9 +126,9 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     let raw: unknown;
     try {raw = runtime.readSavedTimeline(input.projectId);} catch {return unavailable();}
     assertOwner();
-    if (!plainData(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets) || raw.assets.length > 100) unavailable();
+    if (!plainData(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets) || raw.assets.length > LIMITS.clips) unavailable();
     const timeline = raw.timeline;
-    if (!Array.isArray(timeline.tracks) || timeline.tracks.length > 12 || !Array.isArray(timeline.clips) || timeline.clips.length > 100) unavailable();
+    if (!Array.isArray(timeline.tracks) || timeline.tracks.length > LIMITS.tracks || !Array.isArray(timeline.clips) || timeline.clips.length > LIMITS.clips) unavailable();
     const tracks = timeline.tracks.map((track: unknown) => {
       if (!object(track)) return unavailable();
       return {id: track.id, kind: track.kind, orderIndex: track.orderIndex, hidden: track.hidden, muted: track.muted};
