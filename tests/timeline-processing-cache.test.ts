@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
-import {createHash, randomUUID} from 'node:crypto';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync} from 'node:fs';
+import {spawn} from 'node:child_process';
+import {createHash, createHmac, randomUUID} from 'node:crypto';
+import {once} from 'node:events';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test, {type TestContext} from 'node:test';
-import {createProcessingCache} from '../packages/business/src/timeline-processing/cache.ts';
+import {setTimeout as sleep} from 'node:timers/promises';
+import {createProcessingCache, processingReceiptDigest} from '../packages/business/src/timeline-processing/cache.ts';
 import type {ProcessingCache} from '../packages/business/src/timeline-processing/cache.ts';
+import {PROCESSING_PREVIEW_PROXY_PROFILE as previewProfile, PROCESSING_REVERSE_PROXY_PROFILE as reverseProfile,
+  processingProxyResultSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 import type {ProcessingCacheReceipt} from '../packages/contracts/src/timeline-processing-storage.ts';
 
 const quota = 4000;
@@ -19,7 +24,7 @@ function fixture(t: TestContext, options: Parameters<typeof createProcessingCach
   t.after(() => rmSync(parent, {recursive: true, force: true}));
   const root = path.join(parent, 'timeline-processing');
   const open = () => createProcessingCache(parent, {freeBytes, ...options});
-  return {root, open, cache: open(), projectId: randomUUID()};
+  return {parent, root, open, cache: open(), projectId: randomUUID()};
 }
 
 function writeProxy(directory: string, value = 42): ProcessingCacheReceipt['result'] {
@@ -181,4 +186,218 @@ test('an incomplete owned entry can be rebuilt under the same key', t => {
   const replacement = publish(cache, projectId, 'rebuild');
   assert.equal(replacement.cacheKey, old.cacheKey);
   assert.equal(cache.lookup(projectId, old.cacheKey)?.directory, old.directory);
+});
+
+test('preview MP4 receipts and lossless reverse receipts cannot cross profiles', async t => {
+  const {cache, projectId} = fixture(t, {limitBytes: quota});
+  const lossless = publish(cache, projectId, 'lossless');
+  const stage = cache.stage(projectId, digest('preview'), reservedBytes, allowEffect);
+  try {
+    const payload = writeProxy(stage.directory);
+    const files = payload.files.map(file => file.fileName === 'proxy.mkv' ? {...file, fileName: 'preview.mp4'} : file);
+    const preview = {...payload, profileId: previewProfile, files};
+    assert.equal(processingProxyResultSchema.safeParse({...payload, profileId: previewProfile}).success, false);
+    assert.equal(processingProxyResultSchema.safeParse({...preview, profileId: reverseProfile}).success, false);
+    assert.equal(processingProxyResultSchema.safeParse({...preview, sampleCount: 1}).success, false);
+    renameSync(path.join(stage.directory, 'proxy.mkv'), path.join(stage.directory, 'preview.mp4'));
+    const output = stage.publish(preview);
+
+    const proof = cache.lookupWithClock(projectId, output.cacheKey, previewProfile);
+    assert.ok(proof);
+    assert.equal(proof.clock.toString('utf8'), '{}');
+    assert.equal(proof.digest, processingReceiptDigest({...output, usedBytes: 0, directory: stage.directory}));
+    assert.equal(cache.lookupWithClock(projectId, lossless.cacheKey, previewProfile), null);
+    assert.equal(await cache.acquire(projectId, output.cacheKey, reverseProfile), null);
+    assert.equal(await cache.acquire(randomUUID(), output.cacheKey, previewProfile), null);
+    assert.equal(await cache.acquire(projectId, output.cacheKey, previewProfile, {expectedDigest: '0'.repeat(64)}), null);
+
+    const lease = await cache.acquire(projectId, output.cacheKey, previewProfile, {expectedDigest: proof.digest});
+    assert.ok(lease);
+    try {
+      lease.verify();
+      assert.equal(lease.digest, proof.digest);
+      assert.equal(lease.entry.result.profileId, previewProfile);
+      assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: lossless.usedBytes});
+    } finally {lease.release();}
+    lease.release();
+    assert.throws(lease.verify, {code: 'PROCESSING_FAILED'});
+    assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: output.usedBytes});
+  } finally {stage.discard();}
+});
+
+test('a cached clock and media must match their recorded SHA before consumption', async t => {
+  const {cache, projectId} = fixture(t, {limitBytes: quota});
+  const output = publish(cache, projectId, 'corrupted media');
+  writeFileSync(path.join(output.directory, 'proxy.mkv'), Buffer.alloc(1024, 43));
+  assert.ok(cache.lookupWithClock(projectId, output.cacheKey, reverseProfile), 'clock evidence is still valid');
+  assert.equal(await cache.acquire(projectId, output.cacheKey, reverseProfile), null);
+  writeFileSync(path.join(output.directory, 'clock.json'), '[]');
+  assert.equal(cache.lookupWithClock(projectId, output.cacheKey, reverseProfile), null);
+  assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: output.usedBytes});
+});
+
+test('a verified lease detects an inode replacement with identical bytes and then releases its pin', async t => {
+  const {cache, root, projectId} = fixture(t, {limitBytes: quota});
+  const output = publish(cache, projectId, 'inode replacement');
+  const lease = await cache.acquire(projectId, output.cacheKey, reverseProfile);
+  assert.ok(lease);
+  try {
+    lease.verify();
+    const file = path.join(output.directory, 'proxy.mkv');
+    const moved = path.join(root, 'original-proxy');
+    renameSync(file, moved);
+    writeFileSync(file, readFileSync(moved), {flag: 'wx', mode: 0o600});
+    assert.throws(lease.verify, {code: 'PROCESSING_FAILED'});
+    assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: 0});
+  } finally {lease.release();}
+  assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: output.usedBytes});
+});
+
+test('the lease pins media during descriptor validation and releases it on cancellation', async t => {
+  const {cache, projectId} = fixture(t, {limitBytes: quota});
+  const output = publish(cache, projectId, 'pending lease');
+  const controller = new AbortController();
+  const interruption = new Error('Project lease ended');
+  const acquisition = cache.acquire(projectId, output.cacheKey, reverseProfile, {signal: controller.signal});
+  assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: 0});
+  controller.abort(interruption);
+  await assert.rejects(acquisition, error => error === interruption);
+  assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: output.usedBytes});
+});
+
+test('an attempt can grow its reservation on demand without counting written bytes twice', t => {
+  let available = freeBytes();
+  const {cache, projectId} = fixture(t, {limitBytes: quota, freeBytes: () => available});
+  const shared = publish(cache, projectId, 'existing proxy');
+  const release = cache.pin(shared.cacheKey);
+  const stage = cache.stage(projectId, digest('streaming proxy'), 1100, allowEffect,
+    {taskId: randomUUID(), requestId: randomUUID()});
+  try {
+    const rendered = writeProxy(stage.directory);
+    available = BigInt(1700 - rendered.files.reduce((sum, file) => sum + file.bytes, 0));
+    stage.grow(1700);
+    assert.throws(() => stage.grow(1701), {code: 'DISK_FULL'});
+    assert.throws(() => stage.grow(quota + 1), {code: 'CACHE_LIMIT'});
+    const result = stage.publish(rendered);
+    assert.equal(cache.lookup(projectId, result.cacheKey)?.usedBytes, result.usedBytes);
+    assert.equal(cache.lookup(projectId, shared.cacheKey)?.directory, shared.directory);
+  } finally {stage.discard(); release();}
+});
+
+function processGone(pid: number): boolean {
+  try {process.kill(pid, 0); return false;}
+  catch (error) {return (error as NodeJS.ErrnoException).code === 'ESRCH';}
+}
+
+test('a killed stage owner is reaped only after its recorded writer exits', {timeout: 20000}, async t => {
+  const {parent, root, open, projectId} = fixture(t), otherProjectId = randomUUID();
+  const cacheModule = new URL('../packages/business/src/timeline-processing/cache.ts', import.meta.url).href;
+  const stop = path.join(parent, 'finish-writer'), pidFile = path.join(parent, 'writer-ready');
+  const writerScript = `import {closeSync,existsSync,writeFileSync,writeSync} from 'node:fs';
+    writeSync(3, 'writer payload');
+    writeFileSync(process.argv[2], 'ready', {mode: 0o600});
+    const timer = setInterval(() => {
+      if (existsSync(process.argv[1])) {closeSync(3); clearInterval(timer);}
+    }, 20);`;
+  const hostScript = `import {spawn} from 'node:child_process';
+    import {closeSync,openSync} from 'node:fs';
+    import path from 'node:path';
+    import {createProcessingCache} from ${JSON.stringify(cacheModule)};
+    const [parent, projectId, cacheKey, taskId, requestId, stop, ready] = process.argv.slice(1);
+    const stage = createProcessingCache(parent).stage(projectId, cacheKey, 1024, () => {}, {taskId,requestId});
+    const writer = stage.writer.begin();
+    const fd = openSync(path.join(stage.directory,'proxy.mkv'), 'wx', 0o600);
+    const child = spawn(process.execPath, ['--input-type=module','-e',${JSON.stringify(writerScript)},stop,ready],
+      {stdio:['ignore','ignore','ignore',fd]});
+    closeSync(fd);
+    writer.started(child.pid);
+    process.send({directory:stage.directory, pid: child.pid});`;
+  const taskId = randomUUID(), requestId = randomUUID(), cacheKey = digest('killed owner');
+  const host = spawn(process.execPath, ['--input-type=module', '-e', hostScript, parent, projectId, cacheKey, taskId, requestId, stop, pidFile],
+    {stdio: ['ignore', 'ignore', 'inherit', 'ipc']});
+  let writerPid: number | undefined;
+  try {
+    const [message] = await once(host, 'message', {signal: AbortSignal.timeout(5000)}) as [{directory: string; pid: number}];
+    writerPid = message.pid;
+    for (let attempt = 0; !existsSync(pidFile) && attempt < 100; attempt++) await sleep(20);
+    assert.equal(existsSync(pidFile), true);
+    const exiting = once(host, 'exit');
+    host.kill('SIGKILL');
+    const [, signal] = await exiting;
+    assert.equal(signal, 'SIGKILL');
+    assert.equal(processGone(writerPid), false);
+
+    const cache = open();
+    const payloadBytes = Buffer.byteLength('writer payload');
+    assert.deepEqual(cache.stats(projectId), {usedBytes: payloadBytes, limitBytes: 10 * 1024 ** 3});
+    assert.equal(cache.stats(otherProjectId).usedBytes, 0);
+    assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: 0});
+    assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: 0});
+    assert.equal(existsSync(message.directory), true);
+
+    writeFileSync(stop, '', {mode: 0o600});
+    for (let attempt = 0; !processGone(writerPid) && attempt < 200; attempt++) await sleep(20);
+    assert.equal(processGone(writerPid), true);
+    assert.deepEqual(cache.clear(otherProjectId, allowEffect), {freedBytes: 0});
+    assert.equal(existsSync(message.directory), true);
+
+    const marker = `${message.directory}.owner.json`;
+    const forged = mkdtempSync(path.join(root, `stage-${randomUUID()}-`));
+    const originalMarker = readFileSync(marker, 'utf8');
+    const copied = JSON.parse(originalMarker);
+    assert.equal(copied.ownership.taskId, taskId);
+    assert.equal(copied.ownership.requestId, requestId);
+    assert.equal(copied.ownership.cacheKey, cacheKey);
+    copied.ownership.stage = path.basename(forged);
+    writeFileSync(`${forged}.owner.json`, JSON.stringify(copied), {mode: 0o600});
+    writeFileSync(path.join(forged, 'proxy.mkv'), 'forged', {mode: 0o600});
+    const legacy = mkdtempSync(path.join(root, `stage-${randomUUID()}-`));
+    writeFileSync(path.join(legacy, 'proxy.mkv'), 'unproven', {mode: 0o600});
+    // Simulate dev:ino reuse with a properly signed mark from the earlier
+    // creation. The signature and inode match, while the creation time does not.
+    const earlier = JSON.parse(originalMarker);
+    earlier.ownership.directoryBirthtime -= 10_000;
+    earlier.mac = createHmac('sha256', readFileSync(path.join(root, '.stage-ownership.key')))
+      .update(JSON.stringify(earlier.ownership)).digest('hex');
+    writeFileSync(marker, JSON.stringify(earlier));
+    assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: 0});
+    assert.equal(existsSync(message.directory), true);
+    writeFileSync(marker, originalMarker);
+    if (process.platform !== 'win32') {
+      const link = path.join(message.directory, 'clock.json');
+      symlinkSync(path.join(forged, 'proxy.mkv'), link);
+      assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: 0});
+      rmSync(link);
+    }
+    assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: payloadBytes});
+    assert.equal(cache.stats(projectId).usedBytes, 0);
+    assert.equal(existsSync(message.directory), false);
+    assert.equal(existsSync(marker), false);
+    assert.equal(readFileSync(path.join(forged, 'proxy.mkv'), 'utf8'), 'forged');
+    assert.equal(readFileSync(path.join(legacy, 'proxy.mkv'), 'utf8'), 'unproven');
+  } finally {
+    if (!existsSync(stop)) writeFileSync(stop, '', {mode: 0o600});
+    if (host.exitCode === null && host.signalCode === null) host.kill('SIGKILL');
+  }
+});
+
+test('a killed owner with an unresolved spawn slot leaves its bytes and issued proof intact', {timeout: 10000}, async t => {
+  const {parent, root, open, projectId} = fixture(t);
+  const cacheModule = new URL('../packages/business/src/timeline-processing/cache.ts', import.meta.url).href;
+  const script = `import {randomUUID} from 'node:crypto';
+    import {writeFileSync} from 'node:fs';
+    import path from 'node:path';
+    import {createProcessingCache} from ${JSON.stringify(cacheModule)};
+    const stage = createProcessingCache(process.argv[1]).stage(process.argv[2], 'a'.repeat(64), 1024, () => {},
+      {taskId: randomUUID(), requestId: randomUUID()});
+    writeFileSync(path.join(stage.directory, 'proxy.mkv'), 'unconfirmed', {mode: 0o600});
+    stage.writer.begin();
+    process.kill(process.pid,'SIGKILL');`;
+  const host = spawn(process.execPath, ['--input-type=module', '-e', script, parent, projectId], {stdio: 'inherit'});
+  const [, signal] = await once(host, 'exit');
+  assert.equal(signal, 'SIGKILL');
+  const before = readdirSync(root), cache = open();
+  assert.equal(cache.stats(projectId).usedBytes, Buffer.byteLength('unconfirmed'));
+  assert.deepEqual(cache.clear(projectId, allowEffect), {freedBytes: 0});
+  assert.deepEqual(readdirSync(root), before);
 });

@@ -1,16 +1,17 @@
 import {createHash} from 'node:crypto';
 import {createReverseStaging, finishMediaInput, isDiskFull, readOwnedBytes, reverseError, runReverseTool, writeMediaInput, writeOwnedBytes} from './reverse-io.ts';
 import type {ReverseProxyFile, ReverseProxyMediaOptions, ReverseStaging} from './reverse-io.ts';
-import {REVERSE_PROXY_LIMITS, REVERSE_PROXY_PROFILE, reverseColorArgs, reverseLocalInput, reversePreparedState, reverseProbe, reverseToolBase} from './reverse-profile.ts';
+import {REVERSE_PROXY_LIMITS, REVERSE_PROXY_PROFILE, REVERSE_PROXY_RESERVATION_STEP, reverseColorArgs, reverseLocalInput, reversePreparedState, reverseProbe, reverseToolBase} from './reverse-profile.ts';
 import type {PreparedReverseProxy, ReverseProxyInput, ReverseProxyProfile} from './reverse-profile.ts';
 
-export {REVERSE_PROXY_LIMITS, REVERSE_PROXY_PROFILE, prepareReverseProxy} from './reverse-profile.ts';
-export type {PreparedReverseProxy, ReverseProxyInput, ReverseProxyProfile} from './reverse-profile.ts';
-export type {ReverseProxyFile, ReverseProxyMediaOptions} from './reverse-io.ts';
+export {REVERSE_PROXY_COVERAGE_VERSION, REVERSE_PROXY_LIMITS, REVERSE_PROXY_PROFILE, prepareReverseProxy, reverseAudioCoverage} from './reverse-profile.ts';
+export type {PreparedReverseProxy, ReverseProxyAudioCoverage, ReverseProxyInput, ReverseProxyProfile} from './reverse-profile.ts';
+export type {ReverseProxyFile, ReverseProxyMediaOptions, ReverseProxyWriter} from './reverse-io.ts';
 
 export interface RenderReverseProxyOptions extends ReverseProxyMediaOptions {
   readonly stagingDirectory: string;
   readonly onProgress?: (percent: number) => void;
+  readonly reserveBytes?: (requiredTotalBytes: number) => void;
 }
 export interface ReverseProxyResult {
   readonly profileId: typeof REVERSE_PROXY_PROFILE;
@@ -65,7 +66,6 @@ Promise<{file: StagedFile; digest: string; sampleCount: number}> {
       '-map', `0:${audio.index}`, '-vn', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1',
       '-af', audioClipFilter(from, until), ...audioArgs(audio), '-f', 'f32le', 'pipe:1'], options,
     {stdoutLimit: (until - from) * width, timeoutMs: muxTimeoutMs, async stdout(chunk) {
-      staging.fence();
       await writeOwnedBytes(scratch.handle, chunk, availableBytes);
       availableBytes += chunk.length;
     }});
@@ -137,7 +137,6 @@ async function decodeReverseVideo(state: PreparedState, video: Video, staging: R
       '-vf', filter, '-frames:v', String(count), '-threads:v', '1', ...rawVideo(video)], options,
     {stdoutLimit: count * video.frameBytes,
       async stdout(data) {
-        staging.fence();
         await writeOwnedBytes(scratch.handle, data, bytes);
         bytes += data.length;
       },
@@ -187,9 +186,34 @@ function encoderArgs(state: PreparedState, profile: ReverseProxyProfile, audioPa
       ...(video.threads === 4 ? ['-slices', '4'] : []),
       '-pix_fmt', `+${video.pixelFormat}`, ...reverseColorArgs(video.colour), '-fps_mode', 'passthrough'] : []),
     ...(audio ? ['-map', `${video ? 1 : 0}:a:0`, ...audioArgs(audio)] : []),
-    '-map_metadata', '-1', '-map_chapters', '-1', '-max_interleave_delta', '2000000',
-    '-fs', String(Math.max(1, state.outputBytesLimit - (1024 * 1024))),
-    '-f', 'matroska', 'fd:'];
+    '-map_metadata', '-1', '-map_chapters', '-1', '-max_interleave_delta', '2000000', '-f', 'matroska', 'pipe:1'];
+}
+
+function muxWriter(output: StagedFile, state: PreparedState, prepared: PreparedReverseProxy,
+  reserveBytes: RenderReverseProxyOptions['reserveBytes']) {
+  // Streaming Matroska keeps one encoder and lets the host reserve every
+  // compressed byte before writing it. The verified ordinal sidecar owns the clock.
+  let reservedBytes = prepared.reservationBytes, position = 0;
+  const maximumReservation = state.scratchBytes + state.outputBytesLimit;
+  return async (chunk: Buffer): Promise<void> => {
+    const required = state.scratchBytes + position + chunk.length;
+    if (reserveBytes && required > reservedBytes) {
+      const target = Math.min(maximumReservation, Math.max(required, reservedBytes + REVERSE_PROXY_RESERVATION_STEP));
+      try {
+        reserveBytes(target);
+        reservedBytes = target;
+      } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+        if (target === required || (code !== 'CACHE_LIMIT' && code !== 'DISK_FULL')) throw error;
+        // Small remaining budgets can still fit the incoming chunk even when
+        // the next amortized reservation does not fit.
+        reserveBytes(required);
+        reservedBytes = required;
+      }
+    }
+    await writeOwnedBytes(output.handle, chunk, position);
+    position += chunk.length;
+  };
 }
 
 async function checkDecoded(file: string, args: string[], expectedBytes: number, expectedHash: string, options: ReverseProxyMediaOptions): Promise<void> {
@@ -262,7 +286,8 @@ export async function renderReverseProxy(input: ReverseProxyInput, prepared: Pre
     } else {
       const output = await staging.create('proxy.mkv');
       await runReverseTool('ffmpeg', encoderArgs(state, profile, sound ? staging.pathFor(sound.file) : undefined), media, {
-        outputFd: output.handle.fd, timeoutMs: muxTimeoutMs,
+        stdout: muxWriter(output, state, prepared, options.reserveBytes), stdoutLimit: state.outputBytesLimit,
+        stdoutOverflow: () => reverseError('CACHE_LIMIT'), timeoutMs: muxTimeoutMs,
         ...(video ? {async stdin(stream: Parameters<typeof writeMediaInput>[0]) {
           rendered.video = await decodeReverseVideo(state, video, staging, media, frame => writeMediaInput(stream, frame), progress);
           await finishMediaInput(stream);
@@ -283,13 +308,18 @@ export async function renderReverseProxy(input: ReverseProxyInput, prepared: Pre
       mediaEvidence.push(await staging.evidence(index));
     }
     const metadata = await staging.create('clock.json');
+    const pictureWindow = state.input.pictureWindow ?? state.input.sourceWindow;
     const clock = {
       profile, mapHash: state.input.mapHash, sourceSha256: state.input.sourceSha256, sourceWindow: state.input.sourceWindow,
       sourceClock: state.input.sourceFps, originUs: state.originUs,
       frameCount, sampleCount, sourceSampleStart: state.audio?.startSample ?? null,
       video: frames ? {index: 'frames.jsonl', timeBase: {numerator: 1, denominator: state.input.sourceFps.fpsNumerator},
-        sourceTimeBase: video!.timeBase, decodedSha256: frames.digest} : null,
-      audio: sound ? {rate: audio!.rate, layout: audio!.layout, decodedSha256: sound.digest} : null,
+        sourceTimeBase: video!.timeBase, decodedSha256: frames.digest,
+        sourceCoverage: {startFrame: pictureWindow.startFrame, endFrame: pictureWindow.endFrame},
+        firstSourceOrdinal: state.video!.firstSourceOrdinal, sourceZeroPts: String(state.video!.sourceZeroPts),
+        endSourcePts: String(state.video!.endSourcePts)} : null,
+      audio: sound ? {rate: audio!.rate, layout: audio!.layout, decodedSha256: sound.digest,
+        sourceCoverage: state.audio!.sourceCoverage, sourceZero: state.audio!.sourceZero} : null,
       files: mediaEvidence,
     };
     await writeOwnedBytes(metadata.handle, Buffer.from(JSON.stringify(clock) + '\n'), 0);
