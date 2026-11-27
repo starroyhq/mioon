@@ -2133,9 +2133,9 @@ export function previewSequenceSpeed(store: ProjectStore, input: SpeedPreviewInp
   return planSequenceSpeedPreview(store, input).result;
 }
 
-/** Frame blending has no processing task. Check its owned source before the
- * properties RPC publishes an actionable preview. The plan transaction is
- * already closed, and commit still verifies the same original revisions. */
+/** Frame blending has no processing task. Check phase on the owned source's
+ * physical timestamps here, since the editing grid does not bound the phase
+ * error. This runs outside the plan transaction. Commit verifies the same revisions. */
 export async function previewSequenceSpeedWithMedia(store: ProjectStore, input: SpeedPreviewInput, options: SpeedPreviewMediaCheck): Promise<SpeedPreviewResult> {
   const {result, blend} = planSequenceSpeedPreview(store, input, true);
   if (!blend || !('envelope' in result)) return result;

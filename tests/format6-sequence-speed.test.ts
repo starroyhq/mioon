@@ -162,22 +162,54 @@ function sourceFrames(store: ProjectStore, clipId = clipA): Int32Array {
   return frames.value;
 }
 
-test('the speed preview rejects a blend above the phase bound without changing the edit', t => {
-  const store = fixture(t), api = editor(store), before = state(store);
-  const curve: TimeMapSpeed = {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom',
-    points: [
-      {sourceFrame: 0, rate: {numerator: 1, denominator: 10}},
-      {sourceFrame: 30, rate: {numerator: 2, denominator: 1}},
-      {sourceFrame: 60, rate: {numerator: 1, denominator: 10}},
-    ]};
-  assert.deepEqual(api.preview(set(curve, {interpolation: 'blend'})),
-    {ok: false, code: 'INTERPOLATION_UNAVAILABLE', ids: [clipA]});
-  assert.ok('envelope' in api.preview(set(curve, {interpolation: 'off'})));
-  // The optical task can report the same reason after an optical edit.
-  assert.ok('envelope' in api.preview(set(curve, {interpolation: 'optical'})));
-  assert.equal(saved(store).clips.find(clip => clip.id === clipA)?.timing, undefined);
-  assert.deepEqual(state(store).actions, before.actions);
-  assert.deepEqual(state(store).receipts, before.receipts);
+test('the properties RPC admits blend by physical source PTS in the requested output window', async t => {
+  const cases = [
+    {fps: 24, admitted: [false, false, true]},
+    {fps: 25, admitted: [false, false, true]},
+    {fps: 30, admitted: [false, true, true]},
+    {fps: 60, admitted: [true, true, true]},
+  ];
+  for (const {fps, admitted} of cases) {
+    await t.test(`${fps} fps`, async t => {
+      const store = fixture(t), references = createProjectAssetReferenceServices(store, {outsidePaths: {list: () => []}});
+      const library = openAppLibrary({dataDir: path.join(store.projectDir, 'app')});
+      const service = createServices(store, new Map(), {env: {}, application: createProjectServiceApplication(library, undefined, {})});
+      const assetId = id(15), clipId = id(36), timeline = saved(store);
+      const preview = (operation: SequenceEditSpeedIntent['operation']) => service.call('sequence.preview', {
+        projectId: store.projectId, requestId: randomUUID(), speedIntent: {side: 'timeline', operation},
+      }) as Promise<Record<string, unknown>>;
+      try {
+        const file = path.join(store.projectDir, 'phase-source.mp4');
+        await run('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-n', '-filter_threads', '1',
+          '-f', 'lavfi', '-i', `testsrc2=s=64x64:r=${fps}`, '-frames:v', String(fps * 2), '-c:v', 'libx264',
+          '-threads:v', '1', '-pix_fmt', '+yuv420p', '-preset', 'ultrafast', '-qp', '0', '-video_track_timescale', '30000', file]);
+        const {reference} = await references.referenceForImport(file);
+        const sha256 = createHash('sha256').update(readFileSync(file)).digest('hex');
+        store.tx(() => store.put('assets', {id: assetId, projectId: store.projectId, name: 'Phase source', mimeType: 'video/mp4',
+          duration: 2, hasAudio: false, reference: {...reference, fullSha256: sha256}, referenceRevision: 1,
+          sha256, sizeBytes: reference.sizeBytes}));
+        await service.call('sequence.history.get', {projectId: store.projectId});
+        for (const [index, durationFrames] of [22, 27, 45].entries()) {
+          const clip = {id: clipId, trackId: videoTrack2, name: 'Phase source', startFrame: 0, durationFrames,
+            sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId,
+            sourceState: 'ready', anchor: null};
+          store.tx(() => store.put('timelines', {...timeline, clips: [...timeline.clips, clip]}));
+          const curve: TimeMapSpeed = {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom', points: [
+            {sourceFrame: 0, rate: {numerator: 1, denominator: 4}},
+            {sourceFrame: durationFrames, rate: {numerator: 2, denominator: 1}},
+          ]};
+          const before = state(store);
+          const result = await preview(set(curve, {interpolation: 'blend'}, clipId));
+          if (admitted[index]) assert.ok('envelope' in result, JSON.stringify(result));
+          else assert.deepEqual(result, {ok: false, code: 'INTERPOLATION_UNAVAILABLE', ids: [clipId]});
+          assert.deepEqual(state(store), before);
+        }
+      } finally {
+        await service.drain();
+        library.close();
+      }
+    });
+  }
 });
 
 test('the properties RPC checks the actual owned pixel format for blend before returning an envelope', async t => {

@@ -15,7 +15,7 @@ import type {SpeedProcessingReason} from '../../../contracts/src/timeline-speed.
 import {processingDigestSchema as digest} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingInput} from '../../../contracts/src/timeline-processing-storage.ts';
 import {REVERSE_PROXY_PROFILE} from './reverse.ts';
-import {OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
+import {OPTICAL_FLOW_CUT_POLICY, OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
 import {reverseAudioCoverage, REVERSE_PROXY_COVERAGE_VERSION} from './reverse-profile.ts';
 import {TIMELINE_PREVIEW_CACHE_PROFILE} from './preview-port.ts';
 import {reversePictureCoverage} from './picture-coverage.ts';
@@ -133,7 +133,8 @@ export function readProcessingDemands(store: ProjectStore, previewEnabled = fals
         ? reversePictureCoverage(map.value, timing, info.sourceWindow, sourceFrameCount(asset?.duration) ?? 0,
           lead.get(clip.id) ?? 0, tail.get(clip.id) ?? 0) : undefined;
       const profile = kind === 'preview' ? TIMELINE_PREVIEW_CACHE_PROFILE : REVERSE_PROXY_PROFILE;
-      const recipe = processingHash(kind === 'optical' ? [OPTICAL_PROXY_PROFILE, optical ?? timing, media, info?.mapHash ?? null, colour ?? null]
+      const recipe = processingHash(kind === 'optical' ? [OPTICAL_PROXY_PROFILE, OPTICAL_FLOW_CUT_POLICY, optical ?? timing,
+        media, info?.mapHash ?? null, colour ?? null]
         : [profile, kind, timing, info?.sourceWindow ?? null, media, timeline.width, timeline.height, timeline.fps, colour ?? null,
           // Version the audio recipe so prior incomplete proxies are never the new demand.
           ...(kind === 'reverse' ? [{audioWindow: audioWindow ?? null, pictureWindow: pictureWindow ?? null,
