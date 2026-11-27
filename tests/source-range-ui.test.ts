@@ -151,12 +151,12 @@ test('range receipts reuse the local mutation protocol with exact asset ownershi
 test('a saved asset range projects only complete frames to the target timeline', () => {
   const snapshot = { ...context(), assetId: 'asset-a', revision: 1, inFrame: 1, outFrame: 31 };
   for (const [fps, sourceInFrame, durationFrames] of [[24, 1, 23], [25, 1, 24], [30, 1, 30], [60, 2, 60]]) {
-    const plan = sourceRangeAddPlan({ snapshot, asset: asset(), timeline: timeline({ fps }) });
+    const plan = sourceRangeAddPlan({ snapshot, asset: asset(), timeline: { ...timeline(), fps } });
     assert.ok(plan.input);
     assert.equal(plan.input.sourceInFrame, sourceInFrame);
     assert.equal(plan.input.durationFrames, durationFrames);
   }
-  const tooShort = sourceRangeAddPlan({ snapshot: { ...snapshot, outFrame: 2 }, asset: asset(), timeline: timeline({ fps: 24 }) });
+  const tooShort = sourceRangeAddPlan({ snapshot: { ...snapshot, outFrame: 2 }, asset: asset(), timeline: { ...timeline(), fps: 24 } });
   assert.equal(tooShort.input, null);
   assert.match(tooShort.reason, /完整的项目帧/);
 });
