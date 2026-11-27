@@ -62,7 +62,7 @@ export interface TaskCenterProps {
   dispositions?: TaskDispositionView;
   /** Shot detection tasks, prepared by App with their detail cards. */
   scenes?: readonly { key: string; label: string; status: string; active: boolean; warning: boolean; detail: React.ReactNode }[];
-  processing?: readonly SpeedProcessingTaskView[];
+  processing?: readonly (SpeedProcessingTaskView & {detail?: React.ReactNode})[];
   /** Final Cut Pro (.fcpxmld) export tasks, prepared by App with their detail cards. */
   fcpExports?: readonly { key: string; label: string; status: string; active: boolean; warning: boolean; group: string; detail: React.ReactNode }[];
 }
@@ -215,7 +215,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
         {selectedDisposition?.markedFailed&&selectedDisposition.canMarkFailed&&<p className="notice warning" data-text-selectable data-testid="task-local-failed-marker">{t('redesign.tasks.markedFailedExplanation')}</p>}
       </section>}
       {scenes.map(item => detail(item.key, item.detail))}
-      {processing.map(item => (item.progress !== undefined || item.reason) && detail(item.key, <>
+      {processing.map(item => (item.detail || item.progress !== undefined || item.reason) && detail(item.key, item.detail ?? <>
         {item.progress !== undefined && <WorkbenchProgress value={item.progress} label={item.label} />}
         {item.reason && <p className="job-error" data-text-selectable>{item.reason}</p>}
       </>))}
