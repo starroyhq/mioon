@@ -347,6 +347,36 @@ test('processing progress does not restart a preview media reader in backoff', (
   assert.notEqual(previewProcessingStateKey(CLIP_ID, [{...running, taskId: PROJECT_ID}]), key);
 });
 
+test('preview responses record optical readiness at request time and retire obsolete reads', async () => {
+  let readyOpticalTask: string | null = null;
+  const reads: {signal: AbortSignal; resolve: (value: PreviewMedia) => void}[] = [];
+  const observed: {media: PreviewMedia | null; task: string | null}[] = [];
+  const controller = createSpeedPreviewMediaController({
+    projectId: PROJECT_ID,
+    clipId: CLIP_ID,
+    readyOpticalTask: () => readyOpticalTask,
+    read: signal => new Promise(resolve => reads.push({signal, resolve})),
+    onMedia: (media, task) => observed.push({media, task}),
+  });
+  const off: PreviewMedia = {mode: 'proxy', status: 'ready', url: PROXY_URL, durationFrames: 90};
+  controller.start();
+  readyOpticalTask = OTHER_PROJECT_ID;
+  reads[0]!.resolve(off);
+  await Promise.resolve();
+  assert.deepEqual(observed, [{media: off, task: null}]);
+
+  controller.refresh();
+  controller.refresh();
+  assert.equal(reads[1]?.signal.aborted, true);
+  const optical: PreviewMedia = {...off, url: timelinePreviewMediaPath({projectId: PROJECT_ID, assetId: ASSET_ID,
+    clipId: CLIP_ID, taskId: OTHER_PROJECT_ID, digest: 'b'.repeat(64)})};
+  reads[1]!.resolve(off);
+  reads[2]!.resolve(optical);
+  await Promise.resolve();
+  assert.deepEqual(observed, [{media: off, task: null}, {media: optical, task: OTHER_PROJECT_ID}]);
+  controller.dispose();
+});
+
 test('createSpeedPreviewMediaController backs off on retryable 503, stops as unknown after consecutive failures, and cancels on clip leave/close', async () => {
   const flush = async () => { for (let i = 0; i < 4; i++) await Promise.resolve(); };
   const makeController = (maxConsecutiveFailures = 5) => {
@@ -685,9 +715,11 @@ test('buildClipSpeedPreviewBinding enforces capability gate (A7) and builds nati
     status: 'running',
     progress: 65,
   };
+  assert.ok(curveClip.timing.profile === 'timeline-speed-v1');
+  const opticalClip = {...curveClip, timing: {...curveClip.timing, interpolation: 'optical' as const}};
   const readyWithOptical = buildClipSpeedPreviewBinding({
     timeline: SPEED_TIMELINE,
-    clip: curveClip,
+    clip: opticalClip,
     asset: VIDEO_ASSET,
     sourceUrl: SOURCE_URL,
     fps: 30,
@@ -698,6 +730,45 @@ test('buildClipSpeedPreviewBinding enforces capability gate (A7) and builds nati
   assert.equal(readyWithOptical.mode, 'proxy-ready');
   assert.equal(readyWithOptical.overlay?.kind, 'processing');
   assert.match(readyWithOptical.overlay?.kind === 'processing' ? readyWithOptical.overlay.label : '', /补帧.*65%/);
+
+  const opticalReady: SpeedProcessingItem = {...opticalRunning, status: 'ready'};
+  const opticalBinding = (media: PreviewMedia | null) => buildClipSpeedPreviewBinding({
+    timeline: SPEED_TIMELINE, clip: opticalClip, asset: VIDEO_ASSET, sourceUrl: SOURCE_URL,
+    fps: 30, media, processingItems: [opticalReady], t,
+  })!;
+  const handoff = opticalBinding(null);
+  assert.equal(handoff.mode, 'proxy-pending');
+  assert.equal(handoff.mediaUrl, SOURCE_URL);
+  assert.equal(handoff.outputFrameToMediaSeconds(30), sampleClipSourceAtTimelineFrame(opticalClip, 30, 30).sourceSeconds);
+  assert.equal(handoff.overlay?.kind === 'processing' && handoff.overlay.taskKind, 'optical');
+  const replacement = opticalBinding({mode: 'proxy', status: 'running', taskId: OTHER_PROJECT_ID, progress: 70});
+  assert.equal(replacement.overlay?.kind === 'processing' && replacement.overlay.percent, 70);
+  const opticalUrl = timelinePreviewMediaPath({projectId: PROJECT_ID, assetId: ASSET_ID, clipId: CLIP_ID,
+    taskId: OTHER_PROJECT_ID, digest: 'b'.repeat(64)});
+  const opticalBindingReady = opticalBinding({mode: 'proxy', status: 'ready', url: opticalUrl, durationFrames: curve.durationFrames});
+  assert.equal(opticalBindingReady.mediaUrl, opticalUrl);
+  assert.notEqual(opticalBindingReady.mediaKey, readyWithOptical.mediaKey);
+  assert.equal(opticalBindingReady.overlay, null);
+  assert.equal(opticalBindingReady.outputFrameToMediaSeconds(30), 1);
+  assert.equal(opticalBindingReady.mediaSecondsToOutputFrame(1), 30);
+
+  assert.ok(fastClip.timing.profile === 'timeline-speed-v1');
+  const fastOnly = buildClipSpeedPreviewBinding({
+    timeline: SPEED_TIMELINE, clip: {...fastClip, timing: {...fastClip.timing, interpolation: 'optical'}},
+    asset: VIDEO_ASSET, sourceUrl: SOURCE_URL, fps: 30, media: null, processingItems: [], t,
+  })!;
+  assert.equal(fastOnly.mode, 'native');
+  assert.equal(fastOnly.overlay, null);
+  const halfSpeed = makeConstantTiming({numerator: 1, denominator: 2});
+  assert.ok(halfSpeed.timing.profile === 'timeline-speed-v1');
+  const halfOptical = buildClipSpeedPreviewBinding({
+    timeline: SPEED_TIMELINE, clip: {...fastClip, ...halfSpeed, timing: {...halfSpeed.timing, interpolation: 'optical'}},
+    asset: VIDEO_ASSET, sourceUrl: SOURCE_URL, fps: 30, media: null, processingItems: [], t,
+  })!;
+  assert.equal(halfOptical.mode, 'native');
+  assert.equal(halfOptical.playbackRate, .5);
+  assert.equal(halfOptical.frameDrivenPlayback, true);
+  assert.equal(halfOptical.overlay?.kind === 'processing' && halfOptical.overlay.taskKind, 'optical');
 
   // Proxy failed with retryable reason vs INTERPOLATION_UNAVAILABLE (no Retry!).
   const failedRetryable = buildClipSpeedPreviewBinding({

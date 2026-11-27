@@ -9,7 +9,7 @@ import type {PreviewProcessingPort} from './timeline-processing/preview-port.ts'
 
 function nativePreviewMedia(timing: ClipTiming | undefined): Extract<PreviewMedia, {mode: 'native'}> | null {
   if (!timing) return {mode: 'native', rate: {numerator: 1, denominator: 1}};
-  if (timing.profile !== 'timeline-speed-v1' || timing.view.direction !== 'forward' ||
+  if (timing.profile !== 'timeline-speed-v1' || timing.interpolation !== 'off' || timing.view.direction !== 'forward' ||
       timing.basis.speed.kind !== 'constant') return null;
   return {mode: 'native', rate: timing.basis.speed.rate};
 }
@@ -40,12 +40,12 @@ export function readTimelinePreviewClip(store: ProjectStore, input: Input) {
 
 export function readTimelinePreviewMedia(store: ProjectStore, input: Input, preview: PreviewProcessingPort): PreviewMedia {
   const {assetId, timing, durationFrames} = readTimelinePreviewClip(store, input);
-  if (timing?.profile === 'timeline-speed-v1' && timing.interpolation === 'blend') {
-    throw new AppError('UNSUPPORTED_FORMAT', '帧混合预览暂不可用。', 409);
-  }
   const native = nativePreviewMedia(timing);
   if (native) return native;
   const task = preview.lookup(input);
+  if (task?.item.kind === 'optical' && task.item.status === 'queued' && task.item.clipId === input.clipId) {
+    return {mode: 'proxy', status: 'queued', taskId: task.item.taskId};
+  }
   if (task?.item.kind === 'preview' && task.item.clipId === input.clipId) {
     const {status, taskId, progress, reason} = task.item;
     if (status !== 'ready') return {mode: 'proxy', status, taskId,

@@ -209,7 +209,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
           signal.throwIfAborted();
           let clip: ReturnType<typeof readTimelinePreviewClip>;
           try {clip = readTimelinePreviewClip(store, {projectId, clipId});} catch {throw unavailable();}
-          if (clip.assetId !== route.assetId || clip.timing?.profile !== 'timeline-speed-v1' || clip.timing.interpolation === 'blend') {
+          if (clip.assetId !== route.assetId || clip.timing?.profile !== 'timeline-speed-v1') {
             throw unavailable();
           }
           return clip.durationFrames;

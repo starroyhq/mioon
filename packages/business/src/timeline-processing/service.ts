@@ -14,6 +14,7 @@ import {markBackgroundTaskChanged} from '../background-task-events.ts';
 import {pauseUnavailableBackgroundTask, markBackgroundTaskInvalid} from '../background-task-state.ts';
 import {verifiedManagedHash, sameManagedFile, validateManagedSource} from '../managed-media.ts';
 import type {ManagedFileIdentity} from '../managed-media.ts';
+import {hasUnconfirmedMediaProcesses, waitForMediaProcesses} from '../media-processes.ts';
 import {readProjectContentStamp, sameContentStamp} from '../project-file/content-stamp.ts';
 import {FORMAT6_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {registerProjectTransactionObserver} from '../project-file/store.ts';
@@ -24,7 +25,7 @@ import {createSceneHistoryReaders} from '../scene-history.ts';
 import {createOpticalProxyPort, opticalCacheProof, verifyOpticalCache} from './optical-lease.ts';
 import type {ResolvedOpticalProxy} from './optical-lease.ts';
 import {OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
-import type {TimelineOpticalProxyRequest} from './optical-proxy-port.ts';
+import type {TimelineOpticalProxyLease, TimelineOpticalProxyRequest} from './optical-proxy-port.ts';
 import {prepareOpticalProxy, renderOpticalProxy} from './optical.ts';
 import {PROCESSING_CACHE_LIMIT_BYTES, ProcessingFailure} from './cache.ts';
 import type {ProcessingCache, ProcessingCacheEntry} from './cache.ts';
@@ -43,6 +44,7 @@ const taskKind = 'timeline-processing' as const;
 type Task = Omit<ProcessingTaskRow, 'input' | 'result'> & {
   readonly input: ProcessingInputWithClip; readonly result: TaskResult | null;
 };
+type PreviewDemand = ProcessingDemand & {readonly opticalTaskId?: string};
 const activeState = (state: TaskState) => state === 'queued' || state === 'running';
 const maxOutstanding = 64;
 const noEffect = () => {};
@@ -171,7 +173,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     return {id, projectId, demandKey: demand.demandKey, kind: demand.input.kind, state, revision: 1, requestId, input,
       progress: null, errorCode, result: null, updatedAt};
   }
-  function reconcilePins(current = demands): void {
+  function reconcilePins(current = currentDemands()): void {
     const keys = new Set<string>();
     for (const {demandKey} of current) {
       const task = taskForKey(demandKey);
@@ -179,10 +181,24 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     }
     cache.setPins(projectId, [...keys], () => assertEffect(ownerSignal));
   }
+  function previewDemand(base: ProcessingDemand, optical: ProcessingDemand | undefined): PreviewDemand {
+    if (base.input.kind !== 'preview' || base.input.timing?.profile !== 'timeline-speed-v1' ||
+        base.input.timing.interpolation !== 'optical' || base.unavailable || !optical || optical.unavailable) return base;
+    const task = taskForKey(optical.demandKey);
+    if (task?.state !== 'ready' || !task.result?.verifiedProxy) return base;
+    // A completed optical attempt produces a new output variant without a
+    // project edit. The same binding selects both worker input and HTTP media.
+    const recipe = processingHash([base.input.recipe, 'preview-optical-v1', task.id, task.requestId, task.result.verifiedProxy]);
+    return {...base, demandKey: processingHash([base.demandKey, recipe]), input: {...base.input, recipe}, opticalTaskId: task.id};
+  }
+  function withPreviewVariants(base: readonly ProcessingDemand[]): PreviewDemand[] {
+    const optical = new Map(base.filter(demand => demand.input.kind === 'optical').map(demand => [demand.clipId, demand]));
+    return base.map(demand => previewDemand(demand, optical.get(demand.clipId)));
+  }
   function scanDemands(): ProcessingDemand[] {
     const current = readProcessingDemands(store, Boolean(previewRenderer));
     if (previewBindings.size > 0 && !db.isTransaction) {
-      const live = new Map(current.filter(demand => demand.input.kind === 'preview' && !demand.unavailable)
+      const live = new Map(withPreviewVariants(current).filter(demand => demand.input.kind === 'preview' && !demand.unavailable)
         .map(demand => [demand.clipId, demand]));
       for (const [clipId, binding] of previewBindings) {
         const demand = live.get(clipId);
@@ -191,9 +207,12 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     }
     return current;
   }
-  function currentDemands(): readonly ProcessingDemand[] {
+  function currentBaseDemands(): readonly ProcessingDemand[] {
     const latest = readProjectContentStamp(db);
     return content && sameContentStamp(content, latest) ? demands : scanDemands();
+  }
+  function currentDemands(): readonly PreviewDemand[] {
+    return withPreviewVariants(currentBaseDemands());
   }
   function synchronize(): void {
     if (!active || !enabled() || ownerSignal?.aborted || uncertain) return;
@@ -206,11 +225,12 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       content = next;
       resumed = new Set(demands.map(demand => demand.demandKey).filter(key => !previouslyNeeded.has(key)));
     }
-    reconcilePins();
+    const live = withPreviewVariants(demands);
+    reconcilePins(live);
     const launches: Task[] = [];
     let slots = maxOutstanding - running.size;
     store.tx(() => {
-      for (const demand of demands) {
+      for (const demand of live) {
         const prior = taskForKey(demand.demandKey);
         let task: Task;
         if (!prior) {
@@ -271,7 +291,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
   }
 
   async function prepareWork(frozen: ProcessingInput, source: {file: string; sha256: string}, assetId: string,
-    mediaOptions: ReverseProxyMediaOptions) {
+    mediaOptions: ReverseProxyMediaOptions, opticalVideo?: TimelineOpticalProxyLease['video']) {
     type RenderScope = {stagingDirectory: string; onProgress(percent: number): void; reserveBytes(requiredBytes: number): void;
       writer?: ReverseProxyMediaOptions['writer']};
     if (frozen.kind === 'preview') {
@@ -283,10 +303,12 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       const map = mapped.ok ? timeMapPlanInfo(mapped.value) : mapped;
       if (!mapped.ok || !map.ok || map.value.mapHash !== frozen.mapHash) throw new ProcessingFailure('UNSUPPORTED_FORMAT');
       const input: PreviewProcessingInput = {source: {path: source.file}, sourceSha256: source.sha256,
-        plan: mapped.value, interpolation: frozen.timing.interpolation};
+        plan: mapped.value, interpolation: opticalVideo ? 'optical' : frozen.timing.interpolation === 'blend' ? 'blend' : 'off',
+        ...(opticalVideo ? {optical: opticalVideo} : {})};
       const prepared = await previewRenderer.prepare(input, mediaOptions);
       if (prepared.profile.profileId !== TIMELINE_PREVIEW_CACHE_PROFILE || prepared.profile.mapHash !== frozen.mapHash ||
-          prepared.profile.sourceSha256 !== source.sha256) throw new ProcessingFailure('PROCESSING_FAILED');
+          prepared.profile.sourceSha256 !== source.sha256 ||
+          prepared.profile.effectiveInterpolation !== input.interpolation) throw new ProcessingFailure('PROCESSING_FAILED');
       return {prepared, profileId: TIMELINE_PREVIEW_CACHE_PROFILE,
         frameCount: mapped.value.durationFrames,
         render: (scope: RenderScope) => previewRenderer.render(input, prepared, {...mediaOptions, ...scope})} as const;
@@ -334,6 +356,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     };
     const effect = (): void => {assertEffect(signal); sameAttempt();};
     let stage: ReturnType<ProcessingCache['stage']> | undefined;
+    let opticalLease: TimelineOpticalProxyLease | null = null;
     const perform = async (): Promise<void> => {
       effect();
       current = store.tx(() => update(sameAttempt(), 'running', {progress: 0}));
@@ -357,9 +380,31 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
           throw new ProcessingFailure('SOURCE_UNAVAILABLE');
         }
       };
-      const mediaOptions = {signal, ...(ownerSignal ? {ownerSignal} : {}), beforeEffect: checkSource};
-      const work = await prepareWork(frozen, source, assetId, mediaOptions);
-      checkSource();
+      const timing = frozen.timing;
+      if (frozen.kind === 'preview' && timing?.profile === 'timeline-speed-v1' && timing.interpolation === 'optical' && frozen.mapHash) {
+        // The fallback uses the base demand key. A refined attempt whose
+        // dependency disappeared cannot ever publish fallback bytes under it.
+        const baseKey = processingHash([projectId, frozen.recipe, frozen.sourceSha256 ?? frozen.sourceIdentity]);
+        if (original.demandKey !== baseKey) {
+          const selection = currentDemands().find(value => value.demandKey === original.demandKey);
+          if (!selection?.opticalTaskId) throw stale();
+          const request: TimelineOpticalProxyRequest = {projectId, clipId: selection.clipId, timelineId: frozen.timelineId,
+            assetId: selection.input.assetId ?? assetId, sourceSha256: source.sha256, mapHash: frozen.mapHash, timing,
+            outputWindow: {fromFrame: 0, toFrame: timing.outputWindow.toFrame - timing.outputWindow.fromFrame}};
+          const proof = opticalProxy.lookup(request);
+          if (proof?.taskId !== selection.opticalTaskId || !proof.readySha256) throw new ProcessingFailure('INTERPOLATION_UNAVAILABLE');
+          opticalLease = await opticalProxy.acquire(request, {taskId: proof.taskId, sha256: proof.readySha256},
+            {signal, beforeEffect: checkSource});
+          if (!opticalLease) throw new ProcessingFailure('INTERPOLATION_UNAVAILABLE');
+        }
+      }
+      const checkInput = (): void => {
+        checkSource();
+        if (opticalLease && !opticalLease.verify()) throw new ProcessingFailure('INTERPOLATION_UNAVAILABLE');
+      };
+      const mediaOptions = {signal, ...(ownerSignal ? {ownerSignal} : {}), beforeEffect: checkInput};
+      const work = await prepareWork(frozen, source, assetId, mediaOptions, opticalLease?.video);
+      checkInput();
       const cacheKey = processingHash([projectId, frozen.recipe, source.sha256, work.prepared.profile]);
       const result: TaskResult = {cacheKey, sourceSha256: source.sha256, sourceStat: sourceStatHash(source.info)};
       current = store.tx(() => update(sameAttempt(), 'running', {progress: current.progress, result}));
@@ -376,25 +421,25 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
           existing = null;
         }
       }
-      if (existing?.result.mapHash === frozen.mapHash) cache.touch(existing, checkSource);
+      if (existing?.result.mapHash === frozen.mapHash) cache.touch(existing, checkInput);
       else {
-        stage = cache.stage(projectId, cacheKey, work.prepared.reservationBytes, checkSource,
+        stage = cache.stage(projectId, cacheKey, work.prepared.reservationBytes, checkInput,
           {taskId: original.id, requestId: original.requestId});
         const rendered = processingProxyResultSchema.parse(await work.render({stagingDirectory: stage.directory,
           reserveBytes: stage.grow, ...(stage.writer ? {writer: stage.writer} : {}), onProgress(percent) {
-          checkSource();
+          checkInput();
           // Durable progress is deliberately coarser than encoder callbacks.
           const progress = Math.min(99, Math.floor(percent));
           if (progress < (current.progress ?? 0) + 5) return;
           current = store.tx(() => update(sameAttempt(), 'running', {progress}));
           emit();
         }}));
-        checkSource();
+        checkInput();
         if (rendered.profileId !== work.profileId || rendered.mapHash !== frozen.mapHash ||
             work.frameCount !== undefined && rendered.frameCount !== work.frameCount) throw new ProcessingFailure('PROCESSING_FAILED');
         existing = stage.publish(rendered);
       }
-      checkSource();
+      checkInput();
       if (frozen.kind === 'optical') {
         const proof = existing && opticalCacheProof(existing)?.proof;
         if (!proof) throw new ProcessingFailure('PROCESSING_FAILED');
@@ -433,6 +478,12 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
         pauseUnavailableBackgroundTask(db, {kind: taskKind, taskId: original.id}, failure);
       }
     }).finally(() => {
+      const held = opticalLease;
+      if (held) {
+        if (uncertain || hasUnconfirmedMediaProcesses({signal})) {
+          void waitForMediaProcesses({signal}).then(() => held.release()).catch(() => {});
+        } else held.release();
+      }
       running.delete(original.id);
       emit();
       reconcileSoon();
@@ -464,9 +515,14 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       return !expected || expected === sourceStatHash(info) ? info : null;
     } catch {return null;}
   }
-  function readPreviewTask(input: PreviewProcessingRequest) {
+  function readPreviewDemand(input: PreviewProcessingRequest): PreviewDemand | null {
     if (input.projectId !== projectId || !enabled() || ownerSignal?.aborted) return null;
-    const demand = currentDemands().find(value => value.clipId === input.clipId && value.input.kind === 'preview');
+    const current = currentBaseDemands();
+    const base = current.find(value => value.clipId === input.clipId && value.input.kind === 'preview');
+    return base ? previewDemand(base, current.find(value => value.clipId === input.clipId && value.input.kind === 'optical')) : null;
+  }
+  function readPreviewTask(input: PreviewProcessingRequest) {
+    const demand = readPreviewDemand(input);
     if (!demand) return null;
     const task = taskForKey(demand.demandKey);
     return task ? {demand, task} : null;
@@ -481,8 +537,10 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     if (!owned || owned.entry.result.mapHash !== demand.input.mapHash || owned.entry.result.frameCount !== durationFrames) return null;
     try {
       const clock = JSON.parse(owned.clock.toString('utf8'));
+      const effective = demand.opticalTaskId ? 'optical' : demand.input.timing.interpolation === 'blend' ? 'blend' : 'off';
       if (!clock || clock.profileId !== TIMELINE_PREVIEW_CACHE_PROFILE || clock.mapHash !== demand.input.mapHash ||
-          clock.sourceSha256 !== task.result.sourceSha256 || clock.frameCount !== durationFrames) return null;
+          clock.sourceSha256 !== task.result.sourceSha256 || clock.frameCount !== durationFrames ||
+          clock.effectiveInterpolation !== effective) return null;
     } catch {return null;}
     return {source, owned, durationFrames};
   }
@@ -501,7 +559,11 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
   const preview: PreviewProcessingPort = {
     lookup(input) {
       const selection = readPreviewTask(input);
-      if (!selection) return null;
+      if (!selection) {
+        const dependency = readPreviewDemand(input)?.opticalTaskId;
+        // The dependency can complete between two scheduling passes.
+        return dependency ? {item: {kind: 'optical', status: 'queued', taskId: dependency, clipId: input.clipId}} : null;
+      }
       const summary = item(selection.task, input.clipId);
       if (summary.status !== 'ready') return {item: summary};
       const evidence = readPreviewEvidence(selection);
@@ -544,7 +606,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
   };
   function resolveReverseTask(request: TimelineReverseProxyRequest, taskId?: string) {
     if (request.projectId !== projectId || !enabled() || ownerSignal?.aborted) return null;
-    const demand = currentDemands().find(value => value.clipId === request.clipId && value.input.kind === 'reverse');
+    const demand = currentBaseDemands().find(value => value.clipId === request.clipId && value.input.kind === 'reverse');
     let task: Task | null;
     try {task = taskId ? taskById(taskId) : demand ? taskForKey(demand.demandKey) : null;}
     catch (error) {if (errorCode(error) === 'SPEED_PROCESSING_TASK_NOT_FOUND') return null; throw error;}
@@ -634,7 +696,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     check();
     // Bind current clips before eviction, even when a commit has just queued
     // its deferred scan. The request remains scoped to this project.
-    reconcilePins(scanDemands());
+    reconcilePins(currentDemands());
     return cache.clear(projectId, check);
   }
   function resolveOptical(request: TimelineOpticalProxyRequest, frozenTaskId?: string): ResolvedOpticalProxy | null {
@@ -652,7 +714,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       const row = db.prepare('SELECT * FROM main.timeline_processing_tasks WHERE id=? AND projectId=?').get(frozenTaskId, projectId);
       if (row) task = decode(row);
     } else {
-      const demand = currentDemands().find(value => value.clipId === clipId && value.input.assetId === assetId && matches(value.input));
+      const demand = currentBaseDemands().find(value => value.clipId === clipId && value.input.assetId === assetId && matches(value.input));
       if (demand) task = taskForKey(demand.demandKey);
     }
     if (!task || !matches(task.input.frozen) || task.result && task.result.sourceSha256 !== sourceSha256) return null;

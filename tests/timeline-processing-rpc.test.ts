@@ -241,22 +241,33 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
     assert.deepEqual(tool.inputSchema, definition.inputSchema);
     assert.deepEqual(tool.annotations, effectAnnotations(definition.effects));
   }
-  const halfSpeed = {mode: 'native', rate: {numerator: 1, denominator: 2}};
-  assert.deepEqual(data(await cli<PreviewMedia>('timeline.preview.media', previewInput)), halfSpeed);
-  assert.deepEqual(data(await mcpCall<PreviewMedia>('timeline.preview.media', previewInput)), halfSpeed);
-
-  let taskId: string | undefined;
-  const deadline = Date.now() + 10_000;
-  do {
-    const list = timelineProcessingResponseSchemas['timeline.processing.list'].parse(data(await rpc('timeline.processing.list')));
-    taskId = list.items.find(item => item.clipId === clipId && item.kind === 'optical')?.taskId;
-    if (!taskId) await delay(25);
-  } while (!taskId && Date.now() < deadline);
-  assert.ok(taskId);
+  const findTask = async (kind: 'optical' | 'preview'): Promise<string> => {
+    const deadline = Date.now() + 10_000;
+    do {
+      const list = timelineProcessingResponseSchemas['timeline.processing.list'].parse(data(await rpc('timeline.processing.list')));
+      const id = list.items.find(item => item.clipId === clipId && item.kind === kind)?.taskId;
+      if (id) return id;
+      await delay(25);
+    } while (Date.now() < deadline);
+    assert.fail(`missing ${kind} task`);
+  };
+  const taskId = await findTask('optical');
   const task = {projectId, taskId};
   const expected = {taskId, clipId, kind: 'optical', status: 'failed', reason: 'UNSUPPORTED_FORMAT'};
   assert.deepEqual(data(await mcpCall('timeline.processing.wait', {...task, timeoutMs: 10_000})), {item: expected, timedOut: false});
-  assert.deepEqual(data(await cli('timeline.processing.list', {projectId})), {items: [expected]});
+  const fallbackId = await findTask('preview');
+  const fallbackTask = {taskId: fallbackId, clipId, kind: 'preview', status: 'ready'};
+  assert.deepEqual(data(await rpc('timeline.processing.wait', {taskId: fallbackId, timeoutMs: 10_000})),
+    {item: fallbackTask, timedOut: false});
+  const {items} = timelineProcessingResponseSchemas['timeline.processing.list'].parse(data(await cli('timeline.processing.list', {projectId})));
+  assert.deepEqual(items.find(item => item.kind === 'optical'), expected);
+  assert.deepEqual(items.find(item => item.kind === 'preview'), fallbackTask);
+  const fallback = data(await rpc<PreviewMedia>('timeline.preview.media', previewInput));
+  assert.ok(fallback.mode === 'proxy' && fallback.status === 'ready');
+  assert.equal(parseTimelinePreviewMediaQuery(new URL(fallback.url, 'http://localhost').searchParams)?.taskId, fallbackId);
+  assert.equal((await media(fallback.url, 'HEAD')).status, 200);
+  assert.deepEqual(data(await cli<PreviewMedia>('timeline.preview.media', previewInput)), fallback);
+  assert.deepEqual(data(await mcpCall<PreviewMedia>('timeline.preview.media', previewInput)), fallback);
   assert.deepEqual(data(await mcpCall('timeline.processing.inspect', task)), {item: expected});
   assert.deepEqual(data(await mcpCall('timeline.processing.wait', {...task, timeoutMs: 200})), {item: expected, timedOut: false});
   assert.equal(errorCode(await cli('timeline.processing.retry', task)), 'VALIDATION_ERROR');
@@ -268,16 +279,24 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   assert.deepEqual(data(await cli('timeline.processing.retry', retry)), {taskId});
   assert.deepEqual(data(await mcpCall('timeline.processing.retry', retry)), {taskId});
   await edit('sequence.timeline.edit', speedAction('off'));
+  assert.deepEqual(data(await rpc<PreviewMedia>('timeline.preview.media', previewInput)), {mode: 'native', rate: {numerator: 1, denominator: 2}});
+  assert.equal((await media(fallback.url, 'HEAD')).status, 404);
   assert.deepEqual(data(await mcpCall('timeline.processing.retry', retry)), {taskId});
   assert.equal(errorCode(await cli('timeline.processing.retry', {...task, requestId: randomUUID()})), 'SPEED_PROCESSING_STALE');
-  assert.deepEqual(data(await mcpCall('timeline.processing.cache.clear', {projectId})), {freedBytes: 0});
+  const cleared = data(await mcpCall<{freedBytes: number}>('timeline.processing.cache.clear', {projectId}));
+  assert.ok(cleared.freedBytes > 0);
   const cache = timelineProcessingResponseSchemas['timeline.processing.cache.get'].parse(data(await cli('timeline.processing.cache.get', {projectId})));
   assert.equal(cache.usedBytes, 0);
   assert.equal(cache.limitBytes, 10 * 1024 ** 3);
 
   assert.equal(errorCode(await rpc('sequence.timeline.edit', speedAction('blend'))), 'UNSUPPORTED_FORMAT');
   await persistLegacyInterpolation('blend');
-  assert.equal(errorCode(await rpc('timeline.preview.media', previewInput)), 'UNSUPPORTED_FORMAT');
+  const blendId = await findTask('preview');
+  assert.deepEqual(data(await rpc('timeline.processing.wait', {taskId: blendId, timeoutMs: 10_000})), {
+    item: {taskId: blendId, clipId, kind: 'preview', status: 'failed', reason: 'UNSUPPORTED_FORMAT'}, timedOut: false,
+  });
+  assert.deepEqual(data(await rpc<PreviewMedia>('timeline.preview.media', previewInput)),
+    {mode: 'proxy', status: 'failed', taskId: blendId, reason: 'UNSUPPORTED_FORMAT'});
 
   await edit('sequence.timeline.edit', {kind: 'clip-speed', clipId, setting: {
     speed: {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom', points: [

@@ -3,10 +3,17 @@ import type {MediaEffectFence} from './media-runtime.ts';
 import {finishMediaInput, runReverseTool, writeMediaInput} from './timeline-processing/reverse-io.ts';
 
 export interface SpeedBlendSample {
-  /** Both ordinals are in the decoder's traversal order. */
+  /** The ordinals have the same traversal order as the weight. */
   readonly from: number;
   readonly to: number;
   readonly weight: number;
+}
+
+export function mixSpeedBlendFrame(first: Buffer, second: Buffer, weight: number, mixed: Buffer): void {
+  for (let byte = 0; byte < mixed.length; byte++) {
+    const a = first[byte]!;
+    mixed[byte] = Math.round(a + (second[byte]! - a) * weight);
+  }
 }
 
 const chromaDivisors: Readonly<Record<string, readonly [number, number]>> = {
@@ -82,11 +89,7 @@ export async function renderSpeedBlend(options: Options): Promise<void> {
             if (from === to || weight === 0) await writeMediaInput(output, first);
             else if (weight === 1) await writeMediaInput(output, at(to));
             else {
-              const second = at(to);
-              for (let byte = 0; byte < frameBytes; byte++) {
-                const a = first[byte]!;
-                mixed[byte] = Math.round(a + (second[byte]! - a) * weight);
-              }
+              mixSpeedBlendFrame(first, at(to), weight, mixed);
               await writeMediaInput(output, mixed);
             }
           }

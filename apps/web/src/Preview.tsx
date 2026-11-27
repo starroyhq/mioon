@@ -164,10 +164,13 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const blocked = Boolean(gate && (rendered ? ready : asset) && !gate.canRead(readIdentity));
   const url = blocked || speedBlocked ? '' : rendered ? ready ? mediaUrl(job!.projectId, job!.assetId) : '' : activeSpeedPreview ? activeSpeedPreview.mediaUrl : assetUrl(asset);
   const type: string = rendered ? 'video' : assetKind(asset);
-  const speedBindingKey = activeSpeedPreview && clip
-    ? JSON.stringify([activeSpeedPreview.mediaKey, timeline?.id, timeline?.revision,
+  const speedClipKey = activeSpeedPreview && clip
+    ? JSON.stringify([timeline?.id, timeline?.revision, clip.id, asset?.id, asset?.sha256,
         clip.startFrame, clip.durationFrames, clip.sourceInFrame, clip.timing]) : '';
+  const speedBindingKey = activeSpeedPreview ? `${activeSpeedPreview.mediaKey}:${speedClipKey}` : '';
   const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}${speedBindingKey ? `:${speedBindingKey}` : ''}`;
+  const latestMedia = useRef({mediaKey, speedClipKey});
+  latestMedia.current = {mediaKey, speedClipKey};
   const activeMedia = useRef<MediaBinding | null>(null);
   const appliedSourceSeek = useRef<{scope?: string | null; id: number | string} | null>(null);
   const sourceRequest = sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek : null;
@@ -317,7 +320,11 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     applySpeedPlaybackRate(element);
     captureObserver.current?.();
     return () => {
-      stopFramePlayback(false);
+      // A replacement proxy for the same saved clip keeps the output playhead.
+      // A clip/edit/tab change must leave the new destination untouched.
+      const next = latestMedia.current;
+      const handoff = speedClipKey !== '' && next.speedClipKey === speedClipKey && next.mediaKey !== mediaKey;
+      stopFramePlayback(handoff);
       stopNativeTicker();
       if (activeMedia.current === binding) activeMedia.current = null;
       settlePlayback(binding);

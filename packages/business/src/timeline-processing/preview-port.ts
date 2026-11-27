@@ -1,5 +1,6 @@
 import type {CompiledTimeMap} from '../../../contracts/src/timeline-time-map.ts';
 import type {SpeedInterpolation, SpeedProcessingItem} from '../../../contracts/src/timeline-speed.ts';
+import type {TimelineOpticalProxyLease} from './optical-proxy-port.ts';
 import type {ReverseProxyMediaOptions} from './reverse-io.ts';
 
 export const TIMELINE_PREVIEW_CACHE_PROFILE = 'timeline-preview-output-v1';
@@ -9,6 +10,7 @@ export interface PreviewProcessingInput {
   readonly sourceSha256: string;
   readonly plan: CompiledTimeMap;
   readonly interpolation: SpeedInterpolation;
+  readonly optical?: TimelineOpticalProxyLease['video'];
 }
 
 export interface PreparedPreviewProcessing {
@@ -21,7 +23,7 @@ export interface PreparedPreviewProcessing {
     readonly width: number;
     readonly height: number;
     readonly fps: number;
-    readonly effectiveInterpolation: 'off';
+    readonly effectiveInterpolation: SpeedInterpolation;
   };
   readonly reservationBytes: number;
 }

@@ -4,6 +4,7 @@
  * Uses the same preview-media contract and time map as the project host.
  */
 import {
+  timeMapHasSlowMotion,
   timeMapOutputAtSourceFrame,
   timeMapPlanFrames,
   timeMapSourceAtOutputFrame,
@@ -30,7 +31,6 @@ import {
   isFreezeClip,
   processingItemActive,
   rateToNumber,
-  selectClipProcessingItem,
   speedProcessingCanRetry,
   timelineSpeedEnabled,
 } from '../speed-ui/speed-model.ts';
@@ -746,11 +746,19 @@ export function buildClipSpeedPreviewBinding(options: {
     };
   }
 
-  // 2) Proxy ready (curve / reverse): play proxy verbatim at 1× in output time domain.
+  const speedTiming = timing?.profile === 'timeline-speed-v1' ? timing : null;
+  const optical = speedTiming?.interpolation === 'optical';
+  const opticalItem = optical ? processingItems.find(item => item.clipId === clip.id && item.kind === 'optical') ?? null : null;
+  const opticalPending = optical && !opticalItem && plan ? timeMapHasSlowMotion(plan) : null;
+  const awaitsOptical = opticalItem !== null || opticalPending?.ok === true && opticalPending.value;
+  const opticalOverlay = buildOverlayFromProcessingItem(opticalItem, t)
+    ?? (!opticalItem && awaitsOptical
+      ? {kind: 'processing' as const, label: t('speed.processing.opticalActive'), percent: null, taskKind: 'optical' as const}
+      : null);
+
+  // 2) Ready proxies play verbatim at 1× in the output time domain.
   if (media?.mode === 'proxy' && media.status === 'ready') {
     const proxyDuration = media.durationFrames || clip.durationFrames;
-    // If optical interpolation is still cooking (or failed) while un-interpolated preview plays, show status.
-    const opticalItem = processingItems.find(item => item.clipId === clip.id && item.kind === 'optical' && item.status !== 'ready') ?? null;
     return {
       mode: 'proxy-ready',
       mediaUrl: media.url,
@@ -762,7 +770,7 @@ export function buildClipSpeedPreviewBinding(options: {
       clipStartFrame: clip.startFrame,
       clipDurationFrames: clip.durationFrames,
       fps: safeFps,
-      overlay: buildOverlayFromProcessingItem(opticalItem, t),
+      overlay: opticalOverlay,
       outputFrameToMediaSeconds: frame => clamp(frame - clip.startFrame, 0, proxyDuration) / safeFps,
       mediaSecondsToOutputFrame: seconds => clip.startFrame + clamp(Math.round(Math.max(0, seconds) * safeFps), 0, clip.durationFrames),
       onRetryTask,
@@ -770,53 +778,30 @@ export function buildClipSpeedPreviewBinding(options: {
     };
   }
 
-  // 3) Proxy pending or failed (curve / reverse before proxy is ready):
-  //    Show 22-05 status overlay + seek original source frame-by-frame via shared time-map!
-  const needsProxyByTiming = Boolean(
-    timing?.profile === 'timeline-speed-v1'
-    && (timing.basis.speed.kind === 'curve' || timing.view.direction === 'reverse'),
+  // 3) While the current proxy is unready, scrub the original with the same time map.
+  const awaitingProxy = !media && Boolean(
+    speedTiming && (speedTiming.basis.speed.kind === 'curve' || speedTiming.view.direction === 'reverse'
+      || speedTiming.interpolation === 'blend' || opticalItem?.status === 'ready'),
   );
-  if (media?.mode === 'proxy') {
-    const proxyProcessingItem: SpeedProcessingItem = {
+  if (media?.mode === 'proxy' || awaitingProxy) {
+    const item: SpeedProcessingItem | null = media?.mode === 'proxy' ? {
       taskId: media.taskId,
       clipId: clip.id,
-      kind: 'preview',
+      kind: opticalItem?.status === 'ready' && media.status !== 'failed' ? 'optical' : 'preview',
       status: media.status,
       ...(media.progress !== undefined ? {progress: media.progress} : {}),
       ...(media.reason !== undefined ? {reason: media.reason} : {}),
+    } : null;
+    const isFailed = item?.status === 'failed';
+    const overlay = (isFailed ? buildOverlayFromProcessingItem(item, t)
+      : opticalOverlay ?? buildOverlayFromProcessingItem(item, t)) ?? {
+      kind: 'processing' as const,
+      label: t(awaitsOptical ? 'speed.processing.opticalActive' : 'speed.processing.clipQueued'),
+      percent: null,
+      taskKind: awaitsOptical ? 'optical' as const : 'preview' as const,
     };
-    const fallbackItem = selectClipProcessingItem(processingItems, clip.id);
-    const activeItem = media.status === 'failed' ? proxyProcessingItem : (proxyProcessingItem.progress !== undefined ? proxyProcessingItem : fallbackItem ?? proxyProcessingItem);
-    const isFailed = media.status === 'failed';
     return {
       mode: isFailed ? 'proxy-failed' : 'proxy-pending',
-      mediaUrl: sourceUrl,
-      mediaKey: `proxy-wait:${clip.id}:${sourceUrl}:${timing ? timing.outputWindow.fromFrame : 0}`,
-      playbackRate: 1,
-      muteVideo: true,
-      frameDrivenPlayback: true,
-      silent: false,
-      clipStartFrame: clip.startFrame,
-      clipDurationFrames: clip.durationFrames,
-      fps: safeFps,
-      overlay: buildOverlayFromProcessingItem(activeItem, t),
-      outputFrameToMediaSeconds: frame => sampleClipSourceAtTimelineFrame(clip, safeFps, frame, plan).sourceSeconds,
-      mediaSecondsToOutputFrame: seconds => outputFrameFromSourceSeconds(clip, safeFps, seconds, plan),
-      onRetryTask,
-      onPlaybackStateChange,
-    };
-  }
-
-  if (needsProxyByTiming) {
-    const existingItem = selectClipProcessingItem(processingItems, clip.id);
-    const overlay = buildOverlayFromProcessingItem(existingItem, t) ?? {
-      kind: 'processing' as const,
-      label: t('speed.processing.clipQueued'),
-      percent: null,
-      taskKind: 'preview' as const,
-    };
-    return {
-      mode: existingItem?.status === 'failed' ? 'proxy-failed' : 'proxy-pending',
       mediaUrl: sourceUrl,
       mediaKey: `proxy-wait:${clip.id}:${sourceUrl}:${timing ? timing.outputWindow.fromFrame : 0}`,
       playbackRate: 1,
@@ -841,8 +826,6 @@ export function buildClipSpeedPreviewBinding(options: {
       ? timing.basis.speed.rate
       : {numerator: 1, denominator: 1};
   const rateNum = clamp(rateToNumber(rateObj), 0.1, 10);
-  const opticalItem = processingItems.find(item => item.clipId === clip.id && item.kind === 'optical' && item.status !== 'ready') ?? null;
-
   return {
     mode: 'native',
     mediaUrl: sourceUrl,
@@ -856,7 +839,7 @@ export function buildClipSpeedPreviewBinding(options: {
     clipStartFrame: clip.startFrame,
     clipDurationFrames: clip.durationFrames,
     fps: safeFps,
-    overlay: buildOverlayFromProcessingItem(opticalItem, t),
+    overlay: opticalOverlay,
     outputFrameToMediaSeconds: (frame, forPlayback) => {
       const sample = sampleClipSourceAtTimelineFrame(clip, safeFps, frame, plan);
       return forPlayback ? sample.continuousFrame / safeFps : sample.sourceSeconds;

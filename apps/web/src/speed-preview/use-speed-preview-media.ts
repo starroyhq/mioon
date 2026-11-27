@@ -42,7 +42,8 @@ export function createSpeedPreviewMediaController(options: {
   readonly projectId: string;
   readonly clipId: string;
   readonly read: (signal: AbortSignal) => Promise<unknown>;
-  readonly onMedia: (media: PreviewMedia | null) => void;
+  readonly readyOpticalTask?: () => string | null;
+  readonly onMedia: (media: PreviewMedia | null, readyOpticalTask: string | null) => void;
   readonly onStateChange?: (state: SpeedProcessingPollState, error?: unknown) => void;
   readonly intervalMs?: number;
   readonly maxBackoffMs?: number;
@@ -109,6 +110,7 @@ export function createSpeedPreviewMediaController(options: {
     const requestSeq = ++seq;
     const ac = new AbortController();
     abortController = ac;
+    const readyOpticalTask = options.readyOpticalTask?.() ?? null;
     let requestPromise: Promise<unknown>;
     try {
       requestPromise = Promise.resolve(options.read(ac.signal));
@@ -125,7 +127,7 @@ export function createSpeedPreviewMediaController(options: {
             return;
           }
           consecutiveFailures = 0;
-          options.onMedia(media);
+          options.onMedia(media, readyOpticalTask);
           if (previewMediaNeedsPolling(media)) {
             setState('polling');
             timer = schedule(() => {
@@ -218,11 +220,18 @@ export function useSpeedPreviewMedia(options: {
   const timingSignature = clip?.timing ? JSON.stringify(clip.timing) : 'none';
   const bindingKey = clipId ? JSON.stringify([projectId, clipId, timeline?.revision, timingSignature]) : null;
   const clipProcessingSignature = clipId ? previewProcessingStateKey(clipId, processingItems) : '';
+  const readyOpticalTask = clipId && clip?.timing?.profile === 'timeline-speed-v1' && clip.timing.interpolation === 'optical'
+    ? processingItems.find(item => item.clipId === clipId && item.kind === 'optical' && item.status === 'ready')?.taskId ?? null
+    : null;
 
-  const [state, setState] = useState<{readonly bindingKey: string; readonly media: PreviewMedia | null} | null>(null);
+  const [state, setState] = useState<{
+    readonly bindingKey: string; readonly readyOpticalTask: string | null; readonly media: PreviewMedia | null;
+  } | null>(null);
   const controllerRef = useRef<SpeedPreviewMediaController | null>(null);
   const rpcRef = useRef(rpc);
   rpcRef.current = rpc;
+  const readyOpticalTaskRef = useRef(readyOpticalTask);
+  readyOpticalTaskRef.current = readyOpticalTask;
 
   useEffect(() => {
     if (!bindingKey || !projectId || !clipId) {
@@ -234,10 +243,11 @@ export function useSpeedPreviewMedia(options: {
       projectId,
       clipId,
       read: signal => rpcRef.current('timeline.preview.media', {projectId, clipId}, {signal}),
-      onMedia: media => setState(prev => (
-        prev?.bindingKey === bindingKey && JSON.stringify(prev.media) === JSON.stringify(media)
+      readyOpticalTask: () => readyOpticalTaskRef.current,
+      onMedia: (media, task) => setState(prev => (
+        prev?.bindingKey === bindingKey && prev.readyOpticalTask === task && JSON.stringify(prev.media) === JSON.stringify(media)
           ? prev
-          : {bindingKey, media}
+          : {bindingKey, readyOpticalTask: task, media}
       )),
     });
     controllerRef.current = controller;
@@ -249,21 +259,23 @@ export function useSpeedPreviewMedia(options: {
   }, [bindingKey, projectId, clipId]);
 
   // Re-check media URL when processing list reports a clip's task changed state (e.g. ready or retried).
-  const prevProcSig = useRef<string>(clipProcessingSignature);
+  const previousProcessing = useRef({bindingKey, signature: clipProcessingSignature});
   useEffect(() => {
-    if (prevProcSig.current === clipProcessingSignature) return;
-    prevProcSig.current = clipProcessingSignature;
-    if (eligible && clipId && clipProcessingSignature) {
+    const previous = previousProcessing.current;
+    previousProcessing.current = {bindingKey, signature: clipProcessingSignature};
+    if (bindingKey && previous.bindingKey === bindingKey && previous.signature !== clipProcessingSignature) {
       controllerRef.current?.refresh();
     }
-  }, [eligible, clipId, clipProcessingSignature]);
+  }, [bindingKey, clipProcessingSignature]);
 
   const refresh = useCallback(() => {
     controllerRef.current?.refresh();
   }, []);
 
   return {
-    media: state && state.bindingKey === bindingKey ? state.media : null,
+    // A ready optical task changes the host's selected credential. Retire the
+    // off response while the new task's output-domain preview is being read.
+    media: state && state.bindingKey === bindingKey && state.readyOpticalTask === readyOpticalTask ? state.media : null,
     clipId,
     refresh,
   };

@@ -93,7 +93,8 @@ export function readProcessingDemands(store: ProjectStore, previewEnabled = fals
     const kinds: ProcessingInput['kind'][] = [];
     if (timing.view.direction === 'reverse') kinds.push('reverse');
     const wantsOptical = timing.interpolation === 'optical' && isVideo;
-    if (previewEnabled && isVideo && (timing.view.direction === 'reverse' || timing.basis.speed.kind === 'curve')) kinds.push('preview');
+    if (previewEnabled && isVideo && (timing.view.direction === 'reverse' || timing.basis.speed.kind === 'curve' ||
+      timing.interpolation !== 'off')) kinds.push('preview');
     if (!kinds.length && !wantsOptical) continue;
     const map = compileClipTimeMap(clip, timeline);
     const plan = map.ok ? timeMapPlanInfo(map.value) : null;
@@ -136,6 +137,7 @@ export function readProcessingDemands(store: ProjectStore, previewEnabled = fals
       const recipe = processingHash(kind === 'optical' ? [OPTICAL_PROXY_PROFILE, OPTICAL_FLOW_CUT_POLICY, optical ?? timing,
         media, info?.mapHash ?? null, colour ?? null]
         : [profile, kind, timing, info?.sourceWindow ?? null, media, timeline.width, timeline.height, timeline.fps, colour ?? null,
+          ...(kind === 'preview' && timing.interpolation === 'blend' ? ['preview-blend-v1'] : []),
           // Version the audio recipe so prior incomplete proxies are never the new demand.
           ...(kind === 'reverse' ? [{audioWindow: audioWindow ?? null, pictureWindow: pictureWindow ?? null,
             coverage: REVERSE_PROXY_COVERAGE_VERSION}] : [])]);

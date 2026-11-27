@@ -12,6 +12,7 @@ import {checkMediaEffect, isMediaToolFailure, run, runStreaming} from './media-r
 import type {MediaEffectFence} from './media-runtime.ts';
 import {withProbePermit} from './media-probe.ts';
 import {renderSpeedBlend, speedBlendFrameBytes} from './timeline-speed-export-blend.ts';
+import type {SpeedBlendSample} from './timeline-speed-export-blend.ts';
 import {OPTICAL_FLOW_FILTER} from './timeline-processing/optical-proxy-port.ts';
 
 const fps = 30;
@@ -269,12 +270,27 @@ function videoFrameTable(index: VideoIndex, plan: CompiledTimeMap): Int32Array {
 /** A picture consumer uses the same physical presentation ordinals as export,
  * including VFR uncertainty and the direction rule at exact time boundaries. */
 export async function readTimelineVideoSamples(source: SpeedExportVideoOptions['source'], plan: CompiledTimeMap,
-  options: VideoProbeOptions) {
+  options: VideoProbeOptions & {readonly blend?: boolean}) {
+  const {stream,index} = await readTimelineVideoIndex(source, plan, options);
+  const ordinals = videoFrameTable(index, plan);
+  const phase = options.blend ? phaseFor(index, plan) : null;
+  const blend = phase?.frames.some(frame => frame.active) ? blendSamples(phase.frames, ordinals) : undefined;
+  return {stream, index, ordinals, blend, rawInterpretation: blend ? rawFilterPrefix(index.stream) : undefined};
+}
+
+/** Optical processing already applied the map in output order. Treat its
+ * verified frames as a contiguous slice of the clip's final picture. */
+export async function readTimelineOpticalVideo(source: SpeedExportVideoOptions['source'], plan: CompiledTimeMap,
+  optical: SpeedExportOpticalVideo, options: VideoProbeOptions) {
+  const {stream,index} = await readTimelineVideoIndex(source, plan, options);
+  return {stream,index,offset: await opticalSourceOffset(source.path, index, optical, 0, plan.durationFrames, options)};
+}
+
+async function readTimelineVideoIndex(source: SpeedExportVideoOptions['source'], plan: CompiledTimeMap, options: VideoProbeOptions) {
   if (plan.root.sourceFps.fpsNumerator !== fps || plan.root.sourceFps.fpsDenominator !== 1 ||
       plan.root.outputFps.fpsNumerator !== fps || plan.root.outputFps.fpsDenominator !== 1) mappingError();
   const stream = streamSelector(source.videoStreamIndex);
-  const index = await probeVideo(source.path, stream, options);
-  return {stream, index, ordinals: videoFrameTable(index, plan)};
+  return {stream, index: await probeVideo(source.path, stream, options)};
 }
 
 function reverseOrdinalLookup(index: VideoIndex, reverse: SpeedExportReverseVideo): (sourceOrdinal: number) => number {
@@ -295,6 +311,18 @@ function phaseFor(index: VideoIndex, plan: CompiledTimeMap): InterpolationPhaseP
   const result = compileInterpolationPhase(plan, {positions:index.stamps.map(convert), end:convert(index.end)});
   if (!result.ok || !result.value.available) interpolationError(INTERPOLATION_UNAVAILABLE);
   return result.value;
+}
+
+function blendSamples(frames: InterpolationPhasePlan['frames'], table: Int32Array,
+  ordinal: (sourceOrdinal: number) => number = sourceOrdinal => sourceOrdinal): SpeedBlendSample[] {
+  return frames.map(({active, weight, fromFrame, toFrame}, offset) => {
+    if (!active) return {from:table[offset]!,to:table[offset]!,weight:0};
+    if (weight === 0 || weight === 1) {
+      const chosen = ordinal(weight === 1 ? toFrame : fromFrame);
+      return {from:chosen,to:chosen,weight:0};
+    }
+    return {from:ordinal(fromFrame),to:ordinal(toFrame),weight};
+  });
 }
 
 /** Probe the actual decoded source layout and clock before a final export can
@@ -450,6 +478,23 @@ function verifyIndexedProxy(source: VideoIndex, proxy: VideoIndex, frames: numbe
   })) mappingError();
 }
 
+async function opticalSourceOffset(source: string, index: VideoIndex, optical: SpeedExportOpticalVideo,
+  begin: number | undefined, durationFrames: number, options: VideoProbeOptions): Promise<number> {
+  const {firstOutputFrame, frameCount} = optical;
+  if (begin===undefined || !Number.isSafeInteger(begin) || !Number.isSafeInteger(firstOutputFrame) ||
+      !Number.isSafeInteger(frameCount) || frameCount < 1 || optical.file===source) opticalCoverageError();
+  const offset = begin - firstOutputFrame;
+  if (offset<0 || offset+durationFrames>frameCount) opticalCoverageError();
+  try {
+    verifyIndexedProxy(index,await probeVideo(optical.file,'v:0',options),frameCount);
+  } catch (error) {
+    checkMediaEffect(options.beforeEffect,options.signal);
+    if (!isMediaToolFailure(error) && !(error instanceof AppError && [SPEED_MAPPING_INVALID,SPEED_SOURCE_UNSUPPORTED].includes(error.code))) throw error;
+    opticalCoverageError();
+  }
+  return offset;
+}
+
 function losslessVideoArgs(format: string): string[] {
   return ['-c:v','ffv1','-level','3','-slicecrc','1',
     ...(format==='gbrap16le'||format==='gbrap16be' ? ['-threads:v','4','-slices','4'] : ['-threads:v','1']),
@@ -535,19 +580,7 @@ export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions):
   let opticalOffset = 0;
   let reverseOrdinal: ((sourceOrdinal: number) => number) | undefined;
   if (optical) {
-    const {firstOutputFrame, frameCount} = optical;
-    const begin = options.firstOutputFrame;
-    if (begin===undefined || !Number.isSafeInteger(begin) || !Number.isSafeInteger(firstOutputFrame) ||
-        !Number.isSafeInteger(frameCount) || frameCount < 1 || optical.file===source.path) opticalCoverageError();
-    opticalOffset = begin - firstOutputFrame;
-    if (opticalOffset<0 || opticalOffset+plan.durationFrames>frameCount) opticalCoverageError();
-    try {
-      verifyIndexedProxy(index,await probeVideo(optical.file,'v:0',{signal,beforeEffect}),frameCount);
-    } catch (error) {
-      checkMediaEffect(beforeEffect,signal);
-      if (!isMediaToolFailure(error) && !(error instanceof AppError && [SPEED_MAPPING_INVALID,SPEED_SOURCE_UNSUPPORTED].includes(error.code))) throw error;
-      opticalCoverageError();
-    }
+    opticalOffset = await opticalSourceOffset(source.path, index, optical, options.firstOutputFrame, plan.durationFrames, {signal,beforeEffect});
     media = optical.file;
     mediaSelector = 'v:0';
     mediaArgs = ['-format_whitelist','matroska','-noautorotate'];
@@ -579,16 +612,7 @@ export async function prepareSpeedExportVideo(options: SpeedExportVideoOptions):
     const bytes = speedBlendFrameBytes(index.pixelFormat,index.width,index.height);
     if (bytes===null) interpolationError(UNSUPPORTED_INTERPOLATION_FORMAT);
     if (bytes>maxRawFrameBytes) budgetError();
-    const ordinal = reverseOrdinal ?? ((sourceOrdinal: number) => sourceOrdinal);
-    const samples = frames.map((frame, offset) => {
-      const {active, weight, fromFrame, toFrame} = frame;
-      if (!active) return {from:table![offset]!,to:table![offset]!,weight:0};
-      if (weight === 0 || weight === 1) {
-        const chosen = ordinal(weight === 1 ? toFrame : fromFrame);
-        return {from:chosen,to:chosen,weight:0};
-      }
-      return {from:ordinal(fromFrame),to:ordinal(toFrame),weight};
-    });
+    const samples = blendSamples(frames, table!, reverseOrdinal);
     checkMediaEffect(beforeEffect,signal);
     reserve(file);
     checkMediaEffect(beforeStart,signal);
