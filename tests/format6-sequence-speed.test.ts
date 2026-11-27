@@ -159,15 +159,15 @@ function sourceFrames(store: ProjectStore, clipId = clipA): Int32Array {
 
 test('identity and repeated identical speed edits are zero-write operations', t => {
   const store = fixture(t), api = editor(store);
+  const noop = {ok: false, code: 'SEQUENCE_EDIT_NOOP', ids: [clipA],
+    messageKey: 'editUi.error.SEQUENCE_EDIT_NOOP', message: '这次操作和当前状态相同，无需再次提交。'};
   const before = state(store);
-  assert.deepEqual(api.preview(set(constant(1))), {ok: false, code: 'SEQUENCE_EDIT_NOOP', ids: [clipA]});
+  assert.deepEqual(api.preview(set(constant(1))), noop);
   assert.deepEqual(state(store), before);
   const speed = set(constant(3, 2));
   api.apply(speed);
   const committed = state(store);
-  const repeated = api.preview(speed);
-  assert.ok('code' in repeated);
-  assert.equal(repeated.code, 'SEQUENCE_EDIT_NOOP');
+  assert.deepEqual(api.preview(speed), noop);
   assert.deepEqual(state(store), committed);
 });
 
