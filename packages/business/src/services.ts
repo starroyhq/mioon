@@ -1135,7 +1135,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
      'timeline.preview.media': (value: {projectId: string; clipId: string}) => {
       if (!processing.enabled() || !isProjectStore(store)) throw new AppError('SPEED_PROCESSING_UNAVAILABLE', '当前项目的变速预览不可用。', 409);
       approved?.();
-      return readTimelinePreviewMedia(store, value);
+      return readTimelinePreviewMedia(store, value, processing.preview);
      },
      'timeline.processing.list': processing.list,
      'timeline.processing.inspect': processing.inspect,

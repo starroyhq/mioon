@@ -6,13 +6,15 @@ import path from 'node:path';
 import test from 'node:test';
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {
-  compileTimeMap, initialTimeMap, instantiateSpeedPreset, projectTimeMapToCurrentClipFields, type TimeMapSpeed,
+  compileTimeMap, initialTimeMap, instantiateSpeedPreset, projectTimeMapToCurrentClipFields, timeMapPlanInfo, type TimeMapSpeed,
 } from '../packages/contracts/src/timeline-time-map.ts';
 import {AUDIO_PREVIEW_LIMITS, audioPreviewPlanSchema} from '../packages/contracts/src/timeline-audio-preview.ts';
 import {continuousAudioPlanSchema} from '../packages/contracts/src/timeline-audio-continuous.ts';
+import {timelineProcessingResponseSchemas} from '../packages/contracts/src/timeline-processing.ts';
+import {processingApplication} from '../packages/business/src/timeline-processing/scheduler.ts';
 import {speedExportClipPlan} from '../packages/business/src/timeline-speed-export-plan.ts';
-import {prepareTimelineSpeedAudio, type TimelineSpeedAudioSource} from '../packages/business/src/timeline-speed-export-audio.ts';
-import type {TimelineReverseProxyPort} from '../packages/business/src/timeline-speed-export-proxy.ts';
+import {prepareTimelineSpeedAudio, timelineReverseAudioClock, type TimelineSpeedAudioSource} from '../packages/business/src/timeline-speed-export-audio.ts';
+import {withTimelineReverseAudio, type TimelineReverseProxyPort} from '../packages/business/src/timeline-speed-export-proxy.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
@@ -41,7 +43,7 @@ function speedTiming(speed: TimeMapSpeed, frames = sourceFrames, direction: 'for
 }
 
 async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeof speedTiming>[],
-  {freeze = false, reverse = false, ready = true, visibleAudioOnly = false} = {}) {
+  {freeze = false, reverse = false, realReverse = false, ready = true, visibleAudioOnly = false} = {}) {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-speed-preview-audio-'));
   const sourceDir = path.join(root, 'media'); await mkdir(sourceDir);
   const title = freeze ? 'source.mp4' : 'source.wav';
@@ -63,8 +65,10 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
   const reversedFile = path.join(root, 'reverse.wav');
   const reverseClock = {fromSample: 0, toSample: recordedSourceFrames * samplesPerFrame};
   let port: TimelineReverseProxyPort | undefined;
-  if (reverse) {
+  if (reverse || realReverse) {
     await run('ffmpeg', [...args, '-i', source, '-af', 'areverse', '-c:a', 'pcm_f32le', reversedFile]);
+  }
+  if (reverse) {
     port = {lookup: () => ({taskId, ...(ready ? {readySha256: key} : {})}), async acquire(request, frozen) {
       assert.ok(ready && request.needsAudio && request.audioWindow);
       assert.ok(request.audioWindow.fromSample >= reverseClock.fromSample && request.audioWindow.toSample <= reverseClock.toSample);
@@ -80,7 +84,9 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
     targetFormat: FORMAT6_PROJECT_SCHEMA_VERSION, allowFormat6: true,
     locate: () => ({localDir: path.join(root, 'history'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const application = openAppLibrary({dataDir: path.join(root, 'app')});
-  const services = createServices(store, new Map(), {application: createProjectServiceApplication(application, undefined, {}), reverseProxy: port});
+  const processing = realReverse ? {enabled: true, ...processingApplication(application.db, path.join(root, 'processing'))} : undefined;
+  const services = createServices(store, new Map(), {application: createProjectServiceApplication(application, undefined, {}),
+    processing, reverseProxy: port});
   t.after(async () => {await services.drain(); store.close(); application.close(); await rm(root, {recursive: true, force: true});});
   const projectId = store.projectId, timelineId = randomUUID(), rootId = randomUUID(), videoTrack = randomUUID(), assetId = randomUUID();
   const inputs: readonly {readonly timing: ClipTiming; readonly duration: number}[] = freeze ? [{
@@ -110,11 +116,12 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
     store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
       .run(timelineId, projectId, rootId, 1, JSON.stringify({version: 1, board: [], track: []}));
   });
+  if (realReverse) services.activateBackground();
   const input = {projectId, timelineId, expectedRevision: 1, startFrame: 0};
   const render = async (index = 0): Promise<Buffer> => {
     const clip = clips[index]!, plan = speedExportClipPlan(clip, 30);
     const destination = path.join(root, `export-${index}.f32le`);
-    const audioSource: TimelineSpeedAudioSource = reverse ? {file: reversedFile, streamIndex: 'a:0', reversed: reverseClock}
+    const audioSource: TimelineSpeedAudioSource = reverse || realReverse ? {file: reversedFile, streamIndex: 'a:0', reversed: reverseClock}
       : {file: source, streamIndex: 'a:0'};
     const result = await prepareTimelineSpeedAudio({timing: clip.timing, plan, source: audioSource, destination},
       {openOwnedFile: file => open(file, 'wx', 0o600)});
@@ -145,7 +152,8 @@ async function fixture(t: test.TestContext, timelines: readonly ReturnType<typeo
     return services.audioPreview.consumeSource({...input, startFrame: start, planHash: plan.planHash,
       clipId: match.clipId, sourceHash: match.sourceHash}, {consume: async ({pcm}) => pcm});
   };
-  return {render, readContinuous, readLegacyPlan, readLegacy, audioWindows, counts: () => ({leases, releases})};
+  return {render, readContinuous, readLegacyPlan, readLegacy, audioWindows, counts: () => ({leases, releases}),
+    services, projectId, timelineId, assetId, sha256, clips};
 }
 
 test('preview PCM and SP-E render the same output samples through both real service lanes', async t => {
@@ -203,5 +211,33 @@ test('a trimmed 2× reverse clip requires audio preceding its visible source win
     await assert.rejects(() => f.readLegacy(3), {code: 'SPEED_PROCESSING_NOT_READY'});
     await assert.rejects(() => f.readContinuous(3), {code: 'SPEED_PROCESSING_NOT_READY'});
     assert.deepEqual(f.counts(), {leases: 2, releases: 2});
+  });
+  await t.test('the persisted SP-P task supplies the context to both preview lanes', async t => {
+    const f = await fixture(t, [clipped], {realReverse: true});
+    const {services, projectId, timelineId, assetId, sha256} = f;
+    const [clip] = f.clips; assert.ok(clip);
+    const {items} = timelineProcessingResponseSchemas['timeline.processing.list'].parse(
+      await services.call('timeline.processing.list', {projectId}));
+    const task = items.find(item => item.kind === 'reverse' && item.clipId === clip.id); assert.ok(task);
+    const result = timelineProcessingResponseSchemas['timeline.processing.wait'].parse(
+      await services.call('timeline.processing.wait', {projectId, taskId: task.taskId}));
+    assert.equal(result.timedOut, false);
+    assert.equal(result.item.status, 'ready', JSON.stringify(result.item));
+
+    const plan = speedExportClipPlan(clip, 30), info = timeMapPlanInfo(plan);
+    assert.ok(info.ok);
+    const audioWindow = timelineReverseAudioClock(plan, clip.timing); assert.ok(audioWindow);
+    const visibleStart = info.value.sourceWindow.startFrame * samplesPerFrame;
+    assert.ok(audioWindow.fromSample < visibleStart);
+    await withTimelineReverseAudio({projectId, timelineId, clipId: clip.id, assetId, sourceSha256: sha256,
+      mapHash: info.value.mapHash, media: 'audio', sourceFps: clock, sourceWindow: info.value.sourceWindow,
+      pictureWindows: [], needsAudio: true, audioWindow}, services.timelineProcessing?.reverseProxy, {}, async ({clock}) => {
+      assert.ok(clock.fromSample <= audioWindow.fromSample && clock.toSample >= audioWindow.toSample);
+    });
+
+    const start = 3, expected = (await f.render()).subarray(start * bytesPerFrame);
+    assert.ok(expected.some(byte => byte !== 0));
+    assert.ok((await f.readLegacy(start)).equals(expected), 'V1 must match export PCM using the real cache');
+    assert.ok((await f.readContinuous(start)).equals(expected), 'V2 must match export PCM using the real cache');
   });
 });
