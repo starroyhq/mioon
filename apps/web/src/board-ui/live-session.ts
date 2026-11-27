@@ -82,7 +82,7 @@ const previewFailure = (preview: Row): BoardFailure => ({ok: false,
  * receipt surfaced as a rejection instead of an applied outcome. */
 function receiptOutcome(value: unknown): BoardOutcome {
   const parsed = parseSequenceCommit(value);
-  if (parsed.kind === 'failure') return {ok: false, code: parsed.code, ids: parsed.ids};
+  if (parsed.kind === 'failure') return {ok: false, code: parsed.code, ids: parsed.ids, ...(parsed.reason ? {reason: parsed.reason} : {})};
   if (parsed.kind === 'unknown') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
   return {ok: true, actionId: parsed.actionId, operation: parsed.operation, status: 'applied',
     ...(parsed.receipt ? {receipt: parsed.receipt} : {})};
@@ -127,7 +127,7 @@ export class BoardUiSession {
     const parsed = parseSequenceCommit(row);
     if (parsed.kind === 'unknown') return this.retainUnconfirmed(envelope, planDigest);
     this.lost.clear();
-    if (parsed.kind === 'failure') return {ok: false, code: parsed.code, ids: parsed.ids};
+    if (parsed.kind === 'failure') return {ok: false, code: parsed.code, ids: parsed.ids, ...(parsed.reason ? {reason: parsed.reason} : {})};
     return {ok: true, actionId: parsed.actionId, operation: parsed.operation, status: 'applied',
       ...(parsed.receipt ? {receipt: parsed.receipt} : {})};
   }
@@ -154,7 +154,7 @@ export class BoardUiSession {
     try {
       const result = await this.commitEnvelope(entry.projectId, entry.envelope, entry.planDigest);
       if (result.ok) return {ok: true, actionId: result.actionId};
-      return 'unconfirmed' in result ? {ok: false, code: result.code, unconfirmed: true} : {ok: false, code: result.code};
+      return 'unconfirmed' in result ? {ok: false, code: result.code, unconfirmed: true} : {ok: false, code: result.code, ...(result.reason ? {reason: result.reason} : {})};
     } finally {this.inFlight = false;}
   }
   /** The bar's abandon: drop the retained envelope without writing or refreshing. */

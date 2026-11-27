@@ -607,6 +607,7 @@ import type {MioSequenceAction,MioSequenceGroupOperation} from '../../../contrac
 import {previewMioSequenceAction,commitMioSequenceAction,prepareMioSequenceUndo,applyMioSequenceUndo} from '../format5-mio-sequence.ts';
 import {readFrozenFormat5GenerationInputs} from '../format5-reference-inputs.ts';
 import type {MioSequencePlan,MioSequenceUndoPlan} from '../format5-mio-sequence.ts';
+import {explainSequenceEditFailure,MioSequencePreviewRejection,sequenceEditCommitError,SequenceEditCommitRejection} from '../format5-sequence-preview-errors.ts';
 export const listAgentTaskTools=(frameTransaction=false,format5=false):AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
   if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:format5?AGENT_TASK_FORMAT5_TOOLS_LOAD_PARAMETERS:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
@@ -844,18 +845,30 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   if(!format5||!isProjectStore(store))fail('AGENT_TASK_TOOL_FORBIDDEN','格式 5 序列工具只用于当前格式 5 项目');
   const before=snapshot(store,projectId);
   const targets:AgentTaskTarget[]=[];
-  const add=(kind:string,id:unknown)=>{if(typeof id!=='string')return;const found=before[key(kind,id)];
-   if(!found)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目或已删除');
-   if(!targets.some(target=>target.kind===kind&&target.id===id))targets.push({kind,id,revision:readRevision(store,projectId,kind,id)});};
+  const add=(kind:string,id:unknown,missing?:{code:string;reason?:string})=>{
+   if(typeof id!=='string')return;
+   const found=before[key(kind,id)];
+   if(!found){
+    if(missing){
+     const failure=explainSequenceEditFailure({ok:false,ids:[id],...missing},locale);
+     if(failure.message)throw new MioSequencePreviewRejection(failure.code,failure.message,409,
+       {ids:failure.ids,messageKey:failure.messageKey,...(failure.reason?{reason:failure.reason}:{})});
+    }
+    fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目或已删除');
+   }
+   if(!targets.some(target=>target.kind===kind&&target.id===id))targets.push({kind,id,revision:readRevision(store,projectId,kind,id)});
+  };
   if(operation!=='sequence.tool.undo'){
    const schema=mioSequenceEditSchemas[operation as MioSequenceGroupOperation];
    const parsed=schema.safeParse(input);
    if(!parsed.success)fail('VALIDATION_ERROR','序列动作参数无效：只接受列出的动作和目标字段');
    const action=parsed.data as MioSequenceAction;
-   if('clipId' in action)add('timeline_clip',action.clipId);
-   if('beforeClipId' in action&&!action.beforeClipId){}else if('beforeClipId' in action)add('timeline_clip',action.beforeClipId);
-   if('fromId' in action){add('node',action.fromId);add('node',action.toId);}
-   if('nodeId' in action)add('node',action.nodeId);
+   const missingClip=['split','trim','reorder','remove','copy-move'].includes(action.kind)?{code:'CLIP_NOT_FOUND'}:undefined;
+   const missingNode=action.kind==='connect'||action.kind==='delete-node'?{code:'MISSING_NODE'}:undefined;
+   if('clipId' in action)add('timeline_clip',action.clipId,missingClip);
+   if('beforeClipId' in action&&action.beforeClipId)add('timeline_clip',action.beforeClipId,missingClip);
+   if('fromId' in action){add('node',action.fromId,missingNode);add('node',action.toId,missingNode);}
+   if('nodeId' in action)add('node',action.nodeId,missingNode);
    if(action.kind==='board-shot-update')add('shot',action.shotId);
    if(action.kind==='board-node-update')add('node',action.nodeId);
    if(action.kind==='board-restore'||action.kind==='board-duplicate')
@@ -872,7 +885,10 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(action.kind==='reference-attach'){add('node',action.sourceNodeId);add('shot',action.shotId);}
    if(action.kind==='reference-set-role'||action.kind==='reference-detach'){add('edge',action.edgeId);add('shot',action.shotId);}
    if(action.kind==='reference-reorder'){add('shot',action.shotId);for(const edgeId of action.edgeIds)add('edge',edgeId);}
-   if(action.kind==='insert-asset'){add('asset',action.assetId);if(action.trackId)add('timeline_track',action.trackId);}
+   if(action.kind==='insert-asset'){
+    add('asset',action.assetId,{code:'INVALID_MEDIA',reason:'ASSET_NOT_FOUND'});
+    if(action.trackId)add('timeline_track',action.trackId,{code:'INVALID_TRACK_TARGET',reason:'TRACK_NOT_FOUND'});
+   }
    if(action.kind==='subject-card-create')add('subject',action.subjectId);
    if(action.kind==='subject-card-delete')add('node',action.nodeId);
    if(action.kind==='previs-scene-set')add('node',action.nodeId);
@@ -1136,6 +1152,10 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
     const receipt=sequence.action==='undo'
       ? applyMioSequenceUndo(store,sequence.plan as MioSequenceUndoPlan)
       : commitMioSequenceAction(store,sequence.plan as MioSequencePlan,{generationSubmit:services.createGenerationJobInside});
+    if(receipt.status==='not_applied'&&receipt.code){
+     const rejection=sequenceEditCommitError({code:receipt.code,ids:[],...receipt.failure},'序列编辑没有完成。');
+     if(rejection instanceof SequenceEditCommitRejection)throw rejection;
+    }
     const impact=receipt.affected;
     const result=json({action:sequence.action,status:receipt.status,
       affected:impact,history:{position:receipt.history.position,revision:receipt.history.revision},

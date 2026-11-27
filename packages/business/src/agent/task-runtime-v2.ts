@@ -11,8 +11,9 @@ import {mioTable} from './mio-table-layout.ts';
 import {readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {isFormat5Project} from '../sequence-edit.ts';
-import {MioSequencePreviewRejection} from '../format5-sequence-preview-errors.ts';
+import {MioSequencePreviewRejection,SequenceEditCommitRejection,sequenceEditFailureEvidence} from '../format5-sequence-preview-errors.ts';
 import {assertProjectStore} from '../store-runtime.ts';
+import {translateSequenceEditDiagnostic} from '../../../i18n/src/index.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioProjectRules} from './mio-rules.ts';
 import type {MioProjectRules} from './mio-rules.ts';
@@ -405,7 +406,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   /** A proven domain admission rejection lets the run continue. Persist the
    * dispatch prevention and the model-facing result in the same transaction. */
-  function rejectNotApplied(runId:string,stepId:string,error:{code:string;message:string}):AgentTaskStep {
+  function rejectNotApplied(runId:string,stepId:string,error:{code:string;message:string;ids?:readonly string[];reason?:string;mutationOutcome?:'not_applied'}):AgentTaskStep {
     const apply=():AgentTaskStep=>{
       if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
       return journal.updateStep(runId,stepId,{status:'rejected',result:{error:json(error)},error:{code:error.code,message:error.message}});
@@ -649,14 +650,20 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const feedback=agentTaskGenerationAspectFeedback({operation:prepared.operation,projectId:prepared.projectId,input:{...prepared.input,requestId:step.id},error});
         if(feedback)return rejectNotApplied(runId,step.id,feedback);
       }
+      if(error instanceof SequenceEditCommitRejection&&current.status==='dispatch_started'){
+        const evidence=sequenceEditFailureEvidence(failure,error.details);
+        const message=translateSequenceEditDiagnostic(taskResponseLocale(journal.run(runId).context),failure,error.details)??error.message;
+        return rejectNotApplied(runId,step.id,{code:failure,message,...evidence,mutationOutcome:'not_applied'});
+      }
       const uncertain=current.status==='dispatch_started'&&(aspectRejection||!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
       }
-      const message=current.status==='intent'&&error instanceof MioSequencePreviewRejection
-        ?error.message:'工具未完成，请检查参数或可用性。';
-      const toolError={code:failure,message};
-      return journal.updateStep(runId,step.id,{status:'failed',result:{error:toolError},error:toolError});
+      const previewError=current.status==='intent'&&error instanceof MioSequencePreviewRejection?error:undefined;
+      const evidence=previewError&&record(previewError.details)&&typeof previewError.details.messageKey==='string'
+        ?sequenceEditFailureEvidence(failure,previewError.details):undefined;
+      const toolError={code:failure,message:previewError?.message??'工具未完成，请检查参数或可用性。'};
+      return journal.updateStep(runId,step.id,{status:'failed',result:{error:json({...toolError,...evidence})},error:toolError});
     }
   }
   async function checkExecutionWitness(runId:string,signal:AbortSignal):Promise<void>{

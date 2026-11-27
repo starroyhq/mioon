@@ -13,9 +13,9 @@ import type {EditUiProjection, EditUiTimeline, EditUiVersion} from './projection
 import {sequenceSyncIntent} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceEditEnvelope, SequenceEditReceipt, SequenceEditTrackIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
-import {classifyCommitFailure, extractSequenceErrorIds, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
+import {classifyCommitFailure, extractSequenceErrorIds, extractSequenceErrorReason, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
 import type {LostResponseOptions, LostResponseView, LostRetryResult} from './lost-response.ts';
-import {message, renderMessage} from '../../../../packages/i18n/src/index.ts';
+import {message, renderMessage, sequenceEditFailureMessageKey} from '../../../../packages/i18n/src/index.ts';
 import {timelineHistoryOperationMessage} from '../timeline-history.ts';
 import type {TimelineHistoryState} from '../timeline-history.ts';
 
@@ -24,7 +24,7 @@ export interface SequencePreviewResponse {
   readonly planDigest: string;
   readonly warnings: readonly {readonly code: string}[];
 }
-export interface SequenceFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]}
+export interface SequenceFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]; readonly reason?: string}
 /** A commit whose result was lost and whose receipt could not settle it. The
  * exact envelope stays in the lost-response state until retry or abandon. */
 export interface SequenceUnconfirmed {readonly ok: false; readonly code: typeof UNCONFIRMED_CODE; readonly unconfirmed: true}
@@ -248,28 +248,24 @@ const boardCodeKeys: Readonly<Record<string, string>> = {
   NODE_ALREADY_LINKED: 'boardUi.error.sequenceAlreadyLinked',
   MULTIPLE_PREDECESSORS: 'boardUi.error.sequenceMultiplePredecessors',
   MULTIPLE_SUCCESSORS: 'boardUi.error.sequenceMultipleSuccessors',
-  FILM_MUST_START: 'boardUi.error.sequenceFilmStart',
   INVALID_SEQUENCE_TYPES: 'boardUi.error.sequenceInvalidTypes',
   TEXT_IS_ANNOTATION: 'boardUi.error.sequenceTextAnnotation',
   CYCLE: 'boardUi.error.sequenceCycle',
-  MISSING_NODE: 'boardUi.error.sequenceMissingNode',
-  DUPLICATE_EDGE: 'boardUi.error.sequenceDuplicateEdge',
 };
 export function format5BoardFailureMessageKey(code: string | undefined, reason?: string): string {
   if (reason && referenceReasonKeys[reason]) return referenceReasonKeys[reason]!;
   if (code && boardCodeKeys[code]) return boardCodeKeys[code]!;
-  return format5CommandErrorMessageKey(code);
+  return format5CommandErrorMessageKey(code, reason);
 }
 
-export function format5CommandErrorMessageKey(code: string | undefined): string {
+export function format5CommandErrorMessageKey(code: string | undefined, reason?: string): string {
+  const messageKey = sequenceEditFailureMessageKey(code, reason);
+  if (messageKey) return messageKey;
   switch (code) {
     case UNCONFIRMED_CODE: return 'editUi.error.EDIT_RESULT_UNCONFIRMED';
-    case 'COPY_NODE_REQUIRED': return 'editUi.error.COPY_NODE_REQUIRED';
-    case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
     case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
-    case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
     case 'SEQUENCE_EDIT_SOUND_INVALID': return 'editUi.error.SEQUENCE_EDIT_SOUND_INVALID';
@@ -347,7 +343,7 @@ export function format5InspectorSequence(timeline: AppTimeline | null, shots: re
 type ParsedCommit = ReturnType<typeof parseSequenceCommit>;
 const parsedOutcome = (parsed: ParsedCommit): SequenceOutcome => parsed.kind === 'success'
   ? {ok: true, actionId: parsed.actionId, operation: parsed.operation, patch: parsed.patch, ...(parsed.receipt ? {receipt: parsed.receipt} : {})}
-  : parsed.kind === 'failure' ? {ok: false, code: parsed.code, ids: parsed.ids}
+  : parsed.kind === 'failure' ? {ok: false, code: parsed.code, ids: parsed.ids, ...(parsed.reason ? {reason: parsed.reason} : {})}
   : {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
 
 type PendingEdit = {readonly envelope: SequenceEditEnvelope; readonly planDigest: string};
@@ -408,7 +404,8 @@ export class Format5EditSession {
       return preview;
     } catch (error) {
       const ids = extractSequenceErrorIds(error);
-      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+      const reason = extractSequenceErrorReason(error);
+      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {}), ...(reason ? {reason} : {})};
     }
   }
 
@@ -425,7 +422,7 @@ export class Format5EditSession {
       const failure = classifyCommitFailure(error);
       if (failure.kind === 'rejected') {
         this.pending = null; this.copy = null; this.lost.clear();
-        return {ok: false, code: failure.code, ids: failure.ids};
+        return {ok: false, code: failure.code, ids: failure.ids, ...(failure.reason ? {reason: failure.reason} : {})};
       }
       return this.retainUnconfirmed(pending);
     }
@@ -462,7 +459,7 @@ export class Format5EditSession {
     try {
       const result = await this.commitPending({envelope: entry.envelope, planDigest: entry.planDigest});
       if (result.ok) return {ok: true, actionId: result.actionId};
-      return 'unconfirmed' in result ? {ok: false, code: result.code, unconfirmed: true} : {ok: false, code: result.code};
+      return 'unconfirmed' in result ? {ok: false, code: result.code, unconfirmed: true} : {ok: false, code: result.code, ...(result.reason ? {reason: result.reason} : {})};
     } finally {this.inFlight = false;}
   }
 

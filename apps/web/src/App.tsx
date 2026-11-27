@@ -3524,10 +3524,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setToast(current => current?.conflictIds?.length ? null : current);
   }
   function notifyFormat5CommandFailure(
-    result: {readonly code?: string; readonly ids?: readonly string[]},
-    fallbackKey: (code: string | undefined) => string = format5CommandErrorMessageKey,
+    result: {readonly code?: string; readonly ids?: readonly string[]; readonly reason?: string},
+    fallbackKey: (code: string | undefined, reason?: string) => string = format5CommandErrorMessageKey,
   ): void {
-    if (result.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT') {
+    if (result.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT' && result.reason !== 'MAIN_TRACK_CLIP_REQUIRED') {
       const presentation = format5AnchorConflictPresentation(
         result.ids,
         dataRef.current.timeline as never,
@@ -3542,15 +3542,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       });
       return;
     }
-    notify(t(fallbackKey(result.code) as never), 'error');
+    notify(t(fallbackKey(result.code, result.reason) as never), 'error');
   }
-  function notifyFormat5Failure(result: {readonly code: string; readonly ids?: readonly string[]}): void {
+  function notifyFormat5Failure(result: {readonly code: string; readonly ids?: readonly string[]; readonly reason?: string}): void {
     if (result.code === 'SEQUENCE_EDIT_ANCHOR_CONFLICT') {
       notifyFormat5CommandFailure(result, format5PanelErrorKey);
       return;
     }
     if (result.ids?.length) format5LocateAffected(result.ids);
-    notify(t(format5PanelErrorKey(result.code) as never), 'error');
+    notify(t(format5PanelErrorKey(result.code, result.reason) as never), 'error');
   }
   /** One UI-E3 action: preview + commit a shared intent family (FR-A properties,
    * FR-B subtitles), one undo bar, same refresh as the TS commands. */
@@ -3849,7 +3849,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       await format5LoadBoard();
       return result;
     }
-    if (!result.unconfirmed) notify(t(format5CommandErrorMessageKey(result.code) as never), 'error');
+    if (!result.unconfirmed) notify(t(format5CommandErrorMessageKey(result.code, result.reason) as never), 'error');
     return null;
   }
   /** Drop the retained envelope without writing or refreshing. */

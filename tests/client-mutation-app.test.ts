@@ -306,7 +306,10 @@ test('actual format-5 retry entry reports one reason on a definite rejection and
   await rejected.retry();
   assert.equal(rejected.calls.refresh, 0);
   assert.equal(rejected.calls.notices.length, 1);
-  assert.match(rejected.calls.notices[0]!.message, /副轨或字幕会重叠/u);
+  assert.equal(rejected.calls.notices[0]!.message, translate('zh-Hans', 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT'));
+  const needsMain = format5LostHarness({ok: false, code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT', reason: 'MAIN_TRACK_CLIP_REQUIRED'});
+  await needsMain.retry();
+  assert.deepEqual(needsMain.calls.notices, [{type: 'error', message: translate('zh-Hans', 'editUi.error.SEQUENCE_EDIT_ANCHOR_MAIN_TRACK_REQUIRED')}]);
   const unconfirmed = format5LostHarness({ok: false, code: 'EDIT_RESULT_UNCONFIRMED', unconfirmed: true});
   await unconfirmed.retry();
   assert.deepEqual(unconfirmed.calls.notices, [], 'still-unknown retry only keeps the bar');

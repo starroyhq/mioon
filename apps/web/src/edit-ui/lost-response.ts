@@ -38,7 +38,7 @@ export type LostVerdict =
 
 export type LostRetryResult =
   | {readonly ok: true; readonly actionId: string | null}
-  | {readonly ok: false; readonly code: string; readonly unconfirmed?: true};
+  | {readonly ok: false; readonly code: string; readonly unconfirmed?: true; readonly reason?: string};
 
 export interface LostResponseOptions {
   readonly readOutcome?: (input: {readonly projectId: string; readonly requestId: string},
@@ -60,6 +60,12 @@ export function extractSequenceErrorIds(error: unknown): readonly string[] | und
   return ids.length ? ids : undefined;
 }
 
+export function extractSequenceErrorReason(error: unknown): string | undefined {
+  if (!isRecord(error)) return undefined;
+  const details = isRecord(error.details) ? error.details : error;
+  return typeof details.reason === 'string' && details.reason ? details.reason : undefined;
+}
+
 /** Only a definite rejection (HTTP 4xx business error) counts as the server
  * having decided. Network failures, timeouts, 5xx and protocol errors stay
  * unknown: the write may already be applied, so its envelope is retained. */
@@ -70,8 +76,7 @@ export function classifyCommitFailure(error: unknown): CommitFailure {
     || (typeof status === 'number' && status >= 400 && status < 500 && definitive !== false);
   if (!rejected) return {kind: 'unknown'};
   const ids = extractSequenceErrorIds(error);
-  const details = isRecord(error) ? error.details : error instanceof ApiError ? error.details : undefined;
-  const reason = isRecord(details) && typeof details.reason === 'string' && details.reason ? details.reason : undefined;
+  const reason = extractSequenceErrorReason(error);
   return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {}), ...(reason ? {reason} : {})};
 }
 
@@ -161,7 +166,7 @@ export class LostResponseState {
 export type ParsedSequenceCommit =
   | {readonly kind: 'success'; readonly actionId: string | null; readonly operation: string;
       readonly patch: unknown; readonly receipt?: SequenceEditReceipt}
-  | {readonly kind: 'failure'; readonly code: string; readonly ids?: readonly string[]}
+  | {readonly kind: 'failure'; readonly code: string; readonly ids?: readonly string[]; readonly reason?: string}
   | {readonly kind: 'unknown'};
 
 /** Parse one `sequence.commit` response into its three honest states. Both the
@@ -169,8 +174,11 @@ export type ParsedSequenceCommit =
  * accepted are understood; anything else is unknown, never a rejection. */
 export function parseSequenceCommit(value: unknown): ParsedSequenceCommit {
   if (isRecord(value)) {
-    if (value.ok === false) return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-      ids: Array.isArray(value.ids) ? value.ids as string[] : undefined};
+    if (value.ok === false) {
+      const reason = extractSequenceErrorReason(value);
+      return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
+        ids: extractSequenceErrorIds(value), ...(reason ? {reason} : {})};
+    }
     const receipt = isRecord(value.receipt) ? value.receipt : null;
     if (receipt) return {kind: 'success', actionId: String(value.actionId ?? receipt.actionId),
       operation: String(value.operation ?? receipt.operation), patch: value.patch,
@@ -179,8 +187,12 @@ export function parseSequenceCommit(value: unknown): ParsedSequenceCommit {
       actionId: value.actionId === undefined ? null : String(value.actionId),
       operation: String(value.operation ?? 'sequence.edit'), patch: undefined,
       receipt: value as unknown as SequenceEditReceipt};
-    if (value.status === 'not_applied') return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_NOOP'),
-      ids: Array.isArray(value.ids) ? value.ids as string[] : undefined};
+    if (value.status === 'not_applied') {
+      const evidence = isRecord(value.failure) ? value.failure : value;
+      const reason = extractSequenceErrorReason(evidence);
+      return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_NOOP'),
+        ids: extractSequenceErrorIds(evidence), ...(reason ? {reason} : {})};
+    }
   }
   return {kind: 'unknown'};
 }

@@ -199,7 +199,8 @@ test('a cross-track drop preview reports all blockers at their compacted positio
   // Removing clip A from the main track pulls the overlays 60 frames earlier.
   // Both blockers enter the previously empty drop range [0, 60).
   assert.deepEqual(previewAt(0), {ok: false, code: 'SEQUENCE_EDIT_ANCHOR_CONFLICT',
-    ids: [firstBlocker, secondBlocker]});
+    ids: [firstBlocker, secondBlocker], message: '随主轨一起移动的片段或字幕放不下，请调整它们的位置。',
+    messageKey: 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT'});
   assert.equal(typeof (previewAt(70) as Prepared).planDigest, 'string', 'a drop touching an overlay endpoint is allowed');
   assert.deepEqual(state(store), before);
 });

@@ -3,6 +3,7 @@
 import {isClipTransition, canonicalClipTransition} from '../../../../packages/contracts/src/timeline-clip-transition.ts';
 import type {ClipTransition} from '../../../../packages/contracts/src/timeline-clip-transition.ts';
 import {isClipTransform} from '../../../../packages/contracts/src/timeline-clip-transform.ts';
+import {sequenceEditFailureMessageKey} from '../../../../packages/i18n/src/index.ts';
 import {sameClipDraftValue} from '../clip-draft-state.ts';
 import type {SubtitleIntent} from '../subtitle-state.ts';
 
@@ -147,13 +148,13 @@ export function format5SubtitleEdit(intent: SubtitleIntent, newCueId: string): F
 }
 
 /** Codes the panels can meet; the shared map keeps one reason per code. */
-export function format5PanelErrorKey(code: string | undefined): string {
+export function format5PanelErrorKey(code: string | undefined, reason?: string): string {
+  const messageKey = sequenceEditFailureMessageKey(code, reason);
+  if (messageKey) return messageKey;
   switch (code) {
-    case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
     case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
-    case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
     case 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID': return 'editUi.error.CLIP_PROPERTIES_INVALID';
     case 'SEQUENCE_EDIT_SUBTITLE_INVALID': return 'editUi.error.SUBTITLE_INVALID';
