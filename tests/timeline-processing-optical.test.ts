@@ -79,6 +79,51 @@ test('optical output owns exact 30 fps ordinals across two-second blocks and mat
   }
 });
 
+test('optical phase starts at the first decoded picture when audio begins earlier', {timeout: 60_000}, async t => {
+  const {root, stagingDirectory} = await workspace(t);
+  const picture = path.join(root, 'picture.mov'), audioFirst = path.join(root, 'audio-first.mov');
+  const sourceFrames = 36, samplesPerSourceFrame = 4, outputFrames = sourceFrames * samplesPerSourceFrame;
+  await run('ffmpeg', [...tools, '-f', 'lavfi', '-i',
+    "nullsrc=s=64x64:r=30,format=yuv420p,geq=lum='60+90*lt(abs(X-12-mod(3*N,36)),8)*lt(abs(Y-32),10)':cb=128:cr=128",
+    '-frames:v', String(sourceFrames), '-c:v', 'libx264', '-threads:v', '1', '-pix_fmt', '+yuv420p',
+    '-crf', '0', '-g', '30', '-bf', '0', '-video_track_timescale', '30000', picture]);
+  await run('ffmpeg', [...tools, '-copyts', '-itsoffset', '0.1', '-i', picture, '-f', 'lavfi', '-i',
+    'sine=frequency=440:sample_rate=48000:duration=1.3', '-map', '0:v:0', '-map', '1:a:0',
+    '-c:v', 'copy', '-video_track_timescale', '30000', '-c:a', 'pcm_s16le', audioFirst]);
+  const timing = JSON.parse(await run('ffprobe', ['-v', 'error', '-show_entries',
+    'stream=codec_type,start_pts,time_base:format=start_time', '-of', 'json', audioFirst]));
+  assert.deepEqual(timing.streams, [
+    {codec_type: 'video', time_base: '1/30000', start_pts: 3000},
+    {codec_type: 'audio', time_base: '1/48000', start_pts: 0},
+  ]);
+  assert.equal(timing.format.start_time, '0.000000');
+
+  const options = authority();
+  async function render(sourcePath: string, directory: string) {
+    const request = {...input(sourcePath, sourceFrames, 0, sourceFrames, 'forward'), sceneCuts: () => []};
+    const prepared = await prepareOpticalProxy(request, options);
+    const evidence = await renderOpticalProxy(request, prepared, {...options, stagingDirectory: directory});
+    assert.equal(evidence.frameCount, outputFrames);
+    return decode(path.join(directory, 'proxy.mkv'), outputFrames);
+  }
+  const referenceStage = path.join(root, 'reference');
+  await mkdir(referenceStage, {mode: 0o700});
+  const reference = await render(picture, referenceStage);
+  const actual = await render(audioFirst, stagingDirectory);
+  assert.equal(actual.length, outputFrames * frameBytes);
+  assert.ok(actual.equals(reference), 'audio lead must preserve every output picture and interpolation phase');
+
+  const native = await decode(picture, sourceFrames);
+  const frame = (bytes: Buffer, index: number) => bytes.subarray(index * frameBytes, (index + 1) * frameBytes);
+  let hasInterpolatedPicture = false;
+  for (let ordinal = 0; ordinal < sourceFrames; ordinal++) {
+    const expected = frame(native, ordinal);
+    assert.ok(frame(actual, ordinal * samplesPerSourceFrame).equals(expected), `native picture ${ordinal}`);
+    hasInterpolatedPicture ||= !frame(actual, ordinal * samplesPerSourceFrame + 2).equals(expected);
+  }
+  assert.ok(hasInterpolatedPicture, 'the fixture must exercise synthesized pictures');
+});
+
 for (const direction of ['forward', 'reverse'] as const) {
   test(`optical ${direction} uses the detected cut and includes transition handles`, {timeout: 60_000}, async t => {
     const {root, stagingDirectory} = await workspace(t);

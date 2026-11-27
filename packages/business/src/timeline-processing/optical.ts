@@ -216,7 +216,7 @@ export async function prepareOpticalProxy(input: OpticalProxyInput, options: Rev
   }}, admitVideo, options);
   const {state, video} = source;
   const tickInFrames = fps * video.timeBase.numerator / video.timeBase.denominator;
-  const positionOf = (pts: number): number => pts * tickInFrames - fps * state.originUs / 1e6;
+  const positionOf = (pts: number): number => (pts - state.video.sourceZeroPts) * tickInFrames;
   const positions = state.video.frames.map(frame => positionOf(frame.pts));
   const clock = {positions, end: positionOf(state.video.endOfStream)};
   const phases = windows.map(({plan}) => {
